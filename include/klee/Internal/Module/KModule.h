@@ -85,6 +85,10 @@ namespace klee {
     // Some useful functions to know the address of
     llvm::Function *dbgStopPointFn, *kleeMergeFn;
 
+    /* NUKLEAR KLEE begin */
+    std::vector<llvm::Function*> nuklearMergeFn;
+    /* NUKLEAR KLEE end */
+
     // Our shadow versions of LLVM structures.
     std::vector<KFunction*> functions;
     std::map<llvm::Function*, KFunction*> functionMap;
