@@ -24,6 +24,17 @@ extern "C" {
      calls. */
   void klee_define_fixed_object(void *addr, size_t nbytes);
 
+  /* NUKLEAR KLEE begin */
+  void klee_make_symbolic_unknown_size(void *addr, const char *name);
+  void klee_copy_and_make_symbolic(void *addr, const char *name);
+  void klee_add_external_object(void *addr, unsigned nbytes);
+  void* klee_duplicate_symbolic(void *addr);
+  void klee_equal(void *addr1, void *addr2);
+  void klee_write_constraints();
+  void klee_disable_externals();
+  void klee_disable_xwindows();
+  /* NUKLEAR KLEE end */
+
   /// klee_make_symbolic - Make the contents of the object pointer to by \arg
   /// addr symbolic. 
   ///
