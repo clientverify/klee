@@ -399,7 +399,7 @@ void ObjectState::write8(unsigned offset, uint8_t value) {
 }
 
 void ObjectState::write8(unsigned offset, ref<Expr> value) {
-  // can happen when ExtractExpr special cases
+	// can happen when ExtractExpr special cases
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(value)) {
     write8(offset, (uint8_t) CE->getZExtValue(8));
   } else {
@@ -558,24 +558,261 @@ void ObjectState::write64(unsigned offset, uint64_t value) {
   }
 }
 
-void ObjectState::print() {
-  std::cerr << "-- ObjectState --\n";
-  std::cerr << "\tMemoryObject ID: " << object->id << "\n";
-  std::cerr << "\tRoot Object: " << updates.root << "\n";
-  std::cerr << "\tSize: " << size << "\n";
+/* NUKLEAR KLEE begin */
+int ObjectState::compare(const ObjectState &b) const {
+ 
+  //if (object != b.object) {
+  //  return -1;
+  //}
 
-  std::cerr << "\tBytes:\n";
-  for (unsigned i=0; i<size; i++) {
-    std::cerr << "\t\t["<<i<<"]"
-               << " concrete? " << isByteConcrete(i)
-               << " known-sym? " << isByteKnownSymbolic(i)
-               << " flushed? " << isByteFlushed(i) << " = ";
-    ref<Expr> e = read8(i);
-    std::cerr << e << "\n";
+  //if (object->id != b.object->id) {
+  //  return -1;
+  //}
+
+  //if (updates.getSize() < b.updates.getSize()) return -1;
+  //else if (updates.getSize() > b.updates.getSize()) return 1;    
+
+  // XXX build comparison into update, make fast
+  const UpdateNode *an=updates.head, *bn=b.updates.head;
+  for (; an && bn; an=an->next,bn=bn->next) {
+    if (an==bn) { // exploit shared list structure
+      return 0;
+    } else {
+      if (int res = an->compare(*bn))
+        return res;
+    }
   }
 
-  std::cerr << "\tUpdates:\n";
+  //if (updates.root != NULL && b.updates.root != NULL) {
+  //  if (updates.compare(b.updates)) {
+  //    return -1;
+  //  }
+  //} else if (updates.root != b.updates.root) {
+  //  return -1;
+  //}
+
+  if (size != b.size) {
+    return -1;
+  }
+  //if (copyOnWriteOwner == b.copyOnWriteOwner) return 0;
+  
+  if (!hasKnownSymbolics() && !b.hasKnownSymbolics()
+      && !hasFlushMask() && !b.hasFlushMask()
+      && hasConcreteStore() && b.hasConcreteStore()) {
+    for (unsigned i=0; i<size; i++) {
+      if (concreteStore[i] != b.concreteStore[i])
+        return -1;
+    }
+  } else {
+    for (unsigned i=0; i<size; i++) {
+      if (isByteConcrete(i) != b.isByteConcrete(i)) return -1;
+      if (isByteKnownSymbolic(i) != b.isByteKnownSymbolic(i)) return -1;
+      if (isByteFlushed(i) != b.isByteFlushed(i)) return -1;
+      if (read8(i) != b.read8(i)) return -1;
+    }
+  }
+  
+  //for (unsigned i=0; i<size; i++) {
+  //  if (isByteConcrete(i) != b.isByteConcrete(i)) return -1;
+  //  if (isByteKnownSymbolic(i) != b.isByteKnownSymbolic(i)) return -1;
+  //  if (isByteFlushed(i) != b.isByteFlushed(i)) return -1;
+  //  if (read8(i) != b.read8(i)) return -1;
+  //}
+
+
+  return 0;
+}
+
+void ObjectState::computeDigest(EVP_MD_CTX *mdctx) {
+ 
+  //EVP_DigestUpdate(mdctx, &object, sizeof(object));
+
+  //EVP_DigestUpdate(mdctx, &object->id, sizeof(object->id));
+ 
+  //EVP_DigestUpdate(mdctx, &updates.root, sizeof(updates.root));
+
+  updates.computeDigest(mdctx);
+
+  EVP_DigestUpdate(mdctx, &size, sizeof(size));
+
+  bool do_concrete = false;
+  if (!hasKnownSymbolics() 
+      && !hasFlushMask() 
+      && hasConcreteStore() ) {
+    do_concrete = true;
+  }
+  for (unsigned i=0; i<size; i++) {
+    bool byte_concrete = isByteConcrete(i);
+    bool byte_symbolic = isByteKnownSymbolic(i);
+    bool byte_flushed = isByteFlushed(i);
+    
+    EVP_DigestUpdate(mdctx, &byte_concrete, sizeof(byte_concrete));
+    EVP_DigestUpdate(mdctx, &byte_symbolic, sizeof(byte_symbolic));
+    EVP_DigestUpdate(mdctx, &byte_flushed, sizeof(byte_flushed));
+    if (do_concrete) {
+      EVP_DigestUpdate(mdctx, &concreteStore[i], sizeof(concreteStore[i]));
+    } else {
+      ref<Expr> e = read8(i);
+      unsigned hash = e->hash();
+      EVP_DigestUpdate(mdctx, &hash, sizeof(hash));
+    }
+  }
+  
+}
+
+void ObjectState::print(std::ostream &os) const {
+  os << "-- ObjectState --\n";
+  os << "\tMemoryObject: " << object << "\n";
+  os << "\tMemoryObject ID: " << object->id << "\n";
+  os << "\tMemoryObject Name: " << object->name << "\n";
+  os << "\tRoot Object: " << updates.root << "\n";
+  if (updates.root)
+    os << "\tArray Name: " << updates.root->name << "\n";
+  else
+    os << "\tArray Name: \n";
+  os << "\tSize: " << size << "\n";
+
+  os <<"\tAlloc Site: (NOT IMPL)\n";
+  //if (object->allocSite)
+  //  os <<"\tAlloc Site: " << *object->allocSite << "\n";
+
+  os << "\tBytes:\n";
+  ref<Expr> prev_e = ConstantExpr::alloc(1, Expr::Bool);
+  int start = -1;
+  for (unsigned i=0; i<size; i++) {
+    bool concrete = isByteConcrete(i);
+    bool knownSym = isByteKnownSymbolic(i);
+    bool flushed = isByteFlushed(i);
+
+    ref<Expr> e = read8(i);
+    if (prev_e == e) {
+      if (start == -1) {
+        start = i;
+      }
+    } 
+    if (prev_e != e || i==size-1) {
+      if (start != -1) {
+        os << "\t\t[" << start << "]-[" <<i-1<<"]"
+           << " = " << prev_e << "\n";
+        start = -1;
+      }
+      os << "\t\t["<<i<<"]"
+                 << " concrete? " << concrete
+                 << " known-sym? " << knownSym 
+                 << " flushed? " << flushed << " = ";
+      os << e << "\n";
+    }
+    prev_e = e;
+  }
+
+  os << "\tUpdates:\n";
   for (const UpdateNode *un=updates.head; un; un=un->next) {
-    std::cerr << "\t\t[" << un->index << "] = " << un->value << "\n";
+    os << "\t\t[" << un->index << "] = " << un->value << "\n";
   }
 }
+
+void ObjectState::print_diff(std::vector<ObjectState*> &_ovec, std::ostream &os) const {
+  std::vector<ObjectState*>ovec(_ovec);
+  //ovec.push_back(const_cast<ObjectState*>(this));
+  unsigned s = ovec.size();
+  os << "-- ObjectState --\n";
+
+  os << "\tMemoryObjects: ";
+  for(unsigned i=0;i<s;i++) 
+    os << ovec[i]->object << ", ";
+  os << "\n";
+
+  os << "\tMemoryObject IDs: ";
+  for(unsigned i=0;i<s;i++) 
+    os << ovec[i]->object->id << ", ";
+  os << "\n";
+
+  os << "\tMemoryObject Names: ";
+  for(unsigned i=0;i<s;i++) 
+    os << ovec[i]->object->name << ", ";
+  os << "\n";
+
+  os << "\tRoot Objects: ";
+  for(unsigned i=0;i<s;i++) 
+    os << ovec[i]->updates.root << ", ";
+  os << "\n";
+
+  os << "\tArray Names: ";
+  for(unsigned i=0;i<s;i++) 
+    if (ovec[i]->updates.root)
+      os << ovec[i]->updates.root->name << ", ";
+    else
+      os << " None, ";
+  os << "\n";
+
+  os << "\tSizes: ";
+  for(unsigned i=0;i<s;i++) 
+    os << ovec[i]->size << ", ";
+  os << "\n";
+
+  os <<"\tAlloc Sites: (NOT IMPL)";
+  //for(unsigned i=0;i<1;i++) 
+  //  if (ovec[i]->object->allocSite)
+  //    os << *(ovec[i]->object->allocSite) << ", ";
+  os << "\n";
+
+  for(unsigned i=1;i<s;i++) 
+    assert(ovec[i]->size == ovec[i-1]->size);
+
+  os << "\tDifferent Bytes:\n";
+  ref<Expr> prev_e = ConstantExpr::alloc(0, Expr::Bool);
+  int start = -1;
+  for (unsigned i=0; i<size; i++) {
+
+    bool all_equal = true;
+    for(unsigned j=1;j<s;j++) {
+      if (ovec[j-1]->read8(i) != ovec[j]->read8(i)) {
+        all_equal = false;
+        break;
+      }
+    }
+
+    if (all_equal) {
+
+      ref<Expr> e = ovec[0]->read8(i);
+      if (prev_e == e) {
+        if (start == -1) {
+          start = i;
+        }
+      } 
+      if (prev_e != e || i==size-1) {
+        if (start != -1) {
+          os << "\t\t[" << start << "]-[" <<i-1<<"]"
+             << " = " << prev_e << "\n";
+          start = -1;
+        }
+        os << "\t\t["<<i<<"] = " << e << "\n";
+      }
+      prev_e = e;
+
+    } else {
+      if (start != -1) {
+        os << "\t\t[" << start << "]-[" <<i-1<<"]"
+           << " = " << prev_e << "\n";
+        start = -1;
+      }
+      os << "\t\t["<<i<<"] = ";
+      for(unsigned j=0;j<s;j++) 
+        os << ovec[j]->read8(i) << ", ";
+      os << "\n";
+    }
+  }
+
+  os << "\tUpdates:\n";
+  for(unsigned i=0;i<s;i++)  {
+    for (const UpdateNode *un=ovec[i]->updates.head; un; un=un->next) {
+      os << "\t\t[" << i << "][" << un->index << "] = " << un->value << "\n";
+    }
+  }
+
+}
+
+void ObjectState::print() {
+  print(std::cerr);
+}
+/* NUKLEAR KLEE end */
