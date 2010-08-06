@@ -86,7 +86,7 @@ using namespace klee;
 
 /* NUKLEAR KLEE begin */
 bool UseNuklear = false; 
-// FIXME bool NoExternals = false; 
+bool NoExternals = false; 
 bool NoXWindows  = false;
 /* NUKLEAR KLEE end */
 
@@ -207,9 +207,11 @@ namespace {
   UseSTPQueryPCLog("use-stp-query-pc-log",
                    cl::init(false));
 
-  cl::opt<bool>
-  NoExternals("no-externals", 
-           cl::desc("Do not allow external functin calls"));
+	/* KLEE NUKLEAR begin */
+  //cl::opt<bool>
+  //NoExternals("no-externals", 
+  //         cl::desc("Do not allow external functin calls"));
+	/* KLEE NUKLEAR end */
 
   cl::opt<bool>
   UseCache("use-cache",
@@ -2731,7 +2733,7 @@ void Executor::callExternalFunction(ExecutionState &state,
     // check if we called this X function from within a nuklear_* function.
     if (f_str.substr(0,n_str.size()) != n_str) {
       klee_warning_once("Ignoring X function: %s", 
-                        function->getName().c_str());
+                        function->getName().data());
       return;
     }
   }
