@@ -330,7 +330,10 @@ void ConstantExpr::toMemory(void *address) {
 }
 
 void ConstantExpr::toString(std::string &Res) const {
-  Res = value.toString(10, false);
+  /* NUKLEAR KLEE begin */
+  //Res = value.toString(10, false);
+  Res = "0x" + value.toString(16, false);
+  /* NUKLEAR KLEE end */
 }
 
 ref<ConstantExpr> ConstantExpr::Concat(const ref<ConstantExpr> &RHS) {
