@@ -64,10 +64,10 @@ public:
   bool operator==(const ConstraintManager &other) const {
     return constraints == other.constraints;
   }
-  
-private:
+  /* NUKLEAR KLEE begin */
   std::vector< ref<Expr> > constraints;
-
+private:
+  /* NUKLEAR KLEE end */
   // returns true iff the constraints were modified
   bool rewriteConstraints(ExprVisitor &visitor);
 
