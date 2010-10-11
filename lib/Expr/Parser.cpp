@@ -716,9 +716,20 @@ ExprResult ParserImpl::ParseExpr(TypeResult ExpectedType) {
   
   if (Tok.kind == Token::Number) {
     if (!ExpectedType.isValid()) {
-      Error("cannot infer type of number.");
-      ConsumeToken();
-      return ExprResult();
+      /* NUKLEAR KLEE begin */
+      // TODO(rcochran) Is this still needed?
+      // NOTE(rcochran) Temp hack to allow parsing of (Concat w[0-9]+ 0(Read..
+      // we can fix this problem by using -pc-all-constant-widths which would
+      // print (Concat w[0-9]+ (w[0-9]+ 0) (Read... 
+      // We are assuming the Type is w8.
+      return ParseNumber(8);
+      /* NUKLEAR KLEE end */
+
+      /* NUKLEAR KLEE begin remove */
+      //Error("cannot infer type of number.");
+      //ConsumeToken();
+      //return ExprResult();
+      /* NUKLEAR KLEE end remove */
     }
     
     return ParseNumber(ExpectedType.get());

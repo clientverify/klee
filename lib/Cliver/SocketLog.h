@@ -10,11 +10,11 @@
 // This file defines the clvr::SocketLog interface.
 //
 // SocketLog is an abstract interface that representes a sequence of buffers
-// that were sent or received by an authoritative server. between a client and
-// a server. There should be 1 per session. The SocketLog object reads from
-// file and creates an ordered set of LogBuffer objects which represent the
-// messages sent and received by the client. SocketLog also handles parsing and
-// creating the associated LogBufferInfo object for each LogBuffer.
+// that were sent or received by an authoritative server. There should be 1 per
+// session. The SocketLog object reads from a file and creates an ordered set
+// of LogBuffer objects which represent the messages sent and received by the
+// client. SocketLog also handles parsing and creating the associated
+// LogBufferInfo object for each LogBuffer.
 //
 
 //===----------------------------------------------------------------------===//

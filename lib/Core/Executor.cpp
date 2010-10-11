@@ -1412,6 +1412,27 @@ static inline const llvm::fltSemantics * fpWidthToSemantics(unsigned width) {
   }
 }
 
+//void Executor::maintainPointerLocations(ExecutionState &state, KInstruction *ki) {
+//  Instruction *i = ki->inst;
+//  switch (i->getOpcode()) {
+//		case Instruction::Alloca: {
+//		  // result of instruction is a pointer
+//			break;
+//		}
+//		case Instruction::Load: {
+//		  // check loaded memoryobject to determine if it is a pointer
+//			break;
+//		}
+//		case Instruction::Store: {
+//		  // if pointer, add to memoryobject pointer mask
+//			break;
+//		}
+//		default: {
+//		  // base assumption, if any child is a pointer, parent is a pointer.
+//			break;
+//		}
+//}
+
 void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   Instruction *i = ki->inst;
   switch (i->getOpcode()) {

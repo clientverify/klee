@@ -56,14 +56,13 @@ namespace clvr {
 	class ExecutionStateInfo {
 
 		virtual ExecutionStateInfo(ExecutionState& es);
-
 		virtual void update();
 	}
 
 //===----------------------------------------------------------------------===//
 //
 // ExecutionStateScorer is used to sort the ExecutionStates to determine which
-// should be executed next. This class should be extended and modified for each
+// should be executed next. This class could be extended and modified for each
 // application that we want to verify. ExecutionStateScorer implementations may
 // use various data to produce a score set, it might be paired with an app
 // specific ExecutionStateInfo implemention to produce an application specific

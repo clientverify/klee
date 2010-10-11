@@ -58,7 +58,7 @@ Function *klee::getDirectCallTarget(const Instruction *i) {
 
     // NOTE: This assert may fire, it isn't necessarily a problem and
     // can be disabled, I just wanted to know when and if it happened.
-    assert(0 && "FIXME: Unresolved direct target for a constant expression.");
+    //assert(0 && "FIXME: Unresolved direct target for a constant expression.");
   }
   
   return 0;
