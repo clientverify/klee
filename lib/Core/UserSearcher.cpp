@@ -10,6 +10,9 @@
 #include "Common.h"
 
 #include "UserSearcher.h"
+/* NUKLEAR KLEE begin */
+#include "NuklearSearcher.h"
+/* NUKLEAR KLEE end */
 
 #include "Searcher.h"
 #include "Executor.h"
@@ -19,7 +22,16 @@
 using namespace llvm;
 using namespace klee;
 
+/* NUKLEAR KLEE begin */
+extern bool UseNuklear;
+/* NUKLEAR KLEE end */
+
 namespace {
+/* NUKLEAR KLEE begin */
+  cl::opt<bool>
+  UseNuklearMerge("use-nuklear-merge");
+/* NUKLEAR KLEE end */
+
   cl::opt<bool>
   UseRandomSearch("use-random-search");
 
@@ -165,6 +177,22 @@ Searcher *klee::constructUserSearcher(Executor &executor) {
     searcher = new IterativeDeepeningTimeSearcher(searcher);
   }
 
+  /* NUKLEAR KLEE begin */
+  if (UseNuklear && UseNuklearMerge) {
+    if (UseRandomPathSearch || UseNonUniformRandomSearch || UseRandomSearch ||
+        UseInterleavedNURS || UseInterleavedMD2UNURS || UseInterleavedRS ||
+        UseInterleavedCovNewNURS || UseInterleavedInstCountNURS ||
+        UseInterleavedCPInstCountNURS || UseInterleavedQueryCostNURS ||
+        UseBatchingSearch || UseMerge || UseBumpMerge ||
+        UseIterativeDeepeningTimeSearch) {
+      klee_warning("While using Nuklear mode all other Searcher options "
+                   "are disabled");
+    }
+    if (searcher) delete searcher;
+    searcher = new NuklearSearcher(executor, new DFSSearcher());
+  }
+  /* NUKLEAR KLEE end */
+ 
   std::ostream &os = executor.getHandler().getInfoStream();
 
   os << "BEGIN searcher description\n";

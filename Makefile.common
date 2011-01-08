@@ -40,3 +40,7 @@ CXX.Flags += -DKLEE_DIR=\"$(PROJ_OBJ_ROOT)\"
 
 # For STP.
 CXX.Flags += -DEXT_HASH_MAP
+
+# NUKLEAR KLEE begin
+CXX.Flags += -lssl -fopenmp
+# NUKLEAR KLEE end

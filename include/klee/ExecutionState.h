@@ -18,6 +18,12 @@
 #include "../../lib/Core/AddressSpace.h"
 #include "klee/Internal/Module/KInstIterator.h"
 
+/* NUKLEAR KLEE begin */
+#include "klee/NuklearSocket.h"
+#include "klee/Internal/ADT/KTest.h"
+#include <openssl/evp.h>
+/* NUKLEAR KLEE end */
+
 #include <map>
 #include <set>
 #include <vector>
@@ -61,6 +67,13 @@ struct StackFrame {
   ~StackFrame();
 };
 
+/* NUKLEAR KLEE begin */
+typedef struct { 
+  unsigned char value[EVP_MAX_MD_SIZE];
+  unsigned int len; 
+} StateDigest;
+/* NUKLEAR KLEE end */
+
 class ExecutionState {
 public:
   typedef std::vector<StackFrame> stack_ty;
@@ -70,12 +83,22 @@ private:
   ExecutionState &operator=(const ExecutionState&); 
   std::map< std::string, std::string > fnAliases;
 
+  /* NUKLEAR KLEE begin */
+  static int counter;
+  /* NUKLEAR KLEE end */
+
 public:
   bool fakeState;
   // Are we currently underconstrained?  Hack: value is size to make fake
   // objects.
   unsigned underConstrained;
   unsigned depth;
+
+  /* NUKLEAR KLEE begin */
+  unsigned id;
+  std::map<int, NuklearSocket> nuklearSockets;
+  StateDigest digest;
+  /* NUKLEAR KLEE end */
   
   // pc - pointer to current instruction stream
   KInstIterator pc, prevPC;
@@ -110,7 +133,11 @@ public:
   void removeFnAlias(std::string fn);
   
 private:
-  ExecutionState() : fakeState(false), underConstrained(0), ptreeNode(0) {}
+  ExecutionState() : fakeState(false), underConstrained(0), 
+    /* NUKLEAR KLEE begin */
+    id(counter++),
+    /* NUKLEAR KLEE end */
+    ptreeNode(0) {};
 
 public:
   ExecutionState(KFunction *kf);
@@ -118,6 +145,11 @@ public:
   // XXX total hack, just used to make a state so solver can
   // use on structure
   ExecutionState(const std::vector<ref<Expr> > &assumptions);
+
+  /* NUKLEAR KLEE begin */
+  // FIXME still needed ???
+  ExecutionState(const ExecutionState &es);
+  /* NUKLEAR KLEE end */
 
   ~ExecutionState();
   
@@ -135,6 +167,15 @@ public:
 
   bool merge(const ExecutionState &b);
   void dumpStack(std::ostream &out) const;
+  /* NUKLEAR KLEE begin */
+  void computeDigest();
+  StateDigest* getDigest() { return &digest; }
+  bool nuklear_merge(const ExecutionState &b);
+  bool prune();
+  bool prune_hack(std::set<std::string> current_symbolic_names);
+  void print(std::vector<ExecutionState*> &ev);
+  void print_diff(std::vector<ExecutionState*> &ev);
+  /* NUKLEAR KLEE end */
 };
 
 }

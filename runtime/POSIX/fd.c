@@ -29,6 +29,18 @@
 #include <sys/select.h>
 #include <klee/klee.h>
 
+/* NUKLEAR KLEE begin */
+// NOTE(rcochran) unistd.h is needed for syscalls in x64. 
+#include <asm-x86_64/unistd.h> 
+// NOTE(rcochran) time.h is needed if we are implementing symbolic time.
+#include <time.h> 
+//#include <sys/socket.h>
+//#include <netinet/in.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+/* NUKLEAR KLEE end */
+
 /* #define DEBUG */
 
 void klee_warning(const char*);
@@ -199,6 +211,10 @@ int __fd_open(const char *pathname, int flags, mode_t mode) {
 }
 
 int close(int fd) {
+  /* NUKLEAR KLEE begin */
+  if (fd < 0) return 0;
+  /* NUKLEAR KLEE end */
+  
   static int n_calls = 0;
   exe_file_t *f;
   int r = 0;
@@ -1305,3 +1321,134 @@ int chroot(const char *path) {
   errno = ENOENT;
   return -1;
 }
+
+/* NUKLEAR KLEE begin */
+
+static void __emit_error(const char *msg) {
+  klee_report_error(__FILE__, __LINE__, msg, "user.err");
+}
+
+// Helper function that converts an integer to a string; s should be 
+// at least 9 bytes.
+void __int_to_str(int val, char *s) {
+  int i,c;
+
+  for (i=7; i>=0; i--) {
+    c = (val >> (i*4)) & 0x0F;
+    if (c < 10) 
+      *(s++) = '0' + c;
+    else
+      *(s++) = 'a' + (c-10);
+  }
+  *s = '\0';
+}
+
+// NOTE: This network model is INCOMPLETE and only supports one replay file
+// whose socket_id is hardcoded to -1.
+//
+// TODO implement method of tracking multiple socket types
+// replayed, files, etc
+#define SOCKET_REPLAY_ID  1000
+#define SOCKET_REPLAY_SERVER_PORT 9999
+#define SOCKET_REPLAY_SERVER_NAME "localhost"
+
+// POSIX implementation of htons(3) 
+//uint16_t htons(uint16_t hostshort) { 
+//unsigned short htons(unsigned short hostshort) { 
+//  return hostshort; 
+//}
+
+// POSIX implementation of inet_pton(3) 
+//int inet_pton(int af, const char *src, void *dst) {
+//  return 1;
+//}
+// POSIX implementation of connect(2)
+int connect(int sockfd, const struct sockaddr *serv_addr, socklen_t addrlen) {
+  return 0;
+}
+
+// POSIX implementation of shutdown(2) 
+int shutdown(int socket, int how) {
+  return 0;
+}
+
+// POSIX implementation of socket(2) 
+int socket(int domain, int type, int protocol) {
+  return SOCKET_REPLAY_ID;
+}
+
+int bind(int sockfd, const struct sockaddr *my_addr, socklen_t addrlen) {
+  return 0;
+}
+ssize_t send(int s, const void *buf, size_t len, int flags) {
+  return klee_socket_write(s, buf, len);
+}
+
+ssize_t sendto(int s, const void *buf, size_t len, int flags, 
+               const struct sockaddr *to, socklen_t tolen) {
+  return klee_socket_write(s, buf, len);
+}
+
+ssize_t recv(int s, void *buf, size_t len, int flags) {
+  if (s == SOCKET_REPLAY_ID) {
+    return klee_socket_read(s, buf, len);
+    //int socket_ready;
+    //klee_nuklear_make_symbolic(&socket_ready, "recv_socket_ready");
+    //if (socket_ready)
+    //  return klee_socket_read(s, buf, len);
+    //else 
+    //  return 0;
+  }
+  return -1;
+}
+
+ssize_t recvfrom(int s, void *buf, size_t len, int flags,
+                 struct sockaddr *from, socklen_t *fromlen) {
+  struct sockaddr_in *addr = (struct sockaddr_in*)from;
+  addr->sin_family = AF_INET;
+  addr->sin_port = SOCKET_REPLAY_SERVER_PORT;
+  inet_pton(AF_INET, SOCKET_REPLAY_SERVER_NAME, &addr->sin_addr);
+  *fromlen = sizeof(struct sockaddr_in);
+
+  return klee_socket_read(s, buf, len);
+}
+
+int getsockname(int s, struct sockaddr *name, socklen_t *namelen) {
+  if (s == SOCKET_REPLAY_ID) {
+    unsigned short port;
+    klee_nuklear_make_symbolic(&port, "getsockname_port");
+    ((struct sockaddr_in*)name)->sin_port = port;
+    return 0;
+  }
+  return -1;
+}
+
+int setsockopt(int s, int level, int optname, 
+               const void *optval, socklen_t optlen) {
+  if (s == SOCKET_REPLAY_ID) {
+    return 0;
+  }
+  return -1;
+}
+
+int gettimeofday(struct timeval *tv, struct timezone *tz) {
+  if (tv == NULL) return -1; 
+  struct timeval __tv;
+
+  //klee_make_symbolic(&__tv, sizeof(struct timeval), "__tv");
+  klee_nuklear_make_symbolic(&__tv, "__gettimeofday");
+  tv = &__tv;
+  return 0;
+}
+
+time_t __time(time_t *t) {
+
+  time_t __t;
+  klee_nuklear_make_symbolic(&__t, "__t");
+  if (t) t = &__t;
+  return __t;
+}
+
+
+/* NUKLEAR KLEE end */
+

@@ -15,6 +15,25 @@
 namespace klee {
 namespace stats {
 
+  /* NUKLEAR KLEE begin */
+  extern Statistic nuklearPrunes;
+  extern Statistic nuklearMerges;
+  extern Statistic nuklearPreMergeStates;
+  extern Statistic nuklearStateErases;
+  extern Statistic nuklearRoundStates;
+  extern Statistic nuklearRoundTime;
+  extern Statistic nuklearRoundTimeReal;
+  extern Statistic nuklearExecuteTime;
+  extern Statistic nuklearMergeTime;
+  extern Statistic nuklearPruneTime;
+  extern Statistic nuklearPruneTime_stack;
+  extern Statistic nuklearPruneTime_addressSpace;
+  extern Statistic nuklearPruneTime_symprune;
+  extern Statistic nuklearPruneTime_constraintprune;
+  extern Statistic nuklearDigestTime;
+  extern Statistic nuklearDigestTimeEVP;
+  /* NUKLEAR KLEE end */
+
   extern Statistic allocations;
   extern Statistic resolveTime;
   extern Statistic instructions;

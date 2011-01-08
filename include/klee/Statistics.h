@@ -44,6 +44,9 @@ namespace klee {
     uint64_t *globalStats;
     uint64_t *indexedStats;
     StatisticRecord *contextStats;
+    /* NUKLEAR KLEE begin */
+    StatisticRecord *nuklearContextStats;
+    /* NUKLEAR KLEE end */
     unsigned index;
 
   public:
@@ -54,6 +57,11 @@ namespace klee {
 
     StatisticRecord *getContext();
     void setContext(StatisticRecord *sr); /* null to reset */
+
+    /* NUKLEAR KLEE begin */
+    StatisticRecord *getNuklearContext();
+    void setNuklearContext(StatisticRecord *sr); /* null to reset */
+    /* NUKLEAR KLEE end */
 
     void setIndex(unsigned i) { index = i; }
     unsigned getIndex() { return index; }
@@ -81,6 +89,10 @@ namespace klee {
         indexedStats[index*stats.size() + s.id] += addend;
         if (contextStats)
           contextStats->data[s.id] += addend;
+        /* NUKLEAR KLEE begin */
+        if (nuklearContextStats)
+          nuklearContextStats->data[s.id] += addend;
+        /* NUKLEAR KLEE end */
       }
     }
   }
@@ -91,6 +103,15 @@ namespace klee {
   inline void StatisticManager::setContext(StatisticRecord *sr) {
     contextStats = sr;
   }
+
+  /* NUKLEAR KLEE begin */
+  inline StatisticRecord *StatisticManager::getNuklearContext() {
+    return nuklearContextStats;
+  }
+  inline void StatisticManager::setNuklearContext(StatisticRecord *sr) {
+    nuklearContextStats = sr;
+  }
+  /* NUKLEAR KLEE end */
 
   inline void StatisticRecord::zero() {
     ::memset(data, 0, sizeof(*data)*theStatisticManager->getNumStatistics());

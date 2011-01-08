@@ -21,6 +21,11 @@
 #include <vector>
 #include <iosfwd> // FIXME: Remove this!!!
 
+/* NUKLEAR KLEE begin */
+#include <openssl/evp.h>
+#include <sstream>
+/* NUKLEAR KLEE end */
+
 namespace llvm {
   class Type;
 }
@@ -634,6 +639,9 @@ public:
 
   int compare(const UpdateList &b) const;
   unsigned hash() const;
+  /* NUKLEAR KLEE begin */
+  void computeDigest(EVP_MD_CTX *mdctx);
+  /* NUKLEAR KLEE end */
 };
 
 /// Class representing a one byte read from an array. 
