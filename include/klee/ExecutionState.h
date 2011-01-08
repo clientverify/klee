@@ -37,6 +37,7 @@ std::ostream &operator<<(std::ostream &os, const MemoryMap &mm);
 struct StackFrame {
   KInstIterator caller;
   KFunction *kf;
+  unsigned moduleId;
   CallPathNode *callPathNode;
 
   std::vector<const MemoryObject*> allocas;
@@ -56,7 +57,7 @@ struct StackFrame {
   // of intrinsic lowering.
   MemoryObject *varargs;
 
-  StackFrame(KInstIterator caller, KFunction *kf);
+  StackFrame(KInstIterator caller, KFunction *kf, unsigned moduleId);
   StackFrame(const StackFrame &s);
   ~StackFrame();
 };
@@ -105,6 +106,10 @@ public:
 
   unsigned incomingBBIndex;
 
+  // Current memory watchpoint.
+  ref<Expr> watchpoint;
+  size_t watchpointSize;
+
   std::string getFnAlias(std::string fn);
   void addFnAlias(std::string old_fn, std::string new_fn);
   void removeFnAlias(std::string fn);
@@ -113,7 +118,7 @@ private:
   ExecutionState() : fakeState(false), underConstrained(0), ptreeNode(0) {}
 
 public:
-  ExecutionState(KFunction *kf);
+  ExecutionState(KFunction *kf, unsigned moduleId);
 
   // XXX total hack, just used to make a state so solver can
   // use on structure
@@ -123,7 +128,7 @@ public:
   
   ExecutionState *branch();
 
-  void pushFrame(KInstIterator caller, KFunction *kf);
+  void pushFrame(KInstIterator caller, KFunction *kf, unsigned moduleId);
   void popFrame();
 
   void addSymbolic(const MemoryObject *mo, const Array *array) { 

@@ -62,6 +62,14 @@ ref<Expr> ExprVisitor::visitActual(const ref<Expr> &e) {
     case Expr::Extract: res = visitExtract(static_cast<ExtractExpr&>(ep)); break;
     case Expr::ZExt: res = visitZExt(static_cast<ZExtExpr&>(ep)); break;
     case Expr::SExt: res = visitSExt(static_cast<SExtExpr&>(ep)); break;
+    case Expr::FPExt: res = visitFPExt(static_cast<FPExtExpr&>(ep)); break;
+    case Expr::FPTrunc: res = visitFPTrunc(static_cast<FPTruncExpr&>(ep)); break;
+    case Expr::UIToFP: res = visitUIToFP(static_cast<UIToFPExpr&>(ep)); break;
+    case Expr::SIToFP: res = visitSIToFP(static_cast<SIToFPExpr&>(ep)); break;
+    case Expr::FPToUI: res = visitFPToUI(static_cast<FPToUIExpr&>(ep)); break;
+    case Expr::FPToSI: res = visitFPToSI(static_cast<FPToSIExpr&>(ep)); break;
+    case Expr::FOrd1: res = visitFOrd1(static_cast<FOrd1Expr&>(ep)); break;
+    case Expr::FSqrt: res = visitFSqrt(static_cast<FSqrtExpr&>(ep)); break;
     case Expr::Add: res = visitAdd(static_cast<AddExpr&>(ep)); break;
     case Expr::Sub: res = visitSub(static_cast<SubExpr&>(ep)); break;
     case Expr::Mul: res = visitMul(static_cast<MulExpr&>(ep)); break;
@@ -69,6 +77,11 @@ ref<Expr> ExprVisitor::visitActual(const ref<Expr> &e) {
     case Expr::SDiv: res = visitSDiv(static_cast<SDivExpr&>(ep)); break;
     case Expr::URem: res = visitURem(static_cast<URemExpr&>(ep)); break;
     case Expr::SRem: res = visitSRem(static_cast<SRemExpr&>(ep)); break;
+    case Expr::FAdd: res = visitFAdd(static_cast<FAddExpr&>(ep)); break;
+    case Expr::FSub: res = visitFSub(static_cast<FSubExpr&>(ep)); break;
+    case Expr::FMul: res = visitFMul(static_cast<FMulExpr&>(ep)); break;
+    case Expr::FDiv: res = visitFDiv(static_cast<FDivExpr&>(ep)); break;
+    case Expr::FRem: res = visitFRem(static_cast<FRemExpr&>(ep)); break;
     case Expr::Not: res = visitNot(static_cast<NotExpr&>(ep)); break;
     case Expr::And: res = visitAnd(static_cast<AndExpr&>(ep)); break;
     case Expr::Or: res = visitOr(static_cast<OrExpr&>(ep)); break;
@@ -86,6 +99,7 @@ ref<Expr> ExprVisitor::visitActual(const ref<Expr> &e) {
     case Expr::Sle: res = visitSle(static_cast<SleExpr&>(ep)); break;
     case Expr::Sgt: res = visitSgt(static_cast<SgtExpr&>(ep)); break;
     case Expr::Sge: res = visitSge(static_cast<SgeExpr&>(ep)); break;
+    case Expr::FCmp: res = visitFCmp(static_cast<FCmpExpr&>(ep)); break;
     case Expr::Constant:
     default:
       assert(0 && "invalid expression kind");
@@ -160,6 +174,38 @@ ExprVisitor::Action ExprVisitor::visitSExt(const SExtExpr&) {
   return Action::doChildren(); 
 }
 
+ExprVisitor::Action ExprVisitor::visitFPExt(const FPExtExpr&) {
+  return Action::doChildren(); 
+}
+
+ExprVisitor::Action ExprVisitor::visitFPTrunc(const FPTruncExpr&) {
+  return Action::doChildren(); 
+}
+
+ExprVisitor::Action ExprVisitor::visitUIToFP(const UIToFPExpr&) {
+  return Action::doChildren(); 
+}
+
+ExprVisitor::Action ExprVisitor::visitSIToFP(const SIToFPExpr&) {
+  return Action::doChildren(); 
+}
+
+ExprVisitor::Action ExprVisitor::visitFPToUI(const FPToUIExpr&) {
+  return Action::doChildren(); 
+}
+
+ExprVisitor::Action ExprVisitor::visitFPToSI(const FPToSIExpr&) {
+  return Action::doChildren(); 
+}
+
+ExprVisitor::Action ExprVisitor::visitFOrd1(const FOrd1Expr&) {
+  return Action::doChildren(); 
+}
+
+ExprVisitor::Action ExprVisitor::visitFSqrt(const FSqrtExpr&) {
+  return Action::doChildren(); 
+}
+
 ExprVisitor::Action ExprVisitor::visitAdd(const AddExpr&) {
   return Action::doChildren(); 
 }
@@ -186,6 +232,26 @@ ExprVisitor::Action ExprVisitor::visitURem(const URemExpr&) {
 
 ExprVisitor::Action ExprVisitor::visitSRem(const SRemExpr&) {
   return Action::doChildren(); 
+}
+
+ExprVisitor::Action ExprVisitor::visitFAdd(const FAddExpr&) {
+  return Action::doChildren();
+}
+
+ExprVisitor::Action ExprVisitor::visitFSub(const FSubExpr&) {
+  return Action::doChildren();
+}
+
+ExprVisitor::Action ExprVisitor::visitFMul(const FMulExpr&) {
+  return Action::doChildren();
+}
+
+ExprVisitor::Action ExprVisitor::visitFDiv(const FDivExpr&) {
+  return Action::doChildren();
+}
+
+ExprVisitor::Action ExprVisitor::visitFRem(const FRemExpr&) {
+  return Action::doChildren();
 }
 
 ExprVisitor::Action ExprVisitor::visitNot(const NotExpr&) {
@@ -256,3 +322,6 @@ ExprVisitor::Action ExprVisitor::visitSge(const SgeExpr&) {
   return Action::doChildren(); 
 }
 
+ExprVisitor::Action ExprVisitor::visitFCmp(const FCmpExpr&) {
+  return Action::doChildren();
+}

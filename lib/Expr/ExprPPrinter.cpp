@@ -382,13 +382,9 @@ public:
       if (printWidth)
 	PC << "(w" << e->getWidth() << " ";
 
-      if (e->getWidth() <= 64) {
-        PC << e->getZExtValue();
-      } else {
-        std::string S;
-        e->toString(S);
-        PC << S;
-      }
+      std::string S;
+      e->toString(S);
+      PC << S;
 
       if (printWidth)
 	PC << ")";
@@ -428,6 +424,20 @@ public:
 	    PC << ')';
 	    return;
 	  }
+        }
+
+        // Simplify (Concat 0 E) to (ZExt E)
+        if (ConcatExpr *ce = dyn_cast<ConcatExpr>(e)) {
+          if (ConstantExpr *lce = dyn_cast<ConstantExpr>(ce->getKid(0))) {
+            if (lce->isZero()) {
+              PC << "(ZExt";
+              printWidth(PC, e);
+              PC << ' ';
+              print(ce->getKid(1), PC, printConstWidth);
+              PC << ')';
+              return;
+            }
+          }
         }
 
 	PC << '(' << e->getKind();

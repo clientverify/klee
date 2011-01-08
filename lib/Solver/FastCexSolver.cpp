@@ -349,8 +349,11 @@ public:
     // Check for a concrete read of a constant array.
     if (array.isConstantArray() && 
         index.isFixed() && 
-        index.min() < array.size)
-      return ValueRange(array.constantValues[index.min()]->getZExtValue(8));
+        index.min() < array.size) {
+      ref<Expr> elem = array.constantValues[index.min()];
+      if (ConstantExpr *CE = dyn_cast<ConstantExpr>(elem))
+        return ValueRange(CE->getZExtValue(8));
+    }
 
     return ValueRange(0, 255);
   }

@@ -126,6 +126,11 @@ namespace {
 		cl::init(false));
     
   cl::opt<bool>
+  WithOpenCLRuntime("opencl-runtime", 
+		cl::desc("Link with OpenCL runtime"),
+		cl::init(false));
+    
+  cl::opt<bool>
   OptimizeModule("optimize", 
                  cl::desc("Optimize before execution"));
 
@@ -687,6 +692,12 @@ static const char *modelledExternals[] = {
   "klee_warning_once", 
   "klee_alias_function",
   "klee_stack_trace",
+  "klee_dump_constraints",
+  "klee_watch",
+  "klee_ocl_compile",
+  "klee_lookup_module_global",
+  "klee_ocl_get_arg_type",
+  "klee_ocl_get_arg_count",
   "llvm.dbg.stoppoint", 
   "llvm.va_start", 
   "llvm.va_end", 
@@ -1216,6 +1227,14 @@ int main(int argc, char **argv, char **envp) {
     assert(mainModule && "unable to link with simple model");
   }  
 
+  if (WithOpenCLRuntime) {
+    llvm::sys::Path Path(Opts.LibraryDir);
+    Path.appendComponent("libkleeRuntimeCLHost.bca");
+    klee_message("NOTE: Using model: %s", Path.c_str());
+    mainModule = klee::linkWithLibrary(mainModule, Path.c_str());
+    assert(mainModule && "unable to link with simple model");
+  }  
+
   // Get the desired main function.  klee_main initializes uClibc
   // locale and other data and then calls main.
   Function *mainFn = mainModule->getFunction("main");
@@ -1282,9 +1301,8 @@ int main(int argc, char **argv, char **envp) {
   }
   infoFile << "PID: " << getpid() << "\n";
 
-  const Module *finalModule = 
-    interpreter->setModule(mainModule, Opts);
-  externalsAndGlobalsCheck(finalModule);
+  interpreter->addModule(mainModule, Opts);
+  externalsAndGlobalsCheck(mainModule);
 
   if (ReplayPathFile != "") {
     interpreter->setReplayPath(&replayPath);

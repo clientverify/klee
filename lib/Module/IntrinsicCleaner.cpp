@@ -10,6 +10,7 @@
 #include "Passes.h"
 
 #include "klee/Config/config.h"
+#include "klee/Internal/Module/InstructionInfoTable.h"
 #include "llvm/Constants.h"
 #include "llvm/DerivedTypes.h"
 #include "llvm/Function.h"
@@ -23,9 +24,12 @@
 #include "llvm/Module.h"
 #include "llvm/Pass.h"
 #include "llvm/Type.h"
+#include "llvm/Support/IRBuilder.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Target/TargetData.h"
+
+#include <sstream>
 
 using namespace llvm;
 
@@ -45,11 +49,14 @@ bool IntrinsicCleanerPass::runOnBasicBlock(BasicBlock &b) {
   bool dirty = false;
   
   unsigned WordSize = TargetData.getPointerSizeInBits() / 8;
+
   for (BasicBlock::iterator i = b.begin(), ie = b.end(); i != ie;) {     
     IntrinsicInst *ii = dyn_cast<IntrinsicInst>(&*i);
     // increment now since LowerIntrinsic deletion makes iterator invalid.
     ++i;  
     if(ii) {
+      IRBuilder<> builder(ii->getParent(), ii);
+
       switch (ii->getIntrinsicID()) {
       case Intrinsic::vastart:
       case Intrinsic::vaend:

@@ -142,6 +142,42 @@ extern "C" {
   /* Print stack trace. */
   void klee_stack_trace(void);
 
+  /* Dump constraint set. */
+  void klee_dump_constraints(void);
+
+  /* Number of SSE instructions executed. */
+  extern unsigned klee_sse_count;
+
+  /* Callback for each SSE instruction executed. */
+  void klee_sse(char *name, char *file, unsigned line, char* func, char *inst);
+
+  /* Add a memory watchpoint at the given address. */
+  void klee_watch(void *, size_t);
+
+  /* Compile the given memory block as an OpenCL code. */
+  uintptr_t klee_ocl_compile(const char *, const char *);
+
+  /* Look up the given global in the given module. */
+  void *klee_lookup_module_global(uintptr_t, const char *);
+
+  /* Return the argument type for the given kernel function and arg offset. */
+  int8_t klee_ocl_get_arg_type(void (*)(), size_t);
+
+  /* Return the argument count for the given kernel function. */
+  unsigned klee_ocl_get_arg_count(void (*)());
+
+  /* Create a new arg list for indirect calling. */
+  uintptr_t klee_icall_create_arg_list(void);
+
+  /* Add an arg to the end of the arg list. */
+  void klee_icall_add_arg(uintptr_t, void *, size_t);
+
+  /* Perform an indirect call with the given arg list. */
+  void klee_icall(void (*)(), uintptr_t);
+
+  /* Delete the given arg list. */
+  void klee_icall_destroy_arg_list(uintptr_t);
+
 #ifdef __cplusplus
 }
 #endif

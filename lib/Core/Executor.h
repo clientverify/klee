@@ -94,7 +94,7 @@ public:
 private:
   class TimerInfo;
 
-  KModule *kmodule;
+  std::vector<KModule*> kmodules;
   InterpreterHandler *interpreterHandler;
   Searcher *searcher;
 
@@ -186,7 +186,12 @@ private:
   void initializeGlobalObject(ExecutionState &state, ObjectState *os, 
 			      llvm::Constant *c,
 			      unsigned offset);
+
   void initializeGlobals(ExecutionState &state);
+  void initializeGlobals(ExecutionState &state, unsigned moduleId);
+  void initializeGlobals(ExecutionState &state, llvm::Module *m);
+
+  void initializeExternals(ExecutionState &state);
 
   void stepInstruction(ExecutionState &state);
   void updateStates(ExecutionState *current);
@@ -248,6 +253,8 @@ private:
                    ref<Expr> address,
                    KInstruction *target = 0);
   
+  KFunction *getKFunction(llvm::Function *function, unsigned int &moduleId);
+
   void executeCall(ExecutionState &state, 
                    KInstruction *ki,
                    llvm::Function *f,
@@ -308,7 +315,7 @@ private:
                     ExecutionState &state,
                     ref<Expr> value);
 
-  ref<klee::ConstantExpr> evalConstantExpr(llvm::ConstantExpr *ce);
+  ref<klee::ConstantExpr> evalConstantExpr(const KModule *kmodule, llvm::ConstantExpr *ce);
 
   /// Return a unique constant value for the given expression in the
   /// given state, if it has one (i.e. it provably only has a single
@@ -353,14 +360,16 @@ private:
   }
 
   /// bindModuleConstants - Initialize the module constant table.
-  void bindModuleConstants();
+  void bindModuleConstants(KModule *kmodule);
+  void bindModuleConstants(unsigned moduleId);
 
   template <typename TypeIt>
-  void computeOffsets(KGEPInstruction *kgepi, TypeIt ib, TypeIt ie);
+  void computeOffsets(KModule *kmodule, KGEPInstruction *kgepi, TypeIt ib,
+                      TypeIt ie);
 
   /// bindInstructionConstants - Initialize any necessary per instruction
   /// constant values.
-  void bindInstructionConstants(KInstruction *KI);
+  void bindInstructionConstants(KModule *kmodule, KInstruction *KI);
 
   void handlePointsToObj(ExecutionState &state, 
                          KInstruction *target, 
@@ -379,6 +388,8 @@ private:
   void initTimers();
   void processTimers(ExecutionState *current,
                      double maxInstTime);
+
+  KModule *kmodule(const ExecutionState &state) const;
                 
 public:
   Executor(const InterpreterOptions &opts, InterpreterHandler *ie);
@@ -389,7 +400,7 @@ public:
   }
 
   // XXX should just be moved out to utility module
-  ref<klee::ConstantExpr> evalConstant(llvm::Constant *c);
+  ref<klee::ConstantExpr> evalConstant(const KModule *kmodule, llvm::Constant *c);
 
   virtual void setPathWriter(TreeStreamWriter *tsw) {
     pathWriter = tsw;
@@ -410,8 +421,8 @@ public:
     replayPosition = 0;
   }
 
-  virtual const llvm::Module *
-  setModule(llvm::Module *module, const ModuleOptions &opts);
+  virtual unsigned
+  addModule(llvm::Module *module, const ModuleOptions &opts);
 
   virtual void useSeeds(const std::vector<struct KTest *> *seeds) { 
     usingSeeds = seeds;
@@ -451,7 +462,8 @@ public:
   virtual void getCoveredLines(const ExecutionState &state,
                                std::map<const std::string*, std::set<unsigned> > &res);
 
-  Expr::Width getWidthForLLVMType(const llvm::Type *type) const;
+  Expr::Width getWidthForLLVMType(const KModule *kmodule,
+                                  const llvm::Type *type) const;
 };
   
 } // End klee namespace

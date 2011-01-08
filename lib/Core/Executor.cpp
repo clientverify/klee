@@ -41,7 +41,6 @@
 #include "klee/Internal/Module/InstructionInfoTable.h"
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/Internal/Module/KModule.h"
-#include "klee/Internal/Support/FloatEvaluation.h"
 #include "klee/Internal/System/Time.h"
 
 #include "llvm/Attributes.h"
@@ -267,6 +266,8 @@ Solver *constructSolverChain(STPSolver *stpSolver,
                              std::string stpQueryPCLogPath) {
   Solver *solver = stpSolver;
 
+  solver = createFPRewritingSolver(solver);
+
   if (UseSTPQueryPCLog)
     solver = createPCLoggingSolver(solver, 
                                    stpQueryLogPath);
@@ -293,10 +294,143 @@ Solver *constructSolverChain(STPSolver *stpSolver,
   return solver;
 }
 
+static const fltSemantics *TypeToFloatSemantics(const Type *Ty) {
+  if (Ty == Type::getFloatTy(Ty->getContext()))
+    return &APFloat::IEEEsingle;
+  if (Ty == Type::getDoubleTy(Ty->getContext()))
+    return &APFloat::IEEEdouble;
+  if (Ty == Type::getX86_FP80Ty(Ty->getContext()))
+    return &APFloat::x87DoubleExtended;
+  else if (Ty == Type::getFP128Ty(Ty->getContext()))
+    return &APFloat::IEEEquad;
+  
+  assert(Ty == Type::getPPC_FP128Ty(Ty->getContext()) && "Unknown FP format");
+  return &APFloat::PPCDoubleDouble;
+}
+
+namespace {
+
+class SIMDOperation {
+public:
+  const Executor *Exec;
+  KModule *kmodule;
+  SIMDOperation(const Executor *Exec, KModule *kmodule) : Exec(Exec), kmodule(kmodule) {}
+
+  virtual ref<Expr> evalOne(const Type *tt, const Type *ft, ref<Expr> l, ref<Expr> r) = 0;
+
+  ref<Expr> eval(const Type *t, ref<Expr> src) {
+    return eval(t, t, src);
+  }
+
+  ref<Expr> eval(const Type *tt, const Type *ft, ref<Expr> src) {
+    unsigned Bits = Exec->getWidthForLLVMType(kmodule, ft);
+    return eval(tt, ft, src, klee::ConstantExpr::create(0, Bits));
+  }
+
+  ref<Expr> eval(const Type *t, ref<Expr> l, ref<Expr> r) {
+    return eval(t, t, l, r);
+  }
+
+  ref<Expr> eval(const Type *tt, const Type *ft, ref<Expr> l, ref<Expr> r) {
+    if (const VectorType *vft = dyn_cast<VectorType>(ft)) {
+      assert(isa<VectorType>(tt));
+      const VectorType *vtt = cast<VectorType>(tt);
+
+      const Type *fElTy = vft->getElementType();
+      const Type *tElTy = vtt->getElementType();
+      unsigned EltBits = Exec->getWidthForLLVMType(kmodule, fElTy);
+   
+      unsigned ElemCount = vft->getNumElements();
+      assert(vtt->getNumElements() == ElemCount);
+      ref<Expr> *elems = new ref<Expr>[vft->getNumElements()];
+      for (unsigned i = 0; i < ElemCount; ++i)
+        elems[i] = evalOne(tElTy, fElTy,
+                           ExtractExpr::create(l, EltBits*(ElemCount-i-1), EltBits),
+                           ExtractExpr::create(r, EltBits*(ElemCount-i-1), EltBits));
+   
+      ref<Expr> Result = ConcatExpr::createN(ElemCount, elems);
+      delete[] elems;
+      return Result;
+    } else
+      return evalOne(tt, ft, l, r);
+  }
+};
+
+class ISIMDOperation : public SIMDOperation {
+public:
+  typedef ref<Expr> (*ExprCtor)(const ref<Expr> &l, const ref<Expr> &r);
+  ExprCtor Ctor;
+
+  ISIMDOperation(const Executor *Exec, KModule *kmodule, ExprCtor Ctor) : SIMDOperation(Exec, kmodule), Ctor(Ctor) {}
+
+  ref<Expr> evalOne(const Type *tt, const Type *t, ref<Expr> l, ref<Expr> r) {
+    return Ctor(l, r);
+  }
+};
+
+class FSIMDOperation : public SIMDOperation {
+public:
+  typedef ref<Expr> (*ExprCtor)(const ref<Expr> &l, const ref<Expr> &r, bool isIEEE);
+  ExprCtor Ctor;
+
+  FSIMDOperation(const Executor *Exec, KModule *kmodule, ExprCtor Ctor) : SIMDOperation(Exec, kmodule), Ctor(Ctor) {}
+
+  ref<Expr> evalOne(const Type *tt, const Type *t, ref<Expr> l, ref<Expr> r) {
+    return Ctor(l, r, t->isFP128Ty());
+  }
+};
+
+class FCmpSIMDOperation : public SIMDOperation {
+public:
+  FCmpSIMDOperation(const Executor *Exec, KModule *kmodule, FCmpInst::Predicate pred) : SIMDOperation(Exec, kmodule), pred(klee::ConstantExpr::create(pred, 4)) {}
+  ref<klee::ConstantExpr> pred;
+
+  ref<Expr> evalOne(const Type *tt, const Type *t, ref<Expr> l, ref<Expr> r) {
+    return FCmpExpr::create(l, r, pred, t->isFP128Ty());
+  }
+};
+
+class FUnSIMDOperation : public SIMDOperation {
+public:
+  typedef ref<Expr> (*ExprCtor)(const ref<Expr> &src, bool isIEEE);
+  ExprCtor Ctor;
+
+  FUnSIMDOperation(const Executor *Exec, KModule *kmodule, ExprCtor Ctor) : SIMDOperation(Exec, kmodule), Ctor(Ctor) {}
+
+  ref<Expr> evalOne(const Type *tt, const Type *t, ref<Expr> l, ref<Expr> r) {
+    return Ctor(l, t->isFP128Ty());
+  }
+};
+
+class I2FSIMDOperation : public SIMDOperation {
+public:
+  typedef ref<Expr> (*ExprCtor)(const ref<Expr> &src, const fltSemantics *sem);
+  ExprCtor Ctor;
+
+  I2FSIMDOperation(const Executor *Exec, KModule *kmodule, ExprCtor Ctor) : SIMDOperation(Exec, kmodule), Ctor(Ctor) {}
+
+  ref<Expr> evalOne(const Type *tt, const Type *t, ref<Expr> l, ref<Expr> r) {
+    return Ctor(l, TypeToFloatSemantics(t));
+  }
+};
+
+class F2ISIMDOperation : public SIMDOperation {
+public:
+  typedef ref<Expr> (*ExprCtor)(const ref<Expr> &e, Expr::Width W, bool isIEEE);
+  ExprCtor Ctor;
+
+  F2ISIMDOperation(const Executor *Exec, KModule *kmodule, ExprCtor Ctor) : SIMDOperation(Exec, kmodule), Ctor(Ctor) {}
+
+  ref<Expr> evalOne(const Type *tt, const Type *ft, ref<Expr> l, ref<Expr> r) {
+    return Ctor(l, Exec->getWidthForLLVMType(kmodule, tt), ft->isFP128Ty());
+  }
+};
+
+}
+
 Executor::Executor(const InterpreterOptions &opts,
                    InterpreterHandler *ih) 
   : Interpreter(opts),
-    kmodule(0),
     interpreterHandler(ih),
     searcher(0),
     externalDispatcher(new ExternalDispatcher()),
@@ -329,31 +463,35 @@ Executor::Executor(const InterpreterOptions &opts,
 }
 
 
-const Module *Executor::setModule(llvm::Module *module, 
-                                  const ModuleOptions &opts) {
-  assert(!kmodule && module && "can only register one module"); // XXX gross
-  
-  kmodule = new KModule(module);
+unsigned Executor::addModule(llvm::Module *module, 
+                             const ModuleOptions &opts) {
+  KModule *kmodule = new KModule(module);
+  kmodules.push_back(kmodule);
 
   // Initialize the context.
   TargetData *TD = kmodule->targetData;
   Context::initialize(TD->isLittleEndian(),
                       (Expr::Width) TD->getPointerSizeInBits());
 
-  specialFunctionHandler = new SpecialFunctionHandler(*this);
+  if (!specialFunctionHandler)
+    specialFunctionHandler = new SpecialFunctionHandler(*this);
 
-  specialFunctionHandler->prepare();
+  specialFunctionHandler->prepare(kmodule);
   kmodule->prepare(opts, interpreterHandler);
-  specialFunctionHandler->bind();
+  specialFunctionHandler->bind(kmodule);
 
-  if (StatsTracker::useStatistics()) {
+  if (StatsTracker::useStatistics() && !statsTracker) {
     statsTracker = 
       new StatsTracker(*this,
                        interpreterHandler->getOutputFilename("assembly.ll"),
                        userSearcherRequiresMD2U());
   }
   
-  return module;
+  return kmodules.size()-1;
+}
+
+KModule *Executor::kmodule(const ExecutionState &state) const {
+  return kmodules[state.stack.back().moduleId];
 }
 
 Executor::~Executor() {
@@ -366,7 +504,9 @@ Executor::~Executor() {
   if (statsTracker)
     delete statsTracker;
   delete solver;
-  delete kmodule;
+  for (std::vector<KModule*>::iterator i=kmodules.begin(), e=kmodules.end();
+       i != e; ++i)
+    delete *i;
 }
 
 /***/
@@ -374,7 +514,7 @@ Executor::~Executor() {
 void Executor::initializeGlobalObject(ExecutionState &state, ObjectState *os,
                                       Constant *c, 
                                       unsigned offset) {
-  TargetData *targetData = kmodule->targetData;
+  TargetData *targetData = kmodule(state)->targetData;
   if (ConstantVector *cp = dyn_cast<ConstantVector>(c)) {
     unsigned elementSize =
       targetData->getTypeStoreSize(cp->getType()->getElementType());
@@ -399,7 +539,7 @@ void Executor::initializeGlobalObject(ExecutionState &state, ObjectState *os,
 			     offset + sl->getElementOffset(i));
   } else {
     unsigned StoreBits = targetData->getTypeStoreSizeInBits(c->getType());
-    ref<ConstantExpr> C = evalConstant(c);
+    ref<ConstantExpr> C = evalConstant(kmodule(state), c);
 
     // Extend the constant if necessary;
     assert(StoreBits >= C->getWidth() && "Invalid store size!");
@@ -424,8 +564,14 @@ MemoryObject * Executor::addExternalObject(ExecutionState &state,
 }
 
 void Executor::initializeGlobals(ExecutionState &state) {
-  Module *m = kmodule->module;
+  initializeGlobals(state, kmodule(state)->module);
+}
 
+void Executor::initializeGlobals(ExecutionState &state, unsigned moduleId) {
+  initializeGlobals(state, kmodules[moduleId]->module);
+}
+
+void Executor::initializeGlobals(ExecutionState &state, Module *m) {
   if (m->getModuleInlineAsm() != "")
     klee_warning("executable has module level assembly (ignoring)");
 
@@ -455,34 +601,6 @@ void Executor::initializeGlobals(ExecutionState &state) {
   }
 
   // Disabled, we don't want to promote use of live externals.
-#ifdef HAVE_CTYPE_EXTERNALS
-#ifndef WINDOWS
-#ifndef DARWIN
-  /* From /usr/include/errno.h: it [errno] is a per-thread variable. */
-  int *errno_addr = __errno_location();
-  addExternalObject(state, (void *)errno_addr, sizeof *errno_addr, false);
-
-  /* from /usr/include/ctype.h:
-       These point into arrays of 384, so they can be indexed by any `unsigned
-       char' value [0,255]; by EOF (-1); or by any `signed char' value
-       [-128,-1).  ISO C requires that the ctype functions work for `unsigned */
-  const uint16_t **addr = __ctype_b_loc();
-  addExternalObject(state, (void *)(*addr-128), 
-                    384 * sizeof **addr, true);
-  addExternalObject(state, addr, sizeof(*addr), true);
-    
-  const int32_t **lower_addr = __ctype_tolower_loc();
-  addExternalObject(state, (void *)(*lower_addr-128), 
-                    384 * sizeof **lower_addr, true);
-  addExternalObject(state, lower_addr, sizeof(*lower_addr), true);
-  
-  const int32_t **upper_addr = __ctype_toupper_loc();
-  addExternalObject(state, (void *)(*upper_addr-128), 
-                    384 * sizeof **upper_addr, true);
-  addExternalObject(state, upper_addr, sizeof(*upper_addr), true);
-#endif
-#endif
-#endif
 
   // allocate and initialize globals, done in two passes since we may
   // need address of a global in order to initialize some other one.
@@ -498,7 +616,7 @@ void Executor::initializeGlobals(ExecutionState &state) {
       // hack where we check the object file information.
 
       const Type *ty = i->getType()->getElementType();
-      uint64_t size = kmodule->targetData->getTypeStoreSize(ty);
+      uint64_t size = kmodule(state)->targetData->getTypeStoreSize(ty);
 
       // XXX - DWD - hardcode some things until we decide how to fix.
 #ifndef WINDOWS
@@ -541,7 +659,7 @@ void Executor::initializeGlobals(ExecutionState &state) {
       }
     } else {
       const Type *ty = i->getType()->getElementType();
-      uint64_t size = kmodule->targetData->getTypeStoreSize(ty);
+      uint64_t size = kmodule(state)->targetData->getTypeStoreSize(ty);
       MemoryObject *mo = 0;
 
       if (UseAsmAddresses && i->getName()[0]=='\01') {
@@ -574,7 +692,7 @@ void Executor::initializeGlobals(ExecutionState &state) {
        i != ie; ++i) {
     // Map the alias to its aliasee's address. This works because we have
     // addresses for everything, even undefined functions. 
-    globalAddresses.insert(std::make_pair(i, evalConstant(i->getAliasee())));
+    globalAddresses.insert(std::make_pair(i, evalConstant(kmodule(state), i->getAliasee())));
   }
 
   // once all objects are allocated, do the actual initialization
@@ -591,6 +709,37 @@ void Executor::initializeGlobals(ExecutionState &state) {
       // if(i->isConstant()) os->setReadOnly(true);
     }
   }
+}
+
+void Executor::initializeExternals(ExecutionState &state) {
+#ifdef HAVE_CTYPE_EXTERNALS
+#ifndef WINDOWS
+#ifndef DARWIN
+  /* From /usr/include/errno.h: it [errno] is a per-thread variable. */
+  int *errno_addr = __errno_location();
+  addExternalObject(state, (void *)errno_addr, sizeof *errno_addr, false);
+
+  /* from /usr/include/ctype.h:
+       These point into arrays of 384, so they can be indexed by any `unsigned
+       char' value [0,255]; by EOF (-1); or by any `signed char' value
+       [-128,-1).  ISO C requires that the ctype functions work for `unsigned */
+  const uint16_t **addr = __ctype_b_loc();
+  addExternalObject(state, (void *)(*addr-128), 
+                    384 * sizeof **addr, true);
+  addExternalObject(state, addr, sizeof(*addr), true);
+    
+  const int32_t **lower_addr = __ctype_tolower_loc();
+  addExternalObject(state, (void *)(*lower_addr-128), 
+                    384 * sizeof **lower_addr, true);
+  addExternalObject(state, lower_addr, sizeof(*lower_addr), true);
+  
+  const int32_t **upper_addr = __ctype_toupper_loc();
+  addExternalObject(state, (void *)(*upper_addr-128), 
+                    384 * sizeof **upper_addr, true);
+  addExternalObject(state, upper_addr, sizeof(*upper_addr), true);
+#endif
+#endif
+#endif
 }
 
 void Executor::branch(ExecutionState &state, 
@@ -927,22 +1076,32 @@ void Executor::addConstraint(ExecutionState &state, ref<Expr> condition) {
                                  ConstantExpr::alloc(1, Expr::Bool));
 }
 
-ref<klee::ConstantExpr> Executor::evalConstant(Constant *c) {
+ref<klee::ConstantExpr> Executor::evalConstant(const KModule *kmodule, Constant *c) {
   if (llvm::ConstantExpr *ce = dyn_cast<llvm::ConstantExpr>(c)) {
-    return evalConstantExpr(ce);
+    return evalConstantExpr(kmodule, ce);
   } else {
     if (const ConstantInt *ci = dyn_cast<ConstantInt>(c)) {
       return ConstantExpr::alloc(ci->getValue());
     } else if (const ConstantFP *cf = dyn_cast<ConstantFP>(c)) {      
-      return ConstantExpr::alloc(cf->getValueAPF().bitcastToAPInt());
+      return ConstantExpr::create(cf->getValueAPF());
+    } else if (const ConstantVector *cv = dyn_cast<ConstantVector>(c)) {
+      SmallVector<Constant *, 4> elts;
+      cv->getVectorElements(elts);
+      ref<Expr> *kids = new ref<Expr>[elts.size()];
+      for (int i = 0, e = elts.size(); i < e; ++i)
+        kids[i] = evalConstant(kmodule, elts[i]);
+      ref<Expr> res = ConcatExpr::createN(elts.size(), kids);
+      delete[] kids;
+      assert(isa<ConstantExpr>(res) && "result of constant vector build not a constant");
+      return cast<ConstantExpr>(res);
     } else if (const GlobalValue *gv = dyn_cast<GlobalValue>(c)) {
       return globalAddresses.find(gv)->second;
     } else if (isa<ConstantPointerNull>(c)) {
       return Expr::createPointer(0);
     } else if (isa<UndefValue>(c) || isa<ConstantAggregateZero>(c)) {
-      return ConstantExpr::create(0, getWidthForLLVMType(c->getType()));
+      return ConstantExpr::create(0, getWidthForLLVMType(kmodule, c->getType()));
     } else {
-      // Constant{Array,Struct,Vector}
+      // Constant{Array,Struct}
       assert(0 && "invalid argument to evalConstant()");
     }
   }
@@ -959,7 +1118,7 @@ const Cell& Executor::eval(KInstruction *ki, unsigned index,
   // Determine if this is a constant or not.
   if (vnumber < 0) {
     unsigned index = -vnumber - 2;
-    return kmodule->constantTable[index];
+    return kmodule(state)->constantTable[index];
   } else {
     unsigned index = vnumber;
     StackFrame &sf = state.stack.back();
@@ -1088,6 +1247,24 @@ void Executor::stepInstruction(ExecutionState &state) {
     haltExecution = true;
 }
 
+KFunction *Executor::getKFunction(Function *function, unsigned &moduleId) {
+  unsigned curModuleId = 0;
+  for (std::vector<KModule*>::iterator i=kmodules.begin(), e=kmodules.end();
+       i != e; ++i) {
+    if (*i) {
+      typedef std::map<llvm::Function*, KFunction*> FMap;
+      FMap &fm = (*i)->functionMap;
+      FMap::iterator fi = fm.find(function);
+      if (fi != fm.end()) {
+        moduleId = curModuleId;
+        return fi->second;
+      }
+    }
+    ++curModuleId;
+  }
+  return NULL;
+}
+
 void Executor::executeCall(ExecutionState &state, 
                            KInstruction *ki,
                            Function *f,
@@ -1100,6 +1277,11 @@ void Executor::executeCall(ExecutionState &state,
       callExternalFunction(state, ki, f, arguments);
       break;
         
+    case Intrinsic::x86_sse_sqrt_ps:
+    case Intrinsic::sqrt: {
+      bindLocal(ki, state, FUnSIMDOperation(this, kmodule(state), FSqrtExpr::create).eval(i->getType(), arguments[0]));
+      break;
+    }
       // va_arg is handled by caller and intrinsic lowering, see comment for
       // ExecutionState::varargs
     case Intrinsic::vastart:  {
@@ -1159,8 +1341,11 @@ void Executor::executeCall(ExecutionState &state,
     // guess. This just done to avoid having to pass KInstIterator everywhere
     // instead of the actual instruction, since we can't make a KInstIterator
     // from just an instruction (unlike LLVM).
-    KFunction *kf = kmodule->functionMap[f];
-    state.pushFrame(state.prevPC, kf);
+    unsigned moduleId;
+    KFunction *kf = getKFunction(f, moduleId);
+    assert(kf && "KFunction not found!");
+
+    state.pushFrame(state.prevPC, kf, moduleId);
     state.pc = kf->instructions;
         
     if (statsTracker)
@@ -1270,7 +1455,7 @@ Function* Executor::getCalledFunction(CallSite &cs, ExecutionState &state) {
   if (f) {
     std::string alias = state.getFnAlias(f->getName());
     if (alias != "") {
-      llvm::Module* currModule = kmodule->module;
+      llvm::Module* currModule = kmodule(state)->module;
       Function* old_f = f;
       f = currModule->getFunction(alias);
       if (!f) {
@@ -1329,7 +1514,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     Instruction *caller = kcaller ? kcaller->inst : 0;
     bool isVoidReturn = (ri->getNumOperands() == 0);
     ref<Expr> result = ConstantExpr::alloc(0, Expr::Bool);
-    
+
     if (!isVoidReturn) {
       result = eval(ki, 0, state).value;
     }
@@ -1355,7 +1540,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
         if (t != Type::getVoidTy(getGlobalContext())) {
           // may need to do coercion due to bitcasts
           Expr::Width from = result->getWidth();
-          Expr::Width to = getWidthForLLVMType(t);
+          Expr::Width to = getWidthForLLVMType(kmodule(state), t);
             
           if (from != to) {
             CallSite cs = (isa<InvokeInst>(caller) ? CallSite(cast<InvokeInst>(caller)) : 
@@ -1447,7 +1632,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       std::map<BasicBlock*, ref<Expr> > targets;
       ref<Expr> isDefault = ConstantExpr::alloc(1, Expr::Bool);
       for (unsigned i=1; i<cases; ++i) {
-        ref<Expr> value = evalConstant(si->getCaseValue(i));
+        ref<Expr> value = evalConstant(kmodule(state), si->getCaseValue(i));
         ref<Expr> match = EqExpr::create(cond, value);
         isDefault = AndExpr::create(isDefault, Expr::createIsZero(match));
         bool result;
@@ -1505,7 +1690,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     Function *f = getCalledFunction(cs, state);
 
     // Skip debug intrinsics, we can't evaluate their metadata arguments.
-    if (f && isDebugIntrinsic(f, kmodule))
+    if (f && isDebugIntrinsic(f, kmodule(state)))
       break;
 
     // evaluate arguments
@@ -1539,7 +1724,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
           Expr::Width to, from = (*ai)->getWidth();
             
           if (i<fType->getNumParams()) {
-            to = getWidthForLLVMType(fType->getParamType(i));
+            to = getWidthForLLVMType(kmodule(state), fType->getParamType(i));
 
             if (from != to) {
               // XXX need to check other param attrs ?
@@ -1616,8 +1801,21 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     ref<Expr> cond = eval(ki, 0, state).value;
     ref<Expr> tExpr = eval(ki, 1, state).value;
     ref<Expr> fExpr = eval(ki, 2, state).value;
-    ref<Expr> result = SelectExpr::create(cond, tExpr, fExpr);
-    bindLocal(ki, state, result);
+
+#if 0
+    Expr::Kind condKind = cond->getKind();
+    if (condKind == Expr::FOrd1 || (condKind >= Expr::FOrd && condKind <= Expr::FUne)) {
+      Executor::StatePair branches = fork(state, cond, true);
+      if (branches.first)
+        bindLocal(ki, *branches.first, tExpr);
+      if (branches.second)
+        bindLocal(ki, *branches.second, fExpr);
+    } else
+#endif
+    {
+      ref<Expr> result = SelectExpr::create(cond, tExpr, fExpr);
+      bindLocal(ki, state, result);
+    }
     break;
   }
 
@@ -1630,28 +1828,28 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   case Instruction::Add: {
     ref<Expr> left = eval(ki, 0, state).value;
     ref<Expr> right = eval(ki, 1, state).value;
-    bindLocal(ki, state, AddExpr::create(left, right));
+    bindLocal(ki, state, ISIMDOperation(this, kmodule(state), AddExpr::create).eval(i->getType(), left, right));
     break;
   }
 
   case Instruction::Sub: {
     ref<Expr> left = eval(ki, 0, state).value;
     ref<Expr> right = eval(ki, 1, state).value;
-    bindLocal(ki, state, SubExpr::create(left, right));
+    bindLocal(ki, state, ISIMDOperation(this, kmodule(state), SubExpr::create).eval(i->getType(), left, right));
     break;
   }
  
   case Instruction::Mul: {
     ref<Expr> left = eval(ki, 0, state).value;
     ref<Expr> right = eval(ki, 1, state).value;
-    bindLocal(ki, state, MulExpr::create(left, right));
+    bindLocal(ki, state, ISIMDOperation(this, kmodule(state), MulExpr::create).eval(i->getType(), left, right));
     break;
   }
 
   case Instruction::UDiv: {
     ref<Expr> left = eval(ki, 0, state).value;
     ref<Expr> right = eval(ki, 1, state).value;
-    ref<Expr> result = UDivExpr::create(left, right);
+    ref<Expr> result = ISIMDOperation(this, kmodule(state), UDivExpr::create).eval(i->getType(), left, right);
     bindLocal(ki, state, result);
     break;
   }
@@ -1659,7 +1857,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   case Instruction::SDiv: {
     ref<Expr> left = eval(ki, 0, state).value;
     ref<Expr> right = eval(ki, 1, state).value;
-    ref<Expr> result = SDivExpr::create(left, right);
+    ref<Expr> result = ISIMDOperation(this, kmodule(state), SDivExpr::create).eval(i->getType(), left, right);
     bindLocal(ki, state, result);
     break;
   }
@@ -1667,7 +1865,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   case Instruction::URem: {
     ref<Expr> left = eval(ki, 0, state).value;
     ref<Expr> right = eval(ki, 1, state).value;
-    ref<Expr> result = URemExpr::create(left, right);
+    ref<Expr> result = ISIMDOperation(this, kmodule(state), URemExpr::create).eval(i->getType(), left, right);
     bindLocal(ki, state, result);
     break;
   }
@@ -1675,7 +1873,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   case Instruction::SRem: {
     ref<Expr> left = eval(ki, 0, state).value;
     ref<Expr> right = eval(ki, 1, state).value;
-    ref<Expr> result = SRemExpr::create(left, right);
+    ref<Expr> result = ISIMDOperation(this, kmodule(state), SRemExpr::create).eval(i->getType(), left, right);
     bindLocal(ki, state, result);
     break;
   }
@@ -1707,7 +1905,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   case Instruction::Shl: {
     ref<Expr> left = eval(ki, 0, state).value;
     ref<Expr> right = eval(ki, 1, state).value;
-    ref<Expr> result = ShlExpr::create(left, right);
+    ref<Expr> result = ISIMDOperation(this, kmodule(state), ShlExpr::create).eval(i->getType(), left, right);
     bindLocal(ki, state, result);
     break;
   }
@@ -1715,7 +1913,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   case Instruction::LShr: {
     ref<Expr> left = eval(ki, 0, state).value;
     ref<Expr> right = eval(ki, 1, state).value;
-    ref<Expr> result = LShrExpr::create(left, right);
+    ref<Expr> result = ISIMDOperation(this, kmodule(state), LShrExpr::create).eval(i->getType(), left, right);
     bindLocal(ki, state, result);
     break;
   }
@@ -1723,7 +1921,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   case Instruction::AShr: {
     ref<Expr> left = eval(ki, 0, state).value;
     ref<Expr> right = eval(ki, 1, state).value;
-    ref<Expr> result = AShrExpr::create(left, right);
+    ref<Expr> result = ISIMDOperation(this, kmodule(state), AShrExpr::create).eval(i->getType(), left, right);
     bindLocal(ki, state, result);
     break;
   }
@@ -1738,7 +1936,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     case ICmpInst::ICMP_EQ: {
       ref<Expr> left = eval(ki, 0, state).value;
       ref<Expr> right = eval(ki, 1, state).value;
-      ref<Expr> result = EqExpr::create(left, right);
+      ref<Expr> result = ISIMDOperation(this, kmodule(state), EqExpr::create).eval(i->getType(), left, right);
       bindLocal(ki, state, result);
       break;
     }
@@ -1746,7 +1944,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     case ICmpInst::ICMP_NE: {
       ref<Expr> left = eval(ki, 0, state).value;
       ref<Expr> right = eval(ki, 1, state).value;
-      ref<Expr> result = NeExpr::create(left, right);
+      ref<Expr> result = ISIMDOperation(this, kmodule(state), NeExpr::create).eval(i->getType(), left, right);
       bindLocal(ki, state, result);
       break;
     }
@@ -1754,7 +1952,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     case ICmpInst::ICMP_UGT: {
       ref<Expr> left = eval(ki, 0, state).value;
       ref<Expr> right = eval(ki, 1, state).value;
-      ref<Expr> result = UgtExpr::create(left, right);
+      ref<Expr> result = ISIMDOperation(this, kmodule(state), UgtExpr::create).eval(i->getType(), left, right);
       bindLocal(ki, state,result);
       break;
     }
@@ -1762,7 +1960,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     case ICmpInst::ICMP_UGE: {
       ref<Expr> left = eval(ki, 0, state).value;
       ref<Expr> right = eval(ki, 1, state).value;
-      ref<Expr> result = UgeExpr::create(left, right);
+      ref<Expr> result = ISIMDOperation(this, kmodule(state), UgeExpr::create).eval(i->getType(), left, right);
       bindLocal(ki, state, result);
       break;
     }
@@ -1770,7 +1968,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     case ICmpInst::ICMP_ULT: {
       ref<Expr> left = eval(ki, 0, state).value;
       ref<Expr> right = eval(ki, 1, state).value;
-      ref<Expr> result = UltExpr::create(left, right);
+      ref<Expr> result = ISIMDOperation(this, kmodule(state), UltExpr::create).eval(i->getType(), left, right);
       bindLocal(ki, state, result);
       break;
     }
@@ -1778,7 +1976,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     case ICmpInst::ICMP_ULE: {
       ref<Expr> left = eval(ki, 0, state).value;
       ref<Expr> right = eval(ki, 1, state).value;
-      ref<Expr> result = UleExpr::create(left, right);
+      ref<Expr> result = ISIMDOperation(this, kmodule(state), UleExpr::create).eval(i->getType(), left, right);
       bindLocal(ki, state, result);
       break;
     }
@@ -1786,7 +1984,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     case ICmpInst::ICMP_SGT: {
       ref<Expr> left = eval(ki, 0, state).value;
       ref<Expr> right = eval(ki, 1, state).value;
-      ref<Expr> result = SgtExpr::create(left, right);
+      ref<Expr> result = ISIMDOperation(this, kmodule(state), SgtExpr::create).eval(i->getType(), left, right);
       bindLocal(ki, state, result);
       break;
     }
@@ -1794,7 +1992,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     case ICmpInst::ICMP_SGE: {
       ref<Expr> left = eval(ki, 0, state).value;
       ref<Expr> right = eval(ki, 1, state).value;
-      ref<Expr> result = SgeExpr::create(left, right);
+      ref<Expr> result = ISIMDOperation(this, kmodule(state), SgeExpr::create).eval(i->getType(), left, right);
       bindLocal(ki, state, result);
       break;
     }
@@ -1802,7 +2000,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     case ICmpInst::ICMP_SLT: {
       ref<Expr> left = eval(ki, 0, state).value;
       ref<Expr> right = eval(ki, 1, state).value;
-      ref<Expr> result = SltExpr::create(left, right);
+      ref<Expr> result = ISIMDOperation(this, kmodule(state), SltExpr::create).eval(i->getType(), left, right);
       bindLocal(ki, state, result);
       break;
     }
@@ -1810,7 +2008,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     case ICmpInst::ICMP_SLE: {
       ref<Expr> left = eval(ki, 0, state).value;
       ref<Expr> right = eval(ki, 1, state).value;
-      ref<Expr> result = SleExpr::create(left, right);
+      ref<Expr> result = ISIMDOperation(this, kmodule(state), SleExpr::create).eval(i->getType(), left, right);
       bindLocal(ki, state, result);
       break;
     }
@@ -1831,7 +2029,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     AllocaInst *ai = cast<AllocaInst>(i);
 #endif
     unsigned elementSize = 
-      kmodule->targetData->getTypeStoreSize(ai->getAllocatedType());
+      kmodule(state)->targetData->getTypeStoreSize(ai->getAllocatedType());
     ref<Expr> size = Expr::createPointer(elementSize);
     if (ai->isArrayAllocation()) {
       ref<Expr> count = eval(ki, 0, state).value;
@@ -1886,35 +2084,35 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     CastInst *ci = cast<CastInst>(i);
     ref<Expr> result = ExtractExpr::create(eval(ki, 0, state).value,
                                            0,
-                                           getWidthForLLVMType(ci->getType()));
+                                           getWidthForLLVMType(kmodule(state), ci->getType()));
     bindLocal(ki, state, result);
     break;
   }
   case Instruction::ZExt: {
     CastInst *ci = cast<CastInst>(i);
     ref<Expr> result = ZExtExpr::create(eval(ki, 0, state).value,
-                                        getWidthForLLVMType(ci->getType()));
+                                        getWidthForLLVMType(kmodule(state), ci->getType()));
     bindLocal(ki, state, result);
     break;
   }
   case Instruction::SExt: {
     CastInst *ci = cast<CastInst>(i);
     ref<Expr> result = SExtExpr::create(eval(ki, 0, state).value,
-                                        getWidthForLLVMType(ci->getType()));
+                                        getWidthForLLVMType(kmodule(state), ci->getType()));
     bindLocal(ki, state, result);
     break;
   }
 
   case Instruction::IntToPtr: {
     CastInst *ci = cast<CastInst>(i);
-    Expr::Width pType = getWidthForLLVMType(ci->getType());
+    Expr::Width pType = getWidthForLLVMType(kmodule(state), ci->getType());
     ref<Expr> arg = eval(ki, 0, state).value;
     bindLocal(ki, state, ZExtExpr::create(arg, pType));
     break;
   } 
   case Instruction::PtrToInt: {
     CastInst *ci = cast<CastInst>(i);
-    Expr::Width iType = getWidthForLLVMType(ci->getType());
+    Expr::Width iType = getWidthForLLVMType(kmodule(state), ci->getType());
     ref<Expr> arg = eval(ki, 0, state).value;
     bindLocal(ki, state, ZExtExpr::create(arg, iType));
     break;
@@ -1929,270 +2127,158 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     // Floating point instructions
 
   case Instruction::FAdd: {
-    ref<ConstantExpr> left = toConstant(state, eval(ki, 0, state).value,
-                                        "floating point");
-    ref<ConstantExpr> right = toConstant(state, eval(ki, 1, state).value,
-                                         "floating point");
-    if (!fpWidthToSemantics(left->getWidth()) ||
-        !fpWidthToSemantics(right->getWidth()))
-      return terminateStateOnExecError(state, "Unsupported FAdd operation");
-
-    llvm::APFloat Res(left->getAPValue());
-    Res.add(APFloat(right->getAPValue()), APFloat::rmNearestTiesToEven);
-    bindLocal(ki, state, ConstantExpr::alloc(Res.bitcastToAPInt()));
+    ref<Expr> left = eval(ki, 0, state).value;
+    ref<Expr> right  = eval(ki, 1, state).value;
+    bindLocal(ki, state, FSIMDOperation(this, kmodule(state), FAddExpr::create).eval(i->getType(), left, right));
     break;
   }
 
   case Instruction::FSub: {
-    ref<ConstantExpr> left = toConstant(state, eval(ki, 0, state).value,
-                                        "floating point");
-    ref<ConstantExpr> right = toConstant(state, eval(ki, 1, state).value,
-                                         "floating point");
-    if (!fpWidthToSemantics(left->getWidth()) ||
-        !fpWidthToSemantics(right->getWidth()))
-      return terminateStateOnExecError(state, "Unsupported FSub operation");
-
-    llvm::APFloat Res(left->getAPValue());
-    Res.subtract(APFloat(right->getAPValue()), APFloat::rmNearestTiesToEven);
-    bindLocal(ki, state, ConstantExpr::alloc(Res.bitcastToAPInt()));
+    ref<Expr> left = eval(ki, 0, state).value;
+    ref<Expr> right  = eval(ki, 1, state).value;
+    bindLocal(ki, state, FSIMDOperation(this, kmodule(state), FSubExpr::create).eval(i->getType(), left, right));
     break;
   }
- 
-  case Instruction::FMul: {
-    ref<ConstantExpr> left = toConstant(state, eval(ki, 0, state).value,
-                                        "floating point");
-    ref<ConstantExpr> right = toConstant(state, eval(ki, 1, state).value,
-                                         "floating point");
-    if (!fpWidthToSemantics(left->getWidth()) ||
-        !fpWidthToSemantics(right->getWidth()))
-      return terminateStateOnExecError(state, "Unsupported FMul operation");
 
-    llvm::APFloat Res(left->getAPValue());
-    Res.multiply(APFloat(right->getAPValue()), APFloat::rmNearestTiesToEven);
-    bindLocal(ki, state, ConstantExpr::alloc(Res.bitcastToAPInt()));
+  case Instruction::FMul: {
+    ref<Expr> left = eval(ki, 0, state).value;
+    ref<Expr> right  = eval(ki, 1, state).value;
+    bindLocal(ki, state, FSIMDOperation(this, kmodule(state), FMulExpr::create).eval(i->getType(), left, right));
     break;
   }
 
   case Instruction::FDiv: {
-    ref<ConstantExpr> left = toConstant(state, eval(ki, 0, state).value,
-                                        "floating point");
-    ref<ConstantExpr> right = toConstant(state, eval(ki, 1, state).value,
-                                         "floating point");
-    if (!fpWidthToSemantics(left->getWidth()) ||
-        !fpWidthToSemantics(right->getWidth()))
-      return terminateStateOnExecError(state, "Unsupported FDiv operation");
-
-    llvm::APFloat Res(left->getAPValue());
-    Res.divide(APFloat(right->getAPValue()), APFloat::rmNearestTiesToEven);
-    bindLocal(ki, state, ConstantExpr::alloc(Res.bitcastToAPInt()));
+    ref<Expr> left = eval(ki, 0, state).value;
+    ref<Expr> right  = eval(ki, 1, state).value;
+    bindLocal(ki, state, FSIMDOperation(this, kmodule(state), FDivExpr::create).eval(i->getType(), left, right));
     break;
   }
 
   case Instruction::FRem: {
-    ref<ConstantExpr> left = toConstant(state, eval(ki, 0, state).value,
-                                        "floating point");
-    ref<ConstantExpr> right = toConstant(state, eval(ki, 1, state).value,
-                                         "floating point");
-    if (!fpWidthToSemantics(left->getWidth()) ||
-        !fpWidthToSemantics(right->getWidth()))
-      return terminateStateOnExecError(state, "Unsupported FRem operation");
-
-    llvm::APFloat Res(left->getAPValue());
-    Res.mod(APFloat(right->getAPValue()), APFloat::rmNearestTiesToEven);
-    bindLocal(ki, state, ConstantExpr::alloc(Res.bitcastToAPInt()));
+    ref<Expr> left = eval(ki, 0, state).value;
+    ref<Expr> right  = eval(ki, 1, state).value;
+    bindLocal(ki, state, FSIMDOperation(this, kmodule(state), FRemExpr::create).eval(i->getType(), left, right));
     break;
   }
 
-  case Instruction::FPTrunc: {
-    FPTruncInst *fi = cast<FPTruncInst>(i);
-    Expr::Width resultType = getWidthForLLVMType(fi->getType());
-    ref<ConstantExpr> arg = toConstant(state, eval(ki, 0, state).value,
-                                       "floating point");
-    if (!fpWidthToSemantics(arg->getWidth()) || resultType > arg->getWidth())
-      return terminateStateOnExecError(state, "Unsupported FPTrunc operation");
-
-    llvm::APFloat Res(arg->getAPValue());
-    bool losesInfo = false;
-    Res.convert(*fpWidthToSemantics(resultType),
-                llvm::APFloat::rmNearestTiesToEven,
-                &losesInfo);
-    bindLocal(ki, state, ConstantExpr::alloc(Res));
-    break;
-  }
-
+  case Instruction::FPTrunc:
   case Instruction::FPExt: {
-    FPExtInst *fi = cast<FPExtInst>(i);
-    Expr::Width resultType = getWidthForLLVMType(fi->getType());
-    ref<ConstantExpr> arg = toConstant(state, eval(ki, 0, state).value,
-                                        "floating point");
-    if (!fpWidthToSemantics(arg->getWidth()) || arg->getWidth() > resultType)
-      return terminateStateOnExecError(state, "Unsupported FPExt operation");
-
-    llvm::APFloat Res(arg->getAPValue());
-    bool losesInfo = false;
-    Res.convert(*fpWidthToSemantics(resultType),
-                llvm::APFloat::rmNearestTiesToEven,
-                &losesInfo);
-    bindLocal(ki, state, ConstantExpr::alloc(Res));
+    CastInst *ci = cast<CastInst>(i);
+    ref<Expr> arg = eval(ki, 0, state).value;
+    const llvm::Type *type = i->getType();
+    const fltSemantics *sem = TypeToFloatSemantics(type);
+    bindLocal(ki, state,
+       (i->getOpcode() == Instruction::FPTrunc
+      ? FPTruncExpr::create
+      : FPExtExpr::create)(arg, sem, ci->getSrcTy()->isFP128Ty()));
     break;
   }
 
-  case Instruction::FPToUI: {
-    FPToUIInst *fi = cast<FPToUIInst>(i);
-    Expr::Width resultType = getWidthForLLVMType(fi->getType());
-    ref<ConstantExpr> arg = toConstant(state, eval(ki, 0, state).value,
-                                       "floating point");
-    if (!fpWidthToSemantics(arg->getWidth()) || resultType > 64)
-      return terminateStateOnExecError(state, "Unsupported FPToUI operation");
-
-    llvm::APFloat Arg(arg->getAPValue());
-    uint64_t value = 0;
-    bool isExact = true;
-    Arg.convertToInteger(&value, resultType, false,
-                         llvm::APFloat::rmTowardZero, &isExact);
-    bindLocal(ki, state, ConstantExpr::alloc(value, resultType));
-    break;
-  }
-
+  case Instruction::FPToUI:
   case Instruction::FPToSI: {
-    FPToSIInst *fi = cast<FPToSIInst>(i);
-    Expr::Width resultType = getWidthForLLVMType(fi->getType());
-    ref<ConstantExpr> arg = toConstant(state, eval(ki, 0, state).value,
-                                       "floating point");
-    if (!fpWidthToSemantics(arg->getWidth()) || resultType > 64)
-      return terminateStateOnExecError(state, "Unsupported FPToSI operation");
-
-    llvm::APFloat Arg(arg->getAPValue());
-    uint64_t value = 0;
-    bool isExact = true;
-    Arg.convertToInteger(&value, resultType, false,
-                         llvm::APFloat::rmTowardZero, &isExact);
-    bindLocal(ki, state, ConstantExpr::alloc(value, resultType));
+    ref<Expr> arg = eval(ki, 0, state).value;
+    const llvm::Type *type = i->getType();
+    bindLocal(ki, state, F2ISIMDOperation(this, kmodule(state),
+       (i->getOpcode() == Instruction::FPToUI
+      ? FPToUIExpr::create
+      : FPToSIExpr::create)).eval(type, arg));
     break;
   }
 
-  case Instruction::UIToFP: {
-    UIToFPInst *fi = cast<UIToFPInst>(i);
-    Expr::Width resultType = getWidthForLLVMType(fi->getType());
-    ref<ConstantExpr> arg = toConstant(state, eval(ki, 0, state).value,
-                                       "floating point");
-    const llvm::fltSemantics *semantics = fpWidthToSemantics(resultType);
-    if (!semantics)
-      return terminateStateOnExecError(state, "Unsupported UIToFP operation");
-    llvm::APFloat f(*semantics, 0);
-    f.convertFromAPInt(arg->getAPValue(), false,
-                       llvm::APFloat::rmNearestTiesToEven);
-
-    bindLocal(ki, state, ConstantExpr::alloc(f));
-    break;
-  }
-
+  case Instruction::UIToFP:
   case Instruction::SIToFP: {
-    SIToFPInst *fi = cast<SIToFPInst>(i);
-    Expr::Width resultType = getWidthForLLVMType(fi->getType());
-    ref<ConstantExpr> arg = toConstant(state, eval(ki, 0, state).value,
-                                       "floating point");
-    const llvm::fltSemantics *semantics = fpWidthToSemantics(resultType);
-    if (!semantics)
-      return terminateStateOnExecError(state, "Unsupported SIToFP operation");
-    llvm::APFloat f(*semantics, 0);
-    f.convertFromAPInt(arg->getAPValue(), true,
-                       llvm::APFloat::rmNearestTiesToEven);
-
-    bindLocal(ki, state, ConstantExpr::alloc(f));
+    ref<Expr> arg = eval(ki, 0, state).value;
+    const llvm::Type *type = i->getType();
+    bindLocal(ki, state, I2FSIMDOperation(this, kmodule(state),
+       (i->getOpcode() == Instruction::UIToFP
+      ? UIToFPExpr::create
+      : SIToFPExpr::create)).eval(type, arg));
     break;
   }
 
   case Instruction::FCmp: {
     FCmpInst *fi = cast<FCmpInst>(i);
-    ref<ConstantExpr> left = toConstant(state, eval(ki, 0, state).value,
-                                        "floating point");
-    ref<ConstantExpr> right = toConstant(state, eval(ki, 1, state).value,
-                                         "floating point");
-    if (!fpWidthToSemantics(left->getWidth()) ||
-        !fpWidthToSemantics(right->getWidth()))
-      return terminateStateOnExecError(state, "Unsupported FCmp operation");
+    ref<Expr> left = eval(ki, 0, state).value;
+    ref<Expr> right = eval(ki, 1, state).value;
 
-    APFloat LHS(left->getAPValue());
-    APFloat RHS(right->getAPValue());
-    APFloat::cmpResult CmpRes = LHS.compare(RHS);
+    ref<Expr> Result = FCmpSIMDOperation(this, kmodule(state), fi->getPredicate()).eval(i->getType(), fi->getOperand(0)->getType(), left, right);
+    bindLocal(ki, state, Result);
+    break;
+  }
+ 
+    // Other instructions...
+    // Unhandled
+  case Instruction::ExtractElement: {
+    ExtractElementInst *eei = cast<ExtractElementInst>(i);
+    ref<Expr> vec = eval(ki, 0, state).value;
+    ref<Expr> idx = eval(ki, 1, state).value;
 
-    bool Result = false;
-    switch( fi->getPredicate() ) {
-      // Predicates which only care about whether or not the operands are NaNs.
-    case FCmpInst::FCMP_ORD:
-      Result = CmpRes != APFloat::cmpUnordered;
-      break;
+    assert(isa<ConstantExpr>(idx) && "symbolic index unsupported");
+    ConstantExpr *cIdx = cast<ConstantExpr>(idx);
+    uint64_t iIdx = cIdx->getZExtValue();
 
-    case FCmpInst::FCMP_UNO:
-      Result = CmpRes == APFloat::cmpUnordered;
-      break;
+    const llvm::VectorType *vt = eei->getVectorOperandType();
+    unsigned EltBits = getWidthForLLVMType(kmodule(state), vt->getElementType());
 
-      // Ordered comparisons return false if either operand is NaN.  Unordered
-      // comparisons return true if either operand is NaN.
-    case FCmpInst::FCMP_UEQ:
-      if (CmpRes == APFloat::cmpUnordered) {
-        Result = true;
-        break;
+    ref<Expr> Result = ExtractExpr::create(vec, EltBits*iIdx, EltBits);
+
+    bindLocal(ki, state, Result);
+    break;
+  }
+  case Instruction::InsertElement: {
+    InsertElementInst *iei = cast<InsertElementInst>(i);
+    ref<Expr> vec = eval(ki, 0, state).value;
+    ref<Expr> newElt = eval(ki, 1, state).value;
+    ref<Expr> idx = eval(ki, 2, state).value;
+
+    assert(isa<ConstantExpr>(idx) && "symbolic index unsupported");
+    ConstantExpr *cIdx = cast<ConstantExpr>(idx);
+    uint64_t iIdx = cIdx->getZExtValue();
+
+    const llvm::VectorType *vt = iei->getType();
+    unsigned EltBits = getWidthForLLVMType(kmodule(state), vt->getElementType());
+
+    unsigned ElemCount = vt->getNumElements();
+    ref<Expr> *elems = new ref<Expr>[vt->getNumElements()];
+    for (unsigned i = 0; i < ElemCount; ++i)
+      elems[ElemCount-i-1] = i == iIdx
+                             ? newElt
+                             : ExtractExpr::create(vec, EltBits*i, EltBits);
+
+    ref<Expr> Result = ConcatExpr::createN(ElemCount, elems);
+    delete[] elems;
+
+    bindLocal(ki, state, Result);
+    break;
+  }
+  case Instruction::ShuffleVector: {
+    ShuffleVectorInst *svi = cast<ShuffleVectorInst>(i);
+
+    ref<Expr> vec1 = eval(ki, 0, state).value;
+    ref<Expr> vec2 = eval(ki, 1, state).value;
+    const llvm::VectorType *vt = svi->getType();
+    unsigned EltBits = getWidthForLLVMType(kmodule(state), vt->getElementType());
+
+    unsigned ElemCount = vt->getNumElements();
+    ref<Expr> *elems = new ref<Expr>[vt->getNumElements()];
+    for (unsigned i = 0; i < ElemCount; ++i) {
+      int MaskValI = svi->getMaskValue(i);
+      ref<Expr> &el = elems[ElemCount-i-1];
+      if (MaskValI < 0)
+	el = ConstantExpr::alloc(0, EltBits);
+      else {
+	unsigned MaskVal = (unsigned) MaskValI;
+	if (MaskVal < ElemCount)
+          el = ExtractExpr::create(vec1, EltBits*MaskVal, EltBits);
+        else
+	  el = ExtractExpr::create(vec2, EltBits*(MaskVal-ElemCount), EltBits);
       }
-    case FCmpInst::FCMP_OEQ:
-      Result = CmpRes == APFloat::cmpEqual;
-      break;
-
-    case FCmpInst::FCMP_UGT:
-      if (CmpRes == APFloat::cmpUnordered) {
-        Result = true;
-        break;
-      }
-    case FCmpInst::FCMP_OGT:
-      Result = CmpRes == APFloat::cmpGreaterThan;
-      break;
-
-    case FCmpInst::FCMP_UGE:
-      if (CmpRes == APFloat::cmpUnordered) {
-        Result = true;
-        break;
-      }
-    case FCmpInst::FCMP_OGE:
-      Result = CmpRes == APFloat::cmpGreaterThan || CmpRes == APFloat::cmpEqual;
-      break;
-
-    case FCmpInst::FCMP_ULT:
-      if (CmpRes == APFloat::cmpUnordered) {
-        Result = true;
-        break;
-      }
-    case FCmpInst::FCMP_OLT:
-      Result = CmpRes == APFloat::cmpLessThan;
-      break;
-
-    case FCmpInst::FCMP_ULE:
-      if (CmpRes == APFloat::cmpUnordered) {
-        Result = true;
-        break;
-      }
-    case FCmpInst::FCMP_OLE:
-      Result = CmpRes == APFloat::cmpLessThan || CmpRes == APFloat::cmpEqual;
-      break;
-
-    case FCmpInst::FCMP_UNE:
-      Result = CmpRes == APFloat::cmpUnordered || CmpRes != APFloat::cmpEqual;
-      break;
-    case FCmpInst::FCMP_ONE:
-      Result = CmpRes != APFloat::cmpUnordered && CmpRes != APFloat::cmpEqual;
-      break;
-
-    default:
-      assert(0 && "Invalid FCMP predicate!");
-    case FCmpInst::FCMP_FALSE:
-      Result = false;
-      break;
-    case FCmpInst::FCMP_TRUE:
-      Result = true;
-      break;
     }
 
-    bindLocal(ki, state, ConstantExpr::alloc(Result, Expr::Bool));
+    ref<Expr> Result = ConcatExpr::createN(ElemCount, elems);
+    delete[] elems;
+
+    bindLocal(ki, state, Result);
     break;
   }
   case Instruction::InsertValue: {
@@ -2227,21 +2313,11 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 
     ref<Expr> agg = eval(ki, 0, state).value;
 
-    ref<Expr> result = ExtractExpr::create(agg, kgepi->offset*8, getWidthForLLVMType(i->getType()));
+    ref<Expr> result = ExtractExpr::create(agg, kgepi->offset*8, getWidthForLLVMType(kmodule(state), i->getType()));
 
     bindLocal(ki, state, result);
     break;
   }
- 
-    // Other instructions...
-    // Unhandled
-  case Instruction::ExtractElement:
-  case Instruction::InsertElement:
-  case Instruction::ShuffleVector:
-    terminateStateOnError(state, "XXX vector instructions unhandled",
-                          "xxx.err");
-    break;
- 
   default:
     terminateStateOnExecError(state, "illegal instruction");
     break;
@@ -2274,7 +2350,8 @@ void Executor::updateStates(ExecutionState *current) {
 }
 
 template <typename TypeIt>
-void Executor::computeOffsets(KGEPInstruction *kgepi, TypeIt ib, TypeIt ie) {
+void Executor::computeOffsets(KModule *kmodule, KGEPInstruction *kgepi,
+                              TypeIt ib, TypeIt ie) {
   ref<ConstantExpr> constantOffset =
     ConstantExpr::alloc(0, Context::get().getPointerWidth());
   uint64_t index = 1;
@@ -2291,10 +2368,12 @@ void Executor::computeOffsets(KGEPInstruction *kgepi, TypeIt ib, TypeIt ie) {
         kmodule->targetData->getTypeStoreSize(set->getElementType());
       Value *operand = ii.getOperand();
       if (Constant *c = dyn_cast<Constant>(operand)) {
-        ref<ConstantExpr> index = 
-          evalConstant(c)->ZExt(Context::get().getPointerWidth());
+        ref<ConstantExpr> index = evalConstant(kmodule, c);
+        assert(isa<ConstantExpr>(index) && "index not an integer");
+        ref<ConstantExpr> indexExt =
+          cast<ConstantExpr>(index)->ZExt(Context::get().getPointerWidth());
         ref<ConstantExpr> addend = 
-          index->Mul(ConstantExpr::alloc(elementSize,
+          indexExt->Mul(ConstantExpr::alloc(elementSize,
                                          Context::get().getPointerWidth()));
         constantOffset = constantOffset->Add(addend);
       } else {
@@ -2306,37 +2385,41 @@ void Executor::computeOffsets(KGEPInstruction *kgepi, TypeIt ib, TypeIt ie) {
   kgepi->offset = constantOffset->getZExtValue();
 }
 
-void Executor::bindInstructionConstants(KInstruction *KI) {
+void Executor::bindInstructionConstants(KModule *kmodule, KInstruction *KI) {
   KGEPInstruction *kgepi = static_cast<KGEPInstruction*>(KI);
 
   if (GetElementPtrInst *gepi = dyn_cast<GetElementPtrInst>(KI->inst)) {
-    computeOffsets(kgepi, gep_type_begin(gepi), gep_type_end(gepi));
+    computeOffsets(kmodule, kgepi, gep_type_begin(gepi), gep_type_end(gepi));
   } else if (InsertValueInst *ivi = dyn_cast<InsertValueInst>(KI->inst)) {
-    computeOffsets(kgepi, iv_type_begin(ivi), iv_type_end(ivi));
+    computeOffsets(kmodule, kgepi, iv_type_begin(ivi), iv_type_end(ivi));
     assert(kgepi->indices.empty() && "InsertValue constant offset expected");
   } else if (ExtractValueInst *evi = dyn_cast<ExtractValueInst>(KI->inst)) {
-    computeOffsets(kgepi, ev_type_begin(evi), ev_type_end(evi));
+    computeOffsets(kmodule, kgepi, ev_type_begin(evi), ev_type_end(evi));
     assert(kgepi->indices.empty() && "ExtractValue constant offset expected");
   }
 }
 
-void Executor::bindModuleConstants() {
+void Executor::bindModuleConstants(KModule *kmodule) {
   for (std::vector<KFunction*>::iterator it = kmodule->functions.begin(), 
          ie = kmodule->functions.end(); it != ie; ++it) {
     KFunction *kf = *it;
     for (unsigned i=0; i<kf->numInstructions; ++i)
-      bindInstructionConstants(kf->instructions[i]);
+      bindInstructionConstants(kmodule, kf->instructions[i]);
   }
 
   kmodule->constantTable = new Cell[kmodule->constants.size()];
   for (unsigned i=0; i<kmodule->constants.size(); ++i) {
     Cell &c = kmodule->constantTable[i];
-    c.value = evalConstant(kmodule->constants[i]);
+    c.value = evalConstant(kmodule, kmodule->constants[i]);
   }
 }
 
+void Executor::bindModuleConstants(unsigned moduleId) {
+  bindModuleConstants(kmodules[moduleId]);
+}
+
 void Executor::run(ExecutionState &initialState) {
-  bindModuleConstants();
+  bindModuleConstants(kmodule(initialState));
 
   // Delay init till now so that ticks don't accrue during
   // optimization and such.
@@ -2692,7 +2775,7 @@ void Executor::callExternalFunction(ExecutionState &state,
   const Type *resultType = target->inst->getType();
   if (resultType != Type::getVoidTy(getGlobalContext())) {
     ref<Expr> e = ConstantExpr::fromMemory((void*) args, 
-                                           getWidthForLLVMType(resultType));
+                                           getWidthForLLVMType(kmodule(state), resultType));
     bindLocal(target, state, e);
   }
 }
@@ -2921,8 +3004,22 @@ void Executor::executeMemoryOperation(ExecutionState &state,
                                       ref<Expr> value /* undef if read */,
                                       KInstruction *target /* undef if write */) {
   Expr::Width type = (isWrite ? value->getWidth() : 
-                     getWidthForLLVMType(target->inst->getType()));
+                     getWidthForLLVMType(kmodule(state), target->inst->getType()));
   unsigned bytes = Expr::getMinBytesForWidth(type);
+
+  if (!state.watchpoint.isNull() && isWrite) {
+    if (address == state.watchpoint) {
+      puts("Hit watchpoint, value = ");
+      value->dump();
+    } else if (isa<ConstantExpr>(state.watchpoint) && isa<ConstantExpr>(address)) {
+      uint64_t wpConst = cast<ConstantExpr>(state.watchpoint)->getZExtValue(),
+               adConst = cast<ConstantExpr>(address)->getZExtValue();
+      if (wpConst + state.watchpointSize >= adConst && wpConst < adConst + value->getWidth()/8) {
+        printf("Hit watchpoint (inexact), wp addr = %lu, wr addr = %lu, value =\n", wpConst, adConst);
+        value->dump();
+      }
+    }
+  }
 
   if (SimplifySymIndices) {
     if (!isa<ConstantExpr>(address))
@@ -3136,7 +3233,8 @@ void Executor::runFunctionAsMain(Function *f,
   for (envc=0; envp[envc]; ++envc) ;
 
   unsigned NumPtrBytes = Context::get().getPointerWidth() / 8;
-  KFunction *kf = kmodule->functionMap[f];
+  unsigned moduleId;
+  KFunction *kf = getKFunction(f, moduleId);
   assert(kf);
   Function::arg_iterator ai = f->arg_begin(), ae = f->arg_end();
   if (ai!=ae) {
@@ -3158,7 +3256,7 @@ void Executor::runFunctionAsMain(Function *f,
     }
   }
 
-  ExecutionState *state = new ExecutionState(kmodule->functionMap[f]);
+  ExecutionState *state = new ExecutionState(kf, moduleId);
   
   if (pathWriter) 
     state->pathOS = pathWriter->open();
@@ -3200,6 +3298,7 @@ void Executor::runFunctionAsMain(Function *f,
   }
   
   initializeGlobals(*state);
+  initializeExternals(*state);
 
   processTree = new PTree(state);
   state->ptreeNode = processTree->root;
@@ -3330,7 +3429,8 @@ void Executor::doImpliedValueConcretization(ExecutionState &state,
   }
 }
 
-Expr::Width Executor::getWidthForLLVMType(const llvm::Type *type) const {
+Expr::Width Executor::getWidthForLLVMType(const KModule *kmodule,
+                                          const llvm::Type *type) const {
   return kmodule->targetData->getTypeSizeInBits(type);
 }
 

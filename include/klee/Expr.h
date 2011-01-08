@@ -123,6 +123,24 @@ public:
     ZExt,
     SExt,
 
+    // I->F Conversion
+    UIToFP,
+    SIToFP,
+
+    // FP Casting
+    FPExt,
+    FPTrunc,
+
+    // F->I Conversion
+    FPToUI,
+    FPToSI,
+
+    // Unary NaN check
+    FOrd1,
+
+    // Square root
+    FSqrt,
+
     // All subsequent kinds are binary.
 
     // Arithmetic
@@ -133,6 +151,11 @@ public:
     SDiv,
     URem,
     SRem,
+    FAdd,
+    FSub,
+    FMul,
+    FDiv,
+    FRem,
 
     // Bit
     Not,
@@ -155,14 +178,37 @@ public:
     Sgt, ///< Not used in canonical form
     Sge, ///< Not used in canonical form
 
+    // FP Compare
+    FCmp,
+
     LastKind=Sge,
 
+    NonConstantKindFirst=NotOptimized,
+    NonConstantKindLast=LastKind,
     CastKindFirst=ZExt,
     CastKindLast=SExt,
+    FConvertKindFirst=UIToFP,
+    FConvertKindLast=FPTrunc,
+    F2FConvertKindFirst=FPExt,
+    F2FConvertKindLast=FPTrunc,
+    F2IConvertKindFirst=FPToUI,
+    F2IConvertKindLast=FPToSI,
     BinaryKindFirst=Add,
     BinaryKindLast=Sge,
+    FBinaryKindFirst=FAdd,
+    FBinaryKindLast=FRem,
     CmpKindFirst=Eq,
-    CmpKindLast=Sge
+    CmpKindLast=FCmp
+  };
+
+  enum FPCategories {
+    fcMaybeNInf = 1<<0,
+    fcMaybeNNorm = 1<<1,
+    fcMaybeZero = 1<<2,
+    fcMaybePNorm = 1<<3,
+    fcMaybePInf = 1<<4,
+    fcMaybeNaN = 1<<5,
+    fcAll = (1<<6)-1
   };
 
   unsigned refCount;
@@ -176,6 +222,8 @@ public:
 
   virtual Kind getKind() const = 0;
   virtual Width getWidth() const = 0;
+
+  virtual FPCategories getCategories(bool isIEEE) const;
   
   virtual unsigned getNumKids() const = 0;
   virtual ref<Expr> getKid(unsigned i) const = 0;
@@ -222,6 +270,7 @@ public:
   }
 
   /* Kind utilities */
+  bool isNotExpr(ref<Expr> &neg) const;
 
   /* Utility creation functions */
   static ref<Expr> createCoerceToPointerType(ref<Expr> e);
@@ -301,8 +350,11 @@ public:
 
 private:
   llvm::APInt value;
+  bool IsFloat:1;
+  bool IsIEEE:1;
 
-  ConstantExpr(const llvm::APInt &v) : value(v) {}
+  ConstantExpr(const llvm::APInt &v) : value(v), IsFloat(false), IsIEEE(false) {}
+  ConstantExpr(const llvm::APFloat &v);
 
 public:
   ~ConstantExpr() {}
@@ -318,6 +370,14 @@ public:
   /// Clients should generally not use the APInt value directly and instead use
   /// native ConstantExpr APIs.
   const llvm::APInt &getAPValue() const { return value; }
+
+  /// getAPFloatValue - Return the value bitcast as an APFloat.
+  ///
+  /// The overloads will either use the built in semantics (IsIEEE) or
+  /// the given semantics.
+  llvm::APFloat getAPFloatValue() const;
+  llvm::APFloat getAPFloatValue(bool isIEEE) const;
+  llvm::APFloat getAPFloatValue(const llvm::fltSemantics &sem) const;
 
   /// getZExtValue - Return the constant value for a limited number of bits.
   ///
@@ -366,6 +426,10 @@ public:
     return alloc(f.bitcastToAPInt());
   }
 
+  static ref<ConstantExpr> create(const llvm::APFloat &f) {
+    return alloc(f);
+  }
+
   static ref<ConstantExpr> alloc(uint64_t v, Width w) {
     return alloc(llvm::APInt(w, v));
   }
@@ -384,7 +448,7 @@ public:
   /* Utility Functions */
 
   /// isZero - Is this a constant zero.
-  bool isZero() const { return getZExtValue() == 0; }
+  bool isZero() const { return getAPValue().isMinValue(); }
 
   /// isOne - Is this a constant one.
   bool isOne() const { return getZExtValue() == 1; }
@@ -400,9 +464,9 @@ public:
   }
 
   /// isAllOnes - Is this constant all ones.
-  bool isAllOnes() const {
-    return getZExtValue(getWidth()) == bits64::maxValueOfNBits(getWidth());
-  }
+  bool isAllOnes() const { return getAPValue().isAllOnesValue(); }
+
+  FPCategories getCategories(bool isIEEE) const;
 
   /* Constant Operations */
 
@@ -439,15 +503,35 @@ public:
 
   ref<ConstantExpr> Neg();
   ref<ConstantExpr> Not();
+
+  typedef ref<ConstantExpr> I2FConvertOp(const llvm::fltSemantics *sem);
+  I2FConvertOp UIToFP, SIToFP;
+
+  typedef ref<ConstantExpr> F2IConvertOp(Width W, bool isIEEE);
+  F2IConvertOp FPToUI, FPToSI;
+
+  typedef ref<ConstantExpr> FConstBinOp(const ref<ConstantExpr> &RHS, bool isIEEE);
+  FConstBinOp FAdd, FSub, FMul, FDiv, FRem;
+
+  typedef ref<ConstantExpr> FConstCmpOp(const ref<ConstantExpr> &RHS, const ref<ConstantExpr> &Pred, bool isIEEE);
+  FConstCmpOp FCmp;
+
+  typedef ref<ConstantExpr> F2FConvertOp(const llvm::fltSemantics *sem, bool isIEEE);
+  F2FConvertOp FPExt, FPTrunc;
+
+  ref<ConstantExpr> FSqrt(bool isIEEE);
+private:
+  ref<ConstantExpr> IToFP(const llvm::fltSemantics *sem, bool isSigned);
+  ref<ConstantExpr> FPToI(Width W, bool isIEEE, bool isSigned);
 };
 
-  
 // Utility classes
 
 class NonConstantExpr : public Expr {
 public:
   static bool classof(const Expr *E) {
-    return E->getKind() != Expr::Constant;
+    Kind k = E->getKind();
+    return Expr::NonConstantKindFirst <= k && k <= Expr::NonConstantKindLast;
   }
   static bool classof(const NonConstantExpr *) { return true; }
 };
@@ -465,6 +549,7 @@ public:
       return right;
     return 0;
   }
+  Width getWidth() const { return left->getWidth(); }
  
 protected:
   BinaryExpr(const ref<Expr> &l, const ref<Expr> &r) : left(l), right(r) {}
@@ -477,6 +562,23 @@ public:
   static bool classof(const BinaryExpr *) { return true; }
 };
 
+class FBinaryExpr : public BinaryExpr {
+protected:
+  FBinaryExpr(const ref<Expr> &l, const ref<Expr> &r, bool IsIEEE) : BinaryExpr(l, r), IsIEEE(IsIEEE) {}
+  bool IsIEEE:1;
+
+public:
+  static bool classof(const Expr *E) {
+    Kind k = E->getKind();
+    return Expr::FBinaryKindFirst <= k && k <= Expr::FBinaryKindLast;
+  }
+  static bool classof(const FBinaryExpr *) { return true; }
+  bool isIEEE() const { return IsIEEE; }
+  FPCategories getCategories(bool isIEEE) const;
+
+protected:
+  virtual FPCategories _getCategories() const = 0;
+};
 
 class CmpExpr : public BinaryExpr {
 
@@ -491,6 +593,63 @@ public:
     return Expr::CmpKindFirst <= k && k <= Expr::CmpKindLast;
   }
   static bool classof(const CmpExpr *) { return true; }
+};
+
+class FCmpExpr : public CmpExpr {
+protected:
+  FCmpExpr(const ref<Expr> &l, const ref<Expr> &r, const ref<Expr> &pred, bool IsIEEE) : CmpExpr(l, r), pred(pred), IsIEEE(IsIEEE) {}
+  ref<Expr> pred;
+  bool IsIEEE:1;
+
+public:
+  // Shamelessly copied from CmpInst::Predicate to avoid requiring Instructions.h here
+  enum Predicate {
+    FALSE = 0, OEQ = 1, OGT = 2, OGE = 3,
+    OLT = 4, OLE = 5, ONE = 6, ORD = 7,
+    UNO = 8, UEQ = 9, UGT = 10, UGE = 11,
+    ULT = 12, ULE = 13, UNE = 14, TRUE = 15
+  };
+
+  static bool classof(const Expr *E) {
+    return E->getKind() == Expr::FCmp;
+  }
+  static bool classof(const FCmpExpr *) { return true; }
+  bool isIEEE() const { return IsIEEE; }
+  unsigned getNumKids() const { return 3; }
+  ref<Expr> getKid(unsigned i) const { 
+    if (i == 2)
+      return pred;
+    return CmpExpr::getKid(i);
+  }
+  static ref<Expr> alloc (const ref<Expr> &l, const ref<Expr> &r, const ref<Expr> &pred, bool IsIEEE) {
+    ref<Expr> res(new FCmpExpr(l, r, pred, IsIEEE));
+    res->computeHash();
+    return res;
+  }
+  static ref<Expr> create(const ref<Expr> &l, const ref<Expr> &r, const ref<Expr> &pred, bool IsIEEE);
+  Kind getKind() const { return FCmp; }
+  Predicate getPredicate() const { return (Predicate) cast<ConstantExpr>(pred)->getZExtValue(); }
+
+  static bool isCommutative(Predicate pred) {
+    unsigned pComm = pred & (OLT | OGT);
+    return (pComm != OLT && pComm != OGT);
+  }
+  bool isCommutative() const {
+    return isCommutative(getPredicate());
+  }
+
+  static Predicate getSwappedPredicate(Predicate pred) {
+    if (isCommutative(pred))
+      return pred;
+    return (Predicate) (pred ^ (OLT | OGT));
+  }
+  Predicate getSwappedPredicate() const {
+    return getSwappedPredicate(getPredicate());
+  }
+
+  virtual ref<Expr> rebuild(ref<Expr> kids[]) const {
+    return create(kids[0], kids[1], kids[2], IsIEEE);
+  }
 };
 
 // Special
@@ -958,26 +1117,109 @@ public:                                                          \
 CAST_EXPR_CLASS(SExt)
 CAST_EXPR_CLASS(ZExt)
 
-// Arithmetic/Bit Exprs
+class FConvertExpr : public NonConstantExpr {
+public:
+  ref<Expr> src;
+  const llvm::fltSemantics *sem;
 
-#define ARITHMETIC_EXPR_CLASS(_class_kind)                           \
-class _class_kind ## Expr : public BinaryExpr {                      \
+public:
+  FConvertExpr(const ref<Expr> &src, const llvm::fltSemantics *toSem)
+    : src(src), sem(toSem) {}
+
+  unsigned getWidth() const;
+
+  const llvm::fltSemantics *getSemantics() const { return sem; }
+
+  unsigned getNumKids() const { return 1; }
+  ref<Expr> getKid(unsigned i) const { return (i==0) ? src : 0; }
+  
+  static bool needsResultType() { return true; }
+
+  int compareContents(const Expr &b) const {
+    const FConvertExpr &eb = static_cast<const FConvertExpr&>(b);
+    if (sem != eb.sem) return sem < eb.sem ? -1 : 1;
+    return 0;
+  }
+
+  virtual unsigned computeHash();
+
+  static bool classof(const Expr *E) {
+    Kind k = E->getKind();
+    return Expr::FConvertKindFirst <= k && k <= Expr::FConvertKindLast;
+  }
+  static bool classof(const FConvertExpr *) { return true; }
+};
+
+class F2FConvertExpr : public FConvertExpr {
+public:
+  bool FromIsIEEE:1;
+
+public:
+  F2FConvertExpr(const ref<Expr> &src, const llvm::fltSemantics *toSem, bool FromIsIEEE)
+    : FConvertExpr(src, toSem), FromIsIEEE(FromIsIEEE) {}
+
+  bool fromIsIEEE() const { return FromIsIEEE; }
+
+  int compareContents(const Expr &b) const {
+    const F2FConvertExpr &eb = static_cast<const F2FConvertExpr&>(b);
+    if (sem != eb.sem) return sem < eb.sem ? -1 : 1;
+    if (FromIsIEEE != eb.FromIsIEEE) return FromIsIEEE < eb.FromIsIEEE ? -1 : 1;
+    return 0;
+  }
+
+  static bool classof(const Expr *E) {
+    Kind k = E->getKind();
+    return Expr::F2FConvertKindFirst <= k && k <= Expr::F2FConvertKindLast;
+  }
+  static bool classof(const F2FConvertExpr *) { return true; }
+};
+
+class F2IConvertExpr : public NonConstantExpr {
+public:
+  ref<Expr> src;
+  Width width;
+  bool FromIsIEEE:1;
+
+public:
+  F2IConvertExpr(const ref<Expr> &src, Width width, bool FromIsIEEE)
+    : src(src), width(width), FromIsIEEE(FromIsIEEE) {}
+
+  unsigned getWidth() const { return width; }
+  bool fromIsIEEE() const { return FromIsIEEE; }
+
+  unsigned getNumKids() const { return 1; }
+  ref<Expr> getKid(unsigned i) const { return (i==0) ? src : 0; }
+  
+  int compareContents(const Expr &b) const {
+    const F2IConvertExpr &eb = static_cast<const F2IConvertExpr&>(b);
+    if (width != eb.width) return width < eb.width ? -1 : 1;
+    if (FromIsIEEE != eb.FromIsIEEE) return FromIsIEEE < eb.FromIsIEEE ? -1 : 1;
+    return 0;
+  }
+
+  static bool classof(const Expr *E) {
+    Kind k = E->getKind();
+    return Expr::F2IConvertKindFirst <= k && k <= Expr::F2IConvertKindLast;
+  }
+  static bool classof(const F2IConvertExpr *) { return true; }
+};
+
+#define EXPR_CLASS(_class_kind, _base_class, _num_kids, _expr_decl, _expr_ref, _kid_ref)              \
+class _class_kind ## Expr : public _base_class {                     \
 public:                                                              \
   static const Kind kind = _class_kind;                              \
-  static const unsigned numKids = 2;                                 \
+  static const unsigned numKids = _num_kids;                         \
 public:                                                              \
-    _class_kind ## Expr(const ref<Expr> &l,                          \
-                        const ref<Expr> &r) : BinaryExpr(l,r) {}     \
-    static ref<Expr> alloc(const ref<Expr> &l, const ref<Expr> &r) { \
-      ref<Expr> res(new _class_kind ## Expr (l, r));                 \
+    _class_kind ## Expr _expr_decl : _base_class _expr_ref {}        \
+    static ref<Expr> alloc _expr_decl {                              \
+      ref<Expr> res(new _class_kind ## Expr _expr_ref);              \
       res->computeHash();                                            \
       return res;                                                    \
     }                                                                \
-    static ref<Expr> create(const ref<Expr> &l, const ref<Expr> &r); \
-    Width getWidth() const { return left->getWidth(); }              \
+    static ref<Expr> create _expr_decl;                              \
     Kind getKind() const { return _class_kind; }                     \
     virtual ref<Expr> rebuild(ref<Expr> kids[]) const {              \
-      return create(kids[0], kids[1]);                               \
+      return create _kid_ref;                                        \
     }                                                                \
                                                                      \
     static bool classof(const Expr *E) {                             \
@@ -985,62 +1227,153 @@ public:                                                              \
     }                                                                \
     static bool classof(const  _class_kind ## Expr *) {              \
       return true;                                                   \
-    }                                                                \
-};                                                                   \
+    }
 
-ARITHMETIC_EXPR_CLASS(Add)
-ARITHMETIC_EXPR_CLASS(Sub)
-ARITHMETIC_EXPR_CLASS(Mul)
-ARITHMETIC_EXPR_CLASS(UDiv)
-ARITHMETIC_EXPR_CLASS(SDiv)
-ARITHMETIC_EXPR_CLASS(URem)
-ARITHMETIC_EXPR_CLASS(SRem)
-ARITHMETIC_EXPR_CLASS(And)
-ARITHMETIC_EXPR_CLASS(Or)
-ARITHMETIC_EXPR_CLASS(Xor)
-ARITHMETIC_EXPR_CLASS(Shl)
-ARITHMETIC_EXPR_CLASS(LShr)
-ARITHMETIC_EXPR_CLASS(AShr)
+#define FLOAT_CONVERT_EXPR_CLASS(_class_kind) \
+    EXPR_CLASS(_class_kind, FConvertExpr, 1, (const ref<Expr> &src, const llvm::fltSemantics *sem), (src, sem), (kids[0], sem)) \
+    FPCategories getCategories(bool isIEEE) const; \
+ };
+
+#define F2F_CONVERT_EXPR_CLASS(_class_kind) \
+    EXPR_CLASS(_class_kind, F2FConvertExpr, 1, (const ref<Expr> &src, const llvm::fltSemantics *sem, bool fromIsIEEE), (src, sem, fromIsIEEE), (kids[0], sem, FromIsIEEE)) \
+    FPCategories getCategories(bool isIEEE) const; \
+ };
+
+#define F2I_CONVERT_EXPR_CLASS(_class_kind) \
+    EXPR_CLASS(_class_kind, F2IConvertExpr, 1, (const ref<Expr> &src, Width width, bool fromIsIEEE), (src, width, fromIsIEEE), (kids[0], width, FromIsIEEE)) \
+ };
+
+FLOAT_CONVERT_EXPR_CLASS(UIToFP)
+FLOAT_CONVERT_EXPR_CLASS(SIToFP)
+
+F2F_CONVERT_EXPR_CLASS(FPExt)
+F2F_CONVERT_EXPR_CLASS(FPTrunc)
+
+F2I_CONVERT_EXPR_CLASS(FPToUI)
+F2I_CONVERT_EXPR_CLASS(FPToSI)
+
+class FOrd1Expr : public NonConstantExpr {
+public:
+  ref<Expr> src;
+  bool IsIEEE:1;
+
+public:
+  FOrd1Expr(const ref<Expr> &src, bool IsIEEE) : src(src), IsIEEE(IsIEEE) {}
+
+  bool isIEEE() const { return IsIEEE; }
+
+  unsigned getWidth() const { return Bool; }
+
+  Kind getKind() const { return FOrd1; }
+  static ref<Expr> create(const ref<Expr> &e, bool isIEEE);
+  static ref<Expr> alloc(const ref<Expr> &e, bool isIEEE) {
+    ref<Expr> r(new FOrd1Expr(e, isIEEE));
+    r->computeHash();
+    return r;
+  }
+
+  unsigned getNumKids() const { return 1; }
+  ref<Expr> getKid(unsigned i) const { return (i==0) ? src : 0; }
+  
+  virtual ref<Expr> rebuild(ref<Expr> kids[]) const {
+    return create(kids[0], IsIEEE);
+  }
+
+  static bool classof(const Expr *E) {
+    return E->getKind() == Expr::FOrd1;
+  }
+  static bool classof(const FOrd1Expr *) { return true; }
+};
+
+class FSqrtExpr : public NonConstantExpr {
+public:
+  ref<Expr> src;
+  bool IsIEEE:1;
+
+public:
+  FSqrtExpr(const ref<Expr> &src, bool IsIEEE) : src(src), IsIEEE(IsIEEE) {}
+
+  bool isIEEE() const { return IsIEEE; }
+
+  unsigned getWidth() const { return src->getWidth(); }
+  FPCategories getCategories(bool isIEEE) const;
+
+  Kind getKind() const { return FSqrt; }
+  static ref<Expr> create(const ref<Expr> &e, bool isIEEE);
+  static ref<Expr> alloc(const ref<Expr> &e, bool isIEEE) {
+    ref<Expr> r(new FSqrtExpr(e, isIEEE));
+    r->computeHash();
+    return r;
+  }
+
+  unsigned getNumKids() const { return 1; }
+  ref<Expr> getKid(unsigned i) const { return (i==0) ? src : 0; }
+  
+  virtual ref<Expr> rebuild(ref<Expr> kids[]) const {
+    return create(kids[0], IsIEEE);
+  }
+
+  static bool classof(const Expr *E) {
+    return E->getKind() == Expr::FSqrt;
+  }
+  static bool classof(const FSqrtExpr *) { return true; }
+};
+
+// Arithmetic/Bit Exprs
+
+#define INT_EXPR_DECL (const ref<Expr> &l, const ref<Expr> &r)
+#define INT_EXPR_REF  (l, r)
+#define INT_KID_REF   (kids[0], kids[1])
+
+#define FLOAT_EXPR_DECL (const ref<Expr> &l, const ref<Expr> &r, bool isIEEE)
+#define FLOAT_EXPR_REF  (l, r, isIEEE)
+#define FLOAT_KID_REF   (kids[0], kids[1], IsIEEE)
+
+#define INT_ARITHMETIC_EXPR_CLASS(_class_kind) \
+    EXPR_CLASS(_class_kind, BinaryExpr, 2, INT_EXPR_DECL, INT_EXPR_REF, INT_KID_REF) };
+#define FLOAT_ARITHMETIC_EXPR_CLASS(_class_kind) \
+    EXPR_CLASS(_class_kind, FBinaryExpr, 2, FLOAT_EXPR_DECL, FLOAT_EXPR_REF, FLOAT_KID_REF) \
+protected:                                          \
+    FPCategories _getCategories() const;            \
+};
+
+// Bitvector
+INT_ARITHMETIC_EXPR_CLASS(Add)
+INT_ARITHMETIC_EXPR_CLASS(Sub)
+INT_ARITHMETIC_EXPR_CLASS(Mul)
+INT_ARITHMETIC_EXPR_CLASS(UDiv)
+INT_ARITHMETIC_EXPR_CLASS(SDiv)
+INT_ARITHMETIC_EXPR_CLASS(URem)
+INT_ARITHMETIC_EXPR_CLASS(SRem)
+INT_ARITHMETIC_EXPR_CLASS(And)
+INT_ARITHMETIC_EXPR_CLASS(Or)
+INT_ARITHMETIC_EXPR_CLASS(Xor)
+INT_ARITHMETIC_EXPR_CLASS(Shl)
+INT_ARITHMETIC_EXPR_CLASS(LShr)
+INT_ARITHMETIC_EXPR_CLASS(AShr)
+
+// Floating point
+FLOAT_ARITHMETIC_EXPR_CLASS(FAdd)
+FLOAT_ARITHMETIC_EXPR_CLASS(FSub)
+FLOAT_ARITHMETIC_EXPR_CLASS(FMul)
+FLOAT_ARITHMETIC_EXPR_CLASS(FDiv)
+FLOAT_ARITHMETIC_EXPR_CLASS(FRem)
 
 // Comparison Exprs
 
-#define COMPARISON_EXPR_CLASS(_class_kind)                           \
-class _class_kind ## Expr : public CmpExpr {                         \
-public:                                                              \
-  static const Kind kind = _class_kind;                              \
-  static const unsigned numKids = 2;                                 \
-public:                                                              \
-    _class_kind ## Expr(const ref<Expr> &l,                          \
-                        const ref<Expr> &r) : CmpExpr(l,r) {}        \
-    static ref<Expr> alloc(const ref<Expr> &l, const ref<Expr> &r) { \
-      ref<Expr> res(new _class_kind ## Expr (l, r));                 \
-      res->computeHash();                                            \
-      return res;                                                    \
-    }                                                                \
-    static ref<Expr> create(const ref<Expr> &l, const ref<Expr> &r); \
-    Kind getKind() const { return _class_kind; }                     \
-    virtual ref<Expr> rebuild(ref<Expr> kids[]) const {              \
-      return create(kids[0], kids[1]);                               \
-    }                                                                \
-                                                                     \
-    static bool classof(const Expr *E) {                             \
-      return E->getKind() == Expr::_class_kind;                      \
-    }                                                                \
-    static bool classof(const  _class_kind ## Expr *) {              \
-      return true;                                                   \
-    }                                                                \
-};                                                                   \
+#define INT_COMPARISON_EXPR_CLASS(_class_kind) \
+    EXPR_CLASS(_class_kind, CmpExpr, 2, INT_EXPR_DECL, INT_EXPR_REF, INT_KID_REF) };
 
-COMPARISON_EXPR_CLASS(Eq)
-COMPARISON_EXPR_CLASS(Ne)
-COMPARISON_EXPR_CLASS(Ult)
-COMPARISON_EXPR_CLASS(Ule)
-COMPARISON_EXPR_CLASS(Ugt)
-COMPARISON_EXPR_CLASS(Uge)
-COMPARISON_EXPR_CLASS(Slt)
-COMPARISON_EXPR_CLASS(Sle)
-COMPARISON_EXPR_CLASS(Sgt)
-COMPARISON_EXPR_CLASS(Sge)
+INT_COMPARISON_EXPR_CLASS(Eq)
+INT_COMPARISON_EXPR_CLASS(Ne)
+INT_COMPARISON_EXPR_CLASS(Ult)
+INT_COMPARISON_EXPR_CLASS(Ule)
+INT_COMPARISON_EXPR_CLASS(Ugt)
+INT_COMPARISON_EXPR_CLASS(Uge)
+INT_COMPARISON_EXPR_CLASS(Slt)
+INT_COMPARISON_EXPR_CLASS(Sle)
+INT_COMPARISON_EXPR_CLASS(Sgt)
+INT_COMPARISON_EXPR_CLASS(Sge)
 
 // Implementations
 

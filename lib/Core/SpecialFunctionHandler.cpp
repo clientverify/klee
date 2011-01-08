@@ -17,12 +17,27 @@
 
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/Internal/Module/KModule.h"
+#include "klee/Internal/Support/ModuleUtil.h"
 
 #include "Executor.h"
 #include "MemoryManager.h"
 
+#include "llvm/DerivedTypes.h"
+#include "llvm/LLVMContext.h"
 #include "llvm/Module.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/MemoryBuffer.h"
+#include "llvm/System/Host.h"
+#include "llvm/System/Path.h"
+
+#ifdef HAVE_OPENCL
+#include "clang/CodeGen/CodeGenAction.h"
+#include "clang/Frontend/CompilerInstance.h"
+#include "clang/Frontend/CompilerInvocation.h"
+#include "clang/Frontend/TextDiagnosticPrinter.h"
+
+#include "klee/Internal/CL/clintern.h"
+#endif
 
 #include <errno.h>
 
@@ -86,9 +101,19 @@ HandlerInfo handlerInfo[] = {
   add("klee_print_range", handlePrintRange, false),
   add("klee_set_forking", handleSetForking, false),
   add("klee_stack_trace", handleStackTrace, false),
+  add("klee_dump_constraints", handleDumpConstraints, false),
+  add("klee_watch", handleWatch, false),
   add("klee_warning", handleWarning, false),
   add("klee_warning_once", handleWarningOnce, false),
   add("klee_alias_function", handleAliasFunction, false),
+  add("klee_ocl_compile", handleOclCompile, true),
+  add("klee_ocl_get_arg_type", handleOclGetArgType, true),
+  add("klee_ocl_get_arg_count", handleOclGetArgCount, true),
+  add("klee_lookup_module_global", handleLookupModuleGlobal, true),
+  add("klee_icall_create_arg_list", handleICallCreateArgList, true),
+  add("klee_icall_add_arg", handleICallAddArg, false),
+  add("klee_icall", handleICall, false),
+  add("klee_icall_destroy_arg_list", handleICallDestroyArgList, false),
   add("malloc", handleMalloc, true),
   add("realloc", handleRealloc, true),
 
@@ -117,12 +142,12 @@ SpecialFunctionHandler::SpecialFunctionHandler(Executor &_executor)
   : executor(_executor) {}
 
 
-void SpecialFunctionHandler::prepare() {
+void SpecialFunctionHandler::prepare(KModule *kmodule) {
   unsigned N = sizeof(handlerInfo)/sizeof(handlerInfo[0]);
 
   for (unsigned i=0; i<N; ++i) {
     HandlerInfo &hi = handlerInfo[i];
-    Function *f = executor.kmodule->module->getFunction(hi.name);
+    Function *f = kmodule->module->getFunction(hi.name);
     
     // No need to create if the function doesn't exist, since it cannot
     // be called in that case.
@@ -141,12 +166,12 @@ void SpecialFunctionHandler::prepare() {
   }
 }
 
-void SpecialFunctionHandler::bind() {
+void SpecialFunctionHandler::bind(KModule *kmodule) {
   unsigned N = sizeof(handlerInfo)/sizeof(handlerInfo[0]);
 
   for (unsigned i=0; i<N; ++i) {
     HandlerInfo &hi = handlerInfo[i];
-    Function *f = executor.kmodule->module->getFunction(hi.name);
+    Function *f = kmodule->module->getFunction(hi.name);
     
     if (f && (!hi.doNotOverride || f->isDeclaration()))
       handlers[f] = std::make_pair(hi.handler, hi.hasReturnValue);
@@ -211,6 +236,70 @@ SpecialFunctionHandler::readStringAtAddress(ExecutionState &state,
   std::string result(buf);
   delete[] buf;
   return result;
+}
+
+// reads a memory block from memory
+void
+SpecialFunctionHandler::readMemoryAtAddress(ExecutionState &state, 
+                                            ref<Expr> addressExpr,
+                                            void *data,
+                                            size_t size) {
+  ObjectPair op;
+  addressExpr = executor.toUnique(state, addressExpr);
+  ref<ConstantExpr> address = cast<ConstantExpr>(addressExpr);
+  if (!state.addressSpace.resolveOne(address, op))
+    assert(0 && "XXX out of bounds / multiple resolution unhandled");
+  bool res;
+  assert(executor.solver->mustBeTrue(state, 
+                                     EqExpr::create(address, 
+                                                    op.first->getBaseExpr()),
+                                     res) &&
+         res &&
+         "XXX interior pointer unhandled");
+  const MemoryObject *mo = op.first;
+  const ObjectState *os = op.second;
+
+  assert(size < mo->size && "Memory object too small for data");
+  char *buf = (char *) data;
+
+  unsigned i;
+  for (i = 0; i < mo->size; i++) {
+    ref<Expr> cur = os->read8(i);
+    cur = executor.toUnique(state, cur);
+    assert(isa<ConstantExpr>(cur) && 
+           "hit symbolic char while reading concrete memory");
+    buf[i] = cast<ConstantExpr>(cur)->getZExtValue(8);
+  }
+}
+
+// writes a memory block to memory
+void
+SpecialFunctionHandler::writeMemoryAtAddress(ExecutionState &state, 
+                                             ref<Expr> addressExpr,
+                                             const void *data,
+                                             size_t size) {
+  ObjectPair op;
+  addressExpr = executor.toUnique(state, addressExpr);
+  ref<ConstantExpr> address = cast<ConstantExpr>(addressExpr);
+  if (!state.addressSpace.resolveOne(address, op))
+    assert(0 && "XXX out of bounds / multiple resolution unhandled");
+  bool res;
+  assert(executor.solver->mustBeTrue(state, 
+                                     EqExpr::create(address, 
+                                                    op.first->getBaseExpr()),
+                                     res) &&
+         res &&
+         "XXX interior pointer unhandled");
+  const MemoryObject *mo = op.first;
+  ObjectState *os = const_cast<ObjectState *>(op.second);
+
+  assert(size < mo->size && "Memory object too small for data");
+  const char *buf = (const char *) data;
+
+  unsigned i;
+  for (i = 0; i < mo->size; i++) {
+    os->write8(i, buf[i]);
+  }
 }
 
 /****/
@@ -438,6 +527,20 @@ void SpecialFunctionHandler::handleStackTrace(ExecutionState &state,
                                               KInstruction *target,
                                               std::vector<ref<Expr> > &arguments) {
   state.dumpStack(std::cout);
+}
+
+void SpecialFunctionHandler::handleDumpConstraints(ExecutionState &state,
+                                                   KInstruction *target,
+                                                   std::vector<ref<Expr> > &arguments) {
+  state.constraints.dump(std::cout);
+}
+
+void SpecialFunctionHandler::handleWatch(ExecutionState &state,
+                                         KInstruction *target,
+                                         std::vector<ref<Expr> > &arguments) {
+  state.watchpoint = arguments[0];
+  assert(isa<ConstantExpr>(arguments[1]) && "Size param must be constant");
+  state.watchpointSize = cast<ConstantExpr>(arguments[1])->getZExtValue();
 }
 
 void SpecialFunctionHandler::handleWarning(ExecutionState &state,
@@ -704,4 +807,229 @@ void SpecialFunctionHandler::handleMarkGlobal(ExecutionState &state,
     assert(!mo->isLocal);
     mo->isGlobal = true;
   }
+}
+
+void SpecialFunctionHandler::handleOclCompile(ExecutionState &state,
+                                              KInstruction *target,
+                                              std::vector<ref<Expr> > &arguments) {
+#ifdef HAVE_OPENCL
+  const char *codeName = "<OpenCL code>";
+
+  std::string code = readStringAtAddress(state, arguments[0]);
+
+  MemoryBuffer *buf = MemoryBuffer::getMemBuffer(code);
+
+  OwningPtr<clang::CompilerInvocation> CI(new clang::CompilerInvocation);
+
+  clang::TextDiagnosticPrinter *DiagClient =
+    new clang::TextDiagnosticPrinter(errs(), clang::DiagnosticOptions());
+  clang::Diagnostic *Diag = new clang::Diagnostic(DiagClient);
+
+  SmallVector<StringRef, 8> splitArgs;
+  ref<Expr> argsExpr = executor.toUnique(state, arguments[1]);
+  if (ConstantExpr *argsCE = dyn_cast<ConstantExpr>(argsExpr)) {
+    if (!argsCE->isZero()) {
+      std::string args = readStringAtAddress(state, argsCE);
+      SplitString(args, splitArgs);
+    }
+  }
+
+  const char **argv = new const char*[splitArgs.size() + 2];
+  argv[0] = "-x";
+  argv[1] = "cl";
+
+       const char **argi = argv+2;
+  for (SmallVector<StringRef, 8>::const_iterator
+         i = splitArgs.begin(),
+         e = splitArgs.end(); i != e; ++i, ++argi) {
+    char *arg = new char[i->size() + 1];
+    memcpy(arg, i->data(), i->size());
+    arg[i->size()] = 0;
+    *argi = arg;
+  }
+
+  clang::CompilerInvocation::CreateFromArgs(*CI, argv, argv+splitArgs.size()+2, *Diag);
+
+  for (argi = argv+2; argi != argv+splitArgs.size()+2; ++argi) {
+    delete *argi;
+  }
+  delete argv;
+
+  CI->getFrontendOpts().Inputs.clear();
+  CI->getFrontendOpts().Inputs.push_back(std::pair<clang::InputKind, std::string>(
+    clang::IK_OpenCL, codeName));
+  CI->getPreprocessorOpts().Includes.push_back(KLEE_SRC_DIR "/include/klee/clkernel.h");
+  CI->getPreprocessorOpts().addRemappedFile(codeName, buf);
+
+  CI->getTargetOpts().Triple = sys::getHostTriple();
+
+  clang::CompilerInstance Clang;
+  Clang.setLLVMContext(&getGlobalContext());
+  Clang.setInvocation(CI.take());
+  Clang.setDiagnostics(Diag);
+
+  OwningPtr<clang::CodeGenAction> Act(new clang::EmitLLVMOnlyAction);
+  if (!Clang.ExecuteAction(*Act)) {
+    executor.bindLocal(target, state, 
+                       ConstantExpr::create(0, sizeof(uintptr_t) * 8));
+    Clang.takeLLVMContext();
+    return;
+  }
+
+  Module *Mod = Act->takeModule();
+  Mod->dump();
+
+  llvm::sys::Path LibraryDir(KLEE_DIR "/" RUNTIME_CONFIGURATION "/lib");
+  llvm::sys::Path Path(LibraryDir);
+  Path.appendComponent("libkleeRuntimeCLKernel.bca");
+  Mod = klee::linkWithLibrary(Mod, Path.c_str());
+
+  unsigned moduleId = executor.addModule(Mod, Interpreter::ModuleOptions(LibraryDir.c_str(), false, true));
+  executor.initializeGlobals(state, moduleId);
+  executor.bindModuleConstants(moduleId);
+
+  executor.bindLocal(target, state, 
+                     ConstantExpr::create((uintptr_t) Mod,
+                                          sizeof(uintptr_t) * 8));
+
+  Clang.takeLLVMContext();
+#else
+  executor.terminateStateOnError(state, 
+                                 "OpenCL support not available", 
+                                 "opencl.err");
+#endif
+}
+
+#ifdef HAVE_OPENCL
+static cl_intern_arg_type typeAsCLArgType(const Type *t) {
+  if (t->isIntegerTy(8))
+    return CL_INTERN_ARG_TYPE_I8;
+  if (t->isIntegerTy(16))
+    return CL_INTERN_ARG_TYPE_I16;
+  if (t->isIntegerTy(32))
+    return CL_INTERN_ARG_TYPE_I32;
+  if (t->isIntegerTy(64))
+    return CL_INTERN_ARG_TYPE_I64;
+  if (t->isFloatTy())
+    return CL_INTERN_ARG_TYPE_F32;
+  if (t->isDoubleTy())
+    return CL_INTERN_ARG_TYPE_F64;
+  if (t->isPointerTy())
+    return CL_INTERN_ARG_TYPE_MEM;
+  assert(0 && "Unknown type");
+}
+#endif
+
+void SpecialFunctionHandler::handleOclGetArgType(ExecutionState &state,
+                                                 KInstruction *target,
+                                                 std::vector<ref<Expr> > &arguments) {
+#ifdef HAVE_OPENCL
+  uintptr_t function = cast<ConstantExpr>(arguments[0])->getZExtValue();
+  Function *functionPtr = (Function *) function;
+
+  size_t argIndex = cast<ConstantExpr>(arguments[1])->getZExtValue();
+  const Type *argType = functionPtr->getFunctionType()->getParamType(argIndex);
+  assert(argType && "arg out of bounds");
+  cl_intern_arg_type argCLType = typeAsCLArgType(argType);
+
+  executor.bindLocal(target, state, 
+                     ConstantExpr::create(argCLType,
+                                          sizeof(cl_intern_arg_type) * 8));
+#else
+  executor.terminateStateOnError(state, 
+                                 "OpenCL support not available", 
+                                 "opencl.err");
+#endif
+}
+
+void SpecialFunctionHandler::handleOclGetArgCount(ExecutionState &state,
+                                                  KInstruction *target,
+                                                  std::vector<ref<Expr> > &arguments) {
+  uintptr_t function = cast<ConstantExpr>(arguments[0])->getZExtValue();
+  Function *functionPtr = (Function *) function;
+
+  unsigned argCount = functionPtr->getFunctionType()->getNumParams();
+
+  executor.bindLocal(target, state,
+                     ConstantExpr::create(argCount,
+                                          sizeof(unsigned) * 8));
+}
+
+void SpecialFunctionHandler::handleLookupModuleGlobal(ExecutionState &state,
+                                                      KInstruction *target,
+                                                      std::vector<ref<Expr> > &arguments) {
+  uintptr_t module = cast<ConstantExpr>(arguments[0])->getZExtValue();
+  std::string functionName = readStringAtAddress(state, arguments[1]);
+
+  Module *modulePtr = (Module *) module;
+
+  GlobalValue *globalVal = modulePtr->getNamedValue(functionName);
+  if (!globalVal) {
+    executor.bindLocal(target, state, 
+                       ConstantExpr::create(0,
+                                            sizeof(uintptr_t) * 8));
+    return;
+  }
+
+  executor.bindLocal(target, state, executor.globalAddresses.find(globalVal)->second);
+}
+
+void SpecialFunctionHandler::handleICallCreateArgList(ExecutionState &state,
+                                                      KInstruction *target,
+                                                      std::vector<ref<Expr> > &arguments) {
+  std::vector< ref<Expr> > *args = new std::vector< ref<Expr> >;
+
+  executor.bindLocal(target, state, 
+                     ConstantExpr::create((uintptr_t) args,
+                                          sizeof(uintptr_t) * 8));
+}
+
+void SpecialFunctionHandler::handleICallAddArg(ExecutionState &state,
+                                               KInstruction *target,
+                                               std::vector<ref<Expr> > &arguments) {
+  uintptr_t args = cast<ConstantExpr>(arguments[0])->getZExtValue();
+  std::vector< ref<Expr> > *argsPtr = (std::vector< ref<Expr> > *) args;
+
+  ref<Expr> argPtr = arguments[1];
+
+  uintptr_t argSize = cast<ConstantExpr>(arguments[2])->getZExtValue();
+
+  ObjectPair op;
+  argPtr = executor.toUnique(state, argPtr);
+  ref<ConstantExpr> address = cast<ConstantExpr>(argPtr);
+  if (!state.addressSpace.resolveOne(address, op))
+    assert(0 && "XXX out of bounds / multiple resolution unhandled");
+  bool res;
+  assert(executor.solver->mustBeTrue(state, 
+                                     EqExpr::create(address, 
+                                                    op.first->getBaseExpr()),
+                                     res) &&
+         res &&
+         "XXX interior pointer unhandled");
+  const ObjectState *os = op.second;
+
+  ref<Expr> arg = os->read(0, argSize*8);
+
+  argsPtr->push_back(arg);
+}
+
+void SpecialFunctionHandler::handleICall(ExecutionState &state,
+                                         KInstruction *target,
+                                         std::vector<ref<Expr> > &arguments) {
+  uintptr_t fn = cast<ConstantExpr>(arguments[0])->getZExtValue();
+  Function *fnPtr = (Function *) fn;
+
+  uintptr_t args = cast<ConstantExpr>(arguments[1])->getZExtValue();
+  std::vector< ref<Expr> > *argsPtr = (std::vector< ref<Expr> > *) args;
+  
+  executor.executeCall(state, target, fnPtr, *argsPtr);
+}
+
+void SpecialFunctionHandler::handleICallDestroyArgList(ExecutionState &state,
+                                                       KInstruction *target,
+                                                       std::vector<ref<Expr> > &arguments) {
+  uintptr_t args = cast<ConstantExpr>(arguments[0])->getZExtValue();
+  std::vector< ref<Expr> > *argsPtr = (std::vector< ref<Expr> > *) args;
+
+  delete argsPtr;
 }

@@ -62,14 +62,29 @@ namespace klee {
   };
 
 class STPBuilder {
+  enum STPExprType {
+    etBV,
+    etBOOL,
+    etDontCare
+  };
+
   ::VC vc;
   ExprHandle tempVars[4];
-  ExprHashMap< std::pair<ExprHandle, unsigned> > constructed;
+  struct ConstructedExpr {
+    ConstructedExpr(ExprHandle expr, unsigned width, STPExprType type)
+      : expr(expr), width(width), type(type) {}
+    ExprHandle expr;
+    unsigned width;
+    STPExprType type;
+  };
+  ExprHashMap<ConstructedExpr> constructed;
 
   /// optimizeDivides - Rewrite division and reminders by constants
   /// into multiplies and shifts. STP should probably handle this for
   /// use.
   bool optimizeDivides;
+
+  unsigned fpCount;
 
 private:
   unsigned getShiftBits(unsigned amount) {
@@ -102,8 +117,9 @@ private:
   ::VCExpr getInitialArray(const Array *os);
   ::VCExpr getArrayForUpdate(const Array *root, const UpdateNode *un);
 
-  ExprHandle constructActual(ref<Expr> e, int *width_out);
-  ExprHandle construct(ref<Expr> e, int *width_out);
+  ExprHandle constructActual(ref<Expr> e, int *width_out, STPExprType *et_out);
+  ExprHandle construct(ref<Expr> e, int *width_out, STPExprType *et_out);
+  ExprHandle construct(ref<Expr> e, int *width_out, STPExprType et_out);
   
   ::VCExpr buildVar(const char *name, unsigned width);
   ::VCExpr buildArray(const char *name, unsigned indexWidth, unsigned valueWidth);
@@ -118,7 +134,7 @@ public:
   ExprHandle getInitialRead(const Array *os, unsigned index);
 
   ExprHandle construct(ref<Expr> e) { 
-    ExprHandle res = construct(e, 0);
+    ExprHandle res = construct(e, 0, e->getWidth() == 1 ? etBOOL : etBV);
     constructed.clear();
     return res;
   }

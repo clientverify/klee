@@ -23,6 +23,7 @@ namespace klee {
   class Expr;
   class ExecutionState;
   struct KInstruction;
+  struct KModule;
   template<typename T> class ref;
   
   class SpecialFunctionHandler {
@@ -44,11 +45,11 @@ namespace klee {
     /// prepared for execution. At the moment this involves deleting
     /// unused function bodies and marking intrinsics with appropriate
     /// flags for use in optimizations.
-    void prepare();
+    void prepare(KModule *kmodule);
 
     /// Initialize the internal handler map after the module has been
     /// prepared for execution.
-    void bind();
+    void bind(KModule *kmodule);
 
     bool handle(ExecutionState &state, 
                 llvm::Function *f,
@@ -58,6 +59,8 @@ namespace klee {
     /* Convenience routines */
 
     std::string readStringAtAddress(ExecutionState &state, ref<Expr> address);
+    void readMemoryAtAddress(ExecutionState &state, ref<Expr> addressExpr, void *data, size_t size);
+    void writeMemoryAtAddress(ExecutionState &state, ref<Expr> addressExpr, const void *data, size_t size);
     
     /* Handlers */
 
@@ -96,9 +99,19 @@ namespace klee {
     HANDLER(handleSetForking);
     HANDLER(handleSilentExit);
     HANDLER(handleStackTrace);
+    HANDLER(handleDumpConstraints);
+    HANDLER(handleWatch);
     HANDLER(handleUnderConstrained);
     HANDLER(handleWarning);
     HANDLER(handleWarningOnce);
+    HANDLER(handleOclCompile);
+    HANDLER(handleLookupModuleGlobal);
+    HANDLER(handleOclGetArgType);
+    HANDLER(handleOclGetArgCount);
+    HANDLER(handleICallCreateArgList);
+    HANDLER(handleICallAddArg);
+    HANDLER(handleICall);
+    HANDLER(handleICallDestroyArgList);
 #undef HANDLER
   };
 } // End klee namespace
