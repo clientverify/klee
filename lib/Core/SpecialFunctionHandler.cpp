@@ -546,7 +546,10 @@ void SpecialFunctionHandler::handleWatch(ExecutionState &state,
 void SpecialFunctionHandler::handleWarning(ExecutionState &state,
                                            KInstruction *target,
                                            std::vector<ref<Expr> > &arguments) {
-  assert(arguments.size()==1 && "invalid number of arguments to klee_warning");
+/* NUKLEAR KLEE begin */
+  //assert(arguments.size()==1 && "invalid number of arguments to klee_warning");
+  assert(arguments.size()>=1 && "invalid number of arguments to klee_warning");
+/* NUKLEAR KLEE end */
 
   std::string msg_str = readStringAtAddress(state, arguments[0]);
   klee_warning("%s: %s", state.stack.back().kf->function->getName().data(), 

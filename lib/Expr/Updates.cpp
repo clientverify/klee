@@ -119,6 +119,38 @@ int UpdateList::compare(const UpdateList &b) const {
   return 0;
 }
 
+/* NUKLEAR KLEE begin */
+void UpdateList::computeDigest(EVP_MD_CTX *mdctx) {
+  if (root && root->name.size())
+    EVP_DigestUpdate(mdctx, root->name.c_str(), root->name.size());
+
+  // Check the root itself in case we have separate objects with the
+  // same name.
+  EVP_DigestUpdate(mdctx, &root, sizeof(root));
+
+  unsigned get_size = getSize();
+  EVP_DigestUpdate(mdctx, &get_size, sizeof(get_size));
+
+  //unsigned myhash = hash();
+  //EVP_DigestUpdate(mdctx, &myhash, sizeof(myhash));
+
+  // XXX build comparison into update, make fast
+  const UpdateNode *an=head;
+  //std::stringstream ss;
+  for (; an ; an=an->next) {
+    EVP_DigestUpdate(mdctx, &an, sizeof(an));
+    unsigned hash_value = an->value->hash();
+    unsigned hash_index = an->index->hash();
+    EVP_DigestUpdate(mdctx, &hash_value, sizeof(hash_value));
+    EVP_DigestUpdate(mdctx, &hash_index, sizeof(hash_index));
+    //ss << an->value;
+    //ss << an->index;
+  }
+  //if (ss.str().size()) 
+  //  EVP_DigestUpdate(mdctx, ss.str().c_str(), ss.str().size());
+}
+/* NUKLEAR KLEE end*/
+
 unsigned UpdateList::hash() const {
   unsigned res = 0;
   for (unsigned i = 0, e = root->name.size(); i != e; ++i)

@@ -43,6 +43,10 @@
 using namespace llvm;
 using namespace klee;
 
+/* NUKLEAR KLEE begin */
+extern bool UseNuklear;
+/* NUKLEAR KLEE end */
+
 namespace {
   enum SwitchImplType {
     eSwitchTypeSimple,
@@ -86,6 +90,12 @@ namespace {
   InstrumentSIMD("instrument-simd",
                  cl::desc("Instrument every SIMD instruction with a call to klee_sse"),
                  cl::init(false));
+
+  /* NUKLEAR KLEE begin */
+  cl::list<std::string>
+  NuklearMergeFunction("nuklear-merge-function",
+                       cl::desc("Ordered list of functions"));
+  /* NUKLEAR KLEE end */
 }
 
 KModule::KModule(Module *_module) 
@@ -251,6 +261,31 @@ void KModule::prepare(const Interpreter::ModuleOptions &opts,
       }
     }
   }
+
+  /* NUKLEAR KLEE begin */
+  // The commandline option CheckpointMergeFunction holds a list function names,
+  // search for those functions and add them to the nuklearMergeFn
+  // vector, which will be used in the CheckpointMergeSearcher.  
+  if (UseNuklear && !NuklearMergeFunction.empty()) {
+
+    for (cl::list<std::string>::iterator it = NuklearMergeFunction.begin(), 
+           ie = NuklearMergeFunction.end(); it != ie; ++it) {
+
+      std::string &name = *it;
+      Function *f = module->getFunction(name);
+      if (!f) {
+        const llvm::FunctionType *Ty = 
+          FunctionType::get(Type::getVoidTy(getGlobalContext()),
+                            std::vector<const Type*>(), false);
+
+        f = Function::Create(Ty, GlobalVariable::ExternalLinkage, name, module);
+        llvm::errs() << name << " not found, creating new...\n";
+      }
+      llvm::errs() << "Adding Nuklear Merge Function: " << name << " (" << f << ")\n";
+      nuklearMergeFn.push_back(f);
+    }
+  }
+  /* NUKLEAR KLEE end */
 
   // Inject checks prior to optimization... we also perform the
   // invariant transformations that we will end up doing later so that

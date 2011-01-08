@@ -197,8 +197,24 @@ public:
   void write32(unsigned offset, uint32_t value);
   void write64(unsigned offset, uint64_t value);
 
-private:
+  /* NUKLEAR KLEE begin */
+  bool hasKnownSymbolics() const { return knownSymbolics; }
+  bool hasFlushMask() const { return flushMask; }
+  bool hasConcreteStore() const { return concreteStore; }
+  uint8_t getConcreteStore(int index) {return concreteStore[index];}
+  bool hasConcreteMask() const { return concreteMask; }
+  int compare(const ObjectState &b) const;
+  /* changed declaration of getUpdates() to public. */
   const UpdateList &getUpdates() const;
+  void computeDigest(EVP_MD_CTX *mdctx);
+  /* changed declaration of print() to public. */
+  void print(std::ostream &os) const;
+  void print(); 
+  void print_diff(std::vector<ObjectState*> &_ovec, std::ostream &os) const;
+  unsigned getCopyOnWriteOwner() {return copyOnWriteOwner; } /* added for NUKLEAR */
+  /* NUKLEAR KLEE end */
+
+private:
 
   void makeConcrete();
 
@@ -222,8 +238,6 @@ private:
   void markByteFlushed(unsigned offset);
   void markByteUnflushed(unsigned offset);
   void setKnownSymbolic(unsigned offset, Expr *value);
-
-  void print();
 };
   
 } // End klee namespace

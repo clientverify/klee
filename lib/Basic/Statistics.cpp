@@ -18,6 +18,9 @@ StatisticManager::StatisticManager()
     globalStats(0),
     indexedStats(0),
     contextStats(0),
+    /* NUKLEAR KLEE begin */
+    nuklearContextStats(0),
+    /* NUKLEAR KLEE end */
     index(0) {
 }
 

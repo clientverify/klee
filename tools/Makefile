@@ -15,7 +15,7 @@ LEVEL=..
 #
 # List all of the subdirectories that we will compile.
 #
-PARALLEL_DIRS=klee kleaver ktest-tool gen-random-bout klee-stats simd-count
+PARALLEL_DIRS=klee kleaver ktest-tool gen-random-bout klee-stats simd-count nuklear 
 
 include $(LEVEL)/Makefile.config
 

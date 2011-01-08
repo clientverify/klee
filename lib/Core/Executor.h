@@ -26,6 +26,10 @@
 #include <map>
 #include <set>
 
+/* NUKLEAR KLEE begin */
+#include "NuklearManager.h"
+/* NUKLEAR KLEE end*/
+
 struct KTest;
 
 namespace llvm {
@@ -64,6 +68,11 @@ namespace klee {
   class StatsTracker;
   class TimingSolver;
   class TreeStreamWriter;
+  /* NUKLEAR KLEE begin */
+  class NuklearManager;
+  class NuklearFunctionHandler;
+  class NuklearSearcher;
+  /* NUKLEAR KLEE end */
   template<class T> class ref;
 
   /// \todo Add a context object to keep track of data only live
@@ -78,6 +87,11 @@ class Executor : public Interpreter {
   friend class WeightedRandomSearcher;
   friend class SpecialFunctionHandler;
   friend class StatsTracker;
+  /* NUKLEAR KLEE begin */
+  friend class NuklearManager;
+  friend class NuklearFunctionHandler;
+  friend class NuklearSearcher;
+  /* NUKLEAR KLEE end */
 
 public:
   class Timer {
@@ -107,6 +121,12 @@ private:
   SpecialFunctionHandler *specialFunctionHandler;
   std::vector<TimerInfo*> timers;
   PTree *processTree;
+
+  /* NUKLEAR KLEE begin */
+  NuklearFunctionHandler *nuklearFunctionHandler;
+  NuklearManager *nuklearManager;
+  std::map<int, const struct KTest*> socketKTests;
+  /* NUKLEAR KLEE end */
 
   /// Used to track states that have been added during the current
   /// instructions step. 
@@ -420,6 +440,13 @@ public:
     replayPath = path;
     replayPosition = 0;
   }
+
+  /* NUKLEAR KLEE begin */
+  virtual void addSocketKTest(int id, const struct KTest *out) {
+    assert(!replayPath && !replayOut && "cannot replay socket");
+    socketKTests[id] = out;
+  }
+  /* NUKLEAR KLEE end */
 
   virtual unsigned
   addModule(llvm::Module *module, const ModuleOptions &opts);

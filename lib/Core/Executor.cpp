@@ -26,6 +26,11 @@
 #include "UserSearcher.h"
 #include "../Solver/SolverStats.h"
 
+/* NUKLEAR KLEE begin */
+#include "NuklearFunctionHandler.h"
+#include "NuklearManager.h"
+/* NUKLEAR KLEE end */
+
 #include "klee/ExecutionState.h"
 #include "klee/Expr.h"
 #include "klee/Interpreter.h"
@@ -77,7 +82,48 @@
 using namespace llvm;
 using namespace klee;
 
+
+/* NUKLEAR KLEE begin */
+bool UseNuklear = false; 
+bool NoExternals = false; 
+bool NoXWindows  = false;
+/* NUKLEAR KLEE end */
+
 namespace {
+
+  /* NUKLEAR KLEE begin */
+  cl::opt<bool, true> 
+  UseNuklearProxy("nuklear", 
+           cl::desc("Run in Nuklear mode."),
+           cl::location(UseNuklear),
+           cl::init(false));
+
+  // Commented out the NoExternals below so that it can be accessed through a
+  // proxy in another file (SpecialFunctionHandler.cpp)
+  cl::opt<bool, true> 
+  NoExternalsProxy("no-externals", 
+           cl::desc("Do not allow external functin calls"),
+           cl::location(NoExternals),
+           cl::init(false));
+
+  cl::opt<bool, true> 
+  NoXWindowsProxy("no-xwindows", 
+           cl::desc("Do not allow external XWindows function calls"),
+           cl::location(NoXWindows),
+           cl::init(false));
+   
+  cl::opt<bool>
+  PrintFunctionCalls("print-function-calls",
+                cl::init(false));
+ 
+  cl::opt<bool>
+  ReplaySocketNoZeroRecv("replay-socket-no-recv-zero", 
+                       cl::desc("Calls to recv will not return 0 once per "
+                                "replay object (after all of the objects  "
+                                "bytes have been returned in one or more "
+                                "socket reads.)"), cl::init(false));
+  /* NUKLEAR KLEE end */
+                             
   cl::opt<bool>
   DumpStatesOnHalt("dump-states-on-halt",
                    cl::init(true));
@@ -160,9 +206,11 @@ namespace {
   UseSTPQueryPCLog("use-stp-query-pc-log",
                    cl::init(false));
 
-  cl::opt<bool>
-  NoExternals("no-externals", 
-           cl::desc("Do not allow external functin calls"));
+	/* KLEE NUKLEAR begin */
+  //cl::opt<bool>
+  //NoExternals("no-externals", 
+  //         cl::desc("Do not allow external functin calls"));
+	/* KLEE NUKLEAR end */
 
   cl::opt<bool>
   UseCache("use-cache",
@@ -476,6 +524,15 @@ unsigned Executor::addModule(llvm::Module *module,
   if (!specialFunctionHandler)
     specialFunctionHandler = new SpecialFunctionHandler(*this);
 
+  /* NUKLEAR KLEE begin */
+  if (UseNuklear) {
+    nuklearManager = new NuklearManager(*this);
+    nuklearFunctionHandler = new NuklearFunctionHandler(*this, *nuklearManager);
+    nuklearFunctionHandler->prepare();
+    nuklearFunctionHandler->bind();
+  }
+  /* NUKLEAR KLEE end */
+
   specialFunctionHandler->prepare(kmodule);
   kmodule->prepare(opts, interpreterHandler);
   specialFunctionHandler->bind(kmodule);
@@ -507,6 +564,10 @@ Executor::~Executor() {
   for (std::vector<KModule*>::iterator i=kmodules.begin(), e=kmodules.end();
        i != e; ++i)
     delete *i;
+  /* NUKLEAR KLEE begin */
+  if (nuklearFunctionHandler)
+    delete nuklearFunctionHandler;
+  /* NUKLEAR KLEE end */
 }
 
 /***/
@@ -556,6 +617,9 @@ MemoryObject * Executor::addExternalObject(ExecutionState &state,
   MemoryObject *mo = memory->allocateFixed((uint64_t) (unsigned long) addr, 
                                            size, 0);
   ObjectState *os = bindObjectInState(state, mo, false);
+  /* NUKLEAR KLEE begin */
+  klee_warning("adding %d bytes from external address %lx", size, (uint64_t)addr);
+  /* NUKLEAR KLEE end */
   for(unsigned i = 0; i < size; i++)
     os->write8(i, ((uint8_t*)addr)[i]);
   if(isReadOnly)
@@ -1269,6 +1333,35 @@ void Executor::executeCall(ExecutionState &state,
                            KInstruction *ki,
                            Function *f,
                            std::vector< ref<Expr> > &arguments) {
+  /* NUKLEAR KLEE begin */
+  if (PrintFunctionCalls) {
+    #define MAX_DEPTH 64
+    int call_depth = 
+      state.stack.size() > MAX_DEPTH ? MAX_DEPTH : state.stack.size();
+    char call_depth_str[MAX_DEPTH+1];
+    memset(call_depth_str, '-', call_depth);
+    call_depth_str[call_depth] = '\0';
+    klee_warning("F%s%s (%d)", call_depth_str, 
+                 f->getNameStr().c_str(), state.id);
+  }
+  // FIXME Remove these Xpilot specific ignores
+  std::string widget_str("Widget_");
+  if (NoXWindows 
+      && f->getNameStr().substr(0,widget_str.size()) == widget_str) {
+      //klee_warning_once("Ignoring Widget function: %s", 
+      //                  f->getNameStr().c_str());
+      return;
+  }
+
+  //std::string widget_str("Paint_");
+  //if (NoXWindows 
+  //    && f->getNameStr().substr(0,widget_str.size()) == widget_str) {
+  //    //klee_warning_once("Ignoring Widget function: %s", 
+  //    //                  f->getNameStr().c_str());
+  //    return;
+  //}
+  /* NUKLEAR KLEE end */
+
   Instruction *i = ki->inst;
   if (f && f->isDeclaration()) {
     switch(f->getIntrinsicID()) {
@@ -1503,6 +1596,27 @@ static inline const llvm::fltSemantics * fpWidthToSemantics(unsigned width) {
     return 0;
   }
 }
+
+//void Executor::maintainPointerLocations(ExecutionState &state, KInstruction *ki) {
+//  Instruction *i = ki->inst;
+//  switch (i->getOpcode()) {
+//		case Instruction::Alloca: {
+//		  // result of instruction is a pointer
+//			break;
+//		}
+//		case Instruction::Load: {
+//		  // check loaded memoryobject to determine if it is a pointer
+//			break;
+//		}
+//		case Instruction::Store: {
+//		  // if pointer, add to memoryobject pointer mask
+//			break;
+//		}
+//		default: {
+//		  // base assumption, if any child is a pointer, parent is a pointer.
+//			break;
+//		}
+//}
 
 void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   Instruction *i = ki->inst;
@@ -2703,6 +2817,24 @@ void Executor::callExternalFunction(ExecutionState &state,
   if (specialFunctionHandler->handle(state, function, target, arguments))
     return;
   
+  /* NUKLEAR KLEE begin */
+  if (UseNuklear) {
+    if (nuklearFunctionHandler->handle(state, function, target, arguments))
+      return;
+  }
+
+  if (NoXWindows && function->getName()[0] == 'X') { 
+    std::string n_str = "nuklear_";
+    std::string f_str = state.stack.back().kf->function->getNameStr();
+    // check if we called this X function from within a nuklear_* function.
+    if (f_str.substr(0,n_str.size()) != n_str) {
+      klee_warning_once("Ignoring X function: %s", 
+                        function->getName().data());
+      return;
+    }
+  }
+  /* NUKLEAR KLEE end */
+
   if (NoExternals && !okExternals.count(function->getName())) {
     std::cerr << "KLEE:ERROR: Calling not-OK external function : " 
                << function->getNameStr() << "\n";
@@ -3143,8 +3275,17 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
   // Create a new object state for the memory object (instead of a copy).
   if (!replayOut) {
     static unsigned id = 0;
-    const Array *array = new Array("arr" + llvm::utostr(++id),
-                                   mo->size);
+    /* NUKLEAR KLEE begin */
+    //const Array *array = new Array("arr" + llvm::utostr(++id),
+    //                               mo->size);
+    const Array *array;
+    if (mo->name == "unnamed") {
+      array = new Array("arr" + llvm::utostr(++id), mo->size);
+    } else {
+      ++id;
+      array = new Array(mo->name, mo->size);
+    }
+    /* NUKLEAR KLEE end */
     bindObjectInState(state, mo, false, array);
     state.addSymbolic(mo, array);
     

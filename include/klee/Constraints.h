@@ -68,9 +68,10 @@ public:
   /// Dump the contents of this constraint set for debugging purposes.
   void dump(std::ostream &out) const;
 
-private:
+  /* NUKLEAR KLEE begin */
   std::vector< ref<Expr> > constraints;
-
+private:
+  /* NUKLEAR KLEE end */
   // returns true iff the constraints were modified
   bool rewriteConstraints(ExprVisitor &visitor);
 
