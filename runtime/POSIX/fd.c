@@ -31,7 +31,7 @@
 
 /* NUKLEAR KLEE begin */
 // NOTE(rcochran) unistd.h is needed for syscalls in x64. 
-#include <asm-x86_64/unistd.h> 
+//#include <asm-x86_64/unistd.h> 
 // NOTE(rcochran) time.h is needed if we are implementing symbolic time.
 #include <time.h> 
 //#include <sys/socket.h>
