@@ -16,6 +16,7 @@
 
 #include "klee/Expr.h"
 /* NUKLEAR KLEE begin */
+#include "Common.h"
 #include "CoreStats.h"
 #include "CallPathManager.h"
 #include "klee/Statistics.h"
@@ -52,6 +53,8 @@ namespace {
   NuklearFastDigest("nuklear-fast-digest");
   cl::opt<bool>
   NuklearPruneHack("nuklear-prune-hack",cl::init(false));
+  cl::opt<bool>
+  NuklearPrintStateBranch("nuklear-print-state-branch",cl::init(false));
   /* NUKLEAR KLEE end */
 }
 
@@ -151,6 +154,8 @@ ExecutionState *ExecutionState::branch() {
   depth++;
 
   ExecutionState *falseState = new ExecutionState(*this);
+	if (NuklearPrintStateBranch) 
+		klee_warning("New state (%d) branched from (%d)", falseState->id, this->id);
   falseState->coveredNew = false;
   falseState->coveredLines.clear();
 

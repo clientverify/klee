@@ -415,7 +415,7 @@ void SpecialFunctionHandler::handlePrintExpr(ExecutionState &state,
          "invalid number of arguments to klee_print_expr");
 
   std::string msg_str = readStringAtAddress(state, arguments[0]);
-  std::cerr << msg_str << ":" << arguments[1] << "\n";
+  std::cerr << state.id << " -- " << msg_str << ":" << arguments[1] << "\n";
 }
 
 void SpecialFunctionHandler::handleSetForking(ExecutionState &state,
@@ -449,8 +449,8 @@ void SpecialFunctionHandler::handleWarning(ExecutionState &state,
 /* NUKLEAR KLEE end */
 
   std::string msg_str = readStringAtAddress(state, arguments[0]);
-  klee_warning("%s: %s", state.stack.back().kf->function->getName().data(), 
-               msg_str.c_str());
+  klee_warning("%s: %s (%d)", state.stack.back().kf->function->getName().data(), 
+               msg_str.c_str(), state.id);
 }
 
 void SpecialFunctionHandler::handleWarningOnce(ExecutionState &state,

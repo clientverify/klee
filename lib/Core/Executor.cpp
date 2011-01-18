@@ -1138,7 +1138,7 @@ void Executor::stepInstruction(ExecutionState &state) {
   if (DebugPrintInstructions) {
     printFileLine(state, state.pc);
     std::cerr << std::setw(10) << stats::instructions << " ";
-    llvm::errs() << *(state.pc->inst);
+    llvm::errs() << *(state.pc->inst) << "\n";
   }
 
   if (statsTracker)
@@ -1351,7 +1351,7 @@ void Executor::transferToBasicBlock(BasicBlock *dst, BasicBlock *src,
 void Executor::printFileLine(ExecutionState &state, KInstruction *ki) {
   const InstructionInfo &ii = *ki->info;
   if (ii.file != "") 
-    std::cerr << "     " << ii.file << ":" << ii.line << ":";
+    std::cerr << "     "<< state.id << " " << ii.file << ":" << ii.line << ":";
   else
     std::cerr << "     [no debug info]:";
 }
@@ -2892,7 +2892,8 @@ void Executor::executeAlloc(ExecutionState &state,
       if (zeroMemory) {
         os->initializeToZero();
       } else {
-        os->initializeToRandom();
+        os->initializeToZero();
+        //os->initializeToRandom();
       }
       bindLocal(target, state, mo->getBaseExpr());
       
