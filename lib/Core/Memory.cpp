@@ -672,9 +672,25 @@ void ObjectState::print(std::ostream &os) const {
     os << "\tArray Name: \n";
   os << "\tSize: " << size << "\n";
 
-  os <<"\tAlloc Site: (NOT IMPL)\n";
-  //if (object->allocSite)
-  //  os <<"\tAlloc Site: " << *object->allocSite << "\n";
+  os <<"\tAlloc Site: \n";
+  if (object->allocSite) {
+		std::string str;
+		llvm::raw_string_ostream info(str);
+		if (const Instruction *i = dyn_cast<Instruction>(object->allocSite)) {
+			info << i->getParent()->getParent()->getNameStr() << "():";
+			info << *i;
+		} else if (const GlobalValue *gv = dyn_cast<GlobalValue>(object->allocSite)) {
+			info << "global:" << gv->getNameStr();
+		} else {
+			info << "value:" << *object->allocSite;
+		}
+		info.flush();
+		os << str;
+	} else {
+		os << " (no alloc info)";
+	}
+  os << "\n";
+
 
   os << "\tBytes:\n";
   ref<Expr> prev_e = ConstantExpr::alloc(1, Expr::Bool);
@@ -750,10 +766,27 @@ void ObjectState::print_diff(std::vector<ObjectState*> &_ovec, std::ostream &os)
     os << ovec[i]->size << ", ";
   os << "\n";
 
-  os <<"\tAlloc Sites: (NOT IMPL)";
-  //for(unsigned i=0;i<1;i++) 
-  //  if (ovec[i]->object->allocSite)
-  //    os << *(ovec[i]->object->allocSite) << ", ";
+  os <<"\tAlloc Sites: ";
+  for(unsigned i=0;i<1;i++) {
+		const llvm::Value* as = ovec[i]->object->allocSite;
+    if (as) {
+			std::string str;
+			llvm::raw_string_ostream info(str);
+			if (const Instruction *i = dyn_cast<Instruction>(as)) {
+				info << i->getParent()->getParent()->getNameStr() << "():";
+				info << *i;
+			} else if (const GlobalValue *gv = dyn_cast<GlobalValue>(as)) {
+				info << "global: " << gv->getNameStr();
+			} else {
+				info << "value: " << *as;
+			}
+			info.flush();
+			os << str;
+		} else {
+			os << " (no alloc info)";
+		}
+		os << ", ";
+	}
   os << "\n";
 
   for(unsigned i=1;i<s;i++) 
