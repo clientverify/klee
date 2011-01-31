@@ -17,6 +17,10 @@
 #include "klee/Expr.h"
 #include "klee/Solver.h"
 
+#include "llvm/Support/Debug.h"
+#include "llvm/System/Process.h"
+#include "llvm/Support/raw_ostream.h"
+
 #include "llvm/Support/CommandLine.h"
 
 using namespace klee;
@@ -24,6 +28,7 @@ using namespace klee;
 /***/
 
 MemoryManager::~MemoryManager() { 
+	//llvm::errs() << "deleting memory manager" << &objects << "\n";
   while (!objects.empty()) {
     MemoryObject *mo = objects.back();
     objects.pop_back();
@@ -68,5 +73,18 @@ MemoryObject *MemoryManager::allocateFixed(uint64_t address, uint64_t size,
 }
 
 void MemoryManager::deallocate(const MemoryObject *mo) {
-  assert(0);
+  bool found = false;
+	//llvm::errs() << "deallocating: " << mo->name << "(" << mo->id << ") [" << mo->address << "] [" << mo << "] obj: " << &objects << "\n";
+  for (objects_ty::iterator it = objects.begin(),
+      ie = objects.end(); it != ie; ++it) {
+    MemoryObject *obj = *it;
+    if (obj == mo) {
+      found = true;
+      free((void*)obj->address);
+      objects.erase(it);
+      delete obj;
+      break;
+    }
+  }
+  assert(found && "MemoryObject not found");
 }

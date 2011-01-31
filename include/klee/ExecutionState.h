@@ -22,6 +22,12 @@
 #include "klee/NuklearSocket.h"
 #include "klee/Internal/ADT/KTest.h"
 #include <openssl/evp.h>
+
+//typedef struct { 
+//  unsigned char value[EVP_MAX_MD_SIZE];
+//  unsigned int len; 
+//} StateDigest;
+
 /* NUKLEAR KLEE end */
 
 #include <map>
@@ -34,6 +40,7 @@ namespace klee {
   struct Cell;
   struct KFunction;
   struct KInstruction;
+  class MemoryManager;
   class MemoryObject;
   class PTreeNode;
   struct InstructionInfo;
@@ -66,13 +73,6 @@ struct StackFrame {
   StackFrame(const StackFrame &s);
   ~StackFrame();
 };
-
-/* NUKLEAR KLEE begin */
-typedef struct { 
-  unsigned char value[EVP_MAX_MD_SIZE];
-  unsigned int len; 
-} StateDigest;
-/* NUKLEAR KLEE end */
 
 class ExecutionState {
 public:
@@ -117,6 +117,9 @@ public:
   std::map<const std::string*, std::set<unsigned> > coveredLines;
   PTreeNode *ptreeNode;
 
+  /// For the deallocation of memory objects
+  MemoryManager *memory;
+
   /// ordered list of symbolics: used to generate test cases. 
   //
   // FIXME: Move to a shared list structure (not critical).
@@ -137,10 +140,10 @@ private:
     /* NUKLEAR KLEE begin */
     id(counter++),
     /* NUKLEAR KLEE end */
-    ptreeNode(0) {};
+    ptreeNode(0), memory(0) {};
 
 public:
-  ExecutionState(KFunction *kf);
+  ExecutionState(KFunction *kf, MemoryManager *memory);
 
   // XXX total hack, just used to make a state so solver can
   // use on structure
@@ -155,12 +158,13 @@ public:
   
   ExecutionState *branch();
 
+  void addAlloca(const MemoryObject *mo);
+
   void pushFrame(KInstIterator caller, KFunction *kf);
   void popFrame();
 
-  void addSymbolic(const MemoryObject *mo, const Array *array) { 
-    symbolics.push_back(std::make_pair(mo, array));
-  }
+  void addSymbolic(const MemoryObject *mo, const Array *array);
+
   void addConstraint(ref<Expr> e) { 
     constraints.addConstraint(e); 
   }
@@ -168,7 +172,7 @@ public:
   bool merge(const ExecutionState &b);
   void dumpStack(std::ostream &out) const;
   /* NUKLEAR KLEE begin */
-  void computeDigest();
+  void computeDigest(int current_round);
   StateDigest* getDigest() { return &digest; }
   bool nuklear_merge(const ExecutionState &b);
   bool prune();

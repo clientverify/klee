@@ -30,6 +30,7 @@
 /* NUKLEAR KLEE end */
 
 #include "Memory.h"
+#include "MemoryManager.h"
 
 #include "llvm/Function.h"
 #include "llvm/Support/CommandLine.h"
@@ -74,9 +75,15 @@ StackFrame::StackFrame(const StackFrame &s)
     minDistToUncoveredOnReturn(s.minDistToUncoveredOnReturn),
     varargs(s.varargs) {
   locals = new Cell[s.kf->numRegisters];
-  for (unsigned i=0; i<s.kf->numRegisters; i++)
+  for (unsigned i=0; i<s.kf->numRegisters; i++) {
     locals[i] = s.locals[i];
-}
+	}
+  // increase reference count on stack frame copy
+  for (std::vector<const MemoryObject*>::iterator it = allocas.begin(),
+      ie = allocas.end(); it != ie; ++it) {
+    (*it)->refCount++;
+  }
+ }
 
 StackFrame::~StackFrame() { 
   delete[] locals; 
@@ -88,7 +95,7 @@ StackFrame::~StackFrame() {
 int ExecutionState::counter = 0;
 /* NUKLEAR KLEE begin */
 
-ExecutionState::ExecutionState(KFunction *kf) 
+ExecutionState::ExecutionState(KFunction *kf, MemoryManager *mem)
   : fakeState(false),
     underConstrained(false),
     depth(0),
@@ -102,7 +109,8 @@ ExecutionState::ExecutionState(KFunction *kf)
     instsSinceCovNew(0),
     coveredNew(false),
     forkDisabled(false),
-    ptreeNode(0) {
+    ptreeNode(0),
+    memory(mem) {
   pushFrame(0, kf);
 }
 
@@ -140,6 +148,7 @@ ExecutionState::ExecutionState(const ExecutionState &es)
     forkDisabled(es.forkDisabled),
     coveredLines(es.coveredLines),
     ptreeNode(es.ptreeNode),
+    memory(es.memory),
     symbolics(es.symbolics),
     shadowObjects(es.shadowObjects),
     incomingBBIndex(es.incomingBBIndex)
@@ -165,6 +174,12 @@ ExecutionState *ExecutionState::branch() {
   return falseState;
 }
 
+void ExecutionState::addAlloca(const MemoryObject *mo) {
+  // increase reference count on new local variable
+  mo->refCount++;
+  stack.back().allocas.push_back(mo);
+}
+
 void ExecutionState::pushFrame(KInstIterator caller, KFunction *kf) {
   stack.push_back(StackFrame(caller,kf));
 }
@@ -172,11 +187,26 @@ void ExecutionState::pushFrame(KInstIterator caller, KFunction *kf) {
 void ExecutionState::popFrame() {
   StackFrame &sf = stack.back();
   for (std::vector<const MemoryObject*>::iterator it = sf.allocas.begin(), 
-         ie = sf.allocas.end(); it != ie; ++it)
+         ie = sf.allocas.end(); it != ie; ++it) {
     addressSpace.unbindObject(*it);
+    // Decrease reference count on stack frame pop.
+    // Deallocate the MemoryObject iff refCount reaches 0
+    // and the memory object wasn't made symbolic (otherwise
+    // the test case generation will miss references to mo's).
+    if (!--(*it)->refCount && !(*it)->isMadeSymbolic) {
+      assert(memory && "MemoryManager not initialized");
+      memory->deallocate(*it);
+    }
+  }
   stack.pop_back();
 }
 
+void ExecutionState::addSymbolic(const MemoryObject *mo, const Array *array) { 
+  mo->isMadeSymbolic = true;
+  symbolics.push_back(std::make_pair(mo, array));
+}
+
+ 
 ///
 
 std::string ExecutionState::getFnAlias(std::string fn) {
@@ -840,7 +870,7 @@ bool ExecutionState::nuklear_merge(const ExecutionState &b) {
 #endif
 }
 
-void ExecutionState::computeDigest() {
+void ExecutionState::computeDigest(int current_round) {
   //OpenSSL_add_all_digests();
   //const EVP_MD *md = EVP_sha512();
 
@@ -934,7 +964,7 @@ void ExecutionState::computeDigest() {
     //std::stringstream ss;
     //os->print(ss);
     //EVP_DigestUpdate(&mdctx, ss.str().c_str(), ss.str().size());
-    os->computeDigest(&mdctx);
+    os->computeDigest(&mdctx, current_round);
 
   }
 
@@ -962,6 +992,7 @@ void ExecutionState::computeDigest() {
   //  EVP_DigestUpdate(&mdctx, ss.str().c_str(), ss.str().size());
   //}
 
+#if 0
   unsigned addressSpace_size = addressSpace.objects.size();
   EVP_DigestUpdate(&mdctx, &addressSpace_size, sizeof(addressSpace_size));
 
@@ -1026,6 +1057,7 @@ void ExecutionState::computeDigest() {
     //if (ss.str().size()) 
     //  EVP_DigestUpdate(&mdctx, ss.str().c_str(), ss.str().size());
   }
+#endif
 
   EVP_DigestFinal_ex(&mdctx, digest.value, &digest.len);
   EVP_MD_CTX_cleanup(&mdctx);

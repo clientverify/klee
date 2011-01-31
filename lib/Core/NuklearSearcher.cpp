@@ -172,7 +172,7 @@ void NuklearSearcher::doMerge(std::set<ExecutionState*> &states,
     if (digestMerge) {
       //#pragma omp parallel for
       for (unsigned i=0; i<it->second.size(); ++i) {
-        it->second[i]->computeDigest();
+        it->second[i]->computeDigest(executor.nuklearManager->getRoundNumber());
       }
     }
 

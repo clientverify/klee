@@ -2867,9 +2867,10 @@ ObjectState *Executor::bindObjectInState(ExecutionState &state,
   // Its possible that multiple bindings of the same mo in the state
   // will put multiple copies on this list, but it doesn't really
   // matter because all we use this list for is to unbind the object
-  // on function return.
+  // on function return, and deallocate it if the reference counter
+  // reaches 0.
   if (isLocal)
-    state.stack.back().allocas.push_back(mo);
+    state.addAlloca(mo);
 
   return os;
 }
@@ -3300,7 +3301,7 @@ void Executor::runFunctionAsMain(Function *f,
     }
   }
 
-  ExecutionState *state = new ExecutionState(kmodule->functionMap[f]);
+  ExecutionState *state = new ExecutionState(kmodule->functionMap[f], memory);
   
   if (pathWriter) 
     state->pathOS = pathWriter->open();

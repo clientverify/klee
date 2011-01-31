@@ -46,6 +46,9 @@ public:
   mutable bool isGlobal;
   bool isFixed;
 
+  mutable bool isMadeSymbolic;
+  mutable unsigned refCount;
+
   /// true if created by us.
   bool fake_object;
   bool isUserSpecified;
@@ -73,6 +76,8 @@ public:
       address(_address),
       size(0),
       isFixed(true),
+      isMadeSymbolic(false),
+      refCount(0),
       allocSite(0) {
   }
 
@@ -86,6 +91,8 @@ public:
       isLocal(_isLocal),
       isGlobal(_isGlobal),
       isFixed(_isFixed),
+      isMadeSymbolic(false),
+      refCount(0),
       fake_object(false),
       isUserSpecified(false),
       allocSite(_allocSite) {
@@ -162,6 +169,9 @@ public:
 
   bool readOnly;
 
+	StateDigest digest;
+	int digest_round;
+
 public:
   /// Create a new object state for the given memory object with concrete
   /// contents. The initial contents are undefined, it is the callers
@@ -206,7 +216,7 @@ public:
   int compare(const ObjectState &b) const;
   /* changed declaration of getUpdates() to public. */
   const UpdateList &getUpdates() const;
-  void computeDigest(EVP_MD_CTX *mdctx);
+  void computeDigest(EVP_MD_CTX *mdctx, int round);
   /* changed declaration of print() to public. */
   void print(std::ostream &os) const;
   void print(); 

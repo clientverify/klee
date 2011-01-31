@@ -24,6 +24,15 @@
 /* NUKLEAR KLEE begin */
 #include <openssl/evp.h>
 #include <sstream>
+
+typedef struct { 
+  unsigned char value[EVP_MAX_MD_SIZE];
+  unsigned int len; 
+} StateDigest;
+
+/* NUKLEAR KLEE end */
+
+
 /* NUKLEAR KLEE end */
 
 namespace llvm {

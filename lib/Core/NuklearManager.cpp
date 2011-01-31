@@ -745,6 +745,7 @@ void NuklearManager::printRoundStatistics() {
     << " " << sr->getValue(stats::nuklearMerges)
     << " " << sr->getValue(stats::nuklearPreMergeStates)
     << " " << inputLoops
+    << " " << sys::Process::GetTotalMemoryUsage()
     << "\n";
 }
 

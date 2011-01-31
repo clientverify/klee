@@ -99,7 +99,9 @@ ObjectState::ObjectState(const MemoryObject *mo)
     knownSymbolics(0),
     updates(0, 0),
     size(mo->size),
+		digest_round(-1),
     readOnly(false) {
+	digest.len = 0;
   if (!UseConstantArrays) {
     // FIXME: Leaked.
     static unsigned id = 0;
@@ -120,6 +122,7 @@ ObjectState::ObjectState(const MemoryObject *mo, const Array *array)
     updates(array, 0),
     size(mo->size),
     readOnly(false) {
+	digest.len = 0;
   makeSymbolic();
 }
 
@@ -132,6 +135,7 @@ ObjectState::ObjectState(const ObjectState &os)
     flushMask(os.flushMask ? new BitArray(*os.flushMask, os.size) : 0),
     knownSymbolics(0),
     updates(os.updates),
+		digest_round(os.digest_round),
     size(os.size),
     readOnly(false) {
   assert(!os.readOnly && "no need to copy read only object?");
@@ -142,6 +146,9 @@ ObjectState::ObjectState(const ObjectState &os)
       knownSymbolics[i] = os.knownSymbolics[i];
   }
 
+	digest.len = os.digest.len;
+	if (os.digest_round != -1)
+		memcpy(digest.value, os.digest.value, os.digest.len);
   memcpy(concreteStore, os.concreteStore, size*sizeof(*concreteStore));
 }
 
@@ -623,41 +630,48 @@ int ObjectState::compare(const ObjectState &b) const {
   return 0;
 }
 
-void ObjectState::computeDigest(EVP_MD_CTX *mdctx) {
- 
-  //EVP_DigestUpdate(mdctx, &object, sizeof(object));
+void ObjectState::computeDigest(EVP_MD_CTX *_mdctx, int round) {
+	if (round != digest_round) {
+		digest_round = round;
+				
+		EVP_MD_CTX os_mdctx;
+		EVP_MD_CTX_init(&os_mdctx);
+		EVP_DigestInit_ex(&os_mdctx, EVP_md5(), NULL);
 
-  //EVP_DigestUpdate(mdctx, &object->id, sizeof(object->id));
- 
-  //EVP_DigestUpdate(mdctx, &updates.root, sizeof(updates.root));
+		EVP_MD_CTX *mdctx = &os_mdctx;
 
-  updates.computeDigest(mdctx);
+		updates.computeDigest(mdctx);
 
-  EVP_DigestUpdate(mdctx, &size, sizeof(size));
+		EVP_DigestUpdate(mdctx, &size, sizeof(size));
 
-  bool do_concrete = false;
-  if (!hasKnownSymbolics() 
-      && !hasFlushMask() 
-      && hasConcreteStore() ) {
-    do_concrete = true;
-  }
-  for (unsigned i=0; i<size; i++) {
-    bool byte_concrete = isByteConcrete(i);
-    bool byte_symbolic = isByteKnownSymbolic(i);
-    bool byte_flushed = isByteFlushed(i);
-    
-    EVP_DigestUpdate(mdctx, &byte_concrete, sizeof(byte_concrete));
-    EVP_DigestUpdate(mdctx, &byte_symbolic, sizeof(byte_symbolic));
-    EVP_DigestUpdate(mdctx, &byte_flushed, sizeof(byte_flushed));
-    if (do_concrete) {
-      EVP_DigestUpdate(mdctx, &concreteStore[i], sizeof(concreteStore[i]));
-    } else {
-      ref<Expr> e = read8(i);
-      unsigned hash = e->hash();
-      EVP_DigestUpdate(mdctx, &hash, sizeof(hash));
-    }
-  }
-  
+		bool do_concrete = false;
+		if (!hasKnownSymbolics() 
+				&& !hasFlushMask() 
+				&& hasConcreteStore() ) {
+			do_concrete = true;
+			EVP_DigestUpdate(mdctx, concreteStore, size);
+		} else {
+		for (unsigned i=0; i<size; i++) {
+			bool byte_concrete = isByteConcrete(i);
+			bool byte_symbolic = isByteKnownSymbolic(i);
+			bool byte_flushed = isByteFlushed(i);
+			
+			EVP_DigestUpdate(mdctx, &byte_concrete, sizeof(byte_concrete));
+			EVP_DigestUpdate(mdctx, &byte_symbolic, sizeof(byte_symbolic));
+			EVP_DigestUpdate(mdctx, &byte_flushed, sizeof(byte_flushed));
+			if (do_concrete) {
+				EVP_DigestUpdate(mdctx, &concreteStore[i], sizeof(concreteStore[i]));
+			} else {
+				ref<Expr> e = read8(i);
+				unsigned hash = e->hash();
+				EVP_DigestUpdate(mdctx, &hash, sizeof(hash));
+			}
+		}
+		}
+		EVP_DigestFinal_ex(&os_mdctx, digest.value, &digest.len);
+		EVP_MD_CTX_cleanup(&os_mdctx);
+	}
+	EVP_DigestUpdate(_mdctx, digest.value, digest.len);
 }
 
 void ObjectState::print(std::ostream &os) const {
