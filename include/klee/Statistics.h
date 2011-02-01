@@ -89,11 +89,11 @@ namespace klee {
         indexedStats[index*stats.size() + s.id] += addend;
         if (contextStats)
           contextStats->data[s.id] += addend;
-        /* NUKLEAR KLEE begin */
-        if (nuklearContextStats)
-          nuklearContextStats->data[s.id] += addend;
-        /* NUKLEAR KLEE end */
       }
+			/* NUKLEAR KLEE begin */
+			if (nuklearContextStats)
+				nuklearContextStats->data[s.id] += addend;
+			/* NUKLEAR KLEE end */
     }
   }
 

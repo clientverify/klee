@@ -403,11 +403,14 @@ const Module *Executor::setModule(llvm::Module *module,
   kmodule->prepare(opts, interpreterHandler);
   specialFunctionHandler->bind();
 
-  if (StatsTracker::useStatistics()) {
+  if (UseNuklear || StatsTracker::useStatistics()) {
     statsTracker = 
       new StatsTracker(*this,
                        interpreterHandler->getOutputFilename("assembly.ll"),
                        userSearcherRequiresMD2U());
+		if (UseNuklear && !StatsTracker::useStatistics()) {
+			statsTracker = NULL;
+		}
   }
   
   return module;
