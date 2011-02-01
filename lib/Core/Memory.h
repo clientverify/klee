@@ -64,6 +64,8 @@ public:
   /// should sensibly be only at creation time).
   mutable std::vector< ref<Expr> > cexPreferences;
 
+	bool deallocate;
+
   // DO NOT IMPLEMENT
   MemoryObject(const MemoryObject &b);
   MemoryObject &operator=(const MemoryObject &b);
@@ -78,6 +80,7 @@ public:
       isFixed(true),
       isMadeSymbolic(false),
       refCount(0),
+      deallocate(false),
       allocSite(0) {
   }
 
@@ -95,6 +98,7 @@ public:
       refCount(0),
       fake_object(false),
       isUserSpecified(false),
+      deallocate(false),
       allocSite(_allocSite) {
   }
 
