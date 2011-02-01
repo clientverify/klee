@@ -26,7 +26,7 @@ namespace klee {
     objects_ty objects;
 
   public:
-    MemoryManager() {}
+    MemoryManager();
     ~MemoryManager();
 
     MemoryObject *allocate(uint64_t size, bool isLocal, bool isGlobal,
@@ -34,6 +34,7 @@ namespace klee {
     MemoryObject *allocateFixed(uint64_t address, uint64_t size,
                                 const llvm::Value *allocSite);
     void deallocate(const MemoryObject *mo);
+    void cleanup();
   };
 
 } // End klee namespace

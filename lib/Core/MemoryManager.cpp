@@ -26,6 +26,7 @@
 using namespace klee;
 
 /***/
+MemoryManager::MemoryManager() {}
 
 MemoryManager::~MemoryManager() { 
 	//llvm::errs() << "deleting memory manager" << &objects << "\n";
@@ -87,4 +88,19 @@ void MemoryManager::deallocate(const MemoryObject *mo) {
     }
   }
   assert(found && "MemoryObject not found");
+}
+
+void MemoryManager::cleanup() {
+	objects_ty objects_remaining;
+  for (objects_ty::iterator it = objects.begin(),
+      ie = objects.end(); it != ie; ++it) {
+    MemoryObject *obj = *it;
+    if (obj->deallocate) {
+      free((void*)obj->address);
+      delete obj;
+    } else {
+			objects_remaining.push_back(*it);
+		}
+  }
+	objects.swap(objects_remaining);
 }

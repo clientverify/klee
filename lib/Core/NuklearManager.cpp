@@ -835,6 +835,8 @@ void NuklearManager::merge() {
   printCurrentRoundLog(ss);
   llvm::errs() << ss.str();
 
+	executor.memory->cleanup();
+
   // Rebuild solvers each round to keep caches fresh.
   delete executor.solver;
   STPSolver *stpSolver = new STPSolver(false);

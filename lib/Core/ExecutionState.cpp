@@ -194,8 +194,10 @@ void ExecutionState::popFrame() {
     // and the memory object wasn't made symbolic (otherwise
     // the test case generation will miss references to mo's).
     if (!--(*it)->refCount && !(*it)->isMadeSymbolic) {
-      assert(memory && "MemoryManager not initialized");
-      memory->deallocate(*it);
+      //assert(memory && "MemoryManager not initialized");
+      //memory->deallocate(*it);
+			MemoryObject *ncmo = const_cast<MemoryObject*>(*it);
+			ncmo->deallocate = true;
     }
   }
   stack.pop_back();
