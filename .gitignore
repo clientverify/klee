@@ -4,6 +4,7 @@
 /include/klee/Config/config.h
 *.swo
 *.swp
+*.gcov
 /Release*/*
 /*/Release*/*
 /*/*/Release*/*
