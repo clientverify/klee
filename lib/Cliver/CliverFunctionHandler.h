@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef CLIVERFUNCTIONHANDLER_H
-#define CLIVERFUNCTIONHANDLER_H
+#ifndef KLEE_CLIVERFUNCTIONHANDLER_H
+#define KLEE_CLIVERFUNCTIONHANDLER_H
 #include <map>
 #include <vector>
 #include <string>
@@ -71,4 +71,4 @@ namespace klee {
   };
 } // End klee namespace
 
-#endif //CLIVERFUNCTIONHANDLER_H
+#endif //KLEE_CLIVERFUNCTIONHANDLER_H
