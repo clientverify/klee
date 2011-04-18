@@ -17,6 +17,7 @@
 #endif
 
 #include <stdio.h>
+#include <ostream>
 
 // XXX ugh
 namespace klee {
@@ -24,6 +25,9 @@ namespace klee {
 
   extern FILE* klee_warning_file;
   extern FILE* klee_message_file;
+
+	extern std::ostream* klee_warning_stream;
+	extern std::ostream* klee_message_stream;
 
   /// Print "KLEE: ERROR" followed by the msg in printf format and a
   /// newline on stderr and to warnings.txt, then exit with an error.
@@ -33,11 +37,6 @@ namespace klee {
   /// Print "KLEE: " followed by the msg in printf format and a
   /// newline on stderr and to messages.txt.
   void klee_message(const char *msg, ...)
-    __attribute__ ((format (printf, 1, 2)));
-
-  /// Print "KLEE: " followed by the msg in printf format and a
-  /// newline to messages.txt.
-  void klee_message_to_file(const char *msg, ...)
     __attribute__ ((format (printf, 1, 2)));
 
   /// Print "KLEE: WARNING" followed by the msg in printf format and a
