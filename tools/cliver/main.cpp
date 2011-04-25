@@ -320,7 +320,7 @@ int main(int argc, char **argv, char **envp) {
   klee::Interpreter::InterpreterOptions IOpts;
   IOpts.MakeConcreteSymbolic = false;
   cliver::CVHandler *handler = new cliver::CVHandler(cv);
-  g_interpreter = klee::Interpreter::create(IOpts, handler);
+  g_interpreter = new cliver::CVExecutor(cv, IOpts, handler);
 
   // Print args to info file
   std::ostream &infoFile = handler->getInfoStream();
