@@ -1,4 +1,4 @@
-//===-- CVExecutor.cpp --------------------------------------*- C++ -*-===//
+//===-- CVExecutor.cpp -====-------------------------------------*- C++ -*-===//
 //
 // <insert license>
 //
@@ -6,8 +6,8 @@
 //
 //
 //===----------------------------------------------------------------------===//
-
 #include "CVExecutor.h"
+#include "CVMemoryManager.h"
 
 namespace cliver {
 
@@ -40,8 +40,10 @@ void CVHandler::processTestCase(const klee::ExecutionState &state,
 
 CVExecutor::CVExecutor(ClientVerifier *cv, const InterpreterOptions &opts, 
                        klee::InterpreterHandler *ie)
-  : klee::Executor(opts, ie),
-    cv_(cv) {}
+ : klee::Executor(opts, ie),
+   cv_(cv) {
+  memory = new CVMemoryManager();
+}
 
 CVExecutor::~CVExecutor() {
 
