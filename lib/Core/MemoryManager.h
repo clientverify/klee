@@ -21,19 +21,19 @@ namespace klee {
   class MemoryObject;
 
   class MemoryManager {
-  private:
+  protected:
     typedef std::vector<MemoryObject*> objects_ty;
     objects_ty objects;
 
   public:
     MemoryManager() {}
-    ~MemoryManager();
+    virtual ~MemoryManager();
 
-    MemoryObject *allocate(uint64_t size, bool isLocal, bool isGlobal,
+    virtual MemoryObject *allocate(uint64_t size, bool isLocal, bool isGlobal,
                            const llvm::Value *allocSite);
-    MemoryObject *allocateFixed(uint64_t address, uint64_t size,
+    virtual MemoryObject *allocateFixed(uint64_t address, uint64_t size,
                                 const llvm::Value *allocSite);
-    void deallocate(const MemoryObject *mo);
+    virtual void deallocate(const MemoryObject *mo);
   };
 
 } // End klee namespace
