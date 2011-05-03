@@ -78,7 +78,7 @@
 using namespace llvm;
 using namespace klee;
 
-namespace {
+namespace klee {
   cl::opt<bool>
   DumpStatesOnHalt("dump-states-on-halt",
                    cl::init(true));
@@ -413,7 +413,7 @@ void Executor::initializeGlobalObject(ExecutionState &state, ObjectState *os,
 MemoryObject * Executor::addExternalObject(ExecutionState &state, 
                                            void *addr, unsigned size, 
                                            bool isReadOnly) {
-  MemoryObject *mo = memory->allocateFixed((uint64_t) (unsigned long) addr, 
+  MemoryObject *mo = memory->allocateFixed(state, (uint64_t) (unsigned long) addr, 
                                            size, 0);
   ObjectState *os = bindObjectInState(state, mo, false);
   for(unsigned i = 0; i < size; i++)
@@ -517,7 +517,7 @@ void Executor::initializeGlobals(ExecutionState &state) {
                      << " (use will result in out of bounds access)\n";
       }
 
-      MemoryObject *mo = memory->allocate(size, false, true, i);
+      MemoryObject *mo = memory->allocate(state, size, false, true, i);
       ObjectState *os = bindObjectInState(state, mo, false);
       globalObjects.insert(std::make_pair(i, mo));
       globalAddresses.insert(std::make_pair(i, mo->getBaseExpr()));
@@ -552,13 +552,13 @@ void Executor::initializeGlobals(ExecutionState &state) {
           klee_message("NOTE: allocated global at asm specified address: %#08llx"
                        " (%llu bytes)",
                        (long long) address, (unsigned long long) size);
-          mo = memory->allocateFixed(address, size, &*i);
+          mo = memory->allocateFixed(state, address, size, &*i);
           mo->isUserSpecified = true; // XXX hack;
         }
       }
 
       if (!mo)
-        mo = memory->allocate(size, false, true, &*i);
+        mo = memory->allocate(state, size, false, true, &*i);
       assert(mo && "out of memory");
       ObjectState *os = bindObjectInState(state, mo, false);
       globalObjects.insert(std::make_pair(i, mo));
@@ -1201,7 +1201,7 @@ void Executor::executeCall(ExecutionState &state,
         }
       }
 
-      MemoryObject *mo = sf.varargs = memory->allocate(size, true, false, 
+      MemoryObject *mo = sf.varargs = memory->allocate(state, size, true, false, 
                                                        state.prevPC->inst);
       if (!mo) {
         terminateStateOnExecError(state, "out of memory (varargs)");
@@ -2750,7 +2750,7 @@ void Executor::executeAlloc(ExecutionState &state,
                             const ObjectState *reallocFrom) {
   size = toUnique(state, size);
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(size)) {
-    MemoryObject *mo = memory->allocate(CE->getZExtValue(), isLocal, false, 
+    MemoryObject *mo = memory->allocate(state, CE->getZExtValue(), isLocal, false, 
                                         state.prevPC->inst);
     if (!mo) {
       bindLocal(target, state, 
@@ -3126,6 +3126,7 @@ void Executor::runFunctionAsMain(Function *f,
   srandom(1);
   
   MemoryObject *argvMO = 0;
+  ExecutionState *state = new ExecutionState(kmodule->functionMap[f]);
 
   // In order to make uclibc happy and be closer to what the system is
   // doing we lay out the environments at the end of the argv array
@@ -3143,7 +3144,7 @@ void Executor::runFunctionAsMain(Function *f,
     arguments.push_back(ConstantExpr::alloc(argc, Expr::Int32));
 
     if (++ai!=ae) {
-      argvMO = memory->allocate((argc+1+envc+1+1) * NumPtrBytes, false, true,
+      argvMO = memory->allocate(*state, (argc+1+envc+1+1) * NumPtrBytes, false, true,
                                 f->begin()->begin());
       
       arguments.push_back(argvMO->getBaseExpr());
@@ -3158,7 +3159,6 @@ void Executor::runFunctionAsMain(Function *f,
     }
   }
 
-  ExecutionState *state = new ExecutionState(kmodule->functionMap[f]);
   
   if (pathWriter) 
     state->pathOS = pathWriter->open();
@@ -3185,7 +3185,7 @@ void Executor::runFunctionAsMain(Function *f,
         char *s = i<argc ? argv[i] : envp[i-(argc+1)];
         int j, len = strlen(s);
         
-        arg = memory->allocate(len+1, false, true, state->pc->inst);
+        arg = memory->allocate(*state, len+1, false, true, state->pc->inst);
         ObjectState *os = bindObjectInState(*state, arg, false);
         for (j=0; j<len+1; j++)
           os->write8(j, s[j]);
