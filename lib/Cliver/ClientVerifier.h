@@ -18,6 +18,14 @@
 
 namespace cliver {
 
+class CVContext {
+ public:
+  CVContext() {}
+  int id() {return context_id_;}
+ private:
+  int context_id_;
+};
+
 class ClientVerifier {
  public:
   ClientVerifier();
