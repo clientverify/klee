@@ -19,6 +19,7 @@ namespace llvm {
 
 namespace klee {
   class MemoryObject;
+  class ExecutionState;
 
   class MemoryManager {
   protected:
@@ -29,9 +30,9 @@ namespace klee {
     MemoryManager() {}
     virtual ~MemoryManager();
 
-    virtual MemoryObject *allocate(uint64_t size, bool isLocal, bool isGlobal,
+    virtual MemoryObject *allocate(ExecutionState &state, uint64_t size, bool isLocal, bool isGlobal,
                            const llvm::Value *allocSite);
-    virtual MemoryObject *allocateFixed(uint64_t address, uint64_t size,
+    virtual MemoryObject *allocateFixed(ExecutionState &state, uint64_t address, uint64_t size,
                                 const llvm::Value *allocSite);
     virtual void deallocate(const MemoryObject *mo);
   };
