@@ -31,7 +31,8 @@ MemoryManager::~MemoryManager() {
   }
 }
 
-MemoryObject *MemoryManager::allocate(uint64_t size, bool isLocal, 
+MemoryObject *MemoryManager::allocate(ExecutionState &state,
+                                      uint64_t size, bool isLocal, 
                                       bool isGlobal,
                                       const llvm::Value *allocSite) {
   if (size>10*1024*1024) {
@@ -49,7 +50,8 @@ MemoryObject *MemoryManager::allocate(uint64_t size, bool isLocal,
   return res;
 }
 
-MemoryObject *MemoryManager::allocateFixed(uint64_t address, uint64_t size,
+MemoryObject *MemoryManager::allocateFixed(ExecutionState &state,
+                                           uint64_t address, uint64_t size,
                                            const llvm::Value *allocSite) {
 #ifndef NDEBUG
   for (objects_ty::iterator it = objects.begin(), ie = objects.end();
