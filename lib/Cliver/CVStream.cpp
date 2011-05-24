@@ -35,6 +35,53 @@ DebugStderr("debug-stderr",
 
 namespace cliver {
 
+std::ostream* cv_warning_stream = NULL;
+std::ostream* cv_message_stream = NULL;
+std::ostream* cv_debug_stream   = NULL;
+
+static void cv_vomessage(std::ostream* os, const char *pfx, const char *msg, 
+    va_list ap) {
+  if (!os)
+    return;
+
+  *os << "CV: ";
+  if (pfx)
+    *os << pfx << ": ";
+
+  char buf[1024];
+  vsnprintf(buf, sizeof(buf), msg, ap);
+  *os << buf << std::endl;
+}
+
+void cv_message(const char *msg, ...) {
+  va_list ap;
+  va_start(ap, msg);
+  cv_vomessage(cv_message_stream, NULL, msg, ap);
+  va_end(ap);
+}
+
+void cv_warning(const char *msg, ...) {
+  va_list ap;
+  va_start(ap, msg);
+  cv_vomessage(cv_warning_stream, "WARNING", msg, ap);
+  va_end(ap);
+}
+
+void cv_debug(const char *msg, ...) {
+  va_list ap;
+  va_start(ap, msg);
+  cv_vomessage(cv_debug_stream, "DEBUG", msg, ap);
+  va_end(ap);
+}
+
+void cv_error(const char *msg, ...) {
+  va_list ap;
+  va_start(ap, msg);
+  cv_vomessage(cv_warning_stream, "ERROR", msg, ap);
+  va_end(ap);
+  exit(1);
+}
+
 CVStream::CVStream()
   : output_directory_(OutputDir),
   initialized_(false) {
@@ -185,6 +232,10 @@ void CVStream::init() {
 
   klee::klee_warning_stream = warning_stream_;
   klee::klee_message_stream = message_stream_;
+
+  cv_warning_stream = warning_stream_;
+  cv_message_stream = message_stream_;
+  cv_debug_stream   = debug_stream_;
 
   initialized_ = true;
 }

@@ -196,7 +196,7 @@ protected:
 			    llvm::BasicBlock *src,
 			    ExecutionState &state);
 
-  void callExternalFunction(ExecutionState &state,
+  virtual void callExternalFunction(ExecutionState &state,
                             KInstruction *target,
                             llvm::Function *function,
                             std::vector< ref<Expr> > &arguments);
@@ -263,7 +263,7 @@ protected:
                               ref<Expr> value /* undef if read */,
                               KInstruction *target /* undef if write */);
 
-  void executeMakeSymbolic(ExecutionState &state, const MemoryObject *mo);
+  virtual void executeMakeSymbolic(ExecutionState &state, const MemoryObject *mo);
 
   /// Create a new state where each input condition has been added as
   /// a constraint and return the results. The input state is included
