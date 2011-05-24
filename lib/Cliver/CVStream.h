@@ -30,27 +30,49 @@
 // TODO move to util header
 #define foreach BOOST_FOREACH 
 
-#define CV_WARNING_FILE "warning.txt"
-#define CV_INFO_FILE "info.txt"
 #define CV_DEBUG_FILE "debug.txt"
-#define CV_MESSAGE_FILE "message.txt"
+#define CV_WARNING_FILE "warnings.txt"
+#define CV_INFO_FILE "info.txt"
+#define CV_MESSAGE_FILE "messages.txt"
 
 namespace cliver {
+
+extern std::ostream* cv_warning_stream;
+extern std::ostream* cv_message_stream;
+extern std::ostream* cv_debug_stream;
+
+/// CV versions of the KLEE error and warning functions
+/// Print "CV: ERROR" followed by the msg in printf format to debug stream
+/// and then exit with an error
+void cv_error(const char *msg, ...)
+  __attribute__ ((format (printf, 1, 2), noreturn));
+
+/// Print "CV: DEBUG" followed by the msg in printf format to debug stream
+void cv_debug(const char *msg, ...)
+  __attribute__ ((format (printf, 1, 2)));
+
+/// Print "CV: " followed by the msg in printf format and to message stream
+void cv_message(const char *msg, ...)
+  __attribute__ ((format (printf, 1, 2)));
+
+/// Print "CV: WARNING" followed by the msg in printf format to warning stream
+void cv_warning(const char *msg, ...)
+  __attribute__ ((format (printf, 1, 2)));
 
 class teebuf: public std::streambuf {
  public:
   teebuf() {}
   teebuf(std::streambuf* sb1, std::streambuf* sb2) {
-      bufs_.insert(sb1);
-      bufs_.insert(sb2);
+    bufs_.insert(sb1);
+    bufs_.insert(sb2);
   }
   void add(std::streambuf* sb) { 
-      bufs_.insert(sb);
+    bufs_.insert(sb);
   }
   virtual int overflow(int c) {
-      foreach(std::streambuf* buf, bufs_)
-          buf->sputc(c);
-      return 1;
+    foreach(std::streambuf* buf, bufs_)
+      buf->sputc(c);
+    return 1;
   }
   virtual int sync() {
       int r = 0;
@@ -59,9 +81,9 @@ class teebuf: public std::streambuf {
     return r;
   }   
   virtual std::streamsize xsputn(const char* s, std::streamsize n) {
-      foreach(std::streambuf* buf, bufs_)
-          buf->sputn(s, n);
-      return n;
+    foreach(std::streambuf* buf, bufs_)
+      buf->sputn(s, n);
+    return n;
   }
  private:
   std::set<std::streambuf*> bufs_;
@@ -92,7 +114,7 @@ class CVStream {
 
   std::string   getOutputFilename(const std::string &filename);
   std::ostream* openOutputFile(const std::string &filename);
- 
+
  private:
   std::string output_directory_;
   bool initialized_;

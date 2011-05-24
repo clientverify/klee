@@ -63,7 +63,6 @@ static void klee_vomessage(std::ostream* os, const char *pfx, const char *msg,
 static void klee_vmessage(const char *pfx, bool onlyToFile, const char *msg, 
                           va_list ap) {
   
-	//klee_vfmessage(pfx ? klee_message_file : klee_warning_file, pfx, msg, ap);
 	klee_vomessage(pfx ? klee_warning_stream : klee_message_stream, pfx, msg, ap);
 }
 
