@@ -10,20 +10,21 @@
 #define CLIVER_EXECUTIONSTATE_H
 
 #include "klee/ExecutionState.h"
-#include "ClientVerifier.h"
-#include "CVMemoryManager.h"
 
 namespace klee {
-  class KFunction;
+class KFunction;
+class MemoryManager;
 }
 
 namespace cliver {
-
+class AddressManager;
+class CVContext;
+class CVMemoryManager;
 
 class CVExecutionState : public klee::ExecutionState {
  public:
   CVExecutionState(klee::KFunction *kF, klee::MemoryManager *mem);
-  //CVExecutionState(const std::vector< klee::ref<klee::Expr> > &assumptions);
+  CVExecutionState(const std::vector< klee::ref<klee::Expr> > &assumptions);
   virtual ~CVExecutionState();
   virtual CVExecutionState *branch();
 
@@ -43,7 +44,6 @@ class CVExecutionState : public klee::ExecutionState {
   CVMemoryManager* memory_;
 
 };
-
 } // End cliver namespace
 
 #endif

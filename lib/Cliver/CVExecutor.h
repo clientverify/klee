@@ -14,6 +14,8 @@
 
 namespace cliver {
 
+class CVMemoryManager;
+
 class CVHandler : public klee::InterpreterHandler {
  public:
   CVHandler(ClientVerifier *cv);
@@ -33,8 +35,14 @@ class CVExecutor : public klee::Executor {
   CVExecutor(ClientVerifier *cv,
       const InterpreterOptions &opts, 
       klee::InterpreterHandler *ie);
+
   virtual ~CVExecutor();
 
+  virtual void runFunctionAsMain(llvm::Function *f,
+				                 int argc, char **argv, char **envp);
+
+  virtual void executeMakeSymbolic(klee::ExecutionState &state, 
+                                   const klee::MemoryObject *mo);
  private:
   ClientVerifier *cv_;
 };

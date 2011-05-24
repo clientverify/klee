@@ -10,31 +10,39 @@
 #define CLIVER_MEMORYMANAGER_H
 
 #include <vector>
+#include <map>
 #include <stdint.h>
 #include "../Core/MemoryManager.h"
+#include "ClientVerifier.h"
 
 namespace llvm {
   class Value;
 }
 
-namespace cliver {
+namespace klee {
+  class MemoryObject;
+}
 
-//class klee::MemoryObject;
+namespace cliver {
+class CVExecutionState;
 
 class CVMemoryManager : public klee::MemoryManager {
  public:
-  CVMemoryManager() {}
+  CVMemoryManager();
   ~CVMemoryManager();
 
-  virtual klee::MemoryObject *allocate(uint64_t size, bool isLocal, bool isGlobal,
-                                       const llvm::Value *allocSite);
+  virtual klee::MemoryObject* allocate(klee::ExecutionState &state, 
+      uint64_t size, bool local, bool global, const llvm::Value *allocsite);
 
-  virtual klee::MemoryObject *allocateFixed(uint64_t address, uint64_t size,
-                                            const llvm::Value *allocSite);
+  virtual klee::MemoryObject *allocateFixed(klee::ExecutionState &state, 
+      uint64_t address, uint64_t size, const llvm::Value *allocsite);
 
   virtual void deallocate(const klee::MemoryObject *mo);
+
+ private:
+
 };
 
 } // End cliver namespace
 
-#endif
+#endif 

@@ -20,10 +20,13 @@ namespace cliver {
 
 class CVContext {
  public:
-  CVContext() {}
+  CVContext();
   int id() {return context_id_;}
  private:
+  int increment_id() { return next_id_++; }
+
   int context_id_;
+  static int next_id_;
 };
 
 class ClientVerifier {
