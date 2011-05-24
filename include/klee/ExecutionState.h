@@ -119,9 +119,9 @@ public:
   // use on structure
   ExecutionState(const std::vector<ref<Expr> > &assumptions);
 
-  ~ExecutionState();
+  virtual ~ExecutionState();
   
-  ExecutionState *branch();
+  virtual ExecutionState *branch();
 
   void pushFrame(KInstIterator caller, KFunction *kf);
   void popFrame();
