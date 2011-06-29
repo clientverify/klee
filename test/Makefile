@@ -25,7 +25,7 @@ include Makefile.tests
 # FIXME: Fix test suite so we can run lit in parallel.
 ifdef VERBOSE
 RUNTESTFLAGS := $(VERBOSE)
-LIT_ARGS := -j1 -v
+LIT_ARGS := -j1 -v 
 else
 LIT_ARGS := -j1 -s -v
 endif
