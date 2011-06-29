@@ -113,7 +113,7 @@ public:
   }
 
   ref<ConstantExpr> getBaseExpr() const { 
-    return ConstantExpr::create(address, Context::get().getPointerWidth());
+    return ConstantExpr::create_pointer(address, Context::get().getPointerWidth());
   }
   ref<ConstantExpr> getSizeExpr() const { 
     return ConstantExpr::create(size, Context::get().getPointerWidth());
@@ -164,6 +164,8 @@ private:
   // mutable because may need flushed during read of const
   mutable BitArray *flushMask;
 
+  BitArray *pointerMask;
+
   ref<Expr> *knownSymbolics;
 
   // mutable because we may need flush during read of const
@@ -209,6 +211,10 @@ public:
   void write32(unsigned offset, uint32_t value);
   void write64(unsigned offset, uint64_t value);
 
+  bool isBytePointer(unsigned offset) const;
+  void markBytePointer(unsigned offset);
+  bool isByteConcrete(unsigned offset) const;
+
   void print(std::ostream &os, bool print_bytes=true) const;
   void print(llvm::raw_ostream &os, bool print_bytes=true) const;
   void print();
@@ -231,7 +237,6 @@ private:
   void flushRangeForRead(unsigned rangeBase, unsigned rangeSize) const;
   void flushRangeForWrite(unsigned rangeBase, unsigned rangeSize);
 
-  bool isByteConcrete(unsigned offset) const;
   bool isByteFlushed(unsigned offset) const;
   bool isByteKnownSymbolic(unsigned offset) const;
 

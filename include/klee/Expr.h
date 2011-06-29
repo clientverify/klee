@@ -1003,11 +1003,15 @@ public:
 
 private:
   llvm::APInt value;
+  bool pointer; // True if value is a pointer to a memory address.
 
-  ConstantExpr(const llvm::APInt &v) : value(v) {}
+  ConstantExpr(const llvm::APInt &v) : value(v), pointer(false) {}
 
 public:
   ~ConstantExpr() {}
+
+   bool isPointer() { return pointer; };
+   void setPointer(bool val=true) { pointer = val; };
 
   Width getWidth() const { return value.getBitWidth(); }
   Kind getKind() const { return Constant; }
@@ -1071,12 +1075,27 @@ public:
     return r;
   }
 
+  static ref<ConstantExpr> alloc_pointer(const llvm::APInt &v) {
+    ref<ConstantExpr> r(new ConstantExpr(v));
+    r->setPointer();
+    r->computeHash();
+    return r;
+  }
+
   static ref<ConstantExpr> alloc(const llvm::APFloat &f) {
     return alloc(f.bitcastToAPInt());
   }
 
+  static ref<ConstantExpr> alloc_pointer(const llvm::APFloat &f) {
+    return alloc_pointer(f.bitcastToAPInt());
+  }
+
   static ref<ConstantExpr> alloc(uint64_t v, Width w) {
     return alloc(llvm::APInt(w, v));
+  }
+
+  static ref<ConstantExpr> alloc_pointer(uint64_t v, Width w) {
+    return alloc_pointer(llvm::APInt(w, v));
   }
 
   static ref<ConstantExpr> create(uint64_t v, Width w) {
@@ -1085,6 +1104,12 @@ public:
       assert(v == bits64::truncateToNBits(v, w) && "invalid constant");
 #endif
     return alloc(v, w);
+  }
+
+  static ref<ConstantExpr> create_pointer(uint64_t v, Width w) {
+    assert(v == bits64::truncateToNBits(v, w) &&
+           "invalid constant");
+    return alloc_pointer(v, w);
   }
 
   static bool classof(const Expr *E) { return E->getKind() == Expr::Constant; }
