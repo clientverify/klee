@@ -55,6 +55,8 @@ proc substitute { line test tmpFile } {
   regsub -all {%llvmgxx} $new_line "$llvmgxx -emit-llvm" new_line
   #replace %klee with klee binary
   regsub -all {%klee} $new_line "klee" new_line
+  #replace %cliver with cliver binary
+  regsub -all {%cliver} $new_line "cliver" new_line
   #replace %kleaver with kleaver binary
   regsub -all {%kleaver} $new_line "kleaver" new_line
   #replace %p with path to source, 
