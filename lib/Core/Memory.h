@@ -101,7 +101,7 @@ public:
   }
 
   ref<ConstantExpr> getBaseExpr() const { 
-    return ConstantExpr::create(address, Context::get().getPointerWidth());
+    return ConstantExpr::create_pointer(address, Context::get().getPointerWidth());
   }
   ref<ConstantExpr> getSizeExpr() const { 
     return ConstantExpr::create(size, Context::get().getPointerWidth());
@@ -151,6 +151,8 @@ private:
 
   // mutable because may need flushed during read of const
   mutable BitArray *flushMask;
+
+  BitArray *pointerMask;
 
   ref<Expr> *knownSymbolics;
 
@@ -216,11 +218,13 @@ private:
   bool isByteConcrete(unsigned offset) const;
   bool isByteFlushed(unsigned offset) const;
   bool isByteKnownSymbolic(unsigned offset) const;
+  bool isBytePointer(unsigned offset) const;
 
   void markByteConcrete(unsigned offset);
   void markByteSymbolic(unsigned offset);
   void markByteFlushed(unsigned offset);
   void markByteUnflushed(unsigned offset);
+  void markBytePointer(unsigned offset);
   void setKnownSymbolic(unsigned offset, Expr *value);
 
   void print();

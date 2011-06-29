@@ -96,6 +96,7 @@ ObjectState::ObjectState(const MemoryObject *mo)
     concreteStore(new uint8_t[mo->size]),
     concreteMask(0),
     flushMask(0),
+    pointerMask(0),
     knownSymbolics(0),
     updates(0, 0),
     size(mo->size),
@@ -116,6 +117,7 @@ ObjectState::ObjectState(const MemoryObject *mo, const Array *array)
     concreteStore(new uint8_t[mo->size]),
     concreteMask(0),
     flushMask(0),
+    pointerMask(0),
     knownSymbolics(0),
     updates(array, 0),
     size(mo->size),
@@ -130,6 +132,7 @@ ObjectState::ObjectState(const ObjectState &os)
     concreteStore(new uint8_t[os.size]),
     concreteMask(os.concreteMask ? new BitArray(*os.concreteMask, os.size) : 0),
     flushMask(os.flushMask ? new BitArray(*os.flushMask, os.size) : 0),
+    pointerMask(os.pointerMask ? new BitArray(*os.pointerMask, os.size) : 0),
     knownSymbolics(0),
     updates(os.updates),
     size(os.size),
@@ -148,6 +151,7 @@ ObjectState::ObjectState(const ObjectState &os)
 ObjectState::~ObjectState() {
   if (concreteMask) delete concreteMask;
   if (flushMask) delete flushMask;
+  if (pointerMask) delete pointerMask;
   if (knownSymbolics) delete[] knownSymbolics;
   delete[] concreteStore;
 }
@@ -321,6 +325,10 @@ bool ObjectState::isByteKnownSymbolic(unsigned offset) const {
   return knownSymbolics && knownSymbolics[offset].get();
 }
 
+bool ObjectState::isBytePointer(unsigned offset) const {
+  return pointerMask && pointerMask->get(offset);
+}
+
 void ObjectState::markByteConcrete(unsigned offset) {
   if (concreteMask)
     concreteMask->set(offset);
@@ -330,6 +338,12 @@ void ObjectState::markByteSymbolic(unsigned offset) {
   if (!concreteMask)
     concreteMask = new BitArray(size, true);
   concreteMask->unset(offset);
+}
+
+void ObjectState::markBytePointer(unsigned offset) {
+  if (!pointerMask)
+    pointerMask = new BitArray(size, false);
+  pointerMask->set(offset);
 }
 
 void ObjectState::markByteUnflushed(unsigned offset) {
@@ -468,6 +482,11 @@ ref<Expr> ObjectState::read(unsigned offset, Expr::Width width) const {
   for (unsigned i = 0; i != NumBytes; ++i) {
     unsigned idx = Context::get().isLittleEndian() ? i : (NumBytes - i - 1);
     ref<Expr> Byte = read8(offset + idx);
+    if (ConstantExpr *CE = dyn_cast<ConstantExpr>(Byte)) {
+      if (isBytePointer(offset+idx)) {
+        CE->setPointer();
+      }
+    }
     Res = idx ? ConcatExpr::create(Byte, Res) : Byte;
   }
 
@@ -505,6 +524,14 @@ void ObjectState::write(unsigned offset, ref<Expr> value) {
   // Check for writes of constant values.
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(value)) {
     Expr::Width w = CE->getWidth();
+    if (CE->isPointer()) {
+      if (w != Context::get().getPointerWidth())
+        klee_warning("Invalid pointer size");
+      for (unsigned i=offset; i<offset+(w/8); i++)
+        markBytePointer(i);
+    } else {
+      assert(!isBytePointer(offset) && "Overwriting a pointer with non-pointer");
+    }
     if (w <= 64) {
       uint64_t val = CE->getZExtValue();
       switch (w) {
