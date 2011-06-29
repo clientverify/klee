@@ -340,78 +340,116 @@ ref<ConstantExpr> ConstantExpr::Concat(const ref<ConstantExpr> &RHS) {
   Tmp <<= RHS->getWidth();
   Tmp |= APInt(RHS->value).zext(W);
 
+  if (isPointer() || RHS->isPointer())
+    return ConstantExpr::alloc_pointer(Tmp);
   return ConstantExpr::alloc(Tmp);
 }
 
 ref<ConstantExpr> ConstantExpr::Extract(unsigned Offset, Width W) {
+  if (isPointer())
+    return ConstantExpr::alloc_pointer(APInt(value.ashr(Offset)).zextOrTrunc(W));
   return ConstantExpr::alloc(APInt(value.ashr(Offset)).zextOrTrunc(W));
 }
 
 ref<ConstantExpr> ConstantExpr::ZExt(Width W) {
+  if (isPointer())
+    return ConstantExpr::alloc_pointer(APInt(value).zextOrTrunc(W));
   return ConstantExpr::alloc(APInt(value).zextOrTrunc(W));
 }
 
 ref<ConstantExpr> ConstantExpr::SExt(Width W) {
+  if (isPointer())
+    return ConstantExpr::alloc_pointer(APInt(value).sextOrTrunc(W));
   return ConstantExpr::alloc(APInt(value).sextOrTrunc(W));
 }
 
 ref<ConstantExpr> ConstantExpr::Add(const ref<ConstantExpr> &RHS) {
+  if ((isPointer() || RHS->isPointer()) && !(isPointer() && RHS->isPointer()))
+    return ConstantExpr::alloc_pointer(value + RHS->value);
   return ConstantExpr::alloc(value + RHS->value);
 }
 
 ref<ConstantExpr> ConstantExpr::Neg() {
+  if (isPointer())
+    return ConstantExpr::alloc_pointer(-value);
   return ConstantExpr::alloc(-value);
 }
 
 ref<ConstantExpr> ConstantExpr::Sub(const ref<ConstantExpr> &RHS) {
+  if ((isPointer() || RHS->isPointer()) && !(isPointer() && RHS->isPointer()))
+    return ConstantExpr::alloc(value - RHS->value);
   return ConstantExpr::alloc(value - RHS->value);
 }
 
 ref<ConstantExpr> ConstantExpr::Mul(const ref<ConstantExpr> &RHS) {
+  if (isPointer() || RHS->isPointer())
+    return ConstantExpr::alloc_pointer(value * RHS->value);
   return ConstantExpr::alloc(value * RHS->value);
 }
 
 ref<ConstantExpr> ConstantExpr::UDiv(const ref<ConstantExpr> &RHS) {
+  if (isPointer() || RHS->isPointer())
+    return ConstantExpr::alloc_pointer(value.udiv(RHS->value));
   return ConstantExpr::alloc(value.udiv(RHS->value));
 }
 
 ref<ConstantExpr> ConstantExpr::SDiv(const ref<ConstantExpr> &RHS) {
+  if (isPointer() || RHS->isPointer())
+    return ConstantExpr::alloc_pointer(value.sdiv(RHS->value));
   return ConstantExpr::alloc(value.sdiv(RHS->value));
 }
 
 ref<ConstantExpr> ConstantExpr::URem(const ref<ConstantExpr> &RHS) {
+  if (isPointer() || RHS->isPointer())
+    return ConstantExpr::alloc_pointer(value.urem(RHS->value));
   return ConstantExpr::alloc(value.urem(RHS->value));
 }
 
 ref<ConstantExpr> ConstantExpr::SRem(const ref<ConstantExpr> &RHS) {
+  if (isPointer() || RHS->isPointer())
+    return ConstantExpr::alloc_pointer(value.srem(RHS->value));
   return ConstantExpr::alloc(value.srem(RHS->value));
 }
 
 ref<ConstantExpr> ConstantExpr::And(const ref<ConstantExpr> &RHS) {
+  if (isPointer() || RHS->isPointer())
+    return ConstantExpr::alloc_pointer(value & RHS->value);
   return ConstantExpr::alloc(value & RHS->value);
 }
 
 ref<ConstantExpr> ConstantExpr::Or(const ref<ConstantExpr> &RHS) {
+  if (isPointer() || RHS->isPointer())
+    return ConstantExpr::alloc_pointer(value | RHS->value);
   return ConstantExpr::alloc(value | RHS->value);
 }
 
 ref<ConstantExpr> ConstantExpr::Xor(const ref<ConstantExpr> &RHS) {
+  if (isPointer() || RHS->isPointer())
+    return ConstantExpr::alloc_pointer(value ^ RHS->value);
   return ConstantExpr::alloc(value ^ RHS->value);
 }
 
 ref<ConstantExpr> ConstantExpr::Shl(const ref<ConstantExpr> &RHS) {
+  if (isPointer() || RHS->isPointer())
+    return ConstantExpr::alloc_pointer(value.shl(RHS->value));
   return ConstantExpr::alloc(value.shl(RHS->value));
 }
 
 ref<ConstantExpr> ConstantExpr::LShr(const ref<ConstantExpr> &RHS) {
+  if (isPointer() || RHS->isPointer())
+    return ConstantExpr::alloc_pointer(value.lshr(RHS->value));
   return ConstantExpr::alloc(value.lshr(RHS->value));
 }
 
 ref<ConstantExpr> ConstantExpr::AShr(const ref<ConstantExpr> &RHS) {
+  if (isPointer() || RHS->isPointer())
+    return ConstantExpr::alloc_pointer(value.ashr(RHS->value));
   return ConstantExpr::alloc(value.ashr(RHS->value));
 }
 
 ref<ConstantExpr> ConstantExpr::Not() {
+  if (isPointer())
+    return ConstantExpr::alloc_pointer(~value);
   return ConstantExpr::alloc(~value);
 }
 

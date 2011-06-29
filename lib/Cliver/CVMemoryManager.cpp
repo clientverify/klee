@@ -17,6 +17,7 @@
 
 #include "llvm/Support/CommandLine.h"
 
+// REMOVE THIS IF TOPOLOGICAL COMPARISON IS DONE BETWEEN EXECUTION STATES
 // Possible address allocation semantics:
 
 // For all i,j in States: Addresses of following are equal 
