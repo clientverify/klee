@@ -171,8 +171,6 @@ bool SpecialFunctionHandler::handle(ExecutionState &state,
       (this->*h)(state, target, arguments);
     }
     return true;
-  } else {
-    return false;
   }
 
   external_handlers_ty::iterator eit = external_handlers.find(f);
