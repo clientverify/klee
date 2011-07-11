@@ -9,6 +9,8 @@
 #include "CVExecutionState.h"
 #include "CVExecutor.h"
 #include "CVMemoryManager.h"
+#include "CVStream.h"
+#include "TestHelper.h"
 
 //#include "../Core/ExternalDispatcher.h"
 //#include "../Core/SpecialFunctionHandler.h"
@@ -177,6 +179,7 @@ CVExecutor::CVExecutor(ClientVerifier *cv, const InterpreterOptions &opts,
   }
 }
 
+
 CVExecutor::~CVExecutor() {}
 
 void CVExecutor::runFunctionAsMain(llvm::Function *f,
@@ -184,7 +187,12 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
   using namespace klee;
   std::vector< ref<Expr> > arguments;
 
-  // force deterministic initialization of memory objects
+	// init testing helper handlers
+	specialFunctionHandler->addExternalHandler(
+			kmodule->module->getFunction("cliver_test_extract_pointers"),
+			ExternalHandler_test_extract_pointers);
+  
+	// force deterministic initialization of memory objects
   srand(1);
   srandom(1);
   
