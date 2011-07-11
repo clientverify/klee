@@ -529,8 +529,6 @@ void ObjectState::write(unsigned offset, ref<Expr> value) {
         klee_warning("Invalid pointer size");
       for (unsigned i=offset; i<offset+(w/8); i++)
         markBytePointer(i);
-    } else {
-      assert(!isBytePointer(offset) && "Overwriting a pointer with non-pointer");
     }
     if (w <= 64) {
       uint64_t val = CE->getZExtValue();
@@ -585,7 +583,7 @@ void ObjectState::write64(unsigned offset, uint64_t value) {
   }
 }
 
-void ObjectState::print(std::ostream &os) const {
+void ObjectState::print(std::ostream &os, bool print_bytes) const {
   os << "-- ObjectState --\n";
   os << "\tMemoryObject: " << object << "\n";
   os << "\tMemoryObject ID: " << object->id << "\n";
@@ -617,34 +615,38 @@ void ObjectState::print(std::ostream &os) const {
   os << "\n";
 
 
-  os << "\tBytes:\n";
-  ref<Expr> prev_e = ConstantExpr::alloc(1, Expr::Bool);
-  int start = -1;
-  for (unsigned i=0; i<size; i++) {
-    bool concrete = isByteConcrete(i);
-    bool knownSym = isByteKnownSymbolic(i);
-    bool flushed = isByteFlushed(i);
+	if (print_bytes) {
+		os << "\tBytes:\n";
+		ref<Expr> prev_e = ConstantExpr::alloc(1, Expr::Bool);
+		int start = -1;
+		for (unsigned i=0; i<size; i++) {
+			bool concrete = isByteConcrete(i);
+			bool knownSym = isByteKnownSymbolic(i);
+			bool flushed = isByteFlushed(i);
+			bool pointer = isBytePointer(i);
 
-    ref<Expr> e = read8(i);
-    if (prev_e == e) {
-      if (start == -1) {
-        start = i;
-      }
-    } 
-    if (prev_e != e || i==size-1) {
-      if (start != -1) {
-        os << "\t\t[" << start << "]-[" <<i-1<<"]"
-           << " = " << prev_e << "\n";
-        start = -1;
-      }
-      os << "\t\t["<<i<<"]"
-                 << " concrete? " << concrete
-                 << " known-sym? " << knownSym 
-                 << " flushed? " << flushed << " = ";
-      os << e << "\n";
-    }
-    prev_e = e;
-  }
+			ref<Expr> e = read8(i);
+			if (prev_e == e) {
+				if (start == -1) {
+					start = i;
+				}
+			} 
+			if (prev_e != e || i==size-1) {
+			  if (start != -1) {
+			    os << "\t\t[" << start << "]-[" <<i-1<<"]"
+			       << " = " << prev_e << "\n";
+			    start = -1;
+			  }
+				os << "\t\t["<<i<<"]"
+									<< " pointer? " << pointer 
+									<< " concrete? " << concrete
+									<< " known-sym? " << knownSym 
+									<< " flushed? " << flushed << " = ";
+				os << e << "\n";
+			//}
+			prev_e = e;
+		}
+	}
 
   os << "\tUpdates:\n";
   for (const UpdateNode *un=updates.head; un; un=un->next) {
