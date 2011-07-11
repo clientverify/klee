@@ -9,6 +9,7 @@ Release/
 Release+Asserts/
 Debug/
 Debug+Asserts/
+Debug-Asserts/
 /Makefile.config
 /tags
 test/*Output*
