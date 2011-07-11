@@ -643,7 +643,7 @@ void ObjectState::print(std::ostream &os, bool print_bytes) const {
 									<< " known-sym? " << knownSym 
 									<< " flushed? " << flushed << " = ";
 				os << e << "\n";
-			//}
+			}
 			prev_e = e;
 		}
 	}
