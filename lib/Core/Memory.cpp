@@ -585,24 +585,191 @@ void ObjectState::write64(unsigned offset, uint64_t value) {
   }
 }
 
-void ObjectState::print() {
-  std::cerr << "-- ObjectState --\n";
-  std::cerr << "\tMemoryObject ID: " << object->id << "\n";
-  std::cerr << "\tRoot Object: " << updates.root << "\n";
-  std::cerr << "\tSize: " << size << "\n";
+void ObjectState::print(std::ostream &os) const {
+  os << "-- ObjectState --\n";
+  os << "\tMemoryObject: " << object << "\n";
+  os << "\tMemoryObject ID: " << object->id << "\n";
+  os << "\tMemoryObject Name: " << object->name << "\n";
+  os << "\tRoot Object: " << updates.root << "\n";
+  if (updates.root)
+    os << "\tArray Name: " << updates.root->name << "\n";
+  else
+    os << "\tArray Name: \n";
+  os << "\tSize: " << size << "\n";
 
-  std::cerr << "\tBytes:\n";
+  os <<"\tAlloc Site: \n";
+  if (object->allocSite) {
+		std::string str;
+		llvm::raw_string_ostream info(str);
+		if (const Instruction *i = dyn_cast<Instruction>(object->allocSite)) {
+			info << i->getParent()->getParent()->getNameStr() << "():";
+			info << *i;
+		} else if (const GlobalValue *gv = dyn_cast<GlobalValue>(object->allocSite)) {
+			info << "global:" << gv->getNameStr();
+		} else {
+			info << "value:" << *object->allocSite;
+		}
+		info.flush();
+		os << str;
+	} else {
+		os << " (no alloc info)";
+	}
+  os << "\n";
+
+
+  os << "\tBytes:\n";
+  ref<Expr> prev_e = ConstantExpr::alloc(1, Expr::Bool);
+  int start = -1;
   for (unsigned i=0; i<size; i++) {
-    std::cerr << "\t\t["<<i<<"]"
-               << " concrete? " << isByteConcrete(i)
-               << " known-sym? " << isByteKnownSymbolic(i)
-               << " flushed? " << isByteFlushed(i) << " = ";
+    bool concrete = isByteConcrete(i);
+    bool knownSym = isByteKnownSymbolic(i);
+    bool flushed = isByteFlushed(i);
+
     ref<Expr> e = read8(i);
-    std::cerr << e << "\n";
+    if (prev_e == e) {
+      if (start == -1) {
+        start = i;
+      }
+    } 
+    if (prev_e != e || i==size-1) {
+      if (start != -1) {
+        os << "\t\t[" << start << "]-[" <<i-1<<"]"
+           << " = " << prev_e << "\n";
+        start = -1;
+      }
+      os << "\t\t["<<i<<"]"
+                 << " concrete? " << concrete
+                 << " known-sym? " << knownSym 
+                 << " flushed? " << flushed << " = ";
+      os << e << "\n";
+    }
+    prev_e = e;
   }
 
-  std::cerr << "\tUpdates:\n";
+  os << "\tUpdates:\n";
   for (const UpdateNode *un=updates.head; un; un=un->next) {
-    std::cerr << "\t\t[" << un->index << "] = " << un->value << "\n";
+    os << "\t\t[" << un->index << "] = " << un->value << "\n";
   }
+}
+
+void ObjectState::print_diff(std::vector<ObjectState*> &_ovec, std::ostream &os) const {
+  std::vector<ObjectState*>ovec(_ovec);
+  //ovec.push_back(const_cast<ObjectState*>(this));
+  unsigned s = ovec.size();
+  os << "-- ObjectState --\n";
+
+  os << "\tMemoryObjects: ";
+  for(unsigned i=0;i<s;i++) 
+    os << ovec[i]->object << ", ";
+  os << "\n";
+
+  os << "\tMemoryObject IDs: ";
+  for(unsigned i=0;i<s;i++) 
+    os << ovec[i]->object->id << ", ";
+  os << "\n";
+
+  os << "\tMemoryObject Names: ";
+  for(unsigned i=0;i<s;i++) 
+    os << ovec[i]->object->name << ", ";
+  os << "\n";
+
+  os << "\tRoot Objects: ";
+  for(unsigned i=0;i<s;i++) 
+    os << ovec[i]->updates.root << ", ";
+  os << "\n";
+
+  os << "\tArray Names: ";
+  for(unsigned i=0;i<s;i++) 
+    if (ovec[i]->updates.root)
+      os << ovec[i]->updates.root->name << ", ";
+    else
+      os << " None, ";
+  os << "\n";
+
+  os << "\tSizes: ";
+  for(unsigned i=0;i<s;i++) 
+    os << ovec[i]->size << ", ";
+  os << "\n";
+
+  os <<"\tAlloc Sites: ";
+  for(unsigned i=0;i<1;i++) {
+		const llvm::Value* as = ovec[i]->object->allocSite;
+    if (as) {
+			std::string str;
+			llvm::raw_string_ostream info(str);
+			if (const Instruction *i = dyn_cast<Instruction>(as)) {
+				info << i->getParent()->getParent()->getNameStr() << "():";
+				info << *i;
+			} else if (const GlobalValue *gv = dyn_cast<GlobalValue>(as)) {
+				info << "global: " << gv->getNameStr();
+			} else {
+				info << "value: " << *as;
+			}
+			info.flush();
+			os << str;
+		} else {
+			os << " (no alloc info)";
+		}
+		os << ", ";
+	}
+  os << "\n";
+
+  for(unsigned i=1;i<s;i++) 
+    assert(ovec[i]->size == ovec[i-1]->size);
+
+  os << "\tDifferent Bytes:\n";
+  ref<Expr> prev_e = ConstantExpr::alloc(0, Expr::Bool);
+  int start = -1;
+  for (unsigned i=0; i<size; i++) {
+
+    bool all_equal = true;
+    for(unsigned j=1;j<s;j++) {
+      if (ovec[j-1]->read8(i) != ovec[j]->read8(i)) {
+        all_equal = false;
+        break;
+      }
+    }
+
+    if (all_equal) {
+
+      ref<Expr> e = ovec[0]->read8(i);
+      if (prev_e == e) {
+        if (start == -1) {
+          start = i;
+        }
+      } 
+      if (prev_e != e || i==size-1) {
+        if (start != -1) {
+          os << "\t\t[" << start << "]-[" <<i-1<<"]"
+             << " = " << prev_e << "\n";
+          start = -1;
+        }
+        os << "\t\t["<<i<<"] = " << e << "\n";
+      }
+      prev_e = e;
+
+    } else {
+      if (start != -1) {
+        os << "\t\t[" << start << "]-[" <<i-1<<"]"
+           << " = " << prev_e << "\n";
+        start = -1;
+      }
+      os << "\t\t["<<i<<"] = ";
+      for(unsigned j=0;j<s;j++) 
+        os << ovec[j]->read8(i) << ", ";
+      os << "\n";
+    }
+  }
+
+  os << "\tUpdates:\n";
+  for(unsigned i=0;i<s;i++)  {
+    for (const UpdateNode *un=ovec[i]->updates.head; un; un=un->next) {
+      os << "\t\t[" << i << "][" << un->index << "] = " << un->value << "\n";
+    }
+  }
+
+}
+
+void ObjectState::print() {
+  print(std::cerr);
 }
