@@ -41,6 +41,12 @@ extern std::ostream* cv_warning_stream;
 extern std::ostream* cv_message_stream;
 extern std::ostream* cv_debug_stream;
 
+// http://www.parashift.com/c++-faq-lite/misc-technical-issues.html#faq-39.6
+#define CONCAT_TOKEN_(foo, bar) CONCAT_TOKEN_IMPL_(foo, bar)
+#define CONCAT_TOKEN_IMPL_(foo, bar) foo ## bar
+
+#define CVDEBUG(x) *cv_debug_stream <<"CV: DEBUG ("<< __FILE__ <<":"<< __LINE__  <<") " << x << "\n";
+
 /// CV versions of the KLEE error and warning functions
 /// Print "CV: ERROR" followed by the msg in printf format to debug stream
 /// and then exit with an error
