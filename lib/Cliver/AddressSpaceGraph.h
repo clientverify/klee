@@ -48,11 +48,9 @@ class AddressSpaceGraph {
 	AddressSpaceGraph(klee::AddressSpace *address_space);
 	void build_graph();
   int compare(const AddressSpaceGraph &b) const;
-	void test_extract_pointers();
- private:
 	void extract_pointers(const klee::ObjectState &obj, MemoryObjectNode *node);
 	void extract_pointers_by_resolving(const klee::ObjectState &obj, MemoryObjectNode *node);
-
+ private:
 	klee::AddressSpace *address_space_;
 	unsigned pointer_width_;
 	std::vector<MemoryObjectNode*> nodes_;
