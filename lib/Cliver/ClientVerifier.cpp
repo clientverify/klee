@@ -22,6 +22,7 @@ ClientVerifier::ClientVerifier()
 }
 
 ClientVerifier::~ClientVerifier() {
+	delete cvstream_;
 }	
 
 void ClientVerifier::init() {
