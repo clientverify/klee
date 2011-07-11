@@ -28,6 +28,7 @@ class BitArray;
 class MemoryManager;
 class Solver;
 
+
 class MemoryObject {
   friend class STPBuilder;
 
@@ -199,6 +200,12 @@ public:
   void write32(unsigned offset, uint32_t value);
   void write64(unsigned offset, uint64_t value);
 
+  bool isBytePointer(unsigned offset) const;
+
+  void print(std::ostream &os) const;
+  void print_diff(std::vector<ObjectState*> &_ovec, std::ostream &os) const;
+  void print(); 
+ 
 private:
   const UpdateList &getUpdates() const;
 
@@ -218,7 +225,6 @@ private:
   bool isByteConcrete(unsigned offset) const;
   bool isByteFlushed(unsigned offset) const;
   bool isByteKnownSymbolic(unsigned offset) const;
-  bool isBytePointer(unsigned offset) const;
 
   void markByteConcrete(unsigned offset);
   void markByteSymbolic(unsigned offset);
@@ -227,7 +233,6 @@ private:
   void markBytePointer(unsigned offset);
   void setKnownSymbolic(unsigned offset, Expr *value);
 
-  void print();
 };
   
 } // End klee namespace
