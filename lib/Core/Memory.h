@@ -201,8 +201,9 @@ public:
   void write64(unsigned offset, uint64_t value);
 
   bool isBytePointer(unsigned offset) const;
+  void markBytePointer(unsigned offset);
 
-  void print(std::ostream &os) const;
+  void print(std::ostream &os, bool print_bytes=true) const;
   void print_diff(std::vector<ObjectState*> &_ovec, std::ostream &os) const;
   void print(); 
  
@@ -230,7 +231,6 @@ private:
   void markByteSymbolic(unsigned offset);
   void markByteFlushed(unsigned offset);
   void markByteUnflushed(unsigned offset);
-  void markBytePointer(unsigned offset);
   void setKnownSymbolic(unsigned offset, Expr *value);
 
 };
