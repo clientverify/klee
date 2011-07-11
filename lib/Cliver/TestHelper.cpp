@@ -44,13 +44,6 @@ void ExternalHandler_test_extract_pointers(klee::Executor* executor,
 			cv_warning("AddressSpaceGraph Test: degree mismatch %d != %d",
 					a->degree, b->degree);
 			(*it->second).print(*cv_warning_stream);
-			//PointerEdge *b_edge=b->first_edge;
-			//while (b_edge != NULL) {
-			//	*cv_warning_stream << "edge points_to object: ";
-			//	if (b_edge->points_to_object != NULL) 
-			//		b_edge->points_to_object->print(*cv_warning_stream,false);
-			//	b_edge = b_edge->next;
-			//}
 			return;
 		} else {
 			PointerEdge *a_edge=a->first_edge, *b_edge=b->first_edge;
@@ -71,10 +64,6 @@ void ExternalHandler_test_extract_pointers(klee::Executor* executor,
 				b_edge = b_edge->next;
 			}
 		} 
-		//if (equivalent && a->degree > 0) {
-		//	cv_warning("AddressSpaceGraph Test: Pointers match, degree = %d", a->degree);
-		//	(*it->second).print(*cv_warning_stream, false);
-		//}
 	}
 	cv_message("test_extract_pointers: PASSED");
 }

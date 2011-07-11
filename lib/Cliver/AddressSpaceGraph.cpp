@@ -37,7 +37,6 @@ AddressSpaceGraph::AddressSpaceGraph(klee::AddressSpace *address_space)
 }
 
 void AddressSpaceGraph::build_graph() {
-
 	for (klee::MemoryMap::iterator it=address_space_->objects.begin(),
 			ie=address_space_->objects.end(); it!=ie; ++it) {
 		MemoryObjectNode *mon = new MemoryObjectNode();
@@ -56,24 +55,23 @@ void AddressSpaceGraph::extract_pointers(const klee::ObjectState &obj,
 	for (unsigned i=0; i<obj.size; ++i) {
 		if (obj.isBytePointer(i)) {
 			for (unsigned j=0; j<pointer_width_/8; ++j) {
-				if (!obj.isBytePointer(i+j)) {
-					cv_warning("AddressSpaceGraph: i=%d, j=%d, pointer_width=%d", i, j, pointer_width_/8);
-					obj.print(*cv_message_stream);
-				}
 				assert(obj.isBytePointer(i+j) && "invalid pointer size");
 			}
 			klee::ref<klee::Expr> pointer_expr = obj.read(i, pointer_width_);
 			if (klee::ConstantExpr *CE = llvm::dyn_cast<klee::ConstantExpr>(pointer_expr)) {
 				klee::ObjectPair object_pair;
+			  uint64_t val = CE->getZExtValue(pointer_width_);
 				if (address_space_->resolveOne(CE, object_pair)) {
 					PointerEdge *pe = new PointerEdge();
 					pe->offset = i;
-					pe->points_to_address = CE->getZExtValue(pointer_width_);
+					pe->points_to_address = val;
 					node->add_edge(pe);
-					//cv_message("adding new edge at offset %d, points to %x", pe->offset, pe->points_to_address);
+				} else {
+					CVDEBUG("address " << *CE << " did not resolve");
 				}
+			} else {
+				CVDEBUG("Non-concrete pointer");
 			}
-			// print warning when a symbolic pointer is found?
 			i += (pointer_width_/8) - 1;
 		}
 	}
@@ -93,7 +91,6 @@ void AddressSpaceGraph::extract_pointers_by_resolving(const klee::ObjectState &o
 				pe->points_to_address = CE->getZExtValue(pointer_width_);
 				pe->points_to_object = object_pair.second;
 				node->add_edge(pe);
-				//cv_message("adding new edge at offset %d, points to %x", pe->offset, pe->points_to_address);
 			}
 		}
 	}
