@@ -12,17 +12,16 @@
 #include "../Core/AddressSpace.h"
 #include "../Core/Memory.h"
 
+#include <map>
+
 namespace cliver {
 
 class MemoryObjectNode;
 
 struct PointerEdge {
-	uint64_t address;
-	uint64_t base_address;
+	MemoryObjectNode *parent;
 	unsigned offset;
 	uint64_t points_to_address;
-	uint64_t points_to_base_address;
-	unsigned points_to_offset;
 	MemoryObjectNode *points_to_node;
 	const klee::ObjectState *points_to_object;
 	PointerEdge *next;
@@ -32,13 +31,17 @@ struct PointerEdge {
 
 class MemoryObjectNode {
  public:
-	unsigned degree;
-	uint64_t base_address;
 	klee::ObjectState* object_state;
-	PointerEdge *first_edge;
-	PointerEdge *last_edge;
+	uint64_t base_address;
 
-	MemoryObjectNode();
+	unsigned in_degree;
+	unsigned out_degree;
+	PointerEdge *first_edge_in;
+	PointerEdge *last_edge_in;
+	PointerEdge *first_edge_out;
+	PointerEdge *last_edge_out;
+
+	MemoryObjectNode(klee::ObjectState* obj);
 	void add_edge(PointerEdge *edge);
 	void print();
 };
@@ -54,6 +57,7 @@ class AddressSpaceGraph {
 	klee::AddressSpace *address_space_;
 	unsigned pointer_width_;
 	std::vector<MemoryObjectNode*> nodes_;
+	std::map<uint64_t,MemoryObjectNode*> node_address_map_;
 };
 
 } // End cliver namespace

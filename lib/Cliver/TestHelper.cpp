@@ -36,8 +36,8 @@ void ExternalHandler_test_extract_pointers(klee::Executor* executor,
 
 	for (klee::MemoryMap::iterator it=state->addressSpace.objects.begin(),
 			ie=state->addressSpace.objects.end(); it!=ie; ++it) {
-		MemoryObjectNode *a = new MemoryObjectNode();
-		MemoryObjectNode *b = new MemoryObjectNode();
+		MemoryObjectNode *a = new MemoryObjectNode(it->second);
+		MemoryObjectNode *b = new MemoryObjectNode(it->second);
 		asg->extract_pointers(*it->second, a);
 		asg->extract_pointers_by_resolving(*it->second, b);
 		if (a->degree != b->degree) {
