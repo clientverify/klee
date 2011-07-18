@@ -17,6 +17,7 @@
 namespace cliver {
 
 class MemoryObjectNode;
+class AddressSpaceGraph;
 
 struct PointerEdge {
 	MemoryObjectNode *parent;
@@ -25,25 +26,30 @@ struct PointerEdge {
 	MemoryObjectNode *points_to_node;
 	const klee::ObjectState *points_to_object;
 	PointerEdge *next;
-
 	PointerEdge();
 };
 
 class MemoryObjectNode {
  public:
+	MemoryObjectNode(klee::ObjectState* obj);
+	klee::ObjectState* object() { return object_state; }
+	uint64_t address() { return base_address; }
+	void print();
+
+	void add_out_edge(PointerEdge *edge);
+	void add_in_edge(PointerEdge *edge);
+
+	unsigned in_degree();
+	unsigned out_degree();
+
+	PointerEdge* in_edge(unsigned i);
+	PointerEdge* out_edge(unsigned i);
+
+ private:
+	std::vector<PointerEdge*> edges_in;
+	std::vector<PointerEdge*> edges_out;
 	klee::ObjectState* object_state;
 	uint64_t base_address;
-
-	unsigned in_degree;
-	unsigned out_degree;
-	PointerEdge *first_edge_in;
-	PointerEdge *last_edge_in;
-	PointerEdge *first_edge_out;
-	PointerEdge *last_edge_out;
-
-	MemoryObjectNode(klee::ObjectState* obj);
-	void add_edge(PointerEdge *edge);
-	void print();
 };
 
 class AddressSpaceGraph {
@@ -51,13 +57,16 @@ class AddressSpaceGraph {
 	AddressSpaceGraph(klee::AddressSpace *address_space);
 	void build_graph();
   int compare(const AddressSpaceGraph &b) const;
-	void extract_pointers(const klee::ObjectState &obj, MemoryObjectNode *node);
-	void extract_pointers_by_resolving(const klee::ObjectState &obj, MemoryObjectNode *node);
+	void extract_pointers(MemoryObjectNode *node);
+	void extract_pointers_by_resolving(MemoryObjectNode *node);
  private:
+	void add_edge_to_node(PointerEdge* edge, MemoryObjectNode* node);
+
 	klee::AddressSpace *address_space_;
 	unsigned pointer_width_;
 	std::vector<MemoryObjectNode*> nodes_;
 	std::map<uint64_t,MemoryObjectNode*> node_address_map_;
+	std::map<const klee::ObjectState*,MemoryObjectNode*> node_object_map_;
 };
 
 } // End cliver namespace

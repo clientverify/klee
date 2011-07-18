@@ -22,20 +22,33 @@ PointerEdge::PointerEdge()
 		next(NULL) {}
 
 MemoryObjectNode::MemoryObjectNode(klee::ObjectState* obj) 
-	: degree(0), 
-		object_state(obj), 
-		base_address(obj->getObject()->address), 
-		first_edge(NULL), 
-		last_edge(NULL) {}
+	: object_state(obj), 
+		base_address(obj->getObject()->address)
+		{}
 
-void MemoryObjectNode::add_edge(PointerEdge *edge) {
-	if (degree == 0) {
-		first_edge = last_edge = edge;
-	} else {
-		last_edge->next = edge;
-		last_edge = edge;
-	}
-	degree++;
+PointerEdge* MemoryObjectNode::in_edge(unsigned i) { 
+	assert(i < edges_in.size()); 
+	return edges_in[i]; 
+}
+
+PointerEdge* MemoryObjectNode::out_edge(unsigned i) { 
+	assert(i < edges_out.size()); 
+	return edges_out[i];
+}
+
+unsigned MemoryObjectNode::in_degree() { 
+	return edges_in.size();
+}
+
+unsigned MemoryObjectNode::out_degree() { 
+	return edges_out.size();
+}
+
+void MemoryObjectNode::add_in_edge(PointerEdge *edge) {
+	edges_in.push_back(edge);
+}
+void MemoryObjectNode::add_out_edge(PointerEdge *edge) {
+	edges_out.push_back(edge);
 }
 
 AddressSpaceGraph::AddressSpaceGraph(klee::AddressSpace *address_space) 
@@ -46,15 +59,27 @@ AddressSpaceGraph::AddressSpaceGraph(klee::AddressSpace *address_space)
 /// Build a graph on all the objects in the address space using pointer 
 /// relationships as edges. 
 void AddressSpaceGraph::build_graph() {
+	// Create a MemoryObjectNode for each MemoryObject in the addressSpace.
 	for (klee::MemoryMap::iterator it=address_space_->objects.begin(),
 			ie=address_space_->objects.end(); it!=ie; ++it) {
-		MemoryObjectNode *mon = new MemoryObjectNode(it->second);
-		node_address_map_[mon->base_address] = mon;
-		extract_pointers(*it->second, mon);
-		nodes_.push_back(mon);
+		MemoryObjectNode *node = new MemoryObjectNode(it->second);
+		nodes_.push_back(node);
+		node_address_map_[node->address()] = node;
+		node_object_map_[it->second] = node;
 	}
-	//for (::iterator it=address_space_->objects.begin(),
-  //			ie=address_space_->objects.end(); it!=ie; ++it) {
+
+	// The graph now has nodes but no edges. Add directed edges from memoryobjects to
+	// the memoryobjects that their contents contains address that references
+	for (unsigned i=0; i<nodes_.size(); ++i) {
+		MemoryObjectNode *node = nodes_[i];
+		extract_pointers(node);
+		for (unsigned j=0; j<node->out_degree(); ++j) {
+			PointerEdge* edge = node->out_edge(j);
+			MemoryObjectNode* points_to_node = node_object_map_[edge->points_to_object];
+			assert(points_to_node != NULL && "Points-to-node is NULL");
+			points_to_node->add_in_edge(edge);
+		}
+	}
 }
 
 int AddressSpaceGraph::compare(const AddressSpaceGraph &b) const {
@@ -62,15 +87,14 @@ int AddressSpaceGraph::compare(const AddressSpaceGraph &b) const {
 }
 
 /// Extract pointers using the ObjectState's pointerMask.
-void AddressSpaceGraph::extract_pointers(const klee::ObjectState &obj, 
-		MemoryObjectNode *node) {
-
-	for (unsigned i=0; i<obj.size; ++i) {
-		if (obj.isBytePointer(i)) {
+void AddressSpaceGraph::extract_pointers(MemoryObjectNode *node) {
+	klee::ObjectState* obj = node->object();
+	for (unsigned i=0; i<obj->size; ++i) {
+		if (obj->isBytePointer(i)) {
 			for (unsigned j=0; j<pointer_width_/8; ++j) {
-				assert(obj.isBytePointer(i+j) && "invalid pointer size");
+				assert(obj->isBytePointer(i+j) && "invalid pointer size");
 			}
-			klee::ref<klee::Expr> pexpr = obj.read(i, pointer_width_);
+			klee::ref<klee::Expr> pexpr = obj->read(i, pointer_width_);
 			if (klee::ConstantExpr *CE = llvm::dyn_cast<klee::ConstantExpr>(pexpr)) {
 				klee::ObjectPair object_pair;
 			  uint64_t val = CE->getZExtValue(pointer_width_);
@@ -80,7 +104,7 @@ void AddressSpaceGraph::extract_pointers(const klee::ObjectState &obj,
 					pe->offset = i;
 					pe->points_to_address = val;
 					pe->points_to_object = object_pair.second;
-					node->add_edge(pe);
+					node->add_out_edge(pe);
 				} else {
 					CVDEBUG("address " << *CE << " did not resolve");
 				}
@@ -93,12 +117,12 @@ void AddressSpaceGraph::extract_pointers(const klee::ObjectState &obj,
 }
 
 /// Extract pointers by trying to resolve every 'pointerwidth' constant expr
-void AddressSpaceGraph::extract_pointers_by_resolving(const klee::ObjectState &obj, 
-		MemoryObjectNode *node) {
+void AddressSpaceGraph::extract_pointers_by_resolving(MemoryObjectNode *node) {
+	klee::ObjectState* obj = node->object();
 
 	// Attempt to resolve every 4 or 8 byte constant expr in the ObjectState
-	for (unsigned i=0; i<obj.size; ++i) {
-		klee::ref<klee::Expr> pexpr = obj.read(i, pointer_width_);
+	for (unsigned i=0; i<obj->size; ++i) {
+		klee::ref<klee::Expr> pexpr = obj->read(i, pointer_width_);
 		if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(pexpr)) {
 			klee::ObjectPair object_pair;
 			if (address_space_->resolveOne(CE, object_pair)) {
@@ -107,7 +131,7 @@ void AddressSpaceGraph::extract_pointers_by_resolving(const klee::ObjectState &o
 				pe->offset = i;
 				pe->points_to_address = CE->getZExtValue(pointer_width_);
 				pe->points_to_object = object_pair.second;
-				node->add_edge(pe);
+				node->add_out_edge(pe);
 			}
 		}
 	}
