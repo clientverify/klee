@@ -68,11 +68,14 @@ void AddressSpaceGraph::build_graph() {
 		node_object_map_[it->second] = node;
 	}
 
-	// The graph now has nodes but no edges. Add directed edges from memoryobjects to
-	// the memoryobjects that their contents contains address that references
+	// The graph now has nodes but no edges. For each node create a list of PointerEdges
+	// for each pointer contained in the MemoryObject that the node represents.
 	for (unsigned i=0; i<nodes_.size(); ++i) {
 		MemoryObjectNode *node = nodes_[i];
 		extract_pointers(node);
+
+		// Now for each PointerEdge, add it to the Node that it points to. Every node
+		// should now have a complete list of incoming and outgoing edges (if they exist).
 		for (unsigned j=0; j<node->out_degree(); ++j) {
 			PointerEdge* edge = node->out_edge(j);
 			MemoryObjectNode* points_to_node = node_object_map_[edge->points_to_object];
