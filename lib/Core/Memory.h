@@ -202,6 +202,7 @@ public:
 
   bool isBytePointer(unsigned offset) const;
   void markBytePointer(unsigned offset);
+  bool isByteConcrete(unsigned offset) const;
 
   void print(std::ostream &os, bool print_bytes=true) const;
   void print_diff(std::vector<ObjectState*> &_ovec, std::ostream &os) const;
@@ -223,7 +224,6 @@ private:
   void flushRangeForRead(unsigned rangeBase, unsigned rangeSize) const;
   void flushRangeForWrite(unsigned rangeBase, unsigned rangeSize);
 
-  bool isByteConcrete(unsigned offset) const;
   bool isByteFlushed(unsigned offset) const;
   bool isByteKnownSymbolic(unsigned offset) const;
 
