@@ -11,87 +11,13 @@
 #include "AddressSpaceGraph.h"
 #include "CVStream.h"
 
+#include <boost/foreach.hpp>
+#define foreach BOOST_FOREACH 
+
 namespace cliver {
 
-PointerEdge::PointerEdge() 
-	: parent(NULL), 
-		offset(0), 
-		points_to_address(0), 
-		points_to_node(NULL), 
-		points_to_object(NULL), 
-		next(NULL) {}
-
-MemoryObjectNode::MemoryObjectNode(klee::ObjectState* obj) 
-	: object_state(obj), 
-		base_address(obj->getObject()->address)
-		{}
-
-PointerEdge* MemoryObjectNode::in_edge(unsigned i) { 
-	assert(i < edges_in.size()); 
-	return edges_in[i]; 
-}
-
-PointerEdge* MemoryObjectNode::out_edge(unsigned i) { 
-	assert(i < edges_out.size()); 
-	return edges_out[i];
-}
-
-unsigned MemoryObjectNode::in_degree() { 
-	return edges_in.size();
-}
-
-unsigned MemoryObjectNode::out_degree() { 
-	return edges_out.size();
-}
-
-void MemoryObjectNode::add_in_edge(PointerEdge *edge) {
-	edges_in.push_back(edge);
-}
-void MemoryObjectNode::add_out_edge(PointerEdge *edge) {
-	edges_out.push_back(edge);
-}
-
-AddressSpaceGraph::AddressSpaceGraph(klee::AddressSpace *address_space) 
- : address_space_(address_space), 
-	 pointer_width_(klee::Context::get().getPointerWidth()) {
-}
-
-/// Build a graph on all the objects in the address space using pointer 
-/// relationships as edges. 
-void AddressSpaceGraph::build_graph() {
-	// Create a MemoryObjectNode for each MemoryObject in the addressSpace.
-	for (klee::MemoryMap::iterator it=address_space_->objects.begin(),
-			ie=address_space_->objects.end(); it!=ie; ++it) {
-		MemoryObjectNode *node = new MemoryObjectNode(it->second);
-		nodes_.push_back(node);
-		node_address_map_[node->address()] = node;
-		node_object_map_[it->second] = node;
-	}
-
-	// The graph now has nodes but no edges. For each node create a list of PointerEdges
-	// for each pointer contained in the MemoryObject that the node represents.
-	for (unsigned i=0; i<nodes_.size(); ++i) {
-		MemoryObjectNode *node = nodes_[i];
-		extract_pointers(node);
-
-		// Now for each PointerEdge, add it to the Node that it points to. Every node
-		// should now have a complete list of incoming and outgoing edges (if they exist).
-		for (unsigned j=0; j<node->out_degree(); ++j) {
-			PointerEdge* edge = node->out_edge(j);
-			MemoryObjectNode* points_to_node = node_object_map_[edge->points_to_object];
-			assert(points_to_node != NULL && "Points-to-node is NULL");
-			points_to_node->add_in_edge(edge);
-		}
-	}
-
-	// Collect nodes with in-degree of 0 (root nodes)
-	for (unsigned i=0; i<nodes_.size(); ++i) {
-		MemoryObjectNode *node = nodes_[i];
-		if (node->in_degree() == 0) {
-			root_nodes_.insert(node);
-		}
-	}
-}
+AddressSpaceGraph::AddressSpaceGraph(klee::ExecutionState *state) 
+ : state_(state), pointer_width_(klee::Context::get().getPointerWidth()) {}
 
 /// Compare the concrete values of two ObjectStates, ignoring pointers and symbolics.
 bool AddressSpaceGraph::compare_concrete(klee::ObjectState *a, klee::ObjectState *b) {
@@ -120,21 +46,73 @@ bool AddressSpaceGraph::compare_concrete(klee::ObjectState *a, klee::ObjectState
 
 int AddressSpaceGraph::compare(const AddressSpaceGraph &b) const {
 
-	std::set<MemoryObjectNode*> a_worklist, b_worklist;
-
-	// Sort by incoming degree, outgoing degree
-
-	// For each incoming/outgoing group, do n-way comparison to find concrete matches,
-	// then follow edges and continue comparisons.
-	// Need to handle multiple matches
-
-	// Identify Rings
+	// TODO Identify Rings
 	return 0;
 }
 
+void AddressSpaceGraph::add_vertex(klee::ObjectState* object) {
+	Vertex v = boost::add_vertex(graph_);
+	graph_[v].object = object;
+	object_vertex_map_[object] = v;
+}
+	
+/// Build a graph on all the objects in the address space using pointer 
+/// relationships as edges. 
+void AddressSpaceGraph::build_graph() {
+
+	// Create a Vertex for each MemoryObject in the addressSpace.
+	for (klee::MemoryMap::iterator it=state_->addressSpace.objects.begin(),
+			ie=state_->addressSpace.objects.end(); it!=ie; ++it) {
+		add_vertex(it->second);
+	}
+	
+	foreach (ObjectVertexPair pair, object_vertex_map_) {
+		PointerList results;
+		klee::ObjectState* object_state = pair.first;
+		Vertex v = pair.second;
+		extract_pointers(object_state, results);
+
+		foreach (PointerProperties pointer, results) {
+			assert(object_vertex_map_.find(pointer.object) != object_vertex_map_.end());
+			Vertex v2 = object_vertex_map_[pointer.object];
+			boost::add_edge(v, v2, pointer, graph_);
+		}
+	}
+	
+	std::set<Vertex> visited;
+	BFSVisitor bfs_vis(&visited);
+
+	foreach (klee::StackFrame sf, state_->stack) {
+		foreach (const klee::MemoryObject* mo, sf.allocas) {
+			klee::ObjectPair object_pair;
+			if (state_->addressSpace.resolveOne(mo->getBaseExpr(), object_pair)) {
+				klee::ObjectState* object = const_cast<klee::ObjectState*>(object_pair.second);
+				stack_objects_.push_back(object);
+				Vertex v = object_vertex_map_[object];
+				boost::breadth_first_search(graph_, v, boost::visitor(bfs_vis));
+			}
+		}
+	}
+	if (visited.size() != object_vertex_map_.size()) {
+		cv_message("Orphan MO! %d != %d \n", 
+				(int)visited.size(), (int)object_vertex_map_.size());
+		foreach (ObjectVertexPair pair, object_vertex_map_) {
+			PointerList results;
+			Vertex v = pair.second;
+			if (visited.find(v) == visited.end()) {
+				cv_message("Vertex degree(in,out) = (%d, %d)", 
+						(int)boost::in_degree(v,graph_), (int)boost::out_degree(v,graph_));
+				klee::ObjectState* object_state 
+					= boost::get(boost::get(&VertexProperties::object, graph_), v);
+				object_state->print(*cv_debug_stream, false);
+			}
+		}
+	}
+
+}
+
 /// Extract pointers using the ObjectState's pointerMask.
-void AddressSpaceGraph::extract_pointers(MemoryObjectNode *node) {
-	klee::ObjectState* obj = node->object();
+void AddressSpaceGraph::extract_pointers(klee::ObjectState *obj, PointerList &results) {
 	for (unsigned i=0; i<obj->size; ++i) {
 		if (obj->isBytePointer(i)) {
 			for (unsigned j=0; j<pointer_width_/8; ++j) {
@@ -144,13 +122,12 @@ void AddressSpaceGraph::extract_pointers(MemoryObjectNode *node) {
 			if (klee::ConstantExpr *CE = llvm::dyn_cast<klee::ConstantExpr>(pexpr)) {
 				klee::ObjectPair object_pair;
 			  uint64_t val = CE->getZExtValue(pointer_width_);
-				if (address_space_->resolveOne(CE, object_pair)) {
-					PointerEdge *pe = new PointerEdge();
-					pe->parent = node;
-					pe->offset = i;
-					pe->points_to_address = val;
-					pe->points_to_object = object_pair.second;
-					node->add_out_edge(pe);
+				if (state_->addressSpace.resolveOne(CE, object_pair)) {
+					PointerProperties p;  
+					p.offset = i;
+					p.address = val;
+					p.object = const_cast<klee::ObjectState*>(object_pair.second);
+					results.push_back(p);
 				} else {
 					CVDEBUG("address " << *CE << " did not resolve");
 				}
@@ -163,21 +140,20 @@ void AddressSpaceGraph::extract_pointers(MemoryObjectNode *node) {
 }
 
 /// Extract pointers by trying to resolve every 'pointerwidth' constant expr
-void AddressSpaceGraph::extract_pointers_by_resolving(MemoryObjectNode *node) {
-	klee::ObjectState* obj = node->object();
+void AddressSpaceGraph::extract_pointers_by_resolving(klee::ObjectState *obj, 
+		PointerList &results) {
 
 	// Attempt to resolve every 4 or 8 byte constant expr in the ObjectState
 	for (unsigned i=0; i<obj->size; ++i) {
 		klee::ref<klee::Expr> pexpr = obj->read(i, pointer_width_);
 		if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(pexpr)) {
 			klee::ObjectPair object_pair;
-			if (address_space_->resolveOne(CE, object_pair)) {
-				PointerEdge *pe = new PointerEdge();
-				pe->parent = node;
-				pe->offset = i;
-				pe->points_to_address = CE->getZExtValue(pointer_width_);
-				pe->points_to_object = object_pair.second;
-				node->add_out_edge(pe);
+			if (state_->addressSpace.resolveOne(CE, object_pair)) {
+				PointerProperties p;  
+				p.offset = i;
+				p.address = CE->getZExtValue(pointer_width_);
+				p.object = const_cast<klee::ObjectState*>(object_pair.second);
+				results.push_back(p);
 			}
 		}
 	}
