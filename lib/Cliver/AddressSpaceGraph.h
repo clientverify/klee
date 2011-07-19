@@ -61,12 +61,14 @@ class AddressSpaceGraph {
 	void extract_pointers_by_resolving(MemoryObjectNode *node);
  private:
 	void add_edge_to_node(PointerEdge* edge, MemoryObjectNode* node);
+  bool compare_concrete(klee::ObjectState *a,klee::ObjectState *b);
 
 	klee::AddressSpace *address_space_;
 	unsigned pointer_width_;
 	std::vector<MemoryObjectNode*> nodes_;
 	std::map<uint64_t,MemoryObjectNode*> node_address_map_;
 	std::map<const klee::ObjectState*,MemoryObjectNode*> node_object_map_;
+	std::set<MemoryObjectNode*> root_nodes_;
 };
 
 } // End cliver namespace

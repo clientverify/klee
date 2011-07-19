@@ -83,9 +83,52 @@ void AddressSpaceGraph::build_graph() {
 			points_to_node->add_in_edge(edge);
 		}
 	}
+
+	// Collect nodes with in-degree of 0 (root nodes)
+	for (unsigned i=0; i<nodes_.size(); ++i) {
+		MemoryObjectNode *node = nodes_[i];
+		if (node->in_degree() == 0) {
+			root_nodes_.insert(node);
+		}
+	}
+}
+
+/// Compare the concrete values of two ObjectStates, ignoring pointers and symbolics.
+bool AddressSpaceGraph::compare_concrete(klee::ObjectState *a, klee::ObjectState *b) {
+
+	if (a->size != b->size)
+		return false;
+
+	// Check that the pointer masks are equal
+	for (unsigned i=0; i<a->size; i++) {
+		if ((a->isByteConcrete(i) != b->isByteConcrete(i)) ||
+		    (a->isBytePointer(i) != b->isBytePointer(i))) {
+			return false;
+		}
+	}
+
+	// if concrete, and not a pointer, the concrete values must be equal
+	for (unsigned i=0; i<a->size; i++) {
+		if (!a->isBytePointer(i) && 
+				a->isByteConcrete(i) && 
+				a->read8(i) != b->read8(i)) {
+			return false;
+		}
+	}
+	return true;
 }
 
 int AddressSpaceGraph::compare(const AddressSpaceGraph &b) const {
+
+	std::set<MemoryObjectNode*> a_worklist, b_worklist;
+
+	// Sort by incoming degree, outgoing degree
+
+	// For each incoming/outgoing group, do n-way comparison to find concrete matches,
+	// then follow edges and continue comparisons.
+	// Need to handle multiple matches
+
+	// Identify Rings
 	return 0;
 }
 
