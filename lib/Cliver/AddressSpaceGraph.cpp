@@ -66,6 +66,7 @@ void AddressSpaceGraph::build_graph() {
 		add_vertex(it->second);
 	}
 	
+	// Create an edge between vertices for every pointer
 	foreach (ObjectVertexPair pair, object_vertex_map_) {
 		PointerList results;
 		klee::ObjectState* object_state = pair.first;
@@ -93,21 +94,23 @@ void AddressSpaceGraph::build_graph() {
 			}
 		}
 	}
-	if (visited.size() != object_vertex_map_.size()) {
-		cv_message("Orphan MO! %d != %d \n", 
-				(int)visited.size(), (int)object_vertex_map_.size());
-		foreach (ObjectVertexPair pair, object_vertex_map_) {
-			PointerList results;
-			Vertex v = pair.second;
-			if (visited.find(v) == visited.end()) {
-				cv_message("Vertex degree(in,out) = (%d, %d)", 
-						(int)boost::in_degree(v,graph_), (int)boost::out_degree(v,graph_));
-				klee::ObjectState* object_state 
-					= boost::get(boost::get(&VertexProperties::object, graph_), v);
-				object_state->print(*cv_debug_stream, false);
-			}
-		}
-	}
+
+	// TODO test characteristics of the graphs, unconnected nodes, etc.
+	//if (visited.size() != object_vertex_map_.size()) {
+	//	cv_message("Orphan MO! %d != %d \n", 
+	//			(int)visited.size(), (int)object_vertex_map_.size());
+	//	foreach (ObjectVertexPair pair, object_vertex_map_) {
+	//		PointerList results;
+	//		Vertex v = pair.second;
+	//		if (visited.find(v) == visited.end()) {
+	//			cv_message("Vertex degree(in,out) = (%d, %d)", 
+	//					(int)boost::in_degree(v,graph_), (int)boost::out_degree(v,graph_));
+	//			klee::ObjectState* object_state 
+	//				= boost::get(boost::get(&VertexProperties::object, graph_), v);
+	//			object_state->print(*cv_debug_stream, false);
+	//		}
+	//	}
+	//}
 
 }
 

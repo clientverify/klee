@@ -33,9 +33,12 @@ struct PointerProperties {
 typedef std::vector< PointerProperties > PointerList;
 
 typedef boost::adjacency_list<
-	boost::vecS, boost::vecS, boost::bidirectionalS,
+	boost::vecS, 
+	boost::vecS, 
+	boost::bidirectionalS,
 	VertexProperties,
 	PointerProperties > Graph;
+
 typedef boost::graph_traits<Graph>::vertex_descriptor Vertex;
 typedef boost::graph_traits<Graph>::vertex_iterator VertexIterator;
 typedef std::pair< VertexIterator, VertexIterator > VertexPair;
