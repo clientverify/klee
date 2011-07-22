@@ -10,6 +10,7 @@
 #define CLIVER_EXECUTOR_H
 
 #include "../Core/Executor.h"
+#include "../Core/SpecialFunctionHandler.h"
 #include "ClientVerifier.h"
 
 namespace cliver {
@@ -43,6 +44,9 @@ class CVExecutor : public klee::Executor {
 
   virtual void executeMakeSymbolic(klee::ExecutionState &state, 
                                    const klee::MemoryObject *mo);
+
+	void add_external_handler(std::string name, 
+			klee::SpecialFunctionHandler::ExternalHandler external_handler);
  private:
   ClientVerifier *cv_;
 };
