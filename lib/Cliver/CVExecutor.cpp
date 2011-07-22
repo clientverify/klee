@@ -10,7 +10,6 @@
 #include "CVExecutor.h"
 #include "CVMemoryManager.h"
 #include "CVStream.h"
-#include "TestHelper.h"
 
 //#include "../Core/ExternalDispatcher.h"
 //#include "../Core/SpecialFunctionHandler.h"
@@ -187,11 +186,7 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
   using namespace klee;
   std::vector< ref<Expr> > arguments;
 
-	// init testing helper handlers
-	specialFunctionHandler->addExternalHandler(
-			kmodule->module->getFunction("cliver_test_extract_pointers"),
-			ExternalHandler_test_extract_pointers);
-  
+ 
 	// force deterministic initialization of memory objects
   srand(1);
   srandom(1);
@@ -310,6 +305,17 @@ void CVExecutor::executeMakeSymbolic(klee::ExecutionState &state,
   bindObjectInState(state, mo, false, array);
   state.addSymbolic(mo, array);
 
+}
+
+void CVExecutor::add_external_handler(std::string name, 
+		klee::SpecialFunctionHandler::ExternalHandler external_handler) {
+	
+	llvm::Function *function = kmodule->module->getFunction(name);
+
+	if (function == NULL)
+		cv_error("invalid/non-existant external function name");
+
+	specialFunctionHandler->addExternalHandler(function, external_handler);
 }
 
 } // end namespace cliver

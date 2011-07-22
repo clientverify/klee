@@ -14,6 +14,7 @@
 #include "../lib/Core/Common.h"
 #include "../lib/Cliver/ClientVerifier.h"
 #include "../lib/Cliver/CVExecutor.h"
+#include "../lib/Cliver/CVStream.h"
 
 #include "klee/Config/config.h"
 #include "klee/ExecutionState.h"
@@ -222,7 +223,7 @@ int main(int argc, char **argv, char **envp) {
     = llvm::MemoryBuffer::getFileOrSTDIN(InputFile,&error_msg);
 
   if (!input_buffer) 
-    klee::klee_error("CV: %s %s", InputFile.c_str(), error_msg.c_str());
+    cliver::cv_error("%s %s", InputFile.c_str(), error_msg.c_str());
 
   llvm::Module *main_module = llvm::getLazyBitcodeModule(
       input_buffer, llvm::getGlobalContext(), &error_msg);
@@ -235,7 +236,7 @@ int main(int argc, char **argv, char **envp) {
   }
 
   if (!main_module)
-    klee::klee_error("CV: %s %s", InputFile.c_str(), error_msg.c_str());
+    cliver::cv_error("%s %s", InputFile.c_str(), error_msg.c_str());
 
   llvm::sys::Path LibraryDir(KLEE_DIR "/" RUNTIME_CONFIGURATION "/lib");
   klee::Interpreter::ModuleOptions Opts(LibraryDir.c_str(),
@@ -243,16 +244,16 @@ int main(int argc, char **argv, char **envp) {
       /*CheckDivZero=*/ false);
 
   if (WithPOSIXRuntime) {
-    klee::klee_error("CV: posix-runtime is not supported");
+		cliver::cv_error("posix-runtime is not supported");
   }
 
   if (WithCliverRuntime) {
     llvm::sys::Path runtime_path(Opts.LibraryDir);
     runtime_path.appendComponent("libCliverRuntime.bca");
-    klee::klee_message("CV: NOTE: Using runtime %s", runtime_path.c_str());
+		cliver::cv_message("Using runtime %s", runtime_path.c_str());
     main_module = klee::linkWithLibrary(main_module, runtime_path.c_str());
     if (!main_module)
-      klee::klee_error("CV: unable to link with cliver runtime");
+      cliver::cv_error("unable to link with cliver runtime");
   }  
 
   switch (Libc) {
@@ -265,18 +266,18 @@ int main(int argc, char **argv, char **envp) {
         Path.appendComponent("libklee-libc.bca");
         main_module = klee::linkWithLibrary(main_module, Path.c_str());
         if (!main_module)
-          klee::klee_error("CV: unable to link with klee-libc");
+          cliver::cv_error("unable to link with klee-libc");
         break;
       }
 
     case UcLibc:
-      klee::klee_error("CV: ulibc not supported");
+			cliver::cv_error("ulibc not supported");
       break;
   }
 
   Function *main_fn = main_module->getFunction("main");
   if (!main_fn)
-    klee::klee_error("'main' function not found in module");
+    cliver::cv_error("'main' function not found in module");
 
   // FIXME: Change me to std types.
   int pArgc;
@@ -286,7 +287,7 @@ int main(int argc, char **argv, char **envp) {
     std::vector<std::string> items;
     std::ifstream f(Environ.c_str());
     if (!f.good())
-      klee::klee_error("CV: unable to open --environ file: %s", Environ.c_str());
+      cliver::cv_error("unable to open --environ file: %s", Environ.c_str());
     while (!f.eof()) {
       std::string line;
       std::getline(f, line);
@@ -320,7 +321,8 @@ int main(int argc, char **argv, char **envp) {
   klee::Interpreter::InterpreterOptions IOpts;
   IOpts.MakeConcreteSymbolic = false;
   cliver::CVHandler *handler = new cliver::CVHandler(cv);
-  g_interpreter = new cliver::CVExecutor(cv, IOpts, handler);
+	cliver::CVExecutor *cvexecutor = new cliver::CVExecutor(cv, IOpts, handler);
+  g_interpreter = cvexecutor;
 
   // Print args to info file
   std::ostream &infoFile = handler->getInfoStream();
@@ -354,6 +356,7 @@ int main(int argc, char **argv, char **envp) {
 
   //// TODO: load socket replay files
 
+	cv->prepare_to_run(cvexecutor);
   g_interpreter->runFunctionAsMain(main_fn, pArgc, pArgv, pEnvp);
 
   // End time

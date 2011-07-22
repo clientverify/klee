@@ -18,6 +18,8 @@
 
 namespace cliver {
 
+class CVExecutor;
+
 class CVContext {
  public:
   CVContext();
@@ -35,6 +37,7 @@ class ClientVerifier {
   virtual ~ClientVerifier();
   inline CVStream* getCVStream() { return cvstream_; }
   void init();
+	void prepare_to_run(CVExecutor *executor);
  private:
   CVStream *cvstream_;
 };
