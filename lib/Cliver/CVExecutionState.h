@@ -20,6 +20,7 @@ namespace cliver {
 class AddressManager;
 class CVContext;
 class CVMemoryManager;
+class NetworkManager;
 
 class CVExecutionState : public klee::ExecutionState {
  public:
@@ -32,6 +33,7 @@ class CVExecutionState : public klee::ExecutionState {
   const CVContext* context() { return context_; }
 
   AddressManager* address_manager() { return address_manager_; }
+	NetworkManager* network_manager() { return network_manager_; }
 
  private:
   void initialize();
@@ -42,6 +44,7 @@ class CVExecutionState : public klee::ExecutionState {
   CVContext* context_;
   AddressManager* address_manager_;
   CVMemoryManager* memory_;
+	NetworkManager* network_manager_;
 
 };
 } // End cliver namespace
