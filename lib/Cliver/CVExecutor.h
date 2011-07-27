@@ -16,6 +16,8 @@
 namespace cliver {
 
 class CVMemoryManager;
+class CVExecutionState;
+class NetworkManager;
 
 class CVHandler : public klee::InterpreterHandler {
  public:
@@ -47,6 +49,14 @@ class CVExecutor : public klee::Executor {
 
 	void add_external_handler(std::string name, 
 			klee::SpecialFunctionHandler::ExternalHandler external_handler);
+
+	void resolve_one(klee::ExecutionState *state, klee::ref<klee::Expr> address_expr, 
+			klee::ObjectPair &result);
+
+	void terminate_state(CVExecutionState *state);
+
+	void bind_local(klee::KInstruction *target, CVExecutionState *state, unsigned i);
+
  private:
   ClientVerifier *cv_;
 };

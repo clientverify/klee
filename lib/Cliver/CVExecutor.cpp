@@ -10,6 +10,7 @@
 #include "CVExecutor.h"
 #include "CVMemoryManager.h"
 #include "CVStream.h"
+#include "NetworkManager.h"
 
 //#include "../Core/ExternalDispatcher.h"
 //#include "../Core/SpecialFunctionHandler.h"
@@ -300,7 +301,7 @@ void CVExecutor::executeMakeSymbolic(klee::ExecutionState &state,
 
   // Create a new object state for the memory object (instead of a copy).
   static unsigned id = 0;
-  const Array *array = new Array("arr" + llvm::utostr(++id),
+  const Array *array = new Array(mo->name + llvm::utostr(++id),
                                   mo->size);
   bindObjectInState(state, mo, false, array);
   state.addSymbolic(mo, array);
@@ -316,6 +317,26 @@ void CVExecutor::add_external_handler(std::string name,
 		cv_error("invalid/non-existant external function name");
 
 	specialFunctionHandler->addExternalHandler(function, external_handler);
+}
+
+void CVExecutor::resolve_one(klee::ExecutionState *state, 
+		klee::ref<klee::Expr> address_expr, klee::ObjectPair &result) {
+	
+	klee::Executor::ExactResolutionList rl;
+  resolveExact(*state, address_expr, rl, "CVExecutor::resolve_one");
+	assert(rl.size() == 1);
+	//assert(rl[0].second == state);
+	result.first = rl[0].first.first;
+	result.second = rl[0].first.second;
+}
+
+void CVExecutor::terminate_state(CVExecutionState* state) {
+	terminateState(*state);
+}
+
+void CVExecutor::bind_local(klee::KInstruction *target, 
+		CVExecutionState *state, unsigned i) {
+	bindLocal(target, *state, klee::ConstantExpr::alloc(i, klee::Expr::Int32));
 }
 
 } // end namespace cliver
