@@ -18,62 +18,104 @@
 
 namespace cliver {
 
-void ExternalHandler_network_read_event(
-		klee::Executor* executor,
-		klee::ExecutionState *state, 
-		klee::KInstruction *target, 
-    std::vector<klee::ref<klee::Expr> > &arguments);
+void ExternalHandler_socket_create(
+	klee::Executor* executor, klee::ExecutionState *state, 
+	klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
 
-class SocketEvent {
- public:
-	enum Type { SEND, RECV };
+void ExternalHandler_socket_read(
+	klee::Executor* executor, klee::ExecutionState *state, 
+	klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
 
-	SocketEvent();
-	Type type_;
-	unsigned delta_;
-	unsigned round_;
-	unsigned length_;
-	const uint8_t *data_;
+void ExternalHandler_socket_write(
+	klee::Executor* executor, klee::ExecutionState *state, 
+	klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
+
+void ExternalHandler_socket_shutdown(
+		klee::Executor* executor, klee::ExecutionState *state, 
+		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
+
+#define SOCKETEVENT_TYPES X(SEND), X(RECV) 
+#define SOCKET_STATES     X(IDLE), X(READING), X(WRITING), X(FINISHED)
+#define X(x) x
+
+struct SocketEvent {
+	typedef enum { SOCKETEVENT_TYPES } Type;
+	Type type;
+	unsigned delta;
+	int round;
+	unsigned length;
+	const uint8_t *data;
 };
 
 class Socket {
  public:
-	enum State { IDLE, READING, WRITING, FINISHED };
-	Socket();
-	unsigned delta() { return log_[id_]->delta_; }
-	unsigned round() { return log_[id_]->round_; }
-	unsigned length() { return log_[id_]->length_; }
-	SocketEvent::Type type() { return log_[id_]->type_; }
-	State state() { return state_; }
-	void set_state(State state) { state_ = state; }
-	void advance() { id_++; state_ = IDLE; offset_ = 0; }
-	bool has_data() { return offset_ < log_[id_]->length_; }
-	uint8_t next_byte() { return log_[id_]->data_[offset_++]; }
+	typedef enum { SOCKET_STATES } State;
+
+	Socket(const KTest* ktest);
+
+	unsigned delta() 				 { return event().delta; }
+	int round()      				 { return event().round; }
+	SocketEvent::Type type() { return event().type; }
+	State state() 					 { return state_; }
+	int events_remaining()   { return log_.size() - id_; }
+	int log_size() 					 { return log_.size(); }
+	unsigned id() 					 { return id_; }
+	unsigned length()				 { return event().length; }
+
+	uint8_t next_byte();
+	bool has_data();
+	bool is_open();
+	void open();
+	void set_state(State s);
+	void advance();
+	void add_event(SocketEvent* e);
+
+  void print(std::ostream &os);
+
  private:
-	const uint8_t* data() { return log_[id_]->data_ + offset_; }
+	Socket() {}
+	const SocketEvent& event();
+
+	bool open_;
 	State state_;
 	unsigned id_;
 	unsigned offset_;
 	std::vector<const SocketEvent* > log_;
 };
 
+#undef X
+
+inline std::ostream &operator<<(std::ostream &os, Socket &s) {
+  s.print(os);
+  return os;
+}
+
+
 class NetworkManager {
+ typedef std::map< int, Socket > SocketMap;
+ typedef std::pair< int, Socket > SocketPair;
  public:
 
   NetworkManager(CVExecutionState* state);
-	virtual void add_socket(const KTest* ktest);
+	void add_socket(const KTest* ktest);
 
 	NetworkManager* clone(CVExecutionState *state);
 
-	void handle_read_event(CVExecutionState &state,
-		klee::KInstruction *target, klee::ref<klee::Expr> id_expr, 
-		klee::ref<klee::Expr> address_expr, klee::ref<klee::Expr> len_expr);
- 
+	void execute_open_socket(CVExecutor* executor,
+		klee::KInstruction *target, 
+		int domain, int type, int protocol);
+
 	void execute_read(CVExecutor* executor, 
 		klee::KInstruction *target, 
-		klee::ObjectState* object, 
-		int id, int len);
+		klee::ObjectState* object, int id, int len);
 
+	void execute_write(CVExecutor* executor,
+		klee::KInstruction *target, 
+		klee::ObjectState* object, int id, int len);
+
+	void execute_shutdown(CVExecutor* executor,
+		klee::KInstruction *target, 
+		int id, int how);
 
 	CVExecutionState* state() { return state_; }
 	unsigned round() { return round_; }
@@ -81,7 +123,7 @@ class NetworkManager {
  private:
 	unsigned round_;
 	CVExecutionState *state_;
-	std::map<int, Socket> sockets_;
+	SocketMap sockets_;
 };
 
 class NetworkManagerFactory {

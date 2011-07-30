@@ -10,6 +10,36 @@
 #include "NetworkManager.h"
 #include "llvm/Support/CommandLine.h"
 #include "../Core/Memory.h"
+#include "../Core/TimingSolver.h"
+
+#include <iomanip>
+
+#include <boost/foreach.hpp>
+#define foreach BOOST_FOREACH 
+
+#define RETURN_FAILURE(action, reason) { \
+	CVDEBUG("State: " << std::setw(4) << std::right << state_->id() \
+			<< " - failure - " << std::setw(8) << std::left << action << " - " \
+			<< std::setw(15) << reason << " " << socket);	\
+	executor->terminate_state(state_); \
+	return; }
+
+#define RETURN_SUCCESS(action, retval) { \
+	CVDEBUG("State: " << std::setw(4) << std::right << state_->id() \
+			<< " - success - " << action );	\
+	executor->bind_local(target, state_, retval); \
+	return; }
+
+#define GET_SOCKET_OR_DIE_TRYIN(action, id) \
+	SocketMap::iterator socket_it = sockets_.find(id); \
+	if (socket_it == sockets_.end()) { \
+		CVDEBUG("State: " << std::setw(4) << std::right << state_->id() \
+				<< " - failure - socket doesn't exist"); \
+	} \
+	Socket &socket = socket_it->second;
+
+
+////////////////////////////////////////////////////////////////////////////////
 
 namespace {
 enum NetworkModel {
@@ -26,10 +56,170 @@ cl_network_model("network-model",
   llvm::cl::init(DefaultNetworkModel));
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 namespace cliver {
+
+NetworkManager* get_network_manager(klee::ExecutionState* state) {
+	assert(static_cast<CVExecutionState*>(state)->network_manager()->state() 
+			== static_cast<CVExecutionState*>(state));
+	return static_cast<CVExecutionState*>(state)->network_manager();
+}
+
+klee::ObjectState* resolve_address(klee::Executor* executor, 
+		klee::ExecutionState* state, klee::ref<klee::Expr> address) {
+	klee::ObjectPair result;
+	static_cast<CVExecutor*>(executor)->resolve_one(state, address, result);
+	return const_cast<klee::ObjectState*>(result.second);
+}
+
+void ExternalHandler_socket_create(
+		klee::Executor* executor, klee::ExecutionState *state, 
+		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {
+
+  int domain 	 = cast<klee::ConstantExpr>(arguments[0])->getZExtValue();
+  int type     = cast<klee::ConstantExpr>(arguments[1])->getZExtValue();
+  int protocol = cast<klee::ConstantExpr>(arguments[2])->getZExtValue();
+
+	CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
+	get_network_manager(state)->execute_open_socket(cv_executor, target, 
+			domain, type, protocol);
+}
+
+void ExternalHandler_socket_read(
+		klee::Executor* executor, klee::ExecutionState *state, 
+		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {
+	assert(arguments.size() >= 3);
+
+  int id = cast<klee::ConstantExpr>(arguments[0])->getZExtValue();
+	klee::ref<klee::Expr> address = arguments[1];
+  int len = cast<klee::ConstantExpr>(arguments[2])->getZExtValue();
+	klee::ObjectState *object = resolve_address(executor, state, address);
+
+	CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
+	get_network_manager(state)->execute_read(cv_executor, target, object, id, len);
+}
+
+void ExternalHandler_socket_write(
+		klee::Executor* executor, klee::ExecutionState *state, 
+		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {
+	assert(arguments.size() >= 3);
+
+  int id = cast<klee::ConstantExpr>(arguments[0])->getZExtValue();
+	klee::ref<klee::Expr> address = arguments[1];
+  int len = cast<klee::ConstantExpr>(arguments[2])->getZExtValue();
+	klee::ObjectState *object = resolve_address(executor, state, address);
+
+	CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
+	get_network_manager(state)->execute_write(cv_executor, target, object, id, len);
+}
+
+void ExternalHandler_socket_shutdown(
+		klee::Executor* executor, klee::ExecutionState *state, 
+		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {
+	assert(arguments.size() >= 2);
+
+  int id  = cast<klee::ConstantExpr>(arguments[0])->getZExtValue();
+  int how = cast<klee::ConstantExpr>(arguments[1])->getZExtValue();
+
+	CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
+	get_network_manager(state)->execute_shutdown(cv_executor, target, id, how);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+Socket::Socket(const KTest* ktest) 
+	: open_(false), state_(IDLE), id_(0), offset_(0) {
+	
+	// Convert the convert the data in the given Ktest struct into SocketEvents. 
+	for (unsigned i=0; i<ktest->numObjects; ++i) {
+		SocketEvent* event = new SocketEvent();
+		unsigned char *buf = ktest->objects[i].bytes;
+		
+		// Extract the round number prefix
+		//event->round = (int)(((unsigned)buf[0] << 24) 
+		//		               | ((unsigned)buf[1] << 16) 
+		//									 | ((unsigned)buf[2] << 8) 
+		//									 | ((unsigned)buf[3]));
+		//buf += 4;
+		event->data = buf;
+		event->length = ktest->objects[i].numBytes;
+
+		// Set the type of the socket by using the Ktest object's name
+		if (std::string(ktest->objects[i].name) == "c2s")
+			event->type = SocketEvent::SEND;
+		else if (std::string(ktest->objects[i].name) == "s2c")
+			event->type = SocketEvent::RECV;
+		else 
+			cv_error("Invalid socket event name: \"%s\"", ktest->objects[i].name);
+
+		log_.push_back(event);
+	}
+}
+
+uint8_t Socket::next_byte() {
+	assert(offset_ < event().length);
+	return event().data[offset_++];
+}
+
+bool  Socket::has_data() {
+ 	return offset_ < event().length;
+}
+
+bool  Socket::is_open() {
+	return open_ && (id_ < log_.size());
+}
+
+void  Socket::open() {
+	open_ = true;
+}
+
+void  Socket::set_state(State s) {
+	state_ = s;
+}
+
+void  Socket::advance(){ 
+	id_++; state_ = IDLE; offset_ = 0;
+}
+
+void  Socket::add_event(SocketEvent* e) {
+	log_.push_back(e);
+}
+
+const SocketEvent& Socket::event() { 
+	assert (id_ < log_.size());
+	return *(log_[id_]);
+}
+
+void Socket::print(std::ostream &os) {
+#define X(x) #x
+static std::string socketevent_types[] = { SOCKETEVENT_TYPES };
+static std::string socket_states[] = { SOCKET_STATES };
+#undef X
+	
+	if (id_ < log_.size()) {
+		os << "[ "
+			 //<< "Round:" << round() ", "
+			 << "Event: " << id_ << "/" << log_.size() << ", "
+			 << socket_states[state()] << ", " << socketevent_types[type()] << " ]";
+	} else {
+		os << "[ "
+			 //<< "Round:" << round() ", "
+			 << "Event: " << id_ << "/" << log_.size() << ", "
+			 << socket_states[state()] << ", N/A ]";
+	}
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
 
 NetworkManager::NetworkManager(CVExecutionState* state) 
 	: state_(state) {}
+
+void NetworkManager::add_socket(const KTest* ktest) {
+	static int socket_id = 1000;
+	sockets_.insert(SocketPair(socket_id, Socket(ktest)));
+}
 
 NetworkManager* NetworkManager::clone(CVExecutionState *state) {
 	NetworkManager* nwm = new NetworkManager(*this);
@@ -45,327 +235,81 @@ NetworkManager* NetworkManagerFactory::create(CVExecutionState* state) {
   return new NetworkManager(state);
 }
 
-/*
- * Socket Read/Write Semantics:
- *
- * Client action for each log type on a Recv in the ith round:
- *    LogRecv_i       return message
- *    LogRecv_i+1     return 0 
- *    LogSend_i       return 0 
- *    LogSend_i+1     return 0 
- *
+void NetworkManager::execute_open_socket(CVExecutor* executor,
+		klee::KInstruction *target, int domain, int type, int protocol) {
+
+	// TODO need better way to select socket other than first not open
+	int id = -1;
+	foreach (SocketPair socket_pair, sockets_) {
+		if (socket_pair.second.is_open() == false) {
+			id = socket_pair.first;
+			break;
+		}
+	}
+
+	GET_SOCKET_OR_DIE_TRYIN("open", id);
+
+	socket.open();
+	RETURN_SUCCESS("open", id);
+}
+
+/* 
  * Client action for each log type on a Send in the ith round:
  *    LogRecv_i       terminate
  *    LogRecv_i+1     terminate
  *    LogSend_i       add constraint 
  *    LogSend_i+1     terminate
  */
+void NetworkManager::execute_write(CVExecutor* executor,
+		klee::KInstruction *target, klee::ObjectState* object, int id, int len) {
 
-//void NuklearManager::executeSocketWrite(ExecutionState &state,
-//                                        KInstruction *target,
-//                                        ref<Expr> socket_id,
-//                                        ref<Expr> address,
-//                                        ref<Expr> len) {
-// 
-//  int id = cast<ConstantExpr>(socket_id)->getZExtValue();
-//  int size = cast<ConstantExpr>(len)->getZExtValue();
-//  int resolve_count = 0;
-//
-//  Executor::ExactResolutionList rl;
-//  executor.resolveExact(state, address, rl, "executeSocketWrite");
-//  
-//  for (Executor::ExactResolutionList::iterator it = rl.begin(), 
-//         ie = rl.end(); it != ie; ++it) {
-//    assert( resolve_count++ == 0 && "Multiple resolutions");
-//
-//    MemoryObject *mo = (MemoryObject*) it->first.first;
-//    ObjectState *os = const_cast<ObjectState*>(it->first.second);
-//    ExecutionState *s = it->second;
-//
-//    // Fetch socket object
-//    NuklearSocket *nuklear_socket = getSocketFromExecutionState(s, id);
-//    assert(NULL != nuklear_socket);
-//
-//    if (nuklear_socket->index == nuklear_socket->ktest->numObjects) {
-//      if (NuklearDebugSocketFailure)
-//        llvm::errs() << "NUKLEAR SEND: FAILURE (End of Log) idx: "
-//          << nuklear_socket->index << "\n";
-//      executor.terminateState(*s);
-//      return;
-//    }
-//
-//    KTestObject* obj = &(nuklear_socket->ktest->objects[nuklear_socket->index]);
-//
-//    unsigned char *logBuf = obj->bytes;
-//    unsigned logBufSize = obj->numBytes;
-//    int logRoundNumber = -1;
-//    std::string name(obj->name);
-//
-//    /* debug print name */
-//    //llvm::errs() << "NAME: " << name << " INDEX: " << nuklear_socket->index << "\n";
-//    /* debug print name */
-//
-//    if (XPilotMode && logBufSize >= 4) {
-//      // Length of actual client message
-//      logBufSize -=4;
-//      // Extract round id from first 4 bytes
-//      logRoundNumber = readRoundNumberFromBuffer(logBuf);
-//      // Advance logBuf pointer, remaining bytes are client's message
-//      logBuf = logBuf+4;
-//    }
-//
-//    std::stringstream ssInfo;
-//    if (NuklearDebugSocketFailure || NuklearDebugSocketSuccess) {
-//      ssInfo << " RN: " << roundNumber;
-//      if (logRoundNumber > 0) ssInfo << ", LogRN: " << logRoundNumber;
-//      ssInfo << ", idx: " << nuklear_socket->index
-//        << ", fd: " << socket_id << ", state: " << s->id;
-//    }
-//
-//    // rcochran - tmp hack, this shouldn't happen...
-//    //assert((!XPilotMode || logRoundNumber >= roundNumber) && "logRN < RN");
-//    if (XPilotMode && logRoundNumber < roundNumber ) {
-//      if (NuklearDebugSocketFailure) {
-//        llvm::errs() << "NUKLEAR SEND: FAILURE (logRN < RN) "
-//           << " " << ssInfo.str() << "\n";
-//      }
-//      executor.terminateState(*s);
-//      return;
-//    }
-//
-//    if (name.substr(0, socketWriteStr.size()) != socketWriteStr) {
-//      if (name.substr(0, socketWriteDropStr.size()) == socketWriteDropStr) {
-//        // If this packet was dropped in the original trace, we'll have no idea
-//        // of it's actual contents, we reconstruct the hash from future msgs
-//  
-//        ref<Expr> write_condition = ConstantExpr::alloc(1, Expr::Bool);
-//        bool false_condition = false;
-//
-//        /* ---------------------------------------------------------------*/
-//        NuklearHash *nh = new NuklearHash(nuklear_socket);
-//        if (nh->recover_hash(nuklear_socket->index) == -1) {
-//					//executor.terminateState(*s);
-//					//return;
-//				}
-//        /* ---------------------------------------------------------------*/
-//
-//        /* Debug Output --------------------------------------------------*/
-//
-//        std::stringstream ss_hash;
-//        if (NuklearDebugSocketFailure || NuklearDebugSocketSuccess) {
-//          std::stringstream ss_mask;
-//          int mask_ones_count = 0;
-//          for (unsigned i=(8*nh->_vals_len) - nh->_dbsize; i<8*(nh->_vals_len); i++) {
-//            if (nh->_mask_bitarray->get(i)) {
-//              ss_mask << "1";
-//              mask_ones_count++;
-//            } else {
-//              ss_mask << "0";
-//            }
-//          }
-//
-//          ss_hash << "Recovered " << mask_ones_count 
-//            << " of " << nh->_hashval_len*8 << " hash bits (" << ss_mask.str() << ")";
-//        }
-//
-//        /* ---------------------------------------------------------------*/
-//
-//        for (unsigned i=0; i<nh->_vals_len; i++) {
-//
-//          ref<Expr> sym_hash_value
-//            = AndExpr::create(os->read8(i),
-//                              ConstantExpr::alloc(nh->_mask[i], Expr::Int8));
-//
-//          ref<Expr> log_hash_value
-//            = AndExpr::create(ConstantExpr::alloc(nh->_vals[i], Expr::Int8),
-//                              ConstantExpr::alloc(nh->_mask[i], Expr::Int8));
-//
-//          //if (NuklearDebugWriteDetails) {
-//          //  llvm::errs() << "NUKLEAR HASH: symbolic:        " << sym_hash_value << "\n";
-//          //  llvm::errs() << "NUKLEAR HASH: log reconstruct: " << log_hash_value << "\n";
-//          //}
-//
-//          ref<Expr> condition = EqExpr::create(sym_hash_value, log_hash_value);
-//
-//          if (ConstantExpr *CE = dyn_cast<ConstantExpr>(condition)) {
-//            if (CE->isFalse()) {
-//              false_condition = true;
-//              break;
-//            }
-//          }
-//
-//          write_condition = AndExpr::create(write_condition, condition);
-//        }
-//
-//        /* ---------------------------------------------------------------*/
-//
-//        if (ConstantExpr *CE = dyn_cast<ConstantExpr>(write_condition)) {
-//          if (CE->isFalse()) {
-//            false_condition = true;
-//          }
-//        } else {
-//          bool res;
-//          executor.solver->mustBeFalse(*s, write_condition, res);
-//          if (res) 
-//            false_condition = true;
-//        }
-//  
-//        if (false_condition) {
-//          if (NuklearDebugSocketFailure) {
-//						std::stringstream ss;
-//            ss << "NUKLEAR SEND: FAILURE (Hash Not Satisfiable) "
-//               << ss_hash.str() << ssInfo.str() 
-//               << liveMessageStr(os, size) << "\n";
-//
-//            if (NuklearDebugging >= Details) {
-//              ss  << "REC: ";
-//              for (unsigned i=0; i<nh->_vals_len; i++) {
-//                ss << ConstantExpr::alloc(nh->_vals[i], Expr::Int8) << ":";
-//              }
-//              ss<< "\nMSK: ";
-//              for (unsigned i=0; i<nh->_vals_len; i++) {
-//                ss << ConstantExpr::alloc(nh->_mask[i], Expr::Int8) << ":";
-//              }
-//							llvm::errs() << ss.str() << "\n";
-//            }
-//          }
-//          executor.terminateState(*s);
-//
-//        } else {
-//          if (NuklearDebugSocketSuccess) {
-//						std::stringstream ss;
-//            ss << "NUKLEAR SEND: SUCCESS (Hash Was Satisfiable) "
-//              << ss_hash.str() << ssInfo.str() 
-//              << liveMessageStr(os, size) << "\n";
-//
-//            if (NuklearDebugging >= Details) {
-//              ss  << "REC: ";
-//              for (unsigned i=0; i<nh->_vals_len; i++) {
-//                ss << ConstantExpr::alloc(nh->_vals[i], Expr::Int8) << ":";
-//              }
-//              for (unsigned i=0; i<nh->_vals_len; i++) {
-//                ss << ConstantExpr::alloc(nh->_mask[i], Expr::Int8) << ":";
-//              }
-//              llvm::errs() << ss.str() << "\n";
-//            }
-//          }
-//          nuklear_socket->index++;
-//          nuklear_socket->bytes = 0;
-//          executor.addConstraint(*s, write_condition);
-//          executor.bindLocal(target, *s, ConstantExpr::alloc(size, Expr::Int32));
-//        }
-//      }
-//      // Current object is a not a WRITE object or is from a future round
-//      else {
-//        if (NuklearDebugSocketFailure)
-//          llvm::errs() << "NUKLEAR SEND: FAILURE (Out of Order) "
-//            << name.substr(0, socketWriteStr.size()) << " != " << socketWriteStr
-//            << ssInfo.str() << "\n";
-//        executor.terminateState(*s);
-//      }
-//    } else if (XPilotMode && roundNumber != logRoundNumber) {
-//      // Current object is a not a WRITE object or is from a future round
-//      
-//      if (NuklearDebugSocketFailure) 
-//        llvm::errs() << "NUKLEAR SEND: FAILURE (Early Send) " << ssInfo.str() << "\n";
-//
-//      executor.terminateState(*s);
-//
-//    } else if (logBufSize != size) {
-//      // Socket not writing number of bytes we expect. FIXME? alter semantics
-//      // to allow size < logBufSize, i.e., multiple calls to write.
-//      
-//      if (NuklearDebugSocketFailure) 
-//        llvm::errs() << "NUKLEAR SEND: FAILURE (Message Size) " << logBufSize
-//          << "(BUF) != " << size << "(LOG) " << ssInfo.str() 
-//          << liveMessageStr(os, size) << logMessageStr(logBuf, logBufSize) << "\n";
-//      executor.terminateState(*s);
-//
-//    } else {
-//
-//      ref<Expr> write_condition = ConstantExpr::alloc(1, Expr::Bool);
-//      bool false_condition = false;
-//
-//      for (unsigned i=0; i<logBufSize; i++) {
-//        ref<Expr> condition 
-//          = EqExpr::create(os->read8(i), 
-//                           ConstantExpr::alloc(logBuf[i], Expr::Int8));
-//
-//        if (ConstantExpr *CE = dyn_cast<ConstantExpr>(condition)) {
-//          if (CE->isFalse()) {
-//            false_condition = true;
-//            break;
-//          }
-//        }
-//        write_condition = AndExpr::create(write_condition, condition);
-//      }
-//
-//      if (ConstantExpr *CE = dyn_cast<ConstantExpr>(write_condition)) {
-//        if (CE->isFalse()) {
-//          false_condition = true;
-//        }
-//      } else {
-//        bool res;
-//        executor.solver->mustBeFalse(*s, write_condition, res);
-//        if (res) 
-//          false_condition = true;
-//      }
-// 
-//      if (false_condition) {
-//        if (NuklearDebugSocketFailure) 
-//          llvm::errs() << "NUKLEAR SEND: FAILURE (Not Satisfiable) " << ssInfo.str() 
-//            << liveMessageStr(os, size) << logMessageStr(logBuf, logBufSize) << "\n";
-//        executor.terminateState(*s);
-//
-//      } else {
-//        if (NuklearDebugSocketSuccess) 
-//          llvm::errs() << "NUKLEAR SEND: SUCCESS "<< ssInfo.str()
-//            << liveMessageStr(os, size) << logMessageStr(logBuf, logBufSize) << "\n";
-// 
-//        nuklear_socket->index++;
-//        nuklear_socket->bytes = 0;
-//        executor.addConstraint(*s, write_condition);
-//        executor.bindLocal(target, *s, ConstantExpr::alloc(logBufSize, Expr::Int32));
-//      }
-//    }
-//  }
-//
-//  if (resolve_count == 0) {
-//    if (NuklearDebugSocketFailure) 
-//      llvm::errs() << "NUKLEAR SEND: FAILURE (No Resolution) \n";
-//    executor.terminateState(state);
-//  }
-//}
+	GET_SOCKET_OR_DIE_TRYIN("send", id);
 
-void ExternalHandler_socket_read_event(
-		klee::Executor* executor,
-		klee::ExecutionState *state, 
-		klee::KInstruction *target, 
-    std::vector<klee::ref<klee::Expr> > &arguments) {
+	if (socket.is_open() != true)
+		RETURN_FAILURE("send", "not open");
 
-	assert(arguments.size() == 3);
+	if (socket.type() != SocketEvent::SEND)
+		RETURN_FAILURE("send", "wrong type");
 
-	// Convert arguments from klee::Expr to concrete values
-  int id = cast<klee::ConstantExpr>(arguments[0])->getZExtValue();
-	klee::ref<klee::Expr> address = arguments[1];
-  int len = cast<klee::ConstantExpr>(arguments[2])->getZExtValue();
+	if (socket.state() != Socket::IDLE)
+		RETURN_FAILURE("send", "wrong state");
 
-	// Cast the executor and execution state
-	CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
-	CVExecutionState *cv_state = static_cast<CVExecutionState*>(state);
+	if (socket.length() != len)
+		RETURN_FAILURE("send", "wrong length");
 
-  NetworkManager* network_manager = cv_state->network_manager();
+	klee::ref<klee::Expr> write_condition 
+		= klee::ConstantExpr::alloc(1, klee::Expr::Bool);
 
-	assert(network_manager->state() == cv_state);
+	unsigned bytes_read = 0;
 
-	klee::ObjectPair result;
-  cv_executor->resolve_one(state, address, result);
+	while (socket.has_data() && bytes_read < len) {
+		klee::ref<klee::Expr> condition
+			= klee::EqExpr::create(
+					object->read8(bytes_read++), 
+					klee::ConstantExpr::alloc(socket.next_byte(), klee::Expr::Int8));
+		write_condition = klee::AndExpr::create(write_condition, condition);
+	}
 
-	klee::ObjectState *object = const_cast<klee::ObjectState*>(result.second);
+	if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(write_condition)) {
+		if (CE->isFalse())
+			RETURN_FAILURE("send", "not valid");
+	} else {
+		bool result; 
+		executor->compute_truth(state_, write_condition, result);
+		if (!result)
+			RETURN_FAILURE("send", "not valid");
+	}
 
-	network_manager->execute_read(cv_executor, target, object, id, len);
+	if (!socket.has_data()) {
+		socket.advance();
+	} else {
+		socket.set_state(Socket::WRITING);
+		RETURN_FAILURE("send", "no data left");
+	}
+
+	executor->add_constraint(state_, write_condition);
+	RETURN_SUCCESS("send", bytes_read);
 }
-
 
 /*
  * Socket Read/Write Semantics:
@@ -390,88 +334,37 @@ void ExternalHandler_socket_read_event(
  * index variable will be incremented.
  *
 */
-
 void NetworkManager::execute_read(CVExecutor* executor,
 		klee::KInstruction *target, klee::ObjectState* object, int id, int len) {
 
-	Socket &socket = sockets_[id];
+	GET_SOCKET_OR_DIE_TRYIN("read", id);
 
-	if (socket.round() < round()) {
-		executor->terminate_state(state_);
-		return;
+	if (socket.type() != SocketEvent::RECV)
+		RETURN_FAILURE("read", "wrong type");
+
+	unsigned bytes_written = 0;
+
+	while (socket.has_data() && bytes_written < len) {
+		object->write8(bytes_written++, socket.next_byte());
 	}
 
-	if (socket.type() != SocketEvent::RECV) {
-		executor->bind_local(target, state_, 0);
-		return;
-	}
+	if (socket.has_data())
+		RETURN_FAILURE("read", "bytes remain");
 
-	if (socket.round() != round()) {
-		executor->bind_local(target, state_, 0);
-		return;
-	}
-
-	if (socket.state() == Socket::FINISHED) {
-		socket.advance();
-		executor->bind_local(target, state_, 0);
-		return;
-
-	} else {
-		unsigned bytes_written = 0;
-		while (socket.has_data() && bytes_written < len) {
-			object->write8(bytes_written++, socket.next_byte());
-		}
-		if (!socket.has_data()) {
-			socket.set_state(Socket::FINISHED);
-		}
-		executor->bind_local(target, state_, bytes_written);
-		return;
-	}
+	socket.advance();
+	RETURN_SUCCESS("read", bytes_written);
 }
 
-//void NetworkManager::execute_read(CVExecutor* executor,
-//		klee::KInstruction *target, const klee::ObjectState* object, int id, int len) {
-//
-//	Socket &socket = sockets_[id];
-//
-//	// Xpilot
-//	if (socket.round() < round()) {
-//		executor->terminate_state(state_);
-//		return;
-//	}
-//
-//	if (socket.type() != SocketEvent::RECV) {
-//		// Xpilot 
-//		executor->bind_local(target, state_, 0);
-//		// Other
-//		//executor->terminate_state(state);
-//		return;
-//	}
-//
-//	// Xpilot
-//	if (socket.round() != round()) {
-//		executor->bind_local(target, state_, 0);
-//		return;
-//	}
-//
-//	if (socket.state() == Socket::FINISHED) {
-//		socket.advance();
-//		executor->bind_local(target, state_, 0);
-//		return;
-//
-//	} else {
-//		unsigned bytes_written = 0;
-//		while (socket.has_data() && bytes_written < len) {
-//			const_cast<klee::ObjectState*>(object)->write8(bytes_written++, socket.next_byte());
-//		}
-//		if (!socket.has_data()) {
-//			socket.set_state(Socket::FINISHED);
-//		}
-//		executor->bind_local(target, state_, bytes_written);
-//		return;
-//	}
-//}
+void NetworkManager::execute_shutdown(CVExecutor* executor,
+		klee::KInstruction *target, int id, int how) {
 
+	GET_SOCKET_OR_DIE_TRYIN("shutdown", id);
+
+	if (socket.is_open())
+		RETURN_FAILURE("shutdown", "events remain");
+
+	RETURN_SUCCESS("shutdown", 0);
+}
 
 
 } // end namespace cliver
