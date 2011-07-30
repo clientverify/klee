@@ -191,12 +191,11 @@ bool SpecialFunctionHandler::handle(ExecutionState &state,
 }
 
 void SpecialFunctionHandler::addExternalHandler(llvm::Function *function, 
-		ExternalHandler external_handler) {
+		ExternalHandler external_handler, bool has_return_value) {
   assert(external_handlers.find(function) == external_handlers.end()
 			&& "already added external handler for this function");
-	bool is_void_return = (function->getReturnType()->getTypeID() == llvm::Type::VoidTyID);
 	external_handlers[function] =  
-			std::make_pair(external_handler, is_void_return);
+			std::make_pair(external_handler, has_return_value);
 }
 
 void SpecialFunctionHandler::removeExternalHandler(llvm::Function *function) {

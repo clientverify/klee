@@ -66,7 +66,8 @@ namespace klee {
                 KInstruction *target,
                 std::vector< ref<Expr> > &arguments);
 
-    void addExternalHandler(llvm::Function *function, ExternalHandler external_handler);
+    void addExternalHandler(llvm::Function *function, ExternalHandler external_handler,
+				bool void_return);
     void removeExternalHandler(llvm::Function *function);
 
     /* Convenience routines */

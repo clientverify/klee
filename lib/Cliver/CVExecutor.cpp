@@ -194,8 +194,8 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
   
   MemoryObject *argvMO = 0;
 
-  CVExecutionState *state 
-    = new CVExecutionState(kmodule->functionMap[f], memory);
+  CVExecutionState *state = new CVExecutionState(kmodule->functionMap[f]);
+	state->initialize(this);
   
   // In order to make uclibc happy and be closer to what the system is
   // doing we lay out the environments at the end of the argv array
@@ -309,14 +309,18 @@ void CVExecutor::executeMakeSymbolic(klee::ExecutionState &state,
 }
 
 void CVExecutor::add_external_handler(std::string name, 
-		klee::SpecialFunctionHandler::ExternalHandler external_handler) {
+		klee::SpecialFunctionHandler::ExternalHandler external_handler,
+		bool has_return_value) {
 	
 	llvm::Function *function = kmodule->module->getFunction(name);
 
-	if (function == NULL)
-		cv_error("invalid/non-existant external function name");
-
-	specialFunctionHandler->addExternalHandler(function, external_handler);
+	if (function == NULL) {
+		cv_message("External Handler %s not added: Usage not found",
+				name.c_str());
+	} else {
+		specialFunctionHandler->addExternalHandler(function, 
+				external_handler, has_return_value);
+	}
 }
 
 void CVExecutor::resolve_one(klee::ExecutionState *state, 
@@ -337,6 +341,17 @@ void CVExecutor::terminate_state(CVExecutionState* state) {
 void CVExecutor::bind_local(klee::KInstruction *target, 
 		CVExecutionState *state, unsigned i) {
 	bindLocal(target, *state, klee::ConstantExpr::alloc(i, klee::Expr::Int32));
+}
+
+bool CVExecutor::compute_truth(CVExecutionState* state, 
+		klee::ref<klee::Expr> query, bool &result) {
+	solver->mustBeTrue(*state, query, result);
+	return result;
+}
+
+void CVExecutor::add_constraint(CVExecutionState *state, 
+		klee::ref<klee::Expr> condition) {
+	addConstraint(*state, condition);
 }
 
 } // end namespace cliver
