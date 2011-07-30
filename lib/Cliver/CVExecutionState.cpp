@@ -8,20 +8,21 @@
 //===----------------------------------------------------------------------===//
 #include "SharedObjects.h"
 #include "CVExecutionState.h"
-#include "CVMemoryManager.h"
+#include "CVExecutor.h"
 #include "CVStream.h"
 #include "NetworkManager.h"
 #include "../Core/Common.h"
+
+#include <boost/foreach.hpp>
+#define foreach BOOST_FOREACH 
 
 namespace cliver {
 
 int CVExecutionState::next_id_ = 0;
 
-CVExecutionState::CVExecutionState(klee::KFunction *kF, klee::MemoryManager *mem) 
- : klee::ExecutionState(kF), id_(increment_id()), 
-   memory_(static_cast<CVMemoryManager*>(mem)) {
-  initialize();
-}
+CVExecutionState::CVExecutionState(klee::KFunction *kF)
+ : klee::ExecutionState(kF), 
+	 id_(increment_id()) {}
 
 CVExecutionState::CVExecutionState(
     const std::vector< klee::ref<klee::Expr> > &assumptions)
@@ -33,12 +34,16 @@ CVExecutionState::~CVExecutionState() {
   while (!stack.empty()) popFrame();
 }
 
-void CVExecutionState::initialize() {
+void CVExecutionState::initialize(CVExecutor *executor) {
   id_ = increment_id();
   coveredNew = false;
   coveredLines.clear();
   address_manager_ = AddressManagerFactory::create(this);
 	network_manager_ = NetworkManagerFactory::create(this);
+
+	foreach (KTest* ktest, executor->client_verifier()->socket_logs()) {
+		network_manager_->add_socket(ktest);
+	}
 }
 
 CVExecutionState* CVExecutionState::branch() {
