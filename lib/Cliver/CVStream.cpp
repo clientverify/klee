@@ -208,7 +208,7 @@ void CVStream::init() {
 
   info_teestream->add(std::cout);
   message_teestream->add(std::cout);
-  warning_teestream->add(std::cerr);
+  warning_teestream->add(std::cout);
   if (DebugStderr) 
     debug_teestream->add(std::cerr);
 
