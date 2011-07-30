@@ -243,9 +243,18 @@ int main(int argc, char **argv, char **envp) {
       /*Optimize=*/ false, 
       /*CheckDivZero=*/ false);
 
+  //if (WithPOSIXRuntime) {
+	//	cliver::cv_error("posix-runtime is not supported");
+  //}
+
+	cliver::cv_message("Checking for POSIX runtime...");
   if (WithPOSIXRuntime) {
-		cliver::cv_error("posix-runtime is not supported");
-  }
+    llvm::sys::Path Path(Opts.LibraryDir);
+    Path.appendComponent("libkleeRuntimePOSIX.bca");
+		cliver::cv_message("NOTE: Using model: %s", Path.c_str());
+    main_module = klee::linkWithLibrary(main_module, Path.c_str());
+    assert(main_module && "unable to link with simple model");
+  }  
 
   if (WithCliverRuntime) {
     llvm::sys::Path runtime_path(Opts.LibraryDir);
