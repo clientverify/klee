@@ -9,6 +9,7 @@
 #ifndef CLIVER_H
 #define CLIVER_H
 
+#include "klee/Internal/ADT/KTest.h"
 #include "CVStream.h"
 
 #include <fstream>
@@ -38,8 +39,13 @@ class ClientVerifier {
   inline CVStream* getCVStream() { return cvstream_; }
   void init();
 	void prepare_to_run(CVExecutor *executor);
+	std::vector<KTest*> socket_logs() { return socket_logs_; }
+
  private:
+	int load_socket_logs();
+
   CVStream *cvstream_;
+	std::vector<KTest*> socket_logs_;
 };
 
 } // end namespace cliver
