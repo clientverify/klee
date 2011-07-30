@@ -47,15 +47,25 @@ class CVExecutor : public klee::Executor {
   virtual void executeMakeSymbolic(klee::ExecutionState &state, 
                                    const klee::MemoryObject *mo);
 
-	void add_external_handler(std::string name, 
-			klee::SpecialFunctionHandler::ExternalHandler external_handler);
+	ClientVerifier* client_verifier() { return cv_; }
 
-	void resolve_one(klee::ExecutionState *state, klee::ref<klee::Expr> address_expr, 
-			klee::ObjectPair &result);
+	void add_external_handler(std::string name, 
+			klee::SpecialFunctionHandler::ExternalHandler external_handler,
+			bool has_return_value=true);
+
+	void resolve_one(klee::ExecutionState *state, 
+			klee::ref<klee::Expr> address_expr, klee::ObjectPair &result);
 
 	void terminate_state(CVExecutionState *state);
 
-	void bind_local(klee::KInstruction *target, CVExecutionState *state, unsigned i);
+	void bind_local(klee::KInstruction *target, 
+			CVExecutionState *state, unsigned i);
+
+	bool compute_truth(CVExecutionState* state, 
+			klee::ref<klee::Expr>, bool &result);
+
+  void add_constraint(CVExecutionState *state, 
+			klee::ref<klee::Expr> condition);
 
  private:
   ClientVerifier *cv_;
