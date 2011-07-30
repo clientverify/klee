@@ -19,16 +19,17 @@ class MemoryManager;
 namespace cliver {
 class AddressManager;
 class CVContext;
-class CVMemoryManager;
+class CVExecutor;
 class NetworkManager;
 
 class CVExecutionState : public klee::ExecutionState {
  public:
-  CVExecutionState(klee::KFunction *kF, klee::MemoryManager *mem);
+  CVExecutionState(klee::KFunction *kF);
   CVExecutionState(const std::vector< klee::ref<klee::Expr> > &assumptions);
   virtual ~CVExecutionState();
   virtual CVExecutionState *branch();
 
+  void initialize(CVExecutor* executor);
   int id() { return id_; }
   const CVContext* context() { return context_; }
 
@@ -36,14 +37,12 @@ class CVExecutionState : public klee::ExecutionState {
 	NetworkManager* network_manager() { return network_manager_; }
 
  private:
-  void initialize();
   int increment_id() { return next_id_++; }
 
   int id_;
   static int next_id_;
   CVContext* context_;
   AddressManager* address_manager_;
-  CVMemoryManager* memory_;
 	NetworkManager* network_manager_;
 
 };
