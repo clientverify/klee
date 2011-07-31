@@ -13,7 +13,6 @@
 
 namespace klee {
 class KFunction;
-class MemoryManager;
 }
 
 namespace cliver {
@@ -21,6 +20,21 @@ class AddressManager;
 class CVContext;
 class CVExecutor;
 class NetworkManager;
+class CVExecutionState;
+
+class ExecutionStateInfo {
+ public:
+	ExecutionStateInfo(CVExecutionState* state);
+	virtual void update(CVExecutionState* state);
+	virtual bool less_than(const ExecutionStateInfo &info) const;
+	virtual bool equals(const ExecutionStateInfo &info) const;
+ private:
+	int socket_log_index_;
+};
+
+struct ExecutionStateInfoLT {
+	bool operator()(const ExecutionStateInfo &a, const ExecutionStateInfo &b) const;
+};
 
 class CVExecutionState : public klee::ExecutionState {
  public:
@@ -35,6 +49,7 @@ class CVExecutionState : public klee::ExecutionState {
 
   AddressManager* address_manager() { return address_manager_; }
 	NetworkManager* network_manager() { return network_manager_; }
+	ExecutionStateInfo* info()			  { return info_; }
 
  private:
   int increment_id() { return next_id_++; }
@@ -44,7 +59,7 @@ class CVExecutionState : public klee::ExecutionState {
   CVContext* context_;
   AddressManager* address_manager_;
 	NetworkManager* network_manager_;
-
+	ExecutionStateInfo *info_;
 };
 } // End cliver namespace
 
