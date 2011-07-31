@@ -67,6 +67,8 @@ class CVExecutor : public klee::Executor {
   void add_constraint(CVExecutionState *state, 
 			klee::ref<klee::Expr> condition);
 
+	void cv_run(klee::ExecutionState &initialState);
+
  private:
   ClientVerifier *cv_;
 };
