@@ -10,6 +10,7 @@
 #include "CVExecutor.h"
 #include "CVMemoryManager.h"
 #include "CVStream.h"
+#include "CVSearcher.h"
 #include "NetworkManager.h"
 
 //#include "../Core/ExternalDispatcher.h"
@@ -126,6 +127,22 @@ namespace klee {
   extern llvm::cl::opt<bool> MaxMemoryInhibit;
   extern llvm::cl::opt<bool> UseForkedSTP;
   extern llvm::cl::opt<bool> STPOptimizeDivides;
+
+  extern llvm::cl::opt<bool> UseRandomSearch;
+  extern llvm::cl::opt<bool> UseInterleavedRS;
+  extern llvm::cl::opt<bool> UseInterleavedNURS;
+  extern llvm::cl::opt<bool> UseInterleavedMD2UNURS;
+  extern llvm::cl::opt<bool> UseInterleavedInstCountNURS;
+  extern llvm::cl::opt<bool> UseInterleavedCPInstCountNURS;
+  extern llvm::cl::opt<bool> UseInterleavedQueryCostNURS;
+  extern llvm::cl::opt<bool> UseInterleavedCovNewNURS;
+  extern llvm::cl::opt<bool> UseNonUniformRandomSearch;
+  extern llvm::cl::opt<bool> UseRandomPathSearch;
+	extern llvm::cl::opt<bool> UseMerge;
+  extern llvm::cl::opt<bool> UseBumpMerge;
+  extern llvm::cl::opt<bool> UseIterativeDeepeningTimeSearch;
+  extern llvm::cl::opt<bool> UseBatchingSearch;
+
 }
 
 namespace cliver {
@@ -158,25 +175,35 @@ void CVHandler::processTestCase(const klee::ExecutionState &state,
 
 
 CVExecutor::CVExecutor(ClientVerifier *cv, const InterpreterOptions &opts, 
-                       klee::InterpreterHandler *ie)
- : klee::Executor(opts, ie), cv_(cv) {
-  memory = new CVMemoryManager();
+		klee::InterpreterHandler *ie)
+: klee::Executor(opts, ie), cv_(cv) {
+	memory = new CVMemoryManager();
 
-  {
-  // Check for incompatible or non-supported klee options.
-  // XXX move this to ClientVerifier
+	// Check for incompatible or non-supported klee options.
 #define INVALID_CL_OPT(name, val) \
-    if (name == val) klee_error("Unsupported command line option: %s", #name);
-
-    using namespace klee;
-    INVALID_CL_OPT(ZeroSeedExtension,true)
-    INVALID_CL_OPT(AllowSeedExtension,true)
-    INVALID_CL_OPT(AlwaysOutputSeeds,false)
-    INVALID_CL_OPT(OnlyReplaySeeds,true)
-    INVALID_CL_OPT(OnlySeed,true)
-    INVALID_CL_OPT(NamedSeedMatching,true)
-
-  }
+	if ((int)name != (int)val) cv_error("Unsupported command line option: %s", #name);
+	using namespace klee;
+	INVALID_CL_OPT(ZeroSeedExtension,false);
+	INVALID_CL_OPT(AllowSeedExtension,false);
+	INVALID_CL_OPT(AlwaysOutputSeeds,true);
+	INVALID_CL_OPT(OnlyReplaySeeds,false);
+	INVALID_CL_OPT(OnlySeed,false);
+	INVALID_CL_OPT(NamedSeedMatching,false);
+	INVALID_CL_OPT(UseRandomSearch,false);
+	INVALID_CL_OPT(UseInterleavedRS,false);
+	INVALID_CL_OPT(UseInterleavedNURS,false);
+	INVALID_CL_OPT(UseInterleavedMD2UNURS,false);
+	INVALID_CL_OPT(UseInterleavedInstCountNURS,false);
+	INVALID_CL_OPT(UseInterleavedCPInstCountNURS,false);
+	INVALID_CL_OPT(UseInterleavedQueryCostNURS,false);
+	INVALID_CL_OPT(UseInterleavedCovNewNURS,false);
+	INVALID_CL_OPT(UseNonUniformRandomSearch,false);
+	INVALID_CL_OPT(UseRandomPathSearch,false);
+	INVALID_CL_OPT(UseMerge,false);
+	INVALID_CL_OPT(UseBumpMerge,false);
+	INVALID_CL_OPT(UseIterativeDeepeningTimeSearch,false);
+	INVALID_CL_OPT(UseBatchingSearch,false);
+#undef INVALID_CL_OPT
 }
 
 
@@ -274,7 +301,7 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
 
   processTree = new PTree(state);
   state->ptreeNode = processTree->root;
-  run(*state);
+  cv_run(*state);
   delete processTree;
   processTree = 0;
 
@@ -293,6 +320,87 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
   //  munmap(theMMap, theMMapSize);
   //  theMMap = 0;
   //}
+}
+
+void CVExecutor::cv_run(klee::ExecutionState &initialState) {
+  bindModuleConstants();
+
+  // Delay init till now so that ticks don't accrue during
+  // optimization and such.
+  initTimers();
+
+  states.insert(&initialState);
+
+	searcher = new klee::DFSSearcher();
+	searcher = new CVSearcher(searcher);
+  //searcher = constructUserSearcher(*this);
+
+  searcher->update(0, states, std::set<klee::ExecutionState*>());
+
+  while (!states.empty() && !haltExecution) {
+		klee::ExecutionState &state = searcher->selectState();
+		klee::KInstruction *ki = state.pc;
+    stepInstruction(state);
+
+    executeInstruction(state, ki);
+    processTimers(&state, klee::MaxInstructionTime);
+
+    if (klee::MaxMemory) {
+      if ((klee::stats::instructions & 0xFFFF) == 0) {
+        // We need to avoid calling GetMallocUsage() often because it
+        // is O(elts on freelist). This is really bad since we start
+        // to pummel the freelist once we hit the memory cap.
+        unsigned mbs = llvm::sys::Process::GetTotalMemoryUsage() >> 20;
+        
+        if (mbs > klee::MaxMemory) {
+          if (mbs > klee::MaxMemory + 100) {
+            // just guess at how many to kill
+            unsigned numStates = states.size();
+            unsigned toKill = std::max(1U, numStates - numStates*klee::MaxMemory/mbs);
+
+            if (klee::MaxMemoryInhibit)
+              cv_warning("killing %d states (over memory cap)",
+                           toKill);
+
+            std::vector<klee::ExecutionState*> arr(states.begin(), states.end());
+            for (unsigned i=0,N=arr.size(); N && i<toKill; ++i,--N) {
+              unsigned idx = rand() % N;
+
+              // Make two pulls to try and not hit a state that
+              // covered new code.
+              if (arr[idx]->coveredNew)
+                idx = rand() % N;
+
+              std::swap(arr[idx], arr[N-1]);
+              terminateStateEarly(*arr[N-1], "memory limit");
+            }
+          }
+          atMemoryLimit = true;
+        } else {
+          atMemoryLimit = false;
+        }
+      }
+    }
+
+    updateStates(&state);
+  }
+
+  delete searcher;
+  searcher = 0;
+  
+ dump:
+  if (klee::DumpStatesOnHalt && !states.empty()) {
+    //std::cerr << "KLEE: halting execution, dumping remaining states\n";
+		cv_warning("halting execution, dumping remaining states");
+    for (std::set<klee::ExecutionState*>::iterator
+           it = states.begin(), ie = states.end();
+         it != ie; ++it) {
+			klee::ExecutionState &state = **it;
+      stepInstruction(state); // keep stats rolling
+      terminateStateEarly(state, "execution halting");
+    }
+    updateStates(0);
+  }
 }
 
 void CVExecutor::executeMakeSymbolic(klee::ExecutionState &state, 
