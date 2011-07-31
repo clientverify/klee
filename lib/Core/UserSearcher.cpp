@@ -19,7 +19,7 @@
 using namespace llvm;
 using namespace klee;
 
-namespace {
+namespace klee {
   cl::opt<bool>
   UseRandomSearch("use-random-search");
 
