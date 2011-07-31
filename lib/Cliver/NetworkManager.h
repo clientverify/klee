@@ -57,10 +57,11 @@ class Socket {
 	int round()      				 { return event().round; }
 	SocketEvent::Type type() { return event().type; }
 	State state() 					 { return state_; }
-	int events_remaining()   { return log_.size() - id_; }
+	int events_remaining()   { return log_.size() - index_; }
 	int log_size() 					 { return log_.size(); }
-	unsigned id() 					 { return id_; }
+	unsigned index()				 { return index_; }
 	unsigned length()				 { return event().length; }
+	int fd() 								 { return file_descriptor_; }
 
 	uint8_t next_byte();
 	bool has_data();
@@ -76,9 +77,10 @@ class Socket {
 	Socket() {}
 	const SocketEvent& event();
 
+	int file_descriptor_;
 	bool open_;
 	State state_;
-	unsigned id_;
+	unsigned index_;
 	unsigned offset_;
 	std::vector<const SocketEvent* > log_;
 };
@@ -92,8 +94,6 @@ inline std::ostream &operator<<(std::ostream &os, Socket &s) {
 
 
 class NetworkManager {
- typedef std::map< int, Socket > SocketMap;
- typedef std::pair< int, Socket > SocketPair;
  public:
 
   NetworkManager(CVExecutionState* state);
@@ -107,15 +107,15 @@ class NetworkManager {
 
 	void execute_read(CVExecutor* executor, 
 		klee::KInstruction *target, 
-		klee::ObjectState* object, int id, int len);
+		klee::ObjectState* object, int fd, int len);
 
 	void execute_write(CVExecutor* executor,
 		klee::KInstruction *target, 
-		klee::ObjectState* object, int id, int len);
+		klee::ObjectState* object, int fd, int len);
 
 	void execute_shutdown(CVExecutor* executor,
 		klee::KInstruction *target, 
-		int id, int how);
+		int fd, int how);
 
 	CVExecutionState* state() { return state_; }
 	unsigned round() { return round_; }
@@ -123,7 +123,7 @@ class NetworkManager {
  private:
 	unsigned round_;
 	CVExecutionState *state_;
-	SocketMap sockets_;
+	std::vector<Socket> sockets_;
 };
 
 class NetworkManagerFactory {

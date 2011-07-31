@@ -17,27 +17,35 @@
 #include <boost/foreach.hpp>
 #define foreach BOOST_FOREACH 
 
-#define RETURN_FAILURE(action, reason) { \
+#define RETURN_FAILURE_NO_SOCKET(action, reason) { \
 	CVDEBUG("State: " << std::setw(4) << std::right << state_->id() \
 			<< " - failure - " << std::setw(8) << std::left << action << " - " \
-			<< std::setw(15) << reason << " " << socket);	\
+			<< std::setw(15) << reason );	\
 	executor->terminate_state(state_); \
 	return; }
 
+#define RETURN_FAILURE(action, reason) \
+	RETURN_FAILURE_NO_SOCKET(action, reason " " << socket)
+
 #define RETURN_SUCCESS(action, retval) { \
 	CVDEBUG("State: " << std::setw(4) << std::right << state_->id() \
-			<< " - success - " << action );	\
+			<< " - success - " << std::setw(8) << std::left << action << "   " \
+			<< std::setw(15) << " " << socket);	\
 	executor->bind_local(target, state_, retval); \
 	return; }
 
-#define GET_SOCKET_OR_DIE_TRYIN(action, id) \
-	SocketMap::iterator socket_it = sockets_.find(id); \
-	if (socket_it == sockets_.end()) { \
+#define GET_SOCKET_OR_DIE_TRYIN(action, file_descriptor) \
+	unsigned socket_index; \
+  for (socket_index = 0; socket_index < sockets_.size(); ++socket_index) \
+		if (file_descriptor == sockets_[socket_index].fd()) \
+			break; \
+  if (socket_index == sockets_.size()) { \
 		CVDEBUG("State: " << std::setw(4) << std::right << state_->id() \
-				<< " - failure - socket doesn't exist"); \
+				<< " - failure - socket " << file_descriptor << " doesn't exist");  \
+		executor->terminate_state(state_); \
+		return; \
 	} \
-	Socket &socket = socket_it->second;
-
+	Socket &socket = sockets_[socket_index]; 
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -59,6 +67,8 @@ cl_network_model("network-model",
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace cliver {
+
+const int kInitialFileDescriptor= 1000;
 
 NetworkManager* get_network_manager(klee::ExecutionState* state) {
 	assert(static_cast<CVExecutionState*>(state)->network_manager()->state() 
@@ -91,13 +101,13 @@ void ExternalHandler_socket_read(
 		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {
 	assert(arguments.size() >= 3);
 
-  int id = cast<klee::ConstantExpr>(arguments[0])->getZExtValue();
+  int fd = cast<klee::ConstantExpr>(arguments[0])->getZExtValue();
 	klee::ref<klee::Expr> address = arguments[1];
   int len = cast<klee::ConstantExpr>(arguments[2])->getZExtValue();
 	klee::ObjectState *object = resolve_address(executor, state, address);
 
 	CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
-	get_network_manager(state)->execute_read(cv_executor, target, object, id, len);
+	get_network_manager(state)->execute_read(cv_executor, target, object, fd, len);
 }
 
 void ExternalHandler_socket_write(
@@ -105,13 +115,13 @@ void ExternalHandler_socket_write(
 		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {
 	assert(arguments.size() >= 3);
 
-  int id = cast<klee::ConstantExpr>(arguments[0])->getZExtValue();
+  int fd = cast<klee::ConstantExpr>(arguments[0])->getZExtValue();
 	klee::ref<klee::Expr> address = arguments[1];
   int len = cast<klee::ConstantExpr>(arguments[2])->getZExtValue();
 	klee::ObjectState *object = resolve_address(executor, state, address);
 
 	CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
-	get_network_manager(state)->execute_write(cv_executor, target, object, id, len);
+	get_network_manager(state)->execute_write(cv_executor, target, object, fd, len);
 }
 
 void ExternalHandler_socket_shutdown(
@@ -119,17 +129,20 @@ void ExternalHandler_socket_shutdown(
 		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {
 	assert(arguments.size() >= 2);
 
-  int id  = cast<klee::ConstantExpr>(arguments[0])->getZExtValue();
+  int fd  = cast<klee::ConstantExpr>(arguments[0])->getZExtValue();
   int how = cast<klee::ConstantExpr>(arguments[1])->getZExtValue();
 
 	CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
-	get_network_manager(state)->execute_shutdown(cv_executor, target, id, how);
+	get_network_manager(state)->execute_shutdown(cv_executor, target, fd, how);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 Socket::Socket(const KTest* ktest) 
-	: open_(false), state_(IDLE), id_(0), offset_(0) {
+	: file_descriptor_(-1), open_(false), state_(IDLE), index_(0), offset_(0) {
+	
+	static int fd = kInitialFileDescriptor;
+	file_descriptor_ = fd++;
 	
 	// Convert the convert the data in the given Ktest struct into SocketEvents. 
 	for (unsigned i=0; i<ktest->numObjects; ++i) {
@@ -167,7 +180,7 @@ bool  Socket::has_data() {
 }
 
 bool  Socket::is_open() {
-	return open_ && (id_ < log_.size());
+	return open_ && (index_ < log_.size());
 }
 
 void  Socket::open() {
@@ -179,7 +192,7 @@ void  Socket::set_state(State s) {
 }
 
 void  Socket::advance(){ 
-	id_++; state_ = IDLE; offset_ = 0;
+	index_++; state_ = IDLE; offset_ = 0;
 }
 
 void  Socket::add_event(SocketEvent* e) {
@@ -187,25 +200,25 @@ void  Socket::add_event(SocketEvent* e) {
 }
 
 const SocketEvent& Socket::event() { 
-	assert (id_ < log_.size());
-	return *(log_[id_]);
+	assert (index_ < log_.size());
+	return *(log_[index_]);
 }
 
 void Socket::print(std::ostream &os) {
 #define X(x) #x
-static std::string socketevent_types[] = { SOCKETEVENT_TYPES };
-static std::string socket_states[] = { SOCKET_STATES };
+	static std::string socketevent_types[] = { SOCKETEVENT_TYPES };
+	static std::string socket_states[] = { SOCKET_STATES };
 #undef X
-	
-	if (id_ < log_.size()) {
+		
+	if (index_ < log_.size()) {
 		os << "[ "
 			 //<< "Round:" << round() ", "
-			 << "Event: " << id_ << "/" << log_.size() << ", "
+			 << "Event: " << index_ << "/" << log_.size() << ", "
 			 << socket_states[state()] << ", " << socketevent_types[type()] << " ]";
 	} else {
 		os << "[ "
 			 //<< "Round:" << round() ", "
-			 << "Event: " << id_ << "/" << log_.size() << ", "
+			 << "Event: " << index_ << "/" << log_.size() << ", "
 			 << socket_states[state()] << ", N/A ]";
 	}
 }
@@ -217,8 +230,7 @@ NetworkManager::NetworkManager(CVExecutionState* state)
 	: state_(state) {}
 
 void NetworkManager::add_socket(const KTest* ktest) {
-	static int socket_id = 1000;
-	sockets_.insert(SocketPair(socket_id, Socket(ktest)));
+	sockets_.push_back(Socket(ktest));
 }
 
 NetworkManager* NetworkManager::clone(CVExecutionState *state) {
@@ -238,19 +250,16 @@ NetworkManager* NetworkManagerFactory::create(CVExecutionState* state) {
 void NetworkManager::execute_open_socket(CVExecutor* executor,
 		klee::KInstruction *target, int domain, int type, int protocol) {
 
-	// TODO need better way to select socket other than first not open
-	int id = -1;
-	foreach (SocketPair socket_pair, sockets_) {
-		if (socket_pair.second.is_open() == false) {
-			id = socket_pair.first;
-			break;
+  for (unsigned i = 0; i<sockets_.size(); ++i) {
+		Socket &socket = sockets_[i];
+		if (!socket.is_open()) {
+			socket.open();
+			CVDEBUG("opened socket " << socket.fd());
+			RETURN_SUCCESS("open", socket.fd());
 		}
 	}
 
-	GET_SOCKET_OR_DIE_TRYIN("open", id);
-
-	socket.open();
-	RETURN_SUCCESS("open", id);
+	RETURN_FAILURE_NO_SOCKET("open", "no socket availible");
 }
 
 /* 
@@ -261,9 +270,9 @@ void NetworkManager::execute_open_socket(CVExecutor* executor,
  *    LogSend_i+1     terminate
  */
 void NetworkManager::execute_write(CVExecutor* executor,
-		klee::KInstruction *target, klee::ObjectState* object, int id, int len) {
+		klee::KInstruction *target, klee::ObjectState* object, int fd, int len) {
 
-	GET_SOCKET_OR_DIE_TRYIN("send", id);
+	GET_SOCKET_OR_DIE_TRYIN("send", fd);
 
 	if (socket.is_open() != true)
 		RETURN_FAILURE("send", "not open");
@@ -335,9 +344,9 @@ void NetworkManager::execute_write(CVExecutor* executor,
  *
 */
 void NetworkManager::execute_read(CVExecutor* executor,
-		klee::KInstruction *target, klee::ObjectState* object, int id, int len) {
+		klee::KInstruction *target, klee::ObjectState* object, int fd, int len) {
 
-	GET_SOCKET_OR_DIE_TRYIN("read", id);
+	GET_SOCKET_OR_DIE_TRYIN("read", fd);
 
 	if (socket.type() != SocketEvent::RECV)
 		RETURN_FAILURE("read", "wrong type");
@@ -356,9 +365,9 @@ void NetworkManager::execute_read(CVExecutor* executor,
 }
 
 void NetworkManager::execute_shutdown(CVExecutor* executor,
-		klee::KInstruction *target, int id, int how) {
+		klee::KInstruction *target, int fd, int how) {
 
-	GET_SOCKET_OR_DIE_TRYIN("shutdown", id);
+	GET_SOCKET_OR_DIE_TRYIN("shutdown", fd);
 
 	if (socket.is_open())
 		RETURN_FAILURE("shutdown", "events remain");
