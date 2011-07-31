@@ -311,6 +311,7 @@ void NetworkManager::execute_write(CVExecutor* executor,
 
 	if (!socket.has_data()) {
 		socket.advance();
+		state_->info()->update(state_);
 	} else {
 		socket.set_state(Socket::WRITING);
 		RETURN_FAILURE("send", "no data left");
@@ -361,6 +362,7 @@ void NetworkManager::execute_read(CVExecutor* executor,
 		RETURN_FAILURE("read", "bytes remain");
 
 	socket.advance();
+	state_->info()->update(state_);
 	RETURN_SUCCESS("read", bytes_written);
 }
 
