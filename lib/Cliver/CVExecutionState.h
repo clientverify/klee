@@ -57,6 +57,8 @@ class CVExecutionState : public klee::ExecutionState {
 	NetworkManager* network_manager() { return network_manager_; }
 	ExecutionStateInfo* info()			  { return info_; }
 
+	uint64_t get_symbolic_name_id(std::string &name);
+
  private:
   int increment_id() { return next_id_++; }
 
@@ -65,7 +67,8 @@ class CVExecutionState : public klee::ExecutionState {
   CVContext* context_;
   AddressManager* address_manager_;
 	NetworkManager* network_manager_;
-	ExecutionStateInfo *info_;
+	ExecutionStateInfo* info_;
+	std::map< std::string, uint64_t > symbolic_name_map_;
 };
 } // End cliver namespace
 
