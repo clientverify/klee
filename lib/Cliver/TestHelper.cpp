@@ -33,11 +33,11 @@ void ExternalHandler_test_extract_pointers(klee::Executor* executor,
     std::vector<klee::ref<klee::Expr> > &arguments) {
 
 	cv_message("test_extract_pointers: START");
-	AddressSpaceGraph *asg_build = new AddressSpaceGraph(state);
-	asg_build->build_graph();
-	delete asg_build;
+	AddressSpaceGraph *asg= new AddressSpaceGraph(state);
+	asg->build();
+	delete asg;
 
-	AddressSpaceGraph *asg = new AddressSpaceGraph(state);
+	asg = new AddressSpaceGraph(state);
 
 	for (klee::MemoryMap::iterator it=state->addressSpace.objects.begin(),
 			ie=state->addressSpace.objects.end(); it!=ie; ++it) {
