@@ -13,6 +13,7 @@
 #include "CVSearcher.h"
 #include "NetworkManager.h"
 #include "StateMerger.h"
+#include "ConstraintPruner.h"
 
 //#include "../Core/ExternalDispatcher.h"
 //#include "../Core/SpecialFunctionHandler.h"
@@ -333,7 +334,8 @@ void CVExecutor::cv_run(klee::ExecutionState &initialState) {
   states.insert(&initialState);
 
 	searcher = new klee::DFSSearcher();
-	merger_ = new StateMerger();
+	pruner_ = new ConstraintPruner();
+	merger_ = new StateMerger(pruner_);
 	searcher = new CVSearcher(searcher, merger_);
   //searcher = constructUserSearcher(*this);
 

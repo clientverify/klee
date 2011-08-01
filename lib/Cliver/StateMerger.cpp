@@ -11,6 +11,7 @@
 #include "CVStream.h"
 #include "StateMerger.h"
 #include "AddressSpaceGraph.h"
+#include "ConstraintPruner.h"
 
 #include <boost/foreach.hpp>
 #define foreach BOOST_FOREACH 
@@ -21,7 +22,7 @@ struct MergeInfo {
 	AddressSpaceGraph *graph;
 };
 
-StateMerger::StateMerger() {}
+StateMerger::StateMerger(ConstraintPruner *pruner) : pruner_(pruner) {}
 
 // Pre-merging Steps
 // 1. Build AddressSpaceGraph on each state
