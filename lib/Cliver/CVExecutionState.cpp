@@ -23,12 +23,9 @@ ExecutionStateInfo::ExecutionStateInfo(CVExecutionState* state) {
 }
 
 void ExecutionStateInfo::update(CVExecutionState* state) {
-//	socket_log_index_ = 0;
-	if (state) {
-		if (state->network_manager()) {
-			if (state->network_manager()->sockets().size() > 0) {
-				socket_log_index_ = state->network_manager()->sockets().back().index();
-			}
+	if (state && state->network_manager()) {
+		if (state->network_manager()->sockets().size() > 0) {
+			socket_log_index_ = state->network_manager()->sockets().back().index();
 		}
 	}
 }
