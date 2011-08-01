@@ -36,6 +36,9 @@ namespace {
 
   llvm::cl::opt<bool>
   PCAllConstWidths("pc-all-const-widths",  llvm::cl::init(false));
+
+  llvm::cl::opt<bool>
+  PCSingleLine("pc-single-line",  llvm::cl::init(false));
 }
 
 /// PrintContext - Helper class for storing extra information for
@@ -58,10 +61,14 @@ public:
   }
 
   void breakLine(unsigned indent=0) {
-    os << newline;
-    if (indent)
-      os << std::setw(indent) << ' ';
-    pos = indent;
+		if (!PCSingleLine) {
+			os << newline;
+			if (indent)
+				os << std::setw(indent) << ' ';
+			pos = indent;
+		} else {
+			os << ' ';
+		}
   }
 
   /// write - Output a string to the stream and update the
