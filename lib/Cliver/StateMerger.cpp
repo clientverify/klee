@@ -35,6 +35,33 @@ StateMerger::StateMerger(ConstraintPruner *pruner) : pruner_(pruner) {}
 // 4. Canonicalize symbolic variables
 // 5. Compare constraint sets
 
+bool StateMerger::compare_constraints(klee::ConstraintManager &a, 
+		klee::ConstraintManager &b) {
+
+	std::set< klee::ref<klee::Expr> > set_a(a.begin(), a.end());
+	std::set< klee::ref<klee::Expr> > set_b(b.begin(), b.end());
+	std::set< klee::ref<klee::Expr> > common;
+
+	std::set_intersection(set_a.begin(), set_a.end(), set_b.begin(), set_b.end(),
+			std::inserter(common, common.begin()));
+
+	if (common.size() == set_a.size() &&
+			common.size() == set_b.size()) {
+		return true;
+	} else {
+		CVDEBUG("constraints do not match");
+		//*cv_debug_stream << "(1)------------------------------------------\n";
+		//foreach( klee::ref<klee::Expr> e, set_a) {
+		//	*cv_debug_stream << e << "\n";
+		//}
+		//*cv_debug_stream << "(2)------------------------------------------\n";
+		//foreach( klee::ref<klee::Expr> e, set_b) {
+		//	*cv_debug_stream << e << "\n";
+		//}
+		return false;
+	}
+}
+
 void StateMerger::merge(ExecutionStateSet &state_set, 
 		ExecutionStateSet &merged_set) {
 
@@ -54,49 +81,27 @@ void StateMerger::merge(ExecutionStateSet &state_set,
 	std::vector<CVExecutionState*> unique_states;
 
   do {
-		CVExecutionState* merge_state = worklist.back();
+		CVExecutionState* state = worklist.back();
 		worklist.pop_back();
 		std::vector<CVExecutionState*>::iterator it=worklist.begin(), ie=worklist.end();
 		for (; it!=ie; ++it) {
-			if (merge_info[merge_state].graph->equals(*merge_info[*it].graph)) {
-				std::set< klee::ref<klee::Expr> > 
-					merge_constraints(merge_state->constraints.begin(), merge_state->constraints.end());
-				std::set< klee::ref<klee::Expr> > 
-					constraints((*it)->constraints.begin(), (*it)->constraints.end());
-			
-				std::set< klee::ref<klee::Expr> > common_constraints;
-				std::set_intersection(
-						merge_constraints.begin(), merge_constraints.end(),
-						constraints.begin(), constraints.end(),
-						std::inserter(common_constraints, common_constraints.begin()));
-				if (common_constraints.size() == merge_constraints.size() &&
-						common_constraints.size() == constraints.size()) {
+			if (merge_info[state].graph->equals(*merge_info[*it].graph)) {
+				if (compare_constraints(state->constraints, (*it)->constraints)) {
 					break;
-				} else {
-					CVDEBUG("constraints do not match");
-					*cv_debug_stream << "(1)----------------------------------------" << "\n";
-					foreach( klee::ref<klee::Expr> e, merge_constraints) {
-						*cv_debug_stream << e << "\n";
-					}
-					*cv_debug_stream << "(2)----------------------------------------" << "\n";
-					foreach( klee::ref<klee::Expr> e, constraints) {
-						*cv_debug_stream << e << "\n";
-					}
-					*cv_debug_stream << "----------------------------------------" << "\n";
 				}
 			}
 		}
 		if (it == ie) {
-			unique_states.push_back(merge_state);
-			merged_set.insert(merge_state);
+			unique_states.push_back(state);
+			merged_set.insert(state);
 		}
 
   } while (!worklist.empty());
 
 
-	CVDEBUG("Found " << state_set.size() - unique_states.size() << " duplicates out of "
-			<< state_set.size() << ", now " << unique_states.size() << " states remain.");
-
+	CVDEBUG("Found " << state_set.size() - unique_states.size() 
+			<< " duplicates out of " << state_set.size() 
+			<< ", now " << unique_states.size() << " states remain.");
 
 	//merged_set.insert(state_set.begin(), state_set.end());
 }

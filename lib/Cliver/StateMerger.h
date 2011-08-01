@@ -21,6 +21,8 @@ class StateMerger {
 	virtual void merge( ExecutionStateSet &state_set, 
 			ExecutionStateSet &merged_set);
 
+	bool compare_constraints(klee::ConstraintManager &a, 
+			klee::ConstraintManager &b);
  private:
 	ConstraintPruner *pruner_;
 
