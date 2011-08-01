@@ -9,14 +9,15 @@
 
 #include "CVSearcher.h"
 #include "CVStream.h"
+#include "StateMerger.h"
 
 #include <boost/foreach.hpp>
 #define foreach BOOST_FOREACH 
 
 namespace cliver {
 
-CVSearcher::CVSearcher(klee::Searcher* base_searcher) 
-	: base_searcher_(base_searcher) {
+CVSearcher::CVSearcher(klee::Searcher* base_searcher, StateMerger* merger) 
+	: base_searcher_(base_searcher), merger_(merger) {
 }
 
 bool CVSearcher::empty() {
@@ -34,19 +35,35 @@ int CVSearcher::state_count() {
 }
 
 klee::ExecutionState &CVSearcher::selectState() {
+	// Walk the ExecutionStateMap from the oldest to the newest,
+	// or whatever ordering the ExecutionStateInfo object induces
+	// and select a state from the earliest grouping
+	ExecutionStateMap::iterator it, ie;
+	for (it=states_.begin(), ie=states_.end(); it!=ie; ++it) {
+		ExecutionStateSet &state_set = it->second;
+		if (!state_set.empty()) {
+			// Erase all of the empty sets up to the current one
+			if (states_.begin() != it) {
+				states_.erase(states_.begin(), it);
 
-	klee::ExecutionState *klee_state = NULL;
-	foreach (ExecutionStateMap::value_type v, states_) {
-		ExecutionStateSet &state_set = v.second;
-
-		if (state_set.size() > 0) {
-			CVExecutionState *state = *(state_set.begin());
-			klee_state = static_cast<klee::ExecutionState*>(state);
-			return *klee_state;
+				// Merge each group of states
+				ExecutionStateMap::iterator merge_it = it;
+				for (; merge_it!=ie; ++merge_it) {
+					ExecutionStateSet &merge_state_set = merge_it->second;
+					ExecutionStateSet result;
+					merger_->merge(merge_state_set, result);
+					merge_state_set.swap(result);
+				}
+			}
+			// Select the first state in this set, cast the CVExecutionState
+			// pointer into a klee::ExecutionState ptr, then dereference
+			return *(static_cast<klee::ExecutionState*>(*(state_set.begin())));
 		}
 	}
 	cv_error("no states remaining");
-	return *klee_state;
+	// This should never execute
+	klee::ExecutionState *null_state = NULL;
+	return *null_state;
 }
 
 void CVSearcher::update(klee::ExecutionState *current,
@@ -54,13 +71,18 @@ void CVSearcher::update(klee::ExecutionState *current,
 						const std::set<klee::ExecutionState*> &removedStates) {
 
 	std::set<klee::ExecutionState*> removed_states(removedStates);
-	if (current && removedStates.count(current) == 0) removed_states.insert(current);
-
 	std::set<klee::ExecutionState*> added_states(addedStates);
-	if (current && removedStates.count(current) == 0) added_states.insert(current);
+
+	if (current && removedStates.count(current) == 0) {
+		removed_states.insert(current);
+		added_states.insert(current);
+	}
 
 	foreach (klee::ExecutionState* klee_state, removed_states) {
 		CVExecutionState *state = static_cast<CVExecutionState*>(klee_state);
+		// Iterate over all the ExecutionState groups to determine
+		// if they contain state, we can't look up the state via it's
+		// ExecutionStateInfo because it might have changed since insertion
 		ExecutionStateMap::iterator it, ie;
 		for (it=states_.begin(), ie=states_.end(); it!=ie; ++it) {
 			ExecutionStateSet &state_set = it->second;
@@ -73,6 +95,7 @@ void CVSearcher::update(klee::ExecutionState *current,
 			cv_error("CVSearcher could not erase state!");
 	}
 
+	// Insert the added states into the associated group
 	foreach (klee::ExecutionState* klee_state, added_states) {
 		CVExecutionState *state = static_cast<CVExecutionState*>(klee_state);
 		states_[*state->info()].insert(state);
