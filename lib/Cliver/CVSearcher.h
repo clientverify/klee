@@ -13,17 +13,11 @@
 #include "CVExecutionState.h"
 
 namespace cliver {
-
-typedef std::set<CVExecutionState*> ExecutionStateSet;
-
-typedef std::map<ExecutionStateInfo, 
-								 ExecutionStateSet,
-								 ExecutionStateInfoLT> ExecutionStateMap;
-
+class StateMerger;
 
 class CVSearcher : public klee::Searcher {
  public:
-	CVSearcher(klee::Searcher *base_searcher);
+	CVSearcher(klee::Searcher* base_searcher, StateMerger* merger);
 
 	klee::ExecutionState &selectState();
 
@@ -40,6 +34,7 @@ class CVSearcher : public klee::Searcher {
 	int state_count();
 	ExecutionStateMap states_;
 	klee::Searcher* base_searcher_;
+	StateMerger* merger_;
 };
 
 } // end namespace cliver

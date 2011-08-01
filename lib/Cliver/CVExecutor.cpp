@@ -12,6 +12,7 @@
 #include "CVStream.h"
 #include "CVSearcher.h"
 #include "NetworkManager.h"
+#include "StateMerger.h"
 
 //#include "../Core/ExternalDispatcher.h"
 //#include "../Core/SpecialFunctionHandler.h"
@@ -332,7 +333,8 @@ void CVExecutor::cv_run(klee::ExecutionState &initialState) {
   states.insert(&initialState);
 
 	searcher = new klee::DFSSearcher();
-	searcher = new CVSearcher(searcher);
+	merger_ = new StateMerger();
+	searcher = new CVSearcher(searcher, merger_);
   //searcher = constructUserSearcher(*this);
 
   searcher->update(0, states, std::set<klee::ExecutionState*>());
