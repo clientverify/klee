@@ -17,6 +17,7 @@ namespace cliver {
 
 class CVExecutionState;
 class StateMerger;
+class ConstraintPruner;
 
 class CVHandler : public klee::InterpreterHandler {
  public:
@@ -69,8 +70,9 @@ class CVExecutor : public klee::Executor {
 	void cv_run(klee::ExecutionState &initialState);
 
  private:
-  ClientVerifier *cv_;
-	StateMerger *merger_;
+  ClientVerifier* cv_;
+	StateMerger* merger_;
+	ConstraintPruner* pruner_;
 };
 
 } // end cliver namespace

@@ -13,13 +13,16 @@
 
 namespace cliver {
 
+class ConstraintPruner;
+
 class StateMerger {
  public:
-	StateMerger();
+	StateMerger( ConstraintPruner *pruner );
 	virtual void merge( ExecutionStateSet &state_set, 
 			ExecutionStateSet &merged_set);
 
  private:
+	ConstraintPruner *pruner_;
 
 };
 
