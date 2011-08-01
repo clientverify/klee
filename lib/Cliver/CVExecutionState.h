@@ -36,6 +36,12 @@ struct ExecutionStateInfoLT {
 	bool operator()(const ExecutionStateInfo &a, const ExecutionStateInfo &b) const;
 };
 
+typedef std::set<CVExecutionState*> ExecutionStateSet;
+
+typedef std::map<ExecutionStateInfo, 
+								 ExecutionStateSet,
+								 ExecutionStateInfoLT> ExecutionStateMap;
+
 class CVExecutionState : public klee::ExecutionState {
  public:
   CVExecutionState(klee::KFunction *kF);
