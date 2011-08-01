@@ -14,17 +14,39 @@
 #include "AddressSpaceGraph.h"
 #include "CVStream.h"
 #include "CVExecutionState.h"
+#include "llvm/Support/CommandLine.h"
 
 #include <boost/foreach.hpp>
 #define foreach BOOST_FOREACH 
 
-#define CVDEBUG_S2(__state_id_1, __state_id_2, __x) \
-	*cv_debug_stream <<"CV: DEBUG ("<< __FILE__ <<":"<< __LINE__  <<") States: (" \
-   <<  __state_id_1 << ", " << __state_id_2 << ") " <<__x << "\n";
-
-//#define CVDEBUG_S2(__state_id_1, __state_id_2, __x)
-
 namespace cliver {
+
+llvm::cl::opt<bool>
+DebugAddressSpaceGraph("debug-address-space-graph",llvm::cl::init(false));
+
+#ifndef NDEBUG
+
+#define CVDEBUG_S2(__state_id_1, __state_id_2, __x) \
+	if (DebugAddressSpaceGraph) { \
+	*cv_debug_stream <<"CV: DEBUG ("<< __FILE__ <<":"<< __LINE__  <<") States: (" \
+   <<  __state_id_1 << ", " << __state_id_2 << ") " <<__x << "\n"; }
+
+#undef CVDEBUG_S
+#define CVDEBUG_S(__state_id, __x) \
+	if (DebugAddressSpaceGraph) { \
+	*cv_debug_stream <<"CV: DEBUG ("<< __FILE__ <<":"<< __LINE__  <<") State: " \
+   << std::setw(4) << std::right << __state_id << " - " << __x << "\n"; }
+
+#else
+
+#define CVDEBUG_S2(__state_id_1, __state_id_2, __x)
+
+#undef CVDEBUG_S
+#define CVDEBUG_S(__state_id, __x)
+
+#endif
+
+typedef std::pair<klee::ObjectState&,klee::ObjectState&> ObjectStatePair;
 
 AddressSpaceGraph::AddressSpaceGraph(klee::ExecutionState *state) 
  : state_(state), pointer_width_(klee::Context::get().getPointerWidth()) {
@@ -32,24 +54,25 @@ AddressSpaceGraph::AddressSpaceGraph(klee::ExecutionState *state)
 }
 
 /// Compare the concrete values of two ObjectStates, ignoring pointers and symbolics.
-bool AddressSpaceGraph::compare_concrete(klee::ObjectState *a, klee::ObjectState *b) const{
+bool AddressSpaceGraph::concrete_compare(klee::ObjectState &a, 
+		klee::ObjectState &b) const{
 
-	if (a->size != b->size)
+	if (a.size != b.size)
 		return false;
 
 	// Check that the pointer masks are equal
-	for (unsigned i=0; i<a->size; i++) {
-		if ((a->isByteConcrete(i) != b->isByteConcrete(i)) ||
-		    (a->isBytePointer(i) != b->isBytePointer(i))) {
+	for (unsigned i=0; i<a.size; i++) {
+		if ((a.isByteConcrete(i) != b.isByteConcrete(i)) ||
+		    (a.isBytePointer(i) != b.isBytePointer(i))) {
 			return false;
 		}
 	}
 
 	// if concrete, and not a pointer, the concrete values must be equal
-	for (unsigned i=0; i<a->size; i++) {
-		if (!a->isBytePointer(i) && 
-				a->isByteConcrete(i) && 
-				a->read8(i) != b->read8(i)) {
+	for (unsigned i=0; i<a.size; i++) {
+		if (!a.isBytePointer(i) && 
+				a.isByteConcrete(i) && 
+				a.read8(i) != b.read8(i)) {
 			return false;
 		}
 	}
@@ -90,10 +113,9 @@ bool AddressSpaceGraph::equals(const AddressSpaceGraph &b) const {
 		klee::ObjectState* object_state_b
 			= boost::get(boost::get(&VertexProperties::object, b.graph_), vb);
 
-		if (!compare_concrete(object_state_a, object_state_b)) {
-			CVDEBUG_S2(id_a, id_b, "compare concrete failed");
-			//object_state_a->print(*cv_debug_stream, false);
-			//object_state_b->print(*cv_debug_stream, false);
+		if (!concrete_compare(*object_state_a, *object_state_b)) {
+			CVDEBUG_S2(id_a, id_b, "compare concrete failed"
+					<< "\n" << ObjectStatePair(*object_state_a, *object_state_b));
 			return false;
 		}
 		assert(a_to_b_map.find(va) == a_to_b_map.end());
@@ -136,10 +158,9 @@ bool AddressSpaceGraph::equals(const AddressSpaceGraph &b) const {
 	while (it_a != ie_a && it_b != ie_b) {
 		klee::ObjectState* object_state_a = it_a->first;
 		klee::ObjectState* object_state_b = it_b->first;
-		if (!compare_concrete(object_state_a, object_state_b)) {
-			CVDEBUG_S2(id_a, id_b, "compare global concrete objects failed");
-			//object_state_a->print(*cv_debug_stream, false);
-			//object_state_b->print(*cv_debug_stream, false);
+		if (!concrete_compare(*object_state_a, *object_state_b)) {
+			CVDEBUG_S2(id_a, id_b, "compare global concrete objects failed"
+					<< "\n" << ObjectStatePair(*object_state_a, *object_state_b));
 			return false;
 		}
 		++it_a;
@@ -256,14 +277,16 @@ void AddressSpaceGraph::extract_pointers(klee::ObjectState *obj, PointerList &re
 			if (klee::ConstantExpr *CE = llvm::dyn_cast<klee::ConstantExpr>(pexpr)) {
 				klee::ObjectPair object_pair;
 			  uint64_t val = CE->getZExtValue(pointer_width_);
-				if (state_->addressSpace.resolveOne(CE, object_pair)) {
-					PointerProperties p;  
-					p.offset = i;
-					p.address = val;
-					p.object = const_cast<klee::ObjectState*>(object_pair.second);
-					results.push_back(p);
-				} else {
-					CVDEBUG_S(cv_state_->id(), "address " << *CE << " did not resolve");
+				if (val) {
+					if (state_->addressSpace.resolveOne(CE, object_pair)) {
+						PointerProperties p;  
+						p.offset = i;
+						p.address = val;
+						p.object = const_cast<klee::ObjectState*>(object_pair.second);
+						results.push_back(p);
+					} else {
+						CVDEBUG_S(cv_state_->id(), "address " << *CE << " did not resolve");
+					}
 				}
 			} else {
 				CVDEBUG_S(cv_state_->id(), "Non-concrete pointer");

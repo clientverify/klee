@@ -115,13 +115,13 @@ class AddressSpaceGraph {
 	void extract_pointers(klee::ObjectState *obj, PointerList &results);
 	void extract_pointers_by_resolving(klee::ObjectState *obj, PointerList &results);
 	klee::IndependentElementSet& arrays() { return arrays_; }
+
  private:
-  bool compare_concrete(klee::ObjectState *a,klee::ObjectState *b) const;
+  bool concrete_compare(klee::ObjectState &a,klee::ObjectState &b) const;
 	void add_vertex(klee::ObjectState* object);
 
 	klee::ExecutionState *state_;
 	CVExecutionState *cv_state_;
-	
 	unsigned pointer_width_;
 
 	std::vector< klee::ObjectState* > stack_objects_;
