@@ -588,11 +588,24 @@ void ObjectState::print(std::ostream &os, bool print_bytes) const {
   os << "\tMemoryObject: " << object << "\n";
   os << "\tMemoryObject ID: " << object->id << "\n";
   os << "\tMemoryObject Name: " << object->name << "\n";
+  os << "\tMemoryObject Info: ";
+	if (object->isLocal)
+		os << "Local ";
+	if (object->isGlobal)
+		os << "Global ";
+	if (object->isFixed)
+		os << "Fixed ";
+	if (object->fake_object)
+		os << "Fake ";
+	if (object->isUserSpecified)
+		os << "UserSpecified ";
+	os << "\n";
+
   os << "\tRoot Object: " << updates.root << "\n";
   if (updates.root)
     os << "\tArray Name: " << updates.root->name << "\n";
   else
-    os << "\tArray Name: \n";
+    os << "\tArray Name: (no name)\n";
   os << "\tSize: " << size << "\n";
 
   os <<"\tAlloc Site: \n";
