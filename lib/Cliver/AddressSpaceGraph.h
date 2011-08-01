@@ -61,7 +61,7 @@ class AddressSpaceGraph {
 
  public:
 	AddressSpaceGraph(klee::ExecutionState *state);
-	void build_graph();
+	void build();
   int compare(const AddressSpaceGraph &b) const;
 	void extract_pointers(klee::ObjectState *obj, PointerList &results);
 	void extract_pointers_by_resolving(klee::ObjectState *obj, PointerList &results);

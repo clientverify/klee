@@ -58,7 +58,7 @@ void AddressSpaceGraph::add_vertex(klee::ObjectState* object) {
 	
 /// Build a graph on all the objects in the address space using pointer 
 /// relationships as edges. 
-void AddressSpaceGraph::build_graph() {
+void AddressSpaceGraph::build() {
 
 	// Create a Vertex for each MemoryObject in the addressSpace.
 	for (klee::MemoryMap::iterator it=state_->addressSpace.objects.begin(),
