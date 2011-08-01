@@ -26,6 +26,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <iomanip>
 
 // TODO move to util header
 #define foreach BOOST_FOREACH 
@@ -45,7 +46,12 @@ extern std::ostream* cv_debug_stream;
 #define CONCAT_TOKEN_(foo, bar) CONCAT_TOKEN_IMPL_(foo, bar)
 #define CONCAT_TOKEN_IMPL_(foo, bar) foo ## bar
 
-#define CVDEBUG(x) *cv_debug_stream <<"CV: DEBUG ("<< __FILE__ <<":"<< __LINE__  <<") " << x << "\n";
+#define CVDEBUG(x) \
+	*cv_debug_stream <<"CV: DEBUG ("<< __FILE__ <<":"<< __LINE__  <<") " << x << "\n";
+
+#define CVDEBUG_S(__state_id, __x) \
+	*cv_debug_stream <<"CV: DEBUG ("<< __FILE__ <<":"<< __LINE__  <<") State: " \
+   << std::setw(4) << std::right << __state_id << " - " << __x << "\n";
 
 /// CV versions of the KLEE error and warning functions
 /// Print "CV: ERROR" followed by the msg in printf format to debug stream
