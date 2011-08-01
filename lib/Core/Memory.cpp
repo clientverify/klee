@@ -667,6 +667,13 @@ void ObjectState::print(std::ostream &os, bool print_bytes) const {
   }
 }
 
+void ObjectState::print_diff(ObjectState &b, std::ostream &os) const {
+  std::vector<ObjectState*> ovec;
+	ovec.push_back(&b);
+	ovec.push_back(const_cast<ObjectState*>(this));
+	print_diff(ovec,os);
+}
+
 void ObjectState::print_diff(std::vector<ObjectState*> &_ovec, std::ostream &os) const {
   std::vector<ObjectState*>ovec(_ovec);
   //ovec.push_back(const_cast<ObjectState*>(this));

@@ -205,6 +205,7 @@ public:
   bool isByteConcrete(unsigned offset) const;
 
   void print(std::ostream &os, bool print_bytes=true) const;
+	void print_diff(ObjectState &b, std::ostream &os) const;
   void print_diff(std::vector<ObjectState*> &_ovec, std::ostream &os) const;
   void print(); 
  
@@ -234,7 +235,20 @@ private:
   void setKnownSymbolic(unsigned offset, Expr *value);
 
 };
-  
+
+// Printing operators
+ 
+inline std::ostream &operator<<(std::ostream &os, const ObjectState &obj) {
+  obj.print(os, false);
+  return os;
+}
+ 
+inline std::ostream &operator<<(std::ostream &os, 
+		const std::pair<ObjectState&,ObjectState&> &pair) {
+	pair.first.print_diff(pair.second, os);
+  return os;
+}
+
 } // End klee namespace
 
 #endif
