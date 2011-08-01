@@ -95,5 +95,15 @@ CVExecutionState* CVExecutionState::branch() {
   return falseState;
 }
 
+uint64_t CVExecutionState::get_symbolic_name_id(std::string &name) {
+	if (symbolic_name_map_.find(name) == symbolic_name_map_.end()) {
+		symbolic_name_map_[name] = 0;
+		return 0;
+	}
+	uint64_t new_id = symbolic_name_map_[name] + 1;
+	symbolic_name_map_[name] = new_id;
+	return new_id;
+}
+
 } // End cliver namespace
 
