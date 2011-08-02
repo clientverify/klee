@@ -19,6 +19,7 @@
 namespace cliver {
 
 ExecutionStateInfo::ExecutionStateInfo(CVExecutionState* state) {
+	socket_log_index_ = -1;
 	update(state);
 }
 
