@@ -33,7 +33,7 @@ DebugNetworkManager("debug-network-manager",llvm::cl::init(false));
 	return; }
 
 #define RETURN_FAILURE(action, reason) \
-	RETURN_FAILURE_NO_SOCKET(action, reason " " << socket)
+	RETURN_FAILURE_NO_SOCKET(action, reason << " " << socket)
 
 #define RETURN_SUCCESS(action, retval) { \
 	if (DebugNetworkManager) { \
@@ -86,7 +86,7 @@ DebugNetworkManager("debug-network-manager",llvm::cl::init(false));
 ////////////////////////////////////////////////////////////////////////////////
 
 enum NetworkModel {
-  DefaultNetworkModel
+  DefaultNetworkModel, TetrinetNetworkModel
 };
 
 llvm::cl::opt<NetworkModel>
@@ -95,6 +95,8 @@ cl_network_model("network-model",
   llvm::cl::values(
     clEnumValN(DefaultNetworkModel, "default", 
       "Default network model"),
+    clEnumValN(TetrinetNetworkModel, "tetrinet", 
+      "Tetrinet network model"),
   clEnumValEnd),
   llvm::cl::init(DefaultNetworkModel));
 
@@ -256,7 +258,6 @@ void Socket::print(std::ostream &os) {
 	}
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 
 NetworkManager::NetworkManager(CVExecutionState* state) 
@@ -276,6 +277,8 @@ NetworkManager* NetworkManagerFactory::create(CVExecutionState* state) {
   switch (cl_network_model) {
 	case DefaultNetworkModel: 
     break;
+	case TetrinetNetworkModel: 
+		return new NetworkManagerTetrinet(state);
   }
   return new NetworkManager(state);
 }
@@ -392,7 +395,7 @@ void NetworkManager::execute_read(CVExecutor* executor,
 	}
 
 	if (socket.has_data())
-		RETURN_FAILURE("read", "bytes remain");
+		RETURN_FAILURE("read", "bytes remain len=" << len);
 
 	socket.advance();
 	state_->info()->update(state_);
@@ -408,6 +411,42 @@ void NetworkManager::execute_shutdown(CVExecutor* executor,
 		RETURN_FAILURE("shutdown", "events remain");
 
 	RETURN_SUCCESS("shutdown", 0);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+NetworkManagerTetrinet::NetworkManagerTetrinet(CVExecutionState* state) 
+	: NetworkManager(state) {
+}
+
+NetworkManager* NetworkManagerTetrinet::clone(CVExecutionState *state) {
+	NetworkManagerTetrinet* nwm = new NetworkManagerTetrinet(*this);
+	nwm->state_ = state;
+	return nwm;
+}
+
+void NetworkManagerTetrinet::execute_read(CVExecutor* executor,
+		klee::KInstruction *target, klee::ObjectState* object, int fd, int len) {
+
+	GET_SOCKET_OR_DIE_TRYIN("read", fd);
+
+	if (socket.type() != SocketEvent::RECV)
+		RETURN_FAILURE("read", "wrong type");
+
+	unsigned bytes_written = 0;
+
+	while (socket.has_data() && bytes_written < len) {
+		object->write8(bytes_written++, socket.next_byte());
+	}
+
+	if (socket.has_data()) {
+		//RETURN_FAILURE("read", "bytes remain len=" << len);
+	} else {
+		socket.advance();
+	}
+
+	state_->info()->update(state_);
+	RETURN_SUCCESS("read", bytes_written);
 }
 
 

@@ -34,6 +34,8 @@ void ExternalHandler_socket_shutdown(
 		klee::Executor* executor, klee::ExecutionState *state, 
 		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
 
+////////////////////////////////////////////////////////////////////////////////
+
 #define SOCKETEVENT_TYPES X(SEND), X(RECV) 
 #define SOCKET_STATES     X(IDLE), X(READING), X(WRITING), X(FINISHED)
 #define X(x) x
@@ -73,7 +75,7 @@ class Socket {
 
   void print(std::ostream &os);
 
- private:
+ protected:
 	Socket() {}
 	const SocketEvent& event();
 
@@ -92,28 +94,30 @@ inline std::ostream &operator<<(std::ostream &os, Socket &s) {
   return os;
 }
 
+////////////////////////////////////////////////////////////////////////////////
 
 class NetworkManager {
  public:
 
   NetworkManager(CVExecutionState* state);
-	void add_socket(const KTest* ktest);
 
-	NetworkManager* clone(CVExecutionState *state);
+	virtual void add_socket(const KTest* ktest);
 
-	void execute_open_socket(CVExecutor* executor,
+	virtual NetworkManager* clone(CVExecutionState *state);
+
+	virtual void execute_open_socket(CVExecutor* executor,
 		klee::KInstruction *target, 
 		int domain, int type, int protocol);
 
-	void execute_read(CVExecutor* executor, 
+	virtual void execute_read(CVExecutor* executor, 
 		klee::KInstruction *target, 
 		klee::ObjectState* object, int fd, int len);
 
-	void execute_write(CVExecutor* executor,
+	virtual void execute_write(CVExecutor* executor,
 		klee::KInstruction *target, 
 		klee::ObjectState* object, int fd, int len);
 
-	void execute_shutdown(CVExecutor* executor,
+	virtual void execute_shutdown(CVExecutor* executor,
 		klee::KInstruction *target, 
 		int fd, int how);
 
@@ -121,7 +125,7 @@ class NetworkManager {
 	unsigned round() { return round_; }
 	std::vector<Socket>& sockets() { return sockets_; }
 
- private:
+ protected:
 	unsigned round_;
 	CVExecutionState *state_;
 	std::vector<Socket> sockets_;
@@ -131,6 +135,22 @@ class NetworkManagerFactory {
  public:
   static NetworkManager* create(CVExecutionState* state);
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+class NetworkManagerTetrinet : public NetworkManager {
+ public:
+
+  NetworkManagerTetrinet(CVExecutionState* state);
+
+	virtual NetworkManager* clone(CVExecutionState *state);
+
+	virtual void execute_read(CVExecutor* executor, 
+		klee::KInstruction *target, 
+		klee::ObjectState* object, int fd, int len);
+};
+
+////////////////////////////////////////////////////////////////////////////////
 
 } // end namespace cliver
 #endif // NETWORK_MANAGER_H
