@@ -207,6 +207,15 @@ public:
     }
     return modified;
   }
+
+  bool addArray(const Array* array) {
+    if (!wholeObjects.count(array)) {
+      wholeObjects.insert(array);
+      return true;
+    }
+    return false;
+  }
+
 };
 
 inline std::ostream &operator<<(std::ostream &os, const IndependentElementSet &ies) {
