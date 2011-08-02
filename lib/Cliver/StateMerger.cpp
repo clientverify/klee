@@ -18,6 +18,29 @@
 
 namespace cliver {
 
+llvm::cl::opt<bool>
+DebugStateMerger("debug-state-merger",llvm::cl::init(false));
+
+#ifndef NDEBUG
+
+#undef CVDEBUG
+#define CVDEBUG(x) \
+	__CVDEBUG(DebugStateMerger, x);
+
+#undef CVDEBUG_S
+#define CVDEBUG_S(__state_id, __x) \
+	__CVDEBUG_S(DebugStateMerger, __state_id, __x)
+
+#else
+
+#undef CVDEBUG
+#define CVDEBUG(x)
+
+#undef CVDEBUG_S
+#define CVDEBUG_S(__state_id, __x)
+
+#endif
+
 struct MergeInfo {
 	AddressSpaceGraph *graph;
 };
@@ -35,11 +58,27 @@ StateMerger::StateMerger(ConstraintPruner *pruner) : pruner_(pruner) {}
 // 4. Canonicalize symbolic variables
 // 5. Compare constraint sets
 
-bool StateMerger::compare_constraints(klee::ConstraintManager &a, 
+bool StateMerger::compare_constraints(
+		const AddressSpaceGraph &asg_a,
+		const AddressSpaceGraph &asg_b,
+		klee::ConstraintManager &a, 
 		klee::ConstraintManager &b) {
 
 	std::set< klee::ref<klee::Expr> > set_a(a.begin(), a.end());
-	std::set< klee::ref<klee::Expr> > set_b(b.begin(), b.end());
+	std::set< klee::ref<klee::Expr> > set_b_initial(b.begin(), b.end());
+
+	if (set_a.size() != set_b_initial.size()) {
+		CVDEBUG("constraint sizes do not match " 
+				<< set_a.size() << " != " << set_b_initial.size());
+		return false;
+	}
+
+	std::set< klee::ref<klee::Expr> > set_b;
+
+	foreach (klee::ref<klee::Expr> e, set_b_initial) {
+		set_b.insert(asg_a.get_canonical_expr(asg_b, e));
+	}
+
 	std::set< klee::ref<klee::Expr> > common;
 
 	std::set_intersection(set_a.begin(), set_a.end(), set_b.begin(), set_b.end(),
@@ -50,14 +89,16 @@ bool StateMerger::compare_constraints(klee::ConstraintManager &a,
 		return true;
 	} else {
 		CVDEBUG("constraints do not match");
-		//*cv_debug_stream << "(1)------------------------------------------\n";
-		//foreach( klee::ref<klee::Expr> e, set_a) {
-		//	*cv_debug_stream << e << "\n";
-		//}
-		//*cv_debug_stream << "(2)------------------------------------------\n";
-		//foreach( klee::ref<klee::Expr> e, set_b) {
-		//	*cv_debug_stream << e << "\n";
-		//}
+		foreach( klee::ref<klee::Expr> e, set_a) {
+			if (!common.count(e)) {
+				CVDEBUG("(1) " << e);
+			}
+		}
+		foreach( klee::ref<klee::Expr> e, set_b) {
+			if (!common.count(e)) {
+				CVDEBUG("(2) " << e);
+			}
+		}
 		return false;
 	}
 }
@@ -85,8 +126,11 @@ void StateMerger::merge(ExecutionStateSet &state_set,
 		worklist.pop_back();
 		std::vector<CVExecutionState*>::iterator it=worklist.begin(), ie=worklist.end();
 		for (; it!=ie; ++it) {
-			if (merge_info[state].graph->equals(*merge_info[*it].graph)) {
-				if (compare_constraints(state->constraints, (*it)->constraints)) {
+			AddressSpaceGraph* asg_a = merge_info[state].graph;
+			AddressSpaceGraph* asg_b = merge_info[*it].graph;
+			if (asg_a->equals(*asg_b)) {
+				if (compare_constraints(*asg_a, *asg_b,
+							state->constraints, (*it)->constraints)) {
 					break;
 				}
 			}
