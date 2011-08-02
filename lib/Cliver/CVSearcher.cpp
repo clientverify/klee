@@ -51,6 +51,7 @@ klee::ExecutionState &CVSearcher::selectState() {
 				for (; merge_it!=ie; ++merge_it) {
 					ExecutionStateSet &merge_state_set = merge_it->second;
 					ExecutionStateSet result;
+					CVMESSAGE("Merging ExecutionStates in group: " << merge_it->first);
 					merger_->merge(merge_state_set, result);
 					merge_state_set.swap(result);
 				}
