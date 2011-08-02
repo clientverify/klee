@@ -16,11 +16,40 @@
 
 namespace cliver {
 
+llvm::cl::opt<bool>
+DebugConstraintPruner("debug-constraint-pruner",llvm::cl::init(false));
+
+#ifndef NDEBUG
+
+#undef CVDEBUG
+#define CVDEBUG(x) \
+	__CVDEBUG(DebugConstraintPruner, x);
+
+#undef CVDEBUG_S
+#define CVDEBUG_S(__state_id, __x) \
+	__CVDEBUG_S(DebugConstraintPruner, __state_id, __x)
+
+#else
+
+#undef CVDEBUG
+#define CVDEBUG(x)
+
+#undef CVDEBUG_S
+#define CVDEBUG_S(__state_id, __x)
+
+#endif
+
+
 ConstraintPruner::ConstraintPruner() {}
 
-void ConstraintPruner::prune( CVExecutionState &state, AddressSpaceGraph &graph ) {
+void ConstraintPruner::prune_constraints(
+		CVExecutionState &state, AddressSpaceGraph &graph ) {
 
-	klee::IndependentElementSet arrays(graph.arrays());
+	klee::IndependentElementSet array_set;
+	foreach (const klee::Array* array, graph.arrays()) {
+		array_set.addArray(array);
+	}
+
   std::vector< klee::ref<klee::Expr> > result;
   std::vector< klee::ref<klee::Expr> > removed_constraints;
   std::vector< std::pair<klee::ref<klee::Expr>, klee::IndependentElementSet> > worklist;
@@ -36,8 +65,8 @@ void ConstraintPruner::prune( CVExecutionState &state, AddressSpaceGraph &graph 
     std::vector< std::pair<klee::ref<klee::Expr>, klee::IndependentElementSet> > newWorklist;
     for (std::vector< std::pair<klee::ref<klee::Expr>, klee::IndependentElementSet> >::iterator
            it = worklist.begin(), ie = worklist.end(); it != ie; ++it) {
-      if (it->second.intersects(arrays)) {
-        if (arrays.add(it->second))
+      if (it->second.intersects(array_set)) {
+        if (array_set.add(it->second))
           done = false;
         result.push_back(it->first);
       } else {
@@ -49,7 +78,7 @@ void ConstraintPruner::prune( CVExecutionState &state, AddressSpaceGraph &graph 
 
 	for (std::vector< std::pair<klee::ref<klee::Expr>, klee::IndependentElementSet> >::iterator
 					it = worklist.begin(), ie = worklist.end(); it != ie; ++it) {
-		*cv_debug_stream << "Removed: " << it->first << "\n";
+		CVDEBUG("Removed: " << it->first );
 	}
 	CVDEBUG_S(state.id(), "removed " << start_size - result.size() << " constraints");
 

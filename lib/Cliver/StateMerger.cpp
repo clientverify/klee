@@ -73,7 +73,7 @@ void StateMerger::merge(ExecutionStateSet &state_set,
 	foreach (CVExecutionState* state, state_set) {
 		AddressSpaceGraph *graph = new AddressSpaceGraph(state);
 		graph->build();
-		pruner_->prune(*state, *graph);
+		pruner_->prune_constraints(*state, *graph);
 		merge_info[state].graph = graph;
 	}
 
