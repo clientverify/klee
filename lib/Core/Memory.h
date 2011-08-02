@@ -47,6 +47,9 @@ public:
   mutable bool isGlobal;
   bool isFixed;
 
+	mutable bool isMadeSymbolic;
+	mutable unsigned refCount;
+
   /// true if created by us.
   bool fake_object;
   bool isUserSpecified;
@@ -74,6 +77,8 @@ public:
       address(_address),
       size(0),
       isFixed(true),
+			isMadeSymbolic(false),
+			refCount(0),
       allocSite(0) {
   }
 
@@ -87,6 +92,8 @@ public:
       isLocal(_isLocal),
       isGlobal(_isGlobal),
       isFixed(_isFixed),
+			isMadeSymbolic(false),
+			refCount(0),
       fake_object(false),
       isUserSpecified(false),
       allocSite(_allocSite) {

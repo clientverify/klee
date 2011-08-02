@@ -13,6 +13,7 @@
 
 namespace klee {
 class KFunction;
+class MemoryManager;
 }
 
 namespace cliver {
@@ -50,7 +51,7 @@ typedef std::map<ExecutionStateInfo,
 
 class CVExecutionState : public klee::ExecutionState {
  public:
-  CVExecutionState(klee::KFunction *kF);
+  CVExecutionState(klee::KFunction *kF, klee::MemoryManager *mem);
   CVExecutionState(const std::vector< klee::ref<klee::Expr> > &assumptions);
   virtual ~CVExecutionState();
   virtual CVExecutionState *branch();

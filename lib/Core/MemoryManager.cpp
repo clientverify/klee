@@ -70,5 +70,17 @@ MemoryObject *MemoryManager::allocateFixed(ExecutionState &state,
 }
 
 void MemoryManager::deallocate(const MemoryObject *mo) {
-  assert(0);
+  bool found = false;
+  for (objects_ty::iterator it = objects.begin(),
+      ie = objects.end(); it != ie; ++it) {
+    MemoryObject *obj = *it;
+    if (obj == mo) {
+      found = true;
+      free((void*)obj->address);
+      objects.erase(it);
+      delete obj;
+      break;
+    }
+  }
+  assert(found && "MemoryObject not found");
 }
