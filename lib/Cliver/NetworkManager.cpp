@@ -17,10 +17,18 @@
 #include <boost/foreach.hpp>
 #define foreach BOOST_FOREACH 
 
+namespace cliver {
+
+llvm::cl::opt<bool>
+DebugNetworkManager("debug-network-manager",llvm::cl::init(false));
+
+#ifndef NDEBUG
+
 #define RETURN_FAILURE_NO_SOCKET(action, reason) { \
+	if (DebugNetworkManager) { \
 	CVDEBUG("State: " << std::setw(4) << std::right << state_->id() \
 			<< " - failure - " << std::setw(8) << std::left << action << " - " \
-			<< std::setw(15) << reason );	\
+			<< std::setw(15) << reason );	} \
 	executor->terminate_state(state_); \
 	return; }
 
@@ -28,9 +36,10 @@
 	RETURN_FAILURE_NO_SOCKET(action, reason " " << socket)
 
 #define RETURN_SUCCESS(action, retval) { \
+	if (DebugNetworkManager) { \
 	CVDEBUG("State: " << std::setw(4) << std::right << state_->id() \
 			<< " - success - " << std::setw(8) << std::left << action << "   " \
-			<< std::setw(15) << " " << socket);	\
+			<< std::setw(15) << " " << socket);	} \
 	executor->bind_local(target, state_, retval); \
 	return; }
 
@@ -40,16 +49,42 @@
 		if (file_descriptor == sockets_[socket_index].fd()) \
 			break; \
   if (socket_index == sockets_.size()) { \
+		if (DebugNetworkManager) { \
 		CVDEBUG("State: " << std::setw(4) << std::right << state_->id() \
-				<< " - failure - socket " << file_descriptor << " doesn't exist");  \
+				<< " - failure - socket " << file_descriptor << " doesn't exist");  } \
 		executor->terminate_state(state_); \
 		return; \
 	} \
 	Socket &socket = sockets_[socket_index]; 
 
+#else
+
+#define RETURN_FAILURE_NO_SOCKET(action, reason) { \
+	executor->terminate_state(state_); \
+	return; }
+
+#define RETURN_FAILURE(action, reason) \
+	RETURN_FAILURE_NO_SOCKET(action, reason)
+
+#define RETURN_SUCCESS(action, retval) { \
+	executor->bind_local(target, state_, retval); \
+	return; }
+
+#define GET_SOCKET_OR_DIE_TRYIN(action, file_descriptor) \
+	unsigned socket_index; \
+  for (socket_index = 0; socket_index < sockets_.size(); ++socket_index) \
+		if (file_descriptor == sockets_[socket_index].fd()) \
+			break; \
+  if (socket_index == sockets_.size()) { \
+		executor->terminate_state(state_); \
+		return; \
+	} \
+	Socket &socket = sockets_[socket_index]; 
+
+#endif
+
 ////////////////////////////////////////////////////////////////////////////////
 
-namespace {
 enum NetworkModel {
   DefaultNetworkModel
 };
@@ -62,11 +97,9 @@ cl_network_model("network-model",
       "Default network model"),
   clEnumValEnd),
   llvm::cl::init(DefaultNetworkModel));
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
-namespace cliver {
 
 const int kInitialFileDescriptor= 1000;
 
