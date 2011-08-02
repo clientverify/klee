@@ -28,10 +28,16 @@ class ExecutionStateInfo {
 	virtual void update(CVExecutionState* state);
 	virtual bool less_than(const ExecutionStateInfo &info) const;
 	virtual bool equals(const ExecutionStateInfo &info) const;
+  virtual void print(std::ostream &os) const;
  private:
 	int socket_log_index_;
 };
 
+inline std::ostream &operator<<(std::ostream &os, const ExecutionStateInfo &info) {
+  info.print(os);
+  return os;
+}
+ 
 struct ExecutionStateInfoLT {
 	bool operator()(const ExecutionStateInfo &a, const ExecutionStateInfo &b) const;
 };

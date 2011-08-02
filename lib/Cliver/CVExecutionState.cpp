@@ -43,6 +43,10 @@ bool ExecutionStateInfoLT::operator()(const ExecutionStateInfo &a,
 	return a.less_than(b);
 }
 
+void ExecutionStateInfo::print(std::ostream &os) const {
+	os << "log_index = " << socket_log_index_;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 int CVExecutionState::next_id_ = 0;
