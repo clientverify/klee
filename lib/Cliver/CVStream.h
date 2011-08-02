@@ -27,9 +27,11 @@
 #include <string>
 #include <vector>
 #include <iomanip>
+#include "llvm/Support/CommandLine.h"
 
 // TODO move to util header
 #define foreach BOOST_FOREACH 
+#define reverse_foreach BOOST_REVERSE_FOREACH 
 
 #define CV_DEBUG_FILE "debug.txt"
 #define CV_WARNING_FILE "warnings.txt"
@@ -46,12 +48,29 @@ extern std::ostream* cv_debug_stream;
 #define CONCAT_TOKEN_(foo, bar) CONCAT_TOKEN_IMPL_(foo, bar)
 #define CONCAT_TOKEN_IMPL_(foo, bar) foo ## bar
 
+#define CVMESSAGE(x) \
+	*cv_message_stream <<"CV: "<< x << "\n";
+
 #define CVDEBUG(x) \
 	*cv_debug_stream <<"CV: DEBUG ("<< __FILE__ <<":"<< __LINE__  <<") " << x << "\n";
 
 #define CVDEBUG_S(__state_id, __x) \
 	*cv_debug_stream <<"CV: DEBUG ("<< __FILE__ <<":"<< __LINE__  <<") State: " \
    << std::setw(4) << std::right << __state_id << " - " << __x << "\n";
+
+#define __CVDEBUG(__debug_enabled, x) \
+	if (__debug_enabled) { \
+	*cv_debug_stream <<"CV: DEBUG ("<< __FILE__ <<":"<< __LINE__  <<") " << x << "\n"; }
+
+#define __CVDEBUG_S(__debug_enabled, __state_id, __x) \
+	if (__debug_enabled) { \
+	*cv_debug_stream <<"CV: DEBUG ("<< __FILE__ <<":"<< __LINE__  <<") State: " \
+   << std::setw(4) << std::right << __state_id << " - " << __x << "\n"; } 
+
+#define __CVDEBUG_S2(__debug_enabled, __state_id_1, __state_id_2, __x) \
+	if (__debug_enabled) { \
+	*cv_debug_stream <<"CV: DEBUG ("<< __FILE__ <<":"<< __LINE__  <<") States: (" \
+   <<  __state_id_1 << ", " << __state_id_2 << ") " <<__x << "\n"; }
 
 /// CV versions of the KLEE error and warning functions
 /// Print "CV: ERROR" followed by the msg in printf format to debug stream
