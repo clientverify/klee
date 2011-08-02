@@ -12,7 +12,9 @@
 #include "../Core/AddressSpace.h"
 #include "../Core/Memory.h"
 #include "klee/ExecutionState.h"
+#include "klee/util/ExprVisitor.h"
 #include "klee/IndependentElementSet.h"
+#include "CVStream.h"
 
 #include <map>
 #include <boost/graph/adjacency_list.hpp>
@@ -49,89 +51,120 @@ typedef std::pair< VertexIterator, VertexIterator > VertexPair;
 typedef std::map< klee::ObjectState*, Vertex > ObjectVertexMap;
 typedef std::pair< klee::ObjectState*, Vertex > ObjectVertexPair;
 
-class BFSVisitor : public boost::default_bfs_visitor {
- public:
-	BFSVisitor(
-			std::set<Vertex> *_visited, 
-			std::vector<Vertex> *_in_order_visited,
-			klee::IndependentElementSet *_arrays) 
-		: visited(_visited), 
-		  in_order_visited(_in_order_visited), 
-		  arrays(_arrays) {}
-
-	template <typename Vertex, typename Graph>
-	void discover_vertex(Vertex v, Graph& g) {
-		if (visited->find(v) == visited->end()) {
-			// Extract the object state from the vertex properties
-			klee::ObjectState* object_state 
-				= boost::get(boost::get(&VertexProperties::object, g), v);
-
-			// Extract any references to reads of other symbolic variables
-			for (unsigned i=0; i<object_state->size; ++i) {
-				if(!object_state->isByteConcrete(i)) {
-					klee::ref<klee::Expr> read_expr = object_state->read8(i);
-					arrays->add(klee::IndependentElementSet(read_expr));
-				}
-			}
-
-			visited->insert(v);
-			in_order_visited->push_back(v);
-		}
-  }
-
-	std::set<Vertex> *visited;
-	std::vector<Vertex> *in_order_visited;
-	klee::IndependentElementSet *arrays;
-};
-
-class DFSVisitor : public boost::default_dfs_visitor {
- public:
-	DFSVisitor(std::vector<ObjectVertexPair> *_in_order_discovered)
-		: in_order_discovered(_in_order_discovered) {}
-
-	template <typename Vertex, typename Graph>
-	void discover_vertex(Vertex v, Graph& g) {
-		if (discovered.find(v) == discovered.end()) {
-			// Extract the object state from the vertex properties
-			klee::ObjectState* object_state 
-				= boost::get(boost::get(&VertexProperties::object, g), v);
-			discovered.insert(v);
-			in_order_discovered->push_back(ObjectVertexPair(object_state, v));
-		}
-  }
-
-	std::vector<ObjectVertexPair> *in_order_discovered;
-	std::set<Vertex> discovered;
-};
-
-
 class AddressSpaceGraph {
+friend class AddressSpaceGraphVisitor;
 
  public:
 	AddressSpaceGraph(klee::ExecutionState *state);
 	void build();
+	void process();
   //int compare(const AddressSpaceGraph &b) const;
   bool equals(const AddressSpaceGraph &b) const;
+
 	void extract_pointers(klee::ObjectState *obj, PointerList &results);
 	void extract_pointers_by_resolving(klee::ObjectState *obj, PointerList &results);
-	klee::IndependentElementSet& arrays() { return arrays_; }
+
+	std::set<const klee::Array*> &arrays() { return arrays_; }
+	std::vector<const klee::Array*> &in_order_arrays() { return in_order_arrays_; }
+	klee::ref<klee::Expr> get_canonical_expr(const AddressSpaceGraph &b,
+			klee::ref<klee::Expr> e) const;
 
  private:
   bool concrete_compare(klee::ObjectState &a,klee::ObjectState &b) const;
+	bool compare_objects(const AddressSpaceGraph &asg_b, klee::ObjectState &a, 
+		klee::ObjectState &b) const;
+
 	void add_vertex(klee::ObjectState* object);
+	void add_arrays_from_expr(klee::ref<klee::Expr> e);
 
 	klee::ExecutionState *state_;
 	CVExecutionState *cv_state_;
 	unsigned pointer_width_;
 
-	std::vector< klee::ObjectState* > stack_objects_;
 	Graph graph_;
+
 	ObjectVertexMap object_vertex_map_;
-	ObjectVertexMap unconnected_objects_;
-	ObjectVertexMap connected_objects_;
-	klee::IndependentElementSet arrays_;
+	ObjectVertexMap unconnected_;
 	std::vector<Vertex> in_order_visited_;
+
+	std::set<const klee::Array*> arrays_;
+	std::map<const klee::Array*, unsigned> array_map_;
+	std::vector<const klee::Array*> in_order_arrays_;
+
 };
+
+class AddressSpaceGraphVisitor: public boost::default_bfs_visitor {
+ private:
+	AddressSpaceGraph &asg_;
+	std::set<Vertex> &visited_;
+
+ public:
+	AddressSpaceGraphVisitor(AddressSpaceGraph &asg, std::set<Vertex> &visited)
+		: asg_(asg), visited_(visited) {}
+
+	template <typename Vertex, typename Graph>
+	void discover_vertex(Vertex v, Graph& g) {
+
+		if (visited_.find(v) == visited_.end()) {
+
+			// Extract the object state from the vertex properties
+			klee::ObjectState* object_state 
+				= boost::get(boost::get(&VertexProperties::object, asg_.graph_), v);
+
+			// Extract any references to reads of other symbolic variables
+			for (unsigned i=0; i<object_state->size; ++i) {
+				if(!object_state->isByteConcrete(i)) {
+					klee::ref<klee::Expr> expr = object_state->read8(i);
+					asg_.add_arrays_from_expr(expr);
+				}
+			}
+
+			visited_.insert(v);
+			asg_.in_order_visited_.push_back(v);
+		}
+  }
+};
+
+class ReplaceArrayVisitor : public klee::ExprVisitor {
+private:
+	std::map<const klee::Array*, unsigned> array_map_;
+	std::vector<const klee::Array*> arrays_;
+
+public:
+  ReplaceArrayVisitor(std::map<const klee::Array*, unsigned> array_map,
+			std::vector<const klee::Array*> arrays) 
+		: klee::ExprVisitor(true), array_map_(array_map), arrays_(arrays) {
+		assert(array_map_.size() == arrays_.size());
+	}
+
+  Action visitRead(const klee::ReadExpr &e) {
+		if (e.updates.root != NULL) {
+      if (array_map_.count(e.updates.root) == 0) {
+				return Action::doChildren();
+			}
+			unsigned to_replace_index = array_map_[e.updates.root];
+			const klee::Array *array = arrays_[to_replace_index];
+
+			// Because extend() pushes a new UpdateNode onto the list, we need to walk
+			// the list in reverse to rebuild it in the same order.
+			std::vector< const klee::UpdateNode*> update_list;
+			for (const klee::UpdateNode *un=e.updates.head; un; un=un->next) {
+				update_list.push_back(un);
+			}
+
+			// walk list in reverse
+			klee::UpdateList updates(array, NULL);
+			reverse_foreach (const klee::UpdateNode* U, update_list) {
+				updates.extend(visit(U->index), visit(U->value));
+			}
+
+			return Action::changeTo(klee::ReadExpr::create(updates, visit(e.index)));
+
+		}
+		return Action::doChildren();
+  }
+};
+
 
 } // End cliver namespace
 
