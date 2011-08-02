@@ -29,6 +29,7 @@ namespace klee {
   struct KFunction;
   struct KInstruction;
   class MemoryObject;
+  class MemoryManager;
   class PTreeNode;
   struct InstructionInfo;
 
@@ -94,6 +95,9 @@ public:
   std::map<const std::string*, std::set<unsigned> > coveredLines;
   PTreeNode *ptreeNode;
 
+	// For the deallocation of memory objects
+	MemoryManager* memory;
+
   /// ordered list of symbolics: used to generate test cases. 
   //
   // FIXME: Move to a shared list structure (not critical).
@@ -110,10 +114,11 @@ public:
   void removeFnAlias(std::string fn);
   
 private:
-  ExecutionState() : fakeState(false), underConstrained(0), ptreeNode(0) {}
+  ExecutionState() : fakeState(false), underConstrained(0), 
+	ptreeNode(0), memory(0) {}
 
 public:
-  ExecutionState(KFunction *kf);
+  ExecutionState(KFunction *kf, MemoryManager *mem);
 
   // XXX total hack, just used to make a state so solver can
   // use on structure
@@ -123,12 +128,13 @@ public:
   
   virtual ExecutionState *branch();
 
+	void addAlloca(const MemoryObject *mo);
+
   void pushFrame(KInstIterator caller, KFunction *kf);
   void popFrame();
 
-  void addSymbolic(const MemoryObject *mo, const Array *array) { 
-    symbolics.push_back(std::make_pair(mo, array));
-  }
+  void addSymbolic(const MemoryObject *mo, const Array *array);
+
   void addConstraint(ref<Expr> e) { 
     constraints.addConstraint(e); 
   }

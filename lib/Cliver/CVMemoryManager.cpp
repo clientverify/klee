@@ -65,11 +65,9 @@ klee::MemoryObject *CVMemoryManager::allocate(klee::ExecutionState &state,
   }
   CVExecutionState* cvstate = static_cast<CVExecutionState*>(&state);
   klee::MemoryObject tmp_mo(NULL, size, local, global, false, NULL);
-  //klee::klee_warning("calling address_mananger()...");
   uint64_t address 
     = cvstate->address_manager()->next(tmp_mo, cvstate->context(), allocsite);
 
-  //klee::klee_warning("address_mananger() returned %llx", address);
   if (!address)
     return 0;
   
@@ -100,7 +98,20 @@ klee::MemoryObject *CVMemoryManager::allocateFixed(klee::ExecutionState &state,
 }
 
 void CVMemoryManager::deallocate(const klee::MemoryObject *mo) {
-  assert(0);
+  bool found = false;
+
+  for (objects_ty::iterator it = objects.begin(),
+      ie = objects.end(); it != ie; ++it) {
+		klee::MemoryObject *obj = *it;
+    if (obj == mo) {
+      found = true;
+      free((void*)obj->address);
+      objects.erase(it);
+      delete obj;
+      break;
+    }
+  }
+  assert(found && "MemoryObject not found");
 }
 
 } // End cliver namespace

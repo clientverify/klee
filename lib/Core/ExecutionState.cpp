@@ -17,6 +17,7 @@
 #include "klee/Expr.h"
 
 #include "Memory.h"
+#include "MemoryManager.h"
 
 #include "llvm/Function.h"
 #include "llvm/Support/CommandLine.h"
@@ -52,8 +53,13 @@ StackFrame::StackFrame(const StackFrame &s)
     minDistToUncoveredOnReturn(s.minDistToUncoveredOnReturn),
     varargs(s.varargs) {
   locals = new Cell[s.kf->numRegisters];
-  for (unsigned i=0; i<s.kf->numRegisters; i++)
+  for (unsigned i=0; i<s.kf->numRegisters; i++) {
     locals[i] = s.locals[i];
+	}
+	for (std::vector<const MemoryObject*>::iterator it = allocas.begin(),
+			ie = allocas.end(); it != ie; ++it) {
+		(*it)->refCount++;
+	}
 }
 
 StackFrame::~StackFrame() { 
@@ -62,7 +68,7 @@ StackFrame::~StackFrame() {
 
 /***/
 
-ExecutionState::ExecutionState(KFunction *kf) 
+ExecutionState::ExecutionState(KFunction *kf, MemoryManager *mem) 
   : fakeState(false),
     underConstrained(false),
     depth(0),
@@ -73,7 +79,8 @@ ExecutionState::ExecutionState(KFunction *kf)
     instsSinceCovNew(0),
     coveredNew(false),
     forkDisabled(false),
-    ptreeNode(0) {
+    ptreeNode(0),
+		memory(mem) {
   pushFrame(0, kf);
 }
 
@@ -102,6 +109,12 @@ ExecutionState *ExecutionState::branch() {
   return falseState;
 }
 
+void ExecutionState::addAlloca(const MemoryObject *mo) {
+  // increase reference count on new local variable
+  mo->refCount++;
+  stack.back().allocas.push_back(mo);
+}
+
 void ExecutionState::pushFrame(KInstIterator caller, KFunction *kf) {
   stack.push_back(StackFrame(caller,kf));
 }
@@ -109,11 +122,25 @@ void ExecutionState::pushFrame(KInstIterator caller, KFunction *kf) {
 void ExecutionState::popFrame() {
   StackFrame &sf = stack.back();
   for (std::vector<const MemoryObject*>::iterator it = sf.allocas.begin(), 
-         ie = sf.allocas.end(); it != ie; ++it)
+         ie = sf.allocas.end(); it != ie; ++it) {
     addressSpace.unbindObject(*it);
+    // Decrease reference count on stack frame pop.
+    // Deallocate the MemoryObject iff refCount reaches 0
+    // and the memory object wasn't made symbolic (otherwise
+    // the test case generation will miss references to mo's).
+    if (!--(*it)->refCount && !(*it)->isMadeSymbolic) {
+      assert(memory && "MemoryManager not initialized");
+      memory->deallocate(*it);
+    }
+  }
   stack.pop_back();
 }
 
+void ExecutionState::addSymbolic(const MemoryObject *mo, const Array *array) { 
+  mo->isMadeSymbolic = true;
+  symbolics.push_back(std::make_pair(mo, array));
+}
+ 
 ///
 
 std::string ExecutionState::getFnAlias(std::string fn) {

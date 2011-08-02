@@ -223,7 +223,7 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
   
   MemoryObject *argvMO = 0;
 
-  CVExecutionState *state = new CVExecutionState(kmodule->functionMap[f]);
+  CVExecutionState *state = new CVExecutionState(kmodule->functionMap[f], memory);
 	state->initialize(this);
   
   // In order to make uclibc happy and be closer to what the system is
