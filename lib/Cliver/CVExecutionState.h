@@ -19,9 +19,10 @@ class MemoryManager;
 namespace cliver {
 class AddressManager;
 class CVContext;
+class CVExecutionState;
 class CVExecutor;
 class NetworkManager;
-class CVExecutionState;
+class PathManager;
 
 class ExecutionStateInfo {
  public:
@@ -62,6 +63,7 @@ class CVExecutionState : public klee::ExecutionState {
 
   AddressManager* address_manager() { return address_manager_; }
 	NetworkManager* network_manager() { return network_manager_; }
+	PathManager*    path_manager() { return path_manager_; }
 	ExecutionStateInfo* info()			  { return info_; }
 
 	uint64_t get_symbolic_name_id(std::string &name);
@@ -74,6 +76,7 @@ class CVExecutionState : public klee::ExecutionState {
   CVContext* context_;
   AddressManager* address_manager_;
 	NetworkManager* network_manager_;
+	PathManager* path_manager_;
 	ExecutionStateInfo* info_;
 	std::map< std::string, uint64_t > symbolic_name_map_;
 };
