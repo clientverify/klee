@@ -11,6 +11,7 @@
 #include "CVExecutor.h"
 #include "CVStream.h"
 #include "NetworkManager.h"
+#include "PathManager.h"
 #include "../Core/Common.h"
 
 #include <boost/foreach.hpp>
@@ -75,6 +76,7 @@ void CVExecutionState::initialize(CVExecutor *executor) {
   coveredLines.clear();
   address_manager_ = AddressManagerFactory::create(this);
 	network_manager_ = NetworkManagerFactory::create(this);
+	path_manager_ = PathManagerFactory::create();
 	info_ = new ExecutionStateInfo(this);
 
 	foreach (KTest* ktest, executor->client_verifier()->socket_logs()) {
@@ -89,10 +91,13 @@ CVExecutionState* CVExecutionState::branch() {
   falseState->id_ = increment_id();
   falseState->coveredNew = false;
   falseState->coveredLines.clear();
+
+  falseState->info_ = new ExecutionStateInfo(falseState);
+
   falseState->address_manager_ = address_manager_->clone(); 
   falseState->address_manager_->set_state(falseState);
   falseState->network_manager_ = network_manager_->clone(falseState); 
-  falseState->info_ = new ExecutionStateInfo(falseState);
+	falseState->path_manager_ = path_manager_->clone();
 
   weight *= .5;
   falseState->weight -= weight;
