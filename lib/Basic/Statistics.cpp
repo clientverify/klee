@@ -18,6 +18,7 @@ StatisticManager::StatisticManager()
     globalStats(0),
     indexedStats(0),
     contextStats(0),
+    cliverStats(0),
     index(0) {
 }
 
