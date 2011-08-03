@@ -130,6 +130,7 @@ namespace klee {
   extern llvm::cl::opt<bool> UseForkedSTP;
   extern llvm::cl::opt<bool> STPOptimizeDivides;
 
+  // Command line options defined in lib/Core/Searcher.cpp
   extern llvm::cl::opt<bool> UseRandomSearch;
   extern llvm::cl::opt<bool> UseInterleavedRS;
   extern llvm::cl::opt<bool> UseInterleavedNURS;
@@ -149,36 +150,8 @@ namespace klee {
 
 namespace cliver {
 
-CVHandler::CVHandler(ClientVerifier *cv)
-  : cv_(cv), 
-    paths_explored_(0) {
-
-  }
-
-std::ostream &CVHandler::getInfoStream() const { 
-  return cv_->getCVStream()->info_stream();
-}
-
-std::string CVHandler::getOutputFilename(const std::string &filename) { 
-  return cv_->getCVStream()->getOutputFilename(filename);
-}
-
-std::ostream *CVHandler::openOutputFile(const std::string &filename) {
-  return cv_->getCVStream()->openOutputFile(filename);
-}
-
-void CVHandler::incPathsExplored() {
-  paths_explored_++;
-}
-
-void CVHandler::processTestCase(const klee::ExecutionState &state, 
-    const char *err, const char *suffix) {
-}
-
-
-CVExecutor::CVExecutor(ClientVerifier *cv, const InterpreterOptions &opts, 
-		klee::InterpreterHandler *ie)
-: klee::Executor(opts, ie), cv_(cv) {
+CVExecutor::CVExecutor(const InterpreterOptions &opts, klee::InterpreterHandler *ih)
+: klee::Executor(opts, ih), cv_(static_cast<ClientVerifier*>(ih)) {
 	memory = new CVMemoryManager();
 
 	// Check for incompatible or non-supported klee options.
@@ -211,12 +184,34 @@ CVExecutor::CVExecutor(ClientVerifier *cv, const InterpreterOptions &opts,
 
 CVExecutor::~CVExecutor() {}
 
+const llvm::Module *CVExecutor::setModule(llvm::Module *module, 
+                                  const ModuleOptions &opts) {
+  assert(!kmodule && module && "can only register one module"); // XXX gross
+  
+  kmodule = new klee::KModule(module);
+
+  // Initialize the context.
+	llvm::TargetData *TD = kmodule->targetData;
+	klee::Context::initialize(TD->isLittleEndian(),
+                      (klee::Expr::Width) TD->getPointerSizeInBits());
+
+  specialFunctionHandler = new klee::SpecialFunctionHandler(*this);
+
+  specialFunctionHandler->prepare();
+  kmodule->prepare(opts, interpreterHandler);
+  specialFunctionHandler->bind();
+
+	cv_->initialize_external_handlers(this);
+
+  return module;
+}
+
+
 void CVExecutor::runFunctionAsMain(llvm::Function *f,
 				                   int argc, char **argv, char **envp) {
   using namespace klee;
   std::vector< ref<Expr> > arguments;
 
- 
 	// force deterministic initialization of memory objects
   srand(1);
   srandom(1);
@@ -303,7 +298,7 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
 
   processTree = new PTree(state);
   state->ptreeNode = processTree->root;
-  cv_run(*state);
+  run(*state);
   delete processTree;
   processTree = 0;
 
@@ -324,7 +319,7 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
   //}
 }
 
-void CVExecutor::cv_run(klee::ExecutionState &initialState) {
+void CVExecutor::run(klee::ExecutionState &initialState) {
   bindModuleConstants();
 
   // Delay init till now so that ticks don't accrue during

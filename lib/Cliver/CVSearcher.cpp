@@ -8,11 +8,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "CVSearcher.h"
-#include "CVStream.h"
 #include "StateMerger.h"
-
-#include <boost/foreach.hpp>
-#define foreach BOOST_FOREACH 
+#include "ClientVerifier.h"
 
 namespace cliver {
 
@@ -52,10 +49,14 @@ klee::ExecutionState &CVSearcher::selectState() {
 					ExecutionStateSet &merge_state_set = merge_it->second;
 					ExecutionStateSet result;
 					merger_->merge(merge_state_set, result);
-					CVMESSAGE("Merged " << merge_state_set.size() - result.size() 
-							<< " of " << merge_state_set.size() << " ExecutionStates in group: " 
-							<< merge_it->first);
+					//CVMESSAGE("Merged " << merge_state_set.size() - result.size() 
+					//		<< " of " << merge_state_set.size() 
+					//		<< " ExecutionStates in group: " << merge_it->first);
+
+					stats::merged_states += merge_state_set.size() - result.size();
+					stats::active_states += result.size();
 					merge_state_set.swap(result);
+					g_client_verifier->print_current_statistics();
 				}
 			}
 			// Select the first state in this set, cast the CVExecutionState

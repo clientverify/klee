@@ -21,7 +21,7 @@ class ConstraintPruner;
 
 class CVHandler : public klee::InterpreterHandler {
  public:
-  CVHandler(ClientVerifier *cv);
+  //CVHandler(ClientVerifier *cv);
   std::ostream &getInfoStream() const;
   std::string getOutputFilename(const std::string &filename);
   std::ostream *openOutputFile(const std::string &filename);
@@ -35,11 +35,14 @@ class CVHandler : public klee::InterpreterHandler {
 
 class CVExecutor : public klee::Executor {
  public:
-  CVExecutor(ClientVerifier *cv,
-      const InterpreterOptions &opts, 
-      klee::InterpreterHandler *ie);
+  CVExecutor(const InterpreterOptions &opts, klee::InterpreterHandler *ie);
 
   virtual ~CVExecutor();
+
+  virtual void run(klee::ExecutionState &initialState);
+
+  virtual const llvm::Module *
+  setModule(llvm::Module *module, const ModuleOptions &opts);
 
   virtual void runFunctionAsMain(llvm::Function *f,
 				                 int argc, char **argv, char **envp);
@@ -67,12 +70,12 @@ class CVExecutor : public klee::Executor {
   void add_constraint(CVExecutionState *state, 
 			klee::ref<klee::Expr> condition);
 
-	void cv_run(klee::ExecutionState &initialState);
+	//void cv_run(klee::ExecutionState &initialState);
 
  private:
-  ClientVerifier* cv_;
-	StateMerger* merger_;
-	ConstraintPruner* pruner_;
+  ClientVerifier *cv_;
+	StateMerger *merger_;
+	ConstraintPruner *pruner_;
 };
 
 } // end cliver namespace
