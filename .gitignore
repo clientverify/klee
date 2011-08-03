@@ -1,6 +1,7 @@
 /config.log
 /config.status
 /configure.out
+/docs
 /include/klee/Config/config.h
 *.swo
 *.swp
