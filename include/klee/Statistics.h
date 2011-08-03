@@ -44,6 +44,7 @@ namespace klee {
     uint64_t *globalStats;
     uint64_t *indexedStats;
     StatisticRecord *contextStats;
+    StatisticRecord *cliverStats;
     unsigned index;
 
   public:
@@ -54,6 +55,7 @@ namespace klee {
 
     StatisticRecord *getContext();
     void setContext(StatisticRecord *sr); /* null to reset */
+    void setCliverContext(StatisticRecord *sr); /* null to reset */
 
     void setIndex(unsigned i) { index = i; }
     unsigned getIndex() { return index; }
@@ -82,6 +84,9 @@ namespace klee {
         if (contextStats)
           contextStats->data[s.id] += addend;
       }
+			if (cliverStats) {
+				cliverStats->data[s.id] += addend;
+			}
     }
   }
 
@@ -90,6 +95,9 @@ namespace klee {
   }
   inline void StatisticManager::setContext(StatisticRecord *sr) {
     contextStats = sr;
+  }
+  inline void StatisticManager::setCliverContext(StatisticRecord *sr) {
+    cliverStats = sr;
   }
 
   inline void StatisticRecord::zero() {
