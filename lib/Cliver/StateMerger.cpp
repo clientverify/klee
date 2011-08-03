@@ -8,13 +8,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "CVSearcher.h"
-#include "CVStream.h"
 #include "StateMerger.h"
 #include "AddressSpaceGraph.h"
 #include "ConstraintPruner.h"
-
-#include <boost/foreach.hpp>
-#define foreach BOOST_FOREACH 
+#include "ClientVerifier.h"
 
 namespace cliver {
 
@@ -105,6 +102,7 @@ bool StateMerger::compare_constraints(
 
 void StateMerger::merge(ExecutionStateSet &state_set, 
 		ExecutionStateSet &merged_set) {
+	klee::TimerStatIncrementer timer(stats::merge_time);
 
 	std::map<CVExecutionState*, MergeInfo> merge_info;
 	foreach (CVExecutionState* state, state_set) {
@@ -146,8 +144,6 @@ void StateMerger::merge(ExecutionStateSet &state_set,
 	CVDEBUG("Found " << state_set.size() - unique_states.size() 
 			<< " duplicates out of " << state_set.size() 
 			<< ", now " << unique_states.size() << " states remain.");
-
-	//merged_set.insert(state_set.begin(), state_set.end());
 }
 
 } // end namespace cliver

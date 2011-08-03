@@ -60,7 +60,7 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 
-static klee::Interpreter *g_interpreter = 0;
+klee::Interpreter *g_interpreter = 0;
 static bool g_interrupted = false;
 
 namespace {
@@ -208,6 +208,7 @@ int main(int argc, char **argv, char **envp) {
   parseArguments(argc, argv);
 
   cliver::ClientVerifier *cv = new cliver::ClientVerifier();
+	g_client_verifier = new cliver::ClientVerifier();
 
   atexit(llvm::llvm_shutdown);  // Call llvm_shutdown() on exit.
 
@@ -329,19 +330,16 @@ int main(int argc, char **argv, char **envp) {
 
   klee::Interpreter::InterpreterOptions IOpts;
   IOpts.MakeConcreteSymbolic = false;
-  cliver::CVHandler *handler = new cliver::CVHandler(cv);
-	cliver::CVExecutor *cvexecutor = new cliver::CVExecutor(cv, IOpts, handler);
-  g_interpreter = cvexecutor;
+	g_interpreter = new cliver::CVExecutor(IOpts, g_client_verifier);
 
   // Print args to info file
-  std::ostream &infoFile = handler->getInfoStream();
+  std::ostream &infoFile = g_client_verifier->getInfoStream();
   for (int i=0; i<argc; i++) {
     infoFile << argv[i] << (i+1<argc ? " ":"\n");
   }
   infoFile << "PID: " << getpid() << "\n";
 
-  const Module *final_module = 
-    g_interpreter->setModule(main_module, Opts);
+  const Module *final_module = g_interpreter->setModule(main_module, Opts);
   //externalsAndGlobalsCheck(final_module);
 
   // Start time
@@ -353,19 +351,6 @@ int main(int argc, char **argv, char **envp) {
   infoFile << buf;
   infoFile.flush();
 
-
-  //// Change directory
-  //if (RunInDir != "") {
-  //	int res = chdir(RunInDir.c_str());
-  //	if (res < 0) {
-  //		klee_error("Unable to change directory to: %s", RunInDir.c_str());
-  //	}
-  //}
-
-
-  //// TODO: load socket replay files
-
-	cv->prepare_to_run(cvexecutor);
   g_interpreter->runFunctionAsMain(main_fn, pArgc, pArgv, pEnvp);
 
   // End time
