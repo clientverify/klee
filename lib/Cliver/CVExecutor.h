@@ -50,6 +50,12 @@ class CVExecutor : public klee::Executor {
   virtual void executeMakeSymbolic(klee::ExecutionState &state, 
                                    const klee::MemoryObject *mo);
 
+  // Fork current and return states in which condition holds / does
+  // not hold, respectively. One of the states is necessarily the
+  // current state, and one of the states may be null.
+  virtual StatePair fork(klee::ExecutionState &current, 
+			klee::ref<klee::Expr> condition, bool isInternal);
+
 	ClientVerifier* client_verifier() { return cv_; }
 
 	void add_external_handler(std::string name, 

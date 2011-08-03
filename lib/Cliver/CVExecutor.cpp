@@ -12,6 +12,7 @@
 #include "CVStream.h"
 #include "CVSearcher.h"
 #include "NetworkManager.h"
+#include "PathManager.h"
 #include "StateMerger.h"
 #include "ConstraintPruner.h"
 
@@ -164,6 +165,8 @@ CVExecutor::CVExecutor(const InterpreterOptions &opts, klee::InterpreterHandler 
 	INVALID_CL_OPT(OnlyReplaySeeds,false);
 	INVALID_CL_OPT(OnlySeed,false);
 	INVALID_CL_OPT(NamedSeedMatching,false);
+	INVALID_CL_OPT(RandomizeFork,false);
+	INVALID_CL_OPT(MaxDepth,false);
 	INVALID_CL_OPT(UseRandomSearch,false);
 	INVALID_CL_OPT(UseInterleavedRS,false);
 	INVALID_CL_OPT(UseInterleavedNURS,false);
@@ -414,6 +417,84 @@ void CVExecutor::executeMakeSymbolic(klee::ExecutionState &state,
   bindObjectInState(state, mo, false, array);
   state.addSymbolic(mo, array);
 
+}
+
+klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current, 
+			klee::ref<klee::Expr> condition, bool isInternal) {
+	klee::Solver::Validity res;
+	CVExecutionState *cvcurrent = static_cast<CVExecutionState*>(&current);
+
+	double timeout = stpTimeout;
+	solver->setTimeout(timeout);
+	bool success = solver->evaluate(current, condition, res);
+	solver->setTimeout(0);
+	if (!success) {
+		current.pc = current.prevPC;
+		terminateStateEarly(current, "query timed out");
+		return klee::Executor::StatePair(0, 0);
+	}
+
+	// XXX - even if the constraint is provable one way or the other we
+	// can probably benefit by adding this constraint and allowing it to
+	// reduce the other constraints. For example, if we do a binary
+	// search on a particular value, and then see a comparison against
+	// the value it has been fixed at, we should take this as a nice
+	// hint to just use the single constraint instead of all the binary
+	// search ones. If that makes sense.
+	if (res==klee::Solver::True) {
+		if (!isInternal) {
+			cvcurrent->path_manager()->add_true_branch(current.pc);
+      if (pathWriter) {
+        current.pathOS << "1";
+			}
+		}
+
+		return klee::Executor::StatePair(&current, 0);
+	} else if (res==klee::Solver::False) {
+		if (!isInternal) {
+			cvcurrent->path_manager()->add_false_branch(current.pc);
+      if (pathWriter) {
+        current.pathOS << "0";
+			}
+		}
+
+		return klee::Executor::StatePair(0, &current);
+	} else {
+		klee::TimerStatIncrementer timer(klee::stats::forkTime);
+		klee::ExecutionState *falseState, *trueState = &current;
+
+		++klee::stats::forks;
+
+		falseState = trueState->branch();
+		addedStates.insert(falseState);
+
+		
+		current.ptreeNode->data = 0;
+		std::pair<klee::PTree::Node*, klee::PTree::Node*> res =
+			processTree->split(current.ptreeNode, falseState, trueState);
+		falseState->ptreeNode = res.first;
+		trueState->ptreeNode = res.second;
+
+		if (!isInternal) {
+			static_cast<CVExecutionState*>(trueState)->path_manager()->add_true_branch(current.pc);
+			static_cast<CVExecutionState*>(falseState)->path_manager()->add_false_branch(current.pc);
+      if (pathWriter) {
+        falseState->pathOS = pathWriter->open(current.pathOS);
+        trueState->pathOS << "1";
+        falseState->pathOS << "0";
+      }      
+      if (symPathWriter) {
+        falseState->symPathOS = symPathWriter->open(current.symPathOS);
+        trueState->symPathOS << "1";
+        falseState->symPathOS << "0";
+      }
+		}
+
+		addConstraint(*trueState, condition);
+		addConstraint(*falseState, klee::Expr::createIsZero(condition));
+
+		return klee::Executor::StatePair(trueState, falseState);
+	}
 }
 
 void CVExecutor::add_external_handler(std::string name, 
