@@ -29,6 +29,22 @@ cl_path_model("path-model",
 
 ////////////////////////////////////////////////////////////////////////////////
 
+Path::Path() {}
+
+void Path::add(bool direction, klee::KInstruction* inst) {
+	branches_.push_back(direction);
+}
+
+void Path::write(std::ofstream &file) {
+	// path length
+	unsigned size = branches_.size();
+	file.write(reinterpret_cast<const char*>(&(size)), 4);
+
+	// write each branch
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 PathManager::PathManager() {}
 
 PathManager* PathManager::clone() {
@@ -44,8 +60,14 @@ void PathManager::add_true_branch(klee::KInstruction* inst) {
 }
 
 void PathManager::add_branch(bool direction, klee::KInstruction* inst) {
-	branches_.push_back(BranchEvent(direction, inst));
+	path_.add(direction, inst);
 }
+
+void PathManager::write(std::ofstream &file) {
+	path_.write(file);
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 PathManager* PathManagerFactory::create() {
   switch (cl_path_model) {

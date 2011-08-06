@@ -14,14 +14,29 @@
 #include "klee/Internal/Module/KInstruction.h"
 
 #include <list>
+#include <fstream>
 
 namespace cliver {
 
-struct BranchEvent {
-	BranchEvent(bool dir, klee::KInstruction* i) : direction(dir), inst(i) {}
-	bool direction;
-	klee::KInstruction *inst;
+////////////////////////////////////////////////////////////////////////////////
+
+struct FunctionCallBranchEvent {
+	uint64_t index;
+	unsigned inst_id;
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+class Path {
+ public:
+	Path();
+	void add(bool direction, klee::KInstruction* inst);
+	virtual void write(std::ofstream &file);
+ private: 
+	std::vector<bool> branches_;
+};
+
+////////////////////////////////////////////////////////////////////////////////
 
 class PathManager {
  public:
@@ -31,9 +46,11 @@ class PathManager {
 	void add_false_branch(klee::KInstruction* inst);
 	void add_true_branch(klee::KInstruction* inst);
 	virtual void add_branch(bool direction, klee::KInstruction* inst);
+
+	virtual void write(std::ofstream &file);
  private:
 
-	std::list<BranchEvent> branches_;
+	Path path_;
 };
 
 class PathManagerFactory {
