@@ -10,6 +10,9 @@
 #define CLIVER_EXECUTIONSTATE_H
 
 #include "klee/ExecutionState.h"
+#include "ClientVerifier.h"
+
+#include <list>
 
 namespace klee {
 class KFunction;
@@ -24,31 +27,73 @@ class CVExecutor;
 class NetworkManager;
 class PathManager;
 
-class ExecutionStateInfo {
+////////////////////////////////////////////////////////////////////////////////
+
+class ExecutionStateProperty {
  public:
-	ExecutionStateInfo(CVExecutionState* state);
-	virtual void update(CVExecutionState* state);
-	virtual bool less_than(const ExecutionStateInfo &info) const;
-	virtual bool equals(const ExecutionStateInfo &info) const;
-  virtual void print(std::ostream &os) const;
- private:
-	int socket_log_index_;
+  virtual void print(std::ostream &os) const {};
+	virtual int compare(const ExecutionStateProperty &p) const {}
+	virtual ExecutionStateProperty* clone() { return new ExecutionStateProperty(*this); }
 };
 
-inline std::ostream &operator<<(std::ostream &os, const ExecutionStateInfo &info) {
-  info.print(os);
+inline std::ostream &operator<<(std::ostream &os, 
+		const ExecutionStateProperty &p) {
+  p.print(os);
   return os;
 }
  
-struct ExecutionStateInfoLT {
-	bool operator()(const ExecutionStateInfo &a, const ExecutionStateInfo &b) const;
+struct ExecutionStatePropertyLT {
+	bool operator()(const ExecutionStateProperty* a, 
+			const ExecutionStateProperty* b) const;
 };
+
+////////////////////////////////////////////////////////////////////////////////
 
 typedef std::set<CVExecutionState*> ExecutionStateSet;
 
-typedef std::map<ExecutionStateInfo, 
+typedef std::map<ExecutionStateProperty*,
 								 ExecutionStateSet,
-								 ExecutionStateInfoLT> ExecutionStateMap;
+								 ExecutionStatePropertyLT> ExecutionStatePropertyMap;
+
+struct ExecutionStatePropertyFactory {
+	static ExecutionStateProperty* create();
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class LogIndexProperty : public ExecutionStateProperty {
+ public: 
+	LogIndexProperty();
+	LogIndexProperty* clone() { return new LogIndexProperty(*this); }
+  void print(std::ostream &os) const;
+	int compare(const ExecutionStateProperty &b) const;
+
+	// event signal handlers
+	static void handle_pre_event(CVExecutionState *state, CliverEvent::Type et);
+	static void handle_post_event(CVExecutionState *state, CliverEvent::Type et);
+
+	// Property values
+	int socket_log_index;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TrainingPhaseProperty : public ExecutionStateProperty {
+ public: 
+	TrainingPhaseProperty();
+	TrainingPhaseProperty* clone() { return new TrainingPhaseProperty(*this); }
+  void print(std::ostream &os) const;
+	int compare(const ExecutionStateProperty &b) const;
+
+	// event signal handlers
+	static void handle_pre_event(CVExecutionState *state, CliverEvent::Type et);
+	static void handle_post_event(CVExecutionState *state, CliverEvent::Type et);
+
+	// Property values
+	int training_phase;
+};
+
+////////////////////////////////////////////////////////////////////////////////
 
 class CVExecutionState : public klee::ExecutionState {
  public:
@@ -57,16 +102,16 @@ class CVExecutionState : public klee::ExecutionState {
   virtual ~CVExecutionState();
   virtual CVExecutionState *branch();
 
+	int compare(const CVExecutionState& b) const;
+
   void initialize(CVExecutor* executor);
   int id() { return id_; }
   const CVContext* context() { return context_; }
 
-  AddressManager* address_manager() { return address_manager_; }
-	NetworkManager* network_manager() { return network_manager_; }
+  AddressManager* address_manager() { cv_error("!"); return address_manager_; }
+	NetworkManager* network_manager() const { return network_manager_; }
 	PathManager*    path_manager() { return path_manager_; }
-	ExecutionStateInfo* info()			  { return info_; }
-
-	uint64_t get_symbolic_name_id(std::string &name);
+	ExecutionStateProperty* property()			  { return property_; }
 
  private:
   int increment_id() { return next_id_++; }
@@ -77,9 +122,13 @@ class CVExecutionState : public klee::ExecutionState {
   AddressManager* address_manager_;
 	NetworkManager* network_manager_;
 	PathManager* path_manager_;
-	ExecutionStateInfo* info_;
-	std::map< std::string, uint64_t > symbolic_name_map_;
+	ExecutionStateProperty* property_;
 };
+
+struct CVExecutionStateLT {
+	bool operator()(const CVExecutionState* a, const CVExecutionState* b) const;
+};
+
 } // End cliver namespace
 
 #endif

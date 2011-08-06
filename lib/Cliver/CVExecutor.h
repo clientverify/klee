@@ -19,20 +19,6 @@ class CVExecutionState;
 class StateMerger;
 class ConstraintPruner;
 
-class CVHandler : public klee::InterpreterHandler {
- public:
-  //CVHandler(ClientVerifier *cv);
-  std::ostream &getInfoStream() const;
-  std::string getOutputFilename(const std::string &filename);
-  std::ostream *openOutputFile(const std::string &filename);
-  void incPathsExplored();
-  void processTestCase(const klee::ExecutionState &state, 
-                       const char *err, const char *suffix);
- private:
-  ClientVerifier *cv_;
-  int paths_explored_;
-};
-
 class CVExecutor : public klee::Executor {
  public:
   CVExecutor(const InterpreterOptions &opts, klee::InterpreterHandler *ie);
@@ -40,6 +26,8 @@ class CVExecutor : public klee::Executor {
   virtual ~CVExecutor();
 
   virtual void run(klee::ExecutionState &initialState);
+
+  virtual void stepInstruction(klee::ExecutionState &state);
 
   virtual const llvm::Module *
   setModule(llvm::Module *module, const ModuleOptions &opts);
@@ -76,12 +64,14 @@ class CVExecutor : public klee::Executor {
   void add_constraint(CVExecutionState *state, 
 			klee::ref<klee::Expr> condition);
 
-	//void cv_run(klee::ExecutionState &initialState);
+	void register_event(const CliverEventInfo& event_info);
 
  private:
   ClientVerifier *cv_;
 	StateMerger *merger_;
 	ConstraintPruner *pruner_;
+	std::map<unsigned, CliverEventInfo> instruction_events_;
+	std::map<llvm::Function*, CliverEventInfo> function_call_events_;
 };
 
 } // end cliver namespace

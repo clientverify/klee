@@ -153,7 +153,7 @@ namespace cliver {
 
 CVExecutor::CVExecutor(const InterpreterOptions &opts, klee::InterpreterHandler *ih)
 : klee::Executor(opts, ih), cv_(static_cast<ClientVerifier*>(ih)) {
-	memory = new CVMemoryManager();
+	//memory = new CVMemoryManager();
 
 	// Check for incompatible or non-supported klee options.
 #define INVALID_CL_OPT(name, val) \
@@ -205,6 +205,7 @@ const llvm::Module *CVExecutor::setModule(llvm::Module *module,
   specialFunctionHandler->bind();
 
 	cv_->initialize_external_handlers(this);
+	cv_->register_events(this);
 
   return module;
 }
@@ -307,7 +308,8 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
 
   // hack to clear memory objects
   delete memory;
-  memory = new CVMemoryManager();
+  //memory = new CVMemoryManager();
+  memory = new klee::MemoryManager();
   
   globalObjects.clear();
   globalAddresses.clear();
@@ -384,6 +386,19 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
       }
     }
 
+		CVExecutionState *cvstate = static_cast<CVExecutionState*>(&state);
+		llvm::Instruction *i = state.pc->inst;
+		if (i->getOpcode() == llvm::Instruction::Call) {
+			llvm::CallSite cs(cast<llvm::CallInst>(i));
+			if (function_call_events_.find(cs.getCalledFunction()) != function_call_events_.end()) {
+				CliverEventInfo &ei = function_call_events_[cs.getCalledFunction()];
+				//cv_message("Function call event for %s",ei.function_name);
+				cv_->post_event(cvstate, ei.type);
+			}
+		}
+		//if (instruction_events_.find(i->getOpcode()) != instruction_events_.end()) {
+		//}
+
     updateStates(&state);
   }
 
@@ -405,15 +420,45 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
   }
 }
 
+void CVExecutor::stepInstruction(klee::ExecutionState &state) {
+
+	CVExecutionState *cvstate = static_cast<CVExecutionState*>(&state);
+	llvm::Instruction *i = state.pc->inst;
+	if (i->getOpcode() == llvm::Instruction::Call) {
+		llvm::CallSite cs(cast<llvm::CallInst>(i));
+		if (function_call_events_.find(cs.getCalledFunction()) != function_call_events_.end()) {
+			CliverEventInfo &ei = function_call_events_[cs.getCalledFunction()];
+			cv_->pre_event(cvstate, ei.type);
+		}
+	}
+	//if (instruction_events_.find(i->getOpcode()) != instruction_events_.end()) {
+	//}
+
+
+  if (klee::DebugPrintInstructions) {
+    printFileLine(state, state.pc);
+    std::cerr << std::setw(10) << klee::stats::instructions << " ";
+    llvm::errs() << *(state.pc->inst);
+  }
+
+  if (statsTracker)
+    statsTracker->stepInstruction(state);
+  ++klee::stats::instructions;
+  state.prevPC = state.pc;
+  ++state.pc;
+
+  if (klee::stats::instructions==klee::StopAfterNInstructions)
+    haltExecution = true;
+}
+
 void CVExecutor::executeMakeSymbolic(klee::ExecutionState &state, 
                                      const klee::MemoryObject *mo) {
   using namespace klee;
 
   // Create a new object state for the memory object (instead of a copy).
-	CVExecutionState* cv_state = static_cast<CVExecutionState*>(&state);
-	unsigned id = cv_state->get_symbolic_name_id(mo->name);
+	static unsigned id = 0;
 
-  const Array *array = new Array(mo->name + llvm::utostr(id), mo->size);
+  const Array *array = new Array(mo->name + llvm::utostr(++id), mo->size);
   bindObjectInState(state, mo, false, array);
   state.addSymbolic(mo, array);
 
@@ -433,6 +478,55 @@ klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current,
 		terminateStateEarly(current, "query timed out");
 		return klee::Executor::StatePair(0, 0);
 	}
+
+	//if (!isSeeding) {
+	//	if (replayPath && !isInternal) {
+	//		assert(replayPosition<replayPath->size() &&
+	//				"ran out of branches in replay path mode");
+	//		bool branch = (*replayPath)[replayPosition++];
+
+	//		if (res==Solver::True) {
+	//			assert(branch && "hit invalid branch in replay path mode");
+	//		} else if (res==Solver::False) {
+	//			assert(!branch && "hit invalid branch in replay path mode");
+	//		} else {
+	//			// add constraints
+	//			if(branch) {
+	//				res = Solver::True;
+	//				addConstraint(current, condition);
+	//			} else  {
+	//				res = Solver::False;
+	//				addConstraint(current, Expr::createIsZero(condition));
+	//			}
+	//		}
+	//	} else if (res==Solver::Unknown) {
+	//		assert(!replayOut && "in replay mode, only one branch can be true.");
+
+	//		if ((MaxMemoryInhibit && atMemoryLimit) || 
+	//				current.forkDisabled ||
+	//				inhibitForking || 
+	//				(MaxForks!=~0u && stats::forks >= MaxForks)) {
+
+	//			if (MaxMemoryInhibit && atMemoryLimit)
+	//				klee_warning_once(0, "skipping fork (memory cap exceeded)");
+	//			else if (current.forkDisabled)
+	//				klee_warning_once(0, "skipping fork (fork disabled on current path)");
+	//			else if (inhibitForking)
+	//				klee_warning_once(0, "skipping fork (fork disabled globally)");
+	//			else 
+	//				klee_warning_once(0, "skipping fork (max-forks reached)");
+
+	//			TimerStatIncrementer timer(stats::forkTime);
+	//			if (theRNG.getBool()) {
+	//				addConstraint(current, condition);
+	//				res = Solver::True;        
+	//			} else {
+	//				addConstraint(current, Expr::createIsZero(condition));
+	//				res = Solver::False;
+	//			}
+	//		}
+	//	}
+	//}
 
 	// XXX - even if the constraint is provable one way or the other we
 	// can probably benefit by adding this constraint and allowing it to
@@ -541,6 +635,22 @@ bool CVExecutor::compute_truth(CVExecutionState* state,
 void CVExecutor::add_constraint(CVExecutionState *state, 
 		klee::ref<klee::Expr> condition) {
 	addConstraint(*state, condition);
+}
+
+void CVExecutor::register_event(const CliverEventInfo& event_info) {
+	if (event_info.opcode == llvm::Instruction::Call) {
+		llvm::Function* f = kmodule->module->getFunction(event_info.function_name);
+		if (f) {
+			function_call_events_[f] = event_info;
+			cv_message("Registering function call event for %s",
+					event_info.function_name);
+		} else {
+			cv_warning("Not registering function call event for %s",
+					event_info.function_name);
+		}
+	} else {
+		instruction_events_[event_info.opcode] = event_info;
+	}
 }
 
 } // end namespace cliver
