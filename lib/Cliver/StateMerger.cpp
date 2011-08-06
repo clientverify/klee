@@ -140,6 +140,11 @@ void StateMerger::merge(ExecutionStateSet &state_set,
 
   } while (!worklist.empty());
 
+	std::map<CVExecutionState*, MergeInfo>::iterator it=merge_info.begin(),
+		ie=merge_info.end();
+	for (;it!=ie; ++it) {
+		delete (it->second).graph;
+	}
 
 	CVDEBUG("Found " << state_set.size() - unique_states.size() 
 			<< " duplicates out of " << state_set.size() 
