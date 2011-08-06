@@ -46,3 +46,5 @@ CXX.Flags += -I/usr/include/boost
 
 # Required by Boost 
 REQUIRES_RTTI=1
+
+LD.Flags += -lboost_signals

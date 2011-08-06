@@ -12,6 +12,7 @@
 #include "NetworkManager.h"
 #include "../lib/Core/SpecialFunctionHandler.h"
 #include "CVExecutor.h"
+#include "CVExecutionState.h"
 #include "TestHelper.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/System/Process.h"
@@ -33,6 +34,21 @@ llvm::cl::list<std::string> SocketLogFile("socket-log",
 		llvm::cl::desc("Specify a socket log file"),
 		llvm::cl::value_desc("ktest file"));
 
+llvm::cl::opt<CliverMode>
+g_cliver_mode("cliver-mode", 
+  llvm::cl::desc("Choose the mode in which cliver should run."),
+  llvm::cl::values(
+    clEnumValN(DefaultMode, "default", 
+      "Default mode"),
+    clEnumValN(TetrinetMode, "tetrinet", 
+      "Tetrinet mode"),
+    clEnumValN(DefaultTrainingMode, "default-training", 
+      "Default training mode"),
+    clEnumValN(TetrinetTrainingMode, "tetrinet-training", 
+      "Tetrinet training mode"),
+  clEnumValEnd),
+  llvm::cl::init(DefaultMode));
+
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace stats {
@@ -44,6 +60,29 @@ namespace stats {
 	klee::Statistic prune_time("PruningTime", "PTime");
 	klee::Statistic pruned_constraints("PrunedConstraints", "prunes");
 }
+////////////////////////////////////////////////////////////////////////////////
+
+void ExternalHandler_nop (klee::Executor* executor, klee::ExecutionState *state, 
+		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {}
+
+ExternalHandlerInfo external_handler_info[] = {
+	{"cliver_test_extract_pointers", ExternalHandler_test_extract_pointers, false},
+	{"cliver_socket_shutdown", ExternalHandler_socket_shutdown, true},
+	{"cliver_socket_write", ExternalHandler_socket_write, true},
+	{"cliver_socket_read", ExternalHandler_socket_read, true},
+	{"cliver_socket_create", ExternalHandler_socket_create, true},
+	{"cliver_training_start", ExternalHandler_nop, false},
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+CliverEventInfo cliver_event_info[] = {
+	{CliverEvent::Network, llvm::Instruction::Call, "cliver_socket_create"},
+	{CliverEvent::Network, llvm::Instruction::Call, "cliver_socket_shutdown"},
+	{CliverEvent::Network, llvm::Instruction::Call, "cliver_socket_write"},
+	{CliverEvent::Network, llvm::Instruction::Call, "cliver_socket_read"},
+	{CliverEvent::Training, llvm::Instruction::Call, "cliver_training_start"},
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -94,19 +133,42 @@ void ClientVerifier::load_socket_files() {
 }
 
 void ClientVerifier::initialize_external_handlers(CVExecutor *executor) {
-	// init testing helper handlers
-	executor->add_external_handler(
-			"cliver_test_extract_pointers", ExternalHandler_test_extract_pointers, false);
-	// Add socket external handlers
-	executor->add_external_handler("cliver_socket_shutdown", 
-			ExternalHandler_socket_shutdown);
-	executor->add_external_handler("cliver_socket_write", 
-			ExternalHandler_socket_write);
-	executor->add_external_handler("cliver_socket_read", 
-			ExternalHandler_socket_read);
-	executor->add_external_handler("cliver_socket_create", 
-			ExternalHandler_socket_create);
+  unsigned N = sizeof(external_handler_info)/sizeof(external_handler_info[0]);
+  for (unsigned i=0; i<N; ++i) {
+    ExternalHandlerInfo &hi = external_handler_info[i];
+		executor->add_external_handler(hi.name, hi.handler, hi.has_return_value);
+	}
 }
+
+void ClientVerifier::register_events(CVExecutor *executor) {
+  unsigned N = sizeof(cliver_event_info)/sizeof(cliver_event_info[0]);
+  for (unsigned i=0; i<N; ++i) {
+    CliverEventInfo &ei = cliver_event_info[i];
+		executor->register_event(ei);
+	}
+
+	switch(g_cliver_mode) {
+		case DefaultMode:
+		case TetrinetMode:
+			pre_event_callbacks_.connect(&LogIndexProperty::handle_pre_event);
+			post_event_callbacks_.connect(&LogIndexProperty::handle_post_event);
+			break;
+		case DefaultTrainingMode:
+		case TetrinetTrainingMode:
+			pre_event_callbacks_.connect(&TrainingPhaseProperty::handle_pre_event);
+			post_event_callbacks_.connect(&TrainingPhaseProperty::handle_post_event);
+			break;
+	}
+}
+
+void ClientVerifier::pre_event(CVExecutionState* state, CliverEvent::Type t) {
+	pre_event_callbacks_(state, t);
+}
+
+void ClientVerifier::post_event(CVExecutionState* state, CliverEvent::Type t) {
+	post_event_callbacks_(state, t);
+}
+
 
 int ClientVerifier::load_socket_logs() {
 	std::vector<std::string> socket_log_names = SocketLogFile;

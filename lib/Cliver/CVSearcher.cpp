@@ -11,10 +11,13 @@
 #include "StateMerger.h"
 #include "ClientVerifier.h"
 
+
+void boost::throw_exception(std::exception const& e) {}
+
 namespace cliver {
 
 CVSearcher::CVSearcher(klee::Searcher* base_searcher, StateMerger* merger) 
-	: base_searcher_(base_searcher), merger_(merger) {
+	: base_searcher_(base_searcher), merger_(merger), current_property_(0) {
 }
 
 bool CVSearcher::empty() {
@@ -23,7 +26,7 @@ bool CVSearcher::empty() {
 
 int CVSearcher::state_count() {
 	int count = 0;
-	ExecutionStateMap::iterator it, ie;
+	ExecutionStatePropertyMap::iterator it, ie;
 	for (it=states_.begin(), ie=states_.end(); it!=ie; ++it) {
 		ExecutionStateSet &state_set = it->second;
 		count += state_set.size();
@@ -32,40 +35,53 @@ int CVSearcher::state_count() {
 }
 
 klee::ExecutionState &CVSearcher::selectState() {
-	// Walk the ExecutionStateMap from the oldest to the newest,
-	// or whatever ordering the ExecutionStateInfo object induces
+
+	// Walk the ExecutionStatePropertyMap from the oldest to the newest,
+	// or whatever ordering the ExecutionStateProperty induces
 	// and select a state from the earliest grouping
-	ExecutionStateMap::iterator it, ie;
+	ExecutionStatePropertyMap::iterator it, ie;
 	for (it=states_.begin(), ie=states_.end(); it!=ie; ++it) {
 		ExecutionStateSet &state_set = it->second;
+
 		if (!state_set.empty()) {
+
 			// Erase all of the empty sets up to the current one
 			if (states_.begin() != it) {
-				states_.erase(states_.begin(), it);
+				ExecutionStatePropertyMap::iterator erase_it=states_.begin();
+				while (erase_it != it) {
+					ExecutionStateProperty* p = erase_it->first;
+					states_.erase(erase_it++);
+					delete p;
+				}
+				//states_.erase(states_.begin(), it);
 
 				// Merge each group of states
-				ExecutionStateMap::iterator merge_it = it;
+				ExecutionStatePropertyMap::iterator merge_it = it;
 				for (; merge_it!=ie; ++merge_it) {
 					ExecutionStateSet &merge_state_set = merge_it->second;
 					ExecutionStateSet result;
 					merger_->merge(merge_state_set, result);
-					//CVMESSAGE("Merged " << merge_state_set.size() - result.size() 
-					//		<< " of " << merge_state_set.size() 
-					//		<< " ExecutionStates in group: " << merge_it->first);
 
+					// Update stats
 					stats::merged_states += merge_state_set.size() - result.size();
 					stats::active_states += result.size();
-					merge_state_set.swap(result);
+
+					// Print new stats
 					g_client_verifier->print_current_statistics();
+
+					// swap state sets
+					merge_state_set.swap(result);
 				}
 			}
+
 			// Select the first state in this set, cast the CVExecutionState
 			// pointer into a klee::ExecutionState ptr, then dereference
 			return *(static_cast<klee::ExecutionState*>(*(state_set.begin())));
 		}
 	}
 	cv_error("no states remaining");
-	// This should never execute
+
+	// This will never execute after cv_error
 	klee::ExecutionState *null_state = NULL;
 	return *null_state;
 }
@@ -86,8 +102,8 @@ void CVSearcher::update(klee::ExecutionState *current,
 		CVExecutionState *state = static_cast<CVExecutionState*>(klee_state);
 		// Iterate over all the ExecutionState groups to determine
 		// if they contain state, we can't look up the state via it's
-		// ExecutionStateInfo because it might have changed since insertion
-		ExecutionStateMap::iterator it, ie;
+		// ExecutionStateProperty because it might have changed since insertion
+		ExecutionStatePropertyMap::iterator it, ie;
 		for (it=states_.begin(), ie=states_.end(); it!=ie; ++it) {
 			ExecutionStateSet &state_set = it->second;
 			if (state_set.count(state)) {
@@ -102,15 +118,16 @@ void CVSearcher::update(klee::ExecutionState *current,
 	// Insert the added states into the associated group
 	foreach (klee::ExecutionState* klee_state, added_states) {
 		CVExecutionState *state = static_cast<CVExecutionState*>(klee_state);
-		states_[*state->info()].insert(state);
+		ExecutionStatePropertyMap::iterator it = states_.find(state->property());
+		if (it != states_.end()) {
+			(it->second).insert(state);
+		} else {
+			ExecutionStateProperty* p = state->property()->clone();
+			states_[p].insert(state);
+		}
 	}
-
-	//base_searcher_->update(current, addedStates, removedStates);
-	//klee::DFSSearcher *dfs_searcher = static_cast<klee::DFSSearcher*>(base_searcher_);
-	//if (state_count() != dfs_searcher->states.size()) {
-	//	cv_error("cvsearcher: %d, dfs_searcher: %d",
-	//			state_count(), dfs_searcher->states.size());
-	//}
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 } // end namespace cliver

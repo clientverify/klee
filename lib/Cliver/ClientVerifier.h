@@ -13,6 +13,7 @@
 #include "klee/Internal/ADT/KTest.h"
 #include "CVStream.h"
 #include "../lib/Core/CoreStats.h"
+#include "../lib/Core/SpecialFunctionHandler.h"
 #include "../Core/Executor.h"
 
 #include <fstream>
@@ -20,7 +21,17 @@
 #include <string>
 #include <vector>
 
+#include <boost/signal.hpp>
+
 namespace cliver {
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum CliverMode {
+  DefaultMode, TetrinetMode, DefaultTrainingMode, TetrinetTrainingMode
+};
+
+extern llvm::cl::opt<CliverMode> g_cliver_mode;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -36,7 +47,32 @@ namespace stats {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void ExternalHandler_nop (klee::Executor* executor, klee::ExecutionState *state, 
+		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
+
+struct ExternalHandlerInfo {
+	const char* name;
+	klee::SpecialFunctionHandler::ExternalHandler handler;
+	bool has_return_value;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class CliverEvent { 
+	public:
+	enum Type {Network, Training};
+};
+
+struct CliverEventInfo {
+	CliverEvent::Type type;
+	int opcode;
+	char* function_name;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class CVExecutor;
+class CVExecutionState;
 
 class CVContext {
  public:
@@ -60,6 +96,7 @@ class ClientVerifier : public klee::InterpreterHandler {
 	void prepare_to_run(CVExecutor *executor);
 	void load_socket_files();
 	void initialize_external_handlers(CVExecutor *executor);
+	void register_events(CVExecutor *executor);
 	void handle_statistics();
 	void update_time_statistics();
 	void print_current_statistics();
@@ -72,6 +109,9 @@ class ClientVerifier : public klee::InterpreterHandler {
   void processTestCase(const klee::ExecutionState &state, 
                        const char *err, const char *suffix);
  
+	void pre_event(CVExecutionState* state, CliverEvent::Type t); 
+	void post_event(CVExecutionState* state, CliverEvent::Type t); 
+
  private:
 	int load_socket_logs();
 
@@ -79,6 +119,9 @@ class ClientVerifier : public klee::InterpreterHandler {
 	std::vector<KTest*> socket_logs_;
 	int paths_explored_;
 	std::vector<klee::StatisticRecord*> statistics_;
+
+	boost::signal<void (CVExecutionState*, CliverEvent::Type)> pre_event_callbacks_;
+	boost::signal<void (CVExecutionState*, CliverEvent::Type)> post_event_callbacks_;
 };
 
 

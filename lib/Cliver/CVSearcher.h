@@ -15,6 +15,8 @@
 namespace cliver {
 class StateMerger;
 
+////////////////////////////////////////////////////////////////////////////////
+
 class CVSearcher : public klee::Searcher {
  public:
 	CVSearcher(klee::Searcher* base_searcher, StateMerger* merger);
@@ -32,10 +34,13 @@ class CVSearcher : public klee::Searcher {
 	}
  private:
 	int state_count();
-	ExecutionStateMap states_;
+	ExecutionStatePropertyMap states_;
+	ExecutionStateProperty* current_property_;
 	klee::Searcher* base_searcher_;
 	StateMerger* merger_;
 };
+
+////////////////////////////////////////////////////////////////////////////////
 
 } // end namespace cliver
 #endif // CV_SEARCHER_H
