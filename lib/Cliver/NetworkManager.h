@@ -49,21 +49,24 @@ struct SocketEvent {
 	const uint8_t *data;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
 class Socket {
  public:
 	typedef enum { SOCKET_STATES } State;
 
 	Socket(const KTest* ktest);
 
-	unsigned delta() 				 { return event().delta; }
-	int round()      				 { return event().round; }
+	//unsigned delta() 				 { return event().delta; }
+	//int round()      				 { return event().round; }
+	//int events_remaining()   { return log_->size() - index_; }
+	//int log_size() 					 { return log_->size(); }
+	
 	SocketEvent::Type type() { return event().type; }
 	State state() 					 { return state_; }
-	int events_remaining()   { return log_.size() - index_; }
-	int log_size() 					 { return log_.size(); }
-	unsigned index()				 { return index_; }
 	unsigned length()				 { return event().length; }
 	int fd() 								 { return file_descriptor_; }
+	unsigned index()				 { return index_; }
 
 	uint8_t next_byte();
 	bool has_data();
@@ -71,7 +74,6 @@ class Socket {
 	void open();
 	void set_state(State s);
 	void advance();
-	void add_event(SocketEvent* e);
 
   void print(std::ostream &os);
 
@@ -84,7 +86,7 @@ class Socket {
 	State state_;
 	unsigned index_;
 	unsigned offset_;
-	std::vector<const SocketEvent* > log_;
+	const std::vector<const SocketEvent* >  *log_;
 };
 
 #undef X
@@ -105,6 +107,8 @@ class NetworkManager {
 
 	virtual NetworkManager* clone(CVExecutionState *state);
 
+	virtual int socket_log_index(int fd=-1);
+
 	virtual void execute_open_socket(CVExecutor* executor,
 		klee::KInstruction *target, 
 		int domain, int type, int protocol);
@@ -120,6 +124,7 @@ class NetworkManager {
 	virtual void execute_shutdown(CVExecutor* executor,
 		klee::KInstruction *target, 
 		int fd, int how);
+
 
 	CVExecutionState* state() { return state_; }
 	unsigned round() { return round_; }
