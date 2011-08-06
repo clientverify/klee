@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "NetworkManager.h"
+#include "ClientVerifier.h"
 #include "llvm/Support/CommandLine.h"
 #include "../Core/Memory.h"
 #include "../Core/TimingSolver.h"
@@ -85,31 +86,24 @@ DebugNetworkManager("debug-network-manager",llvm::cl::init(false));
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum NetworkModel {
-  DefaultNetworkModel, TetrinetNetworkModel
-};
-
-llvm::cl::opt<NetworkModel>
-cl_network_model("network-model", 
-  llvm::cl::desc("Choose the network model."),
-  llvm::cl::values(
-    clEnumValN(DefaultNetworkModel, "default", 
-      "Default network model"),
-    clEnumValN(TetrinetNetworkModel, "tetrinet", 
-      "Tetrinet network model"),
-  clEnumValEnd),
-  llvm::cl::init(DefaultNetworkModel));
+//enum NetworkModel {
+//  DefaultNetworkModel, TetrinetNetworkModel
+//};
+//
+//llvm::cl::opt<NetworkModel>
+//cl_network_model("network-model", 
+//  llvm::cl::desc("Choose the network model."),
+//  llvm::cl::values(
+//    clEnumValN(DefaultNetworkModel, "default", 
+//      "Default network model"),
+//    clEnumValN(TetrinetNetworkModel, "tetrinet", 
+//      "Tetrinet network model"),
+//  clEnumValEnd),
+//  llvm::cl::init(DefaultNetworkModel));
 
 ////////////////////////////////////////////////////////////////////////////////
 
-
 const int kInitialFileDescriptor= 1000;
-
-NetworkManager* get_network_manager(klee::ExecutionState* state) {
-	assert(static_cast<CVExecutionState*>(state)->network_manager()->state() 
-			== static_cast<CVExecutionState*>(state));
-	return static_cast<CVExecutionState*>(state)->network_manager();
-}
 
 klee::ObjectState* resolve_address(klee::Executor* executor, 
 		klee::ExecutionState* state, klee::ref<klee::Expr> address) {
@@ -126,8 +120,9 @@ void ExternalHandler_socket_create(
   int type     = cast<klee::ConstantExpr>(arguments[1])->getZExtValue();
   int protocol = cast<klee::ConstantExpr>(arguments[2])->getZExtValue();
 
+	CVExecutionState* cv_state = static_cast<CVExecutionState*>(state);
 	CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
-	get_network_manager(state)->execute_open_socket(cv_executor, target, 
+	cv_state->network_manager()->execute_open_socket(cv_executor, target, 
 			domain, type, protocol);
 }
 
@@ -141,8 +136,9 @@ void ExternalHandler_socket_read(
   int len = cast<klee::ConstantExpr>(arguments[2])->getZExtValue();
 	klee::ObjectState *object = resolve_address(executor, state, address);
 
+	CVExecutionState* cv_state = static_cast<CVExecutionState*>(state);
 	CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
-	get_network_manager(state)->execute_read(cv_executor, target, object, fd, len);
+	cv_state->network_manager()->execute_read(cv_executor, target, object, fd, len);
 }
 
 void ExternalHandler_socket_write(
@@ -155,8 +151,9 @@ void ExternalHandler_socket_write(
   int len = cast<klee::ConstantExpr>(arguments[2])->getZExtValue();
 	klee::ObjectState *object = resolve_address(executor, state, address);
 
+	CVExecutionState* cv_state = static_cast<CVExecutionState*>(state);
 	CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
-	get_network_manager(state)->execute_write(cv_executor, target, object, fd, len);
+	cv_state->network_manager()->execute_write(cv_executor, target, object, fd, len);
 }
 
 void ExternalHandler_socket_shutdown(
@@ -167,8 +164,9 @@ void ExternalHandler_socket_shutdown(
   int fd  = cast<klee::ConstantExpr>(arguments[0])->getZExtValue();
   int how = cast<klee::ConstantExpr>(arguments[1])->getZExtValue();
 
+	CVExecutionState* cv_state = static_cast<CVExecutionState*>(state);
 	CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
-	get_network_manager(state)->execute_shutdown(cv_executor, target, fd, how);
+	cv_state->network_manager()->execute_shutdown(cv_executor, target, fd, how);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -178,6 +176,7 @@ Socket::Socket(const KTest* ktest)
 	
 	static int fd = kInitialFileDescriptor;
 	file_descriptor_ = fd++;
+	std::vector<const SocketEvent*> *log = new std::vector<const SocketEvent*>();
 	
 	// Convert the convert the data in the given Ktest struct into SocketEvents. 
 	for (unsigned i=0; i<ktest->numObjects; ++i) {
@@ -201,8 +200,9 @@ Socket::Socket(const KTest* ktest)
 		else 
 			cv_error("Invalid socket event name: \"%s\"", ktest->objects[i].name);
 
-		log_.push_back(event);
+		log->push_back(event);
 	}
+	log_ = log;
 }
 
 uint8_t Socket::next_byte() {
@@ -215,7 +215,7 @@ bool  Socket::has_data() {
 }
 
 bool  Socket::is_open() {
-	return open_ && (index_ < log_.size());
+	return open_ && (index_ < log_->size());
 }
 
 void  Socket::open() {
@@ -230,13 +230,9 @@ void  Socket::advance(){
 	index_++; state_ = IDLE; offset_ = 0;
 }
 
-void  Socket::add_event(SocketEvent* e) {
-	log_.push_back(e);
-}
-
 const SocketEvent& Socket::event() { 
-	assert (index_ < log_.size());
-	return *(log_[index_]);
+	assert (index_ < log_->size());
+	return *((*log_)[index_]);
 }
 
 void Socket::print(std::ostream &os) {
@@ -245,15 +241,15 @@ void Socket::print(std::ostream &os) {
 	static std::string socket_states[] = { SOCKET_STATES };
 #undef X
 		
-	if (index_ < log_.size()) {
+	if (index_ < log_->size()) {
 		os << "[ "
 			 //<< "Round:" << round() ", "
-			 << "Event: " << index_ << "/" << log_.size() << ", "
+			 << "Event: " << index_ << "/" << log_->size() << ", "
 			 << socket_states[state()] << ", " << socketevent_types[type()] << " ]";
 	} else {
 		os << "[ "
 			 //<< "Round:" << round() ", "
-			 << "Event: " << index_ << "/" << log_.size() << ", "
+			 << "Event: " << index_ << "/" << log_->size() << ", "
 			 << socket_states[state()] << ", N/A ]";
 	}
 }
@@ -273,11 +269,26 @@ NetworkManager* NetworkManager::clone(CVExecutionState *state) {
 	return nwm;
 }
 
+int NetworkManager::socket_log_index(int fd) {
+	if (sockets_.size() > 0) {
+		if (fd == -1) {
+			return sockets_.back().index();
+		} else {
+			foreach (Socket s, sockets_) {
+				if (s.fd() == fd) {
+					return s.index();
+				}
+			}
+		}
+	}
+	return -1;
+}
+
 NetworkManager* NetworkManagerFactory::create(CVExecutionState* state) {
-  switch (cl_network_model) {
-	case DefaultNetworkModel: 
+  switch (g_cliver_mode) {
+	case DefaultMode:
     break;
-	case TetrinetNetworkModel: 
+	case TetrinetMode: 
 		return new NetworkManagerTetrinet(state);
   }
   return new NetworkManager(state);
@@ -347,7 +358,6 @@ void NetworkManager::execute_write(CVExecutor* executor,
 
 	if (!socket.has_data()) {
 		socket.advance();
-		state_->info()->update(state_);
 	} else {
 		socket.set_state(Socket::WRITING);
 		RETURN_FAILURE("send", "no data left");
@@ -398,7 +408,6 @@ void NetworkManager::execute_read(CVExecutor* executor,
 		RETURN_FAILURE("read", "bytes remain len=" << len);
 
 	socket.advance();
-	state_->info()->update(state_);
 	RETURN_SUCCESS("read", bytes_written);
 }
 
@@ -445,7 +454,6 @@ void NetworkManagerTetrinet::execute_read(CVExecutor* executor,
 		socket.advance();
 	}
 
-	state_->info()->update(state_);
 	RETURN_SUCCESS("read", bytes_written);
 }
 
