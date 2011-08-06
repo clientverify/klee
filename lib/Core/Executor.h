@@ -190,7 +190,7 @@ protected:
 			      unsigned offset);
   void initializeGlobals(ExecutionState &state);
 
-  void stepInstruction(ExecutionState &state);
+  virtual void stepInstruction(ExecutionState &state);
   void updateStates(ExecutionState *current);
   void transferToBasicBlock(llvm::BasicBlock *dst, 
 			    llvm::BasicBlock *src,
