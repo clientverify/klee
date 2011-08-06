@@ -102,9 +102,8 @@ void TrainingPhaseProperty::print(std::ostream &os) const {
 ExecutionStateProperty* ExecutionStatePropertyFactory::create() {
   switch (g_cliver_mode) {
 	case DefaultMode:
-		return new LogIndexProperty();
-    break;
 	case TetrinetMode: 
+		return new LogIndexProperty();
 		break;
 	case DefaultTrainingMode: 
 		return new TrainingPhaseProperty();
