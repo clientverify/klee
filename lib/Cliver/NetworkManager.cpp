@@ -86,23 +86,6 @@ DebugNetworkManager("debug-network-manager",llvm::cl::init(false));
 
 ////////////////////////////////////////////////////////////////////////////////
 
-//enum NetworkModel {
-//  DefaultNetworkModel, TetrinetNetworkModel
-//};
-//
-//llvm::cl::opt<NetworkModel>
-//cl_network_model("network-model", 
-//  llvm::cl::desc("Choose the network model."),
-//  llvm::cl::values(
-//    clEnumValN(DefaultNetworkModel, "default", 
-//      "Default network model"),
-//    clEnumValN(TetrinetNetworkModel, "tetrinet", 
-//      "Tetrinet network model"),
-//  clEnumValEnd),
-//  llvm::cl::init(DefaultNetworkModel));
-
-////////////////////////////////////////////////////////////////////////////////
-
 const int kInitialFileDescriptor= 1000;
 
 klee::ObjectState* resolve_address(klee::Executor* executor, 

@@ -207,7 +207,6 @@ int main(int argc, char **argv, char **envp) {
 #endif
   parseArguments(argc, argv);
 
-  cliver::ClientVerifier *cv = new cliver::ClientVerifier();
 	g_client_verifier = new cliver::ClientVerifier();
 
   atexit(llvm::llvm_shutdown);  // Call llvm_shutdown() on exit.
@@ -363,7 +362,7 @@ int main(int argc, char **argv, char **envp) {
   strcpy(format_tdiff(buf, t[1] - t[0]), "\n");
   infoFile << buf;
 
-  delete cv;
+  delete g_client_verifier;
   return 0;
 }
 
