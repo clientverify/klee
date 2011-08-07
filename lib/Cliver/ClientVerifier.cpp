@@ -29,13 +29,18 @@ namespace cliver {
 ////////////////////////////////////////////////////////////////////////////////
 
 llvm::cl::list<std::string> SocketLogFile("socket-log",
-		llvm::cl::ZeroOrMore,
-		llvm::cl::ValueRequired,
-		llvm::cl::desc("Specify a socket log file"),
-		llvm::cl::value_desc("ktest file"));
+	llvm::cl::ZeroOrMore,
+	llvm::cl::ValueRequired,
+	llvm::cl::desc("Specify socket log file"),
+	llvm::cl::value_desc("ktest file"));
 
-llvm::cl::opt<CliverMode>
-g_cliver_mode("cliver-mode", 
+llvm::cl::list<std::string> SocketLogDir("socket-log-dir",
+	llvm::cl::ZeroOrMore,
+	llvm::cl::ValueRequired,
+	llvm::cl::desc("Specify socket log directory"),
+	llvm::cl::value_desc("ktest directory"));
+
+llvm::cl::opt<CliverMode> g_cliver_mode("cliver-mode", 
   llvm::cl::desc("Choose the mode in which cliver should run."),
   llvm::cl::values(
     clEnumValN(DefaultMode, "default", 
@@ -95,7 +100,7 @@ CVContext::CVContext() : context_id_(increment_id()) {}
 ClientVerifier::ClientVerifier() 
   : cvstream_(new CVStream()) {
   cvstream_->init();
-	load_socket_files();
+	initialize_sockets();
 	handle_statistics();
 }
 
@@ -123,21 +128,53 @@ void ClientVerifier::processTestCase(const klee::ExecutionState &state,
     const char *err, const char *suffix) {
 }
 
-void ClientVerifier::load_socket_files() {
-	// Load socket log files
-	if (SocketLogFile.size() > 0) {
-		if (load_socket_logs() == 0) {
-			cv_error("Error loading socket log files, exiting now.");
-		}
-	}
-}
-
 void ClientVerifier::initialize_external_handlers(CVExecutor *executor) {
   unsigned N = sizeof(external_handler_info)/sizeof(external_handler_info[0]);
   for (unsigned i=0; i<N; ++i) {
     ExternalHandlerInfo &hi = external_handler_info[i];
 		executor->add_external_handler(hi.name, hi.handler, hi.has_return_value);
 	}
+}
+
+void ClientVerifier::initialize_sockets() {
+	switch(g_cliver_mode) {
+		case DefaultMode:
+		case TetrinetMode:
+		case XpilotMode:
+		case DefaultTrainingMode:
+		case TetrinetTrainingMode:
+			if (!SocketLogDir.empty()) {
+				foreach(std::string path, SocketLogDir) {
+					cvstream_->getOutFiles(path, SocketLogFile);
+				}
+			}
+			if (SocketLogFile.empty() || read_socket_logs(SocketLogFile) == 0) {
+				goto error;
+			}
+			break;
+    error:
+			cv_error("Error loading socket log files, exiting now.");
+	}
+}
+
+int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
+
+	foreach (std::string filename, logs) {
+		KTest *ktest = kTest_fromFile(filename.c_str());
+		if (ktest) {
+			socket_events_.push_back(new SocketEventList());
+			for (unsigned i=0; i<ktest->numObjects; ++i) {
+				socket_events_.back()->push_back(new SocketEvent(ktest->objects[i]));
+			}
+
+			cv_message("Opened socket log \"%s\" with %d objects",
+					filename.c_str(), ktest->numObjects);
+		} else {
+			cv_message("Error opening socket log \"%s\"", filename.c_str());
+		}
+	}
+
+	return socket_events_.size();
 }
 
 void ClientVerifier::register_events(CVExecutor *executor) {
@@ -150,6 +187,7 @@ void ClientVerifier::register_events(CVExecutor *executor) {
 	switch(g_cliver_mode) {
 		case DefaultMode:
 		case TetrinetMode:
+		case XpilotMode:
 			pre_event_callbacks_.connect(&LogIndexProperty::handle_pre_event);
 			post_event_callbacks_.connect(&LogIndexProperty::handle_post_event);
 			break;
@@ -169,23 +207,6 @@ void ClientVerifier::post_event(CVExecutionState* state, CliverEvent::Type t) {
 	post_event_callbacks_(state, t);
 }
 
-
-int ClientVerifier::load_socket_logs() {
-	std::vector<std::string> socket_log_names = SocketLogFile;
-
-	foreach (std::string filename, socket_log_names) {
-		KTest *ktest = kTest_fromFile(filename.c_str());
-		if (ktest) {
-			socket_logs_.push_back(ktest);
-			cv_message("Opened socket log \"%s\" with %d objects",
-					filename.c_str(), ktest->numObjects);
-		} else {
-			cv_message("Error opening socket log \"%s\"", filename.c_str());
-		}
-	}
-
-	return socket_logs_.size();
-}
 
 void ClientVerifier::handle_statistics() {
 	statistics_.push_back(new klee::StatisticRecord());
@@ -229,6 +250,8 @@ void ClientVerifier::print_current_statistics() {
     << " " << llvm::sys::Process::GetTotalMemoryUsage()
     << "\n";
 }
+
+//////////////////////////////////////////////////////////////////////////////
 
 } // end namespace cliver
 
