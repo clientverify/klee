@@ -15,6 +15,7 @@
 #include "CVExecutionState.h"
 #include "CVExecutor.h"
 #include "CVStream.h"
+#include "Socket.h"
 
 namespace cliver {
 
@@ -36,74 +37,13 @@ void ExternalHandler_socket_shutdown(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define SOCKETEVENT_TYPES X(SEND), X(RECV) 
-#define SOCKET_STATES     X(IDLE), X(READING), X(WRITING), X(FINISHED)
-#define X(x) x
-
-struct SocketEvent {
-	typedef enum { SOCKETEVENT_TYPES } Type;
-	Type type;
-	unsigned delta;
-	int round;
-	unsigned length;
-	const uint8_t *data;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class Socket {
- public:
-	typedef enum { SOCKET_STATES } State;
-
-	Socket(const KTest* ktest);
-
-	//unsigned delta() 				 { return event().delta; }
-	//int round()      				 { return event().round; }
-	//int events_remaining()   { return log_->size() - index_; }
-	//int log_size() 					 { return log_->size(); }
-	
-	SocketEvent::Type type() { return event().type; }
-	State state() 					 { return state_; }
-	unsigned length()				 { return event().length; }
-	int fd() 								 { return file_descriptor_; }
-	unsigned index()				 { return index_; }
-
-	uint8_t next_byte();
-	bool has_data();
-	bool is_open();
-	void open();
-	void set_state(State s);
-	void advance();
-
-  void print(std::ostream &os);
-
- protected:
-	Socket() {}
-	const SocketEvent& event();
-
-	int file_descriptor_;
-	bool open_;
-	State state_;
-	unsigned index_;
-	unsigned offset_;
-	const std::vector<const SocketEvent* >  *log_;
-};
-
-#undef X
-
-inline std::ostream &operator<<(std::ostream &os, Socket &s) {
-  s.print(os);
-  return os;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 class NetworkManager {
  public:
 
   NetworkManager(CVExecutionState* state);
 
 	virtual void add_socket(const KTest* ktest);
+	virtual void add_socket(const SocketEventList &log);
 
 	virtual NetworkManager* clone(CVExecutionState *state);
 

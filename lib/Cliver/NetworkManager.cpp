@@ -86,8 +86,6 @@ DebugNetworkManager("debug-network-manager",llvm::cl::init(false));
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const int kInitialFileDescriptor= 1000;
-
 klee::ObjectState* resolve_address(klee::Executor* executor, 
 		klee::ExecutionState* state, klee::ref<klee::Expr> address) {
 	klee::ObjectPair result;
@@ -154,96 +152,15 @@ void ExternalHandler_socket_shutdown(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Socket::Socket(const KTest* ktest) 
-	: file_descriptor_(-1), open_(false), state_(IDLE), index_(0), offset_(0) {
-	
-	static int fd = kInitialFileDescriptor;
-	file_descriptor_ = fd++;
-	std::vector<const SocketEvent*> *log = new std::vector<const SocketEvent*>();
-	
-	// Convert the convert the data in the given Ktest struct into SocketEvents. 
-	for (unsigned i=0; i<ktest->numObjects; ++i) {
-		SocketEvent* event = new SocketEvent();
-		unsigned char *buf = ktest->objects[i].bytes;
-		
-		// Extract the round number prefix
-		//event->round = (int)(((unsigned)buf[0] << 24) 
-		//		               | ((unsigned)buf[1] << 16) 
-		//									 | ((unsigned)buf[2] << 8) 
-		//									 | ((unsigned)buf[3]));
-		//buf += 4;
-		event->data = buf;
-		event->length = ktest->objects[i].numBytes;
-
-		// Set the type of the socket by using the Ktest object's name
-		if (std::string(ktest->objects[i].name) == "c2s")
-			event->type = SocketEvent::SEND;
-		else if (std::string(ktest->objects[i].name) == "s2c")
-			event->type = SocketEvent::RECV;
-		else 
-			cv_error("Invalid socket event name: \"%s\"", ktest->objects[i].name);
-
-		log->push_back(event);
-	}
-	log_ = log;
-}
-
-uint8_t Socket::next_byte() {
-	assert(offset_ < event().length);
-	return event().data[offset_++];
-}
-
-bool  Socket::has_data() {
- 	return offset_ < event().length;
-}
-
-bool  Socket::is_open() {
-	return open_ && (index_ < log_->size());
-}
-
-void  Socket::open() {
-	open_ = true;
-}
-
-void  Socket::set_state(State s) {
-	state_ = s;
-}
-
-void  Socket::advance(){ 
-	index_++; state_ = IDLE; offset_ = 0;
-}
-
-const SocketEvent& Socket::event() { 
-	assert (index_ < log_->size());
-	return *((*log_)[index_]);
-}
-
-void Socket::print(std::ostream &os) {
-#define X(x) #x
-	static std::string socketevent_types[] = { SOCKETEVENT_TYPES };
-	static std::string socket_states[] = { SOCKET_STATES };
-#undef X
-		
-	if (index_ < log_->size()) {
-		os << "[ "
-			 //<< "Round:" << round() ", "
-			 << "Event: " << index_ << "/" << log_->size() << ", "
-			 << socket_states[state()] << ", " << socketevent_types[type()] << " ]";
-	} else {
-		os << "[ "
-			 //<< "Round:" << round() ", "
-			 << "Event: " << index_ << "/" << log_->size() << ", "
-			 << socket_states[state()] << ", N/A ]";
-	}
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 NetworkManager::NetworkManager(CVExecutionState* state) 
 	: state_(state) {}
 
 void NetworkManager::add_socket(const KTest* ktest) {
 	sockets_.push_back(Socket(ktest));
+}
+
+void NetworkManager::add_socket(const SocketEventList &log) {
+	sockets_.push_back(Socket(log));
 }
 
 NetworkManager* NetworkManager::clone(CVExecutionState *state) {
@@ -265,16 +182,6 @@ int NetworkManager::socket_log_index(int fd) {
 		}
 	}
 	return -1;
-}
-
-NetworkManager* NetworkManagerFactory::create(CVExecutionState* state) {
-  switch (g_cliver_mode) {
-	case DefaultMode:
-    break;
-	case TetrinetMode: 
-		return new NetworkManagerTetrinet(state);
-  }
-  return new NetworkManager(state);
 }
 
 void NetworkManager::execute_open_socket(CVExecutor* executor,
@@ -440,5 +347,36 @@ void NetworkManagerTetrinet::execute_read(CVExecutor* executor,
 	RETURN_SUCCESS("read", bytes_written);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+NetworkManager* NetworkManagerFactory::create(CVExecutionState* state) {
+	switch (g_cliver_mode) {
+		case DefaultMode: {
+			NetworkManager *nm = new NetworkManager(state);
+			foreach( SocketEventList *sel, g_client_verifier->socket_events()) {
+				nm->add_socket(*sel);
+			}
+			return nm;
+			break;
+		}
+		case TetrinetMode: {
+			NetworkManagerTetrinet *nm = new NetworkManagerTetrinet(state);
+			foreach( SocketEventList *sel, g_client_verifier->socket_events()) {
+				nm->add_socket(*sel);
+			}
+			return nm;
+	  }
+		case DefaultTrainingMode: {
+			NetworkManager *nm = new NetworkManager(state);
+			return nm;
+		}
+		case TetrinetTrainingMode: {
+			NetworkManagerTetrinet *nm = new NetworkManagerTetrinet(state);
+			return nm;
+	  }
+	}
+	cv_error("cliver mode not supported in NetworkManager");
+	return NULL;
+}
 
 } // end namespace cliver
