@@ -15,6 +15,7 @@
 #include "../lib/Core/CoreStats.h"
 #include "../lib/Core/SpecialFunctionHandler.h"
 #include "../Core/Executor.h"
+#include "Socket.h"
 
 #include <fstream>
 #include <map>
@@ -28,7 +29,12 @@ namespace cliver {
 ////////////////////////////////////////////////////////////////////////////////
 
 enum CliverMode {
-  DefaultMode, TetrinetMode, DefaultTrainingMode, TetrinetTrainingMode
+  DefaultMode, 
+	TetrinetMode, 
+	XpilotMode, 
+	DefaultTrainingMode, 
+	TetrinetTrainingMode,
+	XpilotTrainingMode
 };
 
 extern llvm::cl::opt<CliverMode> g_cliver_mode;
@@ -89,39 +95,48 @@ class CVContext {
 
 class ClientVerifier : public klee::InterpreterHandler {
  public:
+	typedef boost::signal<void (CVExecutionState*, CliverEvent::Type)> signal_ty;
   ClientVerifier();
   virtual ~ClientVerifier();
-  CVStream* getCVStream() { return cvstream_; };
-  void init();
-	void prepare_to_run(CVExecutor *executor);
-	void load_socket_files();
-	void initialize_external_handlers(CVExecutor *executor);
-	void register_events(CVExecutor *executor);
-	void handle_statistics();
-	void update_time_statistics();
-	void print_current_statistics();
-	std::vector<KTest*> socket_logs() { return socket_logs_; }
-
+	
+	// klee::InterpreterHandler
   std::ostream &getInfoStream() const;
   std::string getOutputFilename(const std::string &filename);
   std::ostream *openOutputFile(const std::string &filename);
   void incPathsExplored();
   void processTestCase(const klee::ExecutionState &state, 
                        const char *err, const char *suffix);
- 
+
+	// ExternalHandlers
+	void initialize_external_handlers(CVExecutor *executor);
+	
+	// Socket logs
+	void initialize_sockets();
+	int read_socket_logs(std::vector<std::string> &logs);
+	std::vector<KTest*> socket_logs() { return socket_logs_; }
+	std::vector<SocketEventList*>& socket_events() { return socket_events_; }
+	
+	// Events
+	void register_events(CVExecutor *executor);
 	void pre_event(CVExecutionState* state, CliverEvent::Type t); 
 	void post_event(CVExecutionState* state, CliverEvent::Type t); 
 
+	// Stats
+	void handle_statistics();
+	void update_time_statistics();
+	void print_current_statistics();
+ 
  private:
-	int load_socket_logs();
 
   CVStream *cvstream_;
 	std::vector<KTest*> socket_logs_;
 	int paths_explored_;
 	std::vector<klee::StatisticRecord*> statistics_;
 
-	boost::signal<void (CVExecutionState*, CliverEvent::Type)> pre_event_callbacks_;
-	boost::signal<void (CVExecutionState*, CliverEvent::Type)> post_event_callbacks_;
+	signal_ty pre_event_callbacks_;
+	signal_ty post_event_callbacks_;
+
+	std::vector<SocketEventList*> socket_events_;
 };
 
 

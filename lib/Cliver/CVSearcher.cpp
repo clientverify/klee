@@ -130,4 +130,72 @@ void CVSearcher::update(klee::ExecutionState *current,
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TrainingSearcher::TrainingSearcher(klee::Searcher* base_searcher, StateMerger* merger) 
+	: CVSearcher(base_searcher, merger) {
+	
+	for (unsigned i=0; i<=MAX_TRAINING_PHASE; ++i) {
+		phases_[i] = new TrainingPhaseProperty();
+		phases_[i]->training_phase = i;
+	}
+}
+
+klee::ExecutionState &TrainingSearcher::selectState() {
+
+	if (states_[phases_[0]].empty() && !states_[phases_[1]].empty()) {
+		SocketEventList *sel = NULL;
+		CVExecutionState* state = NULL;
+		std::set<klee::ExecutionState*> added_states;
+		foreach (state, states_[phases_[1]]) {
+			foreach( sel, g_client_verifier->socket_events()) {
+				CVExecutionState* cloned_state = state->clone();
+			}
+
+		}
+		// branch state for every log
+		// advance to phase 2
+	}
+
+	if (states_[phases_[2]].empty() && !states_[phases_[3]].empty()) {
+		// hard-merge all states
+		// advance to phase 4
+	}
+
+	if (!states_[phases_[5]].empty()) {
+		// spawn state for all events
+		// advance to phase 6
+	}
+
+	if (states_[phases_[6]].empty() && !states_[phases_[7]].empty()) {
+		// write path to file
+		// remove phase 7 states
+	}
+
+	if (!states_[phases_[0]].empty()) {
+		CVExecutionState* state = *(states_[phases_[0]].begin());
+		return *(static_cast<klee::ExecutionState*>(state));
+	}
+
+	if (!states_[phases_[2]].empty()) {
+		CVExecutionState* state = *(states_[phases_[2]].begin());
+		return *(static_cast<klee::ExecutionState*>(state));
+	}
+
+	if (!states_[phases_[6]].empty()) {
+		CVExecutionState* state = *(states_[phases_[6]].begin());
+		return *(static_cast<klee::ExecutionState*>(state));
+	}
+
+	if (!states_[phases_[4]].empty()) {
+		CVExecutionState* state = *(states_[phases_[4]].begin());
+		return *(static_cast<klee::ExecutionState*>(state));
+	}
+
+	cv_error("no states remaining");
+	// This will never execute after cv_error
+	klee::ExecutionState *null_state = NULL;
+	return *null_state;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 } // end namespace cliver

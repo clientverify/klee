@@ -8,6 +8,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "CVStream.h"
+#include "signal.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/CommandLine.h"
    
 namespace {
@@ -79,6 +81,9 @@ void cv_error(const char *msg, ...) {
   va_start(ap, msg);
   cv_vomessage(cv_warning_stream, "ERROR", msg, ap);
   va_end(ap);
+#ifndef NDEBUG
+	raise(SIGABRT);
+#endif
   exit(1);
 }
 
@@ -176,6 +181,25 @@ void CVStream::initOutputDirectory() {
     exit(1);
   }
 
+}
+
+void CVStream::getOutFiles(std::string path, 
+		std::vector<std::string> &results) {
+  llvm::sys::Path p(path);
+  std::set<llvm::sys::Path> contents;
+  std::string error;
+  if (p.getDirectoryContents(contents, &error)) {
+    std::cerr << "ERROR: unable to read output directory: " << path 
+               << ": " << error << "\n";
+    exit(1);
+  }
+  for (std::set<llvm::sys::Path>::iterator it = contents.begin(),
+         ie = contents.end(); it != ie; ++it) {
+    std::string f = it->str();
+    if (f.substr(f.size()-6,f.size()) == ".ktest") {
+      results.push_back(f);
+    }
+  }
 }
 
 void CVStream::init() {

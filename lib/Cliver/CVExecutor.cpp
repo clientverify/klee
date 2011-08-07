@@ -8,7 +8,6 @@
 //===----------------------------------------------------------------------===//
 #include "CVExecutionState.h"
 #include "CVExecutor.h"
-#include "CVMemoryManager.h"
 #include "CVStream.h"
 #include "CVSearcher.h"
 #include "NetworkManager.h"
@@ -153,7 +152,6 @@ namespace cliver {
 
 CVExecutor::CVExecutor(const InterpreterOptions &opts, klee::InterpreterHandler *ih)
 : klee::Executor(opts, ih), cv_(static_cast<ClientVerifier*>(ih)) {
-	//memory = new CVMemoryManager();
 
 	// Check for incompatible or non-supported klee options.
 #define INVALID_CL_OPT(name, val) \
@@ -308,7 +306,6 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
 
   // hack to clear memory objects
   delete memory;
-  //memory = new CVMemoryManager();
   memory = new klee::MemoryManager();
   
   globalObjects.clear();
@@ -420,29 +417,32 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
   }
 }
 
+#include "llvm/Support/raw_ostream.h"
 void CVExecutor::stepInstruction(klee::ExecutionState &state) {
 
 	CVExecutionState *cvstate = static_cast<CVExecutionState*>(&state);
 	llvm::Instruction *i = state.pc->inst;
 	if (i->getOpcode() == llvm::Instruction::Call) {
 		llvm::CallSite cs(cast<llvm::CallInst>(i));
-		if (function_call_events_.find(cs.getCalledFunction()) != function_call_events_.end()) {
+		if (function_call_events_.find(cs.getCalledFunction()) 
+				!= function_call_events_.end()) {
 			CliverEventInfo &ei = function_call_events_[cs.getCalledFunction()];
 			cv_->pre_event(cvstate, ei.type);
 		}
 	}
-	//if (instruction_events_.find(i->getOpcode()) != instruction_events_.end()) {
-	//}
 
-
-  if (klee::DebugPrintInstructions) {
-    printFileLine(state, state.pc);
-    std::cerr << std::setw(10) << klee::stats::instructions << " ";
-    llvm::errs() << *(state.pc->inst);
+	if (klee::DebugPrintInstructions) {
+		std::string rstr;
+		llvm::raw_string_ostream ros(rstr);
+		ros << *(state.pc->inst);
+		ros.flush();
+		rstr.erase(std::remove(rstr.begin(), rstr.end(), '\n'), rstr.end());
+    *cv_debug_stream << std::setw(10) << state.pc->info->id << " : " << rstr << "\n";
   }
 
   if (statsTracker)
     statsTracker->stepInstruction(state);
+
   ++klee::stats::instructions;
   state.prevPC = state.pc;
   ++state.pc;

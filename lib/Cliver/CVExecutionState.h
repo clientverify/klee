@@ -78,6 +78,8 @@ class LogIndexProperty : public ExecutionStateProperty {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#define MAX_TRAINING_PHASE 7
+
 class TrainingPhaseProperty : public ExecutionStateProperty {
  public: 
 	TrainingPhaseProperty();
@@ -101,6 +103,7 @@ class CVExecutionState : public klee::ExecutionState {
   CVExecutionState(const std::vector< klee::ref<klee::Expr> > &assumptions);
   virtual ~CVExecutionState();
   virtual CVExecutionState *branch();
+  CVExecutionState *clone();
 
 	int compare(const CVExecutionState& b) const;
 
@@ -108,7 +111,6 @@ class CVExecutionState : public klee::ExecutionState {
   int id() { return id_; }
   const CVContext* context() { return context_; }
 
-  AddressManager* address_manager() { cv_error("!"); return address_manager_; }
 	NetworkManager* network_manager() const { return network_manager_; }
 	PathManager*    path_manager() { return path_manager_; }
 	ExecutionStateProperty* property()			  { return property_; }
@@ -119,7 +121,6 @@ class CVExecutionState : public klee::ExecutionState {
   int id_;
   static int next_id_;
   CVContext* context_;
-  AddressManager* address_manager_;
 	NetworkManager* network_manager_;
 	PathManager* path_manager_;
 	ExecutionStateProperty* property_;

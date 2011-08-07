@@ -6,7 +6,6 @@
 //
 //
 //===----------------------------------------------------------------------===//
-#include "SharedObjects.h"
 #include "CVExecutionState.h"
 #include "CVExecutor.h"
 #include "CVStream.h"
@@ -54,6 +53,8 @@ void LogIndexProperty::print(std::ostream &os) const {
 
 //////////////////////////////////////////////////////////////////////////////
 
+unsigned kMaxTrainingPhase = 7;
+
 TrainingPhaseProperty::TrainingPhaseProperty() : training_phase(0) {}
 
 void TrainingPhaseProperty::handle_post_event(CVExecutionState *state,
@@ -63,28 +64,34 @@ void TrainingPhaseProperty::handle_pre_event(CVExecutionState *state,
 		CliverEvent::Type et) {
 
 	TrainingPhaseProperty* p = static_cast<TrainingPhaseProperty*>(state->property());
-	switch(et) {
 
-		case CliverEvent::Network:
-			if (p->training_phase == 0) {
+	assert(p->training_phase != 1);
+	assert(p->training_phase != 3);
+	assert(p->training_phase != 5);
+	assert(p->training_phase != 7);
+
+	if (et == CliverEvent::Network) {
+		switch(p->training_phase) {
+			case 0:
 				// Branch a new state for every log
 				p->training_phase = 1;
-
-			} else if (p->training_phase == 2) {
-				// Branch a new state for every socket event 
-				p->training_phase = 3;
-
-			} else if (p->training_phase == 3) {
-				p->training_phase = 4;
-			}
-			break;
-
-		case CliverEvent::Training:
-			if (p->training_phase == 1) {
+				break;
+			case 4:
+				// Spawn a state for every event
+				p->training_phase = 5;
+				break;
+		}
+	} else if (et == CliverEvent::Training) {
+		switch(p->training_phase) {
+			case 2:
 				// Merge all states
-				p->training_phase = 2;
-			}
-			break;
+				p->training_phase = 3;
+				break;
+			case 6:
+				// Write path to file
+				p->training_phase = 7;
+				break;
+		}
 	}
 }
 
@@ -128,7 +135,6 @@ CVExecutionState::CVExecutionState(
 
 CVExecutionState::~CVExecutionState() {
   while (!stack.empty()) popFrame();
-	//delete address_manager_;
 	delete network_manager_;
 	delete path_manager_;
 	delete property_;
@@ -143,7 +149,6 @@ void CVExecutionState::initialize(CVExecutor *executor) {
   id_ = increment_id();
   coveredNew = false;
   coveredLines.clear();
-  //address_manager_ = AddressManagerFactory::create(this);
 	network_manager_ = NetworkManagerFactory::create(this);
 	path_manager_ = PathManagerFactory::create();
 	property_ = ExecutionStatePropertyFactory::create();
@@ -153,25 +158,25 @@ void CVExecutionState::initialize(CVExecutor *executor) {
 	}
 }
 
+CVExecutionState* CVExecutionState::clone() {
+  CVExecutionState *cloned_state = new CVExecutionState(*this);
+  cloned_state->id_ = increment_id();
+  cloned_state->network_manager_ 
+		= network_manager_->clone(cloned_state); 
+	cloned_state->path_manager_ = path_manager_->clone();
+  cloned_state->property_ = property_->clone();
+
+  return cloned_state;
+}
+
 CVExecutionState* CVExecutionState::branch() {
   depth++;
-
-  CVExecutionState *falseState = new CVExecutionState(*this);
-  falseState->id_ = increment_id();
-  falseState->coveredNew = false;
-  falseState->coveredLines.clear();
-
-  //falseState->address_manager_ = address_manager_->clone(); 
-  //falseState->address_manager_->set_state(falseState);
-
-  falseState->network_manager_ = network_manager_->clone(falseState); 
-	falseState->path_manager_ = path_manager_->clone();
-  falseState->property_ = property_->clone();
-
+  CVExecutionState *false_state = clone();
+  false_state->coveredNew = false;
+  false_state->coveredLines.clear();
   weight *= .5;
-  falseState->weight -= weight;
-
-  return falseState;
+  false_state->weight -= weight;
+  return false_state;
 }
 
 bool CVExecutionStateLT::operator()(const CVExecutionState* a, 

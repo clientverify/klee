@@ -143,8 +143,9 @@ class CVStream {
   inline std::ostream& message_stream() { return *message_stream_; }
   inline std::ostream& warning_stream() { return *warning_stream_; }
 
-  std::string   getOutputFilename(const std::string &filename);
+  std::string getOutputFilename(const std::string &filename);
   std::ostream* openOutputFile(const std::string &filename);
+	void getOutFiles(std::string path, std::vector<std::string> &results);
 
  private:
   std::string output_directory_;
