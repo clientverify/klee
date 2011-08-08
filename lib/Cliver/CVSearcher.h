@@ -51,6 +51,20 @@ class TrainingSearcher : public CVSearcher {
 		os << "TrainingSearcher\n";
 	}
  private:
+	ExecutionStateSet phases_[TrainingProperty::EndState];
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TrainingPhaseSearcher : public CVSearcher {
+ public:
+	TrainingPhaseSearcher(klee::Searcher* base_searcher, StateMerger* merger);
+
+	klee::ExecutionState &selectState();
+	void printName(std::ostream &os) {
+		os << "TrainingPhaseSearcher\n";
+	}
+ private:
 	TrainingPhaseProperty* phases_[MAX_TRAINING_PHASE];
 };
 

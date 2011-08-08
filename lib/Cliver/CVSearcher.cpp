@@ -130,7 +130,69 @@ void CVSearcher::update(klee::ExecutionState *current,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TrainingSearcher::TrainingSearcher(klee::Searcher* base_searcher, StateMerger* merger) 
+TrainingSearcher::TrainingSearcher(klee::Searcher* base_searcher, 
+		StateMerger* merger) 
+	: CVSearcher(base_searcher, merger) {}
+
+klee::ExecutionState &TrainingSearcher::selectState() {
+
+	if (!phases_[TrainingProperty::NetworkClone].empty()) {
+		CVExecutionState* state 
+			= *(phases_[TrainingProperty::NetworkClone].begin());
+		return *(static_cast<klee::ExecutionState*>(state));
+	}
+
+	if (!phases_[TrainingProperty::PrepareNetworkClone].empty()) {
+		// Fork a state for every message and add to the list of states.
+	  CVExecutionState* state = NULL;
+	  foreach (state, phases_[TrainingProperty::PrepareNetworkClone]) {
+			TrainingProperty *p = static_cast<TrainingProperty*>(state->property());
+			p->training_state = TrainingProperty::NetworkClone;
+			// Fork for every message...
+			// Add to states...
+		}
+	}
+
+	if (!phases_[TrainingProperty::Record].empty()) {
+	  CVExecutionState* state = NULL;
+	  CVExecutionState* prev_state = NULL;
+	  foreach (state, phases_[TrainingProperty::Record]) {
+			// Write to file (pathstart, pathend, path, message)...
+			TrainingProperty *p = static_cast<TrainingProperty*>(state->property());
+			p->training_state = TrainingProperty::PrepareExecute;
+			p->training_round++;
+		}
+	}
+
+	if (!phases_[TrainingProperty::Execute].empty()) {
+		CVExecutionState* state 
+			= *(phases_[TrainingProperty::NetworkClone].begin());
+		return *(static_cast<klee::ExecutionState*>(state));
+	}
+
+	if (!phases_[TrainingProperty::PrepareExecute].empty()) {
+	  CVExecutionState* state = NULL;
+	  CVExecutionState* prev_state = NULL;
+	  foreach (state, phases_[TrainingProperty::PrepareExecute]) {
+			TrainingProperty *p = static_cast<TrainingProperty*>(state->property());
+			p->training_state = TrainingProperty::Execute;
+			// Merge...
+			// Add to states...
+		}
+	}
+
+	cv_error("no states remaining");
+
+	// This will never execute after cv_error
+	klee::ExecutionState *null_state = NULL;
+	return *null_state;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+
+TrainingPhaseSearcher::TrainingPhaseSearcher(klee::Searcher* base_searcher, 
+		StateMerger* merger) 
 	: CVSearcher(base_searcher, merger) {
 	
 	for (unsigned i=0; i<=MAX_TRAINING_PHASE; ++i) {
@@ -139,7 +201,7 @@ TrainingSearcher::TrainingSearcher(klee::Searcher* base_searcher, StateMerger* m
 	}
 }
 
-klee::ExecutionState &TrainingSearcher::selectState() {
+klee::ExecutionState &TrainingPhaseSearcher::selectState() {
 
 	if (states_[phases_[0]].empty() && !states_[phases_[1]].empty()) {
 		SocketEventList *sel = NULL;
