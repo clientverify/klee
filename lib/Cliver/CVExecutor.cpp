@@ -393,8 +393,6 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
 				cv_->post_event(cvstate, ei.type);
 			}
 		}
-		//if (instruction_events_.find(i->getOpcode()) != instruction_events_.end()) {
-		//}
 
     updateStates(&state);
   }

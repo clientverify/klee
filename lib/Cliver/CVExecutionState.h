@@ -78,6 +78,35 @@ class LogIndexProperty : public ExecutionStateProperty {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TrainingProperty : public ExecutionStateProperty {
+ public: 
+	enum TrainingState {
+		PrepareExecute=0, 
+		Execute, 
+		Merge, 
+		PrepareNetworkClone, 
+		NetworkClone, 
+		Record, 
+		EndState
+	};
+	TrainingProperty();
+	TrainingProperty* clone() { return new TrainingProperty(*this); }
+  void print(std::ostream &os) const;
+	int compare(const ExecutionStateProperty &b) const;
+
+	// event signal handlers
+	static void handle_pre_event(CVExecutionState *state, CliverEvent::Type et);
+	static void handle_post_event(CVExecutionState *state, CliverEvent::Type et);
+
+	// Property values
+	int training_round;
+	TrainingState training_state;
+	unsigned start_instruction_id;
+	unsigned end_instruction_id;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 #define MAX_TRAINING_PHASE 7
 
 class TrainingPhaseProperty : public ExecutionStateProperty {
@@ -94,6 +123,7 @@ class TrainingPhaseProperty : public ExecutionStateProperty {
 	// Property values
 	int training_phase;
 };
+
 
 ////////////////////////////////////////////////////////////////////////////////
 

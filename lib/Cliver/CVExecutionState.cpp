@@ -53,7 +53,73 @@ void LogIndexProperty::print(std::ostream &os) const {
 
 //////////////////////////////////////////////////////////////////////////////
 
-unsigned kMaxTrainingPhase = 7;
+TrainingProperty::TrainingProperty() 
+	: training_round(0),
+	  training_state(TrainingProperty::Execute),
+		start_instruction_id(0),
+		end_instruction_id(0) {}
+
+void TrainingProperty::handle_post_event(CVExecutionState *state,
+		CliverEvent::Type et) {
+
+	TrainingProperty* p = static_cast<TrainingProperty*>(state->property());
+
+	switch(p->training_state) {
+		case TrainingProperty::PrepareExecute:
+			break;
+		case TrainingProperty::Execute:
+			if (et == CliverEvent::Training) {
+				p->training_state = TrainingProperty::Record;
+			}
+			break;
+		case TrainingProperty::PrepareNetworkClone:
+			break;
+		case TrainingProperty::NetworkClone:
+			if (et == CliverEvent::Network) {
+				p->training_state = TrainingProperty::Record;
+			}
+			break;
+		case TrainingProperty::Record:
+			break;
+	}
+
+}
+
+void TrainingProperty::handle_pre_event(CVExecutionState *state,
+		CliverEvent::Type et) {
+
+	TrainingProperty* p = static_cast<TrainingProperty*>(state->property());
+
+	switch(p->training_state) {
+		case TrainingProperty::PrepareExecute:
+			break;
+		case TrainingProperty::Execute:
+			if (et == CliverEvent::Network) {
+				p->training_state = TrainingProperty::PrepareNetworkClone;
+			}
+			break;
+		case TrainingProperty::PrepareNetworkClone:
+			break;
+		case TrainingProperty::NetworkClone:
+			break;
+		case TrainingProperty::Record:
+			break;
+	}
+}
+
+int TrainingProperty::compare(const ExecutionStateProperty &b) const {
+	const TrainingProperty *_b = static_cast<const TrainingProperty*>(&b);
+	cv_error("fixme");
+	return training_state - _b->training_state;
+}
+
+void TrainingProperty::print(std::ostream &os) const {
+	cv_error("fixme");
+	os << "training phase = " << training_state;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 
 TrainingPhaseProperty::TrainingPhaseProperty() : training_phase(0) {}
 
