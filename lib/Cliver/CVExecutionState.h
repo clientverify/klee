@@ -33,7 +33,7 @@ class ExecutionStateProperty {
  public:
   virtual void print(std::ostream &os) const {};
 	virtual int compare(const ExecutionStateProperty &p) const {}
-	virtual ExecutionStateProperty* clone() { return new ExecutionStateProperty(*this); }
+	virtual ExecutionStateProperty* clone() { assert(0); return NULL; }
 };
 
 inline std::ostream &operator<<(std::ostream &os, 
@@ -68,10 +68,6 @@ class LogIndexProperty : public ExecutionStateProperty {
   void print(std::ostream &os) const;
 	int compare(const ExecutionStateProperty &b) const;
 
-	// event signal handlers
-	static void handle_pre_event(CVExecutionState *state, CliverEvent::Type et);
-	static void handle_post_event(CVExecutionState *state, CliverEvent::Type et);
-
 	// Property values
 	int socket_log_index;
 };
@@ -84,9 +80,7 @@ class TrainingProperty : public ExecutionStateProperty {
 		PrepareExecute=0, 
 		Execute, 
 		Merge, 
-		PrepareNetworkClone, 
 		NetworkClone, 
-		Record, 
 		EndState
 	};
 	TrainingProperty();
@@ -94,36 +88,12 @@ class TrainingProperty : public ExecutionStateProperty {
   void print(std::ostream &os) const;
 	int compare(const ExecutionStateProperty &b) const;
 
-	// event signal handlers
-	static void handle_pre_event(CVExecutionState *state, CliverEvent::Type et);
-	static void handle_post_event(CVExecutionState *state, CliverEvent::Type et);
-
 	// Property values
 	int training_round;
 	TrainingState training_state;
-	unsigned start_instruction_id;
-	unsigned end_instruction_id;
+	int start_instruction_id;
+	int end_instruction_id;
 };
-
-////////////////////////////////////////////////////////////////////////////////
-
-#define MAX_TRAINING_PHASE 7
-
-class TrainingPhaseProperty : public ExecutionStateProperty {
- public: 
-	TrainingPhaseProperty();
-	TrainingPhaseProperty* clone() { return new TrainingPhaseProperty(*this); }
-  void print(std::ostream &os) const;
-	int compare(const ExecutionStateProperty &b) const;
-
-	// event signal handlers
-	static void handle_pre_event(CVExecutionState *state, CliverEvent::Type et);
-	static void handle_post_event(CVExecutionState *state, CliverEvent::Type et);
-
-	// Property values
-	int training_phase;
-};
-
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -136,6 +106,8 @@ class CVExecutionState : public klee::ExecutionState {
   CVExecutionState *clone();
 
 	int compare(const CVExecutionState& b) const;
+
+	void get_pc_string(std::string &result);
 
   void initialize(CVExecutor* executor);
   int id() { return id_; }
