@@ -13,14 +13,17 @@
 #include "../lib/Core/SpecialFunctionHandler.h"
 #include "CVExecutor.h"
 #include "CVExecutionState.h"
+#include "CVStream.h"
+#include "CVSearcher.h"
+#include "ConstraintPruner.h"
+#include "StateMerger.h"
 #include "TestHelper.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/System/Process.h"
 #include "klee/Statistics.h"
 
-#include <string>
-#include <boost/foreach.hpp>
-#define foreach BOOST_FOREACH 
+// needed for boost::signal
+void boost::throw_exception(std::exception const& e) {}
 
 cliver::ClientVerifier *g_client_verifier = 0;
 
@@ -47,7 +50,7 @@ llvm::cl::opt<CliverMode> g_cliver_mode("cliver-mode",
       "Default mode"),
     clEnumValN(TetrinetMode, "tetrinet", 
       "Tetrinet mode"),
-    clEnumValN(DefaultTrainingMode, "default-training", 
+    clEnumValN(DefaultTrainingMode, "training", 
       "Default training mode"),
     clEnumValN(TetrinetTrainingMode, "tetrinet-training", 
       "Tetrinet training mode"),
@@ -82,7 +85,7 @@ ExternalHandlerInfo external_handler_info[] = {
 ////////////////////////////////////////////////////////////////////////////////
 
 CliverEventInfo cliver_event_info[] = {
-	{CliverEvent::Network, llvm::Instruction::Call, "cliver_socket_create"},
+	//{CliverEvent::Network, llvm::Instruction::Call, "cliver_socket_create"},
 	{CliverEvent::Network, llvm::Instruction::Call, "cliver_socket_shutdown"},
 	{CliverEvent::Network, llvm::Instruction::Call, "cliver_socket_write"},
 	{CliverEvent::Network, llvm::Instruction::Call, "cliver_socket_read"},
@@ -188,25 +191,45 @@ void ClientVerifier::register_events(CVExecutor *executor) {
 		case DefaultMode:
 		case TetrinetMode:
 		case XpilotMode:
-			pre_event_callbacks_.connect(&LogIndexProperty::handle_pre_event);
-			post_event_callbacks_.connect(&LogIndexProperty::handle_post_event);
+			pre_event_callbacks_.connect(&LogIndexSearcher::handle_pre_event);
+			post_event_callbacks_.connect(&LogIndexSearcher::handle_post_event);
 			break;
 		case DefaultTrainingMode:
 		case TetrinetTrainingMode:
-			pre_event_callbacks_.connect(&TrainingPhaseProperty::handle_pre_event);
-			post_event_callbacks_.connect(&TrainingPhaseProperty::handle_post_event);
+			pre_event_callbacks_.connect(&TrainingSearcher::handle_pre_event);
+			post_event_callbacks_.connect(&TrainingSearcher::handle_post_event);
 			break;
 	}
 }
 
-void ClientVerifier::pre_event(CVExecutionState* state, CliverEvent::Type t) {
-	pre_event_callbacks_(state, t);
+void ClientVerifier::pre_event(CVExecutionState* state, 
+		CVExecutor* executor, CliverEvent::Type t) {
+	pre_event_callbacks_(state, executor, t);
 }
 
-void ClientVerifier::post_event(CVExecutionState* state, CliverEvent::Type t) {
-	post_event_callbacks_(state, t);
+void ClientVerifier::post_event(CVExecutionState* state, 
+		CVExecutor* executor, CliverEvent::Type t) {
+	post_event_callbacks_(state, executor, t);
 }
 
+CVSearcher* ClientVerifier::construct_searcher() {
+
+	pruner_ = new ConstraintPruner();
+	merger_ = new StateMerger(pruner_);
+
+	switch(g_cliver_mode) {
+		case DefaultMode:
+		case TetrinetMode:
+		case XpilotMode:
+			searcher_ = new LogIndexSearcher(new klee::DFSSearcher(), merger_);
+			break;
+		case DefaultTrainingMode:
+		case TetrinetTrainingMode:
+			searcher_ = new TrainingSearcher(new klee::DFSSearcher(), merger_);
+			break;
+	}
+	return searcher_;
+}
 
 void ClientVerifier::handle_statistics() {
 	statistics_.push_back(new klee::StatisticRecord());
