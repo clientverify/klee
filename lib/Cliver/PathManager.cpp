@@ -45,16 +45,6 @@ Path::path_iterator Path::end() const {
 	return branches_.end();
 }
 
-void Path::write_file(std::ofstream &file) {
-	boost::archive::binary_oarchive oa(file);
-	oa << *this;
-}
-
-void Path::read_file(std::ifstream &file) {
-	boost::archive::binary_iarchive ia(file);
-	ia >> *this;
-}
-
 void Path::inc_ref() {
 	ref_count_++;
 }
@@ -81,6 +71,11 @@ void Path::set_parent(Path *path) {
 	parent_ = path;
 	parent_->inc_ref();
 }
+
+const Path* Path::get_parent() {
+	return parent_;
+}
+
 
 template<class archive> 
 void Path::serialize(archive & ar, const unsigned version) {
@@ -117,9 +112,11 @@ void PathManager::add_branch(bool direction, klee::KInstruction* inst) {
 	path_->add(direction, inst);
 }
 
-void PathManager::write(std::ofstream &file) {
-	path_->consolidate();
-	path_->write_file(file);
+const Path& PathManager::get_consolidated_path() {
+	if (path_->get_parent() != NULL) {
+		path_->consolidate();
+	}
+	return *path_;
 }
 
 void PathManager::print_diff(const PathManager &b, std::ostream &os) const {

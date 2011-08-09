@@ -40,14 +40,13 @@ class Path {
 	path_iterator begin() const;
 	path_iterator end() const;
 	void add(bool direction, klee::KInstruction* inst);
-	void write_file(std::ofstream &file);
-	void read_file(std::ifstream &file);
 	bool less(const Path &b) const;
 	void inc_ref();
 	void dec_ref();
 	unsigned ref() { return ref_count_; }
 	void consolidate();
 	void set_parent(Path *path);
+	const Path* get_parent();
 
  private: 
 	friend class boost::serialization::access;
@@ -69,16 +68,13 @@ class PathManager {
 	PathManager(const PathManager &pm);
 	PathManager* clone();
 	bool less(const PathManager &b) const;
-	void print_diff(const PathManager &b, std::ostream &os) const;
-
 	void add_false_branch(klee::KInstruction* inst);
 	void add_true_branch(klee::KInstruction* inst);
-	virtual void add_branch(bool direction, klee::KInstruction* inst);
+	void add_branch(bool direction, klee::KInstruction* inst);
+	const Path& get_consolidated_path();
+	void print_diff(const PathManager &b, std::ostream &os) const;
 
-	virtual void write(std::ofstream &file);
  private:
-	void consolidate_path();
-
 	Path* path_;
 };
 
