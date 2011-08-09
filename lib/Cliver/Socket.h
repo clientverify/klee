@@ -41,6 +41,8 @@ class Socket {
 
 	Socket(const KTest* ktest);
 	Socket(const SocketEventList &log);
+  Socket(const SocketEvent &se, bool is_open);
+	~Socket();
 
 	SocketEvent::Type type() { return event().type; }
 	State state() 					 { return state_; }
@@ -58,6 +60,7 @@ class Socket {
 
   void print(std::ostream &os);
 
+	static int NextFileDescriptor;
  protected:
 	Socket() {}
 	const SocketEvent& event();
@@ -68,7 +71,7 @@ class Socket {
 	unsigned index_;
 	unsigned offset_;
 	const SocketEventList  *log_;
-	static int NextFileDescriptor;
+	const SocketEvent *event_;
 };
 
 #undef X
