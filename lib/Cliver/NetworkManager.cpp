@@ -36,6 +36,13 @@ DebugNetworkManager("debug-network-manager",llvm::cl::init(false));
 #define RETURN_FAILURE(action, reason) \
 	RETURN_FAILURE_NO_SOCKET(action, reason << " " << socket)
 
+#define RETURN_SUCCESS_NO_SOCKET(action, retval) { \
+	if (DebugNetworkManager) { \
+	CVDEBUG("State: " << std::setw(4) << std::right << state_->id() \
+			<< " - success - " << std::setw(8) << std::left << action);	} \
+	executor->bind_local(target, state_, retval); \
+	return; }
+
 #define RETURN_SUCCESS(action, retval) { \
 	if (DebugNetworkManager) { \
 	CVDEBUG("State: " << std::setw(4) << std::right << state_->id() \
@@ -43,6 +50,7 @@ DebugNetworkManager("debug-network-manager",llvm::cl::init(false));
 			<< std::setw(15) << " " << socket);	} \
 	executor->bind_local(target, state_, retval); \
 	return; }
+
 
 #define GET_SOCKET_OR_DIE_TRYIN(action, file_descriptor) \
 	unsigned socket_index; \
@@ -52,7 +60,8 @@ DebugNetworkManager("debug-network-manager",llvm::cl::init(false));
   if (socket_index == sockets_.size()) { \
 		if (DebugNetworkManager) { \
 		CVDEBUG("State: " << std::setw(4) << std::right << state_->id() \
-				<< " - failure - socket " << file_descriptor << " doesn't exist");  } \
+			<< " - failure - " << std::setw(8) << std::left << action << " - " \
+			<< " socket " << file_descriptor << " doesn't exist");  } \
 		executor->terminate_state(state_); \
 		return; \
 	} \
@@ -161,6 +170,14 @@ void NetworkManager::add_socket(const KTest* ktest) {
 
 void NetworkManager::add_socket(const SocketEventList &log) {
 	sockets_.push_back(Socket(log));
+}
+
+void NetworkManager::add_socket(const SocketEvent &se, bool is_open) {
+	sockets_.push_back(Socket(se,is_open));
+}
+
+void NetworkManager::clear_sockets() {
+	sockets_.clear();
 }
 
 NetworkManager* NetworkManager::clone(CVExecutionState *state) {
@@ -349,6 +366,41 @@ void NetworkManagerTetrinet::execute_read(CVExecutor* executor,
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NetworkManagerTraining::NetworkManagerTraining(
+		CVExecutionState* state) 
+	: NetworkManager(state) {}
+
+void NetworkManagerTraining::add_socket(const KTest* ktest) {
+	cv_error("add_socket() not supported in training mode");
+}
+
+void NetworkManagerTraining::add_socket(const SocketEventList &log) {
+	cv_error("add_socket() not supported in training mode");
+}
+
+NetworkManagerTraining* NetworkManagerTraining::clone(
+		CVExecutionState *state) {
+	NetworkManagerTraining* nwmt = new NetworkManagerTraining(*this);
+	nwmt->state_ = state;
+	return nwmt;
+}
+
+void NetworkManagerTraining::execute_open_socket(CVExecutor* executor,
+		klee::KInstruction *target, int domain, int type, int protocol) {
+
+	// During training, socket open always succeeds?
+	RETURN_SUCCESS_NO_SOCKET("open", Socket::NextFileDescriptor);
+
+}
+
+void NetworkManagerTraining::execute_shutdown(CVExecutor* executor,
+		klee::KInstruction *target, int fd, int how) {
+
+	RETURN_FAILURE_NO_SOCKET("shutdown", "training mode");
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 NetworkManager* NetworkManagerFactory::create(CVExecutionState* state) {
 	switch (g_cliver_mode) {
 		case DefaultMode: {
@@ -367,11 +419,12 @@ NetworkManager* NetworkManagerFactory::create(CVExecutionState* state) {
 			return nm;
 	  }
 		case DefaultTrainingMode: {
-			NetworkManager *nm = new NetworkManager(state);
+			NetworkManagerTraining *nm = new NetworkManagerTraining(state);
 			return nm;
 		}
 		case TetrinetTrainingMode: {
 			NetworkManagerTetrinet *nm = new NetworkManagerTetrinet(state);
+			cv_error("fixme");
 			return nm;
 	  }
 	}

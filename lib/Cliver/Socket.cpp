@@ -48,7 +48,8 @@ Socket::Socket(const KTest* ktest)
 	  open_(false), 
 		state_(IDLE), 
 		index_(0), 
-		offset_(0) {
+		offset_(0),
+		event_(NULL) {
 
 	SocketEventList *log = new SocketEventList();
 	for (unsigned i=0; i<ktest->numObjects; ++i) {
@@ -63,8 +64,20 @@ Socket::Socket(const SocketEventList &log)
 		state_(IDLE), 
 		index_(0), 
 		offset_(0),
-		log_(new SocketEventList(log)) {
+		log_(new SocketEventList(log)),
+		event_(NULL) {
 }
+
+Socket::Socket(const SocketEvent &se, bool is_open) 
+	: file_descriptor_(Socket::NextFileDescriptor), 
+	  open_(is_open), 
+		state_(IDLE), 
+		index_(0), 
+		offset_(0),
+		log_(NULL),
+		event_(&se) {}
+
+Socket::~Socket() {}
 
 uint8_t Socket::next_byte() {
 	assert(offset_ < event().length);
@@ -76,6 +89,11 @@ bool  Socket::has_data() {
 }
 
 bool  Socket::is_open() {
+	if (event_) {
+		if (index_ != 0) cv_error (" index is not zero %d", index_);
+		assert(index_ == 0);
+		return open_;
+	}
 	return open_ && (index_ < log_->size());
 }
 
@@ -92,7 +110,8 @@ void  Socket::advance(){
 }
 
 const SocketEvent& Socket::event() { 
-	assert (index_ < log_->size());
+	if (event_) return *event_;
+	assert (log_ && index_ < log_->size());
 	return *((*log_)[index_]);
 }
 
@@ -102,7 +121,12 @@ void Socket::print(std::ostream &os) {
 	static std::string socket_states[] = { SOCKET_STATES };
 #undef X
 		
-	if (index_ < log_->size()) {
+	if (event_) {
+		os << "[ "
+			 //<< "Round:" << round() ", "
+			 << "Event: " << index_ << "/" << 1 << ", "
+			 << socket_states[state()] << ", " << socketevent_types[type()] << " ]";
+	} else if (index_ < log_->size()) {
 		os << "[ "
 			 //<< "Round:" << round() ", "
 			 << "Event: " << index_ << "/" << log_->size() << ", "

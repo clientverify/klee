@@ -44,6 +44,8 @@ class NetworkManager {
 
 	virtual void add_socket(const KTest* ktest);
 	virtual void add_socket(const SocketEventList &log);
+	virtual void add_socket(const SocketEvent &se, bool is_open = true);
+	virtual void clear_sockets();
 
 	virtual NetworkManager* clone(CVExecutionState *state);
 
@@ -76,11 +78,6 @@ class NetworkManager {
 	std::vector<Socket> sockets_;
 };
 
-class NetworkManagerFactory {
- public:
-  static NetworkManager* create(CVExecutionState* state);
-};
-
 ////////////////////////////////////////////////////////////////////////////////
 
 class NetworkManagerTetrinet : public NetworkManager {
@@ -96,6 +93,42 @@ class NetworkManagerTetrinet : public NetworkManager {
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+
+class NetworkManagerTraining: public NetworkManager {
+ public:
+
+  NetworkManagerTraining(CVExecutionState* state);
+
+	virtual void add_socket(const KTest* ktest);
+	virtual void add_socket(const SocketEventList &log);
+
+	virtual NetworkManagerTraining* clone(CVExecutionState *state);
+
+	//virtual int socket_log_index(int fd=-1);
+
+	virtual void execute_open_socket(CVExecutor* executor,
+		klee::KInstruction *target, 
+		int domain, int type, int protocol);
+
+	//virtual void execute_read(CVExecutor* executor, 
+	//	klee::KInstruction *target, 
+	//	klee::ObjectState* object, int fd, int len);
+
+	//virtual void execute_write(CVExecutor* executor,
+	//	klee::KInstruction *target, 
+	//	klee::ObjectState* object, int fd, int len);
+
+	virtual void execute_shutdown(CVExecutor* executor,
+		klee::KInstruction *target, 
+		int fd, int how);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class NetworkManagerFactory {
+ public:
+  static NetworkManager* create(CVExecutionState* state);
+};
 
 } // end namespace cliver
 #endif // NETWORK_MANAGER_H
