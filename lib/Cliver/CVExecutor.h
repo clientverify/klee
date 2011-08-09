@@ -29,6 +29,8 @@ class CVExecutor : public klee::Executor {
 
   virtual void stepInstruction(klee::ExecutionState &state);
 
+  virtual void updateStates(klee::ExecutionState *current);
+
   virtual const llvm::Module *
   setModule(llvm::Module *module, const ModuleOptions &opts);
 
@@ -37,6 +39,10 @@ class CVExecutor : public klee::Executor {
 
   virtual void executeMakeSymbolic(klee::ExecutionState &state, 
                                    const klee::MemoryObject *mo);
+
+  virtual void branch(klee::ExecutionState &state, 
+              const std::vector< klee::ref<klee::Expr> > &conditions,
+              std::vector<klee::ExecutionState*> &result);
 
   // Fork current and return states in which condition holds / does
   // not hold, respectively. One of the states is necessarily the
@@ -65,6 +71,9 @@ class CVExecutor : public klee::Executor {
 			klee::ref<klee::Expr> condition);
 
 	void register_event(const CliverEventInfo& event_info);
+
+	void add_state(CVExecutionState* state);
+	void remove_state(CVExecutionState* state);
 
  private:
   ClientVerifier *cv_;
