@@ -84,7 +84,6 @@
 #include <errno.h>
 #include <cxxabi.h>
 
-
 namespace klee {
   // Command line options defined in lib/Core/Executor.cpp
   extern llvm::cl::opt<bool> DumpStatesOnHalt;
@@ -146,6 +145,7 @@ namespace klee {
   extern llvm::cl::opt<bool> UseIterativeDeepeningTimeSearch;
   extern llvm::cl::opt<bool> UseBatchingSearch;
 
+	extern RNG theRNG;
 }
 
 namespace cliver {
@@ -298,8 +298,8 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
   
   initializeGlobals(*state);
 
-  processTree = new PTree(state);
-  state->ptreeNode = processTree->root;
+  //processTree = new PTree(state);
+  //state->ptreeNode = processTree->root;
   run(*state);
   delete processTree;
   processTree = 0;
@@ -330,16 +330,26 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
 
   states.insert(&initialState);
 
-	searcher = new klee::DFSSearcher();
-	pruner_ = new ConstraintPruner();
-	merger_ = new StateMerger(pruner_);
-	searcher = new CVSearcher(searcher, merger_);
-  //searcher = constructUserSearcher(*this);
+	searcher = cv_->construct_searcher();
 
   searcher->update(0, states, std::set<klee::ExecutionState*>());
 
   while (!states.empty() && !haltExecution) {
 		klee::ExecutionState &state = searcher->selectState();
+
+		// Handle pre execution events
+		if (!function_call_events_.empty()) {
+			llvm::Instruction *i = state.pc->inst;
+			if (i->getOpcode() == llvm::Instruction::Call) {
+				llvm::CallSite cs(cast<llvm::CallInst>(i));
+				if (function_call_events_.find(cs.getCalledFunction()) 
+						!= function_call_events_.end()) {
+					CliverEventInfo &ei = function_call_events_[cs.getCalledFunction()];
+					cv_->pre_event(static_cast<CVExecutionState*>(&state), this, ei.type);
+				}
+			}
+		}
+
 		klee::KInstruction *ki = state.pc;
     stepInstruction(state);
 
@@ -383,14 +393,20 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
       }
     }
 
-		CVExecutionState *cvstate = static_cast<CVExecutionState*>(&state);
-		llvm::Instruction *i = state.pc->inst;
-		if (i->getOpcode() == llvm::Instruction::Call) {
-			llvm::CallSite cs(cast<llvm::CallInst>(i));
-			if (function_call_events_.find(cs.getCalledFunction()) != function_call_events_.end()) {
-				CliverEventInfo &ei = function_call_events_[cs.getCalledFunction()];
-				//cv_message("Function call event for %s",ei.function_name);
-				cv_->post_event(cvstate, ei.type);
+		// Handle post execution events
+		if (!function_call_events_.empty()) {
+			// Don't create event if state was terminated
+			if (removedStates.find(&state) == removedStates.end()) {
+				llvm::Instruction *i = state.pc->inst;
+				if (i->getOpcode() == llvm::Instruction::Call) {
+					llvm::CallSite cs(cast<llvm::CallInst>(i));
+					if (function_call_events_.find(cs.getCalledFunction())
+							!= function_call_events_.end()) {
+						CliverEventInfo &ei = function_call_events_[cs.getCalledFunction()];
+						//cv_message("Function call event for %s",ei.function_name);
+						cv_->post_event(static_cast<CVExecutionState*>(&state), this, ei.type);
+					}
+				}
 			}
 		}
 
@@ -415,27 +431,17 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
   }
 }
 
-#include "llvm/Support/raw_ostream.h"
 void CVExecutor::stepInstruction(klee::ExecutionState &state) {
 
-	CVExecutionState *cvstate = static_cast<CVExecutionState*>(&state);
-	llvm::Instruction *i = state.pc->inst;
-	if (i->getOpcode() == llvm::Instruction::Call) {
-		llvm::CallSite cs(cast<llvm::CallInst>(i));
-		if (function_call_events_.find(cs.getCalledFunction()) 
-				!= function_call_events_.end()) {
-			CliverEventInfo &ei = function_call_events_[cs.getCalledFunction()];
-			cv_->pre_event(cvstate, ei.type);
-		}
-	}
-
 	if (klee::DebugPrintInstructions) {
+		CVExecutionState *cvstate = static_cast<CVExecutionState*>(&state);
 		std::string rstr;
 		llvm::raw_string_ostream ros(rstr);
 		ros << *(state.pc->inst);
 		ros.flush();
 		rstr.erase(std::remove(rstr.begin(), rstr.end(), '\n'), rstr.end());
-    *cv_debug_stream << std::setw(10) << state.pc->info->id << " : " << rstr << "\n";
+    *cv_debug_stream << "sid: " << cvstate->id() 
+			<< " " << std::setw(10) << state.pc->info->id << " : " << rstr << "\n";
   }
 
   if (statsTracker)
@@ -461,6 +467,57 @@ void CVExecutor::executeMakeSymbolic(klee::ExecutionState &state,
   state.addSymbolic(mo, array);
 
 }
+
+void CVExecutor::updateStates(klee::ExecutionState *current) {
+  if (searcher) {
+    searcher->update(current, addedStates, removedStates);
+  }
+  
+  states.insert(addedStates.begin(), addedStates.end());
+  addedStates.clear();
+  
+  for (std::set<klee::ExecutionState*>::iterator
+         it = removedStates.begin(), ie = removedStates.end();
+       it != ie; ++it) {
+		klee::ExecutionState *es = *it;
+    std::set<klee::ExecutionState*>::iterator it2 = states.find(es);
+    assert(it2!=states.end());
+    states.erase(it2);
+    delete es;
+  }
+  removedStates.clear();
+}
+
+void CVExecutor::branch(klee::ExecutionState &state, 
+		const std::vector< klee::ref<klee::Expr> > &conditions,
+    std::vector<klee::ExecutionState*> &result) {
+
+	klee::TimerStatIncrementer timer(klee::stats::forkTime);
+  unsigned N = conditions.size();
+  assert(N);
+
+	klee::stats::forks += N-1;
+
+  // XXX do proper balance or keep random?
+  result.push_back(&state);
+  for (unsigned i=1; i<N; ++i) {
+		klee::ExecutionState *es = result[klee::theRNG.getInt32() % i];
+		klee::ExecutionState *ns = es->branch();
+    addedStates.insert(ns);
+    result.push_back(ns);
+    //es->ptreeNode->data = 0;
+    //std::pair<PTree::Node*,PTree::Node*> res = 
+    //  processTree->split(es->ptreeNode, ns, es);
+    //ns->ptreeNode = res.first;
+    //es->ptreeNode = res.second;
+  }
+
+  for (unsigned i=0; i<N; ++i)
+    if (result[i])
+      addConstraint(*result[i], conditions[i]);
+}
+
+
 
 klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current, 
 			klee::ref<klee::Expr> condition, bool isInternal) {
@@ -561,11 +618,11 @@ klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current,
 		addedStates.insert(falseState);
 
 		
-		current.ptreeNode->data = 0;
-		std::pair<klee::PTree::Node*, klee::PTree::Node*> res =
-			processTree->split(current.ptreeNode, falseState, trueState);
-		falseState->ptreeNode = res.first;
-		trueState->ptreeNode = res.second;
+		//current.ptreeNode->data = 0;
+		//std::pair<klee::PTree::Node*, klee::PTree::Node*> res =
+		//	processTree->split(current.ptreeNode, falseState, trueState);
+		//falseState->ptreeNode = res.first;
+		//trueState->ptreeNode = res.second;
 
 		if (!isInternal) {
 			static_cast<CVExecutionState*>(trueState)->path_manager()->add_true_branch(current.pc);
@@ -649,6 +706,14 @@ void CVExecutor::register_event(const CliverEventInfo& event_info) {
 	} else {
 		instruction_events_[event_info.opcode] = event_info;
 	}
+}
+
+void CVExecutor::add_state(CVExecutionState* state) {
+	addedStates.insert(state);
+}
+
+void CVExecutor::remove_state(CVExecutionState* state) {
+	removedStates.insert(state);
 }
 
 } // end namespace cliver
