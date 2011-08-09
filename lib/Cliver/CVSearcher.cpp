@@ -10,9 +10,8 @@
 #include "CVSearcher.h"
 #include "StateMerger.h"
 #include "ClientVerifier.h"
-
-
-void boost::throw_exception(std::exception const& e) {}
+#include "NetworkManager.h"
+#include "klee/Internal/Module/InstructionInfoTable.h"
 
 namespace cliver {
 
@@ -130,6 +129,24 @@ void CVSearcher::update(klee::ExecutionState *current,
 
 ////////////////////////////////////////////////////////////////////////////////
 
+LogIndexSearcher::LogIndexSearcher(klee::Searcher* base_searcher, 
+		StateMerger* merger) 
+	: CVSearcher(base_searcher, merger) {}
+
+void LogIndexSearcher::handle_pre_event(CVExecutionState *state,
+		CVExecutor* executor, CliverEvent::Type et) {}
+
+void LogIndexSearcher::handle_post_event(CVExecutionState *state,
+		CVExecutor* executor, CliverEvent::Type et) {
+
+	LogIndexProperty* p = static_cast<LogIndexProperty*>(state->property());
+	if (et == CliverEvent::Network) {
+		p->socket_log_index = state->network_manager()->socket_log_index();
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 TrainingSearcher::TrainingSearcher(klee::Searcher* base_searcher, 
 		StateMerger* merger) 
 	: CVSearcher(base_searcher, merger) {}
@@ -139,46 +156,45 @@ klee::ExecutionState &TrainingSearcher::selectState() {
 	if (!phases_[TrainingProperty::NetworkClone].empty()) {
 		CVExecutionState* state 
 			= *(phases_[TrainingProperty::NetworkClone].begin());
+		//cv_debug("State %d is in Training Phase NetworkClone at instruction id %d",
+		//			state->id(), state->pc->info->id);
 		return *(static_cast<klee::ExecutionState*>(state));
-	}
-
-	if (!phases_[TrainingProperty::PrepareNetworkClone].empty()) {
-		// Fork a state for every message and add to the list of states.
-	  CVExecutionState* state = NULL;
-	  foreach (state, phases_[TrainingProperty::PrepareNetworkClone]) {
-			TrainingProperty *p = static_cast<TrainingProperty*>(state->property());
-			p->training_state = TrainingProperty::NetworkClone;
-			// Fork for every message...
-			// Add to states...
-		}
-	}
-
-	if (!phases_[TrainingProperty::Record].empty()) {
-	  CVExecutionState* state = NULL;
-	  CVExecutionState* prev_state = NULL;
-	  foreach (state, phases_[TrainingProperty::Record]) {
-			// Write to file (pathstart, pathend, path, message)...
-			TrainingProperty *p = static_cast<TrainingProperty*>(state->property());
-			p->training_state = TrainingProperty::PrepareExecute;
-			p->training_round++;
-		}
 	}
 
 	if (!phases_[TrainingProperty::Execute].empty()) {
 		CVExecutionState* state 
-			= *(phases_[TrainingProperty::NetworkClone].begin());
+			= *(phases_[TrainingProperty::Execute].begin());
+		//cv_debug("State %d is in Training Phase Execute at instruction id %d",
+		//			state->id(), state->pc->info->id);
 		return *(static_cast<klee::ExecutionState*>(state));
 	}
 
 	if (!phases_[TrainingProperty::PrepareExecute].empty()) {
 	  CVExecutionState* state = NULL;
-	  CVExecutionState* prev_state = NULL;
+		std::set<CVExecutionState*> modified_states;
 	  foreach (state, phases_[TrainingProperty::PrepareExecute]) {
 			TrainingProperty *p = static_cast<TrainingProperty*>(state->property());
 			p->training_state = TrainingProperty::Execute;
+
+			// Debug Output
+			cv_debug("State %d is Preparing Execution at instruction id %d",
+					state->id(), state->pc->info->id);
+			std::string pc_str;
+			state->get_pc_string(pc_str);
+			*cv_debug_stream << pc_str << "\n";
+
+			p->start_instruction_id = state->pc->info->id;
 			// Merge...
-			// Add to states...
+			// Add to states
+			modified_states.insert(state);
 		}
+
+		foreach (state, modified_states) {
+			phases_[TrainingProperty::PrepareExecute].erase(state);
+			phases_[TrainingProperty::Execute].insert(state);
+		}
+
+		return selectState();
 	}
 
 	cv_error("no states remaining");
@@ -188,74 +204,150 @@ klee::ExecutionState &TrainingSearcher::selectState() {
 	return *null_state;
 }
 
+void TrainingSearcher::update(klee::ExecutionState *current,
+						const std::set<klee::ExecutionState*> &addedStates,
+						const std::set<klee::ExecutionState*> &removedStates) {
 
-////////////////////////////////////////////////////////////////////////////////
+	std::set<klee::ExecutionState*> removed_states(removedStates);
+	std::set<klee::ExecutionState*> added_states(addedStates);
 
-TrainingPhaseSearcher::TrainingPhaseSearcher(klee::Searcher* base_searcher, 
-		StateMerger* merger) 
-	: CVSearcher(base_searcher, merger) {
-	
-	for (unsigned i=0; i<=MAX_TRAINING_PHASE; ++i) {
-		phases_[i] = new TrainingPhaseProperty();
-		phases_[i]->training_phase = i;
+	if (current && removedStates.count(current) == 0) {
+		removed_states.insert(current);
+		added_states.insert(current);
 	}
-}
 
-klee::ExecutionState &TrainingPhaseSearcher::selectState() {
+	foreach (klee::ExecutionState* klee_state, removed_states) {
+		CVExecutionState *state = static_cast<CVExecutionState*>(klee_state);
+		TrainingProperty *p = static_cast<TrainingProperty*>(state->property());
+		ExecutionStateSet &state_set = phases_[p->training_state];
 
-	if (states_[phases_[0]].empty() && !states_[phases_[1]].empty()) {
-		SocketEventList *sel = NULL;
-		CVExecutionState* state = NULL;
-		std::set<klee::ExecutionState*> added_states;
-		foreach (state, states_[phases_[1]]) {
-			foreach( sel, g_client_verifier->socket_events()) {
-				CVExecutionState* cloned_state = state->clone();
+		if (state_set.count(state) == 0) {
+			unsigned i;
+			for (i=0; i < TrainingProperty::EndState; i++) {
+				if (phases_[i].count(state) != 0) {
+					phases_[i].erase(state);
+					break;
+				}
 			}
-
+			if (i == TrainingProperty::EndState) {
+				cv_error("state erase failed");
+			}
+		} else {
+			state_set.erase(state);
 		}
-		// branch state for every log
-		// advance to phase 2
 	}
 
-	if (states_[phases_[2]].empty() && !states_[phases_[3]].empty()) {
-		// hard-merge all states
-		// advance to phase 4
+	foreach (klee::ExecutionState* klee_state, added_states) {
+		CVExecutionState *state = static_cast<CVExecutionState*>(klee_state);
+		TrainingProperty *p = static_cast<TrainingProperty*>(state->property());
+		ExecutionStateSet &state_set = phases_[p->training_state];
+		state_set.insert(state);
 	}
+}
 
-	if (!states_[phases_[5]].empty()) {
-		// spawn state for all events
-		// advance to phase 6
+void TrainingSearcher::clone_for_network_events(CVExecutionState *state,
+		CVExecutor* executor) {
+
+	TrainingProperty *p = static_cast<TrainingProperty*>(state->property());
+	p->training_state = TrainingProperty::NetworkClone;
+	state->network_manager()->clear_sockets();
+
+	// Debug Output
+	cv_debug("State %d is Cloning at instruction id %d",
+			state->id(), state->pc->info->id);
+	std::string pc_str;
+	state->get_pc_string(pc_str);
+	*cv_debug_stream << pc_str << "\n";
+
+	//bool is_open = state->network_manager()->sockets().back().is_open();
+	bool is_open = true;
+
+	SocketEventList* sel = NULL;
+	unsigned count=0;
+	
+	// Clone a state for every message.
+	foreach(sel, g_client_verifier->socket_events()) {
+		const SocketEvent* se = NULL;
+		foreach(se, *sel) {
+			CVExecutionState* cloned_state = state->clone();
+			cloned_state->network_manager()->clear_sockets();
+			cloned_state->network_manager()->add_socket(*se, is_open);
+			executor->add_state(cloned_state);
+			count++;
+		}
 	}
+	cv_debug("State %d is cloned into %d states at instruction id %d",
+			state->id(),count,state->pc->info->id);
+}
 
-	if (states_[phases_[6]].empty() && !states_[phases_[7]].empty()) {
-		// write path to file
-		// remove phase 7 states
+void TrainingSearcher::record_path(CVExecutionState *state,
+		CVExecutor* executor) {
+	TrainingProperty *p = static_cast<TrainingProperty*>(state->property());
+	p->end_instruction_id = state->pc->info->id;
+
+	// Debug Output
+	cv_debug("State %d is Recording Path at instruction id %d",
+			state->id(), state->pc->info->id);
+	std::string pc_str;
+	state->get_pc_string(pc_str);
+	*cv_debug_stream << pc_str << "\n";
+
+	// Write to file (pathstart, pathend, path, message)...
+	
+	// update for next path
+	p->training_state = TrainingProperty::PrepareExecute;
+	p->training_round++;
+
+}
+
+void TrainingSearcher::handle_post_event(CVExecutionState *state,
+		CVExecutor *executor, CliverEvent::Type et) {
+
+	TrainingProperty* p = static_cast<TrainingProperty*>(state->property());
+	TrainingSearcher* searcher 
+		= static_cast<TrainingSearcher*>(g_client_verifier->searcher());
+
+	switch(p->training_state) {
+
+		case TrainingProperty::PrepareExecute:
+			break;
+
+		case TrainingProperty::Execute:
+			if (et == CliverEvent::Training) {
+				searcher->record_path(state, executor);
+			}
+			break;
+
+		case TrainingProperty::NetworkClone:
+			if (et == CliverEvent::Network) {
+				searcher->record_path(state, executor);
+			}
+			break;
 	}
+}
 
-	if (!states_[phases_[0]].empty()) {
-		CVExecutionState* state = *(states_[phases_[0]].begin());
-		return *(static_cast<klee::ExecutionState*>(state));
+void TrainingSearcher::handle_pre_event(CVExecutionState *state,
+		CVExecutor* executor, CliverEvent::Type et) {
+
+	TrainingProperty* p = static_cast<TrainingProperty*>(state->property());
+	TrainingSearcher* searcher 
+		= static_cast<TrainingSearcher*>(g_client_verifier->searcher());
+
+	switch(p->training_state) {
+
+		case TrainingProperty::PrepareExecute:
+			break;
+
+		case TrainingProperty::Execute:
+			if (et == CliverEvent::Network) {
+				searcher->clone_for_network_events(state,executor);
+			}
+			break;
+
+		case TrainingProperty::NetworkClone:
+			break;
+
 	}
-
-	if (!states_[phases_[2]].empty()) {
-		CVExecutionState* state = *(states_[phases_[2]].begin());
-		return *(static_cast<klee::ExecutionState*>(state));
-	}
-
-	if (!states_[phases_[6]].empty()) {
-		CVExecutionState* state = *(states_[phases_[6]].begin());
-		return *(static_cast<klee::ExecutionState*>(state));
-	}
-
-	if (!states_[phases_[4]].empty()) {
-		CVExecutionState* state = *(states_[phases_[4]].begin());
-		return *(static_cast<klee::ExecutionState*>(state));
-	}
-
-	cv_error("no states remaining");
-	// This will never execute after cv_error
-	klee::ExecutionState *null_state = NULL;
-	return *null_state;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
