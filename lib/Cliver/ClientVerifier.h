@@ -79,6 +79,9 @@ struct CliverEventInfo {
 
 class CVExecutor;
 class CVExecutionState;
+class CVSearcher;
+class ConstraintPruner;
+class StateMerger;
 
 class CVContext {
  public:
@@ -95,7 +98,8 @@ class CVContext {
 
 class ClientVerifier : public klee::InterpreterHandler {
  public:
-	typedef boost::signal<void (CVExecutionState*, CliverEvent::Type)> signal_ty;
+	typedef boost::signal<void (CVExecutionState*, CVExecutor*, CliverEvent::Type) > signal_ty;
+
   ClientVerifier();
   virtual ~ClientVerifier();
 	
@@ -106,20 +110,24 @@ class ClientVerifier : public klee::InterpreterHandler {
   void incPathsExplored();
   void processTestCase(const klee::ExecutionState &state, 
                        const char *err, const char *suffix);
-
 	// ExternalHandlers
 	void initialize_external_handlers(CVExecutor *executor);
 	
 	// Socket logs
 	void initialize_sockets();
 	int read_socket_logs(std::vector<std::string> &logs);
-	std::vector<KTest*> socket_logs() { return socket_logs_; }
 	std::vector<SocketEventList*>& socket_events() { return socket_events_; }
 	
 	// Events
 	void register_events(CVExecutor *executor);
-	void pre_event(CVExecutionState* state, CliverEvent::Type t); 
-	void post_event(CVExecutionState* state, CliverEvent::Type t); 
+	void pre_event(CVExecutionState* state, 
+			CVExecutor* executor, CliverEvent::Type t); 
+	void post_event(CVExecutionState* state,
+			CVExecutor* executor, CliverEvent::Type t); 
+
+	// Searcher
+	CVSearcher* construct_searcher();
+	CVSearcher* searcher() { return searcher_; }
 
 	// Stats
 	void handle_statistics();
@@ -128,8 +136,11 @@ class ClientVerifier : public klee::InterpreterHandler {
  
  private:
 
+  CVSearcher *searcher_;
+  ConstraintPruner* pruner_;
+	StateMerger* merger_;
+
   CVStream *cvstream_;
-	std::vector<KTest*> socket_logs_;
 	int paths_explored_;
 	std::vector<klee::StatisticRecord*> statistics_;
 
