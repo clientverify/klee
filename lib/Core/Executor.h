@@ -191,7 +191,7 @@ protected:
   void initializeGlobals(ExecutionState &state);
 
   virtual void stepInstruction(ExecutionState &state);
-  void updateStates(ExecutionState *current);
+  virtual void updateStates(ExecutionState *current);
   void transferToBasicBlock(llvm::BasicBlock *dst, 
 			    llvm::BasicBlock *src,
 			    ExecutionState &state);
@@ -269,7 +269,7 @@ protected:
   /// a constraint and return the results. The input state is included
   /// as one of the results. Note that the output vector may included
   /// NULL pointers for states which were unable to be created.
-  void branch(ExecutionState &state, 
+  virtual void branch(ExecutionState &state, 
               const std::vector< ref<Expr> > &conditions,
               std::vector<ExecutionState*> &result);
 
