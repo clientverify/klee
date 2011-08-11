@@ -87,6 +87,16 @@ void cv_error(const char *msg, ...) {
   exit(1);
 }
 
+// XXX move this to another file
+void util_inst_string( llvm::Instruction* inst, std::string &rstr) {
+	llvm::raw_string_ostream ros(rstr);
+	if (inst)
+		ros << *(inst);
+	rstr.erase(std::remove(rstr.begin(), rstr.end(), '\n'), rstr.end());
+	ros.flush();
+}
+
+
 CVStream::CVStream()
   : output_directory_(OutputDir),
   initialized_(false) {
