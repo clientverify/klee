@@ -270,6 +270,7 @@ bool AddressSpaceGraph::equal(const AddressSpaceGraph &b) const {
 
 bool AddressSpaceGraph::symbolic_equal(
 		const AddressSpaceGraph &b, std::set<klee::ObjectState*> &objs) const {
+	std::set<klee::ObjectState*> symbolic_objs;
 
 	if (!array_size_equal(b)) {
 		return false;
@@ -330,13 +331,18 @@ bool AddressSpaceGraph::symbolic_equal(
 				}
 			}
 		}
+
 		if (candidate_sym_merge) {
-			objs.insert(osa);
+			symbolic_objs.insert(osa);
 		}
 	}
 
 	if (!graphs_equal(b)) {
 		return false;
+	}
+
+	foreach(klee::ObjectState* obj, symbolic_objs) {
+		objs.insert(obj);
 	}
 
 	return true;

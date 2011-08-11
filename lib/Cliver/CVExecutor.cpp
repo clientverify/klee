@@ -457,15 +457,13 @@ void CVExecutor::stepInstruction(klee::ExecutionState &state) {
 
 void CVExecutor::executeMakeSymbolic(klee::ExecutionState &state, 
                                      const klee::MemoryObject *mo) {
-  using namespace klee;
-
   // Create a new object state for the memory object (instead of a copy).
-	static unsigned id = 0;
+	unsigned id = cv_->next_array_id();
+  const klee::Array *array 
+		= new klee::Array(mo->name + llvm::utostr(id), mo->size);
 
-  const Array *array = new Array(mo->name + llvm::utostr(++id), mo->size);
   bindObjectInState(state, mo, false, array);
   state.addSymbolic(mo, array);
-
 }
 
 void CVExecutor::updateStates(klee::ExecutionState *current) {

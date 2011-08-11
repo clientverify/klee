@@ -101,7 +101,7 @@ CVContext::CVContext() : context_id_(increment_id()) {}
 ////////////////////////////////////////////////////////////////////////////////
 
 ClientVerifier::ClientVerifier() 
-  : cvstream_(new CVStream()) {
+  : cvstream_(new CVStream()), array_id_(0) {
   cvstream_->init();
 	initialize_sockets();
 	handle_statistics();
@@ -215,16 +215,17 @@ void ClientVerifier::post_event(CVExecutionState* state,
 CVSearcher* ClientVerifier::construct_searcher() {
 
 	pruner_ = new ConstraintPruner();
-	merger_ = new StateMerger(pruner_);
 
 	switch(g_cliver_mode) {
 		case DefaultMode:
 		case TetrinetMode:
 		case XpilotMode:
+			merger_ = new StateMerger(pruner_);
 			searcher_ = new LogIndexSearcher(new klee::DFSSearcher(), merger_);
 			break;
 		case DefaultTrainingMode:
 		case TetrinetTrainingMode:
+			merger_ = new SymbolicStateMerger(pruner_);
 			searcher_ = new TrainingSearcher(new klee::DFSSearcher(), merger_);
 			break;
 	}

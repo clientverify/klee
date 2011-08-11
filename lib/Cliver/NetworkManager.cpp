@@ -401,6 +401,43 @@ void NetworkManagerTraining::execute_shutdown(CVExecutor* executor,
 
 ////////////////////////////////////////////////////////////////////////////////
 
+//NetworkManagerTrainingTetrinet::NetworkManagerTrainingTetrinet(
+//		CVExecutionState* state) 
+//	: NetworkManager(state) {}
+//
+//NetworkManagerTrainingTetrinet* NetworkManagerTrainingTetrinet::clone(
+//		CVExecutionState *state) {
+//	NetworkManagerTrainingTetrinet* nwmt 
+//		= new NetworkManagerTrainingTetrinet(*this);
+//	nwmt->state_ = state;
+//	return nwmt;
+//}
+//
+//void NetworkManagerTetrinet::execute_read(CVExecutor* executor,
+//		klee::KInstruction *target, klee::ObjectState* object, int fd, int len) {
+//
+//	GET_SOCKET_OR_DIE_TRYIN("read", fd);
+//
+//	if (socket.type() != SocketEvent::RECV)
+//		RETURN_FAILURE("read", "wrong type");
+//
+//	unsigned bytes_written = 0;
+//
+//	while (socket.has_data() && bytes_written < len) {
+//		object->write8(bytes_written++, socket.next_byte());
+//	}
+//
+//	if (socket.has_data()) {
+//		//RETURN_FAILURE("read", "bytes remain len=" << len);
+//	} else {
+//		socket.advance();
+//	}
+//
+//	RETURN_SUCCESS("read", bytes_written);
+//}
+
+////////////////////////////////////////////////////////////////////////////////
+
 NetworkManager* NetworkManagerFactory::create(CVExecutionState* state) {
 	switch (g_cliver_mode) {
 		case DefaultMode: {
@@ -419,14 +456,15 @@ NetworkManager* NetworkManagerFactory::create(CVExecutionState* state) {
 			return nm;
 	  }
 		case DefaultTrainingMode: {
-			NetworkManagerTraining *nm = new NetworkManagerTraining(state);
+			NetworkManagerTraining *nm 
+				= new NetworkManagerTraining(state);
 			return nm;
 		}
-		case TetrinetTrainingMode: {
-			NetworkManagerTetrinet *nm = new NetworkManagerTetrinet(state);
-			cv_error("fixme");
-			return nm;
-	  }
+		//case TetrinetTrainingMode: {
+		//	NetworkManagerTrainingTetrinet *nm
+		//		= new NetworkManagerTrainingTetrinet(state);
+		//	return nm;
+	  //}
 	}
 	cv_error("cliver mode not supported in NetworkManager");
 	return NULL;
