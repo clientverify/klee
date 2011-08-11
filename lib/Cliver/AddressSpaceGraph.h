@@ -25,6 +25,8 @@ namespace cliver {
 
 class CVExecutionState;
 
+typedef std::pair<klee::ObjectState&,klee::ObjectState&> ObjectStatePair;
+
 struct VertexProperties {
 	klee::ObjectState *object;
 };
@@ -58,8 +60,10 @@ friend class AddressSpaceGraphVisitor;
 	AddressSpaceGraph(klee::ExecutionState *state);
 	void build();
 	void process();
-  //int compare(const AddressSpaceGraph &b) const;
-  bool equals(const AddressSpaceGraph &b) const;
+  bool equal(const AddressSpaceGraph &b) const;
+
+	bool symbolic_equal(const AddressSpaceGraph &b, 
+			std::set<klee::ObjectState*> &objs) const;
 
 	void extract_pointers(klee::ObjectState *obj, PointerList &results);
 	void extract_pointers_by_resolving(klee::ObjectState *obj, PointerList &results);
@@ -70,6 +74,11 @@ friend class AddressSpaceGraphVisitor;
 			klee::ref<klee::Expr> e) const;
 
  private:
+	bool array_size_equal(const AddressSpaceGraph &b) const;
+	bool visited_size_equal(const AddressSpaceGraph &b) const;
+	bool unconnected_objects_equal(const AddressSpaceGraph &b) const;
+	bool objects_equal(const AddressSpaceGraph &b) const;
+	bool graphs_equal(const AddressSpaceGraph &b) const;
   bool concrete_compare(klee::ObjectState &a,klee::ObjectState &b) const;
 	bool compare_objects(const AddressSpaceGraph &asg_b, klee::ObjectState &a, 
 		klee::ObjectState &b) const;

@@ -50,7 +50,6 @@ DebugAddressSpaceGraph("debug-address-space-graph",llvm::cl::init(false));
 
 #endif
 
-typedef std::pair<klee::ObjectState&,klee::ObjectState&> ObjectStatePair;
 
 AddressSpaceGraph::AddressSpaceGraph(klee::ExecutionState *state) 
  : state_(state), pointer_width_(klee::Context::get().getPointerWidth()) {
@@ -131,7 +130,7 @@ klee::ref<klee::Expr> AddressSpaceGraph::get_canonical_expr(
 	//return visitor.visit(e);
 }
 
-bool AddressSpaceGraph::equals(const AddressSpaceGraph &b) const {
+bool AddressSpaceGraph::array_size_equal(const AddressSpaceGraph &b) const {
 
 	int id_a = cv_state_->id(), id_b = b.cv_state_->id();
 
@@ -141,27 +140,52 @@ bool AddressSpaceGraph::equals(const AddressSpaceGraph &b) const {
 		return false;
 	}
 
-	std::vector<klee::StackFrame>::const_iterator itA = state_->stack.begin();
-	std::vector<klee::StackFrame>::const_iterator itB = b.state_->stack.begin();
-	while (itA!=state_->stack.end() && itB!=b.state_->stack.end()) {
-		if (itA->caller!=itB->caller || itA->kf!=itB->kf) {
-			CVDEBUG_S2(id_a, id_b, "call stacks don't match");
-			return false;
-		}
-		++itA;
-		++itB;
-	}
-	if (itA!=state_->stack.end() || itB!=b.state_->stack.end()) {
-		CVDEBUG_S2(id_a, id_b, "stack sizes don't match");
-		return false;
-	}
+	return true;
+}
+
+bool AddressSpaceGraph::visited_size_equal(
+		const AddressSpaceGraph &b) const {
+
+	int id_a = cv_state_->id(), id_b = b.cv_state_->id();
 
 	if (in_order_visited_.size() != b.in_order_visited_.size()) {
 		CVDEBUG_S2(id_a, id_b, "vertex counts don't match");
 		return false;
 	}
 
-	std::map<Vertex, Vertex> a_to_b_map;
+	return true;
+}
+
+bool AddressSpaceGraph::unconnected_objects_equal(const AddressSpaceGraph &b) const {
+
+	int id_a = cv_state_->id(), id_b = b.cv_state_->id();
+
+	if (unconnected_.size() != b.unconnected_.size()) {
+		CVDEBUG_S2(id_a, id_b, "compare global objects count failed");
+		return false;
+	}
+
+	ObjectVertexMap::const_iterator it_a = unconnected_.begin();
+	ObjectVertexMap::const_iterator ie_a = unconnected_.end();
+	ObjectVertexMap::const_iterator it_b = b.unconnected_.begin();
+	ObjectVertexMap::const_iterator ie_b = b.unconnected_.begin();
+
+	while (it_a != ie_a && it_b != ie_b) {
+		klee::ObjectState* object_state_a = it_a->first;
+		klee::ObjectState* object_state_b = it_b->first;
+		if (!compare_objects(b, *object_state_a, *object_state_b)) {
+			CVDEBUG_S2(id_a, id_b, "compare global concrete objects failed"
+					<< "\n" << ObjectStatePair(*object_state_a, *object_state_b));
+			return false;
+		}
+		++it_a;
+		++it_b;
+	}
+	return true;
+}
+
+bool AddressSpaceGraph::objects_equal(const AddressSpaceGraph &b) const {
+	int id_a = cv_state_->id(), id_b = b.cv_state_->id();
 
 	for (unsigned i=0; i<in_order_visited_.size(); ++i) {
 		Vertex va = in_order_visited_[i], vb = b.in_order_visited_[i];
@@ -177,6 +201,19 @@ bool AddressSpaceGraph::equals(const AddressSpaceGraph &b) const {
 					<< "\n" << ObjectStatePair(*object_state_a, *object_state_b));
 			return false;
 		}
+	}
+
+	return true;
+}
+
+bool AddressSpaceGraph::graphs_equal(const AddressSpaceGraph &b) const {
+
+	int id_a = cv_state_->id(), id_b = b.cv_state_->id();
+
+	std::map<Vertex, Vertex> a_to_b_map;
+
+	for (unsigned i=0; i<in_order_visited_.size(); ++i) {
+		Vertex va = in_order_visited_[i], vb = b.in_order_visited_[i];
 		assert(a_to_b_map.find(va) == a_to_b_map.end());
 		a_to_b_map[va] = vb;
 	}
@@ -203,33 +240,108 @@ bool AddressSpaceGraph::equals(const AddressSpaceGraph &b) const {
 			++out_edges_b.first;
 		}
 	}
+	return true;
+}
 
-	if (unconnected_.size() != b.unconnected_.size()) {
-		CVDEBUG_S2(id_a, id_b, "compare global objects count failed");
+bool AddressSpaceGraph::equal(const AddressSpaceGraph &b) const {
+
+	if (!array_size_equal(b)) {
 		return false;
 	}
 
-	ObjectVertexMap::const_iterator it_a = unconnected_.begin();
-	ObjectVertexMap::const_iterator ie_a = unconnected_.end();
-	ObjectVertexMap::const_iterator it_b = b.unconnected_.begin();
-	ObjectVertexMap::const_iterator ie_b = b.unconnected_.begin();
-
-	while (it_a != ie_a && it_b != ie_b) {
-		klee::ObjectState* object_state_a = it_a->first;
-		klee::ObjectState* object_state_b = it_b->first;
-		if (!compare_objects(b, *object_state_a, *object_state_b)) {
-			CVDEBUG_S2(id_a, id_b, "compare global concrete objects failed"
-					<< "\n" << ObjectStatePair(*object_state_a, *object_state_b));
-			return false;
-		}
-		++it_a;
-		++it_b;
+	if (!visited_size_equal(b)) {
+		return false;
 	}
 
-	// TODO check unnconnected!! 
+	if (!unconnected_objects_equal(b)) {
+		return false;
+	}
+
+	if (!objects_equal(b)) {
+		return false;
+	}
+
+	if (!graphs_equal(b)) {
+		return false;
+	}
 
 	return true;
 }
+
+bool AddressSpaceGraph::symbolic_equal(
+		const AddressSpaceGraph &b, std::set<klee::ObjectState*> &objs) const {
+
+	if (!array_size_equal(b)) {
+		return false;
+	}
+
+	if (!visited_size_equal(b)) {
+		return false;
+	}
+
+	if (!unconnected_objects_equal(b)) {
+		return false;
+	}
+
+	for (unsigned vi=0; vi<in_order_visited_.size(); ++vi) {
+		Vertex va = in_order_visited_[vi], vb = b.in_order_visited_[vi];
+
+		klee::ObjectState* osa
+			= boost::get(boost::get(&VertexProperties::object, graph_), va);
+
+		klee::ObjectState* osb
+			= boost::get(boost::get(&VertexProperties::object, b.graph_), vb);
+
+		if (osa->size != osb->size)
+			return false;
+
+		// Check that the pointer masks are equal
+		for (unsigned i=0; i<osa->size; i++) {
+			if ((osa->isByteConcrete(i) != osb->isByteConcrete(i)) ||
+					(osa->isBytePointer(i) != osb->isBytePointer(i))) {
+				return false;
+			}
+		}
+
+		// ignore pointer values, but compare symbolics and concretes
+		bool candidate_sym_merge = false;
+		for (unsigned i=0; i<osa->size; i++) {
+			if (!osa->isBytePointer(i)) {
+				klee::ref<klee::Expr> a_expr = osa->read8(i);
+				klee::ref<klee::Expr> b_expr = osb->read8(i);
+				klee::ConstantExpr *CE_a = dyn_cast<klee::ConstantExpr>(a_expr);
+				klee::ConstantExpr *CE_b = dyn_cast<klee::ConstantExpr>(b_expr);
+
+				if (CE_a != NULL && CE_b != NULL) {
+					if (a_expr != b_expr) {
+						candidate_sym_merge = true;
+					}
+				} else {
+					klee::ref<klee::Expr> a_expr = osa->read8(i);
+					klee::ref<klee::Expr> b_expr;
+					if (CE_b) {
+						b_expr = osb->read8(i);
+					} else {
+						b_expr = get_canonical_expr(b, osb->read8(i));
+					}
+					if (a_expr != b_expr) {
+						return false;
+					}
+				}
+			}
+		}
+		if (candidate_sym_merge) {
+			objs.insert(osa);
+		}
+	}
+
+	if (!graphs_equal(b)) {
+		return false;
+	}
+
+	return true;
+}
+
 
 void AddressSpaceGraph::add_vertex(klee::ObjectState* object) {
 	Vertex v = boost::add_vertex(graph_);
@@ -307,13 +419,15 @@ void AddressSpaceGraph::process() {
 		}
 	}
 
-	// Create a list of unconnected objects. All unconnected objects should be global.
+	// Create a list of unconnected objects. 
 	foreach (ObjectVertexPair pair, object_vertex_map_) {
 		klee::ObjectState* object_state = pair.first;
 		Vertex v = pair.second;
 		if (visited.find(v) == visited.end()) {
-			if (!object_state->getObject()->isGlobal)
+			if (!object_state->getObject()->isGlobal) {
+				*cv_debug_stream << *object_state << "\n";
 				cv_error("non-global unconnected object");
+			}
 			for (unsigned i=0; i<object_state->size; ++i) {
 				if(!object_state->isByteConcrete(i)) {
 					cv_error("symbolic found in unconnected object");
