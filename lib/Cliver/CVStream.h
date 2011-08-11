@@ -28,6 +28,8 @@
 #include <vector>
 #include <iomanip>
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/raw_ostream.h"
+#include "llvm/Instructions.h"
 
 // TODO move to util header
 #define foreach BOOST_FOREACH 
@@ -89,6 +91,8 @@ void cv_message(const char *msg, ...)
 /// Print "CV: WARNING" followed by the msg in printf format to warning stream
 void cv_warning(const char *msg, ...)
   __attribute__ ((format (printf, 1, 2)));
+
+void util_inst_string( llvm::Instruction* inst, std::string &rstr);
 
 class teebuf: public std::streambuf {
  public:
