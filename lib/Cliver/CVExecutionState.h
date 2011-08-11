@@ -11,6 +11,7 @@
 
 #include "klee/ExecutionState.h"
 #include "ClientVerifier.h"
+#include "llvm/Instructions.h"
 
 #include <list>
 
@@ -93,6 +94,8 @@ class TrainingProperty : public ExecutionStateProperty {
 	TrainingState training_state;
 	int start_instruction_id;
 	int end_instruction_id;
+	llvm::Instruction* start_instruction;
+	llvm::Instruction* end_instruction;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -107,7 +110,8 @@ class CVExecutionState : public klee::ExecutionState {
 
 	int compare(const CVExecutionState& b) const;
 
-	void get_pc_string(std::string &result);
+	void get_pc_string(std::string &result, 
+			llvm::Instruction* inst=NULL);
 
   void initialize(CVExecutor* executor);
   int id() { return id_; }
@@ -115,7 +119,7 @@ class CVExecutionState : public klee::ExecutionState {
 
 	NetworkManager* network_manager() const { return network_manager_; }
 	PathManager*    path_manager() { return path_manager_; }
-	ExecutionStateProperty* property()			  { return property_; }
+	ExecutionStateProperty* property() { return property_; }
 
  private:
   int increment_id() { return next_id_++; }

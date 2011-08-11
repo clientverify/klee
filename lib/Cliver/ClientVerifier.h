@@ -133,21 +133,26 @@ class ClientVerifier : public klee::InterpreterHandler {
 	void handle_statistics();
 	void update_time_statistics();
 	void print_current_statistics();
+
+	// Arrays
+	unsigned next_array_id() { return array_id_++; }
  
  private:
-
-  CVSearcher *searcher_;
-  ConstraintPruner* pruner_;
-	StateMerger* merger_;
 
   CVStream *cvstream_;
 	int paths_explored_;
 	std::vector<klee::StatisticRecord*> statistics_;
 
+  CVSearcher *searcher_;
+  ConstraintPruner* pruner_;
+	StateMerger* merger_;
+
 	signal_ty pre_event_callbacks_;
 	signal_ty post_event_callbacks_;
 
 	std::vector<SocketEventList*> socket_events_;
+
+	unsigned array_id_;
 };
 
 

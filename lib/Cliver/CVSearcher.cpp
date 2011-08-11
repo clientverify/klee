@@ -171,26 +171,33 @@ klee::ExecutionState &TrainingSearcher::selectState() {
 
 	if (!phases_[TrainingProperty::PrepareExecute].empty()) {
 	  CVExecutionState* state = NULL;
-		std::set<CVExecutionState*> modified_states;
+		ExecutionStateSet modified_states;
 	  foreach (state, phases_[TrainingProperty::PrepareExecute]) {
 			TrainingProperty *p = static_cast<TrainingProperty*>(state->property());
 			p->training_state = TrainingProperty::Execute;
 
 			// Debug Output
-			cv_debug("State %d is Preparing Execution at instruction id %d",
-					state->id(), state->pc->info->id);
+			cv_debug("State %d is Preparing Execution for path (%d -> ...) in round %d",
+					state->id(), state->pc->info->id, p->training_round);
 			std::string pc_str;
 			state->get_pc_string(pc_str);
 			*cv_debug_stream << pc_str << "\n";
 
 			p->start_instruction_id = state->pc->info->id;
-			// Merge...
-			// Add to states
+			p->start_instruction = state->pc->inst;
+
 			modified_states.insert(state);
 		}
 
 		foreach (state, modified_states) {
 			phases_[TrainingProperty::PrepareExecute].erase(state);
+		}
+
+		ExecutionStateSet result;
+		merger_->merge(modified_states, result);
+		modified_states.swap(result);
+
+		foreach (state, modified_states) {
 			phases_[TrainingProperty::Execute].insert(state);
 		}
 
@@ -284,13 +291,18 @@ void TrainingSearcher::record_path(CVExecutionState *state,
 		CVExecutor* executor) {
 	TrainingProperty *p = static_cast<TrainingProperty*>(state->property());
 	p->end_instruction_id = state->pc->info->id;
+	p->end_instruction = state->pc->inst;
 
 	// Debug Output
-	cv_debug("State %d is Recording Path at instruction id %d",
-			state->id(), state->pc->info->id);
-	std::string pc_str;
-	state->get_pc_string(pc_str);
-	*cv_debug_stream << pc_str << "\n";
+	cv_debug("State %d is Recording Path (%d -> %d) in round %d",
+			state->id(), p->start_instruction_id, p->end_instruction_id,
+			p->training_round);
+	std::string start_str;
+	std::string end_str;
+	state->get_pc_string(start_str, p->start_instruction);
+	state->get_pc_string(end_str, p->end_instruction);
+	*cv_debug_stream << start_str << "\n";
+	*cv_debug_stream << end_str << "\n";
 
 	// Write to file (pathstart, pathend, path, message)...
 	

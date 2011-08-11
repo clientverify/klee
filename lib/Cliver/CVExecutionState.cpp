@@ -46,7 +46,9 @@ TrainingProperty::TrainingProperty()
 	: training_round(0),
 	  training_state(TrainingProperty::PrepareExecute),
 		start_instruction_id(0),
-		end_instruction_id(0) {}
+		end_instruction_id(0),
+		start_instruction(NULL),
+		end_instruction(NULL) {}
 
 int TrainingProperty::compare(const ExecutionStateProperty &b) const {
 	const TrainingProperty *_b = static_cast<const TrainingProperty*>(&b);
@@ -96,9 +98,13 @@ int CVExecutionState::compare(const CVExecutionState& b) const {
 	return property_->compare(*b.property_);
 }
 
-void CVExecutionState::get_pc_string(std::string &rstr) {
+void CVExecutionState::get_pc_string(std::string &rstr,
+		llvm::Instruction* inst) {
 	llvm::raw_string_ostream ros(rstr);
-	ros << *(pc->inst);
+	if (inst)
+		ros << *(inst);
+	else
+		ros << *(pc->inst);
 	rstr.erase(std::remove(rstr.begin(), rstr.end(), '\n'), rstr.end());
 	ros.flush();
 }
