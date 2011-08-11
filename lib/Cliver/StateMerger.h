@@ -22,16 +22,25 @@ class StateMerger {
 	virtual void merge( ExecutionStateSet &state_set, 
 			ExecutionStateSet &merged_set);
 
-	bool compare_constraints(
+ protected:
+	bool callstacks_equal(CVExecutionState *state_a, CVExecutionState *state_b);
+
+	bool constraints_equal(
 		const AddressSpaceGraph &asg_a, const AddressSpaceGraph &asg_b,
 		klee::ConstraintManager &a, klee::ConstraintManager &b);
 
-
-	bool compare_constraints(klee::ConstraintManager &a, 
-			klee::ConstraintManager &b);
- private:
 	ConstraintPruner *pruner_;
+};
 
+////////////////////////////////////////////////////////////////////////////////
+
+class SymbolicStateMerger : public StateMerger {
+ public:
+	SymbolicStateMerger( ConstraintPruner *pruner );
+	virtual void merge( ExecutionStateSet &state_set, 
+			ExecutionStateSet &merged_set);
+
+ private:
 };
 
 } // end namespace cliver
