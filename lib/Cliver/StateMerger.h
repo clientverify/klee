@@ -45,6 +45,7 @@ class SymbolicStateMerger : public StateMerger {
 			ExecutionStateSet &merged_set);
 
  private:
+	std::map<CVExecutionState*, MergeInfo> previous_states_;
 };
 
 } // end namespace cliver
