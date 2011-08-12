@@ -23,6 +23,10 @@ namespace cliver {
 llvm::cl::opt<bool>
 DebugAddressSpaceGraph("debug-address-space-graph",llvm::cl::init(false));
 
+llvm::cl::opt<bool>
+AllowGlobalSymbolics("allow-global-symbolics",llvm::cl::init(true));
+
+
 #ifndef NDEBUG
 
 #undef CVDEBUG
@@ -434,9 +438,13 @@ void AddressSpaceGraph::process() {
 				*cv_debug_stream << *object_state << "\n";
 				cv_error("non-global unconnected object");
 			}
-			for (unsigned i=0; i<object_state->size; ++i) {
-				if(!object_state->isByteConcrete(i)) {
-					cv_error("symbolic found in unconnected object");
+			if (!AllowGlobalSymbolics) {
+				for (unsigned i=0; i<object_state->size; ++i) {
+					if(!object_state->isByteConcrete(i)) {
+						object_state->print(*cv_debug_stream, true);
+						*cv_debug_stream << "\n";
+						cv_error("symbolic found in unconnected object");
+					}
 				}
 			}
 			unconnected_.insert(pair);
