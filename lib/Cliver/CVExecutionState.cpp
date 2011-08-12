@@ -44,33 +44,25 @@ void LogIndexProperty::print(std::ostream &os) const {
 
 TrainingProperty::TrainingProperty() 
 	: training_round(0),
-	  training_state(TrainingProperty::PrepareExecute),
-		start_instruction_id(0),
-		end_instruction_id(0),
-		start_instruction(NULL),
-		end_instruction(NULL) {}
+	  training_state(TrainingProperty::PrepareExecute) {}
 
 int TrainingProperty::compare(const ExecutionStateProperty &b) const {
 	const TrainingProperty *_b = static_cast<const TrainingProperty*>(&b);
 
-	if (0 != training_round - _b->training_round)
+	if (training_round != _b->training_round)
 		return training_round - _b->training_round;
 
-	if (0 != training_state - _b->training_state)
+	if (training_state != _b->training_state)
 		return training_state - _b->training_state;
 
-	if (0 != start_instruction_id - _b->start_instruction_id)
-		return start_instruction_id - _b->start_instruction_id;
-
-	if (0 != end_instruction_id - _b->end_instruction_id)
-		return end_instruction_id - _b->end_instruction_id;
+	return path_range.compare(_b->path_range);
 }
 
 void TrainingProperty::print(std::ostream &os) const {
-	os << "training [round= " << training_round
-	   << ", state= " << training_state
-	   << ", start_inst_id = " << start_instruction_id
-	   << ", end_inst_id = " << end_instruction_id;
+	os << "(round: " << training_round
+	   << ", range: " << path_range
+	   << ", trainingstate: " << training_state
+		 << ")";
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -137,6 +129,11 @@ CVExecutionState* CVExecutionState::branch() {
   weight *= .5;
   false_state->weight -= weight;
   return false_state;
+}
+
+void CVExecutionState::reset_path_manager() {
+	if (path_manager_) delete path_manager_;
+	path_manager_ = PathManagerFactory::create();
 }
 
 bool CVExecutionStateLT::operator()(const CVExecutionState* a, 
