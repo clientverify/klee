@@ -21,6 +21,10 @@ DebugStateMerger("debug-state-merger",llvm::cl::init(false));
 llvm::cl::opt<bool>
 TrainingClearConstraints("training-clear-constraints",llvm::cl::init(true));
 
+llvm::cl::opt<bool>
+TrainingPreviousStateMerge("training-previous-state-merge",llvm::cl::init(false));
+
+
 #ifndef NDEBUG
 
 #undef CVDEBUG
@@ -250,18 +254,40 @@ void SymbolicStateMerger::merge(ExecutionStateSet &state_set,
 				continue;
 			}
 
-			// Compare address space structure
-			if (!asg_a->symbolic_equal(*asg_b, symbolic_objs)) {
-				new_worklist.push_back(*it);
-				continue;
-			}
-
+			// Compare constraints
 			if (!TrainingClearConstraints) {
 				if (!constraints_equal(*asg_a, *asg_b, 
 							state->constraints, (*it)->constraints)) {
 					new_worklist.push_back(*it);
 					continue;
 				}
+			}
+
+			// Compare address space structure
+			if (!asg_a->symbolic_equal(*asg_b, symbolic_objs)) {
+				new_worklist.push_back(*it);
+				continue;
+			}
+		}
+
+		for (std::map<CVExecutionState*, MergeInfo>::iterator 
+				it = previous_states_.begin(), ie = previous_states_.end(); it!=ie; ++it) {
+			CVExecutionState *prev_state = it->first;
+			AddressSpaceGraph *asg_b = (it->second).graph;
+
+			// Compare callstacks
+			if (!callstacks_equal(state, prev_state)) {
+				continue;
+			}
+
+			unsigned sym_obj_count = symbolic_objs.size();
+			// Compare address space structure
+			if (!merge_info[state].graph->symbolic_equal(*asg_b, symbolic_objs)) {
+				continue;
+			}
+
+			if (symbolic_objs.size() != sym_obj_count) {
+				CVDEBUG("Making new symbolic object from previous state");
 			}
 		}
 
@@ -294,6 +320,17 @@ void SymbolicStateMerger::merge(ExecutionStateSet &state_set,
 	CVDEBUG("Found " << state_set.size() - merged_set.size() 
 			<< " duplicates out of " << state_set.size() 
 			<< ", now " << merged_set.size() << " states remain.");
+
+	if (TrainingPreviousStateMerge) {
+		foreach (CVExecutionState* state, merged_set) {
+			CVExecutionState* cloned_state = state->clone();
+			AddressSpaceGraph *graph = new AddressSpaceGraph(cloned_state);
+			graph->build();
+			cloned_state->constraints.clear();
+			previous_states_[cloned_state] = MergeInfo();
+			previous_states_[cloned_state].graph = graph;
+		}
+	}
 
 	// Delete AddressSpaceGraph objects
 	std::map<CVExecutionState*, MergeInfo>::iterator it=merge_info.begin(),
