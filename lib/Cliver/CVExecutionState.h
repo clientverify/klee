@@ -12,6 +12,7 @@
 #include "klee/ExecutionState.h"
 #include "ClientVerifier.h"
 #include "llvm/Instructions.h"
+#include "PathManager.h"
 
 #include <list>
 
@@ -92,10 +93,7 @@ class TrainingProperty : public ExecutionStateProperty {
 	// Property values
 	int training_round;
 	TrainingState training_state;
-	int start_instruction_id;
-	int end_instruction_id;
-	llvm::Instruction* start_instruction;
-	llvm::Instruction* end_instruction;
+	PathRange path_range;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -120,6 +118,7 @@ class CVExecutionState : public klee::ExecutionState {
 	NetworkManager* network_manager() const { return network_manager_; }
 	PathManager*    path_manager() { return path_manager_; }
 	ExecutionStateProperty* property() { return property_; }
+	void reset_path_manager();
 
  private:
   int increment_id() { return next_id_++; }
