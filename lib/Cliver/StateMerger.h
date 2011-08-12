@@ -14,6 +14,10 @@
 
 namespace cliver {
 
+struct MergeInfo {
+	AddressSpaceGraph *graph;
+};
+
 class ConstraintPruner;
 
 class StateMerger {

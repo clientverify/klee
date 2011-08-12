@@ -48,10 +48,6 @@ TrainingClearConstraints("training-clear-constraints",llvm::cl::init(true));
 
 #endif
 
-struct MergeInfo {
-	AddressSpaceGraph *graph;
-};
-
 StateMerger::StateMerger(ConstraintPruner *pruner) : pruner_(pruner) {}
 
 // Pre-merging Steps
