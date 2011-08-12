@@ -33,8 +33,66 @@ Path::~Path() {
 	}
 }
 
+unsigned Path::size() const { 
+	unsigned branch_count = branches_.size();
+
+	Path* p = parent_;
+	while (p != NULL) {
+		branch_count += p->branches_.size();
+		p = p->parent_;
+	}
+	return branch_count;
+}
+
 bool Path::less(const Path &b) const {
-	return branches_ < b.branches_;
+	std::vector<bool> branches;
+	std::vector<bool> b_branches;
+
+	branches.reserve(size());
+	b_branches.reserve(b.size());
+
+	const Path* p = this;
+	while (p != NULL) {
+		branches.insert(branches.begin(), 
+				p->branches_.begin(), p->branches_.end());
+		p = p->parent_;
+	}
+
+	p = &b;
+	while (p != NULL) {
+		b_branches.insert(b_branches.begin(), 
+				p->branches_.begin(), p->branches_.end());
+		p = p->parent_;
+	}
+
+	return branches < b_branches;
+}
+
+bool Path::equal(const Path &b) const {
+	//if (size() != b.size()) 
+	//	return false;
+
+	std::vector<bool> branches;
+	std::vector<bool> b_branches;
+
+	branches.reserve(size());
+	b_branches.reserve(b.size());
+
+	const Path* p = this;
+	while (p != NULL) {
+		branches.insert(branches.begin(), 
+				p->branches_.begin(), p->branches_.end());
+		p = p->parent_;
+	}
+
+	p = &b;
+	while (p != NULL) {
+		b_branches.insert(b_branches.begin(), 
+				p->branches_.begin(), p->branches_.end());
+		p = p->parent_;
+	}
+
+	return branches == b_branches;
 }
 
 Path::path_iterator Path::begin() const {
@@ -85,18 +143,98 @@ void Path::serialize(archive & ar, const unsigned version) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-PathManager::PathManager() : path_(new Path()) {}
+PathRange::PathRange(klee::KInstruction* s, klee::KInstruction* e) 
+	: start_(s), end_(e) {}
+
+PathRange::PathRange()
+	: start_(NULL), end_(NULL) {}
+
+bool PathRange::less(const PathRange &b) const {
+	return ids() < b.ids();
+}
+
+bool PathRange::equal(const PathRange &b) const {
+	return ids() == b.ids();
+}
+
+int PathRange::compare(const PathRange &b) const {
+	if (ids() < b.ids())
+		return -1;
+	if (ids() > b.ids())
+		return 1;
+	return 0;
+}
+
+PathRange::inst_id_pair_ty PathRange::ids() const {
+	return std::make_pair(start_ ? start_->info->id : 0, 
+			end_ ? end_->info->id : 0);
+}
+
+PathRange::inst_pair_ty PathRange::insts() const {
+	return std::make_pair(start_ ? start_->inst : NULL, 
+			end_ ? end_->inst : NULL);
+}
+
+PathRange::kinst_pair_ty PathRange::kinsts() const {
+	return std::make_pair(start_, end_);
+}
+
+void PathRange::print(std::ostream &os) const {
+	inst_id_pair_ty id_pair = ids();
+
+	os << "(";
+	if (id_pair.first)
+		os << id_pair.first;
+	else
+		os << "...";
+
+	os << " -> ";
+
+	if (id_pair.second)
+		os << id_pair.second;
+	else
+		os << "...";
+	os << ")";
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+PathManager::PathManager() 
+	: path_(new Path()) {}
 
 PathManager::PathManager(const PathManager &pm)
-	: path_(new Path()) {
-	path_->set_parent(pm.path_);
+	: path_(new Path()),
+	  range_(pm.range_),
+		messages_(pm.messages_) {
+	path_->branches_ = pm.path_->branches_;
+	//path_->set_parent(pm.path_);
 }
 
 PathManager* PathManager::clone() {
-	return new PathManager(*this);
+	PathManager *pm = new PathManager(*this);
+	assert(pm->path_->size() == path_->size());
+	return pm;
+}
+
+bool PathManager::merge(const PathManager &pm) {
+	assert(range_.equal(pm.range_) && "path range not equal");
+	assert(path_->equal(*pm.path_) && "paths not equal" );
+
+	bool success = false;
+	foreach(const SocketEvent* se, pm.messages_) {
+		if (messages_.find(se) == messages_.end()) {
+			success = true;
+			messages_.insert(se);
+		}
+	}
+	return success;
 }
 
 bool PathManager::less(const PathManager &b) const {
+	//if (range_.compare(b.range_) >= 0)
+	//	return false;
+	if (range_.less(b.range_))
+		return true;
 	return path_->less(*b.path_);
 }
 
@@ -117,6 +255,28 @@ const Path& PathManager::get_consolidated_path() {
 		path_->consolidate();
 	}
 	return *path_;
+}
+
+void PathManager::print(std::ostream &os) const {
+
+	std::vector<bool> branches;
+
+	branches.reserve(path_->size());
+
+	const Path* p = path_;
+	while (p != NULL) {
+		branches.insert(branches.begin(), 
+				p->branches_.begin(), p->branches_.end());
+		p = p->parent_;
+	}
+	os << "Path [" << branches.size() << "][" << messages_.size() << "] [";
+	os << range_.ids().first << ", " << range_.ids().second << "] ";
+	foreach (bool branch, branches) {
+		if (branch)
+			os << '1';
+		else
+			os << '0';
+	}
 }
 
 void PathManager::print_diff(const PathManager &b, std::ostream &os) const {
@@ -151,6 +311,23 @@ void PathManager::print_diff(const PathManager &b, std::ostream &os) const {
 		}
 		os << "Paths:\n" << ss_a << "\n" << ss_b;
 	}
+}
+
+bool PathManager::add_message(const SocketEvent* se) {
+	if (messages_.find(se) == messages_.end()) {
+		messages_.insert(se);
+		return true;
+	}
+	return false;
+}
+
+void PathManager::set_range(const PathRange& range) {
+	range_ = range;
+}
+
+bool PathManagerLT::operator()(const PathManager* a, 
+		const PathManager* b) const {
+	return a->less(*b);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
