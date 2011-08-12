@@ -96,6 +96,14 @@ void util_inst_string( llvm::Instruction* inst, std::string &rstr) {
 	ros.flush();
 }
 
+// XXX move this to another file
+void util_kinst_string( klee::KInstruction* kinst, std::string &rstr) {
+	llvm::raw_string_ostream ros(rstr);
+	if (kinst)
+		ros << kinst->info->id << ": " << *(kinst->inst);
+	rstr.erase(std::remove(rstr.begin(), rstr.end(), '\n'), rstr.end());
+	ros.flush();
+}
 
 CVStream::CVStream()
   : output_directory_(OutputDir),

@@ -30,6 +30,8 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Instructions.h"
+#include "klee/Internal/Module/KInstruction.h"
+#include "klee/Internal/Module/InstructionInfoTable.h"
 
 // TODO move to util header
 #define foreach BOOST_FOREACH 
@@ -50,29 +52,38 @@ extern std::ostream* cv_debug_stream;
 #define CONCAT_TOKEN_(foo, bar) CONCAT_TOKEN_IMPL_(foo, bar)
 #define CONCAT_TOKEN_IMPL_(foo, bar) foo ## bar
 
-#define CVMESSAGE(x) \
-	*cv_message_stream <<"CV: "<< x << "\n";
+#define CVMESSAGE(__x) \
+	*cv_message_stream <<"CV: "<< __x << "\n";
 
-#define CVDEBUG(x) \
-	*cv_debug_stream <<"CV: DEBUG ("<< __FILE__ <<":"<< __LINE__  <<") " << x << "\n";
+#define __CVDEBUG_FILEPOS \
+	"CV: DEBUG (" __FILE__ ":"  << __LINE__  << ") "
 
-#define CVDEBUG_S(__state_id, __x) \
-	*cv_debug_stream <<"CV: DEBUG ("<< __FILE__ <<":"<< __LINE__  <<") State: " \
-   << std::setw(4) << std::right << __state_id << " - " << __x << "\n";
+#define __CVDEBUG_FILE \
+  "CV: DEBUG " << std::setw(25) << std::left << "(" __FILE__ ") "
 
-#define __CVDEBUG(__debug_enabled, x) \
+#define __CVDEBUG(__debug_enabled, __x) \
 	if (__debug_enabled) { \
-	*cv_debug_stream <<"CV: DEBUG ("<< __FILE__ <<":"<< __LINE__  <<") " << x << "\n"; }
+	*cv_debug_stream << __CVDEBUG_FILE << __x << "\n"; }
 
 #define __CVDEBUG_S(__debug_enabled, __state_id, __x) \
 	if (__debug_enabled) { \
-	*cv_debug_stream <<"CV: DEBUG ("<< __FILE__ <<":"<< __LINE__  <<") State: " \
+	*cv_debug_stream << __CVDEBUG_FILE << "State: " \
    << std::setw(4) << std::right << __state_id << " - " << __x << "\n"; } 
 
 #define __CVDEBUG_S2(__debug_enabled, __state_id_1, __state_id_2, __x) \
 	if (__debug_enabled) { \
-	*cv_debug_stream <<"CV: DEBUG ("<< __FILE__ <<":"<< __LINE__  <<") States: (" \
+	*cv_debug_stream << __CVDEBUG_FILE << "States: (" \
    <<  __state_id_1 << ", " << __state_id_2 << ") " <<__x << "\n"; }
+
+#define CVDEBUG(__x) \
+	__CVDEBUG(true, __x)
+
+#define CVDEBUG_S(__state_id, __x) \
+	__CVDEBUG_S(true, __state_id, __x)
+
+#define CVDEBUG_S2(__state_id_1, __state_id_2, __x) \
+	__CVDEBUG_S2(true, __state_id_1, __state_id_2, __x)
+
 
 /// CV versions of the KLEE error and warning functions
 /// Print "CV: ERROR" followed by the msg in printf format to debug stream
@@ -93,6 +104,7 @@ void cv_warning(const char *msg, ...)
   __attribute__ ((format (printf, 1, 2)));
 
 void util_inst_string( llvm::Instruction* inst, std::string &rstr);
+void util_kinst_string( klee::KInstruction* kinst, std::string &rstr);
 
 class teebuf: public std::streambuf {
  public:
