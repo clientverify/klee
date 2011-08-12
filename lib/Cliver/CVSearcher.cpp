@@ -175,8 +175,29 @@ klee::ExecutionState &TrainingSearcher::selectState() {
 				CVDEBUG(*path);
 		}
 
+		ExecutionStateSet to_merge, network_read_states;
+
+		// Don't merge states after a network read event
+		foreach (CVExecutionState* state, phases_[TrainingProperty::PrepareExecute]) {
+			if (!state->network_manager()->sockets().empty() &&
+				  state->network_manager()->sockets().back().type() 
+						== SocketEvent::RECV) {
+					network_read_states.insert(state);
+			} else {
+				to_merge.insert(state);
+			}
+		}
+
 		ExecutionStateSet result;
-		merger_->merge(phases_[TrainingProperty::PrepareExecute], result);
+		if (!to_merge.empty())
+			merger_->merge(to_merge, result);
+		
+		foreach (CVExecutionState* state, network_read_states) {
+			result.insert(state);
+		}
+
+		if (DebugSearcher) 
+			CVDEBUG("Total states: " << result.size());
 
 		phases_[TrainingProperty::PrepareExecute].clear();
 
@@ -311,11 +332,11 @@ void TrainingSearcher::record_path(CVExecutionState *state,
 
 		if ((*path_it)->merge(*state->path_manager())) {
 			if (DebugSearcher)
-				CVDEBUG_S(state->id(), "Adding new message, mcount is "
+				CVDEBUG_S(state->id(), "Adding new message, mcount is now "
 						<< (*path_it)->messages().size());
 		} else {
 			if (DebugSearcher)
-				CVDEBUG_S(state->id(), "Path contains message, mcount is"
+				CVDEBUG_S(state->id(), "Path contains message, mcount is "
 						<< (*path_it)->messages().size());
 		}
 	}
