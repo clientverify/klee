@@ -644,6 +644,27 @@ klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current,
 	}
 }
 
+void CVExecutor::terminateState(klee::ExecutionState &state) {
+
+  cv_->incPathsExplored();
+
+  std::set<klee::ExecutionState*>::iterator it
+		= addedStates.find(&state);
+
+  if (it==addedStates.end()) {
+    state.pc = state.prevPC;
+
+    removedStates.insert(&state);
+
+  } else {
+
+    addedStates.erase(it);
+    //processTree->remove(state.ptreeNode);
+    delete &state;
+
+  }
+}
+
 void CVExecutor::add_external_handler(std::string name, 
 		klee::SpecialFunctionHandler::ExternalHandler external_handler,
 		bool has_return_value) {
