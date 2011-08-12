@@ -25,6 +25,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include <iostream>
+#include <iomanip>
 #include <cassert>
 #include <sstream>
 
@@ -584,6 +585,87 @@ void ObjectState::write64(unsigned offset, uint64_t value) {
 }
 
 void ObjectState::print(std::ostream &os, bool print_bytes) const {
+  os << std::setw(6) << size << "B ";
+	os << object->id << " ";
+	os << object->name << " ";
+
+	if (object->isLocal)
+		os << "local ";
+	if (object->isGlobal)
+		os << "global ";
+	if (object->isFixed)
+		os << "fixed ";
+	if (object->fake_object)
+		os << "Fake ";
+	if (object->isUserSpecified)
+		os << "user-specified ";
+
+
+  if (updates.root)
+		os << updates.root << ":" <<  updates.root->name << " ";
+  else
+    os << "(no name) ";
+
+  if (object->allocSite) {
+		std::string str;
+		llvm::raw_string_ostream info(str);
+		if (const Instruction *i = dyn_cast<Instruction>(object->allocSite)) {
+			info << i->getParent()->getParent()->getNameStr() << ": ";
+			info << *i;
+		} else if (const GlobalValue *gv = dyn_cast<GlobalValue>(object->allocSite)) {
+			info << "global:" << gv->getNameStr();
+		} else {
+			info << "value:" << *object->allocSite;
+		}
+		info.flush();
+		os << str;
+	} else {
+		os << "(no alloc info) ";
+	}
+
+	/*
+	if (print_bytes) {
+		ref<Expr> prev_e = ConstantExpr::alloc(1, Expr::Bool);
+		int start = -1;
+		for (unsigned i=0; i<size; i++) {
+			bool concrete = isByteConcrete(i);
+			bool knownSym = isByteKnownSymbolic(i);
+			bool flushed = isByteFlushed(i);
+			bool pointer = isBytePointer(i);
+
+			ref<Expr> e = read8(i);
+			if (prev_e == e) {
+				if (start == -1) {
+					start = i;
+				}
+			} 
+			if (prev_e != e || i==size-1) {
+			  if (start != -1) {
+			    os << "\t\t[" << start << "]-[" <<i-1<<"]"
+			       << " = " << prev_e << "\n";
+			    start = -1;
+			  }
+				os << "\t\t["<<i<<"]"
+									<< " pointer? " << pointer 
+									<< " concrete? " << concrete
+									<< " known-sym? " << knownSym 
+									<< " flushed? " << flushed << " = ";
+				os << e << "\n";
+			}
+			prev_e = e;
+		}
+	}
+	*/
+
+  if (updates.head) {
+		os << "updates: ";
+		for (const UpdateNode *un=updates.head; un; un=un->next) {
+			os << "[" << un->index << "] = " << un->value << ", ";
+		}
+	}
+}
+/*
+void ObjectState::print(std::ostream &os, bool print_bytes) const {
   os << "-- ObjectState --\n";
   os << "\tMemoryObject: " << object << "\n";
   os << "\tMemoryObject ID: " << object->id << "\n";
@@ -666,6 +748,7 @@ void ObjectState::print(std::ostream &os, bool print_bytes) const {
     os << "\t\t[" << un->index << "] = " << un->value << "\n";
   }
 }
+*/
 
 void ObjectState::print_diff(ObjectState &b, std::ostream &os) const {
   std::vector<ObjectState*> ovec;
