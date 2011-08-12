@@ -73,6 +73,7 @@ class CVExecutor : public klee::Executor {
 			klee::ref<klee::Expr> condition);
 
 	void register_event(const CliverEventInfo& event_info);
+	CliverEventInfo* lookup_event(llvm::Instruction *inst);
 
 	void add_state(CVExecutionState* state);
 	void remove_state(CVExecutionState* state);
