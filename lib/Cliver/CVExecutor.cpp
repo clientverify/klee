@@ -336,21 +336,14 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
 
   while (!states.empty() && !haltExecution) {
 		klee::ExecutionState &state = searcher->selectState();
+		klee::KInstruction *ki = state.pc;
 
 		// Handle pre execution events
-		if (!function_call_events_.empty()) {
-			llvm::Instruction *i = state.pc->inst;
-			if (i->getOpcode() == llvm::Instruction::Call) {
-				llvm::CallSite cs(cast<llvm::CallInst>(i));
-				if (function_call_events_.find(cs.getCalledFunction()) 
-						!= function_call_events_.end()) {
-					CliverEventInfo &ei = function_call_events_[cs.getCalledFunction()];
-					cv_->pre_event(static_cast<CVExecutionState*>(&state), this, ei.type);
-				}
-			}
+		if (CliverEventInfo* ei = lookup_event(ki->inst)) {
+			//cv_message("Function call pre event for %s",ei->function_name);
+			cv_->pre_event(static_cast<CVExecutionState*>(&state), this, ei->type);
 		}
 
-		klee::KInstruction *ki = state.pc;
     stepInstruction(state);
 
     executeInstruction(state, ki);
@@ -394,19 +387,12 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
     }
 
 		// Handle post execution events
-		if (!function_call_events_.empty()) {
+		if (removedStates.find(&state) == removedStates.end()) {
 			// Don't create event if state was terminated
-			if (removedStates.find(&state) == removedStates.end()) {
-				llvm::Instruction *i = state.pc->inst;
-				if (i->getOpcode() == llvm::Instruction::Call) {
-					llvm::CallSite cs(cast<llvm::CallInst>(i));
-					if (function_call_events_.find(cs.getCalledFunction())
-							!= function_call_events_.end()) {
-						CliverEventInfo &ei = function_call_events_[cs.getCalledFunction()];
-						//cv_message("Function call event for %s",ei.function_name);
-						cv_->post_event(static_cast<CVExecutionState*>(&state), this, ei.type);
-					}
-				}
+			assert(ki == state.prevPC && "instruction mismatch");
+			if (CliverEventInfo* ei = lookup_event(ki->inst)) {
+				//cv_message("Function call post event for %s",ei->function_name);
+				cv_->post_event(static_cast<CVExecutionState*>(&state), this, ei->type);
 			}
 		}
 
@@ -648,7 +634,7 @@ void CVExecutor::terminateState(klee::ExecutionState &state) {
 
   cv_->incPathsExplored();
 
-  std::set<klee::ExecutionState*>::iterator it
+  std::set<klee::ExecutionState*>::iterator it 
 		= addedStates.find(&state);
 
   if (it==addedStates.end()) {
@@ -716,8 +702,8 @@ void CVExecutor::register_event(const CliverEventInfo& event_info) {
 		llvm::Function* f = kmodule->module->getFunction(event_info.function_name);
 		if (f) {
 			function_call_events_[f] = event_info;
-			cv_message("Registering function call event for %s",
-					event_info.function_name);
+			cv_message("Registering function call event for %s (%x)",
+					event_info.function_name, f);
 		} else {
 			cv_warning("Not registering function call event for %s",
 					event_info.function_name);
@@ -725,6 +711,27 @@ void CVExecutor::register_event(const CliverEventInfo& event_info) {
 	} else {
 		instruction_events_[event_info.opcode] = event_info;
 	}
+}
+
+CliverEventInfo* CVExecutor::lookup_event(llvm::Instruction *i) {
+	if (!function_call_events_.empty()) {
+		if (i->getOpcode() == llvm::Instruction::Call) {
+			llvm::CallSite cs(llvm::cast<llvm::CallInst>(i));
+			llvm::Function *f = cs.getCalledFunction();
+			if (!f) {
+				// special case the call with a bitcast case
+				llvm::Value *fp = cs.getCalledValue();
+				llvm::ConstantExpr *ce = llvm::dyn_cast<llvm::ConstantExpr>(fp);
+				if (ce && ce->getOpcode()==llvm::Instruction::BitCast) {
+					f = dyn_cast<llvm::Function>(ce->getOperand(0));
+				}
+			}
+			if (function_call_events_.find(f) != function_call_events_.end()) {
+				return &function_call_events_[f];
+			}
+		}
+	}
+	return NULL;
 }
 
 void CVExecutor::add_state(CVExecutionState* state) {
