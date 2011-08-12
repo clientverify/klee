@@ -623,6 +623,26 @@ void ObjectState::print(std::ostream &os, bool print_bytes) const {
 		os << "(no alloc info) ";
 	}
 
+	if (print_bytes) {
+		os << " ";
+		ref<Expr> prev_e = read8(0);
+		int repeat = 0;
+		for (unsigned i=1; i<=size; i++) {
+			if (i == size || prev_e != read8(i)) {
+				if (repeat > 0) {
+					os << "[" << i-repeat-1 << "-" << i-1 << ":" << prev_e << "]";
+				} else {
+					os << "[" << prev_e << "]";
+				}
+				repeat = 0;
+				if (i < size)
+					prev_e = read8(i);
+			} else {
+				repeat++;
+			}
+		}
+	}
+
 	/*
 	if (print_bytes) {
 		ref<Expr> prev_e = ConstantExpr::alloc(1, Expr::Bool);
