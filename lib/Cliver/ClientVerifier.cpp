@@ -79,14 +79,14 @@ ExternalHandlerInfo external_handler_info[] = {
 	{"cliver_socket_write", ExternalHandler_socket_write, true},
 	{"cliver_socket_read", ExternalHandler_socket_read, true},
 	{"cliver_socket_create", ExternalHandler_socket_create, true},
-	{"cliver_training_start", ExternalHandler_nop, false},
+	//{"cliver_training_start", ExternalHandler_nop, false},
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 CliverEventInfo cliver_event_info[] = {
 	//{CliverEvent::Network, llvm::Instruction::Call, "cliver_socket_create"},
-	{CliverEvent::Network, llvm::Instruction::Call, "cliver_socket_shutdown"},
+	//{CliverEvent::Network, llvm::Instruction::Call, "cliver_socket_shutdown"},
 	{CliverEvent::Network, llvm::Instruction::Call, "cliver_socket_write"},
 	{CliverEvent::Network, llvm::Instruction::Call, "cliver_socket_read"},
 	{CliverEvent::Training, llvm::Instruction::Call, "cliver_training_start"},
