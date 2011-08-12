@@ -11,6 +11,7 @@
 
 #include "../Core/Searcher.h"
 #include "CVExecutionState.h"
+#include "PathManager.h"
 
 namespace cliver {
 class StateMerger;
@@ -85,6 +86,7 @@ class TrainingSearcher : public CVSearcher {
 
  private:
 	ExecutionStateSet phases_[TrainingProperty::EndState];
+	PathSet paths_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
