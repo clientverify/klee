@@ -334,7 +334,7 @@ protected:
   std::string getAddressInfo(ExecutionState &state, ref<Expr> address) const;
 
   // remove state from queue and delete
-  void terminateState(ExecutionState &state);
+  virtual void terminateState(ExecutionState &state);
   // call exit handler and terminate state
   void terminateStateEarly(ExecutionState &state, const llvm::Twine &message);
   // call exit handler and terminate state

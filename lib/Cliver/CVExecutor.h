@@ -50,6 +50,8 @@ class CVExecutor : public klee::Executor {
   virtual StatePair fork(klee::ExecutionState &current, 
 			klee::ref<klee::Expr> condition, bool isInternal);
 
+  virtual void terminateState(klee::ExecutionState &state);
+
 	ClientVerifier* client_verifier() { return cv_; }
 
 	void add_external_handler(std::string name, 
