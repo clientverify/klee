@@ -87,9 +87,9 @@ ExternalHandlerInfo external_handler_info[] = {
 CliverEventInfo cliver_event_info[] = {
 	//{CliverEvent::Network, llvm::Instruction::Call, "cliver_socket_create"},
 	//{CliverEvent::Network, llvm::Instruction::Call, "cliver_socket_shutdown"},
-	{CliverEvent::Network, llvm::Instruction::Call, "cliver_socket_write"},
-	{CliverEvent::Network, llvm::Instruction::Call, "cliver_socket_read"},
-	{CliverEvent::Training, llvm::Instruction::Call, "cliver_training_start"},
+	{CliverEvent::NetworkSend, llvm::Instruction::Call, "cliver_socket_write"},
+	{CliverEvent::NetworkRecv, llvm::Instruction::Call, "cliver_socket_read"},
+	//{CliverEvent::Training, llvm::Instruction::Call, "cliver_training_start"},
 };
 
 ////////////////////////////////////////////////////////////////////////////////
