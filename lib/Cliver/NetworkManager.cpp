@@ -201,6 +201,22 @@ int NetworkManager::socket_log_index(int fd) {
 	return -1;
 }
 
+Socket* NetworkManager::socket(int fd) {
+	if (!sockets_.empty()) {
+		if (fd == -1) {
+			return &sockets_.back();
+		} else {
+			for (unsigned i=0; i<sockets_.size(); i++) {
+				if (sockets_[i].fd() == fd) {
+					return &sockets_[i];
+				}
+			}
+		}
+	}
+	return NULL;
+}
+
+
 void NetworkManager::execute_open_socket(CVExecutor* executor,
 		klee::KInstruction *target, int domain, int type, int protocol) {
 
@@ -328,7 +344,6 @@ void NetworkManager::execute_shutdown(CVExecutor* executor,
 
 	RETURN_SUCCESS("shutdown", 0);
 }
-
 ////////////////////////////////////////////////////////////////////////////////
 
 NetworkManagerTetrinet::NetworkManagerTetrinet(CVExecutionState* state) 

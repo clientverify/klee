@@ -71,6 +71,7 @@ class NetworkManager {
 	CVExecutionState* state() { return state_; }
 	unsigned round() { return round_; }
 	std::vector<Socket>& sockets() { return sockets_; }
+	Socket* socket(int fd=-1);
 
  protected:
 	unsigned round_;
