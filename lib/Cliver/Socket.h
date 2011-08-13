@@ -60,10 +60,11 @@ class Socket {
 
   void print(std::ostream &os);
 
+	const SocketEvent& event();
+
 	static int NextFileDescriptor;
  protected:
 	Socket() {}
-	const SocketEvent& event();
 
 	int file_descriptor_;
 	bool open_;
