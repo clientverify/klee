@@ -82,6 +82,8 @@
 #include <sys/mman.h>
 
 #include <errno.h>
+#include <stdio.h>
+#include <inttypes.h>
 #include <cxxabi.h>
 
 namespace klee {
@@ -354,9 +356,14 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
         // We need to avoid calling GetMallocUsage() often because it
         // is O(elts on freelist). This is really bad since we start
         // to pummel the freelist once we hit the memory cap.
-        unsigned mbs = llvm::sys::Process::GetTotalMemoryUsage() >> 20;
+        //unsigned mbs = llvm::sys::Process::GetTotalMemoryUsage() >> 20;
+        unsigned mbs = check_memory_usage();
         
         if (mbs > klee::MaxMemory) {
+					cv_message("Using %d MB of memory (limit is %d MB). Exiting.", 
+							mbs, (unsigned)klee::MaxMemory);
+					goto dump;
+					
           if (mbs > klee::MaxMemory + 100) {
             // just guess at how many to kill
             unsigned numStates = states.size();
@@ -576,7 +583,7 @@ klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current,
 	// search ones. If that makes sense.
 	if (res==klee::Solver::True) {
 		if (!isInternal) {
-			cvcurrent->path_manager()->add_true_branch(current.pc);
+			cvcurrent->path_manager()->add_true_branch(current.prevPC);
       if (pathWriter) {
         current.pathOS << "1";
 			}
@@ -585,7 +592,7 @@ klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current,
 		return klee::Executor::StatePair(&current, 0);
 	} else if (res==klee::Solver::False) {
 		if (!isInternal) {
-			cvcurrent->path_manager()->add_false_branch(current.pc);
+			cvcurrent->path_manager()->add_false_branch(current.prevPC);
       if (pathWriter) {
         current.pathOS << "0";
 			}
@@ -609,8 +616,8 @@ klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current,
 		//trueState->ptreeNode = res.second;
 
 		if (!isInternal) {
-			static_cast<CVExecutionState*>(trueState)->path_manager()->add_true_branch(current.pc);
-			static_cast<CVExecutionState*>(falseState)->path_manager()->add_false_branch(current.pc);
+			static_cast<CVExecutionState*>(trueState)->path_manager()->add_true_branch(current.prevPC);
+			static_cast<CVExecutionState*>(falseState)->path_manager()->add_false_branch(current.prevPC);
       if (pathWriter) {
         falseState->pathOS = pathWriter->open(current.pathOS);
         trueState->pathOS << "1";
@@ -740,6 +747,30 @@ void CVExecutor::add_state(CVExecutionState* state) {
 
 void CVExecutor::remove_state(CVExecutionState* state) {
 	removedStates.insert(state);
+}
+
+uint64_t CVExecutor::check_memory_usage() {
+	pid_t myPid = getpid();
+	std::stringstream ss;
+	ss << "/proc/" << myPid << "/status";
+
+	FILE *fp = fopen(ss.str().c_str(), "r"); 
+	if (!fp) { 
+		return 0;
+	}
+
+	uint64_t peakMem=0;
+
+	char buffer[512];
+	while(!peakMem && fgets(buffer, sizeof(buffer), fp)) { 
+		if (sscanf(buffer, "VmSize: %llu", &peakMem)) {
+			break; 
+		}
+	}
+
+	fclose(fp);
+
+	return peakMem / 1024; 
 }
 
 } // end namespace cliver
