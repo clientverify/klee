@@ -66,7 +66,7 @@ struct ExternalHandlerInfo {
 
 class CliverEvent { 
 	public:
-	enum Type {Network, Training};
+	enum Type {Network, NetworkSend, NetworkRecv, Training};
 };
 
 struct CliverEventInfo {
