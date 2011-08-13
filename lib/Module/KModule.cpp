@@ -80,7 +80,8 @@ namespace {
   
   cl::opt<bool>
   DebugPrintEscapingFunctions("debug-print-escaping-functions", 
-                              cl::desc("Print functions whose address is taken."));
+                              cl::desc("Print functions whose address is taken."),
+															cl::init(true));
 }
 
 KModule::KModule(Module *_module) 
@@ -433,6 +434,37 @@ void KModule::prepare(const Interpreter::ModuleOptions &opts,
     functions.push_back(kf);
     functionMap.insert(std::make_pair(it, kf));
   }
+  
+	if (OutputSource) {
+    std::ostream *os = ih->openOutputFile("assembly_with_ids.ll");
+    assert(os && os->good() && "unable to open source output");
+    llvm::raw_os_ostream *ros = new llvm::raw_os_ostream(*os);
+
+		for (Module::iterator it = module->begin(), ie = module->end();
+				it != ie; ++it) {
+
+			if (it->isDeclaration()) {
+				*ros << *it << "\n";
+				continue;
+			}
+
+			*ros << *it->getFunctionType() << " " << it->getNameStr() << " {\n";
+
+			for (Function::iterator fit = it->begin(), fie = it->end();
+					fit != fie; ++fit) {
+				*ros << fit->getNameStr() << ":\n";
+				for (BasicBlock::iterator bit = fit->begin(), bie = fit->end();
+						bit != bie; ++bit) {
+					*ros << "  " << infos->getInfo(&(*bit)).id << ": " << *bit << "\n";
+				}
+				*ros << "\n";
+			}
+			*ros <<"}\n";
+		}
+		ros->flush();
+		delete ros;
+		delete os;
+	}
 
   /* Compute various interesting properties */
 
