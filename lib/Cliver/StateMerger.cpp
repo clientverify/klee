@@ -12,6 +12,8 @@
 #include "AddressSpaceGraph.h"
 #include "ConstraintPruner.h"
 #include "ClientVerifier.h"
+#include "NetworkManager.h"
+#include "Socket.h"
 
 namespace cliver {
 
@@ -19,11 +21,13 @@ llvm::cl::opt<bool>
 DebugStateMerger("debug-state-merger",llvm::cl::init(false));
 
 llvm::cl::opt<bool>
-TrainingClearConstraints("training-clear-constraints",llvm::cl::init(true));
+TrainingClearConstraints("training-clear-constraints",llvm::cl::init(false));
 
 llvm::cl::opt<bool>
 TrainingPreviousStateMerge("training-previous-state-merge",llvm::cl::init(false));
 
+llvm::cl::opt<bool>
+TrainingMakeSymbolic("training-make-symbolic", llvm::cl::init(false));
 
 #ifndef NDEBUG
 
@@ -65,8 +69,9 @@ StateMerger::StateMerger(ConstraintPruner *pruner) : pruner_(pruner) {}
 // 4. Canonicalize symbolic variables
 // 5. Compare constraint sets
 
-bool StateMerger::callstacks_equal(CVExecutionState *state_a, 
-		CVExecutionState *state_b) {
+bool StateMerger::callstacks_equal(
+		const AddressSpaceGraph &asg_a, const AddressSpaceGraph &asg_b, 
+		CVExecutionState *state_a, CVExecutionState *state_b) {
 
 	int id_a = state_a->id(), id_b = state_b->id();
 
@@ -168,14 +173,15 @@ void StateMerger::merge(ExecutionStateSet &state_set,
   do {
 		CVExecutionState* state = worklist.back();
 		worklist.pop_back();
-		std::vector<CVExecutionState*>::iterator it=worklist.begin(), ie=worklist.end();
+		std::vector<CVExecutionState*>::iterator 
+			it=worklist.begin(), ie=worklist.end();
 
 		for (; it!=ie; ++it) {
 			AddressSpaceGraph* asg_a = merge_info[state].graph;
 			AddressSpaceGraph* asg_b = merge_info[*it].graph;
 
 			// Compare callstacks
-			if (!callstacks_equal(state, *it)) {
+			if (!callstacks_equal(*asg_a, *asg_b, state, *it)) {
 				continue;
 			}
 
@@ -236,20 +242,21 @@ void SymbolicStateMerger::merge(ExecutionStateSet &state_set,
 	std::vector<CVExecutionState*> worklist(state_set.begin(), state_set.end());
 
   do {
-		CVExecutionState* state = worklist.back();
-		worklist.pop_back();
-		std::set<klee::ObjectState*> symbolic_objs;
-
 		std::vector<CVExecutionState*> new_worklist;
-		std::vector<CVExecutionState*>::iterator 
-			it=worklist.begin(), ie=worklist.end();
+
+		CVExecutionState* state = worklist.back();
+		AddressSpaceGraph* asg_a = merge_info[state].graph;
+		worklist.pop_back();
+
+		std::set<klee::ObjectState*> non_equal_concrete_objects;
+
 		// Collect non-equal states into new_worklist
-		for (; it!=ie; ++it) {
-			AddressSpaceGraph* asg_a = merge_info[state].graph;
+		for (std::vector<CVExecutionState*>::iterator 
+			it=worklist.begin(), ie=worklist.end(); it!=ie; ++it) {
 			AddressSpaceGraph* asg_b = merge_info[*it].graph;
 
 			// Compare callstacks
-			if (!callstacks_equal(state, *it)) {
+			if (!callstacks_equal(*asg_a, *asg_b, state, *it)) {
 				new_worklist.push_back(*it);
 				continue;
 			}
@@ -263,38 +270,49 @@ void SymbolicStateMerger::merge(ExecutionStateSet &state_set,
 				}
 			}
 
-			// Compare address space structure
-			if (!asg_a->symbolic_equal(*asg_b, symbolic_objs)) {
-				new_worklist.push_back(*it);
-				continue;
+			std::set<klee::ObjectState*> tmp_object_set;
+			if (!asg_a->equal(*asg_b, tmp_object_set)) {
+				if (TrainingMakeSymbolic && !tmp_object_set.empty()) {
+					foreach (klee::ObjectState* os, tmp_object_set) {
+						non_equal_concrete_objects.insert(os);
+					}
+				} else {
+					new_worklist.push_back(*it);
+					continue;
+				}
 			}
 		}
 
 		for (std::map<CVExecutionState*, MergeInfo>::iterator 
-				it = previous_states_.begin(), ie = previous_states_.end(); it!=ie; ++it) {
+				it = previous_states_.begin(), ie = previous_states_.end(); 
+				it!=ie; ++it) {
 			CVExecutionState *prev_state = it->first;
 			AddressSpaceGraph *asg_b = (it->second).graph;
 
 			// Compare callstacks
-			if (!callstacks_equal(state, prev_state)) {
+			if (!callstacks_equal(*asg_a, *asg_b, state, prev_state)) {
 				continue;
 			}
 
-			unsigned sym_obj_count = symbolic_objs.size();
+			unsigned sym_obj_count = non_equal_concrete_objects.size();
 			// Compare address space structure
-			if (!merge_info[state].graph->symbolic_equal(*asg_b, symbolic_objs)) {
-				continue;
+			std::set<klee::ObjectState*> tmp_object_set;
+			if (!merge_info[state].graph->equal(*asg_b, tmp_object_set)) {
+				if (TrainingMakeSymbolic && !tmp_object_set.empty()) {
+					foreach (klee::ObjectState* os, tmp_object_set) {
+						non_equal_concrete_objects.insert(os);
+					}
+				}
 			}
 
-			if (symbolic_objs.size() != sym_obj_count) {
+			if (non_equal_concrete_objects.size() != sym_obj_count) {
 				CVDEBUG("Making new symbolic object from previous state");
 			}
 		}
 
 		// Make non-equal objects symbolic
-		if (!symbolic_objs.empty()) {
-
-			foreach (klee::ObjectState* obj, symbolic_objs) {
+		if (!non_equal_concrete_objects.empty()) {
+			foreach (klee::ObjectState* obj, non_equal_concrete_objects) {
 				CVDEBUG("Making object state symbolic: " << *obj);
 				const klee::MemoryObject* mo = obj->getObject();
 				unsigned id = g_client_verifier->next_array_id();
@@ -312,9 +330,7 @@ void SymbolicStateMerger::merge(ExecutionStateSet &state_set,
 		}
 
 		merged_set.insert(state);
-
 		worklist.swap(new_worklist);
-
   } while (!worklist.empty());
 
 	CVDEBUG("Found " << state_set.size() - merged_set.size() 
@@ -333,9 +349,8 @@ void SymbolicStateMerger::merge(ExecutionStateSet &state_set,
 	}
 
 	// Delete AddressSpaceGraph objects
-	std::map<CVExecutionState*, MergeInfo>::iterator it=merge_info.begin(),
-		ie=merge_info.end();
-	for (;it!=ie; ++it) {
+	for (std::map<CVExecutionState*, MergeInfo>::iterator 
+			it=merge_info.begin(), ie=merge_info.end(); it!=ie; ++it) {
 		delete (it->second).graph;
 	}
 }
