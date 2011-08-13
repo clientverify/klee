@@ -78,6 +78,7 @@ class CVExecutor : public klee::Executor {
 	void add_state(CVExecutionState* state);
 	void remove_state(CVExecutionState* state);
 
+	uint64_t check_memory_usage();
  private:
   ClientVerifier *cv_;
 	StateMerger *merger_;
