@@ -143,7 +143,7 @@ void LogIndexSearcher::handle_post_event(CVExecutionState *state,
 		CVExecutor* executor, CliverEvent::Type et) {
 
 	LogIndexProperty* p = static_cast<LogIndexProperty*>(state->property());
-	if (et == CliverEvent::Network) {
+	if (et == CliverEvent::NetworkSend || et == CliverEvent::NetworkRecv) {
 		p->socket_log_index = state->network_manager()->socket_log_index();
 	}
 }
@@ -171,33 +171,21 @@ klee::ExecutionState &TrainingSearcher::selectState() {
 	if (!phases_[TrainingProperty::PrepareExecute].empty()) {
 		if (DebugSearcher) {
 			CVDEBUG("Current Paths (" << paths_.size() << ")");
-			foreach(PathManager* path, paths_)
+			foreach(PathManager* path, paths_) {
 				CVDEBUG(*path);
-		}
-
-		ExecutionStateSet to_merge, network_read_states;
-
-		// Don't merge states after a network read event
-		foreach (CVExecutionState* state, phases_[TrainingProperty::PrepareExecute]) {
-			if (!state->network_manager()->sockets().empty() &&
-				  state->network_manager()->sockets().back().type() 
-						== SocketEvent::RECV) {
-					network_read_states.insert(state);
-			} else {
-				to_merge.insert(state);
 			}
+			CVDEBUG("Current States (" 
+					<< phases_[TrainingProperty::PrepareExecute].size() << ")");
 		}
+
+		ExecutionStateSet to_merge(phases_[TrainingProperty::PrepareExecute]);
 
 		ExecutionStateSet result;
 		if (!to_merge.empty())
 			merger_->merge(to_merge, result);
 		
-		foreach (CVExecutionState* state, network_read_states) {
-			result.insert(state);
-		}
-
 		if (DebugSearcher) 
-			CVDEBUG("Total states: " << result.size());
+			CVDEBUG("Current states (after mergin'): " << result.size());
 
 		phases_[TrainingProperty::PrepareExecute].clear();
 
@@ -272,13 +260,12 @@ void TrainingSearcher::update(klee::ExecutionState *current,
 }
 
 void TrainingSearcher::clone_for_network_events(CVExecutionState *state,
-		CVExecutor* executor) {
+		CVExecutor* executor, CliverEvent::Type et) {
 
 	TrainingProperty *p = static_cast<TrainingProperty*>(state->property());
 	p->training_state = TrainingProperty::NetworkClone;
 	state->network_manager()->clear_sockets();
 
-	//bool is_open = state->network_manager()->sockets().back().is_open();
 	bool is_open = true;
 
 	SocketEventList* sel = NULL;
@@ -288,25 +275,29 @@ void TrainingSearcher::clone_for_network_events(CVExecutionState *state,
 	foreach(sel, g_client_verifier->socket_events()) {
 		const SocketEvent* se = NULL;
 		foreach(se, *sel) {
-			CVExecutionState* cloned_state = state->clone();
-			cloned_state->network_manager()->clear_sockets();
-			cloned_state->network_manager()->add_socket(*se, is_open);
-			cloned_state->path_manager()->add_message(se);
-			executor->add_state(cloned_state);
-			count++;
+			if ((CliverEvent::NetworkSend == et && SocketEvent::SEND == se->type)
+				|| (CliverEvent::NetworkRecv == et && SocketEvent::RECV == se->type)) {
+				CVExecutionState* cloned_state = state->clone();
+				cloned_state->network_manager()->clear_sockets();
+				cloned_state->network_manager()->add_socket(*se, is_open);
+				cloned_state->path_manager()->add_message(se);
+				executor->add_state(cloned_state);
+				count++;
+			}
 		}
 	}
 
 	if (DebugSearcher) {
 		std::string str;
 		util_kinst_string(state->pc, str);
-		CVDEBUG_S(state->id(), "Cloning into " << count << " states at "
-				<< *p << " " << str);
+		CVDEBUG_S(state->id(), "Cloning into " << count << " states in property "
+				<< *p << " at " << str);
 	}
 }
 
 void TrainingSearcher::record_path(CVExecutionState *state,
-		CVExecutor* executor) {
+		CVExecutor* executor, CliverEvent::Type et) {
+
 	TrainingProperty *p = static_cast<TrainingProperty*>(state->property());
 	p->path_range = PathRange(p->path_range.start(), state->prevPC);
 	state->path_manager()->set_range(p->path_range);
@@ -315,13 +306,14 @@ void TrainingSearcher::record_path(CVExecutionState *state,
 		std::string start_str, end_str;
 		util_kinst_string(p->path_range.kinsts().first, start_str);
 		util_kinst_string(p->path_range.kinsts().second, end_str);
-		CVDEBUG_S(state->id(), "Recording " << *p << " [Start " << start_str 
+		CVDEBUG_S(state->id(), "Recording path (length " << state->path_manager()->length()
+			 << ") "	<< *p << " [Start " << start_str 
 				<< "] [End " << end_str << ")");
 	}
 
 	// Write to file (pathstart, pathend, path, message)...
+	
 	PathSet::iterator path_it = paths_.find(state->path_manager());
-	//cv_debug("paths_.size() = %d", paths_.size());
 	
 	if (path_it == paths_.end()) {
 		paths_.insert(state->path_manager()->clone());
@@ -362,8 +354,8 @@ void TrainingSearcher::handle_post_event(CVExecutionState *state,
 			break;
 
 		case TrainingProperty::NetworkClone:
-			if (et == CliverEvent::Network) {
-				searcher->record_path(state, executor);
+			if (et == CliverEvent::NetworkSend || et == CliverEvent::NetworkRecv) {
+				searcher->record_path(state, executor, et);
 			}
 			break;
 	}
@@ -382,11 +374,11 @@ void TrainingSearcher::handle_pre_event(CVExecutionState *state,
 			break;
 
 		case TrainingProperty::Execute:
-			if (et == CliverEvent::Network) {
-				searcher->clone_for_network_events(state,executor);
+			if (et == CliverEvent::NetworkSend || et == CliverEvent::NetworkRecv) {
+				searcher->clone_for_network_events(state,executor, et);
 			}
 			else if (et == CliverEvent::Training) {
-				searcher->record_path(state, executor);
+				searcher->record_path(state, executor, et);
 			}
 			break;
 
