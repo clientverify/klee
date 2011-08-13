@@ -23,7 +23,8 @@ Path::Path() : parent_(NULL), ref_count_(0) {}
 
 void Path::add(bool direction, klee::KInstruction* inst) {
 	branches_.push_back(direction);
-	instructions_.push_back(inst->info->id);
+	//instructions_.push_back(inst->info->id);
+	instructions_.push_back(inst);
 }
 
 Path::~Path() { 
@@ -207,6 +208,7 @@ PathManager::PathManager(const PathManager &pm)
 	  range_(pm.range_),
 		messages_(pm.messages_) {
 	path_->branches_ = pm.path_->branches_;
+	path_->instructions_ = pm.path_->instructions_;
 	//path_->set_parent(pm.path_);
 }
 
@@ -260,22 +262,33 @@ const Path& PathManager::get_consolidated_path() {
 void PathManager::print(std::ostream &os) const {
 
 	std::vector<bool> branches;
+	std::vector<klee::KInstruction*> instructions;
 
 	branches.reserve(path_->size());
+	//instructions.reserve(path_->size());
 
 	const Path* p = path_;
 	while (p != NULL) {
 		branches.insert(branches.begin(), 
 				p->branches_.begin(), p->branches_.end());
+		//instructions.insert(instructions.begin(), 
+		//		p->instructions_.begin(), p->instructions_.end());
 		p = p->parent_;
 	}
 	os << "Path [" << branches.size() << "][" << messages_.size() << "] [";
 	os << range_.ids().first << ", " << range_.ids().second << "] ";
 	foreach (bool branch, branches) {
-		if (branch)
+	//for (unsigned i=0; i<branches.size(); ++i) {
+		//std::string str;
+		//util_kinst_string(instructions[i], str);
+		//if (branches[i]) {
+		if (branch) {
 			os << '1';
-		else
+			//os << "1: " << str << "\n";
+		} else {
 			os << '0';
+			//os << "0: " << str << "\n";
+		}
 	}
 }
 

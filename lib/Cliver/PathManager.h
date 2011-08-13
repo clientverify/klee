@@ -61,7 +61,8 @@ class Path {
 	Path *parent_;
 	unsigned ref_count_;
 
-	std::vector<unsigned> instructions_;
+	//std::vector<unsigned> instructions_;
+	std::vector<klee::KInstruction*> instructions_;
 	std::vector<bool> branches_;
 };
 
