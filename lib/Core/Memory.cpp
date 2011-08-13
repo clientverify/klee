@@ -36,6 +36,9 @@ namespace {
   cl::opt<bool>
   UseConstantArrays("use-constant-arrays",
                     cl::init(true));
+  cl::opt<bool>
+  AlwaysPrintObjectBytes("always-print-object-bytes",
+                    cl::init(false));
 }
 
 /***/
@@ -623,7 +626,7 @@ void ObjectState::print(std::ostream &os, bool print_bytes) const {
 		os << "(no alloc info) ";
 	}
 
-	if (print_bytes) {
+	if (print_bytes || AlwaysPrintObjectBytes) {
 		os << " ";
 		ref<Expr> prev_e = read8(0);
 		int repeat = 0;
