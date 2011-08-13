@@ -27,7 +27,9 @@ class StateMerger {
 			ExecutionStateSet &merged_set);
 
  protected:
-	bool callstacks_equal(CVExecutionState *state_a, CVExecutionState *state_b);
+  bool callstacks_equal(
+		const AddressSpaceGraph &asg_a, const AddressSpaceGraph &asg_b,
+		CVExecutionState *state_a, CVExecutionState *state_b);
 
 	bool constraints_equal(
 		const AddressSpaceGraph &asg_a, const AddressSpaceGraph &asg_b,
