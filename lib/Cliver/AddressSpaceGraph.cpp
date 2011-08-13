@@ -54,29 +54,34 @@ AllowGlobalSymbolics("allow-global-symbolics",llvm::cl::init(true));
 
 #endif
 
+////////////////////////////////////////////////////////////////////////////////
 
 AddressSpaceGraph::AddressSpaceGraph(klee::ExecutionState *state) 
  : state_(state), pointer_width_(klee::Context::get().getPointerWidth()) {
 	cv_state_ = static_cast<CVExecutionState*>(state);
 }
 
-/// Compare the concrete values of two ObjectStates, ignoring pointers and symbolics.
-bool AddressSpaceGraph::concrete_compare(klee::ObjectState &a, 
+/// Compares two ObjectStates, ignoring pointer values and symbolics. Returns 
+/// false if pointer masks or concrete values differ.
+bool AddressSpaceGraph::objects_equal(klee::ObjectState &a, 
 		klee::ObjectState &b) const{
 
-	if (a.size != b.size)
-		return false;
 
-	// Check that the pointer masks are equal
-	for (unsigned i=0; i<a.size; i++) {
-		if ((a.isByteConcrete(i) != b.isByteConcrete(i)) ||
-		    (a.isBytePointer(i) != b.isBytePointer(i))) {
-			return false;
-		}
+	if (a.size != b.size) {
+		CVDEBUG("object sizes differ: (b) " << a << " (b)" << b);
+		return false;
 	}
 
-	// if concrete, and not a pointer, the concrete values must be equal
 	for (unsigned i=0; i<a.size; i++) {
+
+		// Check that the pointer and concrete masks are equal
+		if ((a.isByteConcrete(i) != b.isByteConcrete(i)) ||
+		    (a.isBytePointer(i) != b.isBytePointer(i))) {
+			CVDEBUG("object masks differ: (b) " << a << " (b)" << b);
+			return false;
+		}
+
+		// If concrete, and not a pointer, the concrete values must be equal
 		if (!a.isBytePointer(i) && 
 				a.isByteConcrete(i) && 
 				a.read8(i) != b.read8(i)) {
@@ -86,36 +91,91 @@ bool AddressSpaceGraph::concrete_compare(klee::ObjectState &a,
 	return true;
 }
 
-/// Compare the concrete values of two ObjectStates, ignoring pointers 
-bool AddressSpaceGraph::compare_objects(
-    const AddressSpaceGraph &asg_b, 
-		klee::ObjectState &a, 
-		klee::ObjectState &b) const{
+/// Compares two ObjectStates, ignoring pointer values. Returns false if any 
+/// concrete value, symbolic value, or pointer location differs. Uses 
+/// AddressSpaceGraph to canonicalize the Array names in symbolic reads.
+bool AddressSpaceGraph::objects_equal(const AddressSpaceGraph &asg_b, 
+		klee::ObjectState &a, klee::ObjectState &b) const{
 
-	if (a.size != b.size)
+	int id_a = cv_state_->id(), id_b = asg_b.cv_state_->id();
+
+	if (a.size != b.size) {
+		CVDEBUG_S2(id_a, id_b, "object sizes differ: (b) " << a << " (b)" << b);
 		return false;
-
-	// Check that the pointer masks are equal
-	for (unsigned i=0; i<a.size; i++) {
-		if ((a.isByteConcrete(i) != b.isByteConcrete(i)) ||
-		    (a.isBytePointer(i) != b.isBytePointer(i))) {
-			return false;
-		}
 	}
 
-	// ignore pointer values, but compare symbolics and concretes
 	for (unsigned i=0; i<a.size; i++) {
-		if (!a.isBytePointer(i)) {
-			klee::ref<klee::Expr> a_expr = a.read8(i);
-			klee::ref<klee::Expr> b_expr;
 
-			if (klee::ConstantExpr *CE_b = dyn_cast<klee::ConstantExpr>(b.read8(i))) {
-				b_expr = b.read8(i);
-			} else {
+		// Check that the pointer and concrete masks are equal
+		if ((a.isByteConcrete(i) != b.isByteConcrete(i)) ||
+		    (a.isBytePointer(i) != b.isBytePointer(i))) {
+			CVDEBUG_S2(id_a, id_b, "object masks differ: (b) " << a << " (b)" << b);
+			return false;
+		}
+
+		// Ignore pointer values, but compare symbolics and concretes
+		if (!a.isBytePointer(i)) {
+			klee::ref<klee::Expr> a_expr = a.read8(i), b_expr = b.read8(i);
+
+			if(NULL == dyn_cast<klee::ConstantExpr>(b.read8(i))) {
 				b_expr = get_canonical_expr(asg_b, b.read8(i));
 			}
 
 			if (a_expr != b_expr) {
+				CVDEBUG_S2(id_a, id_b, "objects differ: (b) " << a << " (b)" << b);
+				return false;
+			}
+
+		}
+	}
+	return true;
+}
+
+/// Compares two ObjectStates, ignoring pointer values. Returns false if any 
+/// concrete value, symbolic value, or pointer location differs. Uses 
+/// AddressSpaceGraph to canonicalize the Array names in symbolic reads.
+/// Output variable only_concrete is set to true if the two objects only differ
+/// in concrete values but are otherwise equivalent. It is set to true if
+/// objects are different in size, symbolics, pointer mask, OR if completely
+/// equivalent.
+bool AddressSpaceGraph::objects_equal(const AddressSpaceGraph &asg_b, 
+		klee::ObjectState &a, klee::ObjectState &b, bool &only_concrete) const {
+
+	int id_a = cv_state_->id(), id_b = asg_b.cv_state_->id();
+
+	only_concrete = true;
+	if (a.size != b.size) {
+		CVDEBUG_S2(id_a, id_b, "object sizes differ: (b) " << a << " (b)" << b);
+		return false;
+	}
+
+	for (unsigned i=0; i<a.size; i++) {
+
+		// Check that the pointer masks are equal
+		if ((a.isByteConcrete(i) != b.isByteConcrete(i)) ||
+				(a.isBytePointer(i) != b.isBytePointer(i))) {
+			CVDEBUG_S2(id_a, id_b, "object masks differ: (b) " << a << " (b)" << b);
+			return false;
+		}
+
+		// Ignore pointer values, but compare symbolics and concretes
+		if (!a.isBytePointer(i)) {
+			klee::ref<klee::Expr> a_expr = a.read8(i), b_expr = b.read8(i);
+
+			if (dyn_cast<klee::ConstantExpr>(a_expr) &&
+					dyn_cast<klee::ConstantExpr>(b_expr)) {
+				if (a_expr != b_expr) {
+					only_concrete = false;
+				}
+			} 
+
+			if(NULL == dyn_cast<klee::ConstantExpr>(b.read8(i))) {
+				b_expr = get_canonical_expr(asg_b, b.read8(i));
+			}
+
+			if (a_expr != b_expr) {
+				CVDEBUG_S2(id_a, id_b, "objects differ: (b) " << a << " (b)" << b);
+				only_concrete = true;
 				return false;
 			}
 		}
@@ -123,6 +183,8 @@ bool AddressSpaceGraph::compare_objects(
 	return true;
 }
 
+/// Visits all ReadExpr in the given expr and attempts to replace any symbolic
+/// variables from b with the corresponding variables in this AddressSpaceGraph.
 klee::ref<klee::Expr> AddressSpaceGraph::get_canonical_expr(
 		const AddressSpaceGraph &b, klee::ref<klee::Expr> e) const {
 	// TODO may miss comparison when array doesn't exist in map, and differs 
@@ -131,9 +193,9 @@ klee::ref<klee::Expr> AddressSpaceGraph::get_canonical_expr(
 	klee::ref<klee::Expr> new_e = visitor.visit(e);
 	//CVDEBUG("Converted expr " << e << " to " << new_e );
 	return new_e;
-	//return visitor.visit(e);
 }
 
+/// Returns true if array sizes are equal.
 bool AddressSpaceGraph::array_size_equal(const AddressSpaceGraph &b) const {
 
 	int id_a = cv_state_->id(), id_b = b.cv_state_->id();
@@ -142,6 +204,75 @@ bool AddressSpaceGraph::array_size_equal(const AddressSpaceGraph &b) const {
 		CVDEBUG_S2(id_a, id_b, "array map sizes differ " << array_map_.size()
 			 << "	!= " << b.array_map_.size());
 		return false;
+	}
+
+	return true;
+}
+
+/// Returns true if AddressSpaceGraph b has stack values and pointer
+/// locations equivalent to this AddressSpaceGraph. Pointer values are
+/// ignored.
+bool AddressSpaceGraph::locals_equal(const AddressSpaceGraph &b) const {
+
+	int id_a = cv_state_->id(), id_b = b.cv_state_->id();
+
+	if (locals_.size() != b.locals_.size()) {
+		CVDEBUG_S2(id_a, id_b, "locals sizes differ " << locals_.size()
+			 << "	!= " << b.locals_.size());
+		return false;
+	}
+
+	for (unsigned i=0; i<locals_.size(); ++i) {
+		klee::ref<klee::Expr> a_expr = locals_[i].first;
+		klee::ref<klee::Expr> b_expr = b.locals_[i].first;
+		klee::ObjectState* a_object = locals_[i].second;
+		klee::ObjectState* b_object = b.locals_[i].second;
+		if (!a_object && !b_object) {
+			if (a_expr.isNull() || b_expr.isNull()) {
+				if (a_expr.isNull() != a_expr.isNull()) {
+					CVDEBUG_S2(id_a, id_b, "locals null mismatch");
+					return false;
+				}
+			} else {
+				if (NULL == dyn_cast<klee::ConstantExpr>(b_expr)) {
+					b_expr = get_canonical_expr(b, b.locals_[i].first);
+				}
+				if (a_expr != b_expr) {
+					CVDEBUG_S2(id_a, id_b, "locals not equal: " 
+							<< a_expr << " != " << b_expr);
+					return false;
+				}
+			}
+		} else if (!a_object || !b_object) {
+			CVDEBUG_S2(id_a, id_b, "locals not equal (pointer mismatch) ");
+			return false;
+		} 
+	}
+
+	return true;
+}
+
+/// Returns true if the pointers in the AddressSpaceGraph b stack point
+/// to the same ObjectStates as this AddressSpaceGraph.
+bool AddressSpaceGraph::local_objects_equal(const AddressSpaceGraph &b) const {
+
+	int id_a = cv_state_->id(), id_b = b.cv_state_->id();
+
+	if (locals_.size() != b.locals_.size()) {
+		CVDEBUG_S2(id_a, id_b, "locals sizes differ " << locals_.size()
+			 << "	!= " << b.locals_.size());
+		return false;
+	}
+
+	for (unsigned i=0; i<locals_.size(); ++i) {
+		klee::ObjectState* a_object = locals_[i].second;
+		klee::ObjectState* b_object = b.locals_[i].second;
+		if (a_object && b_object) {
+			if (!objects_equal(b, *a_object, *b_object)) {
+				CVDEBUG_S2(id_a, id_b, "compare local pointer objects failed");
+				return false;
+			}
+		}
 	}
 
 	return true;
@@ -160,6 +291,10 @@ bool AddressSpaceGraph::visited_size_equal(
 	return true;
 }
 
+/// Returns true if the contents of all unconnected objects in b are equal
+/// to the contents of this AddressSpaceGraph's unconnected objects, when
+/// compared in the order first seen. Does not attempt to find an out of
+/// order matching.
 bool AddressSpaceGraph::unconnected_objects_equal(const AddressSpaceGraph &b) const {
 
 	int id_a = cv_state_->id(), id_b = b.cv_state_->id();
@@ -172,14 +307,13 @@ bool AddressSpaceGraph::unconnected_objects_equal(const AddressSpaceGraph &b) co
 	ObjectVertexMap::const_iterator it_a = unconnected_.begin();
 	ObjectVertexMap::const_iterator ie_a = unconnected_.end();
 	ObjectVertexMap::const_iterator it_b = b.unconnected_.begin();
-	ObjectVertexMap::const_iterator ie_b = b.unconnected_.begin();
+	ObjectVertexMap::const_iterator ie_b = b.unconnected_.end();
 
 	while (it_a != ie_a && it_b != ie_b) {
 		klee::ObjectState* object_state_a = it_a->first;
 		klee::ObjectState* object_state_b = it_b->first;
-		if (!compare_objects(b, *object_state_a, *object_state_b)) {
-			CVDEBUG_S2(id_a, id_b, "compare global concrete objects failed"
-					<< "\n" << ObjectStatePair(*object_state_a, *object_state_b));
+		if (!objects_equal(b, *object_state_a, *object_state_b)) {
+			CVDEBUG_S2(id_a, id_b, "compare global concrete objects failed");
 			return false;
 		}
 		++it_a;
@@ -188,7 +322,10 @@ bool AddressSpaceGraph::unconnected_objects_equal(const AddressSpaceGraph &b) co
 	return true;
 }
 
-bool AddressSpaceGraph::objects_equal(const AddressSpaceGraph &b) const {
+/// Returns true if the contents of all connected ObjectStates in b are equal
+/// to the contents of this AddressSpaceGraph's connected objects, when
+/// compared in the order first visited. 
+bool AddressSpaceGraph::connected_objects_equal(const AddressSpaceGraph &b) const {
 	int id_a = cv_state_->id(), id_b = b.cv_state_->id();
 
 	for (unsigned i=0; i<in_order_visited_.size(); ++i) {
@@ -200,9 +337,8 @@ bool AddressSpaceGraph::objects_equal(const AddressSpaceGraph &b) const {
 		klee::ObjectState* object_state_b
 			= boost::get(boost::get(&VertexProperties::object, b.graph_), vb);
 
-		if (!compare_objects(b, *object_state_a, *object_state_b)) {
-			CVDEBUG_S2(id_a, id_b, "compare objects failed"
-					<< "\n" << ObjectStatePair(*object_state_a, *object_state_b));
+		if (!objects_equal(b, *object_state_a, *object_state_b)) {
+			CVDEBUG_S2(id_a, id_b, "compare objects failed");
 			return false;
 		}
 	}
@@ -210,6 +346,8 @@ bool AddressSpaceGraph::objects_equal(const AddressSpaceGraph &b) const {
 	return true;
 }
 
+/// Returns true if the graph structure b is equal to the this 
+/// AddressSpaceGraph's structure.
 bool AddressSpaceGraph::graphs_equal(const AddressSpaceGraph &b) const {
 
 	int id_a = cv_state_->id(), id_b = b.cv_state_->id();
@@ -247,6 +385,7 @@ bool AddressSpaceGraph::graphs_equal(const AddressSpaceGraph &b) const {
 	return true;
 }
 
+/// Returns true if b is equivalent.
 bool AddressSpaceGraph::equal(const AddressSpaceGraph &b) const {
 
 	if (!array_size_equal(b)) {
@@ -257,11 +396,19 @@ bool AddressSpaceGraph::equal(const AddressSpaceGraph &b) const {
 		return false;
 	}
 
+	if (!locals_equal(b)) {
+		return false;
+	}
+
+	if (!local_objects_equal(b)) {
+		return false;
+	}
+
 	if (!unconnected_objects_equal(b)) {
 		return false;
 	}
 
-	if (!objects_equal(b)) {
+	if (!connected_objects_equal(b)) {
 		return false;
 	}
 
@@ -272,9 +419,14 @@ bool AddressSpaceGraph::equal(const AddressSpaceGraph &b) const {
 	return true;
 }
 
-bool AddressSpaceGraph::symbolic_equal(
-		const AddressSpaceGraph &b, std::set<klee::ObjectState*> &objs) const {
-	std::set<klee::ObjectState*> symbolic_objs;
+/// Returns true if b is equivalent. If the two AddressSpaceGraphs are equivalent
+/// in all aspects except for the concrete contents of ObjectStates, these objects
+/// will be added to the set non_equal_concretes.	
+bool AddressSpaceGraph::equal(
+		const AddressSpaceGraph &b, std::set<klee::ObjectState*> &_non_equal_concretes) const {
+	std::set<klee::ObjectState*> non_equal_concretes;
+
+	int id_a = cv_state_->id(), id_b = b.cv_state_->id();
 
 	if (!array_size_equal(b)) {
 		return false;
@@ -284,6 +436,26 @@ bool AddressSpaceGraph::symbolic_equal(
 		return false;
 	}
 
+	if (!locals_equal(b)) {
+		return false;
+	}
+
+	for (unsigned i=0; i<locals_.size(); ++i) {
+		klee::ObjectState* os_a = locals_[i].second;
+		klee::ObjectState* os_b = b.locals_[i].second;
+		if (os_a && os_b) {
+			bool only_concrete_differ = false;
+			if (!objects_equal(b, *os_a, *os_b, only_concrete_differ)) {
+				if (only_concrete_differ) {
+					non_equal_concretes.insert(os_a);
+				} else {
+					CVDEBUG_S2(id_a, id_b, "compare local pointer objects failed");
+					return false;
+				}
+			}
+		}
+	}
+
 	if (!unconnected_objects_equal(b)) {
 		return false;
 	}
@@ -291,53 +463,20 @@ bool AddressSpaceGraph::symbolic_equal(
 	for (unsigned vi=0; vi<in_order_visited_.size(); ++vi) {
 		Vertex va = in_order_visited_[vi], vb = b.in_order_visited_[vi];
 
-		klee::ObjectState* osa
+		klee::ObjectState* os_a
 			= boost::get(boost::get(&VertexProperties::object, graph_), va);
 
-		klee::ObjectState* osb
+		klee::ObjectState* os_b
 			= boost::get(boost::get(&VertexProperties::object, b.graph_), vb);
 
-		if (osa->size != osb->size)
-			return false;
-
-		// Check that the pointer masks are equal
-		for (unsigned i=0; i<osa->size; i++) {
-			if ((osa->isByteConcrete(i) != osb->isByteConcrete(i)) ||
-					(osa->isBytePointer(i) != osb->isBytePointer(i))) {
+		bool only_concrete_differ = false;
+		if (!objects_equal(b, *os_a, *os_b, only_concrete_differ)) {
+			if (only_concrete_differ) {
+				non_equal_concretes.insert(os_a);
+			} else {
+				CVDEBUG_S2(id_a, id_b, "compare objects failed");
 				return false;
 			}
-		}
-
-		// ignore pointer values, but compare symbolics and concretes
-		bool candidate_sym_merge = false;
-		for (unsigned i=0; i<osa->size; i++) {
-			if (!osa->isBytePointer(i)) {
-				klee::ref<klee::Expr> a_expr = osa->read8(i);
-				klee::ref<klee::Expr> b_expr = osb->read8(i);
-				klee::ConstantExpr *CE_a = dyn_cast<klee::ConstantExpr>(a_expr);
-				klee::ConstantExpr *CE_b = dyn_cast<klee::ConstantExpr>(b_expr);
-
-				if (CE_a != NULL && CE_b != NULL) {
-					if (a_expr != b_expr) {
-						candidate_sym_merge = true;
-					}
-				} else {
-					klee::ref<klee::Expr> a_expr = osa->read8(i);
-					klee::ref<klee::Expr> b_expr;
-					if (CE_b) {
-						b_expr = osb->read8(i);
-					} else {
-						b_expr = get_canonical_expr(b, osb->read8(i));
-					}
-					if (a_expr != b_expr) {
-						return false;
-					}
-				}
-			}
-		}
-
-		if (candidate_sym_merge) {
-			symbolic_objs.insert(osa);
 		}
 	}
 
@@ -345,15 +484,19 @@ bool AddressSpaceGraph::symbolic_equal(
 		return false;
 	}
 
-	foreach(klee::ObjectState* obj, symbolic_objs) {
-		objs.insert(obj);
+	foreach(klee::ObjectState* os, non_equal_concretes) {
+		_non_equal_concretes.insert(os);
 	}
+
+	if (!non_equal_concretes.empty())
+		return false;
 
 	return true;
 }
 
-
+/// Add a vertex to the graph for the given ObjectState
 void AddressSpaceGraph::add_vertex(klee::ObjectState* object) {
+	assert(object_vertex_map_.find(object) == object_vertex_map_.end());
 	Vertex v = boost::add_vertex(graph_);
 	graph_[v].object = object;
 	object_vertex_map_[object] = v;
@@ -382,63 +525,70 @@ void AddressSpaceGraph::build() {
 			boost::add_edge(v, v2, pointer, graph_);
 		}
 	}
-
-	//// TODO test characteristics of the graphs, unconnected nodes, etc.
-	//if (visited.size() != object_vertex_map_.size()) {
-	//	cv_message("Orphan MO! %d != %d \n", 
-	//			(int)visited.size(), (int)object_vertex_map_.size());
-	//	foreach (ObjectVertexPair pair, object_vertex_map_) {
-	//		Vertex v = pair.second;
-	//		if (visited.find(v) == visited.end()) {
-	//			cv_message("Vertex degree(in,out) = (%d, %d)", 
-	//					(int)boost::in_degree(v,graph_), (int)boost::out_degree(v,graph_));
-	//			klee::ObjectState* object_state 
-	//				= boost::get(boost::get(&VertexProperties::object, graph_), v);
-	//			object_state->print(*cv_debug_stream, false);
-	//			//state_->addressSpace.unbindObject(object_state->getObject());
-	//		}
-	//	}
-	//} else {
-	//	cv_message("All nodes are reachable  %d == %d \n", 
-	//			(int)visited.size(), (int)object_vertex_map_.size());
-	//}
 	
 	process();
 }
 
+/// Computes the reachable vertices in the graph using ObjectStates on the stack
+/// as root objects.
 void AddressSpaceGraph::process() {
 	std::set<Vertex> visited;
 	AddressSpaceGraphVisitor graph_visitor(*this, visited);
 
+	// Use the stack to determine reachable objects
 	foreach (klee::StackFrame sf, state_->stack) {
 		foreach (const klee::MemoryObject* mo, sf.allocas) {
 			klee::ObjectPair object_pair;
+			// Lookup MemoryObject in the address space
 			if (state_->addressSpace.resolveOne(mo->getBaseExpr(), object_pair)) {
-				klee::ObjectState* object = const_cast<klee::ObjectState*>(object_pair.second);
-				assert(object_vertex_map_.find(object) != object_vertex_map_.end());
-				Vertex v = object_vertex_map_[object];
-				boost::breadth_first_search(graph_, v, boost::visitor(graph_visitor));
+				klee::ObjectState* os = const_cast<klee::ObjectState*>(object_pair.second);
+				// Visit all nodes from this object (if we haven't already)
+				if (root_objects_.find(os) == root_objects_.end()) {
+					assert(object_vertex_map_.find(os) != object_vertex_map_.end());
+					Vertex v = object_vertex_map_[os];
+					boost::breadth_first_search(graph_, v, boost::visitor(graph_visitor));
+					root_objects_.insert(os);
+				}
+			} else {
+				cv_error("couldn't resolving memory object on stack");
 			}
 		}
+
 		if (sf.locals) {
 			for (unsigned i=0; i<sf.kf->numRegisters; ++i) {
+				klee::ObjectState* os = NULL;
 				if (!sf.locals[i].value.isNull()) {
 					add_arrays_from_expr(sf.locals[i].value);
+					if (klee::ConstantExpr *CE 
+							= dyn_cast<klee::ConstantExpr>(sf.locals[i].value)) {
+						klee::ObjectPair object_pair;
+						if (state_->addressSpace.resolveOne(CE, object_pair)) {
+							os = const_cast<klee::ObjectState*>(object_pair.second);
+							if (root_objects_.find(os) == root_objects_.end()) {
+								assert(object_vertex_map_.find(os) != object_vertex_map_.end());
+								Vertex v = object_vertex_map_[os];
+								boost::breadth_first_search(graph_, v, boost::visitor(graph_visitor));
+								root_objects_.insert(os);
+							}
+						}
+					}
 				}
+				locals_.push_back(std::make_pair(sf.locals[i].value, os));
 			}
 		}
 	}
 
-	// Create a list of unconnected objects. 
+	// Create a list of unconnected objects from those that are not reachable
+	// from the stack
 	foreach (ObjectVertexPair pair, object_vertex_map_) {
 		klee::ObjectState* object_state = pair.first;
 		Vertex v = pair.second;
 		if (visited.find(v) == visited.end()) {
-			if (!object_state->getObject()->isGlobal) {
-				*cv_debug_stream << *object_state << "\n";
-				cv_error("non-global unconnected object");
-			}
 			if (!AllowGlobalSymbolics) {
+				if (!object_state->getObject()->isGlobal) {
+					*cv_debug_stream << *object_state << "\n";
+					cv_error("non-global unconnected object");
+				}
 				for (unsigned i=0; i<object_state->size; ++i) {
 					if(!object_state->isByteConcrete(i)) {
 						object_state->print(*cv_debug_stream, true);
