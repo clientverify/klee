@@ -118,6 +118,146 @@ Libc("libc",
     llvm::cl::init(NoLibc));
 }
 
+static llvm::Module *linkWithUclibc(llvm::Module *mainModule) {
+	using namespace llvm;
+	using namespace klee;
+  Function *f;
+  // force import of __uClibc_main
+  mainModule->getOrInsertFunction("__uClibc_main",
+                                  FunctionType::get(Type::getVoidTy(getGlobalContext()),
+                                                    std::vector<const Type*>(),
+                                                    true));
+  
+  // force various imports
+  if (WithPOSIXRuntime) {
+    const llvm::Type *i8Ty = Type::getInt8Ty(getGlobalContext());
+    mainModule->getOrInsertFunction("realpath",
+                                    PointerType::getUnqual(i8Ty),
+                                    PointerType::getUnqual(i8Ty),
+                                    PointerType::getUnqual(i8Ty),
+                                    NULL);
+    mainModule->getOrInsertFunction("getutent",
+                                    PointerType::getUnqual(i8Ty),
+                                    NULL);
+    mainModule->getOrInsertFunction("__fgetc_unlocked",
+                                    Type::getInt32Ty(getGlobalContext()),
+                                    PointerType::getUnqual(i8Ty),
+                                    NULL);
+    mainModule->getOrInsertFunction("__fputc_unlocked",
+                                    Type::getInt32Ty(getGlobalContext()),
+                                    Type::getInt32Ty(getGlobalContext()),
+                                    PointerType::getUnqual(i8Ty),
+                                    NULL);
+  }
+
+  f = mainModule->getFunction("__ctype_get_mb_cur_max");
+  if (f) f->setName("_stdlib_mb_cur_max");
+
+  // Strip of asm prefixes for 64 bit versions because they are not
+  // present in uclibc and we want to make sure stuff will get
+  // linked. In the off chance that both prefixed and unprefixed
+  // versions are present in the module, make sure we don't create a
+  // naming conflict.
+  for (Module::iterator fi = mainModule->begin(), fe = mainModule->end();
+       fi != fe;) {
+    Function *f = fi;
+    ++fi;
+    const std::string &name = f->getName();
+    if (name[0]=='\01') {
+      unsigned size = name.size();
+      if (name[size-2]=='6' && name[size-1]=='4') {
+        std::string unprefixed = name.substr(1);
+
+        // See if the unprefixed version exists.
+        if (Function *f2 = mainModule->getFunction(unprefixed)) {
+          f->replaceAllUsesWith(f2);
+          f->eraseFromParent();
+        } else {
+          f->setName(unprefixed);
+        }
+      }
+    }
+  }
+  
+  mainModule = klee::linkWithLibrary(mainModule, 
+                                     KLEE_UCLIBC "/lib/libc.a");
+  assert(mainModule && "unable to link with uclibc");
+
+  // more sighs, this is horrible but just a temp hack
+  //    f = mainModule->getFunction("__fputc_unlocked");
+  //    if (f) f->setName("fputc_unlocked");
+  //    f = mainModule->getFunction("__fgetc_unlocked");
+  //    if (f) f->setName("fgetc_unlocked");
+  
+  Function *f2;
+  f = mainModule->getFunction("open");
+  f2 = mainModule->getFunction("__libc_open");
+  if (f2) {
+    if (f) {
+      f2->replaceAllUsesWith(f);
+      f2->eraseFromParent();
+    } else {
+      f2->setName("open");
+      assert(f2->getName() == "open");
+    }
+  }
+
+  f = mainModule->getFunction("fcntl");
+  f2 = mainModule->getFunction("__libc_fcntl");
+  if (f2) {
+    if (f) {
+      f2->replaceAllUsesWith(f);
+      f2->eraseFromParent();
+    } else {
+      f2->setName("fcntl");
+      assert(f2->getName() == "fcntl");
+    }
+  }
+
+  // XXX we need to rearchitect so this can also be used with
+  // programs externally linked with uclibc.
+
+  // We now need to swap things so that __uClibc_main is the entry
+  // point, in such a way that the arguments are passed to
+  // __uClibc_main correctly. We do this by renaming the user main
+  // and generating a stub function to call __uClibc_main. There is
+  // also an implicit cooperation in that runFunctionAsMain sets up
+  // the environment arguments to what uclibc expects (following
+  // argv), since it does not explicitly take an envp argument.
+  Function *userMainFn = mainModule->getFunction("main");
+  assert(userMainFn && "unable to get user main");    
+  Function *uclibcMainFn = mainModule->getFunction("__uClibc_main");
+  assert(uclibcMainFn && "unable to get uclibc main");    
+  userMainFn->setName("__user_main");
+
+  const FunctionType *ft = uclibcMainFn->getFunctionType();
+  assert(ft->getNumParams() == 7);
+
+  std::vector<const Type*> fArgs;
+  fArgs.push_back(ft->getParamType(1)); // argc
+  fArgs.push_back(ft->getParamType(2)); // argv
+  Function *stub = Function::Create(FunctionType::get(Type::getInt32Ty(getGlobalContext()), fArgs, false),
+      			      GlobalVariable::ExternalLinkage,
+      			      "main",
+      			      mainModule);
+  BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", stub);
+
+  std::vector<llvm::Value*> args;
+  args.push_back(llvm::ConstantExpr::getBitCast(userMainFn, 
+                                                ft->getParamType(0)));
+  args.push_back(stub->arg_begin()); // argc
+  args.push_back(++stub->arg_begin()); // argv    
+  args.push_back(Constant::getNullValue(ft->getParamType(3))); // app_init
+  args.push_back(Constant::getNullValue(ft->getParamType(4))); // app_fini
+  args.push_back(Constant::getNullValue(ft->getParamType(5))); // rtld_fini
+  args.push_back(Constant::getNullValue(ft->getParamType(6))); // stack_end
+  CallInst::Create(uclibcMainFn, args.begin(), args.end(), "", bb);
+  
+  new UnreachableInst(getGlobalContext(), bb);
+
+  return mainModule;
+}
+
 //===----------------------------------------------------------------------===//
 // Utility functions 
 //===----------------------------------------------------------------------===//
@@ -280,7 +420,9 @@ int main(int argc, char **argv, char **envp) {
       }
 
     case UcLibc:
-			cliver::cv_error("ulibc not supported");
+			main_module = linkWithUclibc(main_module);
+			if (!main_module)
+				cliver::cv_error("unable to link with uclibc");
       break;
   }
 
