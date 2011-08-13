@@ -33,6 +33,12 @@ DebugStderr("debug-stderr",
   llvm::cl::desc("Print debug statements onto stderr (also to debug.txt)"),
   llvm::cl::init(false));
 
+llvm::cl::opt<bool>
+DebugUtilPrintInstructions("debug-util-print-inst",
+  llvm::cl::desc("Print instructions in util_print_inst()"),
+  llvm::cl::init(false));
+
+
 }
 
 namespace cliver {
@@ -89,20 +95,30 @@ void cv_error(const char *msg, ...) {
 
 // XXX move this to another file
 void util_inst_string( llvm::Instruction* inst, std::string &rstr) {
-	llvm::raw_string_ostream ros(rstr);
-	if (inst)
-		ros << *(inst);
-	rstr.erase(std::remove(rstr.begin(), rstr.end(), '\n'), rstr.end());
-	ros.flush();
+	if (DebugUtilPrintInstructions) {
+		llvm::raw_string_ostream ros(rstr);
+		if (inst)
+			ros << *(inst);
+		rstr.erase(std::remove(rstr.begin(), rstr.end(), '\n'), rstr.end());
+		ros.flush();
+	}
 }
 
 // XXX move this to another file
 void util_kinst_string( klee::KInstruction* kinst, std::string &rstr) {
-	llvm::raw_string_ostream ros(rstr);
-	if (kinst)
-		ros << kinst->info->id << ": " << *(kinst->inst);
-	rstr.erase(std::remove(rstr.begin(), rstr.end(), '\n'), rstr.end());
-	ros.flush();
+	if (DebugUtilPrintInstructions) {
+		llvm::raw_string_ostream ros(rstr);
+		if (kinst)
+			ros << kinst->info->id << ": " << *(kinst->inst);
+		rstr.erase(std::remove(rstr.begin(), rstr.end(), '\n'), rstr.end());
+		ros.flush();
+	} else {
+		if (kinst) {
+			std::stringstream ss;
+			ss << kinst->info->id;
+			rstr = ss.str();
+		}
+	}
 }
 
 CVStream::CVStream()
