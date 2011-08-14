@@ -115,6 +115,13 @@ const SocketEvent& Socket::event() {
 	return *((*log_)[index_]);
 }
 
+const SocketEvent& Socket::previous_event(){ 
+	// ::previous_event() not supported when using single event Socket
+	if (event_) cv_error("previous_event not supported");
+	assert (log_ && index_ < log_->size() && index_ > 0);
+	return *((*log_)[index_-1]);
+}
+
 void Socket::print(std::ostream &os) {
 #define X(x) #x
 	static std::string socketevent_types[] = { SOCKETEVENT_TYPES };
