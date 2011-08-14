@@ -250,12 +250,6 @@ inline std::ostream &operator<<(std::ostream &os, const ObjectState &obj) {
   return os;
 }
  
-inline std::ostream &operator<<(std::ostream &os, 
-		const std::pair<ObjectState&,ObjectState&> &pair) {
-	pair.first.print_diff(pair.second, os);
-  return os;
-}
-
 } // End klee namespace
 
 #endif
