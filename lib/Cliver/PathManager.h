@@ -34,38 +34,42 @@ struct FunctionCallBranchEvent {
 
 class Path {
  public:
-	friend class PathManager;
-	typedef std::vector<bool> path_ty;
-	typedef path_ty::const_iterator path_iterator;
-
 	Path();
+	Path(Path* parent);
 	~Path();
-	unsigned size() const;
-	path_iterator begin() const;
-	path_iterator end() const;
+	unsigned length() const;
 	void add(bool direction, klee::KInstruction* inst);
 	bool less(const Path &b) const;
 	bool equal(const Path &b) const;
 	void inc_ref();
 	void dec_ref();
-	unsigned ref() { return ref_count_; }
-	void consolidate();
-	void set_parent(Path *path);
-	const Path* get_parent();
+	void print(std::ostream &os) const;
 
  private: 
+	explicit Path(const Path &p);
+
+	// Helper functions
+	void consolidate_branches(std::vector<bool> &branches) const;
+
+	// Serialization
 	friend class boost::serialization::access;
 	template<class archive> 
 	void serialize(archive & ar, const unsigned version);
 
-	Path *parent_;
-	unsigned ref_count_;
+	// Member Variables
+	const Path *parent_;
+	mutable unsigned ref_count_;
+  int length_;
 
-	//std::vector<unsigned> instructions_;
-	std::vector<klee::KInstruction*> instructions_;
 	std::vector<bool> branches_;
+	std::vector<klee::KInstruction*> instructions_;
 };
 
+inline std::ostream &operator<<(std::ostream &os, const Path &p) {
+  p.print(os);
+  return os;
+}
+ 
 ////////////////////////////////////////////////////////////////////////////////
 
 class PathRange {
@@ -108,22 +112,20 @@ class PathManager {
  public:
 	typedef std::set<const SocketEvent*> message_set_ty;
 	PathManager();
-	PathManager(const PathManager &pm);
 	PathManager* clone();
-	unsigned length() { return path_->size(); }
+	unsigned length() { return path_->length(); }
 	bool merge(const PathManager &pm);
 	bool less(const PathManager &b) const;
 	void add_false_branch(klee::KInstruction* inst);
 	void add_true_branch(klee::KInstruction* inst);
 	void add_branch(bool direction, klee::KInstruction* inst);
-	const Path& get_consolidated_path();
-	void print_diff(const PathManager &b, std::ostream &os) const;
 	void print(std::ostream &os) const;
 	bool add_message(const SocketEvent* se);
 	void set_range(const PathRange& range);
 	const message_set_ty& messages() { return messages_; }
 
  private:
+	explicit PathManager(const PathManager &pm);
 	Path* path_;
 	PathRange range_;
 	message_set_ty messages_;

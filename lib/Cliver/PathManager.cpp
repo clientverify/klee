@@ -9,6 +9,7 @@
 
 #include "PathManager.h"
 #include "llvm/Support/CommandLine.h"
+#include "CVStream.h"
 
 #include <iostream>
 
@@ -19,91 +20,59 @@ namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Path::Path() : parent_(NULL), ref_count_(0) {}
+// XXX ref_count 0 or 1 ??
+
+Path::Path() : parent_(NULL), ref_count_(0), length_(-1) {}
+
+Path::Path(Path* parent) : parent_(parent), ref_count_(0), length_(-1) {
+	parent->inc_ref();
+}
 
 void Path::add(bool direction, klee::KInstruction* inst) {
+	assert(ref_count_ == 0);
 	branches_.push_back(direction);
-	instructions_.push_back(inst);
+	//instructions_.push_back(inst);
 }
 
 Path::~Path() { 
-	parent_->dec_ref();
-	if (parent_->ref() <= 0) {
+	const_cast<Path*>(parent_)->dec_ref();
+	if (parent_->ref_count_ <= 0) {
+		CVDEBUG("deleting parent");
 		delete parent_;
 	}
 }
 
-unsigned Path::size() const { 
-	unsigned branch_count = branches_.size();
-
-	Path* p = parent_;
-	while (p != NULL) {
-		branch_count += p->branches_.size();
-		p = p->parent_;
+unsigned Path::length() const { 
+	if (ref_count_ == 0) {
+		if (parent_)
+			return branches_.size() + parent_->length();
+		return branches_.size();
 	}
-	return branch_count;
+	assert(length_ > 0);
+	return (unsigned) length_;
 }
 
 bool Path::less(const Path &b) const {
-	std::vector<bool> branches;
-	std::vector<bool> b_branches;
-
-	branches.reserve(size());
-	b_branches.reserve(b.size());
-
-	const Path* p = this;
-	while (p != NULL) {
-		branches.insert(branches.begin(), 
-				p->branches_.begin(), p->branches_.end());
-		p = p->parent_;
-	}
-
-	p = &b;
-	while (p != NULL) {
-		b_branches.insert(b_branches.begin(), 
-				p->branches_.begin(), p->branches_.end());
-		p = p->parent_;
-	}
-
-	return branches < b_branches;
+	std::vector<bool> branches, branches_b;
+	consolidate_branches(branches);
+	b.consolidate_branches(branches_b);
+	return branches < branches_b;
 }
 
 bool Path::equal(const Path &b) const {
-	//if (size() != b.size()) 
-	//	return false;
-
-	std::vector<bool> branches;
-	std::vector<bool> b_branches;
-
-	branches.reserve(size());
-	b_branches.reserve(b.size());
-
-	const Path* p = this;
-	while (p != NULL) {
-		branches.insert(branches.begin(), 
-				p->branches_.begin(), p->branches_.end());
-		p = p->parent_;
-	}
-
-	p = &b;
-	while (p != NULL) {
-		b_branches.insert(b_branches.begin(), 
-				p->branches_.begin(), p->branches_.end());
-		p = p->parent_;
-	}
-
-	return branches == b_branches;
-}
-
-Path::path_iterator Path::begin() const {
-	return branches_.begin();
-}
-
-Path::path_iterator Path::end() const {
-	return branches_.end();
+	if (length() != b.length()) 
+		return false;
+	std::vector<bool> branches, branches_b;
+	consolidate_branches(branches);
+	b.consolidate_branches(branches_b);
+	return branches == branches_b;
 }
 
 void Path::inc_ref() {
+	// Path length can no longer change if it has a child
+	if (ref_count_ == 0 && length_ == -1) {
+		length_ = length();
+	}
 	ref_count_++;
 }
 
@@ -111,34 +80,45 @@ void Path::dec_ref() {
 	ref_count_--;
 }
 
-void Path::consolidate() {
-	Path* p = parent_;
+void Path::print(std::ostream &os) const {
+	std::vector<bool> branches;
+	consolidate_branches(branches);
+	foreach (bool branch, branches) {
+		if (branch) {
+			os << '1';
+		} else {
+			os << '0';
+		}
+	}
+}
+
+void Path::consolidate_branches(std::vector<bool> &branches) const {
+	branches.reserve(length());
+	const Path* p = this;
 	while (p != NULL) {
-		branches_.insert(branches_.begin(), 
+		branches.insert(branches.begin(), 
 				p->branches_.begin(), p->branches_.end());
-		instructions_.insert(instructions_.begin(), 
-				p->instructions_.begin(), p->instructions_.end());
 		p = p->parent_;
 	}
-	parent_->dec_ref();
-	parent_ = NULL;
 }
 
-void Path::set_parent(Path *path) {
-	assert(parent_ == NULL && branches_.empty() && instructions_.empty());
-	parent_ = path;
-	parent_->inc_ref();
-}
-
-const Path* Path::get_parent() {
-	return parent_;
-}
-
+//void Path::consolidate_instructions(
+//		std::vector<klee::KInstruction*> &instructions) const {
+//	instructions.reserve(length());
+//	const Path* p = this;
+//	while (p != NULL) {
+//		instructions.insert(instructions.begin(), 
+//				p->instructions_.begin(), p->instructions_.end());
+//		p = p->parent_;
+//	}
+//}
 
 template<class archive> 
 void Path::serialize(archive & ar, const unsigned version) {
-	ar & branches_;
-	ar & instructions_;
+	std::vector<bool> branches;
+	consolidate_branches(branches);
+
+	ar & branches;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -202,18 +182,15 @@ void PathRange::print(std::ostream &os) const {
 PathManager::PathManager() 
 	: path_(new Path()) {}
 
-PathManager::PathManager(const PathManager &pm)
-	: path_(new Path()),
-	  range_(pm.range_),
-		messages_(pm.messages_) {
-	path_->branches_ = pm.path_->branches_;
-	path_->instructions_ = pm.path_->instructions_;
-	//path_->set_parent(pm.path_);
-}
-
 PathManager* PathManager::clone() {
-	PathManager *pm = new PathManager(*this);
-	assert(pm->path_->size() == path_->size());
+	// Don't split/clone a path that has already been finalized
+	// with an endpoint
+	PathManager *pm = new PathManager();
+	Path* parent = path_;
+	path_ = new Path(parent);
+	pm->path_ = new Path(parent);
+	pm->messages_ = messages_;
+	pm->range_ = range_;
 	return pm;
 }
 
@@ -249,78 +226,10 @@ void PathManager::add_branch(bool direction, klee::KInstruction* inst) {
 	path_->add(direction, inst);
 }
 
-const Path& PathManager::get_consolidated_path() {
-	if (path_->get_parent() != NULL) {
-		path_->consolidate();
-	}
-	return *path_;
-}
-
 void PathManager::print(std::ostream &os) const {
-
-	std::vector<bool> branches;
-	std::vector<klee::KInstruction*> instructions;
-
-	branches.reserve(path_->size());
-	//instructions.reserve(path_->size());
-
-	const Path* p = path_;
-	while (p != NULL) {
-		branches.insert(branches.begin(), 
-				p->branches_.begin(), p->branches_.end());
-		//instructions.insert(instructions.begin(), 
-		//		p->instructions_.begin(), p->instructions_.end());
-		p = p->parent_;
-	}
-	os << "Path [" << branches.size() << "][" << messages_.size() << "] [";
-	os << range_.ids().first << ", " << range_.ids().second << "] ";
-	foreach (bool branch, branches) {
-	//for (unsigned i=0; i<branches.size(); ++i) {
-		//std::string str;
-		//util_kinst_string(instructions[i], str);
-		//if (branches[i]) {
-		if (branch) {
-			os << '1';
-			//os << "1: " << str << "\n";
-		} else {
-			os << '0';
-			//os << "0: " << str << "\n";
-		}
-	}
-}
-
-void PathManager::print_diff(const PathManager &b, std::ostream &os) const {
-	if (less(b) || b.less(*this)) {
-		Path::path_iterator it_a=path_->begin(), it_b=b.path_->begin(), 
-			ie_a=path_->end(), ie_b=b.path_->end();
-		bool equal = false;
-		std::stringstream ss_a, ss_b;
-		while (it_a != ie_a || it_b != ie_b) {
-			if (it_a != ie_a && it_b != ie_b) {
-				if (*it_a == *it_b) {
-					equal = true;
-				} else {
-					if (equal) {
-						ss_a << "-";
-						ss_b << "-";
-						equal = false;
-					}
-					ss_a << *it_a;
-					ss_b << *it_b;
-				}
-				it_a++; it_b++;
-			} else if (it_a != ie_a) {
-				ss_a << *it_a;
-				ss_b << "-";
-				it_a++;
-			}	else if (it_b != ie_b) {
-				ss_a << "-";
-				ss_b << *it_b;
-				it_b++;
-			}
-		}
-		os << "Paths:\n" << ss_a << "\n" << ss_b;
-	}
+	os << "Path [" << path_->length() << "][" << messages_.size() << "] ["
+		 << range_.ids().first << ", " << range_.ids().second << "] "
+		 << *path_;
 }
 
 bool PathManager::add_message(const SocketEvent* se) {
