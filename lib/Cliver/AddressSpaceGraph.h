@@ -26,6 +26,7 @@ namespace cliver {
 class CVExecutionState;
 
 typedef std::pair<klee::ObjectState&,klee::ObjectState&> ObjectStatePair;
+typedef std::map<const klee::MemoryObject*, klee::ObjectState*> MemoryObjectMap;
 
 struct VertexProperties {
 	klee::ObjectState *object;
@@ -112,6 +113,7 @@ friend class AddressSpaceGraphVisitor;
 	std::map<const klee::Array*, unsigned> array_map_;
 	std::vector<const klee::Array*> in_order_arrays_;
 
+  MemoryObjectMap unconnected_map_;
 };
 
 class AddressSpaceGraphVisitor: public boost::default_bfs_visitor {
