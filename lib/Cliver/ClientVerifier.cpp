@@ -196,8 +196,8 @@ void ClientVerifier::register_events(CVExecutor *executor) {
 			break;
 		case DefaultTrainingMode:
 		case TetrinetTrainingMode:
-			pre_event_callbacks_.connect(&TrainingMergeSearcher::handle_pre_event);
-			post_event_callbacks_.connect(&TrainingMergeSearcher::handle_post_event);
+			pre_event_callbacks_.connect(&OutOfOrderTrainingSearcher::handle_pre_event);
+			post_event_callbacks_.connect(&OutOfOrderTrainingSearcher::handle_post_event);
 			break;
 	}
 }
@@ -226,7 +226,8 @@ CVSearcher* ClientVerifier::construct_searcher() {
 		case DefaultTrainingMode:
 		case TetrinetTrainingMode:
 			merger_ = new SymbolicStateMerger(pruner_);
-			searcher_ = new TrainingMergeSearcher(new klee::DFSSearcher(), merger_);
+			searcher_ 
+				= new OutOfOrderTrainingSearcher(new klee::DFSSearcher(), merger_);
 			break;
 	}
 	return searcher_;

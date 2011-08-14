@@ -14,6 +14,7 @@
 #include "ClientVerifier.h"
 #include "NetworkManager.h"
 #include "Socket.h"
+#include "llvm/Function.h"
 
 namespace cliver {
 
@@ -85,11 +86,9 @@ bool StateMerger::callstacks_equal(
 
 	while (itA!=state_a->stack.end() && itB!=state_b->stack.end()) {
 		if (itA->caller!=itB->caller || itA->kf!=itB->kf) {
-			std::string a_caller_str, b_caller_str, a_kf_str, b_kf_str;
-			util_inst_string(itA->caller->inst, a_caller_str);
-			util_inst_string(itB->caller->inst, b_caller_str);
 			CVDEBUG_S2(id_a, id_b, "call stacks don't match" 
-					<< a_caller_str << b_caller_str);
+					<< itA->kf->function->getNameStr() << " "
+					<< itB->kf->function->getNameStr());
 			return false;
 		}
 		++itA;

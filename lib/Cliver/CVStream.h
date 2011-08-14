@@ -84,6 +84,7 @@ extern std::ostream* cv_debug_stream;
 #define CVDEBUG_S2(__state_id_1, __state_id_2, __x) \
 	__CVDEBUG_S2(true, __state_id_1, __state_id_2, __x)
 
+////////////////////////////////////////////////////////////////////////////////
 
 /// CV versions of the KLEE error and warning functions
 /// Print "CV: ERROR" followed by the msg in printf format to debug stream
@@ -105,6 +106,8 @@ void cv_warning(const char *msg, ...)
 
 void util_inst_string( llvm::Instruction* inst, std::string &rstr);
 void util_kinst_string( klee::KInstruction* kinst, std::string &rstr);
+
+////////////////////////////////////////////////////////////////////////////////
 
 class teebuf: public std::streambuf {
  public:
@@ -146,6 +149,8 @@ class teestream : public std::ostream {
   teebuf tbuf;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
 class CVStream {
  public:
   CVStream();
@@ -176,6 +181,18 @@ class CVStream {
   std::ostream* message_file_stream_;
   std::ostream* debug_file_stream_;
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+inline std::ostream &operator<<(std::ostream &os, 
+		const klee::KInstruction &ki) {
+	std::string str;
+	llvm::raw_string_ostream ros(str);
+	ros << ki.info->id << ":" << *ki.inst;
+	//str.erase(std::remove(str.begin(), str.end(), '\n'), str.end());
+	return os << ros.str();
+}
+
 
 } // end namespace cliver
 #endif // CLIVER_STREAM_H
