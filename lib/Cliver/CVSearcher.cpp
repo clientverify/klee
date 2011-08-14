@@ -150,11 +150,11 @@ void LogIndexSearcher::handle_post_event(CVExecutionState *state,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TrainingSearcher::TrainingSearcher(klee::Searcher* base_searcher, 
+TrainingMergeSearcher::TrainingMergeSearcher(klee::Searcher* base_searcher, 
 		StateMerger* merger) 
 	: CVSearcher(base_searcher, merger) {}
 
-klee::ExecutionState &TrainingSearcher::selectState() {
+klee::ExecutionState &TrainingMergeSearcher::selectState() {
 
 	if (!phases_[TrainingProperty::NetworkClone].empty()) {
 		CVExecutionState* state 
@@ -218,7 +218,7 @@ klee::ExecutionState &TrainingSearcher::selectState() {
 	return *null_state;
 }
 
-void TrainingSearcher::update(klee::ExecutionState *current,
+void TrainingMergeSearcher::update(klee::ExecutionState *current,
 						const std::set<klee::ExecutionState*> &addedStates,
 						const std::set<klee::ExecutionState*> &removedStates) {
 
@@ -259,7 +259,7 @@ void TrainingSearcher::update(klee::ExecutionState *current,
 	}
 }
 
-void TrainingSearcher::clone_for_network_events(CVExecutionState *state,
+void TrainingMergeSearcher::clone_for_network_events(CVExecutionState *state,
 		CVExecutor* executor, CliverEvent::Type et) {
 
 	TrainingProperty *p = static_cast<TrainingProperty*>(state->property());
@@ -295,7 +295,7 @@ void TrainingSearcher::clone_for_network_events(CVExecutionState *state,
 	}
 }
 
-void TrainingSearcher::record_path(CVExecutionState *state,
+void TrainingMergeSearcher::record_path(CVExecutionState *state,
 		CVExecutor* executor, CliverEvent::Type et) {
 
 	TrainingProperty *p = static_cast<TrainingProperty*>(state->property());
@@ -306,8 +306,9 @@ void TrainingSearcher::record_path(CVExecutionState *state,
 		std::string start_str, end_str;
 		util_kinst_string(p->path_range.kinsts().first, start_str);
 		util_kinst_string(p->path_range.kinsts().second, end_str);
-		CVDEBUG_S(state->id(), "Recording path (length " << state->path_manager()->length()
-			 << ") "	<< *p << " [Start " << start_str 
+		CVDEBUG_S(state->id(), "Recording path (length "
+			 	<< state->path_manager()->length() << ") "	
+				<< *p << " [Start " << start_str 
 				<< "] [End " << end_str << ")");
 	}
 
@@ -338,12 +339,12 @@ void TrainingSearcher::record_path(CVExecutionState *state,
 	p->training_round++;
 }
 
-void TrainingSearcher::handle_post_event(CVExecutionState *state,
+void TrainingMergeSearcher::handle_post_event(CVExecutionState *state,
 		CVExecutor *executor, CliverEvent::Type et) {
 
 	TrainingProperty* p = static_cast<TrainingProperty*>(state->property());
-	TrainingSearcher* searcher 
-		= static_cast<TrainingSearcher*>(g_client_verifier->searcher());
+	TrainingMergeSearcher* searcher 
+		= static_cast<TrainingMergeSearcher*>(g_client_verifier->searcher());
 
 	switch(p->training_state) {
 
@@ -361,12 +362,12 @@ void TrainingSearcher::handle_post_event(CVExecutionState *state,
 	}
 }
 
-void TrainingSearcher::handle_pre_event(CVExecutionState *state,
+void TrainingMergeSearcher::handle_pre_event(CVExecutionState *state,
 		CVExecutor* executor, CliverEvent::Type et) {
 
 	TrainingProperty* p = static_cast<TrainingProperty*>(state->property());
-	TrainingSearcher* searcher 
-		= static_cast<TrainingSearcher*>(g_client_verifier->searcher());
+	TrainingMergeSearcher* searcher 
+		= static_cast<TrainingMergeSearcher*>(g_client_verifier->searcher());
 
 	switch(p->training_state) {
 

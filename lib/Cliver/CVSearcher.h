@@ -62,6 +62,38 @@ class LogIndexSearcher : public CVSearcher {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TrainingMergeSearcher : public CVSearcher {
+ public:
+	TrainingMergeSearcher(klee::Searcher* base_searcher, StateMerger* merger);
+
+	klee::ExecutionState &selectState();
+
+	void update(klee::ExecutionState *current,
+							const std::set<klee::ExecutionState*> &addedStates,
+							const std::set<klee::ExecutionState*> &removedStates);
+
+	void clone_for_network_events(CVExecutionState *state, CVExecutor* executor, 
+			CliverEvent::Type et);
+
+	void record_path(CVExecutionState *state, CVExecutor* executor,
+			CliverEvent::Type et);
+
+	void printName(std::ostream &os) {
+		os << "TrainingMergeSearcher\n";
+	}
+
+	static void handle_pre_event(CVExecutionState *state, 
+			CVExecutor *executor, CliverEvent::Type et);
+	static void handle_post_event(CVExecutionState *state, 
+			CVExecutor *executor, CliverEvent::Type et);
+
+ private:
+	ExecutionStateSet phases_[TrainingProperty::EndState];
+	PathSet paths_;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TrainingSearcher : public CVSearcher {
  public:
 	TrainingSearcher(klee::Searcher* base_searcher, StateMerger* merger);
@@ -92,7 +124,6 @@ class TrainingSearcher : public CVSearcher {
 	PathSet paths_;
 };
 
-////////////////////////////////////////////////////////////////////////////////
 
 } // end namespace cliver
 #endif // CV_SEARCHER_H
