@@ -33,6 +33,7 @@ enum CliverMode {
 	TetrinetMode, 
 	XpilotMode, 
 	DefaultTrainingMode, 
+	OutOfOrderTrainingMode, 
 	TetrinetTrainingMode,
 	XpilotTrainingMode
 };

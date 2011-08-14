@@ -456,6 +456,7 @@ void NetworkManagerTraining::execute_shutdown(CVExecutor* executor,
 NetworkManager* NetworkManagerFactory::create(CVExecutionState* state) {
 	switch (g_cliver_mode) {
 		case DefaultMode: {
+		case DefaultTrainingMode: 
 			NetworkManager *nm = new NetworkManager(state);
 			foreach( SocketEventList *sel, g_client_verifier->socket_events()) {
 				nm->add_socket(*sel);
@@ -470,16 +471,13 @@ NetworkManager* NetworkManagerFactory::create(CVExecutionState* state) {
 			}
 			return nm;
 	  }
-		case DefaultTrainingMode: {
+		case OutOfOrderTrainingMode: {
 			NetworkManagerTraining *nm 
 				= new NetworkManagerTraining(state);
 			return nm;
 		}
-		//case TetrinetTrainingMode: {
-		//	NetworkManagerTrainingTetrinet *nm
-		//		= new NetworkManagerTrainingTetrinet(state);
-		//	return nm;
-	  //}
+		case TetrinetTrainingMode: 
+			break;
 	}
 	cv_error("cliver mode not supported in NetworkManager");
 	return NULL;

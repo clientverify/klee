@@ -52,6 +52,8 @@ llvm::cl::opt<CliverMode> g_cliver_mode("cliver-mode",
       "Tetrinet mode"),
     clEnumValN(DefaultTrainingMode, "training", 
       "Default training mode"),
+    clEnumValN(OutOfOrderTrainingMode, "out-of-order-training", 
+      "Default training mode"),
     clEnumValN(TetrinetTrainingMode, "tetrinet-training", 
       "Tetrinet training mode"),
   clEnumValEnd),
@@ -86,7 +88,7 @@ ExternalHandlerInfo external_handler_info[] = {
 
 CliverEventInfo cliver_event_info[] = {
 	//{CliverEvent::Network, llvm::Instruction::Call, "cliver_socket_create"},
-	//{CliverEvent::Network, llvm::Instruction::Call, "cliver_socket_shutdown"},
+	{CliverEvent::Network, llvm::Instruction::Call, "cliver_socket_shutdown"},
 	{CliverEvent::NetworkSend, llvm::Instruction::Call, "cliver_socket_write"},
 	{CliverEvent::NetworkRecv, llvm::Instruction::Call, "cliver_socket_read"},
 	//{CliverEvent::Training, llvm::Instruction::Call, "cliver_training_start"},
@@ -195,9 +197,15 @@ void ClientVerifier::register_events(CVExecutor *executor) {
 			post_event_callbacks_.connect(&LogIndexSearcher::handle_post_event);
 			break;
 		case DefaultTrainingMode:
-		case TetrinetTrainingMode:
+			pre_event_callbacks_.connect(&TrainingSearcher::handle_pre_event);
+			post_event_callbacks_.connect(&TrainingSearcher::handle_post_event);
+			break;
+		case OutOfOrderTrainingMode:
 			pre_event_callbacks_.connect(&OutOfOrderTrainingSearcher::handle_pre_event);
 			post_event_callbacks_.connect(&OutOfOrderTrainingSearcher::handle_post_event);
+			break;
+		case TetrinetTrainingMode:
+			cv_error("unsupported");
 			break;
 	}
 }
@@ -224,10 +232,15 @@ CVSearcher* ClientVerifier::construct_searcher() {
 			searcher_ = new LogIndexSearcher(new klee::DFSSearcher(), merger_);
 			break;
 		case DefaultTrainingMode:
-		case TetrinetTrainingMode:
+			merger_ = new StateMerger(pruner_);
+			searcher_ = new TrainingSearcher(NULL, merger_);
+			break;
+		case OutOfOrderTrainingMode:
 			merger_ = new SymbolicStateMerger(pruner_);
 			searcher_ 
-				= new OutOfOrderTrainingSearcher(new klee::DFSSearcher(), merger_);
+				= new OutOfOrderTrainingSearcher(NULL, merger_);
+		case TetrinetTrainingMode:
+			cv_error("not currently supported");
 			break;
 	}
 	return searcher_;
