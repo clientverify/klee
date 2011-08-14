@@ -100,19 +100,17 @@ class TrainingSearcher : public CVSearcher {
 
 	klee::ExecutionState &selectState();
 
-	//void update(klee::ExecutionState *current,
-	//						const std::set<klee::ExecutionState*> &addedStates,
-	//						const std::set<klee::ExecutionState*> &removedStates);
+	void update(klee::ExecutionState *current,
+							const std::set<klee::ExecutionState*> &addedStates,
+							const std::set<klee::ExecutionState*> &removedStates);
 
 	//void clone_for_network_events(CVExecutionState *state, CVExecutor* executor, 
 	//		CliverEvent::Type et);
 
-	//void record_path(CVExecutionState *state, CVExecutor* executor,
-	//		CliverEvent::Type et);
+	void record_path(CVExecutionState *state, CVExecutor* executor,
+			CliverEvent::Type et);
 
-	//void printName(std::ostream &os) {
-	//	os << "TrainingSearcher\n";
-	//}
+	void printName(std::ostream &os) { os << "TrainingSearcher\n"; }
 
 	static void handle_pre_event(CVExecutionState *state, 
 			CVExecutor *executor, CliverEvent::Type et);
