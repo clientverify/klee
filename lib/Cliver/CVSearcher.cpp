@@ -15,6 +15,8 @@
 
 namespace cliver {
 
+////////////////////////////////////////////////////////////////////////////////
+
 llvm::cl::opt<bool>
 DebugSearcher("debug-searcher",llvm::cl::init(false));
 
@@ -150,11 +152,11 @@ void LogIndexSearcher::handle_post_event(CVExecutionState *state,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TrainingMergeSearcher::TrainingMergeSearcher(klee::Searcher* base_searcher, 
+OutOfOrderTrainingSearcher::OutOfOrderTrainingSearcher(klee::Searcher* base_searcher, 
 		StateMerger* merger) 
 	: CVSearcher(base_searcher, merger) {}
 
-klee::ExecutionState &TrainingMergeSearcher::selectState() {
+klee::ExecutionState &OutOfOrderTrainingSearcher::selectState() {
 
 	if (!phases_[TrainingProperty::NetworkClone].empty()) {
 		CVExecutionState* state 
@@ -196,10 +198,8 @@ klee::ExecutionState &TrainingMergeSearcher::selectState() {
 			state->reset_path_manager();
 
 			if (DebugSearcher) {
-				std::string str;
-				util_kinst_string(state->prevPC, str);
-				CVDEBUG_S(state->id(), "Preparing Execution for path "
-						<< *p << " in round " << p->training_round << " " << str);
+				CVDEBUG_S(state->id(), "Preparing Execution for path " << *p 
+						<< " in round " << p->training_round << " " << *state->prevPC);
 			}
 		}
 
@@ -218,7 +218,7 @@ klee::ExecutionState &TrainingMergeSearcher::selectState() {
 	return *null_state;
 }
 
-void TrainingMergeSearcher::update(klee::ExecutionState *current,
+void OutOfOrderTrainingSearcher::update(klee::ExecutionState *current,
 						const std::set<klee::ExecutionState*> &addedStates,
 						const std::set<klee::ExecutionState*> &removedStates) {
 
@@ -259,7 +259,7 @@ void TrainingMergeSearcher::update(klee::ExecutionState *current,
 	}
 }
 
-void TrainingMergeSearcher::clone_for_network_events(CVExecutionState *state,
+void OutOfOrderTrainingSearcher::clone_for_network_events(CVExecutionState *state,
 		CVExecutor* executor, CliverEvent::Type et) {
 
 	TrainingProperty *p = static_cast<TrainingProperty*>(state->property());
@@ -288,14 +288,12 @@ void TrainingMergeSearcher::clone_for_network_events(CVExecutionState *state,
 	}
 
 	if (DebugSearcher) {
-		std::string str;
-		util_kinst_string(state->pc, str);
 		CVDEBUG_S(state->id(), "Cloning into " << count << " states in property "
-				<< *p << " at " << str);
+				<< *p << " at " << *state->pc);
 	}
 }
 
-void TrainingMergeSearcher::record_path(CVExecutionState *state,
+void OutOfOrderTrainingSearcher::record_path(CVExecutionState *state,
 		CVExecutor* executor, CliverEvent::Type et) {
 
 	TrainingProperty *p = static_cast<TrainingProperty*>(state->property());
@@ -303,13 +301,10 @@ void TrainingMergeSearcher::record_path(CVExecutionState *state,
 	state->path_manager()->set_range(p->path_range);
 
 	if (DebugSearcher) {
-		std::string start_str, end_str;
-		util_kinst_string(p->path_range.kinsts().first, start_str);
-		util_kinst_string(p->path_range.kinsts().second, end_str);
 		CVDEBUG_S(state->id(), "Recording path (length "
-			 	<< state->path_manager()->length() << ") "	
-				<< *p << " [Start " << start_str 
-				<< "] [End " << end_str << ")");
+			 	<< state->path_manager()->length() << ") "<< *p 
+				<< " [Start " << *p->path_range.kinsts().first << "]"
+				<< " [End "   << *p->path_range.kinsts().second << "]");
 	}
 
 	// Write to file (pathstart, pathend, path, message)...
@@ -339,12 +334,12 @@ void TrainingMergeSearcher::record_path(CVExecutionState *state,
 	p->training_round++;
 }
 
-void TrainingMergeSearcher::handle_post_event(CVExecutionState *state,
+void OutOfOrderTrainingSearcher::handle_post_event(CVExecutionState *state,
 		CVExecutor *executor, CliverEvent::Type et) {
 
 	TrainingProperty* p = static_cast<TrainingProperty*>(state->property());
-	TrainingMergeSearcher* searcher 
-		= static_cast<TrainingMergeSearcher*>(g_client_verifier->searcher());
+	OutOfOrderTrainingSearcher* searcher 
+		= static_cast<OutOfOrderTrainingSearcher*>(g_client_verifier->searcher());
 
 	switch(p->training_state) {
 
@@ -362,12 +357,12 @@ void TrainingMergeSearcher::handle_post_event(CVExecutionState *state,
 	}
 }
 
-void TrainingMergeSearcher::handle_pre_event(CVExecutionState *state,
+void OutOfOrderTrainingSearcher::handle_pre_event(CVExecutionState *state,
 		CVExecutor* executor, CliverEvent::Type et) {
 
 	TrainingProperty* p = static_cast<TrainingProperty*>(state->property());
-	TrainingMergeSearcher* searcher 
-		= static_cast<TrainingMergeSearcher*>(g_client_verifier->searcher());
+	OutOfOrderTrainingSearcher* searcher 
+		= static_cast<OutOfOrderTrainingSearcher*>(g_client_verifier->searcher());
 
 	switch(p->training_state) {
 
@@ -390,5 +385,124 @@ void TrainingMergeSearcher::handle_pre_event(CVExecutionState *state,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+// States: PreExecute, Execute, NetworkSend, NetworkRecv
+TrainingSearcher::TrainingSearcher(klee::Searcher* base_searcher, 
+		StateMerger* merger) 
+	: CVSearcher(base_searcher, merger) {}
+
+klee::ExecutionState &TrainingSearcher::selectState() {
+
+	// no network clone
+	//if (!phases_[TrainingProperty::NetworkClone].empty()) {
+	//	CVExecutionState* state 
+	//		= *(phases_[TrainingProperty::NetworkClone].begin());
+	//	return *(static_cast<klee::ExecutionState*>(state));
+	//}
+
+	if (!phases_[TrainingProperty::Execute].empty()) {
+		CVExecutionState* state = *(phases_[TrainingProperty::Execute].begin());
+		return *(static_cast<klee::ExecutionState*>(state));
+	}
+
+	if (!phases_[TrainingProperty::PrepareExecute].empty()) {
+		if (DebugSearcher) {
+			CVDEBUG("Current Paths (" << paths_.size() << ")");
+			foreach(PathManager* path, paths_) {
+				CVDEBUG(*path);
+			}
+			CVDEBUG("Current States (" 
+					<< phases_[TrainingProperty::PrepareExecute].size() << ")");
+		}
+
+		ExecutionStateSet to_merge(phases_[TrainingProperty::PrepareExecute]);
+
+		ExecutionStateSet result;
+		if (!to_merge.empty())
+			merger_->merge(to_merge, result);
+		
+		if (DebugSearcher) 
+			CVDEBUG("Current states, after mergin' (" << result.size() << ")");
+
+		phases_[TrainingProperty::PrepareExecute].clear();
+
+	  foreach (CVExecutionState* state, result) {
+			TrainingProperty *p = static_cast<TrainingProperty*>(state->property());
+			p->training_state = TrainingProperty::Execute;
+			p->path_range = PathRange(state->prevPC, NULL);
+			state->reset_path_manager();
+
+			if (DebugSearcher) {
+				CVDEBUG_S(state->id(), "Preparing Execution for path " << *p 
+						<< " in round " << p->training_round << " " << *state->prevPC);
+			}
+		}
+
+		foreach (CVExecutionState* state, result) {
+			phases_[TrainingProperty::Execute].insert(state);
+		}
+
+		return selectState();
+	}
+
+	cv_error("no states remaining");
+
+	// XXX better error handling
+	// This will never execute after cv_error
+	klee::ExecutionState *null_state = NULL;
+	return *null_state;
+}
+
+
+void TrainingSearcher::handle_post_event(CVExecutionState *state,
+		CVExecutor *executor, CliverEvent::Type et) {
+
+	TrainingProperty* p = static_cast<TrainingProperty*>(state->property());
+	TrainingSearcher* searcher 
+		= static_cast<TrainingSearcher*>(g_client_verifier->searcher());
+
+	switch(p->training_state) {
+
+		case TrainingProperty::PrepareExecute:
+			break;
+
+		case TrainingProperty::Execute:
+			break;
+
+		case TrainingProperty::NetworkClone:
+			if (et == CliverEvent::NetworkSend || et == CliverEvent::NetworkRecv) {
+				//searcher->record_path(state, executor, et);
+			}
+			break;
+	}
+}
+
+void TrainingSearcher::handle_pre_event(CVExecutionState *state,
+		CVExecutor* executor, CliverEvent::Type et) {
+
+	TrainingProperty* p = static_cast<TrainingProperty*>(state->property());
+	TrainingSearcher* searcher 
+		= static_cast<TrainingSearcher*>(g_client_verifier->searcher());
+
+	switch(p->training_state) {
+
+		case TrainingProperty::PrepareExecute:
+			break;
+
+		case TrainingProperty::Execute:
+			if (et == CliverEvent::NetworkSend || et == CliverEvent::NetworkRecv) {
+				//searcher->clone_for_network_events(state,executor, et);
+			}
+			else if (et == CliverEvent::Training) {
+				//searcher->record_path(state, executor, et);
+			}
+			break;
+
+		case TrainingProperty::NetworkClone:
+			break;
+
+	}
+}
+
 
 } // end namespace cliver
