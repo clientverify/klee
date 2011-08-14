@@ -23,7 +23,6 @@ Path::Path() : parent_(NULL), ref_count_(0) {}
 
 void Path::add(bool direction, klee::KInstruction* inst) {
 	branches_.push_back(direction);
-	//instructions_.push_back(inst->info->id);
 	instructions_.push_back(inst);
 }
 
@@ -233,8 +232,6 @@ bool PathManager::merge(const PathManager &pm) {
 }
 
 bool PathManager::less(const PathManager &b) const {
-	//if (range_.compare(b.range_) >= 0)
-	//	return false;
 	if (range_.less(b.range_))
 		return true;
 	return path_->less(*b.path_);

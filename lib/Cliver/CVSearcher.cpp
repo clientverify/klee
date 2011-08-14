@@ -411,11 +411,13 @@ klee::ExecutionState &TrainingSearcher::selectState() {
 	}
 
 	if (!phases_[TrainingProperty::PrepareExecute].empty()) {
-		CVDEBUG("Current Paths (" << paths_.size() << ")");
+		// Print stats
+		g_client_verifier->print_current_statistics();
+		CVMESSAGE("Current Paths (" << paths_.size() << ")");
 		foreach(PathManager* path, paths_) {
 			CVDEBUG(*path);
 		}
-		CVDEBUG("Current States (" 
+		CVMESSAGE("Current States (" 
 				<< phases_[TrainingProperty::PrepareExecute].size() << ")");
 
 		ExecutionStateSet to_merge(phases_[TrainingProperty::PrepareExecute]);
@@ -424,7 +426,7 @@ klee::ExecutionState &TrainingSearcher::selectState() {
 		if (!to_merge.empty())
 			merger_->merge(to_merge, result);
 		
-		CVDEBUG("Current states after mergin' (" << result.size() << ")");
+		CVMESSAGE("Current states after mergin' (" << result.size() << ")");
 
 		phases_[TrainingProperty::PrepareExecute].clear();
 
@@ -500,7 +502,18 @@ void TrainingSearcher::record_path(CVExecutionState *state,
 	TrainingProperty *p = static_cast<TrainingProperty*>(state->property());
 	p->path_range = PathRange(p->path_range.start(), state->prevPC);
 	state->path_manager()->set_range(p->path_range);
-
+	if (et == CliverEvent::NetworkSend ||
+			et == CliverEvent::NetworkRecv) {
+		if (Socket* s = state->network_manager()->socket()) {
+			const SocketEvent* se = &s->previous_event();
+			state->path_manager()->add_message(se);
+		} else {
+			cv_error("No message in state");
+		}
+	} else {
+		cv_error("invalid cliver event for recording path");
+	}
+ 
 	CVDEBUG_S(state->id(), "Recording path (length "
 			<< state->path_manager()->length() << ") "<< *p 
 			<< " [Start " << *p->path_range.kinsts().first << "]"

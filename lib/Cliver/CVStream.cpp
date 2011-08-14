@@ -34,17 +34,14 @@ DebugStderr("debug-stderr",
   llvm::cl::init(false));
 
 llvm::cl::opt<bool>
-DebugUtilPrintInstructions("debug-util-print-inst",
-  llvm::cl::desc("Print instructions in util_print_inst()"),
+CVStreamPrintInstructions("cvstream-print-inst",
+  llvm::cl::desc("Print instructions in CVStream"),
   llvm::cl::init(false));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace cliver {
-
-void util_inst_string( llvm::Instruction* inst, std::string &rstr) {}
-void util_kinst_string( klee::KInstruction* kinst, std::string &rstr) {}
 
 std::ostream* cv_warning_stream = NULL;
 std::ostream* cv_message_stream = NULL;
