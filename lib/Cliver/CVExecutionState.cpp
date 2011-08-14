@@ -59,10 +59,10 @@ int TrainingProperty::compare(const ExecutionStateProperty &b) const {
 }
 
 void TrainingProperty::print(std::ostream &os) const {
-	os << "(round: " << training_round
+	os << "[round: " << training_round
 	   << ", range: " << path_range
-	   << ", trainingstate: " << training_state
-		 << ")";
+	   //<< ", trainingstate: " << training_state
+		 << "]";
 }
 
 ////////////////////////////////////////////////////////////////////////////////
