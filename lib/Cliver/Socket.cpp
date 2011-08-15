@@ -16,6 +16,7 @@ int Socket::NextFileDescriptor = 1000;
 
 SocketEvent::SocketEvent(const KTestObject &object) {
 	unsigned char *buf = object.bytes;
+	length = object.numBytes;
 	
 	if (g_cliver_mode == XpilotMode) {
 		// Extract the round number prefix
@@ -24,12 +25,12 @@ SocketEvent::SocketEvent(const KTestObject &object) {
 								| ((unsigned)buf[2] << 8) 
 								| ((unsigned)buf[3]));
 		buf += 4;
+		length -= 4;
 	} else {
 		round = -1;
 	}
 
-	data = buf;
-	length = object.numBytes;
+	data = std::vector<uint8_t>(buf, buf+length);
 
 	// Set the type of the socket by using the Ktest object's name
 	if (std::string(object.name) == "c2s") {
