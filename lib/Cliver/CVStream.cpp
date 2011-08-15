@@ -11,7 +11,7 @@
 #include "signal.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/CommandLine.h"
-   
+
 namespace {
 llvm::cl::opt<std::string>
 OutputDir("output-dir", 
@@ -195,6 +195,11 @@ void CVStream::initOutputDirectory() {
 
 void CVStream::getOutFiles(std::string path, 
 		std::vector<std::string> &results) {
+	getFiles(path, ".ktest", results);
+}
+
+void CVStream::getFiles(std::string path, std::string suffix, 
+		std::vector<std::string> &results) {
   llvm::sys::Path p(path);
   std::set<llvm::sys::Path> contents;
   std::string error;
@@ -206,11 +211,12 @@ void CVStream::getOutFiles(std::string path,
   for (std::set<llvm::sys::Path>::iterator it = contents.begin(),
          ie = contents.end(); it != ie; ++it) {
     std::string f = it->str();
-    if (f.substr(f.size()-6,f.size()) == ".ktest") {
+    if (f.substr(f.size()-suffix.size(), f.size()) == suffix) {
       results.push_back(f);
     }
   }
 }
+
 
 void CVStream::init() {
 
