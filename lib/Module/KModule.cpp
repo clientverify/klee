@@ -429,6 +429,7 @@ void KModule::prepare(const Interpreter::ModuleOptions &opts,
     for (unsigned i=0; i<kf->numInstructions; ++i) {
       KInstruction *ki = kf->instructions[i];
       ki->info = &infos->getInfo(ki->inst);
+			kinsts[ki->info->id] = ki;
     }
 
     functions.push_back(kf);
