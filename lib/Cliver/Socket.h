@@ -15,20 +15,37 @@
 #include <iostream>
 #include <vector>
 
+#include <boost/serialization/access.hpp>
+
 namespace cliver {
 
 #define SOCKETEVENT_TYPES X(SEND), X(RECV) 
 #define SOCKET_STATES     X(IDLE), X(READING), X(WRITING), X(FINISHED)
 #define X(x) x
 
-struct SocketEvent {
+class SocketEvent {
+ public:
 	SocketEvent(const KTestObject &object);
+
 	typedef enum { SOCKETEVENT_TYPES } Type;
 	Type type;
 	unsigned delta;
 	int round;
 	unsigned length;
-	const uint8_t *data;
+	std::vector<uint8_t> data;
+
+ private:
+	// Serialization
+	SocketEvent() {};
+	friend class boost::serialization::access;
+	template<class archive> 
+	void serialize(archive & ar, const unsigned version) {
+		ar & type;
+		ar & delta;
+		ar & round;
+		ar & length;
+		ar & data;
+	}
 };
 
 typedef std::vector<const SocketEvent*> SocketEventList;
