@@ -167,6 +167,8 @@ class CVStream {
   std::string getOutputFilename(const std::string &filename);
   std::ostream* openOutputFile(const std::string &filename);
 	void getOutFiles(std::string path, std::vector<std::string> &results);
+	void getFiles(std::string path, std::string suffix,
+			std::vector<std::string> &results);
 
  private:
   std::string output_directory_;
