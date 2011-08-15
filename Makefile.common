@@ -42,7 +42,7 @@ CXX.Flags += -DKLEE_DIR=\"$(PROJ_OBJ_ROOT)\"
 CXX.Flags += -DEXT_HASH_MAP
 
 # For C++ Boost libaries
-CXX.Flags += -I/usr/include/boost
+CXX.Flags += -I/usr/include/boost -Wno-deprecated
 
 # Required by Boost 
 REQUIRES_RTTI=1
