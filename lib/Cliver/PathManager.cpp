@@ -10,17 +10,20 @@
 #include "PathManager.h"
 #include "llvm/Support/CommandLine.h"
 #include "CVStream.h"
+#include "CVExecutor.h"
+#include "Socket.h"
 
 #include <iostream>
-
+#include <boost/serialization/set.hpp>
+#include <boost/serialization/vector.hpp>
+#include <boost/archive/text_oarchive.hpp>
+#include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/binary_oarchive.hpp>
 #include <boost/archive/binary_iarchive.hpp>
 
 namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////
-
-// XXX ref_count 0 or 1 ??
 
 Path::Path() : parent_(NULL), ref_count_(0), length_(-1) {}
 
@@ -102,23 +105,16 @@ void Path::consolidate_branches(std::vector<bool> &branches) const {
 	}
 }
 
-//void Path::consolidate_instructions(
-//		std::vector<klee::KInstruction*> &instructions) const {
-//	instructions.reserve(length());
-//	const Path* p = this;
-//	while (p != NULL) {
-//		instructions.insert(instructions.begin(), 
-//				p->instructions_.begin(), p->instructions_.end());
-//		p = p->parent_;
-//	}
-//}
-
 template<class archive> 
-void Path::serialize(archive & ar, const unsigned version) {
+void Path::save(archive & ar, const unsigned version) const {
 	std::vector<bool> branches;
 	consolidate_branches(branches);
-
 	ar & branches;
+}
+
+template<class archive> 
+void Path::load(archive & ar, const unsigned version) {
+	ar & branches_;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -177,6 +173,30 @@ void PathRange::print(std::ostream &os) const {
 	os << ")";
 }
 
+template<class archive> 
+void PathRange::save(archive & ar, const unsigned version) const {
+	unsigned start_id = ids().first, end_id = ids().second;
+	ar & start_id;
+	ar & end_id;
+}
+
+template<class archive> 
+void PathRange::load(archive & ar, const unsigned version) {
+	assert(g_executor && "CVExecutor not initialized");
+	unsigned start_id, end_id;
+	ar & start_id;
+	ar & end_id;
+	
+	if (start_id != 0) {
+		start_ = g_executor->get_instruction(start_id);
+		assert(start_ != NULL && "invalid PathRange id");
+	}
+	if (end_id != 0) {
+		end_ = g_executor->get_instruction(start_id);
+		assert(end_ != NULL && "invalid PathRange id");
+	}
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 PathManager::PathManager() 
@@ -199,7 +219,7 @@ bool PathManager::merge(const PathManager &pm) {
 	assert(path_->equal(*pm.path_) && "paths not equal" );
 
 	bool success = false;
-	foreach(const SocketEvent* se, pm.messages_) {
+	foreach(SocketEvent* se, pm.messages_) {
 		if (messages_.find(se) == messages_.end()) {
 			success = true;
 			messages_.insert(se);
@@ -233,8 +253,8 @@ void PathManager::print(std::ostream &os) const {
 }
 
 bool PathManager::add_message(const SocketEvent* se) {
-	if (messages_.find(se) == messages_.end()) {
-		messages_.insert(se);
+	if (messages_.find(const_cast<SocketEvent*>(se)) == messages_.end()) {
+		messages_.insert(const_cast<SocketEvent*>(se));
 		return true;
 	}
 	return false;
@@ -247,6 +267,23 @@ void PathManager::set_range(const PathRange& range) {
 bool PathManagerLT::operator()(const PathManager* a, 
 		const PathManager* b) const {
 	return a->less(*b);
+}
+
+template<class archive> 
+void PathManager::serialize(archive & ar, const unsigned version) {
+	ar & range_;
+	ar & path_;
+	ar & messages_;
+}
+
+void PathManager::write(std::ostream &os) {
+	boost::archive::binary_oarchive oa(os);
+	oa << *this;
+}
+
+void PathManager::read(std::ifstream &is) {
+	boost::archive::binary_iarchive ia(is);
+	ia >> *this;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
