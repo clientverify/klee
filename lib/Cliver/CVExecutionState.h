@@ -34,7 +34,7 @@ class PathManager;
 class ExecutionStateProperty {
  public:
   virtual void print(std::ostream &os) const {};
-	virtual int compare(const ExecutionStateProperty &p) const {}
+	virtual int compare(const ExecutionStateProperty &p) const { return 0; }
 	virtual ExecutionStateProperty* clone() { assert(0); return NULL; }
 };
 
