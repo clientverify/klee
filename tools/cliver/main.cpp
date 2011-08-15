@@ -471,7 +471,8 @@ int main(int argc, char **argv, char **envp) {
 
   klee::Interpreter::InterpreterOptions IOpts;
   IOpts.MakeConcreteSymbolic = false;
-	g_interpreter = new cliver::CVExecutor(IOpts, g_client_verifier);
+	g_executor = new cliver::CVExecutor(IOpts, g_client_verifier);
+	g_interpreter = g_executor;
 
   // Print args to info file
   std::ostream &infoFile = g_client_verifier->getInfoStream();
