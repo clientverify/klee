@@ -11,7 +11,11 @@
 #include "StateMerger.h"
 #include "ClientVerifier.h"
 #include "NetworkManager.h"
+#include "PathManager.h"
 #include "klee/Internal/Module/InstructionInfoTable.h"
+
+#include <boost/archive/text_oarchive.hpp>
+#include <boost/archive/text_iarchive.hpp>
 
 namespace cliver {
 
@@ -287,10 +291,10 @@ void OutOfOrderTrainingSearcher::clone_for_network_events(CVExecutionState *stat
 
 	bool is_open = true;
 
-	SocketEventList* sel = NULL;
 	unsigned count=0;
 	
 	// Clone a state for every message.
+	SocketEventList* sel = NULL;
 	foreach(sel, g_client_verifier->socket_events()) {
 		const SocketEvent* se = NULL;
 		foreach(se, *sel) {
@@ -520,6 +524,12 @@ void TrainingSearcher::record_path(CVExecutionState *state,
 			<< " [End "   << *p->path_range.kinsts().second << "]");
 
 	// Write to file (pathstart, pathend, path, message)...
+	
+	std::stringstream filename;
+	filename << state->id() << "_" << p->training_round << ".path";
+	std::ostream *file = g_client_verifier->openOutputFile(filename.str());
+	state->path_manager()->write(*file);
+	delete file;
 	
 	PathSet::iterator path_it = paths_.find(state->path_manager());
 	
