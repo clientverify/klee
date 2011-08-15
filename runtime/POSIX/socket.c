@@ -113,3 +113,7 @@ time_t __time(time_t *t) {
   return __t;
 }
 
+int cliver_training_start() {
+  return 0;
+}
+
