@@ -150,6 +150,8 @@ namespace klee {
 	extern RNG theRNG;
 }
 
+cliver::CVExecutor *g_executor = 0;
+
 namespace cliver {
 
 CVExecutor::CVExecutor(const InterpreterOptions &opts, klee::InterpreterHandler *ih)
@@ -771,6 +773,13 @@ uint64_t CVExecutor::check_memory_usage() {
 	fclose(fp);
 
 	return peakMem / 1024; 
+}
+
+klee::KInstruction* CVExecutor::get_instruction(unsigned id) {
+	if (kmodule->kinsts.find(id) != kmodule->kinsts.end()) {
+		return kmodule->kinsts[id];
+	}
+	return NULL;
 }
 
 } // end namespace cliver

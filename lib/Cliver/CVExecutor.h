@@ -79,6 +79,9 @@ class CVExecutor : public klee::Executor {
 	void remove_state(CVExecutionState* state);
 
 	uint64_t check_memory_usage();
+
+	klee::KInstruction* get_instruction(unsigned id);
+
  private:
   ClientVerifier *cv_;
 	StateMerger *merger_;
@@ -88,5 +91,7 @@ class CVExecutor : public klee::Executor {
 };
 
 } // end cliver namespace
+
+extern cliver::CVExecutor *g_executor;
 
 #endif // CLIVER_EXECUTOR_H
