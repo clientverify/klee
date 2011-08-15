@@ -20,6 +20,8 @@
 
 #include <boost/serialization/access.hpp>
 #include <boost/serialization/vector.hpp>
+#include <boost/archive/text_oarchive.hpp>
+#include <boost/archive/text_iarchive.hpp>
 
 namespace cliver {
 
@@ -54,7 +56,10 @@ class Path {
 	// Serialization
 	friend class boost::serialization::access;
 	template<class archive> 
-	void serialize(archive & ar, const unsigned version);
+		void save(archive & ar, const unsigned version) const;
+	template<class archive> 
+		void load(archive & ar, const unsigned version);
+	BOOST_SERIALIZATION_SPLIT_MEMBER()
 
 	// Member Variables
 	const Path *parent_;
@@ -94,6 +99,14 @@ class PathRange {
 	void print(std::ostream &os) const;
 
  private:
+	// Serialization
+	friend class boost::serialization::access;
+	template<class archive> 
+		void save(archive & ar, const unsigned version) const;
+	template<class archive> 
+		void load(archive & ar, const unsigned version);
+	BOOST_SERIALIZATION_SPLIT_MEMBER()
+
 	klee::KInstruction* start_;
 	klee::KInstruction* end_;
 };
@@ -110,7 +123,7 @@ class SocketEvent;
 
 class PathManager {
  public:
-	typedef std::set<const SocketEvent*> message_set_ty;
+	typedef std::set<SocketEvent*> message_set_ty;
 	PathManager();
 	PathManager* clone();
 	unsigned length() { return path_->length(); }
@@ -124,8 +137,17 @@ class PathManager {
 	void set_range(const PathRange& range);
 	const message_set_ty& messages() { return messages_; }
 
+	void write(std::ostream &os);
+	void read(std::ifstream &is);
+
  private:
 	explicit PathManager(const PathManager &pm);
+
+	// Serialization
+	friend class boost::serialization::access;
+	template<class archive> 
+		void serialize(archive & ar, const unsigned version);
+
 	Path* path_;
 	PathRange range_;
 	message_set_ty messages_;
@@ -136,7 +158,7 @@ inline std::ostream &operator<<(std::ostream &os,
   p.print(os);
   return os;
 }
- 
+
 class PathManagerFactory {
  public:
   static PathManager* create();
