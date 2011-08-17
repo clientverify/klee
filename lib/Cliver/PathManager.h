@@ -135,6 +135,7 @@ class PathManager {
 	void print(std::ostream &os) const;
 	bool add_message(const SocketEvent* se);
 	void set_range(const PathRange& range);
+	PathRange range() { return range_; }
 	const message_set_ty& messages() { return messages_; }
 
 	void write(std::ostream &os);
@@ -168,9 +169,27 @@ struct PathManagerLT {
 	bool operator()(const PathManager* a, const PathManager* b) const;
 };
 
-typedef std::set<PathManager*, PathManagerLT> PathSet;
-
 ////////////////////////////////////////////////////////////////////////////////
+
+class PathSet {
+ public:
+	typedef std::set<PathManager*, PathManagerLT> set_ty;
+	typedef set_ty::iterator iterator;
+	typedef set_ty::const_iterator const_iterator;
+
+	PathSet();
+	bool add(PathManager* path);
+	bool contains(PathManager* path);
+	PathManager* merge(PathManager* path);
+	unsigned size() { return paths_.size(); }
+
+	PathSet::iterator begin() { return paths_.begin(); }
+	PathSet::iterator end() { return paths_.end(); }
+	PathSet::const_iterator begin() const { return paths_.begin(); }
+	PathSet::const_iterator end() const { return paths_.end(); }
+ private: 
+	set_ty paths_;
+};
 
 } // end namespace cliver
 #endif // PATH_MANAGER_H
