@@ -288,6 +288,38 @@ void PathManager::read(std::ifstream &is) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+PathSet::PathSet() {}
+
+bool PathSet::add(PathManager* path) {
+	set_ty::iterator path_it = paths_.find(path);
+	if (path_it  == paths_.end()) {
+		paths_.insert(path);
+		return true;
+	}
+	return false;
+}
+
+bool PathSet::contains(PathManager* path) {
+	set_ty::iterator path_it = paths_.find(path);
+	if (path_it  == paths_.end()) {
+		return false;
+	}
+	return true;
+}
+
+PathManager* PathSet::merge(PathManager* path) {
+	assert(contains(path) && "trying to merge with non-existant path");
+	set_ty::iterator path_it = paths_.find(path);
+	if (path_it  == paths_.end()) {
+		cv_error("path doesn't exist");
+	} else if ((*path_it)->merge(*path)) {
+		return *path_it;
+	}
+	return NULL;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 PathManager* PathManagerFactory::create() {
   switch (g_cliver_mode) {
 		case DefaultMode:
