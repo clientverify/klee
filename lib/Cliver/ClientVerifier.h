@@ -83,6 +83,8 @@ class CVExecutionState;
 class CVSearcher;
 class ConstraintPruner;
 class StateMerger;
+class PathManager;
+class PathSet;
 
 class CVContext {
  public:
@@ -138,6 +140,10 @@ class ClientVerifier : public klee::InterpreterHandler {
 	// Arrays
 	unsigned next_array_id() { return array_id_++; }
  
+	// Recorded paths
+	void initialize_training_paths();
+	int read_training_paths(std::vector<std::string> &paths);
+
  private:
 
   CVStream *cvstream_;
@@ -152,6 +158,8 @@ class ClientVerifier : public klee::InterpreterHandler {
 	signal_ty post_event_callbacks_;
 
 	std::vector<SocketEventList*> socket_events_;
+
+	PathSet *training_paths_;
 
 	unsigned array_id_;
 };
