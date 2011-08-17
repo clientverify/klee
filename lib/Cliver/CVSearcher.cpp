@@ -182,7 +182,7 @@ void LogIndexSearcher::handle_post_event(CVExecutionState *state,
 
 OutOfOrderTrainingSearcher::OutOfOrderTrainingSearcher(klee::Searcher* base_searcher, 
 		StateMerger* merger) 
-	: CVSearcher(base_searcher, merger) {}
+	: CVSearcher(base_searcher, merger), paths_(new PathSet()) {}
 
 klee::ExecutionState &OutOfOrderTrainingSearcher::selectState() {
 
@@ -199,8 +199,8 @@ klee::ExecutionState &OutOfOrderTrainingSearcher::selectState() {
 	}
 
 	if (!phases_[TrainingProperty::PrepareExecute].empty()) {
-		CVDEBUG("Current Paths (" << paths_.size() << ")");
-		foreach(PathManager* path, paths_) {
+		CVDEBUG("Current Paths (" << paths_->size() << ")");
+		foreach(PathManager* path, *paths_) {
 			CVDEBUG(*path);
 		}
 		CVDEBUG("Current States (" 
@@ -328,23 +328,23 @@ void OutOfOrderTrainingSearcher::record_path(CVExecutionState *state,
 
 	// Write to file (pathstart, pathend, path, message)...
 	
-	PathSet::iterator path_it = paths_.find(state->path_manager());
-	
-	if (path_it == paths_.end()) {
-		paths_.insert(state->path_manager()->clone());
-		CVDEBUG_S(state->id(), "Adding new path, pcount is now " 
-				<< paths_.size());
-	} else {
+	if (paths_->contains(state->path_manager())) {
 
-		if ((*path_it)->merge(*state->path_manager())) {
+		if (PathManager* mpath = paths_->merge(state->path_manager())) {
 			CVDEBUG_S(state->id(), "Adding new message, mcount is now "
-					<< (*path_it)->messages().size());
+					<< mpath->messages().size());
 		} else {
-			CVDEBUG_S(state->id(), "Path contains message, mcount is "
-					<< (*path_it)->messages().size());
+			CVDEBUG_S(state->id(), "Path already contains message");
+		}
+	} else {
+		if (paths_->add(state->path_manager()->clone())) {
+			CVDEBUG_S(state->id(), "Adding new path, pcount is now " 
+					<< paths_->size());
+		} else {
+			cv_error("error adding new path");
 		}
 	}
-
+	
 	// update for next path
 	p->training_state = TrainingProperty::PrepareExecute;
 	p->training_round++;
@@ -405,7 +405,7 @@ void OutOfOrderTrainingSearcher::handle_pre_event(CVExecutionState *state,
 // States: PreExecute, Execute, NetworkSend, NetworkRecv
 TrainingSearcher::TrainingSearcher(klee::Searcher* base_searcher, 
 		StateMerger* merger) 
-	: CVSearcher(base_searcher, merger) {}
+	: CVSearcher(base_searcher, merger), paths_(new PathSet()) {}
 
 klee::ExecutionState &TrainingSearcher::selectState() {
 
@@ -417,8 +417,8 @@ klee::ExecutionState &TrainingSearcher::selectState() {
 	if (!phases_[TrainingProperty::PrepareExecute].empty()) {
 		// Print stats
 		g_client_verifier->print_current_statistics();
-		CVMESSAGE("Current Paths (" << paths_.size() << ")");
-		foreach(PathManager* path, paths_) {
+		CVMESSAGE("Current Paths (" << paths_->size() << ")");
+		foreach(PathManager* path, *paths_) {
 			CVDEBUG(*path);
 		}
 		CVMESSAGE("Current States (" 
@@ -526,27 +526,30 @@ void TrainingSearcher::record_path(CVExecutionState *state,
 	// Write to file (pathstart, pathend, path, message)...
 	
 	std::stringstream filename;
-	filename << state->id() << "_" << p->training_round << ".path";
+	filename << "state_" << state->id() 
+		<< "-round_" << p->training_round 
+		<< "-length_" << state->path_manager()->length() 
+		<< ".tpath";
 	std::ostream *file = g_client_verifier->openOutputFile(filename.str());
 	state->path_manager()->write(*file);
 	delete file;
-	
-	PathSet::iterator path_it = paths_.find(state->path_manager());
-	
-	if (path_it == paths_.end()) {
-		paths_.insert(state->path_manager()->clone());
-		CVDEBUG_S(state->id(), "Adding new path, pcount is now " 
-				<< paths_.size());
-	} else {
-		if ((*path_it)->merge(*state->path_manager())) {
+		
+	if (paths_->contains(state->path_manager())) {
+		if (PathManager* mpath = paths_->merge(state->path_manager())) {
 			CVDEBUG_S(state->id(), "Adding new message, mcount is now "
-					<< (*path_it)->messages().size());
+					<< mpath->messages().size());
 		} else {
-			CVDEBUG_S(state->id(), "Path contains message, mcount is "
-					<< (*path_it)->messages().size());
+			CVDEBUG_S(state->id(), "Path already contains message");
+		}
+	} else {
+		if (paths_->add(state->path_manager()->clone())) {
+			CVDEBUG_S(state->id(), "Adding new path, pcount is now " 
+					<< paths_->size());
+		} else {
+			cv_error("error adding new path");
 		}
 	}
-
+	
 	// update for next path
 	p->training_state = TrainingProperty::PrepareExecute;
 	p->training_round++;
