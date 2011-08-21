@@ -6,13 +6,13 @@
 //
 //
 //===----------------------------------------------------------------------===//
-#ifndef CLIVER_EXECUTIONSTATE_H
-#define CLIVER_EXECUTIONSTATE_H
+#ifndef CLIVER_EXECUTION_STATE_H
+#define CLIVER_EXECUTION_STATE_H
 
-#include "klee/ExecutionState.h"
+#include "ExecutionStateProperty.h"
 #include "ClientVerifier.h"
+#include "klee/ExecutionState.h"
 #include "llvm/Instructions.h"
-#include "PathManager.h"
 
 #include <list>
 
@@ -28,73 +28,6 @@ class CVExecutionState;
 class CVExecutor;
 class NetworkManager;
 class PathManager;
-
-////////////////////////////////////////////////////////////////////////////////
-
-class ExecutionStateProperty {
- public:
-  virtual void print(std::ostream &os) const {};
-	virtual int compare(const ExecutionStateProperty &p) const { return 0; }
-	virtual ExecutionStateProperty* clone() { assert(0); return NULL; }
-};
-
-inline std::ostream &operator<<(std::ostream &os, 
-		const ExecutionStateProperty &p) {
-  p.print(os);
-  return os;
-}
- 
-struct ExecutionStatePropertyLT {
-	bool operator()(const ExecutionStateProperty* a, 
-			const ExecutionStateProperty* b) const;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-typedef std::set<CVExecutionState*> ExecutionStateSet;
-
-typedef std::map<ExecutionStateProperty*,
-								 ExecutionStateSet,
-								 ExecutionStatePropertyLT> ExecutionStatePropertyMap;
-
-struct ExecutionStatePropertyFactory {
-	static ExecutionStateProperty* create();
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class LogIndexProperty : public ExecutionStateProperty {
- public: 
-	LogIndexProperty();
-	LogIndexProperty* clone() { return new LogIndexProperty(*this); }
-  void print(std::ostream &os) const;
-	int compare(const ExecutionStateProperty &b) const;
-
-	// Property values
-	int socket_log_index;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TrainingProperty : public ExecutionStateProperty {
- public: 
-	enum TrainingState {
-		PrepareExecute=0, 
-		Execute, 
-		Merge, 
-		NetworkClone, 
-		EndState
-	};
-	TrainingProperty();
-	TrainingProperty* clone() { return new TrainingProperty(*this); }
-  void print(std::ostream &os) const;
-	int compare(const ExecutionStateProperty &b) const;
-
-	// Property values
-	int training_round;
-	TrainingState training_state;
-	PathRange path_range;
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -137,4 +70,4 @@ struct CVExecutionStateLT {
 
 } // End cliver namespace
 
-#endif
+#endif // CLIVER_EXECUTION_STATE_H
