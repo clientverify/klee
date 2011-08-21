@@ -206,9 +206,6 @@ const llvm::Module *CVExecutor::setModule(llvm::Module *module,
   kmodule->prepare(opts, interpreterHandler);
   specialFunctionHandler->bind();
 
-	cv_->initialize_external_handlers(this);
-	cv_->register_events(this);
-
   return module;
 }
 
@@ -334,7 +331,7 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
 
   states.insert(&initialState);
 
-	searcher = cv_->construct_searcher();
+	searcher = cv_->searcher();
 
   searcher->update(0, states, std::set<klee::ExecutionState*>());
 

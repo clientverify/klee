@@ -117,9 +117,14 @@ CVContext::CVContext() : context_id_(increment_id()) {}
 ////////////////////////////////////////////////////////////////////////////////
 
 ClientVerifier::ClientVerifier() 
-  : cvstream_(new CVStream()), array_id_(0) {
-  cvstream_->init();
-	initialize_sockets();
+  : cvstream_(new CVStream()),
+		searcher_(NULL),
+		pruner_(NULL),
+		merger_(NULL),
+		training_paths_(NULL),
+		array_id_(0) {
+ 
+	cvstream_->init();
 	handle_statistics();
 }
 
@@ -147,48 +152,97 @@ void ClientVerifier::processTestCase(const klee::ExecutionState &state,
     const char *err, const char *suffix) {
 }
 
+void ClientVerifier::initialize(CVExecutor *executor) {
+	initialize_external_handlers(executor);
+	register_events(executor);
+
+	// Load Socket files (at lease one socket file required in all modes)
+	if (!SocketLogDir.empty()) {
+		foreach(std::string path, SocketLogDir) {
+			cvstream_->getOutFiles(path, SocketLogFile);
+		}
+	}
+
+	if (SocketLogFile.empty() || read_socket_logs(SocketLogFile) == 0) {
+		cv_error("Error loading socket log files, exiting now.");
+	}
+
+	switch(g_cliver_mode) {
+		case DefaultMode:
+		case TetrinetMode:
+		case XpilotMode:
+
+			// Construct searcher
+			pruner_ = new ConstraintPruner();
+			merger_ = new StateMerger(pruner_);
+			searcher_ = new LogIndexSearcher(new klee::DFSSearcher(), merger_);
+
+			// Set event callbacks
+			pre_event_callbacks_.connect(&LogIndexSearcher::handle_pre_event);
+			post_event_callbacks_.connect(&LogIndexSearcher::handle_post_event);
+			break;
+
+		case DefaultTrainingMode:
+
+			// Construct searcher
+			pruner_ = new ConstraintPruner();
+			merger_ = new StateMerger(pruner_);
+			searcher_ = new TrainingSearcher(NULL, merger_);
+
+			// Set event callbacks
+			pre_event_callbacks_.connect(&TrainingSearcher::handle_pre_event);
+			post_event_callbacks_.connect(&TrainingSearcher::handle_post_event);
+			break;
+
+		case OutOfOrderTrainingMode:
+
+			// Construct searcher
+			pruner_ = new ConstraintPruner();
+			merger_ = new SymbolicStateMerger(pruner_);
+			searcher_ 
+				= new OutOfOrderTrainingSearcher(NULL, merger_);
+
+			// Set event callbacks
+			pre_event_callbacks_.connect(&OutOfOrderTrainingSearcher::handle_pre_event);
+			post_event_callbacks_.connect(&OutOfOrderTrainingSearcher::handle_post_event);
+			break;
+
+		case VerifyWithTrainingPaths: 
+
+			// Read training paths
+			training_paths_ = new PathSet();
+			if (!TrainingPathDir.empty()) {
+				foreach(std::string path, TrainingPathDir) {
+					cvstream_->getFiles(path, ".path", TrainingPathFile);
+				}
+			}
+			if (TrainingPathFile.empty() || read_training_paths(TrainingPathFile) == 0) {
+				cv_error("Error reading training path files, exiting now.");
+			} 
+
+			// Construct searcher
+			pruner_ = new ConstraintPruner();
+			merger_ = new StateMerger(pruner_);
+			searcher_ = new TrainingSearcher(NULL, merger_);
+
+			// Set event callbacks
+			pre_event_callbacks_.connect(&TrainingSearcher::handle_pre_event);
+			post_event_callbacks_.connect(&TrainingSearcher::handle_post_event);
+			break;
+
+		case TetrinetTrainingMode:
+			cv_error("Tetrinet Training mode is unsupported");
+			break;
+	}
+
+}
+
 void ClientVerifier::initialize_external_handlers(CVExecutor *executor) {
   unsigned N = sizeof(external_handler_info)/sizeof(external_handler_info[0]);
   for (unsigned i=0; i<N; ++i) {
     ExternalHandlerInfo &hi = external_handler_info[i];
 		executor->add_external_handler(hi.name, hi.handler, hi.has_return_value);
 	}
-}
-
-void ClientVerifier::initialize_sockets() {
-	switch(g_cliver_mode) {
-		case DefaultMode:
-		case TetrinetMode:
-		case XpilotMode:
-		case DefaultTrainingMode:
-		case TetrinetTrainingMode:
-			if (!SocketLogDir.empty()) {
-				foreach(std::string path, SocketLogDir) {
-					cvstream_->getOutFiles(path, SocketLogFile);
-				}
-			}
-			if (SocketLogFile.empty() || read_socket_logs(SocketLogFile) == 0) {
-				goto error;
-			}
-			break;
-    error:
-			cv_error("Error loading socket log files, exiting now.");
-	}
-}
-
-void ClientVerifier::initialize_training_paths() {
-	training_paths_ = new PathSet();
-	if (!TrainingPathDir.empty()) {
-		foreach(std::string path, TrainingPathDir) {
-			cvstream_->getFiles(path, ".tpath", TrainingPathFile);
-		}
-	}
-	if (TrainingPathFile.empty() || read_socket_logs(SocketLogFile) == 0) {
-		goto error;
-	} 
-	return;
-error:
-	cv_error("Error loading socket log files, exiting now.");
 }
 
 int ClientVerifier::read_training_paths(std::vector<std::string> &paths) {
@@ -199,12 +253,15 @@ int ClientVerifier::read_training_paths(std::vector<std::string> &paths) {
 		if (is != NULL && is->good()) {
 			PathManager *pm = new PathManager();
 			pm->read(*is);
-			if (training_paths_->add(pm)) {
-				CVMESSAGE("Path read succuessful: length" 
+			if (!training_paths_->contains(pm)) {
+				training_paths_->add(pm);
+				CVMESSAGE("Path read succuessful: length " 
 						<< pm->length() << ", " << pm->range() );
 			} else {
-				CVMESSAGE("Path already exists: length" 
-						<< pm->length() << ", " << pm->range() );
+				PathManager *merged_pm = training_paths_->merge(pm);
+				CVMESSAGE("Path already exists: messages "
+						<< merged_pm->messages().size() << ", length " 
+						<< merged_pm->length() << ", " << merged_pm->range() );
 				delete pm;
 			}
 			delete is;
@@ -239,26 +296,6 @@ void ClientVerifier::register_events(CVExecutor *executor) {
     CliverEventInfo &ei = cliver_event_info[i];
 		executor->register_event(ei);
 	}
-
-	switch(g_cliver_mode) {
-		case DefaultMode:
-		case TetrinetMode:
-		case XpilotMode:
-			pre_event_callbacks_.connect(&LogIndexSearcher::handle_pre_event);
-			post_event_callbacks_.connect(&LogIndexSearcher::handle_post_event);
-			break;
-		case DefaultTrainingMode:
-			pre_event_callbacks_.connect(&TrainingSearcher::handle_pre_event);
-			post_event_callbacks_.connect(&TrainingSearcher::handle_post_event);
-			break;
-		case OutOfOrderTrainingMode:
-			pre_event_callbacks_.connect(&OutOfOrderTrainingSearcher::handle_pre_event);
-			post_event_callbacks_.connect(&OutOfOrderTrainingSearcher::handle_post_event);
-			break;
-		case TetrinetTrainingMode:
-			cv_error("unsupported");
-			break;
-	}
 }
 
 void ClientVerifier::pre_event(CVExecutionState* state, 
@@ -271,29 +308,8 @@ void ClientVerifier::post_event(CVExecutionState* state,
 	post_event_callbacks_(state, executor, t);
 }
 
-CVSearcher* ClientVerifier::construct_searcher() {
-
-	pruner_ = new ConstraintPruner();
-
-	switch(g_cliver_mode) {
-		case DefaultMode:
-		case TetrinetMode:
-		case XpilotMode:
-			merger_ = new StateMerger(pruner_);
-			searcher_ = new LogIndexSearcher(new klee::DFSSearcher(), merger_);
-			break;
-		case DefaultTrainingMode:
-			merger_ = new StateMerger(pruner_);
-			searcher_ = new TrainingSearcher(NULL, merger_);
-			break;
-		case OutOfOrderTrainingMode:
-			merger_ = new SymbolicStateMerger(pruner_);
-			searcher_ 
-				= new OutOfOrderTrainingSearcher(NULL, merger_);
-		case TetrinetTrainingMode:
-			cv_error("not currently supported");
-			break;
-	}
+CVSearcher* ClientVerifier::searcher() {
+	assert(searcher_ != NULL && "not initialized");
 	return searcher_;
 }
 
