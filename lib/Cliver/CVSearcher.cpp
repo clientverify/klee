@@ -402,7 +402,6 @@ void OutOfOrderTrainingSearcher::handle_pre_event(CVExecutionState *state,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// States: PreExecute, Execute, NetworkSend, NetworkRecv
 TrainingSearcher::TrainingSearcher(klee::Searcher* base_searcher, 
 		StateMerger* merger) 
 	: CVSearcher(base_searcher, merger), paths_(new PathSet()) {}
@@ -524,7 +523,6 @@ void TrainingSearcher::record_path(CVExecutionState *state,
 			<< " [End "   << *p->path_range.kinsts().second << "]");
 
 	// Write to file (pathstart, pathend, path, message)...
-	
 	std::stringstream filename;
 	filename << "state_" << state->id() 
 		<< "-round_" << p->training_round 
@@ -574,20 +572,8 @@ void TrainingSearcher::handle_post_event(CVExecutionState *state,
 }
 
 void TrainingSearcher::handle_pre_event(CVExecutionState *state,
-		CVExecutor* executor, CliverEvent::Type et) {
+		CVExecutor* executor, CliverEvent::Type et) {}
 
-	//TrainingProperty* p = static_cast<TrainingProperty*>(state->property());
-	//TrainingSearcher* searcher 
-	//	= static_cast<TrainingSearcher*>(g_client_verifier->searcher());
-
-	//switch(p->training_state) {
-	//	case TrainingProperty::PrepareExecute:
-	//		break;
-	//	case TrainingProperty::Execute:
-	//		break;
-	//	case TrainingProperty::NetworkClone:
-	//		break;
-	//}
-}
+////////////////////////////////////////////////////////////////////////////////
 
 } // end namespace cliver
