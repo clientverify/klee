@@ -186,27 +186,27 @@ OutOfOrderTrainingSearcher::OutOfOrderTrainingSearcher(klee::Searcher* base_sear
 
 klee::ExecutionState &OutOfOrderTrainingSearcher::selectState() {
 
-	if (!phases_[TrainingProperty::NetworkClone].empty()) {
+	if (!phases_[PathProperty::NetworkClone].empty()) {
 		CVExecutionState* state 
-			= *(phases_[TrainingProperty::NetworkClone].begin());
+			= *(phases_[PathProperty::NetworkClone].begin());
 		return *(static_cast<klee::ExecutionState*>(state));
 	}
 
-	if (!phases_[TrainingProperty::Execute].empty()) {
+	if (!phases_[PathProperty::Execute].empty()) {
 		CVExecutionState* state 
-			= *(phases_[TrainingProperty::Execute].begin());
+			= *(phases_[PathProperty::Execute].begin());
 		return *(static_cast<klee::ExecutionState*>(state));
 	}
 
-	if (!phases_[TrainingProperty::PrepareExecute].empty()) {
+	if (!phases_[PathProperty::PrepareExecute].empty()) {
 		CVDEBUG("Current Paths (" << paths_->size() << ")");
 		foreach(PathManager* path, *paths_) {
 			CVDEBUG(*path);
 		}
 		CVDEBUG("Current States (" 
-				<< phases_[TrainingProperty::PrepareExecute].size() << ")");
+				<< phases_[PathProperty::PrepareExecute].size() << ")");
 
-		ExecutionStateSet to_merge(phases_[TrainingProperty::PrepareExecute]);
+		ExecutionStateSet to_merge(phases_[PathProperty::PrepareExecute]);
 
 		ExecutionStateSet result;
 		if (!to_merge.empty())
@@ -214,20 +214,20 @@ klee::ExecutionState &OutOfOrderTrainingSearcher::selectState() {
 		
 		CVDEBUG("Current states (after mergin'): " << result.size());
 
-		phases_[TrainingProperty::PrepareExecute].clear();
+		phases_[PathProperty::PrepareExecute].clear();
 
 	  foreach (CVExecutionState* state, result) {
-			TrainingProperty *p = static_cast<TrainingProperty*>(state->property());
-			p->training_state = TrainingProperty::Execute;
+			PathProperty *p = static_cast<PathProperty*>(state->property());
+			p->phase = PathProperty::Execute;
 			p->path_range = PathRange(state->prevPC, NULL);
 			state->reset_path_manager();
 
 			CVDEBUG_S(state->id(), "Preparing Execution in " << *p 
-					<< " in round " << p->training_round << " " << *state->prevPC);
+					<< " in round " << p->round << " " << *state->prevPC);
 		}
 
 		foreach (CVExecutionState* state, result) {
-			phases_[TrainingProperty::Execute].insert(state);
+			phases_[PathProperty::Execute].insert(state);
 		}
 
 		return selectState();
@@ -255,18 +255,18 @@ void OutOfOrderTrainingSearcher::update(klee::ExecutionState *current,
 
 	foreach (klee::ExecutionState* klee_state, removed_states) {
 		CVExecutionState *state = static_cast<CVExecutionState*>(klee_state);
-		TrainingProperty *p = static_cast<TrainingProperty*>(state->property());
-		ExecutionStateSet &state_set = phases_[p->training_state];
+		PathProperty *p = static_cast<PathProperty*>(state->property());
+		ExecutionStateSet &state_set = phases_[p->phase];
 
 		if (state_set.count(state) == 0) {
 			unsigned i;
-			for (i=0; i < TrainingProperty::EndState; i++) {
+			for (i=0; i < PathProperty::EndState; i++) {
 				if (phases_[i].count(state) != 0) {
 					phases_[i].erase(state);
 					break;
 				}
 			}
-			if (i == TrainingProperty::EndState) {
+			if (i == PathProperty::EndState) {
 				cv_error("state erase failed");
 			}
 		} else {
@@ -276,8 +276,8 @@ void OutOfOrderTrainingSearcher::update(klee::ExecutionState *current,
 
 	foreach (klee::ExecutionState* klee_state, added_states) {
 		CVExecutionState *state = static_cast<CVExecutionState*>(klee_state);
-		TrainingProperty *p = static_cast<TrainingProperty*>(state->property());
-		ExecutionStateSet &state_set = phases_[p->training_state];
+		PathProperty *p = static_cast<PathProperty*>(state->property());
+		ExecutionStateSet &state_set = phases_[p->phase];
 		state_set.insert(state);
 	}
 }
@@ -285,8 +285,8 @@ void OutOfOrderTrainingSearcher::update(klee::ExecutionState *current,
 void OutOfOrderTrainingSearcher::clone_for_network_events(CVExecutionState *state,
 		CVExecutor* executor, CliverEvent::Type et) {
 
-	TrainingProperty *p = static_cast<TrainingProperty*>(state->property());
-	p->training_state = TrainingProperty::NetworkClone;
+	PathProperty *p = static_cast<PathProperty*>(state->property());
+	p->phase = PathProperty::NetworkClone;
 	state->network_manager()->clear_sockets();
 
 	bool is_open = true;
@@ -317,7 +317,7 @@ void OutOfOrderTrainingSearcher::clone_for_network_events(CVExecutionState *stat
 void OutOfOrderTrainingSearcher::record_path(CVExecutionState *state,
 		CVExecutor* executor, CliverEvent::Type et) {
 
-	TrainingProperty *p = static_cast<TrainingProperty*>(state->property());
+	PathProperty *p = static_cast<PathProperty*>(state->property());
 	p->path_range = PathRange(p->path_range.start(), state->prevPC);
 	state->path_manager()->set_range(p->path_range);
 
@@ -346,26 +346,26 @@ void OutOfOrderTrainingSearcher::record_path(CVExecutionState *state,
 	}
 	
 	// update for next path
-	p->training_state = TrainingProperty::PrepareExecute;
-	p->training_round++;
+	p->phase = PathProperty::PrepareExecute;
+	p->round++;
 }
 
 void OutOfOrderTrainingSearcher::handle_post_event(CVExecutionState *state,
 		CVExecutor *executor, CliverEvent::Type et) {
 
-	TrainingProperty* p = static_cast<TrainingProperty*>(state->property());
+	PathProperty* p = static_cast<PathProperty*>(state->property());
 	OutOfOrderTrainingSearcher* searcher 
 		= static_cast<OutOfOrderTrainingSearcher*>(g_client_verifier->searcher());
 
-	switch(p->training_state) {
+	switch(p->phase) {
 
-		case TrainingProperty::PrepareExecute:
+		case PathProperty::PrepareExecute:
 			break;
 
-		case TrainingProperty::Execute:
+		case PathProperty::Execute:
 			break;
 
-		case TrainingProperty::NetworkClone:
+		case PathProperty::NetworkClone:
 			if (et == CliverEvent::NetworkSend || et == CliverEvent::NetworkRecv) {
 				searcher->record_path(state, executor, et);
 			}
@@ -376,16 +376,16 @@ void OutOfOrderTrainingSearcher::handle_post_event(CVExecutionState *state,
 void OutOfOrderTrainingSearcher::handle_pre_event(CVExecutionState *state,
 		CVExecutor* executor, CliverEvent::Type et) {
 
-	TrainingProperty* p = static_cast<TrainingProperty*>(state->property());
+	PathProperty* p = static_cast<PathProperty*>(state->property());
 	OutOfOrderTrainingSearcher* searcher 
 		= static_cast<OutOfOrderTrainingSearcher*>(g_client_verifier->searcher());
 
-	switch(p->training_state) {
+	switch(p->phase) {
 
-		case TrainingProperty::PrepareExecute:
+		case PathProperty::PrepareExecute:
 			break;
 
-		case TrainingProperty::Execute:
+		case PathProperty::Execute:
 			if (et == CliverEvent::NetworkSend || et == CliverEvent::NetworkRecv) {
 				searcher->clone_for_network_events(state,executor, et);
 			}
@@ -394,7 +394,7 @@ void OutOfOrderTrainingSearcher::handle_pre_event(CVExecutionState *state,
 			}
 			break;
 
-		case TrainingProperty::NetworkClone:
+		case PathProperty::NetworkClone:
 			break;
 
 	}
@@ -408,12 +408,12 @@ TrainingSearcher::TrainingSearcher(klee::Searcher* base_searcher,
 
 klee::ExecutionState &TrainingSearcher::selectState() {
 
-	if (!phases_[TrainingProperty::Execute].empty()) {
-		CVExecutionState* state = *(phases_[TrainingProperty::Execute].begin());
+	if (!phases_[PathProperty::Execute].empty()) {
+		CVExecutionState* state = *(phases_[PathProperty::Execute].begin());
 		return *(static_cast<klee::ExecutionState*>(state));
 	}
 
-	if (!phases_[TrainingProperty::PrepareExecute].empty()) {
+	if (!phases_[PathProperty::PrepareExecute].empty()) {
 		// Print stats
 		g_client_verifier->print_current_statistics();
 		CVMESSAGE("Current Paths (" << paths_->size() << ")");
@@ -421,9 +421,9 @@ klee::ExecutionState &TrainingSearcher::selectState() {
 			CVDEBUG(*path);
 		}
 		CVMESSAGE("Current States (" 
-				<< phases_[TrainingProperty::PrepareExecute].size() << ")");
+				<< phases_[PathProperty::PrepareExecute].size() << ")");
 
-		ExecutionStateSet to_merge(phases_[TrainingProperty::PrepareExecute]);
+		ExecutionStateSet to_merge(phases_[PathProperty::PrepareExecute]);
 
 		ExecutionStateSet result;
 		if (!to_merge.empty())
@@ -431,20 +431,20 @@ klee::ExecutionState &TrainingSearcher::selectState() {
 		
 		CVMESSAGE("Current states after mergin' (" << result.size() << ")");
 
-		phases_[TrainingProperty::PrepareExecute].clear();
+		phases_[PathProperty::PrepareExecute].clear();
 
 	  foreach (CVExecutionState* state, result) {
-			TrainingProperty *p = static_cast<TrainingProperty*>(state->property());
-			p->training_state = TrainingProperty::Execute;
+			PathProperty *p = static_cast<PathProperty*>(state->property());
+			p->phase = PathProperty::Execute;
 			p->path_range = PathRange(state->prevPC, NULL);
 			state->reset_path_manager();
 
 			CVDEBUG_S(state->id(), "Preparing Execution in " << *p 
-					<< " in round " << p->training_round << " " << *state->prevPC);
+					<< " in round " << p->round << " " << *state->prevPC);
 		}
 
 		foreach (CVExecutionState* state, result) {
-			phases_[TrainingProperty::Execute].insert(state);
+			phases_[PathProperty::Execute].insert(state);
 		}
 
 		return selectState();
@@ -472,18 +472,18 @@ void TrainingSearcher::update(klee::ExecutionState *current,
 
 	foreach (klee::ExecutionState* klee_state, removed_states) {
 		CVExecutionState *state = static_cast<CVExecutionState*>(klee_state);
-		TrainingProperty *p = static_cast<TrainingProperty*>(state->property());
-		ExecutionStateSet &state_set = phases_[p->training_state];
+		PathProperty *p = static_cast<PathProperty*>(state->property());
+		ExecutionStateSet &state_set = phases_[p->phase];
 
 		if (state_set.count(state) == 0) {
 			unsigned i;
-			for (i=0; i < TrainingProperty::EndState; i++) {
+			for (i=0; i < PathProperty::EndState; i++) {
 				if (phases_[i].count(state) != 0) {
 					phases_[i].erase(state);
 					break;
 				}
 			}
-			if (i == TrainingProperty::EndState) {
+			if (i == PathProperty::EndState) {
 				cv_error("state erase failed");
 			}
 		} else {
@@ -493,8 +493,8 @@ void TrainingSearcher::update(klee::ExecutionState *current,
 
 	foreach (klee::ExecutionState* klee_state, added_states) {
 		CVExecutionState *state = static_cast<CVExecutionState*>(klee_state);
-		TrainingProperty *p = static_cast<TrainingProperty*>(state->property());
-		ExecutionStateSet &state_set = phases_[p->training_state];
+		PathProperty *p = static_cast<PathProperty*>(state->property());
+		ExecutionStateSet &state_set = phases_[p->phase];
 		state_set.insert(state);
 	}
 }
@@ -502,7 +502,7 @@ void TrainingSearcher::update(klee::ExecutionState *current,
 void TrainingSearcher::record_path(CVExecutionState *state,
 		CVExecutor* executor, CliverEvent::Type et) {
 
-	TrainingProperty *p = static_cast<TrainingProperty*>(state->property());
+	PathProperty *p = static_cast<PathProperty*>(state->property());
 	p->path_range = PathRange(p->path_range.start(), state->prevPC);
 	state->path_manager()->set_range(p->path_range);
 	if (et == CliverEvent::NetworkSend ||
@@ -525,7 +525,7 @@ void TrainingSearcher::record_path(CVExecutionState *state,
 	// Write to file (pathstart, pathend, path, message)...
 	std::stringstream filename;
 	filename << "state_" << state->id() 
-		<< "-round_" << p->training_round 
+		<< "-round_" << p->round 
 		<< "-length_" << state->path_manager()->length() 
 		<< ".tpath";
 	std::ostream *file = g_client_verifier->openOutputFile(filename.str());
@@ -549,15 +549,15 @@ void TrainingSearcher::record_path(CVExecutionState *state,
 	}
 	
 	// update for next path
-	p->training_state = TrainingProperty::PrepareExecute;
-	p->training_round++;
+	p->phase = PathProperty::PrepareExecute;
+	p->round++;
 }
 
 
 void TrainingSearcher::handle_post_event(CVExecutionState *state,
 		CVExecutor *executor, CliverEvent::Type et) {
 
-	TrainingProperty* p = static_cast<TrainingProperty*>(state->property());
+	PathProperty* p = static_cast<PathProperty*>(state->property());
 	TrainingSearcher* searcher 
 		= static_cast<TrainingSearcher*>(g_client_verifier->searcher());
 

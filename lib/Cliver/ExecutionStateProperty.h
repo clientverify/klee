@@ -77,23 +77,23 @@ class LogIndexProperty : public ExecutionStateProperty {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TrainingProperty : public ExecutionStateProperty {
+class PathProperty : public ExecutionStateProperty {
  public: 
-	enum TrainingState {
+	enum PathPropertyPhase {
 		PrepareExecute=0, 
 		Execute, 
 		Merge, 
 		NetworkClone, 
 		EndState
 	};
-	TrainingProperty();
-	TrainingProperty* clone() { return new TrainingProperty(*this); }
+	PathProperty();
+	PathProperty* clone() { return new PathProperty(*this); }
   void print(std::ostream &os) const;
 	int compare(const ExecutionStateProperty &b) const;
 
 	// Property values
-	int training_round;
-	TrainingState training_state;
+	int round;
+	PathPropertyPhase phase;
 	PathRange path_range;
 };
 

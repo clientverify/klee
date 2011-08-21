@@ -34,26 +34,26 @@ void LogIndexProperty::print(std::ostream &os) const {
 
 //////////////////////////////////////////////////////////////////////////////
 
-TrainingProperty::TrainingProperty() 
-	: training_round(0),
-	  training_state(TrainingProperty::PrepareExecute) {}
+PathProperty::PathProperty() 
+	: round(0),
+	  phase(PathProperty::PrepareExecute) {}
 
-int TrainingProperty::compare(const ExecutionStateProperty &b) const {
-	const TrainingProperty *_b = static_cast<const TrainingProperty*>(&b);
+int PathProperty::compare(const ExecutionStateProperty &b) const {
+	const PathProperty *_b = static_cast<const PathProperty*>(&b);
 
-	if (training_round != _b->training_round)
-		return training_round - _b->training_round;
+	if (round != _b->round)
+		return round - _b->round;
 
-	if (training_state != _b->training_state)
-		return training_state - _b->training_state;
+	if (phase != _b->phase)
+		return phase - _b->phase;
 
 	return path_range.compare(_b->path_range);
 }
 
-void TrainingProperty::print(std::ostream &os) const {
-	os << "[round: " << training_round
+void PathProperty::print(std::ostream &os) const {
+	os << "[round: " << round
 	   << ", range: " << path_range
-	   //<< ", trainingstate: " << training_state
+	   //<< ", trainingstate: " << phase
 		 << "]";
 }
 
@@ -66,7 +66,7 @@ ExecutionStateProperty* ExecutionStatePropertyFactory::create() {
 			return new LogIndexProperty();
 			break;
 		case DefaultTrainingMode: 
-			return new TrainingProperty();
+			return new PathProperty();
 	}
 	cv_error("invalid cliver mode");
 	return NULL;
