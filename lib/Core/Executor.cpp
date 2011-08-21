@@ -2631,6 +2631,7 @@ void Executor::callExternalFunction(ExecutionState &state,
                                     KInstruction *target,
                                     Function *function,
                                     std::vector< ref<Expr> > &arguments) {
+
   // check if specialFunctionHandler wants it
   if (specialFunctionHandler->handle(state, function, target, arguments))
     return;
@@ -3049,6 +3050,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     if (incomplete) {
       terminateStateEarly(*unbound, "query timed out (resolve)");
     } else {
+			llvm::errs() << getAddressInfo(*unbound, address);
       terminateStateOnError(*unbound,
                             "memory error: out of bound pointer",
                             "ptr.err",

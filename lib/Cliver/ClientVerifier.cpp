@@ -21,6 +21,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/System/Process.h"
 #include "klee/Statistics.h"
+#include "PathManager.h"
 
 // needed for boost::signal
 void boost::throw_exception(std::exception const& e) {}
@@ -34,7 +35,7 @@ namespace cliver {
 llvm::cl::list<std::string> SocketLogFile("socket-log",
 	llvm::cl::ZeroOrMore,
 	llvm::cl::ValueRequired,
-	llvm::cl::desc("Specify socket log file"),
+	llvm::cl::desc("Specify socket log file (.ktest)"),
 	llvm::cl::value_desc("ktest file"));
 
 llvm::cl::list<std::string> SocketLogDir("socket-log-dir",
@@ -42,6 +43,19 @@ llvm::cl::list<std::string> SocketLogDir("socket-log-dir",
 	llvm::cl::ValueRequired,
 	llvm::cl::desc("Specify socket log directory"),
 	llvm::cl::value_desc("ktest directory"));
+
+llvm::cl::list<std::string> TrainingPathFile("training-path-file",
+	llvm::cl::ZeroOrMore,
+	llvm::cl::ValueRequired,
+	llvm::cl::desc("Specify a training path file (.tpath)"),
+	llvm::cl::value_desc("tpath directory"));
+
+llvm::cl::list<std::string> TrainingPathDir("training-path-dir",
+	llvm::cl::ZeroOrMore,
+	llvm::cl::ValueRequired,
+	llvm::cl::desc("Specify directory containint .tpath files"),
+	llvm::cl::value_desc("tpath directory"));
+
 
 llvm::cl::opt<CliverMode> g_cliver_mode("cliver-mode", 
   llvm::cl::desc("Choose the mode in which cliver should run."),
@@ -160,6 +174,43 @@ void ClientVerifier::initialize_sockets() {
     error:
 			cv_error("Error loading socket log files, exiting now.");
 	}
+}
+
+void ClientVerifier::initialize_training_paths() {
+	training_paths_ = new PathSet();
+	if (!TrainingPathDir.empty()) {
+		foreach(std::string path, TrainingPathDir) {
+			cvstream_->getFiles(path, ".tpath", TrainingPathFile);
+		}
+	}
+	if (TrainingPathFile.empty() || read_socket_logs(SocketLogFile) == 0) {
+		goto error;
+	} 
+	return;
+error:
+	cv_error("Error loading socket log files, exiting now.");
+}
+
+int ClientVerifier::read_training_paths(std::vector<std::string> &paths) {
+
+	foreach (std::string filename, paths) {
+		std::ifstream *is = new std::ifstream(filename.c_str(),
+				std::ifstream::in | std::ifstream::binary );
+		if (is != NULL && is->good()) {
+			PathManager *pm = new PathManager();
+			pm->read(*is);
+			if (training_paths_->add(pm)) {
+				CVMESSAGE("Path read succuessful: length" 
+						<< pm->length() << ", " << pm->range() );
+			} else {
+				CVMESSAGE("Path already exists: length" 
+						<< pm->length() << ", " << pm->range() );
+				delete pm;
+			}
+			delete is;
+		}
+	}
+	return training_paths_->size();
 }
 
 int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
