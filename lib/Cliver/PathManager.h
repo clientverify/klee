@@ -6,8 +6,8 @@
 //
 //
 //===----------------------------------------------------------------------===//
-#ifndef PATH_MANAGER_H
-#define PATH_MANAGER_H
+#ifndef CLIVER_PATH_MANAGER_H
+#define CLIVER_PATH_MANAGER_H
 
 #include "klee/Internal/Module/InstructionInfoTable.h"
 #include "klee/Internal/Module/KInstruction.h"
@@ -25,56 +25,6 @@
 
 namespace cliver {
 
-////////////////////////////////////////////////////////////////////////////////
-
-struct FunctionCallBranchEvent {
-	uint64_t index;
-	unsigned inst_id;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class Path {
- public:
-	Path();
-	Path(Path* parent);
-	~Path();
-	unsigned length() const;
-	void add(bool direction, klee::KInstruction* inst);
-	bool less(const Path &b) const;
-	bool equal(const Path &b) const;
-	void inc_ref();
-	void dec_ref();
-	void print(std::ostream &os) const;
-
- private: 
-	explicit Path(const Path &p);
-
-	// Helper functions
-	void consolidate_branches(std::vector<bool> &branches) const;
-
-	// Serialization
-	friend class boost::serialization::access;
-	template<class archive> 
-		void save(archive & ar, const unsigned version) const;
-	template<class archive> 
-		void load(archive & ar, const unsigned version);
-	BOOST_SERIALIZATION_SPLIT_MEMBER()
-
-	// Member Variables
-	const Path *parent_;
-	mutable unsigned ref_count_;
-  int length_;
-
-	std::vector<bool> branches_;
-	std::vector<klee::KInstruction*> instructions_;
-};
-
-inline std::ostream &operator<<(std::ostream &os, const Path &p) {
-  p.print(os);
-  return os;
-}
- 
 ////////////////////////////////////////////////////////////////////////////////
 
 class PathRange {
@@ -117,6 +67,49 @@ inline std::ostream &operator<<(std::ostream &os,
   return os;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+class Path {
+ public:
+	Path();
+	Path(Path* parent);
+	~Path();
+	unsigned length() const;
+	void add(bool direction, klee::KInstruction* inst);
+	bool less(const Path &b) const;
+	bool equal(const Path &b) const;
+	void inc_ref();
+	void dec_ref();
+	void print(std::ostream &os) const;
+
+ private: 
+	explicit Path(const Path &p);
+
+	// Helper functions
+	void consolidate_branches(std::vector<bool> &branches) const;
+
+	// Serialization
+	friend class boost::serialization::access;
+	template<class archive> 
+		void save(archive & ar, const unsigned version) const;
+	template<class archive> 
+		void load(archive & ar, const unsigned version);
+	BOOST_SERIALIZATION_SPLIT_MEMBER()
+
+	// Member Variables
+	const Path *parent_;
+	mutable unsigned ref_count_;
+    int length_;
+
+	std::vector<bool> branches_;
+	std::vector<klee::KInstruction*> instructions_;
+};
+
+inline std::ostream &operator<<(std::ostream &os, const Path &p) {
+  p.print(os);
+  return os;
+}
+ 
 ////////////////////////////////////////////////////////////////////////////////
 
 class SocketEvent;
@@ -173,4 +166,4 @@ typedef std::set<PathManager*, PathManagerLT> PathSet;
 ////////////////////////////////////////////////////////////////////////////////
 
 } // end namespace cliver
-#endif // PATH_MANAGER_H
+#endif // CLIVER_PATH_MANAGER_H
