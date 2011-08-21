@@ -11,10 +11,10 @@
 
 #include "../Core/Searcher.h"
 #include "CVExecutionState.h"
-#include "PathManager.h"
 
 namespace cliver {
 class StateMerger;
+class PathSet;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -89,7 +89,7 @@ class OutOfOrderTrainingSearcher : public CVSearcher {
 
  private:
 	ExecutionStateSet phases_[TrainingProperty::EndState];
-	PathSet paths_;
+	PathSet *paths_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -120,7 +120,7 @@ class TrainingSearcher : public CVSearcher {
 
  private:
 	ExecutionStateSet phases_[TrainingProperty::EndState];
-	PathSet paths_;
+	PathSet *paths_;
 };
 
 
