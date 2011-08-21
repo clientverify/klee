@@ -88,7 +88,7 @@ class OutOfOrderTrainingSearcher : public CVSearcher {
 			CVExecutor *executor, CliverEvent::Type et);
 
  private:
-	ExecutionStateSet phases_[TrainingProperty::EndState];
+	ExecutionStateSet phases_[PathProperty::EndState];
 	PathSet *paths_;
 };
 
@@ -119,7 +119,7 @@ class TrainingSearcher : public CVSearcher {
 			CVExecutor *executor, CliverEvent::Type et);
 
  private:
-	ExecutionStateSet phases_[TrainingProperty::EndState];
+	ExecutionStateSet phases_[PathProperty::EndState];
 	PathSet *paths_;
 };
 
