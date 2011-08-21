@@ -35,7 +35,8 @@ enum CliverMode {
 	DefaultTrainingMode, 
 	OutOfOrderTrainingMode, 
 	TetrinetTrainingMode,
-	XpilotTrainingMode
+	XpilotTrainingMode,
+	VerifyWithTrainingPaths,
 };
 
 extern llvm::cl::opt<CliverMode> g_cliver_mode;
@@ -113,11 +114,13 @@ class ClientVerifier : public klee::InterpreterHandler {
   void incPathsExplored();
   void processTestCase(const klee::ExecutionState &state, 
                        const char *err, const char *suffix);
+	// Initialization
+	void initialize(CVExecutor *executor);
+	
 	// ExternalHandlers
 	void initialize_external_handlers(CVExecutor *executor);
 	
 	// Socket logs
-	void initialize_sockets();
 	int read_socket_logs(std::vector<std::string> &logs);
 	std::vector<SocketEventList*>& socket_events() { return socket_events_; }
 	
@@ -129,8 +132,7 @@ class ClientVerifier : public klee::InterpreterHandler {
 			CVExecutor* executor, CliverEvent::Type t); 
 
 	// Searcher
-	CVSearcher* construct_searcher();
-	CVSearcher* searcher() { return searcher_; }
+	CVSearcher* searcher();
 
 	// Stats
 	void handle_statistics();
@@ -140,8 +142,7 @@ class ClientVerifier : public klee::InterpreterHandler {
 	// Arrays
 	unsigned next_array_id() { return array_id_++; }
  
-	// Recorded paths
-	void initialize_training_paths();
+	// Training paths
 	int read_training_paths(std::vector<std::string> &paths);
 
  private:

@@ -493,6 +493,7 @@ int main(int argc, char **argv, char **envp) {
   infoFile << buf;
   infoFile.flush();
 
+	g_client_verifier->initialize(g_executor);
   g_interpreter->runFunctionAsMain(main_fn, pArgc, pArgv, pEnvp);
 
   // End time
