@@ -30,34 +30,44 @@ class CVSearcher : public klee::Searcher {
 
 	virtual bool empty();
 
-	virtual void printName(std::ostream &os) {
-		os << "CVSearcher\n";
-	}
+	virtual void printName(std::ostream &os) { os << "CVSearcher\n"; }
+
+	static void handle_pre_event(CVExecutionState *state, 
+			CVExecutor *executor, CliverEvent::Type et);
+	static void handle_post_event(CVExecutionState *state, 
+			CVExecutor *executor, CliverEvent::Type et);
 
  protected:
-	int state_count();
-	ExecutionStateSet added_states_;
-	ExecutionStateSet removed_states_;
-	ExecutionStatePropertyMap states_;
-	ExecutionStateProperty* current_property_;
 	klee::Searcher* base_searcher_;
 	StateMerger* merger_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class LogIndexSearcher : public CVSearcher {
+class LogIndexSearcher : public CVSearcher { 
  public:
 	LogIndexSearcher(klee::Searcher* base_searcher, StateMerger* merger);
 
-	virtual void printName(std::ostream &os) {
-		os << "LogIndexSearcher\n";
-	}
+	klee::ExecutionState &selectState();
+
+	void update(klee::ExecutionState *current,
+							const std::set<klee::ExecutionState*> &addedStates,
+							const std::set<klee::ExecutionState*> &removedStates);
+
+	bool empty();
+
+	void printName(std::ostream &os) { os << "LogIndexSearcher\n"; }
 
 	static void handle_pre_event(CVExecutionState *state, 
 			CVExecutor *executor, CliverEvent::Type et);
 	static void handle_post_event(CVExecutionState *state, 
 			CVExecutor *executor, CliverEvent::Type et);
+
+ protected:
+	int state_count();
+	ExecutionStatePropertyMap states_;
+	klee::Searcher* base_searcher_;
+	StateMerger* merger_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -72,15 +82,17 @@ class OutOfOrderTrainingSearcher : public CVSearcher {
 							const std::set<klee::ExecutionState*> &addedStates,
 							const std::set<klee::ExecutionState*> &removedStates);
 
+	bool empty();
+
+	void printName(std::ostream &os) {
+		os << "OutOfOrderTrainingSearcher\n";
+	}
+
 	void clone_for_network_events(CVExecutionState *state, CVExecutor* executor, 
 			CliverEvent::Type et);
 
 	void record_path(CVExecutionState *state, CVExecutor* executor,
 			CliverEvent::Type et);
-
-	void printName(std::ostream &os) {
-		os << "OutOfOrderTrainingSearcher\n";
-	}
 
 	static void handle_pre_event(CVExecutionState *state, 
 			CVExecutor *executor, CliverEvent::Type et);
@@ -104,6 +116,8 @@ class TrainingSearcher : public CVSearcher {
 							const std::set<klee::ExecutionState*> &addedStates,
 							const std::set<klee::ExecutionState*> &removedStates);
 
+	bool empty();
+
 	//void clone_for_network_events(CVExecutionState *state, CVExecutor* executor, 
 	//		CliverEvent::Type et);
 
@@ -123,6 +137,39 @@ class TrainingSearcher : public CVSearcher {
 	PathSet *paths_;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+class VerifySearcher : public CVSearcher {
+ public:
+	VerifySearcher(klee::Searcher* base_searcher, StateMerger* merger);
+
+	klee::ExecutionState &selectState();
+
+	void update(klee::ExecutionState *current,
+							const std::set<klee::ExecutionState*> &addedStates,
+							const std::set<klee::ExecutionState*> &removedStates);
+
+	bool empty();
+
+	//void clone_for_network_events(CVExecutionState *state, CVExecutor* executor, 
+	//		CliverEvent::Type et);
+
+	void record_path(CVExecutionState *state, CVExecutor* executor,
+			CliverEvent::Type et);
+
+	void printName(std::ostream &os) { os << "VerifySearcher\n"; }
+
+	static void handle_pre_event(CVExecutionState *state, 
+			CVExecutor *executor, CliverEvent::Type et);
+
+	static void handle_post_event(CVExecutionState *state, 
+			CVExecutor *executor, CliverEvent::Type et);
+
+ private:
+	ExecutionStateSet phases_[PathProperty::EndState];
+	ExecutionStatePropertyMap saved_states_;
+	PathSet *paths_;
+};
 
 } // end namespace cliver
 #endif // CV_SEARCHER_H
