@@ -83,6 +83,22 @@ void Path::dec_ref() {
 	ref_count_--;
 }
 
+bool Path::get_branch(int index) {
+	if (parent_ == NULL) {
+		assert( index >= 0 && index < branches_.size());
+		return branches_[index];
+	}
+	std::vector<bool> branches;
+	consolidate_branches(branches);
+	assert( index >= 0 && index < branches.size());
+	return branches[index];
+}
+
+klee::KInstruction* Path::get_kinst(int index) {
+	assert(0 && "get_kinst() not implemented");
+	return NULL;
+}
+
 void Path::print(std::ostream &os) const {
 	std::vector<bool> branches;
 	consolidate_branches(branches);
@@ -246,12 +262,6 @@ void PathManager::add_branch(bool direction, klee::KInstruction* inst) {
 	path_->add(direction, inst);
 }
 
-void PathManager::print(std::ostream &os) const {
-	os << "Path [" << path_->length() << "][" << messages_.size() << "] ["
-		 << range_.ids().first << ", " << range_.ids().second << "] "
-		 << *path_;
-}
-
 bool PathManager::add_message(const SocketEvent* se) {
 	if (messages_.find(const_cast<SocketEvent*>(se)) == messages_.end()) {
 		messages_.insert(const_cast<SocketEvent*>(se));
@@ -284,6 +294,27 @@ void PathManager::write(std::ostream &os) {
 void PathManager::read(std::ifstream &is) {
 	boost::archive::binary_iarchive ia(is);
 	ia >> *this;
+}
+
+void PathManager::print(std::ostream &os) const {
+	os << "Path [" << path_->length() << "][" << messages_.size() << "] ["
+		 << range_.ids().first << ", " << range_.ids().second << "] "
+		 << *path_;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+VerifyPathManager::VerifyPathManager(Path* path)
+	: index_(0), valid_(true) {
+	path_ = path;
+}
+
+void VerifyPathManager::add_branch(bool direction, klee::KInstruction* inst) {
+	bool path_direction = path_->get_branch(index_);
+	//klee::KInstruction* path_inst = path->get_kinst(index);
+	if (path_direction != direction) {
+		valid_ = false;
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -322,6 +353,8 @@ PathManager* PathSet::merge(PathManager* path) {
 
 PathManager* PathManagerFactory::create() {
   switch (g_cliver_mode) {
+		case VerifyWithTrainingPaths:
+		return new VerifyPathManager();
 		case DefaultMode:
     break;
   }

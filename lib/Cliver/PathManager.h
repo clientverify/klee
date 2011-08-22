@@ -80,6 +80,8 @@ class Path {
 	bool equal(const Path &b) const;
 	void inc_ref();
 	void dec_ref();
+	bool get_branch(int index);
+	klee::KInstruction* get_kinst(int index);
 	void print(std::ostream &os) const;
 
  private: 
@@ -118,23 +120,25 @@ class PathManager {
  public:
 	typedef std::set<SocketEvent*> message_set_ty;
 	PathManager();
-	PathManager* clone();
-	unsigned length() { return path_->length(); }
-	bool merge(const PathManager &pm);
-	bool less(const PathManager &b) const;
-	void add_false_branch(klee::KInstruction* inst);
-	void add_true_branch(klee::KInstruction* inst);
-	void add_branch(bool direction, klee::KInstruction* inst);
-	void print(std::ostream &os) const;
+	virtual PathManager* clone();
+	virtual bool merge(const PathManager &pm);
+	virtual bool less(const PathManager &b) const;
+	virtual void add_branch(bool direction, klee::KInstruction* inst);
+
 	bool add_message(const SocketEvent* se);
 	void set_range(const PathRange& range);
+
+	unsigned length() { return path_->length(); }
 	PathRange range() { return range_; }
 	const message_set_ty& messages() { return messages_; }
 
+	void add_false_branch(klee::KInstruction* inst);
+	void add_true_branch(klee::KInstruction* inst);
 	void write(std::ostream &os);
 	void read(std::ifstream &is);
+	void print(std::ostream &os) const;
 
- private:
+ protected:
 	explicit PathManager(const PathManager &pm);
 
 	// Serialization
@@ -152,6 +156,54 @@ inline std::ostream &operator<<(std::ostream &os,
   p.print(os);
   return os;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+class VerifyPathManager : public PathManager {
+ public:
+	VerifyPathManager() {}
+	VerifyPathManager(Path* path);
+	//**virtual PathManager* clone();
+	//**virtual bool merge(const VerifyPathManager &pm);
+	//**virtual bool less(const VerifyPathManager &b) const;
+	virtual void add_branch(bool direction, klee::KInstruction* inst);
+	//bool add_message(const SocketEvent* se);
+	//void set_range(const PathRange& range);
+	
+	//unsigned length() { return path_->length(); }
+	//PathRange range() { return range_; }
+	//const message_set_ty& messages() { return messages_; }
+
+	//void add_false_branch(klee::KInstruction* inst);
+	//void add_true_branch(klee::KInstruction* inst);
+	//void write(std::ostream &os);
+	//void read(std::ifstream &is);
+	//**void print(std::ostream &os) const;
+
+ protected:
+	explicit VerifyPathManager(const VerifyPathManager &pm);
+
+	//// Serialization
+	//friend class boost::serialization::access;
+	//template<class archive> 
+	//	void serialize(archive & ar, const unsigned version);
+
+	//Path* path_;
+	//PathRange range_;
+	//message_set_ty messages_;
+
+	int index_;
+	bool valid_;
+
+};
+
+inline std::ostream &operator<<(std::ostream &os, 
+		const VerifyPathManager &p) {
+  p.print(os);
+  return os;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 class PathManagerFactory {
  public:
