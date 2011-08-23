@@ -70,6 +70,8 @@ llvm::cl::opt<CliverMode> g_cliver_mode("cliver-mode",
       "Default training mode"),
     clEnumValN(TetrinetTrainingMode, "tetrinet-training", 
       "Tetrinet training mode"),
+    clEnumValN(VerifyWithTrainingPaths, "verify-with-paths", 
+      "Verify with training paths"),
   clEnumValEnd),
   llvm::cl::init(DefaultMode));
 
