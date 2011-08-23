@@ -34,6 +34,9 @@ class SocketEvent {
 	unsigned length;
 	std::vector<uint8_t> data;
 
+	void print(std::ostream &os) const;
+	bool equal(const SocketEvent &se) const;
+
  private:
 	// Serialization
 	SocketEvent() {};
@@ -47,6 +50,11 @@ class SocketEvent {
 		ar & data;
 	}
 };
+
+inline std::ostream &operator<<(std::ostream &os, const SocketEvent &se) {
+  se.print(os);
+  return os;
+}
 
 typedef std::vector<const SocketEvent*> SocketEventList;
 

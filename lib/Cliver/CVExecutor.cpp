@@ -610,8 +610,6 @@ klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current,
 		++klee::stats::forks;
 
 		falseState = trueState->branch();
-		addedStates.insert(falseState);
-
 		
 		//current.ptreeNode->data = 0;
 		//std::pair<klee::PTree::Node*, klee::PTree::Node*> res =
@@ -627,26 +625,41 @@ klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current,
 
 			if (!true_path_manager->add_branch(true, current.prevPC)) {
 				terminateState(*trueState);
+				trueState = NULL;
 			}
 
 			if (!false_path_manager->add_branch(false, current.prevPC)) {
-				terminateState(*falseState);
+				//terminateState(*falseState);
+				delete falseState;
+				falseState = NULL;
 			}
 
       if (pathWriter) {
-        falseState->pathOS = pathWriter->open(current.pathOS);
-        trueState->pathOS << "1";
-        falseState->pathOS << "0";
+				if (trueState)
+					trueState->pathOS << "1";
+				if (falseState) {
+					falseState->pathOS = pathWriter->open(current.pathOS);
+					falseState->pathOS << "0";
+				}
       }      
       if (symPathWriter) {
-        falseState->symPathOS = symPathWriter->open(current.symPathOS);
-        trueState->symPathOS << "1";
-        falseState->symPathOS << "0";
+				if (trueState)
+					trueState->symPathOS << "1";
+				if (falseState) {
+					falseState->symPathOS = symPathWriter->open(current.symPathOS);
+					falseState->symPathOS << "0";
+				}
       }
 		}
 
-		addConstraint(*trueState, condition);
-		addConstraint(*falseState, klee::Expr::createIsZero(condition));
+		if (trueState) {
+			addConstraint(*trueState, condition);
+		}
+
+		if (falseState) {
+			addConstraint(*falseState, klee::Expr::createIsZero(condition));
+			addedStates.insert(falseState);
+		}
 
 		return klee::Executor::StatePair(trueState, falseState);
 	}

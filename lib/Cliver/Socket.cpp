@@ -42,6 +42,37 @@ SocketEvent::SocketEvent(const KTestObject &object) {
 	}
 }
 
+void SocketEvent::print(std::ostream &os) const {
+#define X(x) #x
+	static std::string socketevent_types[] = { SOCKETEVENT_TYPES };
+#undef X
+	os << "[" << socketevent_types[type] << "][" << length << "] ";
+	for (unsigned i=0; i<length; ++i) {
+		os << std::hex << data[i];
+	}
+	os << std::dec;
+}
+
+bool SocketEvent::equal(const SocketEvent &se) const {
+	if (type != se.type)
+		return false;
+
+	if (delta != se.delta)
+		return false;
+
+	if (round != se.round)
+		return false;
+
+	if (length != se.length)
+		return false;
+
+	for (unsigned i=0; i<length; ++i) {
+		if (data[i] != se.data[i])
+			return false;
+	}
+	return true;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 Socket::Socket(const KTest* ktest) 

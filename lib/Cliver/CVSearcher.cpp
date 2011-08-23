@@ -652,21 +652,37 @@ klee::ExecutionState &VerifySearcher::selectState() {
 	
 			PathManager* pm = NULL;
 			foreach (pm, *paths_) {
+				//CVDEBUG("Checking if range: " << pm->range().start() 
+				//		<< " equals range: " << p->path_range.start());
 				if (pm->range().start() == p->path_range.start()) {
-					if (pm->contains_message(&se)) {
-						CVExecutionState* cloned_state = state->clone();
-						cloned_state->path_manager()->set_range(pm->range());
-						cloned_state->path_manager()->set_path(pm->path());
-						phases_[PathProperty::Execute].insert(cloned_state);
-						g_executor->add_state(cloned_state);
+					const SocketEvent* se_ = NULL;
+					//CVDEBUG("Checking if path(" << pm->messages().size()
+					//	 << ") contains " << pm->range().start() 
+					//		<< " equals range: " << p->path_range.start());
+					//CVDEBUG("A: " << se);
+					//foreach (se_, pm->messages()) {
+					//	CVDEBUG("B: " << *se_);
+					//}
+					//se_ = NULL;
+					foreach (se_, pm->messages()) {
+						if (se_->equal(se)) {
+							CVDEBUG("Cloning state.");
+							CVExecutionState* cloned_state = state->clone();
+							cloned_state->path_manager()->set_range(pm->range());
+							cloned_state->path_manager()->set_path(pm->path());
+							phases_[PathProperty::Execute].insert(cloned_state);
+							g_executor->add_state(cloned_state);
+						}
 					}
 				}
 
 			}
 
 			CVDEBUG_S(state->id(), "Preparing Execution in " << *p 
-					<< " in round " << p->round << " " << *state->prevPC);
+					<< " " << *state->prevPC);
 		}
+		CVMESSAGE("Ready States (" 
+				<< phases_[PathProperty::Execute].size() << ")");
 
 		//foreach (CVExecutionState* state, merged_states) {
 		//	phases_[PathProperty::Execute].insert(state);
@@ -738,7 +754,22 @@ void VerifySearcher::end_path(CVExecutionState *state,
 
 	PathProperty *p = static_cast<PathProperty*>(state->property());
 	p->path_range = PathRange(p->path_range.start(), state->prevPC);
+	CVDEBUG("end_path: " << state->path_manager()->range()
+			<< ", " << p->path_range);
+ 
+	//CVDEBUG_S(state->id(), "A: End path (length "
+	//		<< state->path_manager()->length() << ") "<< *p 
+	//		<< " [Start " << *p->path_range.kinsts().first << "]"
+	//		<< " [End "   << *p->path_range.kinsts().second << "]");
+ 
+	//CVDEBUG_S(state->id(), "B: End path (length "
+	//		<< state->path_manager()->length() << ") "<< *p 
+	//		<< " [Start " << *state->path_manager()->range().kinsts().first << "]"
+	//		<< " [End "   << *state->path_manager()->range().kinsts().second << "]");
+
 	assert(state->path_manager()->range().equal(p->path_range));
+	assert(static_cast<VerifyPathManager*>(state->path_manager())->index()
+			== state->path_manager()->length());
 	p->phase = PathProperty::PrepareExecute;
 	p->round++;
 }
