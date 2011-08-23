@@ -213,7 +213,7 @@ void ClientVerifier::initialize(CVExecutor *executor) {
 			training_paths_ = new PathSet();
 			if (!TrainingPathDir.empty()) {
 				foreach(std::string path, TrainingPathDir) {
-					cvstream_->getFiles(path, ".path", TrainingPathFile);
+					cvstream_->getFiles(path, ".tpath", TrainingPathFile);
 				}
 			}
 			if (TrainingPathFile.empty() || read_training_paths(TrainingPathFile) == 0) {
