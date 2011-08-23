@@ -123,17 +123,18 @@ class PathManager {
 	virtual PathManager* clone();
 	virtual bool merge(const PathManager &pm);
 	virtual bool less(const PathManager &b) const;
-	virtual void add_branch(bool direction, klee::KInstruction* inst);
+	virtual bool add_branch(bool direction, klee::KInstruction* inst);
 
 	bool add_message(const SocketEvent* se);
+	bool contains_message(const SocketEvent* se);
 	void set_range(const PathRange& range);
+	void set_path(Path* path);
 
+	Path* path() { return path_; }
 	unsigned length() { return path_->length(); }
 	PathRange range() { return range_; }
 	const message_set_ty& messages() { return messages_; }
 
-	void add_false_branch(klee::KInstruction* inst);
-	void add_true_branch(klee::KInstruction* inst);
 	void write(std::ostream &os);
 	void read(std::ifstream &is);
 	void print(std::ostream &os) const;
@@ -161,12 +162,11 @@ inline std::ostream &operator<<(std::ostream &os,
 
 class VerifyPathManager : public PathManager {
  public:
-	VerifyPathManager() {}
-	VerifyPathManager(Path* path);
-	//**virtual PathManager* clone();
-	//**virtual bool merge(const VerifyPathManager &pm);
-	//**virtual bool less(const VerifyPathManager &b) const;
-	virtual void add_branch(bool direction, klee::KInstruction* inst);
+	VerifyPathManager();
+	virtual PathManager* clone();
+	virtual bool merge(const PathManager &pm);
+	virtual bool less(const PathManager &b) const;
+	virtual bool add_branch(bool direction, klee::KInstruction* inst);
 	//bool add_message(const SocketEvent* se);
 	//void set_range(const PathRange& range);
 	
@@ -174,11 +174,10 @@ class VerifyPathManager : public PathManager {
 	//PathRange range() { return range_; }
 	//const message_set_ty& messages() { return messages_; }
 
-	//void add_false_branch(klee::KInstruction* inst);
-	//void add_true_branch(klee::KInstruction* inst);
 	//void write(std::ostream &os);
 	//void read(std::ifstream &is);
 	//**void print(std::ostream &os) const;
+
 
  protected:
 	explicit VerifyPathManager(const VerifyPathManager &pm);

@@ -512,7 +512,8 @@ void CVExecutor::branch(klee::ExecutionState &state,
 klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current, 
 			klee::ref<klee::Expr> condition, bool isInternal) {
 	klee::Solver::Validity res;
-	CVExecutionState *cvcurrent = static_cast<CVExecutionState*>(&current);
+	PathManager *path_manager 
+		= static_cast<CVExecutionState*>(&current)->path_manager();
 
 	double timeout = stpTimeout;
 	solver->setTimeout(timeout);
@@ -582,7 +583,9 @@ klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current,
 	// search ones. If that makes sense.
 	if (res==klee::Solver::True) {
 		if (!isInternal) {
-			cvcurrent->path_manager()->add_true_branch(current.prevPC);
+			if (!path_manager->add_branch(true, current.prevPC)) {
+				terminateState(current);
+			}
       if (pathWriter) {
         current.pathOS << "1";
 			}
@@ -591,7 +594,9 @@ klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current,
 		return klee::Executor::StatePair(&current, 0);
 	} else if (res==klee::Solver::False) {
 		if (!isInternal) {
-			cvcurrent->path_manager()->add_false_branch(current.prevPC);
+			if (!path_manager->add_branch(false, current.prevPC)) {
+				terminateState(current);
+			}
       if (pathWriter) {
         current.pathOS << "0";
 			}
@@ -615,8 +620,19 @@ klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current,
 		//trueState->ptreeNode = res.second;
 
 		if (!isInternal) {
-			static_cast<CVExecutionState*>(trueState)->path_manager()->add_true_branch(current.prevPC);
-			static_cast<CVExecutionState*>(falseState)->path_manager()->add_false_branch(current.prevPC);
+			PathManager *true_path_manager 
+				= static_cast<CVExecutionState*>(trueState)->path_manager();
+			PathManager *false_path_manager 
+				= static_cast<CVExecutionState*>(falseState)->path_manager();
+
+			if (!true_path_manager->add_branch(true, current.prevPC)) {
+				terminateState(*trueState);
+			}
+
+			if (!false_path_manager->add_branch(false, current.prevPC)) {
+				terminateState(*falseState);
+			}
+
       if (pathWriter) {
         falseState->pathOS = pathWriter->open(current.pathOS);
         trueState->pathOS << "1";
@@ -742,10 +758,6 @@ CliverEventInfo* CVExecutor::lookup_event(llvm::Instruction *i) {
 
 void CVExecutor::add_state(CVExecutionState* state) {
 	addedStates.insert(state);
-}
-
-void CVExecutor::remove_state(CVExecutionState* state) {
-	removedStates.insert(state);
 }
 
 uint64_t CVExecutor::check_memory_usage() {

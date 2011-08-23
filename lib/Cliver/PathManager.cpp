@@ -247,19 +247,12 @@ bool PathManager::merge(const PathManager &pm) {
 bool PathManager::less(const PathManager &b) const {
 	if (range_.less(b.range_))
 		return true;
-	return path_->less(*b.path_);
+	return path_->less(*(b.path_));
 }
 
-void PathManager::add_false_branch(klee::KInstruction* inst) {
-	add_branch(false, inst);
-}
-
-void PathManager::add_true_branch(klee::KInstruction* inst) {
-	add_branch(true, inst);
-}
-
-void PathManager::add_branch(bool direction, klee::KInstruction* inst) {
+bool PathManager::add_branch(bool direction, klee::KInstruction* inst) {
 	path_->add(direction, inst);
+	return true;
 }
 
 bool PathManager::add_message(const SocketEvent* se) {
@@ -270,8 +263,20 @@ bool PathManager::add_message(const SocketEvent* se) {
 	return false;
 }
 
+bool PathManager::contains_message(const SocketEvent* se) {
+	if (messages_.find(const_cast<SocketEvent*>(se)) == messages_.end()) {
+		return false;
+	}
+	return true;
+}
+
 void PathManager::set_range(const PathRange& range) {
 	range_ = range;
+}
+
+void PathManager::set_path(Path* path) {
+	assert(path_ == NULL && "path is already set");
+	path_ = path;
 }
 
 bool PathManagerLT::operator()(const PathManager* a, 
@@ -304,17 +309,51 @@ void PathManager::print(std::ostream &os) const {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-VerifyPathManager::VerifyPathManager(Path* path)
+VerifyPathManager::VerifyPathManager()
 	: index_(0), valid_(true) {
-	path_ = path;
+	path_ = NULL;
 }
 
-void VerifyPathManager::add_branch(bool direction, klee::KInstruction* inst) {
-	bool path_direction = path_->get_branch(index_);
-	//klee::KInstruction* path_inst = path->get_kinst(index);
+PathManager* VerifyPathManager::clone() {
+	VerifyPathManager *pm = new VerifyPathManager();
+	pm->path_ = path_;
+	pm->index_ = index_;
+	pm->valid_ = valid_;
+	pm->messages_ = messages_;
+	pm->range_ = range_;
+	return pm;
+}
+
+bool VerifyPathManager::merge(const PathManager &pm) {
+	//assert(range_.equal(pm.range_) && "path range not equal");
+	//assert(path_->equal(*pm.path_) && "paths not equal" );
+
+	//bool success = false;
+	//foreach(SocketEvent* se, pm.messages_) {
+	//	if (messages_.find(se) == messages_.end()) {
+	//		success = true;
+	//		messages_.insert(se);
+	//	}
+	//}
+	//return success;
+	assert(0);
+	return false;
+}
+
+bool VerifyPathManager::less(const PathManager &b) const {
+	const VerifyPathManager *vpm = static_cast<const VerifyPathManager*>(&b);
+	if (range_.less(vpm->range_))
+		return true;
+	return path_->less(*(vpm->path_));
+}
+
+bool VerifyPathManager::add_branch(bool direction, klee::KInstruction* inst) {
+	assert(path_ && "path is null");
+	bool path_direction = path_->get_branch(index_++);
 	if (path_direction != direction) {
 		valid_ = false;
 	}
+	return valid_;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -354,9 +393,9 @@ PathManager* PathSet::merge(PathManager* path) {
 PathManager* PathManagerFactory::create() {
   switch (g_cliver_mode) {
 		case VerifyWithTrainingPaths:
-		return new VerifyPathManager();
+			return new VerifyPathManager();
 		case DefaultMode:
-    break;
+			break;
   }
   return new PathManager();
 }

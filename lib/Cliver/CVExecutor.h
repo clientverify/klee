@@ -76,7 +76,6 @@ class CVExecutor : public klee::Executor {
 	CliverEventInfo* lookup_event(llvm::Instruction *inst);
 
 	void add_state(CVExecutionState* state);
-	void remove_state(CVExecutionState* state);
 
 	uint64_t check_memory_usage();
 
