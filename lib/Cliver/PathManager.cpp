@@ -208,7 +208,7 @@ void PathRange::load(archive & ar, const unsigned version) {
 		assert(start_ != NULL && "invalid PathRange id");
 	}
 	if (end_id != 0) {
-		end_ = g_executor->get_instruction(start_id);
+		end_ = g_executor->get_instruction(end_id);
 		assert(end_ != NULL && "invalid PathRange id");
 	}
 }
@@ -348,10 +348,13 @@ bool VerifyPathManager::less(const PathManager &b) const {
 }
 
 bool VerifyPathManager::add_branch(bool direction, klee::KInstruction* inst) {
-	assert(path_ && "path is null");
+	assert(valid_ && path_ && "path is null");
 	bool path_direction = path_->get_branch(index_++);
 	if (path_direction != direction) {
 		valid_ = false;
+		//CVDEBUG("Invalid path (" << direction << ") " << index_ << "/" << path_->length());
+	} else {
+		//CVDEBUG("Valid path (" << direction << ") " << index_ << "/" << path_->length());
 	}
 	return valid_;
 }

@@ -170,6 +170,7 @@ class VerifyPathManager : public PathManager {
 	//bool add_message(const SocketEvent* se);
 	//void set_range(const PathRange& range);
 	
+	unsigned index() { return index_; }
 	//unsigned length() { return path_->length(); }
 	//PathRange range() { return range_; }
 	//const message_set_ty& messages() { return messages_; }
@@ -191,7 +192,7 @@ class VerifyPathManager : public PathManager {
 	//PathRange range_;
 	//message_set_ty messages_;
 
-	int index_;
+	unsigned index_;
 	bool valid_;
 
 };
