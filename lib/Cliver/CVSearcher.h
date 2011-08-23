@@ -141,7 +141,7 @@ class TrainingSearcher : public CVSearcher {
 
 class VerifySearcher : public CVSearcher {
  public:
-	VerifySearcher(klee::Searcher* base_searcher, StateMerger* merger);
+	VerifySearcher(klee::Searcher* base_searcher, StateMerger* merger, PathSet *paths);
 
 	klee::ExecutionState &selectState();
 
@@ -154,7 +154,7 @@ class VerifySearcher : public CVSearcher {
 	//void clone_for_network_events(CVExecutionState *state, CVExecutor* executor, 
 	//		CliverEvent::Type et);
 
-	void record_path(CVExecutionState *state, CVExecutor* executor,
+	void end_path(CVExecutionState *state, CVExecutor* executor,
 			CliverEvent::Type et);
 
 	void printName(std::ostream &os) { os << "VerifySearcher\n"; }

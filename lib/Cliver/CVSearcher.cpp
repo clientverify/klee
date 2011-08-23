@@ -615,8 +615,8 @@ void TrainingSearcher::handle_pre_event(CVExecutionState *state,
 ////////////////////////////////////////////////////////////////////////////////
 
 VerifySearcher::VerifySearcher(klee::Searcher* base_searcher, 
-		StateMerger* merger) 
-	: CVSearcher(base_searcher, merger), paths_(new PathSet()) {}
+		StateMerger* merger, PathSet *paths) 
+	: CVSearcher(base_searcher, merger), paths_(paths) {}
 
 klee::ExecutionState &VerifySearcher::selectState() {
 
@@ -636,27 +636,41 @@ klee::ExecutionState &VerifySearcher::selectState() {
 		ExecutionStateSet merged_states;
 		if (!to_merge.empty())
 			merger_->merge(to_merge, merged_states);
-		CVMESSAGE("Current states after mergin' (" 
-				<< merged_states.size() << ")");
+		CVMESSAGE("Current states after mergin' (" << merged_states.size() << ")");
 		phases_[PathProperty::PrepareExecute].clear();
 
 		// Process merged states
 		PathProperty *map_property = new PathProperty();
 
-	  foreach (CVExecutionState* state, merged_states) {
+	  CVExecutionState* state = NULL;
+	  foreach (state, merged_states) {
 			PathProperty *p = static_cast<PathProperty*>(state->property());
 			p->phase = PathProperty::Execute;
 			p->path_range = PathRange(state->prevPC, NULL);
-			
 			state->reset_path_manager();
+			const SocketEvent &se = state->network_manager()->socket()->event();
+	
+			PathManager* pm = NULL;
+			foreach (pm, *paths_) {
+				if (pm->range().start() == p->path_range.start()) {
+					if (pm->contains_message(&se)) {
+						CVExecutionState* cloned_state = state->clone();
+						cloned_state->path_manager()->set_range(pm->range());
+						cloned_state->path_manager()->set_path(pm->path());
+						phases_[PathProperty::Execute].insert(cloned_state);
+						g_executor->add_state(cloned_state);
+					}
+				}
+
+			}
 
 			CVDEBUG_S(state->id(), "Preparing Execution in " << *p 
 					<< " in round " << p->round << " " << *state->prevPC);
 		}
 
-		foreach (CVExecutionState* state, merged_states) {
-			phases_[PathProperty::Execute].insert(state);
-		}
+		//foreach (CVExecutionState* state, merged_states) {
+		//	phases_[PathProperty::Execute].insert(state);
+		//}
 
 		return selectState();
 	}
@@ -711,8 +725,7 @@ void VerifySearcher::update(klee::ExecutionState *current,
 }
 
 bool VerifySearcher::empty() {
-	if (phases_[PathProperty::NetworkClone].empty() &&
-			phases_[PathProperty::Execute].empty() &&
+	if (phases_[PathProperty::Execute].empty() &&
 			phases_[PathProperty::PrepareExecute].empty()) {
 		return true;
 	}
@@ -720,56 +733,12 @@ bool VerifySearcher::empty() {
 }
 
 
-void VerifySearcher::record_path(CVExecutionState *state,
+void VerifySearcher::end_path(CVExecutionState *state,
 		CVExecutor* executor, CliverEvent::Type et) {
 
 	PathProperty *p = static_cast<PathProperty*>(state->property());
 	p->path_range = PathRange(p->path_range.start(), state->prevPC);
-	state->path_manager()->set_range(p->path_range);
-	if (et == CliverEvent::NetworkSend ||
-			et == CliverEvent::NetworkRecv) {
-		if (Socket* s = state->network_manager()->socket()) {
-			const SocketEvent* se = &s->previous_event();
-			state->path_manager()->add_message(se);
-		} else {
-			cv_error("No message in state");
-		}
-	} else {
-		cv_error("invalid cliver event for recording path");
-	}
- 
-	CVDEBUG_S(state->id(), "Recording path (length "
-			<< state->path_manager()->length() << ") "<< *p 
-			<< " [Start " << *p->path_range.kinsts().first << "]"
-			<< " [End "   << *p->path_range.kinsts().second << "]");
-
-	// Write to file (pathstart, pathend, path, message)...
-	std::stringstream filename;
-	filename << "state_" << state->id() 
-		<< "-round_" << p->round 
-		<< "-length_" << state->path_manager()->length() 
-		<< ".tpath";
-	std::ostream *file = g_client_verifier->openOutputFile(filename.str());
-	state->path_manager()->write(*file);
-	delete file;
-		
-	if (paths_->contains(state->path_manager())) {
-		if (PathManager* mpath = paths_->merge(state->path_manager())) {
-			CVDEBUG_S(state->id(), "Adding new message, mcount is now "
-					<< mpath->messages().size());
-		} else {
-			CVDEBUG_S(state->id(), "Path already contains message");
-		}
-	} else {
-		if (paths_->add(state->path_manager()->clone())) {
-			CVDEBUG_S(state->id(), "Adding new path, pcount is now " 
-					<< paths_->size());
-		} else {
-			cv_error("error adding new path");
-		}
-	}
-	
-	// update for next path
+	assert(state->path_manager()->range().equal(p->path_range));
 	p->phase = PathProperty::PrepareExecute;
 	p->round++;
 }
@@ -785,7 +754,7 @@ void VerifySearcher::handle_post_event(CVExecutionState *state,
 	switch(et) {
 		case CliverEvent::NetworkSend:
 		case CliverEvent::NetworkRecv:
-			searcher->record_path(state, executor, et);
+			searcher->end_path(state, executor, et);
 			break;
 		default:
 			break;
