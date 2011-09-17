@@ -160,6 +160,9 @@ inline std::ostream &operator<<(std::ostream &os,
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/// A VerifyPathManager instance is created by reading a recorded path
+/// from file. When ::add_branch() is called, this class returns true if 
+/// the added branch value matches the stored branch value.
 class VerifyPathManager : public PathManager {
  public:
 	VerifyPathManager();

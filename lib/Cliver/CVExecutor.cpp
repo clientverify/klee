@@ -624,12 +624,13 @@ klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current,
 				= static_cast<CVExecutionState*>(falseState)->path_manager();
 
 			if (!true_path_manager->add_branch(true, current.prevPC)) {
+				// terminateState will delete trueState
 				terminateState(*trueState);
 				trueState = NULL;
 			}
 
 			if (!false_path_manager->add_branch(false, current.prevPC)) {
-				//terminateState(*falseState);
+				// Don't call terminateState because falseState was recently created
 				delete falseState;
 				falseState = NULL;
 			}
