@@ -641,8 +641,8 @@ klee::ExecutionState &VerifySearcher::selectState() {
 
 		// Process merged states
 		PathProperty *map_property = new PathProperty();
-
 	  CVExecutionState* state = NULL;
+		PathManager* pm = NULL;
 	  foreach (state, merged_states) {
 			PathProperty *p = static_cast<PathProperty*>(state->property());
 			p->phase = PathProperty::Execute;
@@ -650,7 +650,10 @@ klee::ExecutionState &VerifySearcher::selectState() {
 			state->reset_path_manager();
 			const SocketEvent &se = state->network_manager()->socket()->event();
 	
-			PathManager* pm = NULL;
+			// Clone a new state for each path in our PathSet (paths_) that
+			// starts at the same current PC instruction. We naively clone 
+			// a state for each message.
+			pm = NULL;
 			foreach (pm, *paths_) {
 				//CVDEBUG("Checking if range: " << pm->range().start() 
 				//		<< " equals range: " << p->path_range.start());
@@ -681,12 +684,9 @@ klee::ExecutionState &VerifySearcher::selectState() {
 			CVDEBUG_S(state->id(), "Preparing Execution in " << *p 
 					<< " " << *state->prevPC);
 		}
+
 		CVMESSAGE("Ready States (" 
 				<< phases_[PathProperty::Execute].size() << ")");
-
-		//foreach (CVExecutionState* state, merged_states) {
-		//	phases_[PathProperty::Execute].insert(state);
-		//}
 
 		return selectState();
 	}
@@ -773,7 +773,6 @@ void VerifySearcher::end_path(CVExecutionState *state,
 	p->phase = PathProperty::PrepareExecute;
 	p->round++;
 }
-
 
 void VerifySearcher::handle_post_event(CVExecutionState *state,
 		CVExecutor *executor, CliverEvent::Type et) {
