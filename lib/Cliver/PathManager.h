@@ -27,6 +27,11 @@ namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/// PathRange holds the starting instruction and ending instruction (if closed)
+/// for a single path of execution through the code. The member vars are ptrs
+/// the corresponding KInstructions that enclose the range. When a PathRange is
+/// serialized: on save, the KInstruction ids are written, on load the 
+/// KInstruction pointers are looked up with the loaded ids.
 class PathRange {
  public:
 	typedef std::pair<klee::KInstruction*, klee::KInstruction*> kinst_pair_ty;
@@ -69,6 +74,8 @@ inline std::ostream &operator<<(std::ostream &os,
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/// A Path records the branch direction taken in a region of code. In order to 
+/// save space, a Path may stored as a tree of Paths internally. 
 class Path {
  public:
 	Path();
@@ -116,6 +123,9 @@ inline std::ostream &operator<<(std::ostream &os, const Path &p) {
 
 class SocketEvent;
 
+/// PathManager is a wrapper around a single Path that allows for additional
+/// information to be associated with a Path, such as the PathRange and 
+/// socket messages that were sent or received at the termination of the Path
 class PathManager {
  public:
 	typedef std::set<SocketEvent*> message_set_ty;
@@ -162,7 +172,9 @@ inline std::ostream &operator<<(std::ostream &os,
 
 /// A VerifyPathManager instance is created by reading a recorded path
 /// from file. When ::add_branch() is called, this class returns true if 
-/// the added branch value matches the stored branch value.
+/// the added branch value matches the stored branch value. This functionality
+/// is used in CVExecutor::fork() where a failed add_branch while result in the
+/// state's termination.
 class VerifyPathManager : public PathManager {
  public:
 	VerifyPathManager();
@@ -170,34 +182,14 @@ class VerifyPathManager : public PathManager {
 	virtual bool merge(const PathManager &pm);
 	virtual bool less(const PathManager &b) const;
 	virtual bool add_branch(bool direction, klee::KInstruction* inst);
-	//bool add_message(const SocketEvent* se);
-	//void set_range(const PathRange& range);
-	
+
 	unsigned index() { return index_; }
-	//unsigned length() { return path_->length(); }
-	//PathRange range() { return range_; }
-	//const message_set_ty& messages() { return messages_; }
-
-	//void write(std::ostream &os);
-	//void read(std::ifstream &is);
-	//**void print(std::ostream &os) const;
-
 
  protected:
 	explicit VerifyPathManager(const VerifyPathManager &pm);
 
-	//// Serialization
-	//friend class boost::serialization::access;
-	//template<class archive> 
-	//	void serialize(archive & ar, const unsigned version);
-
-	//Path* path_;
-	//PathRange range_;
-	//message_set_ty messages_;
-
 	unsigned index_;
 	bool valid_;
-
 };
 
 inline std::ostream &operator<<(std::ostream &os, 
