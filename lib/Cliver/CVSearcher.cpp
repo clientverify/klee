@@ -653,22 +653,11 @@ klee::ExecutionState &VerifySearcher::selectState() {
 			// Clone a new state for each path in our PathSet (paths_) that
 			// starts at the same current PC instruction. We naively clone 
 			// a state for each message.
-			pm = NULL;
 			foreach (pm, *paths_) {
-				//CVDEBUG("Checking if range: " << pm->range().start() 
-				//		<< " equals range: " << p->path_range.start());
 				if (pm->range().start() == p->path_range.start()) {
-					const SocketEvent* se_ = NULL;
-					//CVDEBUG("Checking if path(" << pm->messages().size()
-					//	 << ") contains " << pm->range().start() 
-					//		<< " equals range: " << p->path_range.start());
-					//CVDEBUG("A: " << se);
-					//foreach (se_, pm->messages()) {
-					//	CVDEBUG("B: " << *se_);
-					//}
-					//se_ = NULL;
-					foreach (se_, pm->messages()) {
-						if (se_->equal(se)) {
+					const SocketEvent* other_se = NULL;
+					foreach (other_se, pm->messages()) {
+						if (other_se->equal(se)) {
 							CVDEBUG("Cloning state.");
 							CVExecutionState* cloned_state = state->clone();
 							cloned_state->path_manager()->set_range(pm->range());
@@ -678,8 +667,8 @@ klee::ExecutionState &VerifySearcher::selectState() {
 						}
 					}
 				}
-
 			}
+			pm = NULL;
 
 			CVDEBUG_S(state->id(), "Preparing Execution in " << *p 
 					<< " " << *state->prevPC);
