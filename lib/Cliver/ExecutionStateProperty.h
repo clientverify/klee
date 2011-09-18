@@ -27,7 +27,7 @@ class CVExecutionState;
 /// an ordering of CVExecutionStates, for example, LogIndexProperty uses the 
 /// log_index of the NetworkManager to form a class of CVExecutionStates.
 /// ExecutionStateProperty should be used as if it was pure virtual, i.e., not
-/// used directly. The member variables of these classes are public so that 
+/// used directly. The member variables of these classes are public for now so that 
 /// a CVExecutionState is not needed to create an instance. Inherited classes
 /// should preserve this functionality through public member variables or functions
 /// to create instances without a given CVExecutionState.
