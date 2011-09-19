@@ -6,8 +6,8 @@
 //
 //
 //===----------------------------------------------------------------------===//
-#ifndef SOCKET_H
-#define SOCKET_H 
+#ifndef CLIVER_SOCKET_H
+#define CLIVER_SOCKET_H 
 
 #include "klee/Internal/ADT/KTest.h"
 #include "CVStream.h"
@@ -109,4 +109,4 @@ inline std::ostream &operator<<(std::ostream &os, Socket &s) {
 }
 
 } // end namespace cliver
-#endif // SOCKET_H
+#endif // CLIVER_SOCKET_H
