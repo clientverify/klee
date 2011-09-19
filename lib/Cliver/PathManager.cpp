@@ -8,18 +8,19 @@
 //===----------------------------------------------------------------------===//
 
 #include "PathManager.h"
-#include "llvm/Support/CommandLine.h"
-#include "CVStream.h"
+#include "CVCommon.h"
 #include "CVExecutor.h"
 #include "Socket.h"
 
-#include <iostream>
 #include <boost/serialization/set.hpp>
 #include <boost/serialization/vector.hpp>
 #include <boost/archive/text_oarchive.hpp>
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/binary_oarchive.hpp>
 #include <boost/archive/binary_iarchive.hpp>
+
+#include "klee/Internal/Module/InstructionInfoTable.h"
+#include "klee/Internal/Module/KInstruction.h"
 
 namespace cliver {
 

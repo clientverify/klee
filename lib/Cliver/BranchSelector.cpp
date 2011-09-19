@@ -8,8 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "BranchSelector.h"
-#include "llvm/Support/CommandLine.h"
-#include "CVStream.h"
+#include "CVCommon.h"
 #include "CVExecutionState.h"
 
 namespace cliver {

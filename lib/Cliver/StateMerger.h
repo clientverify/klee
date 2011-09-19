@@ -9,16 +9,21 @@
 #ifndef STATE_MERGER_H
 #define STATE_MERGER_H
 
-#include "CVExecutionState.h"
-#include "AddressSpaceGraph.h"
+namespace klee {
+	class ConstraintManager;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 namespace cliver {
+
+class AddressSpaceGraph;
+class ConstraintPruner;
+class CVExecutionState;
 
 struct MergeInfo {
 	AddressSpaceGraph *graph;
 };
-
-class ConstraintPruner;
 
 class StateMerger {
  public:
@@ -27,13 +32,11 @@ class StateMerger {
 			ExecutionStateSet &merged_set);
 
  protected:
-  bool callstacks_equal(
-		const AddressSpaceGraph &asg_a, const AddressSpaceGraph &asg_b,
-		CVExecutionState *state_a, CVExecutionState *state_b);
+  bool callstacks_equal(CVExecutionState *state_a, CVExecutionState *state_b);
 
 	bool constraints_equal(
-		const AddressSpaceGraph &asg_a, const AddressSpaceGraph &asg_b,
-		klee::ConstraintManager &a, klee::ConstraintManager &b);
+		const AddressSpaceGraph *asg_a, const AddressSpaceGraph *asg_b,
+		const klee::ConstraintManager *a, const klee::ConstraintManager *b);
 
 	ConstraintPruner *pruner_;
 };

@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "CVSearcher.h"
+#include "CVExecutionState.h"
 #include "StateMerger.h"
 #include "AddressSpaceGraph.h"
 #include "ConstraintPruner.h"
@@ -71,7 +72,6 @@ StateMerger::StateMerger(ConstraintPruner *pruner) : pruner_(pruner) {}
 // 5. Compare constraint sets
 
 bool StateMerger::callstacks_equal(
-		const AddressSpaceGraph &asg_a, const AddressSpaceGraph &asg_b, 
 		CVExecutionState *state_a, CVExecutionState *state_b) {
 
 	int id_a = state_a->id(), id_b = state_b->id();
@@ -104,13 +104,13 @@ bool StateMerger::callstacks_equal(
 }
 
 bool StateMerger::constraints_equal(
-		const AddressSpaceGraph &asg_a,
-		const AddressSpaceGraph &asg_b,
-		klee::ConstraintManager &a, 
-		klee::ConstraintManager &b) {
+		const AddressSpaceGraph *asg_a,
+		const AddressSpaceGraph *asg_b,
+		const klee::ConstraintManager *a, 
+		const klee::ConstraintManager *b) {
 
-	std::set< klee::ref<klee::Expr> > set_a(a.begin(), a.end());
-	std::set< klee::ref<klee::Expr> > set_b_initial(b.begin(), b.end());
+	std::set< klee::ref<klee::Expr> > set_a(a->begin(), a->end());
+	std::set< klee::ref<klee::Expr> > set_b_initial(b->begin(), b->end());
 
 	if (set_a.size() != set_b_initial.size()) {
 		CVDEBUG("constraint sizes do not match " 
@@ -121,7 +121,7 @@ bool StateMerger::constraints_equal(
 	std::set< klee::ref<klee::Expr> > set_b;
 
 	foreach (klee::ref<klee::Expr> e, set_b_initial) {
-		set_b.insert(asg_a.get_canonical_expr(asg_b, e));
+		set_b.insert(asg_a->get_canonical_expr(*asg_b, e));
 	}
 
 	std::set< klee::ref<klee::Expr> > common;
@@ -180,7 +180,7 @@ void StateMerger::merge(ExecutionStateSet &state_set,
 			AddressSpaceGraph* asg_b = merge_info[*it].graph;
 
 			// Compare callstacks
-			if (!callstacks_equal(*asg_a, *asg_b, state, *it)) {
+			if (!callstacks_equal(state, *it)) {
 				continue;
 			}
 
@@ -190,8 +190,8 @@ void StateMerger::merge(ExecutionStateSet &state_set,
 			}
 
 			// Compare rewritten/canonical constraints
-			if (constraints_equal(*asg_a, *asg_b, 
-						state->constraints, (*it)->constraints)) {
+			if (constraints_equal(asg_a, asg_b, 
+						&(state->constraints), &((*it)->constraints))) {
 					break;
 			}
 		}
@@ -255,15 +255,15 @@ void SymbolicStateMerger::merge(ExecutionStateSet &state_set,
 			AddressSpaceGraph* asg_b = merge_info[*it].graph;
 
 			// Compare callstacks
-			if (!callstacks_equal(*asg_a, *asg_b, state, *it)) {
+			if (!callstacks_equal(state, *it)) {
 				new_worklist.push_back(*it);
 				continue;
 			}
 
 			// Compare constraints
 			if (!TrainingClearConstraints) {
-				if (!constraints_equal(*asg_a, *asg_b, 
-							state->constraints, (*it)->constraints)) {
+				if (!constraints_equal(asg_a, asg_b, 
+							&(state->constraints), &((*it)->constraints))) {
 					new_worklist.push_back(*it);
 					continue;
 				}
@@ -289,7 +289,7 @@ void SymbolicStateMerger::merge(ExecutionStateSet &state_set,
 			AddressSpaceGraph *asg_b = (it->second).graph;
 
 			// Compare callstacks
-			if (!callstacks_equal(*asg_a, *asg_b, state, prev_state)) {
+			if (!callstacks_equal(state, prev_state)) {
 				continue;
 			}
 

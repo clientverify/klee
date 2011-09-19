@@ -9,13 +9,16 @@
 #ifndef NETWORK_MANAGER_H
 #define NETWORK_MANAGER_H
 
-#include "klee/Internal/Module/KInstruction.h"
+#include "klee/Expr.h"
 #include "klee/Internal/ADT/KTest.h"
-#include "../Core/Executor.h"
 #include "CVExecutionState.h"
-#include "CVExecutor.h"
-#include "CVStream.h"
 #include "Socket.h"
+
+namespace klee {
+	class KInstruction;
+	class ExecutionState;
+	class Executor;
+}
 
 namespace cliver {
 
@@ -36,6 +39,9 @@ void ExternalHandler_socket_shutdown(
 		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
 
 ////////////////////////////////////////////////////////////////////////////////
+
+class CVExecutor;
+class CVExecutionState;
 
 class NetworkManager {
  public:

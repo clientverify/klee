@@ -7,21 +7,24 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Support/CommandLine.h"
 #include "ClientVerifier.h"
-#include "NetworkManager.h"
-#include "../lib/Core/SpecialFunctionHandler.h"
-#include "CVExecutor.h"
-#include "CVExecutionState.h"
-#include "CVStream.h"
-#include "CVSearcher.h"
 #include "ConstraintPruner.h"
+#include "CVCommon.h"
+#include "CVExecutionState.h"
+#include "CVExecutor.h"
+#include "CVSearcher.h"
+#include "CVStream.h"
+#include "NetworkManager.h"
+#include "PathManager.h"
 #include "StateMerger.h"
 #include "TestHelper.h"
+
 #include "llvm/Support/Debug.h"
 #include "llvm/System/Process.h"
+
 #include "klee/Statistics.h"
-#include "PathManager.h"
+#include "../lib/Core/SpecialFunctionHandler.h"
+
 
 // needed for boost::signal
 void boost::throw_exception(std::exception const& e) {}

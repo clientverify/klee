@@ -10,7 +10,7 @@
 #define CLIVER_SOCKET_H 
 
 #include "klee/Internal/ADT/KTest.h"
-#include "CVStream.h"
+#include "stdint.h"
 
 #include <iostream>
 #include <vector>

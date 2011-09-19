@@ -9,8 +9,6 @@
 #ifndef CLIVER_PATH_MANAGER_H
 #define CLIVER_PATH_MANAGER_H
 
-#include "klee/Internal/Module/InstructionInfoTable.h"
-#include "klee/Internal/Module/KInstruction.h"
 #include "ClientVerifier.h"
 
 #include <list>
@@ -20,8 +18,14 @@
 
 #include <boost/serialization/access.hpp>
 #include <boost/serialization/vector.hpp>
-#include <boost/archive/text_oarchive.hpp>
-#include <boost/archive/text_iarchive.hpp>
+
+namespace llvm {
+ class Instruction;
+}
+
+namespace klee {
+ class KInstruction;
+}
 
 namespace cliver {
 

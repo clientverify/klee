@@ -9,18 +9,20 @@
 #ifndef CLIVER_H
 #define CLIVER_H
 
-#include "klee/TimerStatIncrementer.h"
-#include "klee/Internal/ADT/KTest.h"
-#include "CVStream.h"
-#include "../lib/Core/CoreStats.h"
-#include "../lib/Core/SpecialFunctionHandler.h"
-#include "../Core/Executor.h"
-#include "Socket.h"
-
 #include <fstream>
 #include <map>
 #include <string>
 #include <vector>
+
+#include "Socket.h" // For SocketEventList typedef
+
+#include "klee/TimerStatIncrementer.h"
+#include "klee/Internal/ADT/KTest.h"
+#include "../lib/Core/CoreStats.h"
+#include "../lib/Core/SpecialFunctionHandler.h"
+#include "../Core/Executor.h"
+
+#include "llvm/Support/CommandLine.h"
 
 #include <boost/signal.hpp>
 
@@ -99,6 +101,8 @@ class CVContext {
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+
+class CVStream;
 
 class ClientVerifier : public klee::InterpreterHandler {
  public:

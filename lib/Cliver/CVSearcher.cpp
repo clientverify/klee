@@ -7,15 +7,21 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "CVCommon.h"
 #include "CVSearcher.h"
+#include "CVExecutionState.h"
+#include "CVExecutor.h"
 #include "StateMerger.h"
 #include "ClientVerifier.h"
 #include "NetworkManager.h"
 #include "PathManager.h"
+
 #include "klee/Internal/Module/InstructionInfoTable.h"
 
 #include <boost/archive/text_oarchive.hpp>
 #include <boost/archive/text_iarchive.hpp>
+
+#include "llvm/Support/raw_ostream.h"
 
 namespace cliver {
 
@@ -45,6 +51,18 @@ DebugSearcher("debug-searcher",llvm::cl::init(false));
 #define CVDEBUG_S(__state_id, __x)
 
 #endif
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Helper for debug output
+inline std::ostream &operator<<(std::ostream &os, 
+		const klee::KInstruction &ki) {
+	std::string str;
+	llvm::raw_string_ostream ros(str);
+	ros << ki.info->id << ":" << *ki.inst;
+	//str.erase(std::remove(str.begin(), str.end(), '\n'), str.end());
+	return os << ros.str();
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 

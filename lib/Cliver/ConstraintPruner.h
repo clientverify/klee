@@ -9,7 +9,6 @@
 #ifndef CONSTRAINT_PRUNER_H
 #define CONSTRAINT_PRUNER_H
 
-
 namespace cliver {
 
 class AddressSpaceGraph;

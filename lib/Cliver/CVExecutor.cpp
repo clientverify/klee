@@ -8,16 +8,12 @@
 //===----------------------------------------------------------------------===//
 #include "CVExecutionState.h"
 #include "CVExecutor.h"
-#include "CVStream.h"
+#include "CVCommon.h"
 #include "CVSearcher.h"
 #include "NetworkManager.h"
 #include "PathManager.h"
 #include "StateMerger.h"
 #include "ConstraintPruner.h"
-
-//#include "../Core/ExternalDispatcher.h"
-//#include "../Core/SpecialFunctionHandler.h"
-//#include "../Core/TimingSolver.h"
 
 #include "../Core/Common.h"
 #include "../Core/Executor.h"

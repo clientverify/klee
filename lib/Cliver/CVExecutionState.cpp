@@ -6,11 +6,14 @@
 //
 //
 //===----------------------------------------------------------------------===//
+
 #include "CVExecutionState.h"
 #include "CVExecutor.h"
-#include "CVStream.h"
+#include "CVCommon.h"
+#include "ExecutionStateProperty.h"
 #include "NetworkManager.h"
 #include "PathManager.h"
+
 #include "../Core/Common.h"
 #include "llvm/Support/raw_ostream.h"
 

@@ -9,7 +9,6 @@
 #ifndef CLIVER_EXECUTION_STATE_H
 #define CLIVER_EXECUTION_STATE_H
 
-#include "ExecutionStateProperty.h"
 #include "ClientVerifier.h"
 #include "klee/ExecutionState.h"
 #include "llvm/Instructions.h"
@@ -26,6 +25,7 @@ class AddressManager;
 class CVContext;
 class CVExecutionState;
 class CVExecutor;
+class ExecutionStateProperty;
 class NetworkManager;
 class PathManager;
 
