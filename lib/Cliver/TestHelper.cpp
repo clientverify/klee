@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "TestHelper.h"
+#include "CVCommon.h"
 #include "CVExecutor.h"
 #include "AddressSpaceGraph.h"
 

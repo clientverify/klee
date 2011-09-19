@@ -11,12 +11,10 @@
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/Internal/Module/KModule.h"
 #include "../Core/Context.h"
-#include "AddressSpaceGraph.h"
-#include "CVStream.h"
-#include "CVExecutionState.h"
 
-#include <boost/foreach.hpp>
-#define foreach BOOST_FOREACH 
+#include "AddressSpaceGraph.h"
+#include "CVCommon.h"
+#include "CVExecutionState.h"
 
 namespace cliver {
 
@@ -53,6 +51,82 @@ AllowGlobalSymbolics("allow-global-symbolics",llvm::cl::init(true));
 #define CVDEBUG_S2(__state_id_1, __state_id_2, __x)
 
 #endif
+
+////////////////////////////////////////////////////////////////////////////////
+
+class AddressSpaceGraphVisitor: public boost::default_bfs_visitor {
+ private:
+	AddressSpaceGraph &asg_;
+	std::set<Vertex> &visited_;
+
+ public:
+	AddressSpaceGraphVisitor(AddressSpaceGraph &asg, std::set<Vertex> &visited)
+		: asg_(asg), visited_(visited) {}
+
+	template <typename Vertex, typename Graph>
+	void discover_vertex(Vertex v, Graph& g) {
+
+		if (visited_.find(v) == visited_.end()) {
+
+			// Extract the object state from the vertex properties
+			klee::ObjectState* object_state 
+				= boost::get(boost::get(&VertexProperties::object, asg_.graph_), v);
+
+			// Extract any references to reads of other symbolic variables
+			for (unsigned i=0; i<object_state->size; ++i) {
+				if(!object_state->isByteConcrete(i)) {
+					klee::ref<klee::Expr> expr = object_state->read8(i);
+					asg_.add_arrays_from_expr(expr);
+				}
+			}
+
+			visited_.insert(v);
+			asg_.in_order_visited_.push_back(v);
+		}
+  }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class ReplaceArrayVisitor : public klee::ExprVisitor {
+private:
+	std::map<const klee::Array*, unsigned> array_map_;
+	std::vector<const klee::Array*> arrays_;
+
+public:
+  ReplaceArrayVisitor(std::map<const klee::Array*, unsigned> array_map,
+			std::vector<const klee::Array*> arrays) 
+		: klee::ExprVisitor(true), array_map_(array_map), arrays_(arrays) {
+		assert(array_map_.size() == arrays_.size());
+	}
+
+  Action visitRead(const klee::ReadExpr &e) {
+		if (e.updates.root != NULL) {
+      if (array_map_.count(e.updates.root) == 0) {
+				return Action::doChildren();
+			}
+			unsigned to_replace_index = array_map_[e.updates.root];
+			const klee::Array *array = arrays_[to_replace_index];
+
+			// Because extend() pushes a new UpdateNode onto the list, we need to walk
+			// the list in reverse to rebuild it in the same order.
+			std::vector< const klee::UpdateNode*> update_list;
+			for (const klee::UpdateNode *un=e.updates.head; un; un=un->next) {
+				update_list.push_back(un);
+			}
+
+			// walk list in reverse
+			klee::UpdateList updates(array, NULL);
+			reverse_foreach (const klee::UpdateNode* U, update_list) {
+				updates.extend(visit(U->index), visit(U->value));
+			}
+
+			return Action::changeTo(klee::ReadExpr::create(updates, visit(e.index)));
+
+		}
+		return Action::doChildren();
+  }
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 

@@ -8,7 +8,9 @@
 #ifndef CLIVER_EXECUTION_STATE_PROPERTY_H
 #define CLIVER_EXECUTION_STATE_PROPERTY_H
 
+#include "CVCommon.h"
 #include "PathManager.h"
+
 #include <map>
 #include <set>
 #include <iostream>

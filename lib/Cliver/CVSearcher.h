@@ -9,10 +9,13 @@
 #ifndef CV_SEARCHER_H
 #define CV_SEARCHER_H
 
+#include "ClientVerifier.h" // For CliverEvent::Type
+#include "ExecutionStateProperty.h"
+
 #include "../Core/Searcher.h"
-#include "CVExecutionState.h"
 
 namespace cliver {
+class CVExecutionState;
 class StateMerger;
 class PathSet;
 

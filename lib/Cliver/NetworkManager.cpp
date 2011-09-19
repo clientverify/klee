@@ -8,15 +8,17 @@
 //===----------------------------------------------------------------------===//
 
 #include "NetworkManager.h"
+#include "CVCommon.h"
+#include "CVExecutor.h"
+#include "CVExecutionState.h"
 #include "ClientVerifier.h"
+
 #include "llvm/Support/CommandLine.h"
+
+#include "klee/Internal/Module/KInstruction.h"
+#include "../Core/Executor.h"
 #include "../Core/Memory.h"
 #include "../Core/TimingSolver.h"
-
-#include <iomanip>
-
-#include <boost/foreach.hpp>
-#define foreach BOOST_FOREACH 
 
 namespace cliver {
 

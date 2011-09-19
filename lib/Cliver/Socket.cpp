@@ -9,6 +9,7 @@
 
 #include "Socket.h"
 #include "ClientVerifier.h"
+#include "CVCommon.h"
 
 namespace cliver {
 

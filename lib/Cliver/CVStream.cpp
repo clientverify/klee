@@ -7,10 +7,20 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "CVCommon.h"
 #include "CVStream.h"
-#include "signal.h"
+#include <signal.h>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <stdlib.h>
+#include <errno.h>
+
+#include <iostream>
+#include <sstream>
+#include <fstream>
+
+#include "llvm/System/Path.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/CommandLine.h"
 
 namespace {
 llvm::cl::opt<std::string>
@@ -46,6 +56,48 @@ namespace cliver {
 std::ostream* cv_warning_stream = NULL;
 std::ostream* cv_message_stream = NULL;
 std::ostream* cv_debug_stream   = NULL;
+
+////////////////////////////////////////////////////////////////////////////////
+
+class teebuf: public std::streambuf {
+ public:
+  teebuf() {}
+  teebuf(std::streambuf* sb1, std::streambuf* sb2) {
+    bufs_.insert(sb1);
+    bufs_.insert(sb2);
+  }
+  void add(std::streambuf* sb) { 
+    bufs_.insert(sb);
+  }
+  virtual int overflow(int c) {
+    foreach(std::streambuf* buf, bufs_)
+      buf->sputc(c);
+    return 1;
+  }
+  virtual int sync() {
+      int r = 0;
+      foreach(std::streambuf* buf, bufs_)
+          r = buf->pubsync();
+    return r;
+  }   
+  virtual std::streamsize xsputn(const char* s, std::streamsize n) {
+    foreach(std::streambuf* buf, bufs_)
+      buf->sputn(s, n);
+    return n;
+  }
+ private:
+  std::set<std::streambuf*> bufs_;
+};
+
+class teestream : public std::ostream {
+ public:
+  teestream() : std::ostream(&tbuf) {}
+  teestream(std::ostream &os1, std::ostream &os2) 
+    : std::ostream(&tbuf), tbuf(os1.rdbuf(), os2.rdbuf()) {}
+  void add(std::ostream &os) { tbuf.add(os.rdbuf()); }
+ private:
+  teebuf tbuf;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -217,9 +269,7 @@ void CVStream::getFiles(std::string path, std::string suffix,
   }
 }
 
-
 void CVStream::init() {
-
   if (!NoOutput)
     initOutputDirectory();
 
