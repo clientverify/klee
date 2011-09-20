@@ -30,6 +30,17 @@ namespace klee {
 
 namespace cliver {
 
+//class PathManager {
+//public:
+// virtual PathManager* clone() = 0;
+// virtual bool merge(const PathManager &pm);
+// virtual bool less(const PathManager &b) const;
+//
+// virtual bool query_branch(bool direction, klee::KInstruction* inst);
+// virtual bool commit_branch(bool direction, klee::KInstruction* inst);
+//private:
+//}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class SocketEvent;
