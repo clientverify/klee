@@ -199,19 +199,6 @@ void ClientVerifier::initialize(CVExecutor *executor) {
 			post_event_callbacks_.connect(&TrainingSearcher::handle_post_event);
 			break;
 
-		case OutOfOrderTrainingMode:
-
-			// Construct searcher
-			pruner_ = new ConstraintPruner();
-			merger_ = new SymbolicStateMerger(pruner_);
-			searcher_ 
-				= new OutOfOrderTrainingSearcher(NULL, merger_);
-
-			// Set event callbacks
-			pre_event_callbacks_.connect(&OutOfOrderTrainingSearcher::handle_pre_event);
-			post_event_callbacks_.connect(&OutOfOrderTrainingSearcher::handle_post_event);
-			break;
-
 		case VerifyWithTrainingPaths: 
 
 			// Read training paths
@@ -238,6 +225,19 @@ void ClientVerifier::initialize(CVExecutor *executor) {
 		case TetrinetTrainingMode:
 			cv_error("Tetrinet Training mode is unsupported");
 			break;
+
+		//case OutOfOrderTrainingMode:
+
+		//	// Construct searcher
+		//	pruner_ = new ConstraintPruner();
+		//	merger_ = new SymbolicStateMerger(pruner_);
+		//	searcher_ 
+		//		= new OutOfOrderTrainingSearcher(NULL, merger_);
+
+		//	// Set event callbacks
+		//	pre_event_callbacks_.connect(&OutOfOrderTrainingSearcher::handle_pre_event);
+		//	post_event_callbacks_.connect(&OutOfOrderTrainingSearcher::handle_post_event);
+		//	break;
 	}
 
 }

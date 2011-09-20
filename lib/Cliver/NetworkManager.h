@@ -35,8 +35,8 @@ void ExternalHandler_socket_write(
 	klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
 
 void ExternalHandler_socket_shutdown(
-		klee::Executor* executor, klee::ExecutionState *state, 
-		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
+	klee::Executor* executor, klee::ExecutionState *state, 
+	klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
 
 ////////////////////////////////////////////////////////////////////////////////
 

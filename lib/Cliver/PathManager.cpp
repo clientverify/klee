@@ -136,17 +136,6 @@ PathManager* VerifyPathManager::clone() {
 }
 
 bool VerifyPathManager::merge(const PathManager &pm) {
-	//assert(range_.equal(pm.range_) && "path range not equal");
-	//assert(path_->equal(*pm.path_) && "paths not equal" );
-
-	//bool success = false;
-	//foreach(SocketEvent* se, pm.messages_) {
-	//	if (messages_.find(se) == messages_.end()) {
-	//		success = true;
-	//		messages_.insert(se);
-	//	}
-	//}
-	//return success;
 	assert(0);
 	return false;
 }
