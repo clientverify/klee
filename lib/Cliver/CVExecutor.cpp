@@ -521,132 +521,51 @@ klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current,
 		return klee::Executor::StatePair(0, 0);
 	}
 
-	//if (!isSeeding) {
-	//	if (replayPath && !isInternal) {
-	//		assert(replayPosition<replayPath->size() &&
-	//				"ran out of branches in replay path mode");
-	//		bool branch = (*replayPath)[replayPosition++];
-
-	//		if (res==Solver::True) {
-	//			assert(branch && "hit invalid branch in replay path mode");
-	//		} else if (res==Solver::False) {
-	//			assert(!branch && "hit invalid branch in replay path mode");
-	//		} else {
-	//			// add constraints
-	//			if(branch) {
-	//				res = Solver::True;
-	//				addConstraint(current, condition);
-	//			} else  {
-	//				res = Solver::False;
-	//				addConstraint(current, Expr::createIsZero(condition));
-	//			}
-	//		}
-	//	} else if (res==Solver::Unknown) {
-	//		assert(!replayOut && "in replay mode, only one branch can be true.");
-
-	//		if ((MaxMemoryInhibit && atMemoryLimit) || 
-	//				current.forkDisabled ||
-	//				inhibitForking || 
-	//				(MaxForks!=~0u && stats::forks >= MaxForks)) {
-
-	//			if (MaxMemoryInhibit && atMemoryLimit)
-	//				klee_warning_once(0, "skipping fork (memory cap exceeded)");
-	//			else if (current.forkDisabled)
-	//				klee_warning_once(0, "skipping fork (fork disabled on current path)");
-	//			else if (inhibitForking)
-	//				klee_warning_once(0, "skipping fork (fork disabled globally)");
-	//			else 
-	//				klee_warning_once(0, "skipping fork (max-forks reached)");
-
-	//			TimerStatIncrementer timer(stats::forkTime);
-	//			if (theRNG.getBool()) {
-	//				addConstraint(current, condition);
-	//				res = Solver::True;        
-	//			} else {
-	//				addConstraint(current, Expr::createIsZero(condition));
-	//				res = Solver::False;
-	//			}
-	//		}
-	//	}
-	//}
-
-	// XXX - even if the constraint is provable one way or the other we
-	// can probably benefit by adding this constraint and allowing it to
-	// reduce the other constraints. For example, if we do a binary
-	// search on a particular value, and then see a comparison against
-	// the value it has been fixed at, we should take this as a nice
-	// hint to just use the single constraint instead of all the binary
-	// search ones. If that makes sense.
 	if (res==klee::Solver::True) {
 		if (!isInternal) {
-			if (!path_manager->add_branch(true, current.prevPC)) {
-				terminateState(current);
-			}
-      if (pathWriter) {
-        current.pathOS << "1";
+			if (path_manager->query_branch(true, current.prevPC)) {
+				if (!path_manager->commit_branch(true, current.prevPC)) {
+					terminateState(current);
+				}
 			}
 		}
-
 		return klee::Executor::StatePair(&current, 0);
 	} else if (res==klee::Solver::False) {
 		if (!isInternal) {
-			if (!path_manager->add_branch(false, current.prevPC)) {
-				terminateState(current);
-			}
-      if (pathWriter) {
-        current.pathOS << "0";
+			if (path_manager->query_branch(false, current.prevPC)) {
+				if (!path_manager->commit_branch(false, current.prevPC)) {
+					terminateState(current);
+				}
 			}
 		}
-
 		return klee::Executor::StatePair(0, &current);
 	} else {
 		klee::TimerStatIncrementer timer(klee::stats::forkTime);
-		klee::ExecutionState *falseState, *trueState = &current;
+		klee::ExecutionState *falseState = NULL, *trueState = &current;
 
 		++klee::stats::forks;
 
-		falseState = trueState->branch();
-		
-		//current.ptreeNode->data = 0;
-		//std::pair<klee::PTree::Node*, klee::PTree::Node*> res =
-		//	processTree->split(current.ptreeNode, falseState, trueState);
-		//falseState->ptreeNode = res.first;
-		//trueState->ptreeNode = res.second;
+		if (isInternal) {
+			falseState = trueState->branch();
+		} else {
 
-		if (!isInternal) {
-			PathManager *true_path_manager 
-				= static_cast<CVExecutionState*>(trueState)->path_manager();
-			PathManager *false_path_manager 
-				= static_cast<CVExecutionState*>(falseState)->path_manager();
+			if (path_manager->query_branch(false, current.prevPC)) {
+				falseState = trueState->branch();
+				PathManager *false_path_manager 
+					= static_cast<CVExecutionState*>(falseState)->path_manager();
+				false_path_manager->commit_branch(false, current.prevPC);
+			}
 
-			if (!true_path_manager->add_branch(true, current.prevPC)) {
+			if (path_manager->query_branch(true, current.prevPC)) {
+				PathManager *true_path_manager 
+					= static_cast<CVExecutionState*>(trueState)->path_manager();
+
+				true_path_manager->commit_branch(true, current.prevPC);
+			} else {
 				// terminateState will delete trueState
 				terminateState(*trueState);
 				trueState = NULL;
 			}
-
-			if (!false_path_manager->add_branch(false, current.prevPC)) {
-				// Don't call terminateState because falseState was recently created
-				delete falseState;
-				falseState = NULL;
-			}
-
-      if (pathWriter) {
-				if (trueState)
-					trueState->pathOS << "1";
-				if (falseState) {
-					falseState->pathOS = pathWriter->open(current.pathOS);
-					falseState->pathOS << "0";
-				}
-      }      
-      if (symPathWriter) {
-				if (trueState)
-					trueState->symPathOS << "1";
-				if (falseState) {
-					falseState->symPathOS = symPathWriter->open(current.symPathOS);
-					falseState->symPathOS << "0";
-				}
-      }
 		}
 
 		if (trueState) {

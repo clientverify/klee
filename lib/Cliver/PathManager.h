@@ -55,7 +55,8 @@ class PathManager {
 	virtual PathManager* clone();
 	virtual bool merge(const PathManager &pm);
 	virtual bool less(const PathManager &b) const;
-	virtual bool add_branch(bool direction, klee::KInstruction* inst);
+	virtual bool query_branch(bool direction, klee::KInstruction* inst);
+	virtual bool commit_branch(bool direction, klee::KInstruction* inst);
 
 	bool add_message(const SocketEvent* se);
 	bool contains_message(const SocketEvent* se);
@@ -103,7 +104,8 @@ class VerifyPathManager : public PathManager {
 	virtual PathManager* clone();
 	virtual bool merge(const PathManager &pm);
 	virtual bool less(const PathManager &b) const;
-	virtual bool add_branch(bool direction, klee::KInstruction* inst);
+	virtual bool query_branch(bool direction, klee::KInstruction* inst);
+	virtual bool commit_branch(bool direction, klee::KInstruction* inst);
 
 	unsigned index() { return index_; }
 
@@ -111,7 +113,6 @@ class VerifyPathManager : public PathManager {
 	explicit VerifyPathManager(const VerifyPathManager &pm);
 
 	unsigned index_;
-	bool valid_;
 };
 
 inline std::ostream &operator<<(std::ostream &os, 
