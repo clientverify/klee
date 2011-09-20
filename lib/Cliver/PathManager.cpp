@@ -61,7 +61,11 @@ bool PathManager::less(const PathManager &b) const {
 	return path_->less(*(b.path_));
 }
 
-bool PathManager::add_branch(bool direction, klee::KInstruction* inst) {
+bool PathManager::query_branch(bool direction, klee::KInstruction* inst) {
+	return true;
+}
+
+bool PathManager::commit_branch(bool direction, klee::KInstruction* inst) {
 	path_->add(direction, inst);
 	return true;
 }
@@ -121,7 +125,7 @@ void PathManager::print(std::ostream &os) const {
 ////////////////////////////////////////////////////////////////////////////////
 
 VerifyPathManager::VerifyPathManager()
-	: index_(0), valid_(true) {
+	: index_(0) {
 	path_ = NULL;
 }
 
@@ -129,7 +133,6 @@ PathManager* VerifyPathManager::clone() {
 	VerifyPathManager *pm = new VerifyPathManager();
 	pm->path_ = path_;
 	pm->index_ = index_;
-	pm->valid_ = valid_;
 	pm->messages_ = messages_;
 	pm->range_ = range_;
 	return pm;
@@ -147,16 +150,16 @@ bool VerifyPathManager::less(const PathManager &b) const {
 	return path_->less(*(vpm->path_));
 }
 
-bool VerifyPathManager::add_branch(bool direction, klee::KInstruction* inst) {
-	assert(valid_ && path_ && "path is null");
-	bool path_direction = path_->get_branch(index_++);
-	if (path_direction != direction) {
-		valid_ = false;
-		//CVDEBUG("Invalid path (" << direction << ") " << index_ << "/" << path_->length());
-	} else {
-		//CVDEBUG("Valid path (" << direction << ") " << index_ << "/" << path_->length());
-	}
-	return valid_;
+bool VerifyPathManager::query_branch(bool direction, klee::KInstruction* inst) {
+	assert(path_ && "path is null");
+	return direction == path_->get_branch(index_);
+}
+
+bool VerifyPathManager::commit_branch(bool direction, klee::KInstruction* inst) {
+	assert(path_ && "path is null");
+	assert(direction == path_->get_branch(index_));
+	index_++;
+	return true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
