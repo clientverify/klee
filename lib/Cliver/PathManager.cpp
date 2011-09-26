@@ -208,4 +208,13 @@ PathManager* PathManagerFactory::create() {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+PathSelector() : index_(0) {}
+
+PathSelector(PathSet *paths) : index_(0) {
+	// XXX fixme
+	foreach(PathManager* path, paths) {
+		paths_.push_back(path);
+	}
+}
+
 } // end namespace cliver

@@ -154,5 +154,17 @@ class PathSet {
 	set_ty paths_;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+class PathSelector {
+ public:
+	PathSelector();
+	PathSelector(PathSet* paths);
+	PathManager* next_path();
+ private:
+	unsigned index_;
+	std::vector<PathManager*> paths_;
+};
+
 } // end namespace cliver
 #endif // CLIVER_PATH_MANAGER_H

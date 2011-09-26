@@ -108,6 +108,35 @@ class TrainingSearcher : public CVSearcher {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/// Each VerifyStage object holds ExecutionStates, where all the states in a 
+/// given VerifyStage have processed network events 1 to i, where i is equal
+/// among all the states. Each VerifyStage has a single root state from which
+/// all of the other states began execution.
+class VerifyStage {
+ public:
+	VerifyStage(VerifyStage* parent);
+	CVExecutionState* next_state();
+	CVExecutionState* next_finished_state();
+
+ private: 
+	// Root state from which all other states began execution
+	const CVExecutionState *root_state_;
+	// Used when cloning root_state_ to assign a new PathManager to explore
+	const PathSelector* path_selector_;
+  // States that are currently ready to continue executions
+	ExecutionStateSet states_; 
+  // States that have finished execution
+  ExecutionStateSet finished_states_; 
+  // The socket event that this stage is associated with
+	const SocketEvent* socket_event_; 
+	// Parent 
+	const VerifyStage* parent_;
+	// Children of this VerifyStage
+	std::vector<VerifyStage*> children_;
+	// Network event index
+	unsigned network_event_index_
+};
+
 class VerifySearcher : public CVSearcher {
  public:
 	VerifySearcher(klee::Searcher* base_searcher, StateMerger* merger, PathSet *paths);
@@ -138,6 +167,8 @@ class VerifySearcher : public CVSearcher {
 	ExecutionStateSet phases_[PathProperty::EndState];
 	ExecutionStatePropertyMap saved_states_;
 	PathSet *paths_;
+	VerifyStage *root_stage_;
+	VerifyStage *current_stage_;
 };
 
 //////////////////////////////////////////////////////////////////////////////////
