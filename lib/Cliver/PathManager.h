@@ -157,7 +157,7 @@ class PathManagerSet {
 	typedef set_ty::const_iterator const_iterator;
 
 	PathManagerSet();
-	bool add(PathManager* path);
+	bool insert(PathManager* path);
 	bool contains(PathManager* path);
 	PathManager* merge(PathManager* path);
 	unsigned size() { return paths_.size(); }

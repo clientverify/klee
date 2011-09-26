@@ -365,7 +365,7 @@ void TrainingSearcher::record_path(CVExecutionState *state,
 			CVDEBUG_S(state->id(), "Path already contains message");
 		}
 	} else {
-		if (paths_->add(state->path_manager()->clone())) {
+		if (paths_->insert(state->path_manager()->clone())) {
 			CVDEBUG_S(state->id(), "Adding new path, pcount is now " 
 					<< paths_->size());
 		} else {
@@ -403,12 +403,13 @@ void TrainingSearcher::handle_pre_event(CVExecutionState *state,
 
 VerifyStage::VerifyStage(VerifyStage* parent) : parent_(parent) {}
 
-CVExecutionState* next_state() {
-}
+CVExecutionState* VerifyStage::next_state() {}
 
 VerifySearcher::VerifySearcher(klee::Searcher* base_searcher, 
 		StateMerger* merger, PathManagerSet *paths) 
-	: CVSearcher(base_searcher, merger), paths_(paths) {}
+	: CVSearcher(base_searcher, merger) {}
+//	: CVSearcher(base_searcher, merger), 
+//	  path_selector_(PathSelectorFactory::create(paths)) {}
 
 klee::ExecutionState &VerifySearcher::selectState() {
 
