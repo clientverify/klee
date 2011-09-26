@@ -30,20 +30,7 @@ namespace klee {
 
 namespace cliver {
 
-//class PathManager {
-//public:
-// virtual PathManager* clone() = 0;
-// virtual bool merge(const PathManager &pm);
-// virtual bool less(const PathManager &b) const;
-//
-// virtual bool query_branch(bool direction, klee::KInstruction* inst);
-// virtual bool commit_branch(bool direction, klee::KInstruction* inst);
-//private:
-//}
-
 ////////////////////////////////////////////////////////////////////////////////
-
-class SocketEvent;
 
 /// PathManager is a wrapper around a single Path that allows for additional
 /// information to be associated with a Path. PathManager interface is used by
@@ -81,6 +68,8 @@ inline std::ostream &operator<<(std::ostream &os,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+class SocketEvent;
 
 /// TrainingPathManager is a PathManager that is serializable to file and 
 /// maintains a list of messages that are assocated with that Path, i.e., there
@@ -183,22 +172,6 @@ class PathManagerSet {
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-
-class PathSelector {
- public:
-	PathSelector();
-	PathSelector(PathManagerSet* paths);
-	PathManager* next_path();
- private:
-	unsigned index_;
-	std::vector<PathManager*> paths_;
-};
-
-class PathSelectorFactory {
- public:
-  static PathSelector* create();
-};
-
 
 } // end namespace cliver
 #endif // CLIVER_PATH_MANAGER_H

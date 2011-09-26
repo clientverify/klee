@@ -108,6 +108,8 @@ class TrainingSearcher : public CVSearcher {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class PathSelector;
+
 /// Each VerifyStage object holds ExecutionStates, where all the states in a 
 /// given VerifyStage have processed network events 1 to i, where i is equal
 /// among all the states. Each VerifyStage has a single root state from which

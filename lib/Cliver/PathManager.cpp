@@ -69,14 +69,14 @@ void PathManager::set_path(Path* path) {
 	path_ = path;
 }
 
-bool PathManagerLT::operator()(const PathManager* a, 
-		const PathManager* b) const {
-	return a->less(*b);
-}
-
 void PathManager::print(std::ostream &os) const {
 	os << "Path [" << path_->length() << "][" 
 		<< range_.ids().first << ", " << range_.ids().second << "] " << *path_;
+}
+
+bool PathManagerLT::operator()(const PathManager* a, 
+		const PathManager* b) const {
+	return a->less(*b);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -98,7 +98,8 @@ PathManager* TrainingPathManager::clone() {
 }
 
 bool TrainingPathManager::merge(const PathManager &pm) {
-	const TrainingPathManager *tpm = static_cast<const TrainingPathManager*>(&pm);
+	const TrainingPathManager *tpm 
+		= static_cast<const TrainingPathManager*>(&pm);
 
 	assert(range_.equal(tpm->range_) && "path range not equal");
 	assert(path_->equal(*tpm->path_) && "paths not equal" );
@@ -257,16 +258,5 @@ PathManager* PathManagerFactory::create() {
   }
   return new PathManager();
 }
-
-////////////////////////////////////////////////////////////////////////////////
-
-//PathSelector::PathSelector() : index_(0) {}
-//
-//PathSelector::PathSelector(PathManagerSet *paths) : index_(0) {
-//	//// XXX fixme
-//	//foreach(PathManager* path, paths) {
-//	//	paths_.push_back(path);
-//	//}
-//}
 
 } // end namespace cliver
