@@ -15,6 +15,8 @@
 #include <set>
 #include <iostream>
 
+#include <boost/ptr_container/ptr_set.hpp>
+
 namespace cliver {
 class CVExecutionState;
 

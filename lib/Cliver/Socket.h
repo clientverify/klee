@@ -36,6 +36,8 @@ class SocketEvent {
 
 	void print(std::ostream &os) const;
 	bool equal(const SocketEvent &se) const;
+	bool less(const SocketEvent &se) const;
+	bool data_less(const SocketEvent &se) const;
 
  private:
 	// Serialization
@@ -57,6 +59,14 @@ inline std::ostream &operator<<(std::ostream &os, const SocketEvent &se) {
 }
 
 typedef std::vector<const SocketEvent*> SocketEventList;
+
+struct SocketEventLT {
+	bool operator()(const SocketEvent* a, const SocketEvent* b) const;
+};
+
+struct SocketEventDataOnlyLT {
+	bool operator()(const SocketEvent* a, const SocketEvent* b) const;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 

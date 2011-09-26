@@ -55,23 +55,50 @@ void SocketEvent::print(std::ostream &os) const {
 }
 
 bool SocketEvent::equal(const SocketEvent &se) const {
-	if (type != se.type)
-		return false;
+	if (!less(se) && !se.less(*this))
+		return true;
+	return false;
+}
 
-	if (delta != se.delta)
-		return false;
+bool SocketEvent::less(const SocketEvent &se) const {
+	if (type < se.type)
+		return true;
 
-	if (round != se.round)
-		return false;
+	if (delta < se.delta)
+		return true;
 
-	if (length != se.length)
-		return false;
+	if (round < se.round)
+		return true;
 
+	if (length < se.length)
+		return true;
+
+	if (data_less(se))
+		return true;
+
+	return false;
+}
+
+bool SocketEvent::data_less(const SocketEvent &se) const {
 	for (unsigned i=0; i<length; ++i) {
-		if (data[i] != se.data[i])
-			return false;
+		if (data[i] != se.data[i]) {
+			if (data[i] < se.data[i])
+				return true;
+			else
+				return false;
+		}
 	}
-	return true;
+	return false;
+}
+
+bool SocketEventLT::operator()(const SocketEvent* a, 
+		const SocketEvent* b) const {
+	return a->less(*b);
+}
+
+bool SocketEventDataOnlyLT::operator()(const SocketEvent* a, 
+		const SocketEvent* b) const {
+	return a->data_less(*b);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
