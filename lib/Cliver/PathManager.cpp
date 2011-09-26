@@ -216,7 +216,7 @@ void VerifyPathManager::print(std::ostream &os) const {
 
 PathManagerSet::PathManagerSet() {}
 
-bool PathManagerSet::add(PathManager* path) {
+bool PathManagerSet::insert(PathManager* path) {
 	set_ty::iterator path_it = paths_.find(path);
 	if (path_it  == paths_.end()) {
 		paths_.insert(path);

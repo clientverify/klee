@@ -126,7 +126,6 @@ ClientVerifier::ClientVerifier()
 		searcher_(NULL),
 		pruner_(NULL),
 		merger_(NULL),
-		training_paths_(NULL),
 		array_id_(0) {
  
 	cvstream_->init();
@@ -199,28 +198,30 @@ void ClientVerifier::initialize(CVExecutor *executor) {
 			post_event_callbacks_.connect(&TrainingSearcher::handle_post_event);
 			break;
 
-		case VerifyWithTrainingPaths: 
+		case VerifyWithTrainingPaths: {
 
 			// Read training paths
-			training_paths_ = new PathManagerSet();
+			PathManagerSet* training_paths = new PathManagerSet();
 			if (!TrainingPathDir.empty()) {
 				foreach(std::string path, TrainingPathDir) {
 					cvstream_->getFiles(path, ".tpath", TrainingPathFile);
 				}
 			}
-			if (TrainingPathFile.empty() || read_training_paths(TrainingPathFile) == 0) {
+			if (TrainingPathFile.empty() || read_training_paths(TrainingPathFile,
+						training_paths) == 0) {
 				cv_error("Error reading training path files, exiting now.");
 			} 
 
 			// Construct searcher
 			pruner_ = new ConstraintPruner();
 			merger_ = new StateMerger(pruner_);
-			searcher_ = new VerifySearcher(NULL, merger_, training_paths_);
+			searcher_ = new VerifySearcher(NULL, merger_, training_paths);
 
 			// Set event callbacks
 			pre_event_callbacks_.connect(&VerifySearcher::handle_pre_event);
 			post_event_callbacks_.connect(&VerifySearcher::handle_post_event);
 			break;
+		}
 
 		case TetrinetTrainingMode:
 			cv_error("Tetrinet Training mode is unsupported");
@@ -250,21 +251,22 @@ void ClientVerifier::initialize_external_handlers(CVExecutor *executor) {
 	}
 }
 
-int ClientVerifier::read_training_paths(std::vector<std::string> &paths) {
+int ClientVerifier::read_training_paths(std::vector<std::string> &filename_list,
+		PathManagerSet *path_manager_set) {
 
-	foreach (std::string filename, paths) {
+	foreach (std::string filename, filename_list) {
 		std::ifstream *is = new std::ifstream(filename.c_str(),
 				std::ifstream::in | std::ifstream::binary );
 		if (is != NULL && is->good()) {
 			TrainingPathManager *pm = new TrainingPathManager();
 			pm->read(*is);
-			if (!training_paths_->contains(pm)) {
-				training_paths_->add(pm);
+			if (!path_manager_set->contains(pm)) {
+				path_manager_set->insert(pm);
 				CVMESSAGE("Path read succuessful: length " 
 						<< pm->length() << ", " << pm->range() );
 			} else {
 				TrainingPathManager *merged_pm 
-					= static_cast<TrainingPathManager*>(training_paths_->merge(pm));
+					= static_cast<TrainingPathManager*>(path_manager_set->merge(pm));
 				CVMESSAGE("Path already exists: messages "
 						<< merged_pm->messages().size() << ", length " 
 						<< merged_pm->length() << ", " << merged_pm->range() );
@@ -273,7 +275,7 @@ int ClientVerifier::read_training_paths(std::vector<std::string> &paths) {
 			delete is;
 		}
 	}
-	return training_paths_->size();
+	return path_manager_set->size();
 }
 
 int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {

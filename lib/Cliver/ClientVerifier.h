@@ -147,7 +147,8 @@ class ClientVerifier : public klee::InterpreterHandler {
 	unsigned next_array_id() { return array_id_++; }
  
 	// Training paths
-	int read_training_paths(std::vector<std::string> &paths);
+	int read_training_paths(std::vector<std::string> &filename_list,
+			PathManagerSet *path_manager_set);
 
  private:
 
@@ -163,8 +164,6 @@ class ClientVerifier : public klee::InterpreterHandler {
 	signal_ty post_event_callbacks_;
 
 	std::vector<SocketEventList*> socket_events_;
-
-	PathManagerSet *training_paths_;
 
 	unsigned array_id_;
 };

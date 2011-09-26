@@ -168,7 +168,7 @@ class VerifySearcher : public CVSearcher {
  private:
 	ExecutionStateSet phases_[PathProperty::EndState];
 	ExecutionStatePropertyMap saved_states_;
-	PathManagerSet *paths_;
+	PathSelector *path_selector_;
 	VerifyStage *root_stage_;
 	VerifyStage *current_stage_;
 };
