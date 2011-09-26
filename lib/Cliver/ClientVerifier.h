@@ -87,7 +87,7 @@ class CVSearcher;
 class ConstraintPruner;
 class StateMerger;
 class PathManager;
-class PathSet;
+class PathManagerSet;
 
 class CVContext {
  public:
@@ -164,7 +164,7 @@ class ClientVerifier : public klee::InterpreterHandler {
 
 	std::vector<SocketEventList*> socket_events_;
 
-	PathSet *training_paths_;
+	PathManagerSet *training_paths_;
 
 	unsigned array_id_;
 };

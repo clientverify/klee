@@ -30,29 +30,19 @@ PathManager::PathManager()
 	: path_(new Path()) {}
 
 PathManager* PathManager::clone() {
-	// Don't split/clone a path that has already been finalized
-	// with an endpoint
 	PathManager *pm = new PathManager();
 	Path* parent = path_;
 	path_ = new Path(parent);
 	pm->path_ = new Path(parent);
-	pm->messages_ = messages_;
 	pm->range_ = range_;
 	return pm;
 }
 
 bool PathManager::merge(const PathManager &pm) {
-	assert(range_.equal(pm.range_) && "path range not equal");
-	assert(path_->equal(*pm.path_) && "paths not equal" );
+	if (range_.equal(pm.range_) && path_->equal(*pm.path_))
+		return true;
 
-	bool success = false;
-	foreach(SocketEvent* se, pm.messages_) {
-		if (messages_.find(se) == messages_.end()) {
-			success = true;
-			messages_.insert(se);
-		}
-	}
-	return success;
+	return false;
 }
 
 bool PathManager::less(const PathManager &b) const {
@@ -70,21 +60,6 @@ bool PathManager::commit_branch(bool direction, klee::KInstruction* inst) {
 	return true;
 }
 
-bool PathManager::add_message(const SocketEvent* se) {
-	if (messages_.find(const_cast<SocketEvent*>(se)) == messages_.end()) {
-		messages_.insert(const_cast<SocketEvent*>(se));
-		return true;
-	}
-	return false;
-}
-
-bool PathManager::contains_message(const SocketEvent* se) {
-	if (messages_.find(const_cast<SocketEvent*>(se)) == messages_.end()) {
-		return false;
-	}
-	return true;
-}
-
 void PathManager::set_range(const PathRange& range) {
 	range_ = range;
 }
@@ -99,24 +74,94 @@ bool PathManagerLT::operator()(const PathManager* a,
 	return a->less(*b);
 }
 
+void PathManager::print(std::ostream &os) const {
+	os << "Path [" << path_->length() << "][" 
+		<< range_.ids().first << ", " << range_.ids().second << "] " << *path_;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TrainingPathManager::TrainingPathManager() {
+	set_path(new Path());
+}
+
+PathManager* TrainingPathManager::clone() {
+	// Don't split/clone a path that has already been finalized
+	// with an endpoint
+	TrainingPathManager *pm = new TrainingPathManager();
+	Path* parent = path_;
+	path_ = new Path(parent);
+	pm->path_ = new Path(parent);
+	pm->messages_ = messages_;
+	pm->range_ = range_;
+	return pm;
+}
+
+bool TrainingPathManager::merge(const PathManager &pm) {
+	const TrainingPathManager *tpm = static_cast<const TrainingPathManager*>(&pm);
+
+	assert(range_.equal(tpm->range_) && "path range not equal");
+	assert(path_->equal(*tpm->path_) && "paths not equal" );
+
+	bool success = false;
+	foreach(SocketEvent* se, tpm->messages_) {
+		if (messages_.find(se) == messages_.end()) {
+			success = true;
+			messages_.insert(se);
+		}
+	}
+	return success;
+}
+
+bool TrainingPathManager::less(const PathManager &pm) const {
+	const TrainingPathManager *tpm = static_cast<const TrainingPathManager*>(&pm);
+	if (range_.less(tpm->range_))
+		return true;
+	return path_->less(*(tpm->path_));
+}
+
+bool TrainingPathManager::query_branch(bool direction, klee::KInstruction* inst) {
+	return true;
+}
+
+bool TrainingPathManager::commit_branch(bool direction, klee::KInstruction* inst) {
+	path_->add(direction, inst);
+	return true;
+}
+
+bool TrainingPathManager::add_message(const SocketEvent* se) {
+	if (messages_.find(const_cast<SocketEvent*>(se)) == messages_.end()) {
+		messages_.insert(const_cast<SocketEvent*>(se));
+		return true;
+	}
+	return false;
+}
+
+bool TrainingPathManager::contains_message(const SocketEvent* se) {
+	if (messages_.find(const_cast<SocketEvent*>(se)) == messages_.end()) {
+		return false;
+	}
+	return true;
+}
+
 template<class archive> 
-void PathManager::serialize(archive & ar, const unsigned version) {
+void TrainingPathManager::serialize(archive & ar, const unsigned version) {
 	ar & range_;
 	ar & path_;
 	ar & messages_;
 }
 
-void PathManager::write(std::ostream &os) {
+void TrainingPathManager::write(std::ostream &os) {
 	boost::archive::binary_oarchive oa(os);
 	oa << *this;
 }
 
-void PathManager::read(std::ifstream &is) {
+void TrainingPathManager::read(std::ifstream &is) {
 	boost::archive::binary_iarchive ia(is);
 	ia >> *this;
 }
 
-void PathManager::print(std::ostream &os) const {
+void TrainingPathManager::print(std::ostream &os) const {
 	os << "Path [" << path_->length() << "][" << messages_.size() << "] ["
 		 << range_.ids().first << ", " << range_.ids().second << "] "
 		 << *path_;
@@ -162,11 +207,16 @@ bool VerifyPathManager::commit_branch(bool direction, klee::KInstruction* inst) 
 	return true;
 }
 
+void VerifyPathManager::print(std::ostream &os) const {
+	os << "Path [" << path_->length() << "][" 
+		<< range_.ids().first << ", " << range_.ids().second << "] " << *path_;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
-PathSet::PathSet() {}
+PathManagerSet::PathManagerSet() {}
 
-bool PathSet::add(PathManager* path) {
+bool PathManagerSet::add(PathManager* path) {
 	set_ty::iterator path_it = paths_.find(path);
 	if (path_it  == paths_.end()) {
 		paths_.insert(path);
@@ -175,7 +225,7 @@ bool PathSet::add(PathManager* path) {
 	return false;
 }
 
-bool PathSet::contains(PathManager* path) {
+bool PathManagerSet::contains(PathManager* path) {
 	set_ty::iterator path_it = paths_.find(path);
 	if (path_it  == paths_.end()) {
 		return false;
@@ -183,7 +233,7 @@ bool PathSet::contains(PathManager* path) {
 	return true;
 }
 
-PathManager* PathSet::merge(PathManager* path) {
+PathManager* PathManagerSet::merge(PathManager* path) {
 	assert(contains(path) && "trying to merge with non-existant path");
 	set_ty::iterator path_it = paths_.find(path);
 	if (path_it  == paths_.end()) {
@@ -198,6 +248,8 @@ PathManager* PathSet::merge(PathManager* path) {
 
 PathManager* PathManagerFactory::create() {
   switch (g_cliver_mode) {
+		case DefaultTrainingMode:
+			return new TrainingPathManager();
 		case VerifyWithTrainingPaths:
 			return new VerifyPathManager();
 		case DefaultMode:
@@ -208,13 +260,13 @@ PathManager* PathManagerFactory::create() {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-PathSelector() : index_(0) {}
-
-PathSelector(PathSet *paths) : index_(0) {
-	// XXX fixme
-	foreach(PathManager* path, paths) {
-		paths_.push_back(path);
-	}
-}
+//PathSelector::PathSelector() : index_(0) {}
+//
+//PathSelector::PathSelector(PathManagerSet *paths) : index_(0) {
+//	//// XXX fixme
+//	//foreach(PathManager* path, paths) {
+//	//	paths_.push_back(path);
+//	//}
+//}
 
 } // end namespace cliver
