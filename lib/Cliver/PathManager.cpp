@@ -27,7 +27,7 @@ namespace cliver {
 ////////////////////////////////////////////////////////////////////////////////
 
 PathManager::PathManager() 
-	: path_(new Path()) {}
+	: path_(NULL) {}
 
 PathManager* PathManager::clone() {
 	PathManager *pm = new PathManager();
