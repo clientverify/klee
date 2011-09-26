@@ -11,6 +11,7 @@
 
 #include "ClientVerifier.h"
 #include "Path.h"
+#include "Socket.h"
 
 #include <list>
 #include <set>
@@ -69,15 +70,13 @@ inline std::ostream &operator<<(std::ostream &os,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class SocketEvent;
-
 /// TrainingPathManager is a PathManager that is serializable to file and 
 /// maintains a list of messages that are assocated with that Path, i.e., there
 /// given some initial state following this Path can lead to a valid event
 /// handling of the given message 
 class TrainingPathManager : public PathManager {
  public:
-	typedef std::set<SocketEvent*> message_set_ty;
+	typedef std::set<SocketEvent*, SocketEventDataOnlyLT> message_set_ty;
 	TrainingPathManager();
 	virtual PathManager* clone();
 	virtual bool merge(const PathManager &pm);

@@ -10,7 +10,6 @@
 #include "PathManager.h"
 #include "CVCommon.h"
 #include "CVExecutor.h"
-#include "Socket.h"
 
 #include <boost/serialization/set.hpp>
 #include <boost/serialization/vector.hpp>
