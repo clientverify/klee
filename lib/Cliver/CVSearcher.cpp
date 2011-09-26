@@ -401,6 +401,11 @@ void TrainingSearcher::handle_pre_event(CVExecutionState *state,
 
 ////////////////////////////////////////////////////////////////////////////////
 
+VerifyStage::VerifyStage(VerifyStage* parent) : parent_(parent) {}
+
+CVExecutionState* next_state() {
+}
+
 VerifySearcher::VerifySearcher(klee::Searcher* base_searcher, 
 		StateMerger* merger, PathSet *paths) 
 	: CVSearcher(base_searcher, merger), paths_(paths) {}
