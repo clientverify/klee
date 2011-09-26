@@ -17,7 +17,7 @@
 namespace cliver {
 class CVExecutionState;
 class StateMerger;
-class PathSet;
+class PathManagerSet;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -103,7 +103,7 @@ class TrainingSearcher : public CVSearcher {
 
  private:
 	ExecutionStateSet phases_[PathProperty::EndState];
-	PathSet *paths_;
+	PathManagerSet *paths_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -134,12 +134,12 @@ class VerifyStage {
 	// Children of this VerifyStage
 	std::vector<VerifyStage*> children_;
 	// Network event index
-	unsigned network_event_index_
+	unsigned network_event_index_;
 };
 
 class VerifySearcher : public CVSearcher {
  public:
-	VerifySearcher(klee::Searcher* base_searcher, StateMerger* merger, PathSet *paths);
+	VerifySearcher(klee::Searcher* base_searcher, StateMerger* merger, PathManagerSet *paths);
 
 	klee::ExecutionState &selectState();
 
@@ -166,7 +166,7 @@ class VerifySearcher : public CVSearcher {
  private:
 	ExecutionStateSet phases_[PathProperty::EndState];
 	ExecutionStatePropertyMap saved_states_;
-	PathSet *paths_;
+	PathManagerSet *paths_;
 	VerifyStage *root_stage_;
 	VerifyStage *current_stage_;
 };
@@ -202,7 +202,7 @@ class VerifySearcher : public CVSearcher {
 //
 // private:
 //	ExecutionStateSet phases_[PathProperty::EndState];
-//	PathSet *paths_;
+//	PathManagerSet *paths_;
 //};
 
 } // end namespace cliver

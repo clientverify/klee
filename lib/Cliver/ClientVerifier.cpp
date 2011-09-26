@@ -202,7 +202,7 @@ void ClientVerifier::initialize(CVExecutor *executor) {
 		case VerifyWithTrainingPaths: 
 
 			// Read training paths
-			training_paths_ = new PathSet();
+			training_paths_ = new PathManagerSet();
 			if (!TrainingPathDir.empty()) {
 				foreach(std::string path, TrainingPathDir) {
 					cvstream_->getFiles(path, ".tpath", TrainingPathFile);
@@ -256,14 +256,15 @@ int ClientVerifier::read_training_paths(std::vector<std::string> &paths) {
 		std::ifstream *is = new std::ifstream(filename.c_str(),
 				std::ifstream::in | std::ifstream::binary );
 		if (is != NULL && is->good()) {
-			PathManager *pm = new PathManager();
+			TrainingPathManager *pm = new TrainingPathManager();
 			pm->read(*is);
 			if (!training_paths_->contains(pm)) {
 				training_paths_->add(pm);
 				CVMESSAGE("Path read succuessful: length " 
 						<< pm->length() << ", " << pm->range() );
 			} else {
-				PathManager *merged_pm = training_paths_->merge(pm);
+				TrainingPathManager *merged_pm 
+					= static_cast<TrainingPathManager*>(training_paths_->merge(pm));
 				CVMESSAGE("Path already exists: messages "
 						<< merged_pm->messages().size() << ", length " 
 						<< merged_pm->length() << ", " << merged_pm->range() );
