@@ -221,6 +221,48 @@ void VerifyPathManager::print(std::ostream &os) const {
 	os << "Path [" << path_->length() << "][" 
 		<< range_.ids().first << ", " << range_.ids().second << "] " << *path_;
 }
+////////////////////////////////////////////////////////////////////////////////
+
+VerifyPrefixPathManager::VerifyPrefixPathManager()
+	: VerifyPathManager(), invalidated_(false) {}
+
+PathManager* VerifyPrefixPathManager::clone() {
+	VerifyPrefixPathManager *pm = new VerifyPrefixPathManager();
+	pm->path_ = path_;
+	pm->index_ = index_;
+	pm->socket_events_ = socket_events_;
+	pm->range_ = range_;
+	return pm;
+}
+
+bool VerifyPrefixPathManager::merge(const PathManager &pm) {
+	assert(0);
+	return false;
+}
+
+bool VerifyPrefixPathManager::less(const PathManager &b) const {
+	const VerifyPrefixPathManager *vpm = static_cast<const VerifyPrefixPathManager*>(&b);
+	if (range_.less(vpm->range_))
+		return true;
+	return path_->less(*(vpm->path_));
+}
+
+bool VerifyPrefixPathManager::query_branch(bool direction, klee::KInstruction* inst) {
+	assert(path_ && "path is null");
+	if (invalidated_) return true;
+	if (index_ < path_->length())
+		return direction == path_->get_branch(index_);
+	return false;
+}
+
+bool VerifyPrefixPathManager::commit_branch(bool direction, klee::KInstruction* inst) {
+	if (invalidated_) return true;
+	assert(path_ && "path is null");
+	assert(index_ < path_->length());
+	assert(direction == path_->get_branch(index_));
+	index_++;
+	return true;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 

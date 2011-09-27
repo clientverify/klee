@@ -116,6 +116,8 @@ class PathSelector;
 /// all of the other states began execution.
 class VerifyStage {
  public:
+	typedef enum { FullTraining, PrefixTraining, Exhaustive } SearchMode;
+
 	VerifyStage(PathSelector *path_selector, const SocketEvent* socket_event, 
 			VerifyStage* parent=NULL);
 	CVExecutionState* next_state();
@@ -144,7 +146,8 @@ class VerifyStage {
 	// Children of this VerifyStage
 	std::vector<VerifyStage*> children_;
 
-	bool cloned_for_exhaustive_search;
+	SearchMode search_mode;
+
 };
 
 class VerifySearcher : public CVSearcher {
