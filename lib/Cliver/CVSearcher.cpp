@@ -425,6 +425,7 @@ CVExecutionState* VerifyStage::next_state() {
 		assert(root_state_);
 		PathRange range(root_state_->prevPC, NULL);
 		CVExecutionState *state = root_state_->clone();
+		g_executor->add_state(state);
 		if (PathManager* path_manager = path_selector_->next_path(range)) {
 			state->reset_path_manager();
 			state->path_manager()->set_path(path_manager->path());
@@ -464,6 +465,7 @@ void VerifyStage::finish(CVExecutionState *finished_state) {
 	finished_states_.insert(finished_state);
 
 	CVExecutionState* state = finished_state->clone();
+	g_executor->add_state(state);
 
 	PathProperty *p = static_cast<PathProperty*>(state->property());
 	p->path_range = PathRange(p->path_range.start(), state->prevPC);
