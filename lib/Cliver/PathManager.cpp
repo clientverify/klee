@@ -59,10 +59,6 @@ bool PathManager::commit_branch(bool direction, klee::KInstruction* inst) {
 	return true;
 }
 
-void PathManager::set_range(const PathRange& range) {
-	range_ = range;
-}
-
 void PathManager::set_path(Path* path) {
 	assert(path_ == NULL && "path is already set");
 	path_ = path;
@@ -127,6 +123,10 @@ bool TrainingPathManager::query_branch(bool direction, klee::KInstruction* inst)
 bool TrainingPathManager::commit_branch(bool direction, klee::KInstruction* inst) {
 	path_->add(direction, inst);
 	return true;
+}
+
+void TrainingPathManager::set_range(const PathRange& range) {
+	range_ = range;
 }
 
 bool TrainingPathManager::add_socket_event(const SocketEvent* se) {
