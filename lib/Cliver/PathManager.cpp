@@ -62,6 +62,10 @@ bool PathManager::commit_branch(bool direction, klee::KInstruction* inst) {
 	return true;
 }
 
+void PathManager::set_branch_constraint(BranchConstraint branch_constraint) {
+	branch_constraint_ = branch_constraint;
+}
+
 void PathManager::set_range(const PathRange& range) {
 	range_ = range;
 }
@@ -232,6 +236,7 @@ PathManager* VerifyPrefixPathManager::clone() {
 	pm->index_ = index_;
 	pm->socket_events_ = socket_events_;
 	pm->range_ = range_;
+	pm->invalidated_ = invalidated_;
 	return pm;
 }
 
@@ -250,13 +255,24 @@ bool VerifyPrefixPathManager::less(const PathManager &b) const {
 bool VerifyPrefixPathManager::query_branch(bool direction, klee::KInstruction* inst) {
 	assert(path_ && "path is null");
 	if (invalidated_) return true;
-	if (index_ < path_->length())
-		return direction == path_->get_branch(index_);
-	return false;
+	bool result = false;
+	if (index_ < path_->length()) {
+		if (direction == path_->get_branch(index_)) {
+			result = true;
+		}
+	}
+	if (!result && branch_constraint_ != TrueAndFalse) {
+		invalidated_ = true;
+		return true;
+	}
+	return result;
 }
 
 bool VerifyPrefixPathManager::commit_branch(bool direction, klee::KInstruction* inst) {
-	if (invalidated_) return true;
+	if (invalidated_) {
+		index_++;
+		return true;
+	}
 	assert(path_ && "path is null");
 	assert(index_ < path_->length());
 	assert(direction == path_->get_branch(index_));

@@ -41,6 +41,7 @@ namespace cliver {
 
 class PathManager {
  public:
+	typedef enum { TrueOnly, FalseOnly, TrueAndFalse } BranchConstraint;
 	PathManager();
 	PathManager(Path *path);
 	virtual PathManager* clone();
@@ -50,6 +51,7 @@ class PathManager {
 	virtual bool commit_branch(bool direction, klee::KInstruction* inst);
 	virtual void print(std::ostream &os) const;
 
+	void set_branch_constraint(BranchConstraint branch_constraint);
 	void set_path(Path* path);
 	void set_range(const PathRange& range);
 
@@ -61,6 +63,7 @@ class PathManager {
 	explicit PathManager(const PathManager &pm);
 	Path* path_;
 	PathRange range_;
+	BranchConstraint branch_constraint_;
 };
 
 inline std::ostream &operator<<(std::ostream &os, 
