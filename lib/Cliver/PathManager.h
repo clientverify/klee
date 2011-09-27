@@ -50,16 +50,13 @@ class PathManager {
 	virtual void print(std::ostream &os) const;
 
 	void set_path(Path* path);
-	void set_range(const PathRange& range);
-
 	Path* path() { return path_; }
 	unsigned length() { return path_->length(); }
-	PathRange range() { return range_; }
+
 
  protected:
 	explicit PathManager(const PathManager &pm);
 	Path* path_;
-	PathRange range_;
 };
 
 inline std::ostream &operator<<(std::ostream &os, 
@@ -84,6 +81,9 @@ class TrainingPathManager : public PathManager {
 	virtual bool commit_branch(bool direction, klee::KInstruction* inst);
 	virtual void print(std::ostream &os) const;
 
+	void set_range(const PathRange& range);
+	PathRange range() { return range_; }
+
 	bool add_socket_event(const SocketEvent* se);
 	void erase_socket_event(const SocketEvent* se);
 	bool contains_socket_event(const SocketEvent* se);
@@ -100,6 +100,7 @@ class TrainingPathManager : public PathManager {
 	template<class archive> 
 		void serialize(archive & ar, const unsigned version);
 
+	PathRange range_;
 	SocketEventDataSet socket_events_;
 };
 
