@@ -431,7 +431,7 @@ CVExecutionState* VerifyStage::next_state() {
 			state->path_manager()->set_path(path_manager->path());
 			state->path_manager()->set_range(path_manager->range());
 		} else {
-			state->reset_path_manager(new PathManager);
+			state->reset_path_manager(new PathManager(new Path));
 			cloned_for_exhaustive_search = true;
 		}
 		states_.insert(state);
