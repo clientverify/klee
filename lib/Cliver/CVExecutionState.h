@@ -51,7 +51,7 @@ class CVExecutionState : public klee::ExecutionState {
 	NetworkManager* network_manager() const { return network_manager_; }
 	PathManager*    path_manager() { return path_manager_; }
 	ExecutionStateProperty* property() { return property_; }
-	void reset_path_manager();
+	void reset_path_manager(PathManager* path_manager=NULL);
 
  private:
   int increment_id() { return next_id_++; }
