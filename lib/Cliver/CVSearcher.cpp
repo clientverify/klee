@@ -481,7 +481,7 @@ void VerifyStage::finish(CVExecutionState *finished_state) {
 	//		<< " [Start " << *state->path_manager()->range().kinsts().first << "]"
 	//		<< " [End "   << *state->path_manager()->range().kinsts().second << "]");
 
-	assert(state->path_manager()->range().equal(p->path_range));
+	//assert(state->path_manager()->range().equal(p->path_range));
 
 	p->phase = PathProperty::PrepareExecute;
 	p->round++;
@@ -498,7 +498,7 @@ VerifySearcher::VerifySearcher(klee::Searcher* base_searcher,
 	  path_selector_(PathSelectorFactory::create(paths)) {
 
 	//const SocketEvent &se = state->network_manager()->socket()->event();
-	current_stage_ = new VerifyStage(path_selector_, NULL, NULL);
+	root_stage_ = current_stage_ = new VerifyStage(path_selector_, NULL, NULL);
 			
 }
 
