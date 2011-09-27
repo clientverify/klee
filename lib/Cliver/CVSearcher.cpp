@@ -410,7 +410,7 @@ VerifyStage::VerifyStage(PathSelector *path_selector,
 		socket_event_(socket_event), // XXX needed?
 		network_event_index_(0), /// XXX needed?
 		parent_(parent),
-		cloned_for_exhaustive_search(false) {
+		search_mode(FullTraining) {
 
 	if (parent_ == NULL) {
 		network_event_index_ = 0;
@@ -421,19 +421,39 @@ VerifyStage::VerifyStage(PathSelector *path_selector,
 
 CVExecutionState* VerifyStage::next_state() {
 	if (states_.size() == 0) {
-		if (cloned_for_exhaustive_search) return NULL;
+		if (search_mode == Exhaustive) return NULL;
 		assert(root_state_);
 		PathRange range(root_state_->prevPC, NULL);
 		CVExecutionState *state = root_state_->clone();
 		g_executor->add_state(state);
-		if (PathManager* path_manager = path_selector_->next_path(range)) {
-			state->reset_path_manager();
-			state->path_manager()->set_path(path_manager->path());
-			state->path_manager()->set_range(path_manager->range());
-		} else {
-			state->reset_path_manager(new PathManager(new Path));
-			cloned_for_exhaustive_search = true;
+
+		if (search_mode == FullTraining) {
+			if (PathManager* path_manager = path_selector_->next_path(range)) {
+				state->reset_path_manager();
+				state->path_manager()->set_path(path_manager->path());
+				state->path_manager()->set_range(path_manager->range());
+			} else {
+				search_mode = PrefixTraining;
+				PathSelector *old_path_selector = path_selector_;
+				path_selector_ = path_selector_->clone();
+				delete old_path_selector;
+			}
 		}
+
+		if (search_mode == PrefixTraining) {
+			if (PathManager* path_manager = path_selector_->next_path(range)) {
+				state->reset_path_manager(new VerifyPrefixPathManager());
+				state->path_manager()->set_path(path_manager->path());
+				state->path_manager()->set_range(path_manager->range());
+			} else {
+				search_mode = Exhaustive;
+			}
+		}
+
+		if (search_mode == Exhaustive) {
+			state->reset_path_manager(new PathManager(new Path));
+		}
+
 		states_.insert(state);
 		return state;
 	}

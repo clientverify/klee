@@ -137,6 +137,31 @@ inline std::ostream &operator<<(std::ostream &os,
   p.print(os);
   return os;
 }
+////////////////////////////////////////////////////////////////////////////////
+
+class VerifyPrefixPathManager : public VerifyPathManager {
+ public:
+	VerifyPrefixPathManager();
+	virtual PathManager* clone();
+	virtual bool merge(const PathManager &pm);
+	virtual bool less(const PathManager &b) const;
+	virtual bool query_branch(bool direction, klee::KInstruction* inst);
+	virtual bool commit_branch(bool direction, klee::KInstruction* inst);
+
+ protected:
+	explicit VerifyPrefixPathManager(const VerifyPrefixPathManager &pm);
+
+	bool invalidated_;
+};
+
+inline std::ostream &operator<<(std::ostream &os, 
+		const VerifyPrefixPathManager &p) {
+  p.print(os);
+  return os;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 
 ////////////////////////////////////////////////////////////////////////////////
 
