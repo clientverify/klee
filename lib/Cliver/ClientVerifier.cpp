@@ -267,9 +267,10 @@ int ClientVerifier::read_training_paths(std::vector<std::string> &filename_list,
 			} else {
 				TrainingPathManager *merged_pm 
 					= static_cast<TrainingPathManager*>(path_manager_set->merge(pm));
-				CVMESSAGE("Path already exists: messages "
-						<< merged_pm->socket_events().size() << ", length " 
-						<< merged_pm->length() << ", " << merged_pm->range() );
+				if (merged_pm)
+					CVMESSAGE("Path already exists: messages "
+							<< merged_pm->socket_events().size() << ", length " 
+							<< merged_pm->length() << ", " << merged_pm->range() );
 				delete pm;
 			}
 			delete is;
