@@ -76,7 +76,6 @@ inline std::ostream &operator<<(std::ostream &os,
 /// handling of the given message 
 class TrainingPathManager : public PathManager {
  public:
-	typedef std::set<SocketEvent*, SocketEventDataOnlyLT> message_set_ty;
 	TrainingPathManager();
 	virtual PathManager* clone();
 	virtual bool merge(const PathManager &pm);
@@ -85,9 +84,10 @@ class TrainingPathManager : public PathManager {
 	virtual bool commit_branch(bool direction, klee::KInstruction* inst);
 	virtual void print(std::ostream &os) const;
 
-	bool add_message(const SocketEvent* se);
-	bool contains_message(const SocketEvent* se);
-	const message_set_ty& messages() { return messages_; }
+	bool add_socket_event(const SocketEvent* se);
+	void erase_socket_event(const SocketEvent* se);
+	bool contains_socket_event(const SocketEvent* se);
+	const SocketEventDataSet& socket_events() { return socket_events_; }
 
 	void write(std::ostream &os);
 	void read(std::ifstream &is);
@@ -100,7 +100,7 @@ class TrainingPathManager : public PathManager {
 	template<class archive> 
 		void serialize(archive & ar, const unsigned version);
 
-	message_set_ty messages_;
+	SocketEventDataSet socket_events_;
 };
 
 inline std::ostream &operator<<(std::ostream &os, 
@@ -159,6 +159,7 @@ class PathManagerSet {
 	PathManagerSet();
 	bool insert(PathManager* path);
 	bool contains(PathManager* path);
+	void erase(PathManager* path);
 	PathManager* merge(PathManager* path);
 	unsigned size() { return paths_.size(); }
 
