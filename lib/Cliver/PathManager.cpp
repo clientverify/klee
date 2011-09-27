@@ -201,11 +201,14 @@ bool VerifyPathManager::less(const PathManager &b) const {
 
 bool VerifyPathManager::query_branch(bool direction, klee::KInstruction* inst) {
 	assert(path_ && "path is null");
-	return direction == path_->get_branch(index_);
+	if (index_ < path_->length())
+		return direction == path_->get_branch(index_);
+	return false;
 }
 
 bool VerifyPathManager::commit_branch(bool direction, klee::KInstruction* inst) {
 	assert(path_ && "path is null");
+	assert(index_ < path_->length());
 	assert(direction == path_->get_branch(index_));
 	index_++;
 	return true;
