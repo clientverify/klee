@@ -91,7 +91,7 @@ PathManager* TrainingPathManager::clone() {
 	Path* parent = path_;
 	path_ = new Path(parent);
 	pm->path_ = new Path(parent);
-	pm->messages_ = messages_;
+	pm->socket_events_ = socket_events_;
 	pm->range_ = range_;
 	return pm;
 }
@@ -104,10 +104,10 @@ bool TrainingPathManager::merge(const PathManager &pm) {
 	assert(path_->equal(*tpm->path_) && "paths not equal" );
 
 	bool success = false;
-	foreach(SocketEvent* se, tpm->messages_) {
-		if (messages_.find(se) == messages_.end()) {
+	foreach(SocketEvent* se, tpm->socket_events_) {
+		if (socket_events_.find(se) == socket_events_.end()) {
 			success = true;
-			messages_.insert(se);
+			socket_events_.insert(se);
 		}
 	}
 	return success;
@@ -129,26 +129,30 @@ bool TrainingPathManager::commit_branch(bool direction, klee::KInstruction* inst
 	return true;
 }
 
-bool TrainingPathManager::add_message(const SocketEvent* se) {
-	if (messages_.find(const_cast<SocketEvent*>(se)) == messages_.end()) {
-		messages_.insert(const_cast<SocketEvent*>(se));
+bool TrainingPathManager::add_socket_event(const SocketEvent* se) {
+	if (socket_events_.find(const_cast<SocketEvent*>(se)) == socket_events_.end()) {
+		socket_events_.insert(const_cast<SocketEvent*>(se));
 		return true;
 	}
 	return false;
 }
 
-bool TrainingPathManager::contains_message(const SocketEvent* se) {
-	if (messages_.find(const_cast<SocketEvent*>(se)) == messages_.end()) {
+bool TrainingPathManager::contains_socket_event(const SocketEvent* se) {
+	if (socket_events_.find(const_cast<SocketEvent*>(se)) == socket_events_.end()) {
 		return false;
 	}
 	return true;
+}
+
+void TrainingPathManager::erase_socket_event(const SocketEvent* se) {
+	socket_events_.erase(const_cast<SocketEvent*>(se));
 }
 
 template<class archive> 
 void TrainingPathManager::serialize(archive & ar, const unsigned version) {
 	ar & range_;
 	ar & path_;
-	ar & messages_;
+	//ar & socket_events_;
 }
 
 void TrainingPathManager::write(std::ostream &os) {
@@ -162,7 +166,7 @@ void TrainingPathManager::read(std::ifstream &is) {
 }
 
 void TrainingPathManager::print(std::ostream &os) const {
-	os << "Path [" << path_->length() << "][" << messages_.size() << "] ["
+	os << "Path [" << path_->length() << "][" << socket_events_.size() << "] ["
 		 << range_.ids().first << ", " << range_.ids().second << "] "
 		 << *path_;
 }
@@ -178,7 +182,7 @@ PathManager* VerifyPathManager::clone() {
 	VerifyPathManager *pm = new VerifyPathManager();
 	pm->path_ = path_;
 	pm->index_ = index_;
-	pm->messages_ = messages_;
+	pm->socket_events_ = socket_events_;
 	pm->range_ = range_;
 	return pm;
 }
@@ -231,6 +235,10 @@ bool PathManagerSet::contains(PathManager* path) {
 		return false;
 	}
 	return true;
+}
+
+void PathManagerSet::erase(PathManager* path) {
+	paths_.erase(path);
 }
 
 PathManager* PathManagerSet::merge(PathManager* path) {

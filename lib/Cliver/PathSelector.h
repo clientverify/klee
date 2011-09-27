@@ -16,22 +16,28 @@
 
 namespace cliver {
 
-class PathManagerSet;
 class PathManager;
+class PathManagerSet;
 
 class PathSelector {
  public:
-	PathSelector();
-	PathSelector(PathManagerSet* paths);
-	PathManager* next_path();
+	virtual PathManager* next_path() = 0;
+	virtual PathSelector* clone() = 0;
+};
+
+class OrderedSetPathSelector : public PathSelector {
+ public:
+	OrderedSetPathSelector();
+	virtual PathManager* next_path();
+	virtual PathSelector* clone();
+
  protected: 
 	unsigned index_;
-	std::vector<PathManager*> paths_;
 };
 
 class PathSelectorFactory {
  public:
-  static PathSelector* create(PathManagerSet* paths);
+  static PathSelector* create(PathManagerSet* training_paths);
 };
 
 } // end namespace cliver

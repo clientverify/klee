@@ -14,6 +14,7 @@
 
 #include <iostream>
 #include <vector>
+#include <set>
 
 #include <boost/serialization/access.hpp>
 
@@ -58,8 +59,6 @@ inline std::ostream &operator<<(std::ostream &os, const SocketEvent &se) {
   return os;
 }
 
-typedef std::vector<const SocketEvent*> SocketEventList;
-
 struct SocketEventLT {
 	bool operator()(const SocketEvent* a, const SocketEvent* b) const;
 };
@@ -67,6 +66,11 @@ struct SocketEventLT {
 struct SocketEventDataOnlyLT {
 	bool operator()(const SocketEvent* a, const SocketEvent* b) const;
 };
+
+typedef std::vector<const SocketEvent*> SocketEventList;
+
+typedef std::set<SocketEvent*, SocketEventLT> SocketEventSet;
+typedef std::set<SocketEvent*, SocketEventDataOnlyLT> SocketEventDataSet;
 
 ////////////////////////////////////////////////////////////////////////////////
 

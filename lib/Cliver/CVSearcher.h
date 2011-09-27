@@ -118,13 +118,15 @@ class VerifyStage {
  public:
 	VerifyStage(VerifyStage* parent);
 	CVExecutionState* next_state();
+	void add_state(CVExecutionState *state);
+	void remove_state(CVExecutionState *state);
 	CVExecutionState* next_finished_state();
 
  private: 
 	// Root state from which all other states began execution
 	const CVExecutionState *root_state_;
 	// Used when cloning root_state_ to assign a new PathManager to explore
-	const PathSelector* path_selector_;
+	PathSelector* path_selector_;
   // States that are currently ready to continue executions
 	ExecutionStateSet states_; 
   // States that have finished execution
@@ -172,40 +174,6 @@ class VerifySearcher : public CVSearcher {
 	VerifyStage *root_stage_;
 	VerifyStage *current_stage_;
 };
-
-//////////////////////////////////////////////////////////////////////////////////
-//
-//class OutOfOrderTrainingSearcher : public CVSearcher {
-// public:
-//	OutOfOrderTrainingSearcher(klee::Searcher* base_searcher, StateMerger* merger);
-//
-//	klee::ExecutionState &selectState();
-//
-//	void update(klee::ExecutionState *current,
-//							const std::set<klee::ExecutionState*> &addedStates,
-//							const std::set<klee::ExecutionState*> &removedStates);
-//
-//	bool empty();
-//
-//	void printName(std::ostream &os) {
-//		os << "OutOfOrderTrainingSearcher\n";
-//	}
-//
-//	void clone_for_network_events(CVExecutionState *state, CVExecutor* executor, 
-//			CliverEvent::Type et);
-//
-//	void record_path(CVExecutionState *state, CVExecutor* executor,
-//			CliverEvent::Type et);
-//
-//	static void handle_pre_event(CVExecutionState *state, 
-//			CVExecutor *executor, CliverEvent::Type et);
-//	static void handle_post_event(CVExecutionState *state, 
-//			CVExecutor *executor, CliverEvent::Type et);
-//
-// private:
-//	ExecutionStateSet phases_[PathProperty::EndState];
-//	PathManagerSet *paths_;
-//};
 
 } // end namespace cliver
 #endif // CV_SEARCHER_H

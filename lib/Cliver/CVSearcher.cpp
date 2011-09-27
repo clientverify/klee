@@ -15,6 +15,7 @@
 #include "ClientVerifier.h"
 #include "NetworkManager.h"
 #include "PathManager.h"
+#include "PathSelector.h"
 
 #include "klee/Internal/Module/InstructionInfoTable.h"
 
@@ -334,7 +335,8 @@ void TrainingSearcher::record_path(CVExecutionState *state,
 			et == CliverEvent::NetworkRecv) {
 		if (Socket* s = state->network_manager()->socket()) {
 			const SocketEvent* se = &s->previous_event();
-			static_cast<TrainingPathManager*>(state->path_manager())->add_message(se);
+			static_cast<TrainingPathManager*>(
+					state->path_manager())->add_socket_event(se);
 		} else {
 			cv_error("No message in state");
 		}
@@ -360,7 +362,7 @@ void TrainingSearcher::record_path(CVExecutionState *state,
 	if (paths_->contains(state->path_manager())) {
 		if (PathManager* mpath = paths_->merge(state->path_manager())) {
 			CVDEBUG_S(state->id(), "Adding new message, mcount is now "
-					<< static_cast<TrainingPathManager*>(mpath)->messages().size());
+					<< static_cast<TrainingPathManager*>(mpath)->socket_events().size());
 		} else {
 			CVDEBUG_S(state->id(), "Path already contains message");
 		}
@@ -401,15 +403,23 @@ void TrainingSearcher::handle_pre_event(CVExecutionState *state,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-VerifyStage::VerifyStage(VerifyStage* parent) : parent_(parent) {}
+VerifyStage::VerifyStage(VerifyStage* parent) : parent_(parent) {
+}
 
-CVExecutionState* VerifyStage::next_state() {}
+CVExecutionState* VerifyStage::next_state() {
+	PathManager* path_manager = path_selector_->next_path();
+}
+
+void VerifyStage::add_state(CVExecutionState *state) {
+}
+
+void VerifyStage::remove_state(CVExecutionState *state) {
+}
 
 VerifySearcher::VerifySearcher(klee::Searcher* base_searcher, 
 		StateMerger* merger, PathManagerSet *paths) 
-	: CVSearcher(base_searcher, merger) {}
-//	: CVSearcher(base_searcher, merger), 
-//	  path_selector_(PathSelectorFactory::create(paths)) {}
+	: CVSearcher(base_searcher, merger), 
+	  path_selector_(PathSelectorFactory::create(paths)) {}
 
 klee::ExecutionState &VerifySearcher::selectState() {
 
@@ -485,41 +495,52 @@ void VerifySearcher::update(klee::ExecutionState *current,
 		const std::set<klee::ExecutionState*> &addedStates,
 		const std::set<klee::ExecutionState*> &removedStates) {
 
-	std::set<klee::ExecutionState*> removed_states(removedStates);
-	std::set<klee::ExecutionState*> added_states(addedStates);
-
-	if (current && removedStates.count(current) == 0) {
-		removed_states.insert(current);
-		added_states.insert(current);
-	}
-
-	foreach (klee::ExecutionState* klee_state, removed_states) {
+	// add any added states via current_stage_->add_state()
+	foreach (klee::ExecutionState* klee_state, addedStates) {
 		CVExecutionState *state = static_cast<CVExecutionState*>(klee_state);
-		PathProperty *p = static_cast<PathProperty*>(state->property());
-		ExecutionStateSet &state_set = phases_[p->phase];
-
-		if (state_set.count(state) == 0) {
-			unsigned i;
-			for (i=0; i < PathProperty::EndState; i++) {
-				if (phases_[i].count(state) != 0) {
-					phases_[i].erase(state);
-					break;
-				}
-			}
-			if (i == PathProperty::EndState) {
-				cv_error("state erase failed");
-			}
-		} else {
-			state_set.erase(state);
-		}
+		current_stage_->add_state(state);
 	}
-
-	foreach (klee::ExecutionState* klee_state, added_states) {
+	// remove any removed states via current_stage_->remove_state()
+	foreach (klee::ExecutionState* klee_state, removedStates) {
 		CVExecutionState *state = static_cast<CVExecutionState*>(klee_state);
-		PathProperty *p = static_cast<PathProperty*>(state->property());
-		ExecutionStateSet &state_set = phases_[p->phase];
-		state_set.insert(state);
+		current_stage_->remove_state(state);
 	}
+	//std::set<klee::ExecutionState*> removed_states(removedStates);
+	//std::set<klee::ExecutionState*> added_states(addedStates);
+
+	//if (current && removedStates.count(current) == 0) {
+	//	removed_states.insert(current);
+	//	added_states.insert(current);
+	//}
+
+	//foreach (klee::ExecutionState* klee_state, removed_states) {
+	//	CVExecutionState *state = static_cast<CVExecutionState*>(klee_state);
+	//	PathProperty *p = static_cast<PathProperty*>(state->property());
+	//	ExecutionStateSet &state_set = phases_[p->phase];
+
+	//	if (state_set.count(state) == 0) {
+	//		unsigned i;
+	//		for (i=0; i < PathProperty::EndState; i++) {
+	//			if (phases_[i].count(state) != 0) {
+	//				phases_[i].erase(state);
+	//				break;
+	//			}
+	//		}
+	//		if (i == PathProperty::EndState) {
+	//			cv_error("state erase failed");
+	//		}
+	//	} else {
+	//		state_set.erase(state);
+	//	}
+	//}
+
+	//foreach (klee::ExecutionState* klee_state, added_states) {
+	//	CVExecutionState *state = static_cast<CVExecutionState*>(klee_state);
+	//	PathProperty *p = static_cast<PathProperty*>(state->property());
+	//	ExecutionStateSet &state_set = phases_[p->phase];
+	//	state_set.insert(state);
+	//}
+
 }
 
 bool VerifySearcher::empty() {
