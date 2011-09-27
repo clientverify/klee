@@ -152,7 +152,7 @@ template<class archive>
 void TrainingPathManager::serialize(archive & ar, const unsigned version) {
 	ar & range_;
 	ar & path_;
-	//ar & socket_events_;
+	ar & socket_events_;
 }
 
 void TrainingPathManager::write(std::ostream &os) {
