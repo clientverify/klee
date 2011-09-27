@@ -523,19 +523,19 @@ klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current,
 
 	if (res==klee::Solver::True) {
 		if (!isInternal) {
-			if (path_manager->query_branch(true, current.prevPC)) {
-				if (!path_manager->commit_branch(true, current.prevPC)) {
-					terminateState(current);
-				}
+			if (!path_manager->query_branch(true, current.prevPC) ||
+				  !path_manager->commit_branch(true, current.prevPC)) {
+				terminateState(current);
+				return klee::Executor::StatePair(0, 0);
 			}
 		}
 		return klee::Executor::StatePair(&current, 0);
 	} else if (res==klee::Solver::False) {
 		if (!isInternal) {
-			if (path_manager->query_branch(false, current.prevPC)) {
-				if (!path_manager->commit_branch(false, current.prevPC)) {
-					terminateState(current);
-				}
+			if (!path_manager->query_branch(false, current.prevPC) ||
+				  !path_manager->commit_branch(false, current.prevPC)) {
+				terminateState(current);
+				return klee::Executor::StatePair(0, 0);
 			}
 		}
 		return klee::Executor::StatePair(0, &current);
