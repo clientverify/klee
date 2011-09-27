@@ -523,6 +523,7 @@ klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current,
 
 	if (res==klee::Solver::True) {
 		if (!isInternal) {
+			path_manager->set_branch_constraint(PathManager::TrueOnly);
 			if (!path_manager->query_branch(true, current.prevPC) ||
 				  !path_manager->commit_branch(true, current.prevPC)) {
 				terminateState(current);
@@ -532,6 +533,7 @@ klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current,
 		return klee::Executor::StatePair(&current, 0);
 	} else if (res==klee::Solver::False) {
 		if (!isInternal) {
+			path_manager->set_branch_constraint(PathManager::FalseOnly);
 			if (!path_manager->query_branch(false, current.prevPC) ||
 				  !path_manager->commit_branch(false, current.prevPC)) {
 				terminateState(current);
@@ -549,6 +551,7 @@ klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current,
 			falseState = trueState->branch();
 		} else {
 
+			path_manager->set_branch_constraint(PathManager::TrueAndFalse);
 			if (path_manager->query_branch(false, current.prevPC)) {
 				falseState = trueState->branch();
 				PathManager *false_path_manager 
