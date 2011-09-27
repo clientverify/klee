@@ -692,6 +692,17 @@ void CVExecutor::add_state(CVExecutionState* state) {
 	addedStates.insert(state);
 }
 
+void CVExecutor::rebuild_solvers() {
+  delete solver;                                                                                                                                                                                            
+  klee::STPSolver *stpSolver = new klee::STPSolver(false);                                                                                                                                                                       
+  klee::Solver *solver = klee::createCexCachingSolver(stpSolver);                                                                                                                                                                
+  solver = klee::createCachingSolver(solver);                                                                                                                                                                              
+  solver = klee::createIndependentSolver(solver);                                                                                                                                                                          
+  klee::TimingSolver *timing_solver 
+    = new klee::TimingSolver(solver, stpSolver);                                                                                                                                                             
+	solver = (klee::Solver*)timing_solver;
+}
+
 uint64_t CVExecutor::check_memory_usage() {
 	pid_t myPid = getpid();
 	std::stringstream ss;
