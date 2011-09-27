@@ -42,6 +42,7 @@ namespace cliver {
 class PathManager {
  public:
 	PathManager();
+	PathManager(Path *path);
 	virtual PathManager* clone();
 	virtual bool merge(const PathManager &pm);
 	virtual bool less(const PathManager &b) const;
