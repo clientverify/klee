@@ -143,6 +143,8 @@ class VerifyStage {
 	const VerifyStage* parent_;
 	// Children of this VerifyStage
 	std::vector<VerifyStage*> children_;
+
+	bool cloned_for_exhaustive_search;
 };
 
 class VerifySearcher : public CVSearcher {

@@ -83,9 +83,14 @@ CVExecutionState* CVExecutionState::branch() {
   return false_state;
 }
 
-void CVExecutionState::reset_path_manager() {
-	if (path_manager_) delete path_manager_;
-	path_manager_ = PathManagerFactory::create();
+void CVExecutionState::reset_path_manager(PathManager* path_manager) {
+	if (path_manager_) 
+		delete path_manager_;
+
+	if (path_manager)
+		path_manager_ = path_manager;
+	else
+		path_manager_ = PathManagerFactory::create();
 }
 
 bool CVExecutionStateLT::operator()(const CVExecutionState* a, 

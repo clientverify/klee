@@ -406,10 +406,11 @@ void TrainingSearcher::handle_pre_event(CVExecutionState *state,
 VerifyStage::VerifyStage(PathSelector *path_selector, 
 		const SocketEvent* socket_event, VerifyStage* parent)
 	: root_state_(NULL),
-	  path_selector_(path_selector),
+	  path_selector_(path_selector->clone()),
 		socket_event_(socket_event), // XXX needed?
 		network_event_index_(0), /// XXX needed?
-		parent_(parent) {
+		parent_(parent),
+		cloned_for_exhaustive_search(false) {
 
 	if (parent_ == NULL) {
 		network_event_index_ = 0;
@@ -420,19 +421,20 @@ VerifyStage::VerifyStage(PathSelector *path_selector,
 
 CVExecutionState* VerifyStage::next_state() {
 	if (states_.size() == 0) {
+		if (cloned_for_exhaustive_search) return NULL;
 		assert(root_state_);
 		PathRange range(root_state_->prevPC, NULL);
+		CVExecutionState *state = root_state_->clone();
 		if (PathManager* path_manager = path_selector_->next_path(range)) {
-			CVExecutionState *state = root_state_->clone();
 			state->reset_path_manager();
 			state->path_manager()->set_path(path_manager->path());
 			state->path_manager()->set_range(path_manager->range());
-			states_.insert(state);
-			return state;
 		} else {
-			// XXX 
-			cv_error("empty PathSelector not currently handled");
+			state->reset_path_manager(new PathManager);
+			cloned_for_exhaustive_search = true;
 		}
+		states_.insert(state);
+		return state;
 	}
 	return *(states_.begin());
 }
@@ -480,9 +482,6 @@ void VerifyStage::finish(CVExecutionState *finished_state) {
 	//		<< " [End "   << *state->path_manager()->range().kinsts().second << "]");
 
 	assert(state->path_manager()->range().equal(p->path_range));
-	// XXX This should be gracefully failing check, not an assert
-	assert(static_cast<VerifyPathManager*>(state->path_manager())->index()
-			== state->path_manager()->length());
 
 	p->phase = PathProperty::PrepareExecute;
 	p->round++;
@@ -506,6 +505,10 @@ klee::ExecutionState &VerifySearcher::selectState() {
 	}
 
 	CVExecutionState *state = current_stage_->next_state();
+
+	if (state == NULL)
+		cv_error("Null State");
+
 	return *(static_cast<klee::ExecutionState*>(state));
 
 	//if (!phases_[PathProperty::PrepareExecute].empty()) {
