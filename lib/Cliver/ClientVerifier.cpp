@@ -363,6 +363,10 @@ void ClientVerifier::print_current_statistics() {
     << " " << 0 
     << " " << llvm::sys::Process::GetTotalMemoryUsage()
     << "\n";
+
+  // Rebuild solvers each round to keep caches fresh.                                                                                                                                                                
+	g_executor->rebuild_solvers();
+            
 }
 
 //////////////////////////////////////////////////////////////////////////////
