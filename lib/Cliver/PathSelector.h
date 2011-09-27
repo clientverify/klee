@@ -9,6 +9,7 @@
 #ifndef CLIVER_PATH_SELECTOR_H
 #define CLIVER_PATH_SELECTOR_H
 
+#include "Path.h"
 #include <set>
 #include <vector>
 
@@ -21,14 +22,14 @@ class PathManagerSet;
 
 class PathSelector {
  public:
-	virtual PathManager* next_path() = 0;
+	virtual PathManager* next_path(const PathRange &range) = 0;
 	virtual PathSelector* clone() = 0;
 };
 
 class OrderedSetPathSelector : public PathSelector {
  public:
 	OrderedSetPathSelector();
-	virtual PathManager* next_path();
+	virtual PathManager* next_path(const PathRange &range);
 	virtual PathSelector* clone();
 
  protected: 

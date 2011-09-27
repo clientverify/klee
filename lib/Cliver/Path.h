@@ -48,8 +48,8 @@ class PathRange {
 	bool equal(const PathRange &b) const;
 	int compare(const PathRange &b) const;
 
-	klee::KInstruction* start() { return start_; }
-	klee::KInstruction* end() { return end_; }
+	klee::KInstruction* start() const { return start_; }
+	klee::KInstruction* end() const { return end_; }
 
 	inst_id_pair_ty ids() const;
 	inst_pair_ty 		insts() const;
