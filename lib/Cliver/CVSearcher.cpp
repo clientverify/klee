@@ -495,7 +495,12 @@ void VerifyStage::finish(CVExecutionState *finished_state) {
 VerifySearcher::VerifySearcher(klee::Searcher* base_searcher, 
 		StateMerger* merger, PathManagerSet *paths) 
 	: CVSearcher(base_searcher, merger), 
-	  path_selector_(PathSelectorFactory::create(paths)) {}
+	  path_selector_(PathSelectorFactory::create(paths)) {
+
+	//const SocketEvent &se = state->network_manager()->socket()->event();
+	current_stage_ = new VerifyStage(path_selector_, NULL, NULL);
+			
+}
 
 klee::ExecutionState &VerifySearcher::selectState() {
 
