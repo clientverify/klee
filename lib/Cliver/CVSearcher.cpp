@@ -403,17 +403,94 @@ void TrainingSearcher::handle_pre_event(CVExecutionState *state,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-VerifyStage::VerifyStage(VerifyStage* parent) : parent_(parent) {
+VerifyStage::VerifyStage(PathSelector *path_selector, 
+		const SocketEvent* socket_event, VerifyStage* parent)
+	: root_state_(NULL),
+	  path_selector_(path_selector),
+		socket_event_(socket_event), // XXX needed?
+		network_event_index_(0), /// XXX needed?
+		parent_(parent) {
+
+	if (parent_ == NULL) {
+		network_event_index_ = 0;
+	} else {
+		network_event_index_ = parent_->network_event_index_+1;
+	}
 }
 
 CVExecutionState* VerifyStage::next_state() {
-	PathManager* path_manager = path_selector_->next_path();
+	if (states_.size() == 0) {
+		assert(root_state_);
+		PathRange range(root_state_->prevPC, NULL);
+		if (PathManager* path_manager = path_selector_->next_path(range)) {
+			CVExecutionState *state = root_state_->clone();
+			state->reset_path_manager();
+			state->path_manager()->set_path(path_manager->path());
+			state->path_manager()->set_range(path_manager->range());
+			states_.insert(state);
+			return state;
+		} else {
+			// XXX 
+			cv_error("empty PathSelector not currently handled");
+		}
+	}
+	return *(states_.begin());
 }
 
 void VerifyStage::add_state(CVExecutionState *state) {
+	if (root_state_ == NULL) {
+		assert(states_.size() == 0);
+		root_state_ = state;
+	} else {
+		states_.insert(state);
+	}
 }
 
 void VerifyStage::remove_state(CVExecutionState *state) {
+	assert(state != root_state_ && "unexpected state removal");
+	assert(!(states_.count(state) && finished_states_.count(state)));
+	states_.erase(state);
+	if (finished_states_.count(state)) {
+		CVDEBUG_S(state->id(), "VerifyStage::removing finished state");
+		finished_states_.erase(state);
+	}
+}
+
+void VerifyStage::finish(CVExecutionState *finished_state) {
+
+	// XXX attempt to merge?
+	finished_states_.insert(finished_state);
+
+	CVExecutionState* state = finished_state->clone();
+
+	PathProperty *p = static_cast<PathProperty*>(state->property());
+	p->path_range = PathRange(p->path_range.start(), state->prevPC);
+
+	CVDEBUG("end_path: " << state->path_manager()->range()
+			<< ", " << p->path_range);
+ 
+	//CVDEBUG_S(state->id(), "A: End path (length "
+	//		<< state->path_manager()->length() << ") "<< *p 
+	//		<< " [Start " << *p->path_range.kinsts().first << "]"
+	//		<< " [End "   << *p->path_range.kinsts().second << "]");
+ 
+	//CVDEBUG_S(state->id(), "B: End path (length "
+	//		<< state->path_manager()->length() << ") "<< *p 
+	//		<< " [Start " << *state->path_manager()->range().kinsts().first << "]"
+	//		<< " [End "   << *state->path_manager()->range().kinsts().second << "]");
+
+	assert(state->path_manager()->range().equal(p->path_range));
+	// XXX This should be gracefully failing check, not an assert
+	assert(static_cast<VerifyPathManager*>(state->path_manager())->index()
+			== state->path_manager()->length());
+
+	p->phase = PathProperty::PrepareExecute;
+	p->round++;
+	const SocketEvent &se = state->network_manager()->socket()->event();
+
+	VerifyStage *child_stage = new VerifyStage(path_selector_, &se, this);
+	child_stage->root_state_ = state;
+	children_.push_back(child_stage);
 }
 
 VerifySearcher::VerifySearcher(klee::Searcher* base_searcher, 
@@ -423,72 +500,76 @@ VerifySearcher::VerifySearcher(klee::Searcher* base_searcher,
 
 klee::ExecutionState &VerifySearcher::selectState() {
 
-	if (!phases_[PathProperty::Execute].empty()) {
-		CVExecutionState* state = *(phases_[PathProperty::Execute].begin());
-		return *(static_cast<klee::ExecutionState*>(state));
-	}
-
-	if (!phases_[PathProperty::PrepareExecute].empty()) {
-		// Print stats
+	if (current_stage_->children().size() > 0) {
+		current_stage_ = current_stage_->children().back();
 		g_client_verifier->print_current_statistics();
-		CVMESSAGE("Current States (" 
-				<< phases_[PathProperty::PrepareExecute].size() << ")");
-
-		// Attempt to merge states
-		ExecutionStateSet to_merge(phases_[PathProperty::PrepareExecute]);
-		ExecutionStateSet merged_states;
-		if (!to_merge.empty())
-			merger_->merge(to_merge, merged_states);
-		CVMESSAGE("Current states after mergin' (" << merged_states.size() << ")");
-		phases_[PathProperty::PrepareExecute].clear();
-
-		// Process merged states
-		//PathProperty *map_property = new PathProperty();
-	  //CVExecutionState* state = NULL;
-		//PathManager* pm = NULL;
-	  //foreach (state, merged_states) {
-		//	PathProperty *p = static_cast<PathProperty*>(state->property());
-		//	p->phase = PathProperty::Execute;
-		//	p->path_range = PathRange(state->prevPC, NULL);
-		//	state->reset_path_manager();
-		//	const SocketEvent &se = state->network_manager()->socket()->event();
-	
-		//	// Clone a new state for each path in our PathManagerSet (paths_) that
-		//	// starts at the same current PC instruction. We naively clone 
-		//	// a state for each message.
-		//	foreach (pm, *paths_) {
-		//		if (pm->range().start() == p->path_range.start()) {
-		//			const SocketEvent* other_se = NULL;
-		//			foreach (other_se, pm->messages()) {
-		//				if (other_se->equal(se)) {
-		//					CVDEBUG("Cloning state.");
-		//					CVExecutionState* cloned_state = state->clone();
-		//					cloned_state->path_manager()->set_range(pm->range());
-		//					cloned_state->path_manager()->set_path(pm->path());
-		//					phases_[PathProperty::Execute].insert(cloned_state);
-		//					g_executor->add_state(cloned_state);
-		//				}
-		//			}
-		//		}
-		//	}
-		//	pm = NULL;
-
-		//	CVDEBUG_S(state->id(), "Preparing Execution in " << *p 
-		//			<< " " << *state->prevPC);
-		//}
-
-		CVMESSAGE("Ready States (" 
-				<< phases_[PathProperty::Execute].size() << ")");
-
-		return selectState();
 	}
 
-	cv_error("no states remaining");
+	CVExecutionState *state = current_stage_->next_state();
+	return *(static_cast<klee::ExecutionState*>(state));
 
-	// XXX better error handling
-	// This will never execute after cv_error
-	klee::ExecutionState *null_state = NULL;
-	return *null_state;
+	//if (!phases_[PathProperty::PrepareExecute].empty()) {
+	//	// Print stats
+	//	g_client_verifier->print_current_statistics();
+	//	CVMESSAGE("Current States (" 
+	//			<< phases_[PathProperty::PrepareExecute].size() << ")");
+
+	//	// Attempt to merge states
+	//	ExecutionStateSet to_merge(phases_[PathProperty::PrepareExecute]);
+	//	ExecutionStateSet merged_states;
+	//	if (!to_merge.empty())
+	//		merger_->merge(to_merge, merged_states);
+	//	CVMESSAGE("Current states after mergin' (" << merged_states.size() << ")");
+	//	phases_[PathProperty::PrepareExecute].clear();
+
+	//	// Process merged states
+	//	//PathProperty *map_property = new PathProperty();
+	//  //CVExecutionState* state = NULL;
+	//	//PathManager* pm = NULL;
+	//  //foreach (state, merged_states) {
+	//	//	PathProperty *p = static_cast<PathProperty*>(state->property());
+	//	//	p->phase = PathProperty::Execute;
+	//	//	p->path_range = PathRange(state->prevPC, NULL);
+	//	//	state->reset_path_manager();
+	//	//	const SocketEvent &se = state->network_manager()->socket()->event();
+	//
+	//	//	// Clone a new state for each path in our PathManagerSet (paths_) that
+	//	//	// starts at the same current PC instruction. We naively clone 
+	//	//	// a state for each message.
+	//	//	foreach (pm, *paths_) {
+	//	//		if (pm->range().start() == p->path_range.start()) {
+	//	//			const SocketEvent* other_se = NULL;
+	//	//			foreach (other_se, pm->messages()) {
+	//	//				if (other_se->equal(se)) {
+	//	//					CVDEBUG("Cloning state.");
+	//	//					CVExecutionState* cloned_state = state->clone();
+	//	//					cloned_state->path_manager()->set_range(pm->range());
+	//	//					cloned_state->path_manager()->set_path(pm->path());
+	//	//					phases_[PathProperty::Execute].insert(cloned_state);
+	//	//					g_executor->add_state(cloned_state);
+	//	//				}
+	//	//			}
+	//	//		}
+	//	//	}
+	//	//	pm = NULL;
+
+	//	//	CVDEBUG_S(state->id(), "Preparing Execution in " << *p 
+	//	//			<< " " << *state->prevPC);
+	//	//}
+
+	//	CVMESSAGE("Ready States (" 
+	//			<< phases_[PathProperty::Execute].size() << ")");
+
+	//	return selectState();
+	//}
+
+	//cv_error("no states remaining");
+
+	//// XXX better error handling
+	//// This will never execute after cv_error
+	//klee::ExecutionState *null_state = NULL;
+	//return *null_state;
+
 }
 
 void VerifySearcher::update(klee::ExecutionState *current,
@@ -544,37 +625,17 @@ void VerifySearcher::update(klee::ExecutionState *current,
 }
 
 bool VerifySearcher::empty() {
-	if (phases_[PathProperty::Execute].empty() &&
-			phases_[PathProperty::PrepareExecute].empty()) {
-		return true;
-	}
+	//if (phases_[PathProperty::Execute].empty() &&
+	//		phases_[PathProperty::PrepareExecute].empty()) {
+	//	return true;
+	//}
+	// XXX fix me!
 	return false;
 }
 
-
 void VerifySearcher::end_path(CVExecutionState *state,
 		CVExecutor* executor, CliverEvent::Type et) {
-
-	PathProperty *p = static_cast<PathProperty*>(state->property());
-	p->path_range = PathRange(p->path_range.start(), state->prevPC);
-	CVDEBUG("end_path: " << state->path_manager()->range()
-			<< ", " << p->path_range);
- 
-	//CVDEBUG_S(state->id(), "A: End path (length "
-	//		<< state->path_manager()->length() << ") "<< *p 
-	//		<< " [Start " << *p->path_range.kinsts().first << "]"
-	//		<< " [End "   << *p->path_range.kinsts().second << "]");
- 
-	//CVDEBUG_S(state->id(), "B: End path (length "
-	//		<< state->path_manager()->length() << ") "<< *p 
-	//		<< " [Start " << *state->path_manager()->range().kinsts().first << "]"
-	//		<< " [End "   << *state->path_manager()->range().kinsts().second << "]");
-
-	assert(state->path_manager()->range().equal(p->path_range));
-	assert(static_cast<VerifyPathManager*>(state->path_manager())->index()
-			== state->path_manager()->length());
-	p->phase = PathProperty::PrepareExecute;
-	p->round++;
+	current_stage_->finish(state);
 }
 
 void VerifySearcher::handle_post_event(CVExecutionState *state,
