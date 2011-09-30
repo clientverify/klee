@@ -695,12 +695,12 @@ void CVExecutor::add_state(CVExecutionState* state) {
 void CVExecutor::rebuild_solvers() {
   delete solver;                                                                                                                                                                                            
   klee::STPSolver *stpSolver = new klee::STPSolver(false);                                                                                                                                                                       
-  klee::Solver *solver = klee::createCexCachingSolver(stpSolver);                                                                                                                                                                
-  solver = klee::createCachingSolver(solver);                                                                                                                                                                              
-  solver = klee::createIndependentSolver(solver);                                                                                                                                                                          
-  klee::TimingSolver *timing_solver 
-    = new klee::TimingSolver(solver, stpSolver);                                                                                                                                                             
-	solver = (klee::Solver*)timing_solver;
+  klee::Solver *new_solver = klee::createCexCachingSolver(stpSolver);                                                                                                                                                                
+  new_solver = klee::createCachingSolver(new_solver);                                                                                                                                                                              
+  new_solver = klee::createIndependentSolver(new_solver);                                                                                                                                                                          
+  //klee::TimingSolver *timing_solver 
+  //  = new klee::TimingSolver(solver, stpSolver);                                                                                                                                                             
+  solver = new klee::TimingSolver(new_solver, stpSolver);                                                                                                                                                             
 }
 
 uint64_t CVExecutor::check_memory_usage() {
