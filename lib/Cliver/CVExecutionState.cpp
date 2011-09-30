@@ -75,12 +75,12 @@ CVExecutionState* CVExecutionState::clone() {
 
 CVExecutionState* CVExecutionState::branch() {
   depth++;
-  CVExecutionState *false_state = clone();
-  false_state->coveredNew = false;
-  false_state->coveredLines.clear();
+  CVExecutionState *branched_state = clone();
+  branched_state->coveredNew = false;
+  branched_state->coveredLines.clear();
   weight *= .5;
-  false_state->weight -= weight;
-  return false_state;
+  branched_state->weight -= weight;
+  return branched_state;
 }
 
 void CVExecutionState::reset_path_manager(PathManager* path_manager) {
