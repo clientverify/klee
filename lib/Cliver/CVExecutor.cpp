@@ -571,7 +571,7 @@ klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current,
 				}
 
 				addConstraint(*trueState, condition);
-				path_manager->commit_branch(false, res, current.prevPC);
+				path_manager->commit_branch(true, res, current.prevPC);
 			} else {
 				terminateState(*trueState);
 				trueState = NULL;
@@ -696,8 +696,6 @@ void CVExecutor::rebuild_solvers() {
   klee::Solver *new_solver = klee::createCexCachingSolver(stpSolver);                                                                                                                                                                
   new_solver = klee::createCachingSolver(new_solver);                                                                                                                                                                              
   new_solver = klee::createIndependentSolver(new_solver);                                                                                                                                                                          
-  //klee::TimingSolver *timing_solver 
-  //  = new klee::TimingSolver(solver, stpSolver);                                                                                                                                                             
   solver = new klee::TimingSolver(new_solver, stpSolver);                                                                                                                                                             
 }
 
