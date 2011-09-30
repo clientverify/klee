@@ -31,9 +31,6 @@ class CVExecutor : public klee::Executor {
 
   virtual void updateStates(klee::ExecutionState *current);
 
-  virtual const llvm::Module *
-  setModule(llvm::Module *module, const ModuleOptions &opts);
-
   virtual void runFunctionAsMain(llvm::Function *f,
 				                 int argc, char **argv, char **envp);
 
