@@ -24,11 +24,10 @@ using namespace klee;
 /***/
 
 MemoryManager::~MemoryManager() { 
-  while (!objects.empty()) {
-    MemoryObject *mo = objects.back();
-    objects.pop_back();
-    delete mo;
-  }
+	for (objects_ty::iterator it=objects.begin(), ie=objects.end(); it!=ie; ++it) {
+		MemoryObject *mo = *it;
+		delete mo;
+	}
 }
 
 MemoryObject *MemoryManager::allocate(ExecutionState &state,
@@ -46,7 +45,7 @@ MemoryObject *MemoryManager::allocate(ExecutionState &state,
   ++stats::allocations;
   MemoryObject *res = new MemoryObject(address, size, isLocal, isGlobal, false,
                                        allocSite);
-  objects.push_back(res);
+  objects.insert(res);
   return res;
 }
 
@@ -65,22 +64,21 @@ MemoryObject *MemoryManager::allocateFixed(ExecutionState &state,
   ++stats::allocations;
   MemoryObject *res = new MemoryObject(address, size, false, true, true,
                                        allocSite);
-  objects.push_back(res);
+  objects.insert(res);
   return res;
 }
 
 void MemoryManager::deallocate(const MemoryObject *mo) {
   bool found = false;
-  for (objects_ty::iterator it = objects.begin(),
-      ie = objects.end(); it != ie; ++it) {
+	objects_ty::iterator it = objects.find(const_cast<MemoryObject*>(mo));
+	if (it != objects.end()) {
     MemoryObject *obj = *it;
     if (obj == mo) {
       found = true;
       free((void*)obj->address);
       objects.erase(it);
       delete obj;
-      break;
     }
-  }
+	}
   assert(found && "MemoryObject not found");
 }
