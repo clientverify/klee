@@ -12,6 +12,7 @@
 #include "ClientVerifier.h"
 #include "Path.h"
 #include "Socket.h"
+#include "klee/Solver.h"
 
 #include <list>
 #include <set>
@@ -41,17 +42,17 @@ namespace cliver {
 
 class PathManager {
  public:
-	typedef enum { TrueOnly, FalseOnly, TrueAndFalse } BranchConstraint;
 	PathManager();
 	PathManager(Path *path);
 	virtual PathManager* clone();
 	virtual bool merge(const PathManager &pm);
 	virtual bool less(const PathManager &b) const;
-	virtual bool query_branch(bool direction, klee::KInstruction* inst);
-	virtual bool commit_branch(bool direction, klee::KInstruction* inst);
+	virtual bool try_branch(bool direction, klee::Solver::Validity validity, 
+			klee::KInstruction* inst);
+	virtual void commit_branch(bool direction, klee::Solver::Validity validity, 
+			klee::KInstruction* inst);
 	virtual void print(std::ostream &os) const;
 
-	void set_branch_constraint(BranchConstraint branch_constraint);
 	void set_path(Path* path);
 	void set_range(const PathRange& range);
 
@@ -63,7 +64,6 @@ class PathManager {
 	explicit PathManager(const PathManager &pm);
 	Path* path_;
 	PathRange range_;
-	BranchConstraint branch_constraint_;
 };
 
 inline std::ostream &operator<<(std::ostream &os, 
@@ -84,8 +84,10 @@ class TrainingPathManager : public PathManager {
 	virtual PathManager* clone();
 	virtual bool merge(const PathManager &pm);
 	virtual bool less(const PathManager &b) const;
-	virtual bool query_branch(bool direction, klee::KInstruction* inst);
-	virtual bool commit_branch(bool direction, klee::KInstruction* inst);
+	virtual bool try_branch(bool direction, klee::Solver::Validity validity, 
+			klee::KInstruction* inst);
+	virtual void commit_branch(bool direction, klee::Solver::Validity validity, 
+			klee::KInstruction* inst);
 	virtual void print(std::ostream &os) const;
 
 	bool add_socket_event(const SocketEvent* se);
@@ -123,8 +125,10 @@ class VerifyPathManager : public TrainingPathManager {
 	virtual PathManager* clone();
 	virtual bool merge(const PathManager &pm);
 	virtual bool less(const PathManager &b) const;
-	virtual bool query_branch(bool direction, klee::KInstruction* inst);
-	virtual bool commit_branch(bool direction, klee::KInstruction* inst);
+	virtual bool try_branch(bool direction, klee::Solver::Validity validity, 
+			klee::KInstruction* inst);
+	virtual void commit_branch(bool direction, klee::Solver::Validity validity, 
+			klee::KInstruction* inst);
 	virtual void print(std::ostream &os) const;
 
 	unsigned index() { return index_; }
@@ -148,8 +152,10 @@ class VerifyPrefixPathManager : public VerifyPathManager {
 	virtual PathManager* clone();
 	virtual bool merge(const PathManager &pm);
 	virtual bool less(const PathManager &b) const;
-	virtual bool query_branch(bool direction, klee::KInstruction* inst);
-	virtual bool commit_branch(bool direction, klee::KInstruction* inst);
+	virtual bool try_branch(bool direction, klee::Solver::Validity validity, 
+			klee::KInstruction* inst);
+	virtual void commit_branch(bool direction, klee::Solver::Validity validity, 
+			klee::KInstruction* inst);
 
  protected:
 	explicit VerifyPrefixPathManager(const VerifyPrefixPathManager &pm);
