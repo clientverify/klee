@@ -185,27 +185,6 @@ CVExecutor::CVExecutor(const InterpreterOptions &opts, klee::InterpreterHandler 
 
 CVExecutor::~CVExecutor() {}
 
-const llvm::Module *CVExecutor::setModule(llvm::Module *module, 
-                                  const ModuleOptions &opts) {
-  assert(!kmodule && module && "can only register one module"); // XXX gross
-  
-  kmodule = new klee::KModule(module);
-
-  // Initialize the context.
-	llvm::TargetData *TD = kmodule->targetData;
-	klee::Context::initialize(TD->isLittleEndian(),
-                      (klee::Expr::Width) TD->getPointerSizeInBits());
-
-  specialFunctionHandler = new klee::SpecialFunctionHandler(*this);
-
-  specialFunctionHandler->prepare();
-  kmodule->prepare(opts, interpreterHandler);
-  specialFunctionHandler->bind();
-
-  return module;
-}
-
-
 void CVExecutor::runFunctionAsMain(llvm::Function *f,
 				                   int argc, char **argv, char **envp) {
   using namespace klee;
