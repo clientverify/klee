@@ -185,27 +185,6 @@ CVExecutor::CVExecutor(const InterpreterOptions &opts, klee::InterpreterHandler 
 
 CVExecutor::~CVExecutor() {}
 
-const llvm::Module *CVExecutor::setModule(llvm::Module *module, 
-                                  const ModuleOptions &opts) {
-  assert(!kmodule && module && "can only register one module"); // XXX gross
-  
-  kmodule = new klee::KModule(module);
-
-  // Initialize the context.
-	llvm::TargetData *TD = kmodule->targetData;
-	klee::Context::initialize(TD->isLittleEndian(),
-                      (klee::Expr::Width) TD->getPointerSizeInBits());
-
-  specialFunctionHandler = new klee::SpecialFunctionHandler(*this);
-
-  specialFunctionHandler->prepare();
-  kmodule->prepare(opts, interpreterHandler);
-  specialFunctionHandler->bind();
-
-  return module;
-}
-
-
 void CVExecutor::runFunctionAsMain(llvm::Function *f,
 				                   int argc, char **argv, char **envp) {
   using namespace klee;
@@ -217,6 +196,7 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
   
   MemoryObject *argvMO = 0;
 
+	// Only difference from klee::Executor::runFunctionAsMain()
   CVExecutionState *state = new CVExecutionState(kmodule->functionMap[f], memory);
 	state->initialize(this);
   
@@ -295,8 +275,8 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
   
   initializeGlobals(*state);
 
-  //processTree = new PTree(state);
-  //state->ptreeNode = processTree->root;
+  processTree = new klee::PTree(state);
+  state->ptreeNode = processTree->root;
   run(*state);
   delete processTree;
   processTree = 0;
@@ -491,19 +471,17 @@ void CVExecutor::branch(klee::ExecutionState &state,
 		klee::ExecutionState *ns = es->branch();
     addedStates.insert(ns);
     result.push_back(ns);
-    //es->ptreeNode->data = 0;
-    //std::pair<PTree::Node*,PTree::Node*> res = 
-    //  processTree->split(es->ptreeNode, ns, es);
-    //ns->ptreeNode = res.first;
-    //es->ptreeNode = res.second;
+    es->ptreeNode->data = 0;
+    std::pair<klee::PTree::Node*,klee::PTree::Node*> res = 
+      processTree->split(es->ptreeNode, ns, es);
+    ns->ptreeNode = res.first;
+    es->ptreeNode = res.second;
   }
 
   for (unsigned i=0; i<N; ++i)
     if (result[i])
       addConstraint(*result[i], conditions[i]);
 }
-
-
 
 klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current, 
 			klee::ref<klee::Expr> condition, bool isInternal) {
@@ -521,66 +499,86 @@ klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current,
 		return klee::Executor::StatePair(0, 0);
 	}
 
-	if (res==klee::Solver::True) {
-		if (!isInternal) {
-			path_manager->set_branch_constraint(PathManager::TrueOnly);
-			if (!path_manager->query_branch(true, current.prevPC) ||
-				  !path_manager->commit_branch(true, current.prevPC)) {
-				terminateState(current);
-				return klee::Executor::StatePair(0, 0);
-			}
-		}
-		return klee::Executor::StatePair(&current, 0);
-	} else if (res==klee::Solver::False) {
-		if (!isInternal) {
-			path_manager->set_branch_constraint(PathManager::FalseOnly);
-			if (!path_manager->query_branch(false, current.prevPC) ||
-				  !path_manager->commit_branch(false, current.prevPC)) {
-				terminateState(current);
-				return klee::Executor::StatePair(0, 0);
-			}
-		}
-		return klee::Executor::StatePair(0, &current);
-	} else {
-		klee::TimerStatIncrementer timer(klee::stats::forkTime);
-		klee::ExecutionState *falseState = NULL, *trueState = &current;
-
-		++klee::stats::forks;
-
-		if (isInternal) {
-			falseState = trueState->branch();
+	if (isInternal) {
+		if (res==klee::Solver::True) {
+			return klee::Executor::StatePair(&current, 0);
+		} else if (res==klee::Solver::False) {
+			return klee::Executor::StatePair(0, &current);
 		} else {
+			klee::ExecutionState *falseState = NULL, *trueState = &current;
+			falseState = trueState->branch();
+			addConstraint(*trueState, condition);
+			addConstraint(*falseState, klee::Expr::createIsZero(condition));
+			addedStates.insert(falseState);
+			return klee::Executor::StatePair(trueState, falseState);
+		}
+	} else {
+		if (res==klee::Solver::True) {
+			if (path_manager->try_branch(true, res, current.prevPC)) {
+				if (pathWriter) {
+					current.pathOS << "1";
+				}
+				path_manager->commit_branch(true, res, current.prevPC);
+				return klee::Executor::StatePair(&current, 0);
+			} else {
+				terminateState(current);
+				return klee::Executor::StatePair(0, 0);
+			}
 
-			path_manager->set_branch_constraint(PathManager::TrueAndFalse);
-			if (path_manager->query_branch(false, current.prevPC)) {
+		} else if (res==klee::Solver::False) {
+			if (path_manager->try_branch(false, res, current.prevPC)) {
+				if (pathWriter) {
+					current.pathOS << "0";
+				}
+				path_manager->commit_branch(false, res, current.prevPC);
+				return klee::Executor::StatePair(0, &current);
+			} else {
+				terminateState(current);
+				return klee::Executor::StatePair(0, 0);
+			}
+
+		} else { // res==klee::Solver::Unknown
+			klee::TimerStatIncrementer timer(klee::stats::forkTime);
+			klee::ExecutionState *falseState = NULL, *trueState = &current;
+
+			++klee::stats::forks;
+
+			if (path_manager->try_branch(false, res, current.prevPC)) {
 				falseState = trueState->branch();
+				if (pathWriter) {
+					falseState->pathOS = pathWriter->open(current.pathOS);
+					falseState->pathOS << "0";
+				}   
+				if (symPathWriter) {
+					falseState->symPathOS = symPathWriter->open(current.symPathOS);
+					falseState->symPathOS << "0";
+				}
+
+				addConstraint(*falseState, klee::Expr::createIsZero(condition));
+				addedStates.insert(falseState);
+
 				PathManager *false_path_manager 
 					= static_cast<CVExecutionState*>(falseState)->path_manager();
-				false_path_manager->commit_branch(false, current.prevPC);
+				false_path_manager->commit_branch(false, res, current.prevPC);
 			}
 
-			if (path_manager->query_branch(true, current.prevPC)) {
-				PathManager *true_path_manager 
-					= static_cast<CVExecutionState*>(trueState)->path_manager();
+			if (path_manager->try_branch(true, res, current.prevPC)) {
+				if (pathWriter) {
+					trueState->pathOS << "1";
+				}      
+				if (symPathWriter) {
+					trueState->symPathOS << "1";
+				}
 
-				true_path_manager->commit_branch(true, current.prevPC);
+				addConstraint(*trueState, condition);
+				path_manager->commit_branch(false, res, current.prevPC);
 			} else {
-				// terminateState will delete trueState
 				terminateState(*trueState);
 				trueState = NULL;
 			}
-		}
 
-		if (trueState) {
-			addConstraint(*trueState, condition);
+			return klee::Executor::StatePair(trueState, falseState);
 		}
-
-		if (falseState) {
-			addConstraint(*falseState, klee::Expr::createIsZero(condition));
-			addedStates.insert(falseState);
-		}
-
-		return klee::Executor::StatePair(trueState, falseState);
 	}
 }
 

@@ -53,17 +53,14 @@ bool PathManager::less(const PathManager &b) const {
 	return path_->less(*(b.path_));
 }
 
-bool PathManager::query_branch(bool direction, klee::KInstruction* inst) {
+bool PathManager::try_branch(bool direction, 
+		klee::Solver::Validity validity, klee::KInstruction* inst) {
 	return true;
 }
 
-bool PathManager::commit_branch(bool direction, klee::KInstruction* inst) {
+void PathManager::commit_branch(bool direction, 
+		klee::Solver::Validity validity, klee::KInstruction* inst) {
 	path_->add(direction, inst);
-	return true;
-}
-
-void PathManager::set_branch_constraint(BranchConstraint branch_constraint) {
-	branch_constraint_ = branch_constraint;
 }
 
 void PathManager::set_range(const PathRange& range) {
@@ -127,13 +124,14 @@ bool TrainingPathManager::less(const PathManager &pm) const {
 	return path_->less(*(tpm->path_));
 }
 
-bool TrainingPathManager::query_branch(bool direction, klee::KInstruction* inst) {
+bool TrainingPathManager::try_branch(bool direction, 
+		klee::Solver::Validity validity, klee::KInstruction* inst) {
 	return true;
 }
 
-bool TrainingPathManager::commit_branch(bool direction, klee::KInstruction* inst) {
+void TrainingPathManager::commit_branch(bool direction, 
+		klee::Solver::Validity validity, klee::KInstruction* inst) {
 	path_->add(direction, inst);
-	return true;
 }
 
 bool TrainingPathManager::add_socket_event(const SocketEvent* se) {
@@ -206,19 +204,21 @@ bool VerifyPathManager::less(const PathManager &b) const {
 	return path_->less(*(vpm->path_));
 }
 
-bool VerifyPathManager::query_branch(bool direction, klee::KInstruction* inst) {
+bool VerifyPathManager::try_branch(bool direction, 
+		klee::Solver::Validity validity, klee::KInstruction* inst) {
 	assert(path_ && "path is null");
-	if (index_ < path_->length())
+	if (index_ < path_->length()) {
 		return direction == path_->get_branch(index_);
+	}
 	return false;
 }
 
-bool VerifyPathManager::commit_branch(bool direction, klee::KInstruction* inst) {
+void VerifyPathManager::commit_branch(bool direction, 
+		klee::Solver::Validity validity, klee::KInstruction* inst) {
 	assert(path_ && "path is null");
 	assert(index_ < path_->length());
 	assert(direction == path_->get_branch(index_));
 	index_++;
-	return true;
 }
 
 void VerifyPathManager::print(std::ostream &os) const {
@@ -252,32 +252,44 @@ bool VerifyPrefixPathManager::less(const PathManager &b) const {
 	return path_->less(*(vpm->path_));
 }
 
-bool VerifyPrefixPathManager::query_branch(bool direction, klee::KInstruction* inst) {
+/// Returns true if the direction matches the training path at the current
+/// index, up until we take a branch that doesn't match and is only valid
+/// in one direction (when validity == klee::Solver::True/False). At this
+/// point, the path is invalidated and we allow the Executor the follow
+/// any branch by always returning true.
+bool VerifyPrefixPathManager::try_branch(bool direction, 
+		klee::Solver::Validity validity, klee::KInstruction* inst) {
 	assert(path_ && "path is null");
-	if (invalidated_) return true;
+
 	bool result = false;
-	if (index_ < path_->length()) {
-		if (direction == path_->get_branch(index_)) {
-			result = true;
+
+	if (index_ >= path_->length()) {
+		invalidated_ = true;
+	}
+
+	if (!invalidated_) {
+		result = direction == path_->get_branch(index_);
+		if (validity != klee::Solver::Unknown) {
+			if (!result) {
+				invalidated_ = true;
+			}
 		}
 	}
-	if (!result && branch_constraint_ != TrueAndFalse) {
-		invalidated_ = true;
-		return true;
+
+	if (!invalidated_) {
+		return result;
 	}
-	return result;
+	return true;
 }
 
-bool VerifyPrefixPathManager::commit_branch(bool direction, klee::KInstruction* inst) {
-	if (invalidated_) {
-		index_++;
-		return true;
-	}
-	assert(path_ && "path is null");
-	assert(index_ < path_->length());
-	assert(direction == path_->get_branch(index_));
+void VerifyPrefixPathManager::commit_branch(bool direction, 
+		klee::Solver::Validity validity, klee::KInstruction* inst) {
 	index_++;
-	return true;
+	if (!invalidated_) {
+		assert(path_ && "path is null");
+		assert(index_ < path_->length());
+		assert(direction == path_->get_branch(index_));
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
