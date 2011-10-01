@@ -284,12 +284,12 @@ bool VerifyPrefixPathManager::try_branch(bool direction,
 
 void VerifyPrefixPathManager::commit_branch(bool direction, 
 		klee::Solver::Validity validity, klee::KInstruction* inst) {
-	index_++;
 	if (!invalidated_) {
 		assert(path_ && "path is null");
 		assert(index_ < path_->length());
 		assert(direction == path_->get_branch(index_));
 	}
+	index_++;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
