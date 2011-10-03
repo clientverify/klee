@@ -34,8 +34,8 @@ inline std::ostream &operator<<(std::ostream &os,
 	std::string str;
 	llvm::raw_string_ostream ros(str);
 	//ros << ki.info->id << ":" << *ki.inst;
-	ros << ki.info->id << ":" << *ki.inst 
-		<< ki.inst->getParent()->getParent()->getName();
+	ros << ki.info->id << ":" << *ki.inst  << " (Function:"
+		<< ki.inst->getParent()->getParent()->getName() << ")";
 	str.erase(std::remove(str.begin(), str.end(), '\n'), str.end());
 	return os << ros.str();
 }
