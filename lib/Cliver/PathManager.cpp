@@ -207,11 +207,10 @@ bool VerifyPathManager::less(const PathManager &b) const {
 bool VerifyPathManager::try_branch(bool direction, 
 		klee::Solver::Validity validity, klee::KInstruction* inst) {
 	assert(path_ && "path is null");
-	assert(index_ < path_->length());
 	if (index_ < path_->length()) {
     if (direction != path_->get_branch(index_)) {
 			CVDEBUG("Failed after covering " << (float)index_/path_->length()
-					<< " of branches (" << index_ <<"/"<< path_->length());
+					<< " of branches (" << index_ <<"/"<< path_->length() << ")");
 		}
 		return direction == path_->get_branch(index_);
 	}
