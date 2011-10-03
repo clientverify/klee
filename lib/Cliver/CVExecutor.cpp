@@ -182,7 +182,6 @@ CVExecutor::CVExecutor(const InterpreterOptions &opts, klee::InterpreterHandler 
 #undef INVALID_CL_OPT
 }
 
-
 CVExecutor::~CVExecutor() {}
 
 void CVExecutor::runFunctionAsMain(llvm::Function *f,
@@ -197,7 +196,8 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
   MemoryObject *argvMO = 0;
 
 	// Only difference from klee::Executor::runFunctionAsMain()
-  CVExecutionState *state = new CVExecutionState(kmodule->functionMap[f], memory);
+  CVExecutionState *state 
+		= new CVExecutionState(kmodule->functionMap[f], memory);
 	state->initialize(this);
   
   // In order to make uclibc happy and be closer to what the system is
