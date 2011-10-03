@@ -24,7 +24,6 @@ PathManager* OrderedSetPathSelector::next_path(const PathRange &range) {
 	while (index_ < g_ordered_training_paths.size()) {
 		PathManager *path_manager = g_ordered_training_paths[index_++];
 		if (path_manager->range().start() == range.start()) {
-			CVDEBUG("selected next path");
 			return path_manager;
 		}
 		CVDEBUG("start instructions do not match");
