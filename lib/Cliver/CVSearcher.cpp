@@ -433,6 +433,7 @@ CVExecutionState* VerifyStage::next_state() {
 				state->path_manager()->set_path(path_manager->path());
 				state->path_manager()->set_range(path_manager->range());
 			} else {
+				CVDEBUG("Switching to PrefixTraining search mode");
 				search_mode = PrefixTraining;
 				PathSelector *old_path_selector = path_selector_;
 				path_selector_ = path_selector_->clone();
@@ -446,6 +447,7 @@ CVExecutionState* VerifyStage::next_state() {
 				state->path_manager()->set_path(path_manager->path());
 				state->path_manager()->set_range(path_manager->range());
 			} else {
+				CVDEBUG("Switching to Exhaustive search mode");
 				search_mode = Exhaustive;
 			}
 		}
