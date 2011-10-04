@@ -30,6 +30,8 @@ extern std::ostream* cv_debug_stream;
 #define CVMESSAGE(__x) \
 	*cv_message_stream <<"CV: "<< __x << "\n";
 
+#ifndef NDEBUG
+
 #define __CVDEBUG_FILEPOS \
 	"CV: DEBUG (" __FILE__ ":"  << __LINE__  << ") "
 
@@ -59,6 +61,18 @@ extern std::ostream* cv_debug_stream;
 #define CVDEBUG_S2(__state_id_1, __state_id_2, __x) \
 	__CVDEBUG_S2(true, __state_id_1, __state_id_2, __x)
 
+#else
+
+#define __CVDEBUG_FILEPOS
+#define __CVDEBUG_FILE
+#define __CVDEBUG(__debug_enabled, __x)
+#define __CVDEBUG_S(__debug_enabled, __state_id, __x)
+#define __CVDEBUG_S2(__debug_enabled, __state_id_1, __state_id_2, __x)
+#define CVDEBUG(__x)
+#define CVDEBUG_S(__state_id, __x)
+#define CVDEBUG_S2(__state_id_1, __state_id_2, __x)
+
+#endif //NDEBUG
 ////////////////////////////////////////////////////////////////////////////////
 
 /// CV versions of the KLEE error and warning functions

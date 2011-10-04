@@ -150,6 +150,20 @@ cliver::CVExecutor *g_executor = 0;
 
 namespace cliver {
 
+////////////////////////////////////////////////////////////////////////////////
+
+// Helper for debug output
+inline std::ostream &operator<<(std::ostream &os, 
+		const klee::KInstruction &ki) {
+	std::string str;
+	llvm::raw_string_ostream ros(str);
+	ros << ki.info->id << ":" << *ki.inst;
+	//str.erase(std::remove(str.begin(), str.end(), '\n'), str.end());
+	return os << ros.str();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 CVExecutor::CVExecutor(const InterpreterOptions &opts, klee::InterpreterHandler *ih)
 : klee::Executor(opts, ih), cv_(static_cast<ClientVerifier*>(ih)) {
 
@@ -403,13 +417,7 @@ void CVExecutor::stepInstruction(klee::ExecutionState &state) {
 
 	if (klee::DebugPrintInstructions) {
 		CVExecutionState *cvstate = static_cast<CVExecutionState*>(&state);
-		std::string rstr;
-		llvm::raw_string_ostream ros(rstr);
-		ros << *(state.pc->inst);
-		ros.flush();
-		rstr.erase(std::remove(rstr.begin(), rstr.end(), '\n'), rstr.end());
-    *cv_debug_stream << "sid: " << cvstate->id() 
-			<< " " << std::setw(10) << state.pc->info->id << " : " << rstr << "\n";
+		CVDEBUG_S(cvstate->id(), *state.pc);
   }
 
   if (statsTracker)

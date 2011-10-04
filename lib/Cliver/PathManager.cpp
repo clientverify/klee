@@ -28,7 +28,30 @@ namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Helper for debug output
+llvm::cl::opt<bool>
+DebugPathManager("debug-pathmanager",llvm::cl::init(false));
+
+#ifndef NDEBUG
+
+#undef CVDEBUG
+#define CVDEBUG(x) \
+	__CVDEBUG(DebugPathManager, x);
+
+#undef CVDEBUG_S
+#define CVDEBUG_S(__state_id, __x) \
+	__CVDEBUG_S(DebugPathManager, __state_id, __x)
+
+#else
+
+#undef CVDEBUG
+#define CVDEBUG(x)
+
+#undef CVDEBUG_S
+#define CVDEBUG_S(__state_id, __x)
+
+#endif
+
+// Helper for debug output of instructions (also prints function name)
 inline std::ostream &operator<<(std::ostream &os, 
 		const klee::KInstruction &ki) {
 	std::string str;
