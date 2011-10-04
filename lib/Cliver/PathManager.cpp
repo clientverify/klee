@@ -270,6 +270,76 @@ void VerifyPathManager::print(std::ostream &os) const {
 	os << "Path [" << path_->length() << "][" 
 		<< range_.ids().first << ", " << range_.ids().second << "] " << *path_;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+VerifyConcretePathManager::VerifyConcretePathManager()
+	: VerifyPathManager(), invalidated_(false) {}
+
+PathManager* VerifyConcretePathManager::clone() {
+	VerifyConcretePathManager *pm = new VerifyConcretePathManager();
+	pm->path_ = path_;
+	pm->index_ = index_;
+	pm->socket_events_ = socket_events_;
+	pm->range_ = range_;
+	pm->invalidated_ = invalidated_;
+	return pm;
+}
+
+bool VerifyConcretePathManager::merge(const PathManager &pm) {
+	assert(0);
+	return false;
+}
+
+bool VerifyConcretePathManager::less(const PathManager &b) const {
+	const VerifyConcretePathManager *vpm 
+		= static_cast<const VerifyConcretePathManager*>(&b);
+	if (range_.less(vpm->range_))
+		return true;
+	return path_->less(*(vpm->path_));
+}
+
+bool VerifyConcretePathManager::try_branch(bool direction, 
+		klee::Solver::Validity validity, klee::KInstruction* inst) {
+	assert(path_ && "path is null");
+
+	bool result = false;
+
+	if (index_ >= path_->length()) {
+		invalidated_ = true;
+	}
+
+	if (!invalidated_) {
+		result = direction == path_->get_branch(index_);
+		if (validity != klee::Solver::Unknown) {
+			if (!result) {
+				// We are now diverging from the saved path
+				invalidated_ = true;
+			}
+		}
+	}
+
+	if (invalidated_) {
+		if (validity == klee::Solver::Unknown) {
+			return false;
+		} else {
+			return true;
+		}
+	}
+
+	return result;
+}
+
+void VerifyConcretePathManager::commit_branch(bool direction, 
+		klee::Solver::Validity validity, klee::KInstruction* inst) {
+	if (!invalidated_) {
+		assert(path_ && "path is null");
+		assert(index_ < path_->length());
+		assert(direction == path_->get_branch(index_));
+	}
+	index_++;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 VerifyPrefixPathManager::VerifyPrefixPathManager()
