@@ -72,12 +72,14 @@ CVSearcher::CVSearcher(klee::Searcher* base_searcher, StateMerger* merger)
 }
 
 klee::ExecutionState &CVSearcher::selectState() {
+	klee::TimerStatIncrementer timer(stats::searcher_time);
 	return base_searcher_->selectState();
 }
 
 void CVSearcher::update(klee::ExecutionState *current,
 						const std::set<klee::ExecutionState*> &addedStates,
 						const std::set<klee::ExecutionState*> &removedStates) {
+	klee::TimerStatIncrementer timer(stats::searcher_time);
 	base_searcher_->update(current, addedStates, removedStates);
 }
 
@@ -112,6 +114,7 @@ int LogIndexSearcher::state_count() {
 }
 
 klee::ExecutionState &LogIndexSearcher::selectState() {
+	klee::TimerStatIncrementer timer(stats::searcher_time);
 
 	// Walk the ExecutionStatePropertyMap from the oldest to the newest,
 	// or whatever ordering the ExecutionStateProperty induces
@@ -166,6 +169,7 @@ klee::ExecutionState &LogIndexSearcher::selectState() {
 void LogIndexSearcher::update(klee::ExecutionState *current,
 						const std::set<klee::ExecutionState*> &addedStates,
 						const std::set<klee::ExecutionState*> &removedStates) {
+	klee::TimerStatIncrementer timer(stats::searcher_time);
 
 	std::set<klee::ExecutionState*> removed_states(removedStates);
 	std::set<klee::ExecutionState*> added_states(addedStates);
@@ -224,6 +228,7 @@ TrainingSearcher::TrainingSearcher(klee::Searcher* base_searcher,
 	: CVSearcher(base_searcher, merger), paths_(new PathManagerSet()) {}
 
 klee::ExecutionState &TrainingSearcher::selectState() {
+	klee::TimerStatIncrementer timer(stats::searcher_time);
 
 	if (!phases_[PathProperty::Execute].empty()) {
 		CVExecutionState* state = *(phases_[PathProperty::Execute].begin());
@@ -278,6 +283,7 @@ klee::ExecutionState &TrainingSearcher::selectState() {
 void TrainingSearcher::update(klee::ExecutionState *current,
 		const std::set<klee::ExecutionState*> &addedStates,
 		const std::set<klee::ExecutionState*> &removedStates) {
+	klee::TimerStatIncrementer timer(stats::searcher_time);
 
 	std::set<klee::ExecutionState*> removed_states(removedStates);
 	std::set<klee::ExecutionState*> added_states(addedStates);
@@ -327,6 +333,7 @@ bool TrainingSearcher::empty() {
 
 void TrainingSearcher::record_path(CVExecutionState *state,
 		CVExecutor* executor, CliverEvent::Type et) {
+	klee::TimerStatIncrementer timer(stats::searcher_time);
 
 	PathProperty *p = static_cast<PathProperty*>(state->property());
 	p->path_range = PathRange(p->path_range.start(), state->prevPC);
@@ -527,6 +534,7 @@ VerifySearcher::VerifySearcher(klee::Searcher* base_searcher,
 }
 
 klee::ExecutionState &VerifySearcher::selectState() {
+	klee::TimerStatIncrementer timer(stats::searcher_time);
 
 	if (current_stage_->children().size() > 0) {
 		current_stage_ = current_stage_->children().back();
@@ -539,74 +547,12 @@ klee::ExecutionState &VerifySearcher::selectState() {
 		cv_error("Null State");
 
 	return *(static_cast<klee::ExecutionState*>(state));
-
-	//if (!phases_[PathProperty::PrepareExecute].empty()) {
-	//	// Print stats
-	//	g_client_verifier->print_current_statistics();
-	//	CVMESSAGE("Current States (" 
-	//			<< phases_[PathProperty::PrepareExecute].size() << ")");
-
-	//	// Attempt to merge states
-	//	ExecutionStateSet to_merge(phases_[PathProperty::PrepareExecute]);
-	//	ExecutionStateSet merged_states;
-	//	if (!to_merge.empty())
-	//		merger_->merge(to_merge, merged_states);
-	//	CVMESSAGE("Current states after mergin' (" << merged_states.size() << ")");
-	//	phases_[PathProperty::PrepareExecute].clear();
-
-	//	// Process merged states
-	//	//PathProperty *map_property = new PathProperty();
-	//  //CVExecutionState* state = NULL;
-	//	//PathManager* pm = NULL;
-	//  //foreach (state, merged_states) {
-	//	//	PathProperty *p = static_cast<PathProperty*>(state->property());
-	//	//	p->phase = PathProperty::Execute;
-	//	//	p->path_range = PathRange(state->prevPC, NULL);
-	//	//	state->reset_path_manager();
-	//	//	const SocketEvent &se = state->network_manager()->socket()->event();
-	//
-	//	//	// Clone a new state for each path in our PathManagerSet (paths_) that
-	//	//	// starts at the same current PC instruction. We naively clone 
-	//	//	// a state for each message.
-	//	//	foreach (pm, *paths_) {
-	//	//		if (pm->range().start() == p->path_range.start()) {
-	//	//			const SocketEvent* other_se = NULL;
-	//	//			foreach (other_se, pm->messages()) {
-	//	//				if (other_se->equal(se)) {
-	//	//					CVDEBUG("Cloning state.");
-	//	//					CVExecutionState* cloned_state = state->clone();
-	//	//					cloned_state->path_manager()->set_range(pm->range());
-	//	//					cloned_state->path_manager()->set_path(pm->path());
-	//	//					phases_[PathProperty::Execute].insert(cloned_state);
-	//	//					g_executor->add_state(cloned_state);
-	//	//				}
-	//	//			}
-	//	//		}
-	//	//	}
-	//	//	pm = NULL;
-
-	//	//	CVDEBUG_S(state->id(), "Preparing Execution in " << *p 
-	//	//			<< " " << *state->prevPC);
-	//	//}
-
-	//	CVMESSAGE("Ready States (" 
-	//			<< phases_[PathProperty::Execute].size() << ")");
-
-	//	return selectState();
-	//}
-
-	//cv_error("no states remaining");
-
-	//// XXX better error handling
-	//// This will never execute after cv_error
-	//klee::ExecutionState *null_state = NULL;
-	//return *null_state;
-
 }
 
 void VerifySearcher::update(klee::ExecutionState *current,
 		const std::set<klee::ExecutionState*> &addedStates,
 		const std::set<klee::ExecutionState*> &removedStates) {
+	klee::TimerStatIncrementer timer(stats::searcher_time);
 
 	// add any added states via current_stage_->add_state()
 	foreach (klee::ExecutionState* klee_state, addedStates) {
@@ -618,49 +564,9 @@ void VerifySearcher::update(klee::ExecutionState *current,
 		CVExecutionState *state = static_cast<CVExecutionState*>(klee_state);
 		current_stage_->remove_state(state);
 	}
-	//std::set<klee::ExecutionState*> removed_states(removedStates);
-	//std::set<klee::ExecutionState*> added_states(addedStates);
-
-	//if (current && removedStates.count(current) == 0) {
-	//	removed_states.insert(current);
-	//	added_states.insert(current);
-	//}
-
-	//foreach (klee::ExecutionState* klee_state, removed_states) {
-	//	CVExecutionState *state = static_cast<CVExecutionState*>(klee_state);
-	//	PathProperty *p = static_cast<PathProperty*>(state->property());
-	//	ExecutionStateSet &state_set = phases_[p->phase];
-
-	//	if (state_set.count(state) == 0) {
-	//		unsigned i;
-	//		for (i=0; i < PathProperty::EndState; i++) {
-	//			if (phases_[i].count(state) != 0) {
-	//				phases_[i].erase(state);
-	//				break;
-	//			}
-	//		}
-	//		if (i == PathProperty::EndState) {
-	//			cv_error("state erase failed");
-	//		}
-	//	} else {
-	//		state_set.erase(state);
-	//	}
-	//}
-
-	//foreach (klee::ExecutionState* klee_state, added_states) {
-	//	CVExecutionState *state = static_cast<CVExecutionState*>(klee_state);
-	//	PathProperty *p = static_cast<PathProperty*>(state->property());
-	//	ExecutionStateSet &state_set = phases_[p->phase];
-	//	state_set.insert(state);
-	//}
-
 }
 
 bool VerifySearcher::empty() {
-	//if (phases_[PathProperty::Execute].empty() &&
-	//		phases_[PathProperty::PrepareExecute].empty()) {
-	//	return true;
-	//}
 	// XXX fix me!
 	return false;
 }

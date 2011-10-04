@@ -53,6 +53,7 @@ namespace stats {
 	extern klee::Statistic merge_time;
 	extern klee::Statistic prune_time;
 	extern klee::Statistic pruned_constraints;
+	extern klee::Statistic searcher_time;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
