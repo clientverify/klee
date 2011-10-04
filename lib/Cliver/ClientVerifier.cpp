@@ -88,7 +88,8 @@ namespace stats {
 	klee::Statistic merge_time("MergingTime", "MTime");
 	klee::Statistic prune_time("PruningTime", "PTime");
 	klee::Statistic pruned_constraints("PrunedConstraints", "prunes");
-	klee::Statistic searcher_time("SearcherTime", "searchtime");
+	klee::Statistic searcher_time("SearcherTime", "Stime");
+	klee::Statistic fork_time("ForkTime", "Ftime");
 }
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -360,8 +361,8 @@ void ClientVerifier::print_current_statistics() {
     << " " << sr->getValue(stats::prune_time) / 1000000.
     << " " << sr->getValue(stats::merge_time) / 1000000.
     << " " << sr->getValue(stats::searcher_time) / 1000000.
-    << " " << 0
-    << " " << 0 
+    << " " << sr->getValue(klee::stats::solverTime) / 1000000.
+    << " " << sr->getValue(stats::fork_time) / 1000000.
     << " " << llvm::sys::Process::GetTotalMemoryUsage()
     << "\n";
 
