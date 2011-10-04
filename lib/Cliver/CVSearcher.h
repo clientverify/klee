@@ -162,9 +162,6 @@ class VerifySearcher : public CVSearcher {
 
 	bool empty();
 
-	//void clone_for_network_events(CVExecutionState *state, CVExecutor* executor, 
-	//		CliverEvent::Type et);
-
 	void end_path(CVExecutionState *state, CVExecutor* executor,
 			CliverEvent::Type et);
 
@@ -177,8 +174,6 @@ class VerifySearcher : public CVSearcher {
 			CVExecutor *executor, CliverEvent::Type et);
 
  private:
-	//ExecutionStateSet phases_[PathProperty::EndState];
-	//ExecutionStatePropertyMap saved_states_;
 	PathSelector *path_selector_;
 	VerifyStage *root_stage_;
 	VerifyStage *current_stage_;
