@@ -116,7 +116,7 @@ class PathSelector;
 /// all of the other states began execution.
 class VerifyStage {
  public:
-	typedef enum { FullTraining, PrefixTraining, Exhaustive } SearchMode;
+	typedef enum { FullTraining, ConcreteTraining, PrefixTraining, Exhaustive } SearchMode;
 
 	VerifyStage(PathSelector *path_selector, const SocketEvent* socket_event, 
 			VerifyStage* parent=NULL);

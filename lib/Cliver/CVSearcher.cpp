@@ -440,6 +440,20 @@ CVExecutionState* VerifyStage::next_state() {
 				state->path_manager()->set_path(path_manager->path());
 				state->path_manager()->set_range(path_manager->range());
 			} else {
+				CVDEBUG("Switching to ConcreteTraining search mode");
+				search_mode = ConcreteTraining;
+				PathSelector *old_path_selector = path_selector_;
+				path_selector_ = path_selector_->clone();
+				delete old_path_selector;
+			}
+		}
+
+		if (search_mode == ConcreteTraining) {
+			if (PathManager* path_manager = path_selector_->next_path(range)) {
+				state->reset_path_manager(new VerifyConcretePathManager());
+				state->path_manager()->set_path(path_manager->path());
+				state->path_manager()->set_range(path_manager->range());
+			} else {
 				CVDEBUG("Switching to PrefixTraining search mode");
 				search_mode = PrefixTraining;
 				PathSelector *old_path_selector = path_selector_;

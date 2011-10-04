@@ -144,6 +144,31 @@ inline std::ostream &operator<<(std::ostream &os,
   p.print(os);
   return os;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+class VerifyConcretePathManager : public VerifyPathManager {
+ public:
+	VerifyConcretePathManager();
+	virtual PathManager* clone();
+	virtual bool merge(const PathManager &pm);
+	virtual bool less(const PathManager &b) const;
+	virtual bool try_branch(bool direction, klee::Solver::Validity validity, 
+			klee::KInstruction* inst);
+	virtual void commit_branch(bool direction, klee::Solver::Validity validity, 
+			klee::KInstruction* inst);
+
+ protected:
+	explicit VerifyConcretePathManager(const VerifyConcretePathManager &pm);
+	bool invalidated_;
+};
+
+inline std::ostream &operator<<(std::ostream &os, 
+		const VerifyConcretePathManager &p) {
+  p.print(os);
+  return os;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class VerifyPrefixPathManager : public VerifyPathManager {
