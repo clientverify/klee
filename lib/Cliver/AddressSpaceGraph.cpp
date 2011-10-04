@@ -698,13 +698,13 @@ void AddressSpaceGraph::process() {
 		if (visited.find(v) == visited.end()) {
 			if (!AllowGlobalSymbolics) {
 				if (!os->getObject()->isGlobal) {
-					*cv_debug_stream << *os << "\n";
+					*cv_message_stream << *os << "\n";
 					cv_error("non-global unconnected object");
 				}
 				for (unsigned i=0; i<os->size; ++i) {
 					if(!os->isByteConcrete(i)) {
-						os->print(*cv_debug_stream, true);
-						*cv_debug_stream << "\n";
+						os->print(*cv_message_stream, true);
+						*cv_message_stream << "\n";
 						cv_error("symbolic found in unconnected object");
 					}
 				}
