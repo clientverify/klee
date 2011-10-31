@@ -79,7 +79,7 @@ void PathRange::print(std::ostream &os) const {
 	os << ")";
 }
 
-klee::KInstruction* PathRange::get_kinst_helper(unsigned id) {
+klee::KInstruction* PathRange::get_kinst(unsigned id) {
 	assert(g_executor && "CVExecutor not initialized");
 	klee::KInstruction* kinst = g_executor->get_instruction(id);
 	assert(kinst != NULL && "invalid PathRange id");
@@ -97,7 +97,7 @@ Path::Path(Path* parent) : parent_(parent), ref_count_(0), length_(-1) {
 void Path::add(bool direction, klee::KInstruction* inst) {
 	assert(ref_count_ == 0);
 	branches_.push_back(direction);
-	//instructions_.push_back(inst);
+	branch_ids_.push_back(inst->info->id);
 }
 
 Path::~Path() { 
@@ -126,6 +126,7 @@ bool Path::less(const Path &b) const {
 }
 
 bool Path::equal(const Path &b) const {
+	// XXX Possible? branches_ == b.branches && branch_ids_ != b.branch_ids_
 	if (length() != b.length()) 
 		return false;
 	std::vector<bool> branches, branches_b;
@@ -157,9 +158,26 @@ bool Path::get_branch(int index) {
 	return branches[index];
 }
 
-klee::KInstruction* Path::get_kinst(int index) {
-	assert(0 && "get_kinst() not implemented");
-	return NULL;
+bool Path::get_branch_id(int index) {
+	if (parent_ == NULL) {
+		assert( index >= 0 && index < branch_ids_.size());
+		return branch_ids_[index];
+	}
+	std::vector<unsigned> branch_ids;
+	consolidate_branch_ids(branch_ids);
+	assert( index >= 0 && index < branch_ids.size());
+	return branch_ids[index];
+}
+
+klee::KInstruction* Path::get_branch_kinst(int index) {
+	return get_kinst(get_branch_id(index));
+}
+
+klee::KInstruction* Path::get_kinst(unsigned id) {
+	assert(g_executor && "CVExecutor not initialized");
+	klee::KInstruction* kinst = g_executor->get_instruction(id);
+	assert(kinst != NULL && "invalid KInstruction id");
+	return kinst;
 }
 
 void Path::print(std::ostream &os) const {
@@ -180,6 +198,16 @@ void Path::consolidate_branches(std::vector<bool> &branches) const {
 	while (p != NULL) {
 		branches.insert(branches.begin(), 
 				p->branches_.begin(), p->branches_.end());
+		p = p->parent_;
+	}
+}
+
+void Path::consolidate_branch_ids(std::vector<unsigned> &branch_ids) const {
+	branch_ids.reserve(length());
+	const Path* p = this;
+	while (p != NULL) {
+		branch_ids.insert(branch_ids.begin(), 
+				p->branch_ids_.begin(), p->branch_ids_.end());
 		p = p->parent_;
 	}
 }
