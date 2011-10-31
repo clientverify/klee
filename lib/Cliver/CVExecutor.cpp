@@ -680,9 +680,19 @@ void CVExecutor::add_state(CVExecutionState* state) {
 void CVExecutor::rebuild_solvers() {
   delete solver;                                                                                                                                                                                            
   klee::STPSolver *stpSolver = new klee::STPSolver(false);                                                                                                                                                                       
-  klee::Solver *new_solver = klee::createCexCachingSolver(stpSolver);                                                                                                                                                                
-  new_solver = klee::createCachingSolver(new_solver);                                                                                                                                                                              
-  new_solver = klee::createIndependentSolver(new_solver);                                                                                                                                                                          
+	klee::Solver *new_solver = stpSolver;
+
+  if (klee::UseSTPQueryPCLog)
+		new_solver = klee::createPCLoggingSolver(new_solver, "stp-queries.pc");
+	if (klee::UseCexCache)
+		new_solver = klee::createCexCachingSolver(new_solver);
+	if (klee::UseCache)
+		new_solver = klee::createCachingSolver(new_solver);
+	if (klee::UseIndependentSolver)
+		new_solver = klee::createIndependentSolver(new_solver);
+  if (klee::UseQueryPCLog)
+		new_solver = klee::createPCLoggingSolver(new_solver, "queries.pc");
+
   solver = new klee::TimingSolver(new_solver, stpSolver);                                                                                                                                                             
 }
 
