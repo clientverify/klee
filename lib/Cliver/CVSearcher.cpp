@@ -72,14 +72,14 @@ CVSearcher::CVSearcher(klee::Searcher* base_searcher, StateMerger* merger)
 }
 
 klee::ExecutionState &CVSearcher::selectState() {
-	klee::TimerStatIncrementer timer(stats::searcher_time);
+	//klee::TimerStatIncrementer timer(stats::searcher_time);
 	return base_searcher_->selectState();
 }
 
 void CVSearcher::update(klee::ExecutionState *current,
 						const std::set<klee::ExecutionState*> &addedStates,
 						const std::set<klee::ExecutionState*> &removedStates) {
-	klee::TimerStatIncrementer timer(stats::searcher_time);
+	//klee::TimerStatIncrementer timer(stats::searcher_time);
 	base_searcher_->update(current, addedStates, removedStates);
 }
 
@@ -114,7 +114,7 @@ int LogIndexSearcher::state_count() {
 }
 
 klee::ExecutionState &LogIndexSearcher::selectState() {
-	klee::TimerStatIncrementer timer(stats::searcher_time);
+	//klee::TimerStatIncrementer timer(stats::searcher_time);
 
 	// Walk the ExecutionStatePropertyMap from the oldest to the newest,
 	// or whatever ordering the ExecutionStateProperty induces
@@ -169,7 +169,7 @@ klee::ExecutionState &LogIndexSearcher::selectState() {
 void LogIndexSearcher::update(klee::ExecutionState *current,
 						const std::set<klee::ExecutionState*> &addedStates,
 						const std::set<klee::ExecutionState*> &removedStates) {
-	klee::TimerStatIncrementer timer(stats::searcher_time);
+	//klee::TimerStatIncrementer timer(stats::searcher_time);
 
 	std::set<klee::ExecutionState*> removed_states(removedStates);
 	std::set<klee::ExecutionState*> added_states(addedStates);
@@ -228,7 +228,7 @@ TrainingSearcher::TrainingSearcher(klee::Searcher* base_searcher,
 	: CVSearcher(base_searcher, merger), paths_(new PathManagerSet()) {}
 
 klee::ExecutionState &TrainingSearcher::selectState() {
-	klee::TimerStatIncrementer timer(stats::searcher_time);
+	//klee::TimerStatIncrementer timer(stats::searcher_time);
 
 	if (!phases_[PathProperty::Execute].empty()) {
 		CVExecutionState* state = *(phases_[PathProperty::Execute].begin());
@@ -283,7 +283,7 @@ klee::ExecutionState &TrainingSearcher::selectState() {
 void TrainingSearcher::update(klee::ExecutionState *current,
 		const std::set<klee::ExecutionState*> &addedStates,
 		const std::set<klee::ExecutionState*> &removedStates) {
-	klee::TimerStatIncrementer timer(stats::searcher_time);
+	//klee::TimerStatIncrementer timer(stats::searcher_time);
 
 	std::set<klee::ExecutionState*> removed_states(removedStates);
 	std::set<klee::ExecutionState*> added_states(addedStates);
@@ -333,7 +333,7 @@ bool TrainingSearcher::empty() {
 
 void TrainingSearcher::record_path(CVExecutionState *state,
 		CVExecutor* executor, CliverEvent::Type et) {
-	klee::TimerStatIncrementer timer(stats::searcher_time);
+	//klee::TimerStatIncrementer timer(stats::searcher_time);
 
 	PathProperty *p = static_cast<PathProperty*>(state->property());
 	p->path_range = PathRange(p->path_range.start(), state->prevPC);
@@ -548,7 +548,7 @@ VerifySearcher::VerifySearcher(klee::Searcher* base_searcher,
 }
 
 klee::ExecutionState &VerifySearcher::selectState() {
-	klee::TimerStatIncrementer timer(stats::searcher_time);
+	//klee::TimerStatIncrementer timer(stats::searcher_time);
 
 	if (current_stage_->children().size() > 0) {
 		current_stage_ = current_stage_->children().back();
@@ -566,7 +566,7 @@ klee::ExecutionState &VerifySearcher::selectState() {
 void VerifySearcher::update(klee::ExecutionState *current,
 		const std::set<klee::ExecutionState*> &addedStates,
 		const std::set<klee::ExecutionState*> &removedStates) {
-	klee::TimerStatIncrementer timer(stats::searcher_time);
+	//klee::TimerStatIncrementer timer(stats::searcher_time);
 
 	// add any added states via current_stage_->add_state()
 	foreach (klee::ExecutionState* klee_state, addedStates) {
