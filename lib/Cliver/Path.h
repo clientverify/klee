@@ -58,7 +58,7 @@ class PathRange {
 	void print(std::ostream &os) const;
 
  private:
-	klee::KInstruction* get_kinst_helper(unsigned id);
+	klee::KInstruction* get_kinst(unsigned id);
 	// Serialization
 	friend class boost::serialization::access;
 	template<class archive> 
@@ -91,9 +91,9 @@ void PathRange::load(archive & ar, const unsigned version) {
 	ar & end_id;
 	
 	if (start_id != 0)
-		start_ = get_kinst_helper(start_id);
+		start_ = get_kinst(start_id);
 	if (end_id != 0)
-		end_ = get_kinst_helper(end_id);
+		end_ = get_kinst(end_id);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -112,7 +112,8 @@ class Path {
 	void inc_ref();
 	void dec_ref();
 	bool get_branch(int index);
-	klee::KInstruction* get_kinst(int index);
+	bool get_branch_id(int index);
+	klee::KInstruction* get_branch_kinst(int index);
 	void print(std::ostream &os) const;
 
  private: 
@@ -120,6 +121,8 @@ class Path {
 
 	// Helper functions
 	void consolidate_branches(std::vector<bool> &branches) const;
+	void consolidate_branch_ids(std::vector<unsigned> &branch_ids) const;
+	klee::KInstruction* get_kinst(unsigned id);
 
 	// Serialization
 	friend class boost::serialization::access;
@@ -132,10 +135,10 @@ class Path {
 	// Member Variables
 	const Path *parent_;
 	mutable unsigned ref_count_;
-    int length_;
+	int length_;
 
 	std::vector<bool> branches_;
-	std::vector<klee::KInstruction*> instructions_;
+	std::vector<unsigned>  branch_ids_;
 };
 
 inline std::ostream &operator<<(std::ostream &os, const Path &p) {
@@ -148,11 +151,15 @@ void Path::save(archive & ar, const unsigned version) const {
 	std::vector<bool> branches;
 	consolidate_branches(branches);
 	ar & branches;
+	std::vector<unsigned> branch_ids;
+	consolidate_branch_ids(branch_ids);
+	ar & branch_ids;
 }
 
 template<class archive> 
 void Path::load(archive & ar, const unsigned version) {
 	ar & branches_;
+	ar & branch_ids_;
 }
 
 } // end namespace cliver
