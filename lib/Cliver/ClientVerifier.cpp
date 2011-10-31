@@ -25,6 +25,8 @@
 #include "klee/Statistics.h"
 #include "../lib/Core/SpecialFunctionHandler.h"
 
+llvm::cl::opt<int>
+MaxRoundNumber("max-round",llvm::cl::init(0));
 
 // needed for boost::signal
 void boost::throw_exception(std::exception const& e) {}
@@ -368,6 +370,11 @@ void ClientVerifier::print_current_statistics() {
 
   // Rebuild solvers each round to keep caches fresh.                                                                                                                                                                
 	g_executor->rebuild_solvers();
+
+	if (MaxRoundNumber && statistic_round > MaxRoundNumber) {
+		// need cleaner exit
+		exit(1);
+	}
             
 }
 
