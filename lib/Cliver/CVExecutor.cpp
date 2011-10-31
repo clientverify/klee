@@ -494,7 +494,8 @@ void CVExecutor::branch(klee::ExecutionState &state,
 klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current, 
 			klee::ref<klee::Expr> condition, bool isInternal) {
 	klee::Solver::Validity res;
-	PathManager *path_manager 
+	CVExecutionState* cvcurrent = static_cast<CVExecutionState*>(&current);
+	PathManager *path_manager  
 		= static_cast<CVExecutionState*>(&current)->path_manager();
 
 	double timeout = stpTimeout;
@@ -522,11 +523,11 @@ klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current,
 		}
 	} else {
 		if (res==klee::Solver::True) {
-			if (path_manager->try_branch(true, res, current.prevPC)) {
+			if (path_manager->try_branch(true, res, current.prevPC, cvcurrent)) {
 				if (pathWriter) {
 					current.pathOS << "1";
 				}
-				path_manager->commit_branch(true, res, current.prevPC);
+				path_manager->commit_branch(true, res, current.prevPC, cvcurrent);
 				return klee::Executor::StatePair(&current, 0);
 			} else {
 				terminateState(current);
@@ -534,11 +535,11 @@ klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current,
 			}
 
 		} else if (res==klee::Solver::False) {
-			if (path_manager->try_branch(false, res, current.prevPC)) {
+			if (path_manager->try_branch(false, res, current.prevPC, cvcurrent)) {
 				if (pathWriter) {
 					current.pathOS << "0";
 				}
-				path_manager->commit_branch(false, res, current.prevPC);
+				path_manager->commit_branch(false, res, current.prevPC, cvcurrent);
 				return klee::Executor::StatePair(0, &current);
 			} else {
 				terminateState(current);
@@ -551,7 +552,7 @@ klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current,
 
 			++klee::stats::forks;
 
-			if (path_manager->try_branch(false, res, current.prevPC)) {
+			if (path_manager->try_branch(false, res, current.prevPC, cvcurrent)) {
 				falseState = trueState->branch();
 				if (pathWriter) {
 					falseState->pathOS = pathWriter->open(current.pathOS);
@@ -567,10 +568,11 @@ klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current,
 
 				PathManager *false_path_manager 
 					= static_cast<CVExecutionState*>(falseState)->path_manager();
-				false_path_manager->commit_branch(false, res, current.prevPC);
+				false_path_manager->commit_branch(false, res, current.prevPC,
+						static_cast<CVExecutionState*>(falseState));
 			}
 
-			if (path_manager->try_branch(true, res, current.prevPC)) {
+			if (path_manager->try_branch(true, res, current.prevPC, cvcurrent)) {
 				if (pathWriter) {
 					trueState->pathOS << "1";
 				}      
@@ -579,7 +581,7 @@ klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current,
 				}
 
 				addConstraint(*trueState, condition);
-				path_manager->commit_branch(true, res, current.prevPC);
+				path_manager->commit_branch(true, res, current.prevPC, cvcurrent);
 			} else {
 				terminateState(*trueState);
 				trueState = NULL;
@@ -684,12 +686,12 @@ void CVExecutor::rebuild_solvers() {
 
   if (klee::UseSTPQueryPCLog)
 		new_solver = klee::createPCLoggingSolver(new_solver, "stp-queries.pc");
-	if (klee::UseCexCache)
-		new_solver = klee::createCexCachingSolver(new_solver);
-	if (klee::UseCache)
-		new_solver = klee::createCachingSolver(new_solver);
+	if (klee::UseCexCache) 
+		new_solver = klee::createCexCachingSolver(new_solver);                                                                                                                                                                
+	if (klee::UseCache) 
+		new_solver = klee::createCachingSolver(new_solver);                                                                                                                                                                              
 	if (klee::UseIndependentSolver)
-		new_solver = klee::createIndependentSolver(new_solver);
+		new_solver = klee::createIndependentSolver(new_solver);                                                                                                                                                                          
   if (klee::UseQueryPCLog)
 		new_solver = klee::createPCLoggingSolver(new_solver, "queries.pc");
 
