@@ -152,7 +152,7 @@ bool StateMerger::constraints_equal(
 void StateMerger::merge(ExecutionStateSet &state_set, 
 		ExecutionStateSet &merged_set) {
 
-	klee::TimerStatIncrementer timer(stats::merge_time);
+	//klee::TimerStatIncrementer timer(stats::merge_time);
 
 	std::map<CVExecutionState*, MergeInfo> merge_info;
 	foreach (CVExecutionState* state, state_set) {
@@ -224,7 +224,7 @@ SymbolicStateMerger::SymbolicStateMerger(ConstraintPruner *pruner)
 void SymbolicStateMerger::merge(ExecutionStateSet &state_set, 
 		ExecutionStateSet &merged_set) {
 
-	klee::TimerStatIncrementer timer(stats::merge_time);
+	//klee::TimerStatIncrementer timer(stats::merge_time);
 
 	std::map<CVExecutionState*, MergeInfo> merge_info;
 	foreach (CVExecutionState* state, state_set) {
