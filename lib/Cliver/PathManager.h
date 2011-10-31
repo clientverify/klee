@@ -48,9 +48,9 @@ class PathManager {
 	virtual bool merge(const PathManager &pm);
 	virtual bool less(const PathManager &b) const;
 	virtual bool try_branch(bool direction, klee::Solver::Validity validity, 
-			klee::KInstruction* inst);
+			klee::KInstruction* inst, CVExecutionState *state);
 	virtual void commit_branch(bool direction, klee::Solver::Validity validity, 
-			klee::KInstruction* inst);
+			klee::KInstruction* inst, CVExecutionState *state);
 	virtual void print(std::ostream &os) const;
 
 	void set_path(Path* path);
@@ -85,9 +85,9 @@ class TrainingPathManager : public PathManager {
 	virtual bool merge(const PathManager &pm);
 	virtual bool less(const PathManager &b) const;
 	virtual bool try_branch(bool direction, klee::Solver::Validity validity, 
-			klee::KInstruction* inst);
+			klee::KInstruction* inst, CVExecutionState *state);
 	virtual void commit_branch(bool direction, klee::Solver::Validity validity, 
-			klee::KInstruction* inst);
+			klee::KInstruction* inst, CVExecutionState *state);
 	virtual void print(std::ostream &os) const;
 
 	bool add_socket_event(const SocketEvent* se);
@@ -126,9 +126,9 @@ class VerifyPathManager : public TrainingPathManager {
 	virtual bool merge(const PathManager &pm);
 	virtual bool less(const PathManager &b) const;
 	virtual bool try_branch(bool direction, klee::Solver::Validity validity, 
-			klee::KInstruction* inst);
+			klee::KInstruction* inst, CVExecutionState *state);
 	virtual void commit_branch(bool direction, klee::Solver::Validity validity, 
-			klee::KInstruction* inst);
+			klee::KInstruction* inst, CVExecutionState *state);
 	virtual void print(std::ostream &os) const;
 
 	unsigned index() { return index_; }
@@ -154,9 +154,9 @@ class VerifyConcretePathManager : public VerifyPathManager {
 	virtual bool merge(const PathManager &pm);
 	virtual bool less(const PathManager &b) const;
 	virtual bool try_branch(bool direction, klee::Solver::Validity validity, 
-			klee::KInstruction* inst);
+			klee::KInstruction* inst, CVExecutionState *state);
 	virtual void commit_branch(bool direction, klee::Solver::Validity validity, 
-			klee::KInstruction* inst);
+			klee::KInstruction* inst, CVExecutionState *state);
 
  protected:
 	explicit VerifyConcretePathManager(const VerifyConcretePathManager &pm);
@@ -178,9 +178,9 @@ class VerifyPrefixPathManager : public VerifyPathManager {
 	virtual bool merge(const PathManager &pm);
 	virtual bool less(const PathManager &b) const;
 	virtual bool try_branch(bool direction, klee::Solver::Validity validity, 
-			klee::KInstruction* inst);
+			klee::KInstruction* inst, CVExecutionState *state);
 	virtual void commit_branch(bool direction, klee::Solver::Validity validity, 
-			klee::KInstruction* inst);
+			klee::KInstruction* inst, CVExecutionState *state);
 
  protected:
 	explicit VerifyPrefixPathManager(const VerifyPrefixPathManager &pm);
@@ -196,6 +196,27 @@ inline std::ostream &operator<<(std::ostream &os,
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class StackDepthVerifyPathManager : public VerifyPathManager {
+ public:
+	StackDepthVerifyPathManager();
+	virtual PathManager* clone();
+	virtual bool merge(const PathManager &pm);
+	virtual bool less(const PathManager &b) const;
+	virtual bool try_branch(bool direction, klee::Solver::Validity validity, 
+			klee::KInstruction* inst, CVExecutionState *state);
+	virtual void commit_branch(bool direction, klee::Solver::Validity validity, 
+			klee::KInstruction* inst, CVExecutionState *state);
+
+ protected:
+	explicit StackDepthVerifyPathManager(const StackDepthVerifyPathManager &pm);
+
+};
+
+//inline std::ostream &operator<<(std::ostream &os, 
+//		const StackDepthVerifyPathManager &p) {
+//  p.print(os);
+//  return os;
+//}
 
 ////////////////////////////////////////////////////////////////////////////////
 

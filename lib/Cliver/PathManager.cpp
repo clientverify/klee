@@ -94,12 +94,14 @@ bool PathManager::less(const PathManager &b) const {
 }
 
 bool PathManager::try_branch(bool direction, 
-		klee::Solver::Validity validity, klee::KInstruction* inst) {
+		klee::Solver::Validity validity, klee::KInstruction* inst, 
+		CVExecutionState *state) {
 	return true;
 }
 
 void PathManager::commit_branch(bool direction, 
-		klee::Solver::Validity validity, klee::KInstruction* inst) {
+		klee::Solver::Validity validity, klee::KInstruction* inst, 
+		CVExecutionState *state) {
 	path_->add(direction, inst);
 }
 
@@ -165,12 +167,14 @@ bool TrainingPathManager::less(const PathManager &pm) const {
 }
 
 bool TrainingPathManager::try_branch(bool direction, 
-		klee::Solver::Validity validity, klee::KInstruction* inst) {
+		klee::Solver::Validity validity, klee::KInstruction* inst, 
+		CVExecutionState *state) {
 	return true;
 }
 
 void TrainingPathManager::commit_branch(bool direction, 
-		klee::Solver::Validity validity, klee::KInstruction* inst) {
+		klee::Solver::Validity validity, klee::KInstruction* inst, 
+		CVExecutionState *state) {
 	path_->add(direction, inst);
 }
 
@@ -245,7 +249,8 @@ bool VerifyPathManager::less(const PathManager &b) const {
 }
 
 bool VerifyPathManager::try_branch(bool direction, 
-		klee::Solver::Validity validity, klee::KInstruction* inst) {
+		klee::Solver::Validity validity, klee::KInstruction* inst, 
+		CVExecutionState *state) {
 	assert(path_ && "path is null");
 	if (index_ < path_->length()) {
     if (direction != path_->get_branch(index_)) {
@@ -259,7 +264,8 @@ bool VerifyPathManager::try_branch(bool direction,
 }
 
 void VerifyPathManager::commit_branch(bool direction, 
-		klee::Solver::Validity validity, klee::KInstruction* inst) {
+		klee::Solver::Validity validity, klee::KInstruction* inst, 
+		CVExecutionState *state) {
 	assert(path_ && "path is null");
 	assert(index_ < path_->length());
 	assert(direction == path_->get_branch(index_));
@@ -300,7 +306,8 @@ bool VerifyConcretePathManager::less(const PathManager &b) const {
 }
 
 bool VerifyConcretePathManager::try_branch(bool direction, 
-		klee::Solver::Validity validity, klee::KInstruction* inst) {
+		klee::Solver::Validity validity, klee::KInstruction* inst, 
+		CVExecutionState *state) {
 	assert(path_ && "path is null");
 
 	bool result = false;
@@ -331,7 +338,8 @@ bool VerifyConcretePathManager::try_branch(bool direction,
 }
 
 void VerifyConcretePathManager::commit_branch(bool direction, 
-		klee::Solver::Validity validity, klee::KInstruction* inst) {
+		klee::Solver::Validity validity, klee::KInstruction* inst, 
+		CVExecutionState *state) {
 	if (!invalidated_) {
 		assert(path_ && "path is null");
 		assert(index_ < path_->length());
@@ -374,7 +382,8 @@ bool VerifyPrefixPathManager::less(const PathManager &b) const {
 /// point, the path is invalidated and we allow the Executor the follow
 /// any branch by always returning true.
 bool VerifyPrefixPathManager::try_branch(bool direction, 
-		klee::Solver::Validity validity, klee::KInstruction* inst) {
+		klee::Solver::Validity validity, klee::KInstruction* inst, 
+		CVExecutionState *state) {
 	assert(path_ && "path is null");
 
 	bool result = false;
@@ -399,13 +408,79 @@ bool VerifyPrefixPathManager::try_branch(bool direction,
 }
 
 void VerifyPrefixPathManager::commit_branch(bool direction, 
-		klee::Solver::Validity validity, klee::KInstruction* inst) {
+		klee::Solver::Validity validity, klee::KInstruction* inst, 
+		CVExecutionState *state) {
 	if (!invalidated_) {
 		assert(path_ && "path is null");
 		assert(index_ < path_->length());
 		assert(direction == path_->get_branch(index_));
 	}
 	index_++;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+StackDepthVerifyPathManager::StackDepthVerifyPathManager()
+	: VerifyPathManager() {}
+
+PathManager* StackDepthVerifyPathManager::clone() {
+	assert("StackDepthVerifyPathManager::clone not implemented.");
+	return NULL;
+}
+
+bool StackDepthVerifyPathManager::merge(const PathManager &pm) {
+	assert("StackDepthVerifyPathManager::merge not implemented.");
+	return false;
+}
+
+bool StackDepthVerifyPathManager::less(const PathManager &b) const {
+	const StackDepthVerifyPathManager *vpm 
+		= static_cast<const StackDepthVerifyPathManager*>(&b);
+	if (range_.less(vpm->range_))
+		return true;
+	return path_->less(*(vpm->path_));
+}
+
+/// Returns true if the direction matches the training path at the current
+/// index, up until we take a branch that doesn't match and is only valid
+/// in one direction (when validity == klee::Solver::True/False). At this
+/// point, the path is invalidated and we allow the Executor the follow
+/// any branch by always returning true.
+bool StackDepthVerifyPathManager::try_branch(bool direction, 
+		klee::Solver::Validity validity, klee::KInstruction* inst, 
+		CVExecutionState *state) {
+	//assert(path_ && "path is null");
+
+	//bool result = false;
+
+	//if (index_ >= path_->length()) {
+	//	invalidated_ = true;
+	//}
+
+	//if (!invalidated_) {
+	//	result = (direction == path_->get_branch(index_));
+	//	if (validity != klee::Solver::Unknown) {
+	//		if (!result) {
+	//			invalidated_ = true;
+	//		}
+	//	}
+	//}
+
+	//if (!invalidated_) {
+	//	return result;
+	//}
+	//return true;
+}
+
+void StackDepthVerifyPathManager::commit_branch(bool direction, 
+		klee::Solver::Validity validity, klee::KInstruction* inst, 
+		CVExecutionState *state) {
+	//if (!invalidated_) {
+	//	assert(path_ && "path is null");
+	//	assert(index_ < path_->length());
+	//	assert(direction == path_->get_branch(index_));
+	//}
+	//index_++;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
