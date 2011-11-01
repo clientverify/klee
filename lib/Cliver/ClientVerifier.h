@@ -108,7 +108,12 @@ class CVStream;
 
 class ClientVerifier : public klee::InterpreterHandler {
  public:
-	typedef boost::signal<void (CVExecutionState*, CVExecutor*, CliverEvent::Type) > signal_ty;
+	typedef 
+		boost::function<void (CVExecutionState*, CVExecutor*, CliverEvent::Type)> 
+		callback_func_ty;
+	typedef 
+		boost::signal<void (CVExecutionState*, CVExecutor*, CliverEvent::Type)> 
+		signal_ty;
 
   ClientVerifier();
   virtual ~ClientVerifier();
@@ -164,6 +169,8 @@ class ClientVerifier : public klee::InterpreterHandler {
 
 	signal_ty pre_event_callbacks_;
 	signal_ty post_event_callbacks_;
+	callback_func_ty pre_event_callback_func_;
+	callback_func_ty post_event_callback_func_;
 
 	std::vector<SocketEventList*> socket_events_;
 

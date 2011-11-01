@@ -186,8 +186,10 @@ void ClientVerifier::initialize(CVExecutor *executor) {
 			searcher_ = new LogIndexSearcher(new klee::DFSSearcher(), merger_);
 
 			// Set event callbacks
-			pre_event_callbacks_.connect(&LogIndexSearcher::handle_pre_event);
-			post_event_callbacks_.connect(&LogIndexSearcher::handle_post_event);
+			//pre_event_callbacks_.connect(&LogIndexSearcher::handle_pre_event);
+			//post_event_callbacks_.connect(&LogIndexSearcher::handle_post_event);
+			pre_event_callback_func_   = &LogIndexSearcher::handle_pre_event;
+			post_event_callback_func_ = &LogIndexSearcher::handle_post_event;
 			break;
 
 		case DefaultTrainingMode:
@@ -198,8 +200,10 @@ void ClientVerifier::initialize(CVExecutor *executor) {
 			searcher_ = new TrainingSearcher(NULL, merger_);
 
 			// Set event callbacks
-			pre_event_callbacks_.connect(&TrainingSearcher::handle_pre_event);
-			post_event_callbacks_.connect(&TrainingSearcher::handle_post_event);
+			//pre_event_callbacks_.connect(&TrainingSearcher::handle_pre_event);
+			//post_event_callbacks_.connect(&TrainingSearcher::handle_post_event);
+			pre_event_callback_func_   = &TrainingSearcher::handle_pre_event;
+			post_event_callback_func_ = &TrainingSearcher::handle_post_event;
 			break;
 
 		case VerifyWithTrainingPaths: {
@@ -222,8 +226,10 @@ void ClientVerifier::initialize(CVExecutor *executor) {
 			searcher_ = new VerifySearcher(NULL, merger_, training_paths);
 
 			// Set event callbacks
-			pre_event_callbacks_.connect(&VerifySearcher::handle_pre_event);
-			post_event_callbacks_.connect(&VerifySearcher::handle_post_event);
+			//pre_event_callbacks_.connect(&VerifySearcher::handle_pre_event);
+			//post_event_callbacks_.connect(&VerifySearcher::handle_post_event);
+			pre_event_callback_func_   = &VerifySearcher::handle_pre_event;
+			post_event_callback_func_ = &VerifySearcher::handle_post_event;
 			break;
 		}
 
@@ -313,12 +319,14 @@ void ClientVerifier::register_events(CVExecutor *executor) {
 
 void ClientVerifier::pre_event(CVExecutionState* state, 
 		CVExecutor* executor, CliverEvent::Type t) {
-	pre_event_callbacks_(state, executor, t);
+	//pre_event_callbacks_(state, executor, t);
+	pre_event_callback_func_(state, executor, t);
 }
 
 void ClientVerifier::post_event(CVExecutionState* state, 
 		CVExecutor* executor, CliverEvent::Type t) {
-	post_event_callbacks_(state, executor, t);
+	//post_event_callbacks_(state, executor, t);
+	post_event_callback_func_(state, executor, t);
 }
 
 CVSearcher* ClientVerifier::searcher() {
