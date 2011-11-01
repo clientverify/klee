@@ -256,14 +256,7 @@ void NetworkManager::execute_write(CVExecutor* executor,
 		RETURN_FAILURE("send", "wrong state");
 
 	if (socket.length() != len) {
-		for (int i=0;i<len;++i) { 
-			if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(object->read8(i))) {
-				*cv_debug_stream << ":" << (char)(CE->getZExtValue());
-			} else {
-				*cv_debug_stream << ":" << object->read8(i); 
-			}
-		} 
-		*cv_debug_stream << "\n";
+		for (int i=0;i<len;++i) { *cv_debug_stream << ":" << object->read8(i); } *cv_debug_stream << "\n";
 		RETURN_FAILURE("send", "wrong length" << " " << socket.length() << " != " << len);
 	}
 
@@ -282,30 +275,14 @@ void NetworkManager::execute_write(CVExecutor* executor,
 
 	if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(write_condition)) {
 		if (CE->isFalse()) {
-			for (int i=0;i<len;++i) { 
-				if (klee::ConstantExpr *CE2= dyn_cast<klee::ConstantExpr>(object->read8(i))) {
-					*cv_debug_stream << ":" << (char)(CE2->getZExtValue());
-				} else {
-					*cv_debug_stream << ":" << object->read8(i); 
-				}
-			} 
-			*cv_debug_stream << "\n";
-			//for (int i=0;i<len;++i) { *cv_debug_stream << ":" << object->read8(i); } *cv_debug_stream << "\n";
+			for (int i=0;i<len;++i) { *cv_debug_stream << ":" << object->read8(i); } *cv_debug_stream << "\n";
 			RETURN_FAILURE("send", "not valid (1)");
 		}
 	} else {
 		bool result; 
 		executor->compute_truth(state_, write_condition, result);
 		if (!result) {
-			for (int i=0;i<len;++i) { 
-				if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(object->read8(i))) {
-					*cv_debug_stream << ":" << (char)(CE->getZExtValue());
-				} else {
-					*cv_debug_stream << ":" << object->read8(i); 
-				}
-			} 
-			*cv_debug_stream << "\n";
-			//for (int i=0;i<len;++i) { *cv_debug_stream << ":" << object->read8(i); } *cv_debug_stream << "\n";
+			for (int i=0;i<len;++i) { *cv_debug_stream << ":" << object->read8(i); } *cv_debug_stream << "\n";
 			RETURN_FAILURE("send", "not valid (2) ");
 		}
 	}
