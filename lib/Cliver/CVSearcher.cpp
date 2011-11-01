@@ -290,12 +290,26 @@ void TrainingSearcher::update(klee::ExecutionState *current,
 		const std::set<klee::ExecutionState*> &removedStates) {
 	//klee::TimerStatIncrementer timer(stats::searcher_time);
 
-	std::set<klee::ExecutionState*> removed_states(removedStates);
-	std::set<klee::ExecutionState*> added_states(addedStates);
+	const std::set<klee::ExecutionState*>& removed_states = removedStates;
+	const std::set<klee::ExecutionState*>& added_states = addedStates;
 
-	if (current && removedStates.count(current) == 0) {
-		removed_states.insert(current);
-		added_states.insert(current);
+	if (current && removed_states.count(current) == 0) {
+		CVExecutionState *state = static_cast<CVExecutionState*>(current);
+		PathProperty *p = static_cast<PathProperty*>(state->property());
+		ExecutionStateSet &state_set = phases_[p->phase];
+		if (state_set.count(state) == 0) {
+			unsigned i;
+			for (i=0; i < PathProperty::EndState; i++) {
+				if (phases_[i].count(state) != 0) {
+					phases_[i].erase(state);
+					break;
+				}
+			}
+			if (i == PathProperty::EndState) {
+				cv_error("state erase failed");
+			}
+			state_set.insert(state);
+		}
 	}
 
 	foreach (klee::ExecutionState* klee_state, removed_states) {
@@ -328,9 +342,8 @@ void TrainingSearcher::update(klee::ExecutionState *current,
 }
 
 bool TrainingSearcher::empty() {
-	if (phases_[PathProperty::NetworkClone].empty() &&
-			phases_[PathProperty::Execute].empty() &&
-			phases_[PathProperty::PrepareExecute].empty()) {
+	if (phases_[PathProperty::Execute].empty() &&
+		  phases_[PathProperty::PrepareExecute].empty()) {
 		return true;
 	}
 	return false;
