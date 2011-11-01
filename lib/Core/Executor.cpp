@@ -150,7 +150,7 @@ namespace klee {
 
   cl::opt<bool>
   UseCexCache("use-cex-cache",
-              cl::init(true),
+              cl::init(false),
 	      cl::desc("Use counterexample caching"));
 
   cl::opt<bool>
