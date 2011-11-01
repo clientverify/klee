@@ -86,8 +86,6 @@ class PathProperty : public ExecutionStateProperty {
 	enum PathPropertyPhase {
 		PrepareExecute=0, 
 		Execute, 
-		Merge, 
-		NetworkClone, 
 		EndState
 	};
 	PathProperty();
