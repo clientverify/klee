@@ -91,6 +91,7 @@ klee::KInstruction* PathRange::get_kinst(unsigned id) {
 Path::Path() : parent_(NULL), ref_count_(0), length_(-1) {}
 
 Path::Path(Path* parent) : parent_(parent), ref_count_(0), length_(-1) {
+	cv_message("inc_refin' parent");
 	parent->inc_ref();
 }
 
@@ -101,10 +102,14 @@ void Path::add(bool direction, klee::KInstruction* inst) {
 }
 
 Path::~Path() { 
-	const_cast<Path*>(parent_)->dec_ref();
-	if (parent_->ref_count_ <= 0) {
-		CVDEBUG("deleting parent");
-		delete parent_;
+	if (parent_) {
+		cv_message("dec_refin' parent");
+		const_cast<Path*>(parent_)->dec_ref();
+		if (parent_->ref_count_ <= 0) {
+			//CVDEBUG("deleting parent");
+			cv_message("deleting parent");
+			delete parent_;
+		}
 	}
 }
 
