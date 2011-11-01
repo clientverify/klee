@@ -80,6 +80,10 @@ PathManager* PathManager::clone() {
 	return pm;
 }
 
+PathManager::~PathManager() {
+	delete path_;
+}
+
 bool PathManager::merge(const PathManager &pm) {
 	if (range_.equal(pm.range_) && path_->equal(*pm.path_))
 		return true;
@@ -128,6 +132,10 @@ bool PathManagerLT::operator()(const PathManager* a,
 
 TrainingPathManager::TrainingPathManager() {
 	set_path(new Path());
+}
+
+TrainingPathManager::~TrainingPathManager() {
+	delete path_;
 }
 
 PathManager* TrainingPathManager::clone() {
