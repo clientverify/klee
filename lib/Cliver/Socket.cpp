@@ -13,6 +13,9 @@
 
 namespace cliver {
 
+llvm::cl::opt<bool>
+DebugSocket("debug-socket",llvm::cl::init(false));
+
 int Socket::NextFileDescriptor = 1000;
 
 SocketEvent::SocketEvent(const KTestObject &object) {
@@ -193,11 +196,15 @@ void Socket::print(std::ostream &os) {
 			 //<< "Round:" << round() ", "
 			 << "Event: " << index_ << "/" << 1 << ", "
 			 << socket_states[state()] << ", " << socketevent_types[type()] << " ]";
+		if (DebugSocket)
+			 os << " " << event();
 	} else if (index_ < log_->size()) {
 		os << "[ "
 			 //<< "Round:" << round() ", "
 			 << "Event: " << index_ << "/" << log_->size() << ", "
 			 << socket_states[state()] << ", " << socketevent_types[type()] << " ]";
+		if (DebugSocket)
+			 os << " " << event();
 	} else {
 		os << "[ "
 			 //<< "Round:" << round() ", "
