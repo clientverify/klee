@@ -31,6 +31,9 @@ namespace cliver {
 llvm::cl::opt<bool>
 DebugSearcher("debug-searcher",llvm::cl::init(false));
 
+llvm::cl::opt<bool>
+PrintTrainingPaths("print-training-paths",llvm::cl::init(false));
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef NDEBUG
@@ -239,8 +242,10 @@ klee::ExecutionState &TrainingSearcher::selectState() {
 		// Print stats
 		g_client_verifier->print_current_statistics();
 		CVMESSAGE("Current Paths (" << paths_->size() << ")");
-		foreach(PathManager* path, *paths_) {
-			CVDEBUG(*path);
+		if (PrintTrainingPaths) {
+			foreach(PathManager* path, *paths_) {
+				CVDEBUG(*path);
+			}
 		}
 		CVMESSAGE("Current States (" 
 				<< phases_[PathProperty::PrepareExecute].size() << ")");
