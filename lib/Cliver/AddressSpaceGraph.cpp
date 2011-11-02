@@ -342,59 +342,16 @@ bool AddressSpaceGraph::locals_equal(const AddressSpaceGraph &b) const {
 					b_expr = get_canonical_expr(b, b.locals_[i].first);
 				}
 				if (a_expr != b_expr) {
-					CVDEBUG_S2(id_a, id_b, "locals not equal: " 
-							<< a_expr << " != " << b_expr);
-					std::string stack_functions("stack: ");
-					for (unsigned si=0; si<locals_stack_.size(); ++si) {
-						std::string func_name = locals_stack_[si].first->function->getNameStr();
-						unsigned reg_count = locals_stack_[si].second;
-						if (reg_count > i) stack_functions += "*";
-						stack_functions += ", " + func_name;
+					if (locals_info_[i].isArg) {
+						CVDEBUG_S2(id_a, id_b, "locals not equal: " << a_expr << " != " << b_expr <<
+							"Function: " << locals_info_[i].kf->function->getNameStr() << "(), " <<
+							a_expr << " != " << b_expr << ", Arg " << locals_info_[i].index );
+					} else {
+						CVDEBUG_S2(id_a, id_b, "locals not equal: " << a_expr << " != " << b_expr <<
+							"Function: " << locals_info_[i].kf->function->getNameStr() << "(), " <<
+							a_expr << " != " << b_expr <<
+							", " << *(locals_info_[i].kf->instructions[locals_info_[i].index]));
 					}
-					CVDEBUG_S2(id_a, id_b, stack_functions);
-
-					for (unsigned si=0; state_->stack.size(); ++si) {
-						klee::StackFrame* sfa = &(state_->stack[si]);
-						klee::StackFrame* sfb = &(b.state_->stack[si]);
-						unsigned r=0;
-						for (; r < sfa->kf->numArgs; ++r) {
-							klee::ref<klee::Expr> ea = sfa->locals[r].value;
-							klee::ref<klee::Expr> eb = sfb->locals[r].value;
-							if (ea.isNull() || eb.isNull()) {
-								if (ea.isNull() != eb.isNull()) {
-									continue;
-								}
-							} else {
-								if (NULL == dyn_cast<klee::ConstantExpr>(eb))
-									eb = get_canonical_expr(b, eb);
-								if (ea != eb) {
-									CVDEBUG_S2(id_a, id_b, 
-											"Function: " << sfa->kf->function->getNameStr() << "(), " <<
-											ea << " != " << eb << 
-											", Arg " << r );
-								}
-							}
-						}
-						for (; r < sfa->kf->numInstructions; ++r) {
-							klee::ref<klee::Expr> ea = sfa->locals[r].value;
-							klee::ref<klee::Expr> eb = sfb->locals[r].value;
-							if (ea.isNull() || eb.isNull()) {
-								if (ea.isNull() != eb.isNull()) {
-									continue;
-								}
-							} else {
-								if (NULL == dyn_cast<klee::ConstantExpr>(eb))
-									eb = get_canonical_expr(b, eb);
-								if (ea != eb) {
-									CVDEBUG_S2(id_a, id_b, 
-											"Function: " << sfa->kf->function->getNameStr() << "(), " <<
-											ea << " != " << eb << 
-											", " << *(sfa->kf->instructions[r - sfa->kf->numArgs]) );
-								}
-							}
-						}
-					}
-
 					return false;
 				}
 			}
@@ -717,8 +674,6 @@ void AddressSpaceGraph::process() {
 
 	// Use the stack to determine reachable objects
 	foreach (klee::StackFrame sf, state_->stack) {
-		register_count += sf.kf->numRegisters;
-		locals_stack_.push_back(std::make_pair(sf.kf, register_count));
 		foreach (const klee::MemoryObject* mo, sf.allocas) {
 			klee::ObjectPair object_pair;
 			// Lookup MemoryObject in the address space
@@ -756,6 +711,13 @@ void AddressSpaceGraph::process() {
 					}
 				}
 				locals_.push_back(std::make_pair(sf.locals[i].value, os));
+				if (DebugAddressSpaceGraph) {
+					LocalInfo li;
+					li.kf = sf.kf;
+					li.isArg = (i <= sf.kf->numArgs) ? true : false;
+					li.index = (li.isArg) ? i : i - sf.kf->numArgs;
+					locals_info_.push_back(li);
+				}
 			}
 		}
 	}

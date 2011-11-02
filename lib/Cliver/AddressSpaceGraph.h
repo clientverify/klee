@@ -57,6 +57,13 @@ typedef std::pair< VertexIterator, VertexIterator > VertexPair;
 typedef std::map< klee::ObjectState*, Vertex > ObjectVertexMap;
 typedef std::pair< klee::ObjectState*, Vertex > ObjectVertexPair;
 
+
+struct LocalInfo {
+	klee::KFunction* kf;
+	bool isArg;
+	unsigned index;
+};
+
 class AddressSpaceGraph {
 friend class AddressSpaceGraphVisitor;
 
@@ -113,7 +120,7 @@ friend class AddressSpaceGraphVisitor;
 
 	std::set<const klee::Array*> arrays_;
 	std::vector< std::pair<klee::ref<klee::Expr>, klee::ObjectState*> > locals_;
-	std::vector< std::pair<klee::KFunction*, unsigned  > > locals_stack_;
+	std::vector< LocalInfo > locals_info_;
 	std::map<const klee::Array*, unsigned> array_map_;
 	std::vector<const klee::Array*> in_order_arrays_;
 
