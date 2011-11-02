@@ -12,6 +12,8 @@
 #include "klee/Internal/Module/KModule.h"
 #include "../Core/Context.h"
 
+#include "llvm/Function.h"
+
 #include "AddressSpaceGraph.h"
 #include "CVCommon.h"
 #include "CVExecutionState.h"
@@ -315,12 +317,10 @@ bool AddressSpaceGraph::locals_equal(const AddressSpaceGraph &b) const {
 		klee::ref<klee::Expr> b_expr = b.locals_[i].first;
 		klee::ObjectState* a_object = locals_[i].second;
 		klee::ObjectState* b_object = b.locals_[i].second;
-		if (!a_object && !b_object) {
+		if (!a_object && !b_object) { // ObjectStates are both NULL
 			if (a_expr.isNull() || b_expr.isNull()) {
 				if (a_expr.isNull() != a_expr.isNull()) {
-					CVDEBUG_S2(id_a, id_b, "locals null mismatch"
-							<< ", (" << a_object << ") " << *a_object 
-							<< ", (" << b_object << ") " << *b_object);
+					CVDEBUG_S2(id_a, id_b, "locals null mismatch");
 					return false;
 				}
 			} else {
@@ -329,9 +329,15 @@ bool AddressSpaceGraph::locals_equal(const AddressSpaceGraph &b) const {
 				}
 				if (a_expr != b_expr) {
 					CVDEBUG_S2(id_a, id_b, "locals not equal: " 
-							<< a_expr << " != " << b_expr 
-							<< ", (" << a_object << ") " << *a_object 
-							<< ", (" << b_object << ") " << *b_object);
+							<< a_expr << " != " << b_expr);
+					std::string stack_functions("stack: ");
+					for (unsigned si=0; si<locals_stack_.size(); ++si) {
+						std::string func_name = locals_stack_[si].first->function->getNameStr();
+						unsigned reg_count = locals_stack_[si].second;
+						if (reg_count > i) stack_functions += "*";
+						stack_functions += ", " + func_name;
+					}
+					CVDEBUG_S2(id_a, id_b, stack_functions);
 					return false;
 				}
 			}
@@ -650,9 +656,12 @@ void AddressSpaceGraph::build() {
 void AddressSpaceGraph::process() {
 	std::set<Vertex> visited;
 	AddressSpaceGraphVisitor graph_visitor(*this, visited);
+	unsigned register_count = 0;
 
 	// Use the stack to determine reachable objects
 	foreach (klee::StackFrame sf, state_->stack) {
+		register_count += sf.kf->numRegisters;
+		locals_stack_.push_back(std::make_pair(sf.kf, register_count));
 		foreach (const klee::MemoryObject* mo, sf.allocas) {
 			klee::ObjectPair object_pair;
 			// Lookup MemoryObject in the address space

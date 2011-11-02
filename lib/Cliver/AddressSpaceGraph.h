@@ -20,6 +20,10 @@
 #include <boost/graph/breadth_first_search.hpp>
 #include <boost/graph/depth_first_search.hpp>
 
+namespace klee {
+	class KFunction;
+}
+
 namespace cliver {
 
 class CVExecutionState;
@@ -109,6 +113,7 @@ friend class AddressSpaceGraphVisitor;
 
 	std::set<const klee::Array*> arrays_;
 	std::vector< std::pair<klee::ref<klee::Expr>, klee::ObjectState*> > locals_;
+	std::vector< std::pair<klee::KFunction*, unsigned  > > locals_stack_;
 	std::map<const klee::Array*, unsigned> array_map_;
 	std::vector<const klee::Array*> in_order_arrays_;
 
