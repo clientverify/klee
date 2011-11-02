@@ -8,11 +8,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "klee/Internal/Module/Cell.h"
+#include "klee/Internal/Module/InstructionInfoTable.h"
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/Internal/Module/KModule.h"
 #include "../Core/Context.h"
 
 #include "llvm/Function.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include "AddressSpaceGraph.h"
 #include "CVCommon.h"
@@ -53,6 +55,18 @@ AllowGlobalSymbolics("allow-global-symbolics",llvm::cl::init(true));
 #define CVDEBUG_S2(__state_id_1, __state_id_2, __x)
 
 #endif
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Helper for debug output
+inline std::ostream &operator<<(std::ostream &os, 
+		const klee::KInstruction &ki) {
+	std::string str;
+	llvm::raw_string_ostream ros(str);
+	ros << ki.info->id << ":" << *ki.inst;
+	//str.erase(std::remove(str.begin(), str.end(), '\n'), str.end());
+	return os << ros.str();
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -338,6 +352,36 @@ bool AddressSpaceGraph::locals_equal(const AddressSpaceGraph &b) const {
 						stack_functions += ", " + func_name;
 					}
 					CVDEBUG_S2(id_a, id_b, stack_functions);
+
+					for (unsigned si=0; state_->stack.size(); ++si) {
+						klee::StackFrame* sfa = &(state_->stack[si]);
+						klee::StackFrame* sfb = &(b.state_->stack[si]);
+						unsigned r=0;
+						for (; r < sfa->kf->numArgs; ++r) {
+							klee::ref<klee::Expr> ea = sfa->locals[r].value;
+							klee::ref<klee::Expr> eb = sfb->locals[r].value;
+							if (NULL == dyn_cast<klee::ConstantExpr>(eb))
+								eb = get_canonical_expr(b, eb);
+							if (ea != eb) {
+								CVDEBUG_S2(id_a, id_b, 
+										"Function: " << sfa->kf->function->getNameStr() << "(), " <<
+										ea << " != " << eb << 
+										", Arg " << r );
+							}
+						}
+						for (; r < sfa->kf->numInstructions; ++r) {
+							klee::ref<klee::Expr> ea = sfa->locals[r].value;
+							klee::ref<klee::Expr> eb = sfb->locals[r].value;
+							if (NULL == dyn_cast<klee::ConstantExpr>(eb))
+								eb = get_canonical_expr(b, eb);
+							if (ea != eb) {
+								CVDEBUG_S2(id_a, id_b, 
+										"Function: " << sfa->kf->function->getNameStr() << "(), " <<
+										ea << " != " << eb << 
+										", " << *(sfa->kf->instructions[r - sfa->kf->numArgs]) );
+							}
+						}
+					}
 					return false;
 				}
 			}
