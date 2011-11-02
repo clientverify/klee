@@ -49,3 +49,17 @@ REQUIRES_RTTI=1
 
 LD.Flags += -lboost_signals -lboost_serialization
 
+
+# Google Performance Profilers 
+ifeq ($(ENABLE_GOOGLE_PROFILER),1)
+  CXX.Flags += -DGOOGLE_PROFILER 
+  LD.Flags += -lprofiler 
+  ENABLE_GOOGLE_MALLOC=1
+endif
+
+ifeq ($(ENABLE_GOOGLE_MALLOC),1)
+  CXX.Flags += -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
+  LD.Flags += -L$(GSECROOT)/local/google-perftools/lib
+  LD.Flags += -ltcmalloc
+endif
+
