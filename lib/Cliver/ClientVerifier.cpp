@@ -25,6 +25,13 @@
 #include "klee/Statistics.h"
 #include "../lib/Core/SpecialFunctionHandler.h"
 
+#ifdef GOOGLE_PROFILER
+#include <google/profiler.h>
+
+llvm::cl::opt<int>
+ProfilerStartRoundNumber("profiler-start-round",llvm::cl::init(0));
+#endif
+
 llvm::cl::opt<int>
 MaxRoundNumber("max-round",llvm::cl::init(0));
 
@@ -137,6 +144,9 @@ ClientVerifier::ClientVerifier()
 }
 
 ClientVerifier::~ClientVerifier() {
+#ifdef GOOGLE_PROFILER
+	ProfilerFlush();
+#endif
 	delete cvstream_;
 }	
 
@@ -383,7 +393,20 @@ void ClientVerifier::print_current_statistics() {
 		// need cleaner exit
 		exit(1);
 	}
-            
+
+#ifdef GOOGLE_PROFILER
+  if (ProfilerStartRoundNumber > 0 
+			&& statistic_round == ProfilerStartRoundNumber) {
+		std::string profile_fn = getOutputFilename("cpu_profile.prof");
+		CVDEBUG("Starting CPU Profiler");
+		ProfilerStart(profile_fn.c_str());
+	}
+
+  if (ProfilerStartRoundNumber > 0 
+			&& statistic_round > ProfilerStartRoundNumber) {
+		ProfilerFlush();
+	}
+#endif
 }
 
 //////////////////////////////////////////////////////////////////////////////
