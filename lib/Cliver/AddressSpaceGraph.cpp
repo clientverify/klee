@@ -319,7 +319,8 @@ bool AddressSpaceGraph::locals_equal(const AddressSpaceGraph &b) const {
 			if (a_expr.isNull() || b_expr.isNull()) {
 				if (a_expr.isNull() != a_expr.isNull()) {
 					CVDEBUG_S2(id_a, id_b, "locals null mismatch"
-							<< ", (a) " << *a_object << ", (b) " << *b_object);
+							<< ", (" << a_object << ") " << *a_object 
+							<< ", (" << b_object << ") " << *b_object);
 					return false;
 				}
 			} else {
@@ -334,8 +335,7 @@ bool AddressSpaceGraph::locals_equal(const AddressSpaceGraph &b) const {
 				}
 			}
 		} else if (!a_object || !b_object) {
-			CVDEBUG_S2(id_a, id_b, "locals not equal (pointer mismatch) "
-							<< ", (a) " << *a_object << ", (b) " << *b_object);
+			CVDEBUG_S2(id_a, id_b, "locals not equal (pointer mismatch) ");
 			return false;
 		} 
 	}
