@@ -330,7 +330,8 @@ bool AddressSpaceGraph::locals_equal(const AddressSpaceGraph &b) const {
 				if (a_expr != b_expr) {
 					CVDEBUG_S2(id_a, id_b, "locals not equal: " 
 							<< a_expr << " != " << b_expr 
-							<< ", (a) " << *a_object << ", (b) " << *b_object);
+							<< ", (" << a_object << ") " << *a_object 
+							<< ", (" << b_object << ") " << *b_object);
 					return false;
 				}
 			}
