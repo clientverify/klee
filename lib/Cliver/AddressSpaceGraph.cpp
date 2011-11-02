@@ -360,28 +360,41 @@ bool AddressSpaceGraph::locals_equal(const AddressSpaceGraph &b) const {
 						for (; r < sfa->kf->numArgs; ++r) {
 							klee::ref<klee::Expr> ea = sfa->locals[r].value;
 							klee::ref<klee::Expr> eb = sfb->locals[r].value;
-							if (NULL == dyn_cast<klee::ConstantExpr>(eb))
-								eb = get_canonical_expr(b, eb);
-							if (ea != eb) {
-								CVDEBUG_S2(id_a, id_b, 
-										"Function: " << sfa->kf->function->getNameStr() << "(), " <<
-										ea << " != " << eb << 
-										", Arg " << r );
+							if (ea.isNull() || eb.isNull()) {
+								if (ea.isNull() != eb.isNull()) {
+									continue;
+								}
+							} else {
+								if (NULL == dyn_cast<klee::ConstantExpr>(eb))
+									eb = get_canonical_expr(b, eb);
+								if (ea != eb) {
+									CVDEBUG_S2(id_a, id_b, 
+											"Function: " << sfa->kf->function->getNameStr() << "(), " <<
+											ea << " != " << eb << 
+											", Arg " << r );
+								}
 							}
 						}
 						for (; r < sfa->kf->numInstructions; ++r) {
 							klee::ref<klee::Expr> ea = sfa->locals[r].value;
 							klee::ref<klee::Expr> eb = sfb->locals[r].value;
-							if (NULL == dyn_cast<klee::ConstantExpr>(eb))
-								eb = get_canonical_expr(b, eb);
-							if (ea != eb) {
-								CVDEBUG_S2(id_a, id_b, 
-										"Function: " << sfa->kf->function->getNameStr() << "(), " <<
-										ea << " != " << eb << 
-										", " << *(sfa->kf->instructions[r - sfa->kf->numArgs]) );
+							if (ea.isNull() || eb.isNull()) {
+								if (ea.isNull() != eb.isNull()) {
+									continue;
+								}
+							} else {
+								if (NULL == dyn_cast<klee::ConstantExpr>(eb))
+									eb = get_canonical_expr(b, eb);
+								if (ea != eb) {
+									CVDEBUG_S2(id_a, id_b, 
+											"Function: " << sfa->kf->function->getNameStr() << "(), " <<
+											ea << " != " << eb << 
+											", " << *(sfa->kf->instructions[r - sfa->kf->numArgs]) );
+								}
 							}
 						}
 					}
+
 					return false;
 				}
 			}
