@@ -190,7 +190,7 @@ bool AddressSpaceGraph::objects_equal(const AddressSpaceGraph &asg_b,
 	int id_a = cv_state_->id(), id_b = asg_b.cv_state_->id();
 
 	if (a.size != b.size) {
-		CVDEBUG_S2(id_a, id_b, "object sizes differ: (a) " << a << " (b)" << b);
+		CVDEBUG_S2(id_a, id_b, "object sizes differ: (a) " << a << " (b) " << b);
 		return false;
 	}
 
@@ -199,7 +199,7 @@ bool AddressSpaceGraph::objects_equal(const AddressSpaceGraph &asg_b,
 		// Check that the pointer and concrete masks are equal
 		if ((a.isByteConcrete(i) != b.isByteConcrete(i)) ||
 		    (a.isBytePointer(i) != b.isBytePointer(i))) {
-			CVDEBUG_S2(id_a, id_b, "object masks differ: (a) " << a << " (b)" << b);
+			CVDEBUG_S2(id_a, id_b, "object masks differ: (a) " << a << " (b) " << b);
 			return false;
 		}
 
@@ -212,7 +212,7 @@ bool AddressSpaceGraph::objects_equal(const AddressSpaceGraph &asg_b,
 			}
 
 			if (a_expr != b_expr) {
-				CVDEBUG_S2(id_a, id_b, "objects differ: (a) " << a << " (b)" << b);
+				CVDEBUG_S2(id_a, id_b, "objects differ: (a) " << a << " (b) " << b);
 				return false;
 			}
 
@@ -235,7 +235,7 @@ bool AddressSpaceGraph::objects_equal(const AddressSpaceGraph &asg_b,
 
 	only_concrete = true;
 	if (a.size != b.size) {
-		CVDEBUG_S2(id_a, id_b, "object sizes differ: (a) " << a << " (b)" << b);
+		CVDEBUG_S2(id_a, id_b, "object sizes differ: (a) " << a << " (b) " << b);
 		return false;
 	}
 
@@ -244,7 +244,7 @@ bool AddressSpaceGraph::objects_equal(const AddressSpaceGraph &asg_b,
 		// Check that the pointer masks are equal
 		if ((a.isByteConcrete(i) != b.isByteConcrete(i)) ||
 				(a.isBytePointer(i) != b.isBytePointer(i))) {
-			CVDEBUG_S2(id_a, id_b, "object masks differ: (a) " << a << " (b)" << b);
+			CVDEBUG_S2(id_a, id_b, "object masks differ: (a) " << a << " (b) " << b);
 			return false;
 		}
 
@@ -264,7 +264,7 @@ bool AddressSpaceGraph::objects_equal(const AddressSpaceGraph &asg_b,
 			}
 
 			if (a_expr != b_expr) {
-				CVDEBUG_S2(id_a, id_b, "objects differ: (a) " << a << " (b)" << b);
+				CVDEBUG_S2(id_a, id_b, "objects differ: (a) " << a << " (b) " << b);
 				only_concrete = true;
 				return false;
 			}
@@ -343,12 +343,12 @@ bool AddressSpaceGraph::locals_equal(const AddressSpaceGraph &b) const {
 				}
 				if (a_expr != b_expr) {
 					if (locals_info_[i].isArg) {
-						CVDEBUG_S2(id_a, id_b, "locals not equal: " << a_expr << " != " << b_expr <<
-							"Function: " << locals_info_[i].kf->function->getNameStr() << "(), " <<
+						CVDEBUG_S2(id_a, id_b, "locals not equal in Function: "
+							<< locals_info_[i].kf->function->getNameStr() << "(), " <<
 							a_expr << " != " << b_expr << ", Arg " << locals_info_[i].index );
 					} else {
-						CVDEBUG_S2(id_a, id_b, "locals not equal: " << a_expr << " != " << b_expr <<
-							"Function: " << locals_info_[i].kf->function->getNameStr() << "(), " <<
+						CVDEBUG_S2(id_a, id_b, "locals not equal in Function: "
+							<< locals_info_[i].kf->function->getNameStr() << "(), " <<
 							a_expr << " != " << b_expr <<
 							", " << *(locals_info_[i].kf->instructions[locals_info_[i].index]));
 					}
