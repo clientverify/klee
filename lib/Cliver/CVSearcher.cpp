@@ -454,7 +454,7 @@ CVExecutionState* VerifyStage::next_state() {
 
 		if (search_mode == FullTraining) {
 			if (PathManager* path_manager = path_selector_->next_path(range)) {
-				state->reset_path_manager();
+				state->reset_path_manager(new VerifyPathManager());
 				state->path_manager()->set_path(path_manager->path());
 				state->path_manager()->set_range(path_manager->range());
 			} else {
