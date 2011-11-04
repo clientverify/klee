@@ -135,7 +135,7 @@ TrainingPathManager::TrainingPathManager() {
 }
 
 TrainingPathManager::~TrainingPathManager() {
-	delete path_;
+  // path_ is free'd in PathManager
 }
 
 PathManager* TrainingPathManager::clone() {

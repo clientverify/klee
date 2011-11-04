@@ -121,6 +121,8 @@ unsigned Path::length() const {
 }
 
 bool Path::less(const Path &b) const {
+	if (length() < b.length()) 
+		return true;
 	std::vector<bool> branches, branches_b;
 	consolidate_branches(branches);
 	b.consolidate_branches(branches_b);
