@@ -49,10 +49,13 @@ REQUIRES_RTTI=1
 
 LD.Flags += -lboost_signals -lboost_serialization
 
+LD.Flags += -L$(GSECROOT)/local/boost/lib
+CXX.Flags += -I$(GSECROOT)/local/boost/include
 
 # Google Performance Profilers 
 ifeq ($(ENABLE_GOOGLE_PROFILER),1)
   CXX.Flags += -DGOOGLE_PROFILER 
+  CXX.Flags += -I$(GSECROOT)/local/google-perftools/include
   LD.Flags += -lprofiler 
   ENABLE_GOOGLE_MALLOC=1
 endif
