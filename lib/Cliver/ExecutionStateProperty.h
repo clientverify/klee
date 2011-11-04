@@ -86,7 +86,7 @@ class PathProperty : public ExecutionStateProperty {
 	enum PathPropertyPhase {
 		PrepareExecute=0, 
 		Execute, 
-		EndState
+		EndPhase
 	};
 	PathProperty();
 	PathProperty* clone() { return new PathProperty(*this); }

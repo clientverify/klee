@@ -102,7 +102,7 @@ class TrainingSearcher : public CVSearcher {
 			CVExecutor *executor, CliverEvent::Type et);
 
  private:
-	ExecutionStateSet phases_[PathProperty::EndState];
+	ExecutionStateSet phases_[PathProperty::EndPhase];
 	PathManagerSet *paths_;
 };
 
