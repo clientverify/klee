@@ -57,6 +57,31 @@ void PathProperty::print(std::ostream &os) const {
 		 << "]";
 }
 
+//////////////////////////////////////////////////////////////////////////////
+
+VerifyProperty::VerifyProperty() 
+	: round(0),
+	  phase(VerifyProperty::PrepareExecute) {}
+
+int VerifyProperty::compare(const ExecutionStateProperty &b) const {
+	const VerifyProperty *_b = static_cast<const VerifyProperty*>(&b);
+
+	if (round != _b->round)
+		return round - _b->round;
+
+	if (phase != _b->phase)
+		return phase - _b->phase;
+
+	return path_range.compare(_b->path_range);
+}
+
+void VerifyProperty::print(std::ostream &os) const {
+	os << "[round: " << round
+	   << ", range: " << path_range
+	   //<< ", trainingstate: " << phase
+		 << "]";
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 ExecutionStateProperty* ExecutionStatePropertyFactory::create() {
