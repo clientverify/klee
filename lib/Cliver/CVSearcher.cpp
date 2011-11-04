@@ -299,13 +299,13 @@ void TrainingSearcher::update(klee::ExecutionState *current,
 		ExecutionStateSet &state_set = phases_[p->phase];
 		if (state_set.count(state) == 0) {
 			unsigned i;
-			for (i=0; i < PathProperty::EndState; i++) {
+			for (i=0; i < PathProperty::EndPhase; i++) {
 				if (phases_[i].count(state) != 0) {
 					phases_[i].erase(state);
 					break;
 				}
 			}
-			if (i == PathProperty::EndState) {
+			if (i == PathProperty::EndPhase) {
 				cv_error("state erase failed");
 			}
 			state_set.insert(state);
@@ -319,13 +319,13 @@ void TrainingSearcher::update(klee::ExecutionState *current,
 
 		if (state_set.count(state) == 0) {
 			unsigned i;
-			for (i=0; i < PathProperty::EndState; i++) {
+			for (i=0; i < PathProperty::EndPhase; i++) {
 				if (phases_[i].count(state) != 0) {
 					phases_[i].erase(state);
 					break;
 				}
 			}
-			if (i == PathProperty::EndState) {
+			if (i == PathProperty::EndPhase) {
 				cv_error("state erase failed");
 			}
 		} else {
