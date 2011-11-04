@@ -135,6 +135,8 @@ class VerifyStage {
 	PathSelector *path_selector_;
   // States that are currently ready to continue executions
 	ExecutionStateSet states_; 
+  // States that are not active
+	ExecutionStateSet deactivated_states_;
   // States that have finished execution
   ExecutionStateSet finished_states_; 
   // The socket event that this stage is associated with
