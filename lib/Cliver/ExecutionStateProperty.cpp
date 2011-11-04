@@ -66,8 +66,9 @@ ExecutionStateProperty* ExecutionStatePropertyFactory::create() {
 			return new LogIndexProperty();
 			break;
 		case DefaultTrainingMode: 
-		case VerifyWithTrainingPaths: 
 			return new PathProperty();
+		case VerifyWithTrainingPaths: 
+			return new VerifyProperty();
 	}
 	cv_error("invalid cliver mode");
 	return NULL;

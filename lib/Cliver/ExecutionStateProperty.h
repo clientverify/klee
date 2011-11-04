@@ -116,7 +116,6 @@ class VerifyProperty : public ExecutionStateProperty {
 	int compare(const ExecutionStateProperty &b) const;
 
 	// Property values
-	int round;
 	VerifyPropertyPhase phase;
 	PathRange path_range;
 };
