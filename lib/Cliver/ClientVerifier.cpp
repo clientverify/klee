@@ -283,7 +283,8 @@ int ClientVerifier::read_training_paths(std::vector<std::string> &filename_list,
 			if (!path_manager_set->contains(pm)) {
 				path_manager_set->insert(pm);
 				CVMESSAGE("Path read succuessful: length " 
-						<< pm->length() << ", " << pm->range() << ", File:" filename );
+						<< pm->length() << ", " << pm->range() 
+						<< ", File: " << filename );
 			} else {
 				TrainingPathManager *merged_pm 
 					= static_cast<TrainingPathManager*>(path_manager_set->merge(pm));
