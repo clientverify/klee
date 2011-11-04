@@ -101,5 +101,28 @@ class PathProperty : public ExecutionStateProperty {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class VerifyProperty : public ExecutionStateProperty {
+ public: 
+	enum VerifyPropertyPhase {
+		PrepareExecute=0, 
+		Execute, 
+		Active,
+		Horizon,
+		EndPhase
+	};
+	VerifyProperty();
+	VerifyProperty* clone() { return new VerifyProperty(*this); }
+  void print(std::ostream &os) const;
+	int compare(const ExecutionStateProperty &b) const;
+
+	// Property values
+	int round;
+	VerifyPropertyPhase phase;
+	PathRange path_range;
+};
+
+
+////////////////////////////////////////////////////////////////////////////////
+
 } // end namespace cliver
 #endif // CLIVER_EXECUTION_STATE_PROPERTY_H
