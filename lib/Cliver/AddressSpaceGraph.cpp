@@ -297,14 +297,16 @@ bool AddressSpaceGraph::array_size_equal(const AddressSpaceGraph &b) const {
 		std::map<const klee::Array*, unsigned>::const_iterator it = array_map_.begin(),
 			ie = array_map_.end();
 		for (; it!=ie; ++it) {
-			CVDEBUG_S(id_a, "Array: " << it->first << "(" << it->second << ") " << it->first->name);
+			CVDEBUG_S(id_a, "Array: " << it->first << "(" << it->second << ") " 
+					<< it->first->name);
 		}
 		
 		it = b.array_map_.begin(); 
 		ie = b.array_map_.end();
 
 		for (; it!=ie; ++it) {
-			CVDEBUG_S(id_b, "Array: " << it->first << "(" << it->second << ") " << it->first->name);
+			CVDEBUG_S(id_b, "Array: " << it->first << "(" << it->second << ") " 
+					<< it->first->name);
 		}
 	
 		return false;
