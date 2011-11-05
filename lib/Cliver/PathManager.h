@@ -49,7 +49,7 @@ class PathManager {
 	virtual bool less(const PathManager &b) const;
 	virtual bool try_branch(bool direction, klee::Solver::Validity validity, 
 			klee::KInstruction* inst, CVExecutionState *state);
-	virtual void commit_branch(bool direction, klee::Solver::Validity validity, 
+	virtual void branch(bool direction, klee::Solver::Validity validity, 
 			klee::KInstruction* inst, CVExecutionState *state);
 	virtual void print(std::ostream &os) const;
 
@@ -87,7 +87,7 @@ class TrainingPathManager : public PathManager {
 	virtual bool less(const PathManager &b) const;
 	virtual bool try_branch(bool direction, klee::Solver::Validity validity, 
 			klee::KInstruction* inst, CVExecutionState *state);
-	virtual void commit_branch(bool direction, klee::Solver::Validity validity, 
+	virtual void branch(bool direction, klee::Solver::Validity validity, 
 			klee::KInstruction* inst, CVExecutionState *state);
 	virtual void print(std::ostream &os) const;
 
@@ -130,7 +130,7 @@ class VerifyPathManager : public PathManager {
 	virtual bool less(const PathManager &b) const;
 	virtual bool try_branch(bool direction, klee::Solver::Validity validity, 
 			klee::KInstruction* inst, CVExecutionState *state);
-	virtual void commit_branch(bool direction, klee::Solver::Validity validity, 
+	virtual void branch(bool direction, klee::Solver::Validity validity, 
 			klee::KInstruction* inst, CVExecutionState *state);
 	virtual void print(std::ostream &os) const;
 
@@ -163,7 +163,7 @@ class VerifyConcretePathManager : public VerifyPathManager {
 	virtual bool less(const PathManager &b) const;
 	virtual bool try_branch(bool direction, klee::Solver::Validity validity, 
 			klee::KInstruction* inst, CVExecutionState *state);
-	virtual void commit_branch(bool direction, klee::Solver::Validity validity, 
+	virtual void branch(bool direction, klee::Solver::Validity validity, 
 			klee::KInstruction* inst, CVExecutionState *state);
 
  private:
@@ -191,7 +191,7 @@ class VerifyPrefixPathManager : public VerifyPathManager {
 	virtual bool less(const PathManager &b) const;
 	virtual bool try_branch(bool direction, klee::Solver::Validity validity, 
 			klee::KInstruction* inst, CVExecutionState *state);
-	virtual void commit_branch(bool direction, klee::Solver::Validity validity, 
+	virtual void branch(bool direction, klee::Solver::Validity validity, 
 			klee::KInstruction* inst, CVExecutionState *state);
 
  private:
@@ -219,7 +219,7 @@ class StackDepthVerifyPathManager : public VerifyPathManager {
 	virtual bool less(const PathManager &b) const;
 	virtual bool try_branch(bool direction, klee::Solver::Validity validity, 
 			klee::KInstruction* inst, CVExecutionState *state);
-	virtual void commit_branch(bool direction, klee::Solver::Validity validity, 
+	virtual void branch(bool direction, klee::Solver::Validity validity, 
 			klee::KInstruction* inst, CVExecutionState *state);
 
  private:
