@@ -66,22 +66,20 @@ inline std::ostream &operator<<(std::ostream &os,
 ////////////////////////////////////////////////////////////////////////////////
 
 PathManager::PathManager() 
-	: path_(NULL) {}
+	: path_(new Path()) {}
 
-PathManager::PathManager(Path *path) 
-	: path_(path) {}
+PathManager::PathManager(Path *path, PathRange &range)
+	: path_(path), range_(range) {}
 
 PathManager* PathManager::clone() {
-	PathManager *pm = new PathManager();
 	Path* parent = path_;
 	path_ = new Path(parent);
-	pm->path_ = new Path(parent);
-	pm->range_ = range_;
-	return pm;
+	return new PathManager(new Path(parent), range_);
 }
 
 PathManager::~PathManager() {
-	delete path_;
+	if (path_)
+		delete path_;
 }
 
 bool PathManager::merge(const PathManager &pm) {
@@ -113,11 +111,6 @@ void PathManager::set_range(const PathRange& range) {
 	range_ = range;
 }
 
-void PathManager::set_path(Path* path) {
-	assert(path_ == NULL && "path is already set");
-	path_ = path;
-}
-
 void PathManager::print(std::ostream &os) const {
 	os << "Path [" << path_->length() << "][" 
 		<< range_.ids().first << ", " << range_.ids().second << "] " << *path_;
@@ -130,24 +123,21 @@ bool PathManagerLT::operator()(const PathManager* a,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TrainingPathManager::TrainingPathManager() {
-	set_path(new Path());
-}
+TrainingPathManager::TrainingPathManager() {}
 
-TrainingPathManager::~TrainingPathManager() {
-  // path_ is free'd in PathManager
-}
+TrainingPathManager::TrainingPathManager(Path *path, PathRange &range)
+	: PathManager(path, range) {}
+
+TrainingPathManager::TrainingPathManager(Path *path, 
+		PathRange &range, SocketEventDataSet &socket_events) 
+	: PathManager(path, range), socket_events_(socket_events) {}
+
+TrainingPathManager::~TrainingPathManager() {}
 
 PathManager* TrainingPathManager::clone() {
-	// Don't split/clone a path that has already been finalized
-	// with an endpoint
-	TrainingPathManager *pm = new TrainingPathManager();
 	Path* parent = path_;
 	path_ = new Path(parent);
-	pm->path_ = new Path(parent);
-	pm->socket_events_ = socket_events_;
-	pm->range_ = range_;
-	return pm;
+	return new TrainingPathManager(new Path(parent), range_, socket_events_);
 }
 
 bool TrainingPathManager::merge(const PathManager &pm) {
@@ -230,43 +220,33 @@ void TrainingPathManager::print(std::ostream &os) const {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-VerifyPathManager::VerifyPathManager()
-	: index_(0) {
-	path_ = NULL;
-}
+VerifyPathManager::VerifyPathManager(const Path *vpath, PathRange &vrange)
+	: vpath_(vpath), vrange_(vrange), index_(0) {}
 
 PathManager* VerifyPathManager::clone() {
-	VerifyPathManager *pm = new VerifyPathManager();
-	pm->path_ = path_;
+	VerifyPathManager *pm = new VerifyPathManager(vpath_, vrange_);
 	pm->index_ = index_;
-	pm->socket_events_ = socket_events_;
-	pm->range_ = range_;
 	return pm;
-}
-
-bool VerifyPathManager::merge(const PathManager &pm) {
-	assert(0);
-	return false;
 }
 
 bool VerifyPathManager::less(const PathManager &b) const {
 	const VerifyPathManager *vpm = static_cast<const VerifyPathManager*>(&b);
-	if (range_.less(vpm->range_))
+	if (vrange_.less(vpm->vrange_))
 		return true;
-	return path_->less(*(vpm->path_));
+	return vpath_->less(*(vpm->vpath_));
 }
 
 bool VerifyPathManager::try_branch(bool direction, 
 		klee::Solver::Validity validity, klee::KInstruction* inst, 
 		CVExecutionState *state) {
-	assert(path_ && "path is null");
-	if (index_ < path_->length()) {
-    if (direction != path_->get_branch(index_)) {
-			CVDEBUG("Failed after covering " << (float)index_/path_->length()
-					<< " of branches (" << index_ <<"/"<< path_->length() << ") "
+	assert(vpath_ && "path is null");
+	if (index_ < vpath_->length()) {
+    if (direction != vpath_->get_branch(index_)) {
+			CVDEBUG("Failed after covering " << (float)index_/vpath_->length()
+					<< " of branches (" << index_ <<"/"<< vpath_->length() << ") "
 					<< *inst);
 		}
-		return direction == path_->get_branch(index_);
+		return direction == vpath_->get_branch(index_);
 	}
 	return false;
 }
@@ -274,58 +254,52 @@ bool VerifyPathManager::try_branch(bool direction,
 void VerifyPathManager::commit_branch(bool direction, 
 		klee::Solver::Validity validity, klee::KInstruction* inst, 
 		CVExecutionState *state) {
-	assert(path_ && "path is null");
-	assert(index_ < path_->length());
-	assert(direction == path_->get_branch(index_));
+	assert(vpath_ && "path is null");
+	assert(index_ < vpath_->length());
+	assert(direction == vpath_->get_branch(index_));
 	index_++;
 }
 
 void VerifyPathManager::print(std::ostream &os) const {
-	os << "Path [" << path_->length() << "][" 
-		<< range_.ids().first << ", " << range_.ids().second << "] " << *path_;
+	os << "vPath [" << vpath_->length() << "][" 
+		<< vrange_.ids().first << ", " << vrange_.ids().second << "] " << *vpath_;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-VerifyConcretePathManager::VerifyConcretePathManager()
-	: VerifyPathManager(), invalidated_(false) {}
+VerifyConcretePathManager::VerifyConcretePathManager(const Path *vpath, 
+		PathRange &vrange)
+  : VerifyPathManager(vpath, vrange), invalidated_(false) {}
 
 PathManager* VerifyConcretePathManager::clone() {
-	VerifyConcretePathManager *pm = new VerifyConcretePathManager();
-	pm->path_ = path_;
+	VerifyConcretePathManager *pm 
+		= new VerifyConcretePathManager(vpath_, vrange_);
 	pm->index_ = index_;
-	pm->socket_events_ = socket_events_;
-	pm->range_ = range_;
 	pm->invalidated_ = invalidated_;
 	return pm;
-}
-
-bool VerifyConcretePathManager::merge(const PathManager &pm) {
-	assert(0);
-	return false;
 }
 
 bool VerifyConcretePathManager::less(const PathManager &b) const {
 	const VerifyConcretePathManager *vpm 
 		= static_cast<const VerifyConcretePathManager*>(&b);
-	if (range_.less(vpm->range_))
+	if (vrange_.less(vpm->vrange_))
 		return true;
-	return path_->less(*(vpm->path_));
+	return vpath_->less(*(vpm->vpath_));
 }
 
 bool VerifyConcretePathManager::try_branch(bool direction, 
 		klee::Solver::Validity validity, klee::KInstruction* inst, 
 		CVExecutionState *state) {
-	assert(path_ && "path is null");
+	assert(vpath_ && "path is null");
 
 	bool result = false;
 
-	if (index_ >= path_->length()) {
+	if (index_ >= vpath_->length()) {
 		invalidated_ = true;
 	}
 
 	if (!invalidated_) {
-		result = direction == path_->get_branch(index_);
+		result = direction == vpath_->get_branch(index_);
 		if (validity != klee::Solver::Unknown) {
 			if (!result) {
 				// We are now diverging from the saved path
@@ -349,39 +323,33 @@ void VerifyConcretePathManager::commit_branch(bool direction,
 		klee::Solver::Validity validity, klee::KInstruction* inst, 
 		CVExecutionState *state) {
 	if (!invalidated_) {
-		assert(path_ && "path is null");
-		assert(index_ < path_->length());
-		assert(direction == path_->get_branch(index_));
+		assert(vpath_ && "path is null");
+		assert(index_ < vpath_->length());
+		assert(direction == vpath_->get_branch(index_));
 	}
 	index_++;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-VerifyPrefixPathManager::VerifyPrefixPathManager()
-	: VerifyPathManager(), invalidated_(false) {}
+VerifyPrefixPathManager::VerifyPrefixPathManager(const Path *vpath, 
+		PathRange &vrange)
+  : VerifyPathManager(vpath, vrange), invalidated_(false) {}
 
 PathManager* VerifyPrefixPathManager::clone() {
-	VerifyPrefixPathManager *pm = new VerifyPrefixPathManager();
-	pm->path_ = path_;
+	VerifyPrefixPathManager *pm 
+		= new VerifyPrefixPathManager(vpath_, vrange_);
 	pm->index_ = index_;
-	pm->socket_events_ = socket_events_;
-	pm->range_ = range_;
 	pm->invalidated_ = invalidated_;
 	return pm;
-}
-
-bool VerifyPrefixPathManager::merge(const PathManager &pm) {
-	assert(0);
-	return false;
 }
 
 bool VerifyPrefixPathManager::less(const PathManager &b) const {
 	const VerifyPrefixPathManager *vpm 
 		= static_cast<const VerifyPrefixPathManager*>(&b);
-	if (range_.less(vpm->range_))
+	if (vrange_.less(vpm->vrange_))
 		return true;
-	return path_->less(*(vpm->path_));
+	return vpath_->less(*(vpm->vpath_));
 }
 
 /// Returns true if the direction matches the training path at the current
@@ -392,16 +360,16 @@ bool VerifyPrefixPathManager::less(const PathManager &b) const {
 bool VerifyPrefixPathManager::try_branch(bool direction, 
 		klee::Solver::Validity validity, klee::KInstruction* inst, 
 		CVExecutionState *state) {
-	assert(path_ && "path is null");
+	assert(vpath_ && "path is null");
 
 	bool result = false;
 
-	if (index_ >= path_->length()) {
+	if (index_ >= vpath_->length()) {
 		invalidated_ = true;
 	}
 
 	if (!invalidated_) {
-		result = direction == path_->get_branch(index_);
+		result = direction == vpath_->get_branch(index_);
 		if (validity != klee::Solver::Unknown) {
 			if (!result) {
 				invalidated_ = true;
@@ -419,77 +387,40 @@ void VerifyPrefixPathManager::commit_branch(bool direction,
 		klee::Solver::Validity validity, klee::KInstruction* inst, 
 		CVExecutionState *state) {
 	if (!invalidated_) {
-		assert(path_ && "path is null");
-		assert(index_ < path_->length());
-		assert(direction == path_->get_branch(index_));
+		assert(vpath_ && "path is null");
+		assert(index_ < vpath_->length());
+		assert(direction == vpath_->get_branch(index_));
 	}
 	index_++;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-StackDepthVerifyPathManager::StackDepthVerifyPathManager()
-	: VerifyPathManager() {}
+StackDepthVerifyPathManager::StackDepthVerifyPathManager(const Path *path, 
+		PathRange &range) : VerifyPathManager(path, range) {}
 
 PathManager* StackDepthVerifyPathManager::clone() {
-	assert("StackDepthVerifyPathManager::clone not implemented.");
-	return NULL;
-}
-
-bool StackDepthVerifyPathManager::merge(const PathManager &pm) {
-	assert("StackDepthVerifyPathManager::merge not implemented.");
-	return false;
+	StackDepthVerifyPathManager *pm 
+		= new StackDepthVerifyPathManager(vpath_, vrange_);
+	pm->index_ = index_;
+	return pm;
 }
 
 bool StackDepthVerifyPathManager::less(const PathManager &b) const {
-	const StackDepthVerifyPathManager *vpm 
+	const StackDepthVerifyPathManager *pm 
 		= static_cast<const StackDepthVerifyPathManager*>(&b);
-	if (range_.less(vpm->range_))
+	if (vrange_.less(pm->vrange_))
 		return true;
-	return path_->less(*(vpm->path_));
+	return vpath_->less(*(pm->vpath_));
 }
 
-/// Returns true if the direction matches the training path at the current
-/// index, up until we take a branch that doesn't match and is only valid
-/// in one direction (when validity == klee::Solver::True/False). At this
-/// point, the path is invalidated and we allow the Executor the follow
-/// any branch by always returning true.
 bool StackDepthVerifyPathManager::try_branch(bool direction, 
 		klee::Solver::Validity validity, klee::KInstruction* inst, 
-		CVExecutionState *state) {
-	//assert(path_ && "path is null");
-
-	//bool result = false;
-
-	//if (index_ >= path_->length()) {
-	//	invalidated_ = true;
-	//}
-
-	//if (!invalidated_) {
-	//	result = (direction == path_->get_branch(index_));
-	//	if (validity != klee::Solver::Unknown) {
-	//		if (!result) {
-	//			invalidated_ = true;
-	//		}
-	//	}
-	//}
-
-	//if (!invalidated_) {
-	//	return result;
-	//}
-	//return true;
-}
+		CVExecutionState *state) {}
 
 void StackDepthVerifyPathManager::commit_branch(bool direction, 
 		klee::Solver::Validity validity, klee::KInstruction* inst, 
-		CVExecutionState *state) {
-	//if (!invalidated_) {
-	//	assert(path_ && "path is null");
-	//	assert(index_ < path_->length());
-	//	assert(direction == path_->get_branch(index_));
-	//}
-	//index_++;
-}
+		CVExecutionState *state) {}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -534,7 +465,6 @@ PathManager* PathManagerFactory::create() {
 		case DefaultTrainingMode:
 			return new TrainingPathManager();
 		case VerifyWithTrainingPaths:
-			return new VerifyPathManager();
 		case DefaultMode:
 			break;
   }

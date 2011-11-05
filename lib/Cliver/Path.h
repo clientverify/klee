@@ -111,8 +111,8 @@ class Path {
 	bool equal(const Path &b) const;
 	void inc_ref();
 	void dec_ref();
-	bool get_branch(int index);
-	bool get_branch_id(int index);
+	bool get_branch(int index) const;
+	bool get_branch_id(int index) const;
 	klee::KInstruction* get_branch_kinst(int index);
 	void print(std::ostream &os) const;
 

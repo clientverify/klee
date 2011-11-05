@@ -43,7 +43,6 @@ namespace cliver {
 class PathManager {
  public:
 	PathManager();
-	PathManager(Path *path);
 	virtual ~PathManager();
 	virtual PathManager* clone();
 	virtual bool merge(const PathManager &pm);
@@ -54,15 +53,15 @@ class PathManager {
 			klee::KInstruction* inst, CVExecutionState *state);
 	virtual void print(std::ostream &os) const;
 
-	void set_path(Path* path);
 	void set_range(const PathRange& range);
 
-	Path* path() { return path_; }
 	unsigned length() { return path_->length(); }
-	PathRange range() { return range_; }
+	PathRange& range() { return range_; }
+	const Path* path() { return path_; }
 
  protected:
-	explicit PathManager(const PathManager &pm);
+	explicit PathManager(Path *path, PathRange &range); // only used by clone
+	explicit PathManager(const PathManager &pm); // not implemented
 	Path* path_;
 	PathRange range_;
 };
@@ -102,6 +101,9 @@ class TrainingPathManager : public PathManager {
 
  protected:
 	explicit TrainingPathManager(const TrainingPathManager &pm);
+	explicit TrainingPathManager(Path *path, PathRange &range);
+	explicit TrainingPathManager(Path *path, PathRange &range, 
+			SocketEventDataSet &socket_events); // only used by clone
 
 	// Serialization
 	friend class boost::serialization::access;
@@ -121,11 +123,10 @@ inline std::ostream &operator<<(std::ostream &os,
 
 /// A VerifyPathManager instance is created by reading a TrainingPathManager
 /// class instance from file.
-class VerifyPathManager : public TrainingPathManager {
+class VerifyPathManager : public PathManager {
  public:
-	VerifyPathManager();
+	VerifyPathManager(const Path *vpath, PathRange &vrange);
 	virtual PathManager* clone();
-	virtual bool merge(const PathManager &pm);
 	virtual bool less(const PathManager &b) const;
 	virtual bool try_branch(bool direction, klee::Solver::Validity validity, 
 			klee::KInstruction* inst, CVExecutionState *state);
@@ -135,9 +136,15 @@ class VerifyPathManager : public TrainingPathManager {
 
 	unsigned index() { return index_; }
 
+ private:
+	virtual bool merge(const PathManager &pm) { return false; }
+
  protected:
 	explicit VerifyPathManager(const VerifyPathManager &pm);
+	explicit VerifyPathManager();
 
+	const Path *vpath_;
+	PathRange vrange_;
 	unsigned index_;
 };
 
@@ -151,17 +158,21 @@ inline std::ostream &operator<<(std::ostream &os,
 
 class VerifyConcretePathManager : public VerifyPathManager {
  public:
-	VerifyConcretePathManager();
+	VerifyConcretePathManager(const Path *vpath, PathRange &vrange);
 	virtual PathManager* clone();
-	virtual bool merge(const PathManager &pm);
 	virtual bool less(const PathManager &b) const;
 	virtual bool try_branch(bool direction, klee::Solver::Validity validity, 
 			klee::KInstruction* inst, CVExecutionState *state);
 	virtual void commit_branch(bool direction, klee::Solver::Validity validity, 
 			klee::KInstruction* inst, CVExecutionState *state);
 
+ private:
+	virtual bool merge(const PathManager &pm) { return false; }
+
  protected:
 	explicit VerifyConcretePathManager(const VerifyConcretePathManager &pm);
+	explicit VerifyConcretePathManager();
+
 	bool invalidated_;
 };
 
@@ -175,17 +186,20 @@ inline std::ostream &operator<<(std::ostream &os,
 
 class VerifyPrefixPathManager : public VerifyPathManager {
  public:
-	VerifyPrefixPathManager();
+	VerifyPrefixPathManager(const Path *vpath, PathRange &vrange);
 	virtual PathManager* clone();
-	virtual bool merge(const PathManager &pm);
 	virtual bool less(const PathManager &b) const;
 	virtual bool try_branch(bool direction, klee::Solver::Validity validity, 
 			klee::KInstruction* inst, CVExecutionState *state);
 	virtual void commit_branch(bool direction, klee::Solver::Validity validity, 
 			klee::KInstruction* inst, CVExecutionState *state);
 
+ private:
+	virtual bool merge(const PathManager &pm) { return false; }
+
  protected:
 	explicit VerifyPrefixPathManager(const VerifyPrefixPathManager &pm);
+	explicit VerifyPrefixPathManager();
 
 	bool invalidated_;
 };
@@ -200,25 +214,28 @@ inline std::ostream &operator<<(std::ostream &os,
 
 class StackDepthVerifyPathManager : public VerifyPathManager {
  public:
-	StackDepthVerifyPathManager();
+	StackDepthVerifyPathManager(const Path *vpath, PathRange &vrange);
 	virtual PathManager* clone();
-	virtual bool merge(const PathManager &pm);
 	virtual bool less(const PathManager &b) const;
 	virtual bool try_branch(bool direction, klee::Solver::Validity validity, 
 			klee::KInstruction* inst, CVExecutionState *state);
 	virtual void commit_branch(bool direction, klee::Solver::Validity validity, 
 			klee::KInstruction* inst, CVExecutionState *state);
 
+ private:
+	virtual bool merge(const PathManager &pm) { return false; }
+
  protected:
 	explicit StackDepthVerifyPathManager(const StackDepthVerifyPathManager &pm);
+	explicit StackDepthVerifyPathManager();
 
 };
 
-//inline std::ostream &operator<<(std::ostream &os, 
-//		const StackDepthVerifyPathManager &p) {
-//  p.print(os);
-//  return os;
-//}
+inline std::ostream &operator<<(std::ostream &os, 
+		const StackDepthVerifyPathManager &p) {
+  p.print(os);
+  return os;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 

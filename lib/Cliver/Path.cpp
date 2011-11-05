@@ -116,7 +116,7 @@ unsigned Path::length() const {
 			return branches_.size() + parent_->length();
 		return branches_.size();
 	}
-	assert(length_ > 0);
+	assert(length_ > -1);
 	return (unsigned) length_;
 }
 
@@ -151,7 +151,7 @@ void Path::dec_ref() {
 	ref_count_--;
 }
 
-bool Path::get_branch(int index) {
+bool Path::get_branch(int index) const {
 	if (parent_ == NULL) {
 		assert( index >= 0 && index < branches_.size());
 		return branches_[index];
@@ -162,7 +162,7 @@ bool Path::get_branch(int index) {
 	return branches[index];
 }
 
-bool Path::get_branch_id(int index) {
+bool Path::get_branch_id(int index) const {
 	if (parent_ == NULL) {
 		assert( index >= 0 && index < branch_ids_.size());
 		return branch_ids_[index];
