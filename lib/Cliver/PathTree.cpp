@@ -130,7 +130,7 @@ PathTreeNode* PathTreeNode::false_node() {
 }
 
 bool PathTreeNode::is_fully_explored() {
-	assert(!is_fully_explored_ == states_.empty());
+	assert(is_fully_explored_ == states_.empty());
 	return is_fully_explored_;
 }
 
