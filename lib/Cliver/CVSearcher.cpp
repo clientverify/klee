@@ -489,7 +489,8 @@ CVExecutionState* VerifyStage::next_state() {
 		}
 		
 		if (search_mode == Exhaustive) {
-			CVExecutionState *state = root_state_->clone();
+			// XXX Should we clone and store the root state for later?
+			CVExecutionState *state = root_state_;
 			g_executor->add_state(state);
 			state->reset_path_manager();
 			states_.insert(state);
@@ -497,6 +498,7 @@ CVExecutionState* VerifyStage::next_state() {
 	}
 
 	if (search_mode == FullTraining) {
+		CVDEBUG("VerifyStage::next_state(): states_.empty() == true");
 		while (!states_.empty()) {
 			CVExecutionState* state = *(states_.begin());
 			VerifyProperty* p = static_cast<VerifyProperty*>(state->property());
