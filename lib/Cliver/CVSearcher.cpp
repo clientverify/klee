@@ -454,6 +454,11 @@ CVExecutionState* VerifyStage::next_state() {
 
 		if (search_mode == FullTraining) {
 			if (PathManager* training = path_selector_->next_path(range)) {
+
+				//PathTree* path_tree = root_state_->path_tree();
+				//CVExecutionState* next_state 
+				//	= path_tree->get_next_state(training->path(), training->range());
+
 				state->reset_path_manager(
 						new VerifyPathManager(training->path(), training->range()));
 			} else {
@@ -465,28 +470,41 @@ CVExecutionState* VerifyStage::next_state() {
 			}
 		}
 
-		if (search_mode == ConcreteTraining) {
-			if (PathManager* training = path_selector_->next_path(range)) {
-				state->reset_path_manager(
-						new VerifyConcretePathManager(training->path(), training->range()));
-			} else {
-				CVDEBUG("Switching to PrefixTraining search mode");
-				search_mode = PrefixTraining;
-				PathSelector *old_path_selector = path_selector_;
-				path_selector_ = path_selector_->clone();
-				delete old_path_selector;
-			}
-		}
+		//if (search_mode == FullTraining) {
+		//	if (PathManager* training = path_selector_->next_path(range)) {
+		//		state->reset_path_manager(
+		//				new VerifyPathManager(training->path(), training->range()));
+		//	} else {
+		//		CVDEBUG("Switching to ConcreteTraining search mode");
+		//		search_mode = ConcreteTraining;
+		//		PathSelector *old_path_selector = path_selector_;
+		//		path_selector_ = path_selector_->clone();
+		//		delete old_path_selector;
+		//	}
+		//}
 
-		if (search_mode == PrefixTraining) {
-			if (PathManager* training = path_selector_->next_path(range)) {
-				state->reset_path_manager(
-						new VerifyPrefixPathManager(training->path(), training->range()));
-			} else {
-				CVDEBUG("Switching to Exhaustive search mode");
-				search_mode = Exhaustive;
-			}
-		}
+		//if (search_mode == ConcreteTraining) {
+		//	if (PathManager* training = path_selector_->next_path(range)) {
+		//		state->reset_path_manager(
+		//				new VerifyConcretePathManager(training->path(), training->range()));
+		//	} else {
+		//		CVDEBUG("Switching to PrefixTraining search mode");
+		//		search_mode = PrefixTraining;
+		//		PathSelector *old_path_selector = path_selector_;
+		//		path_selector_ = path_selector_->clone();
+		//		delete old_path_selector;
+		//	}
+		//}
+
+		//if (search_mode == PrefixTraining) {
+		//	if (PathManager* training = path_selector_->next_path(range)) {
+		//		state->reset_path_manager(
+		//				new VerifyPrefixPathManager(training->path(), training->range()));
+		//	} else {
+		//		CVDEBUG("Switching to Exhaustive search mode");
+		//		search_mode = Exhaustive;
+		//	}
+		//}
 
 		if (search_mode == Exhaustive) {
 			state->reset_path_manager();

@@ -10,6 +10,8 @@
 #include "PathManager.h"
 #include "CVCommon.h"
 #include "CVExecutor.h"
+#include "CVExecutionState.h"
+#include "ExecutionStateProperty.h"
 
 #include <boost/serialization/set.hpp>
 #include <boost/serialization/vector.hpp>
@@ -421,6 +423,52 @@ bool StackDepthVerifyPathManager::try_branch(bool direction,
 void StackDepthVerifyPathManager::branch(bool direction, 
 		klee::Solver::Validity validity, klee::KInstruction* inst, 
 		CVExecutionState *state) {}
+
+////////////////////////////////////////////////////////////////////////////////
+
+HorizonPathManager::HorizonPathManager(const Path *vpath, PathRange &vrange)
+  : VerifyPathManager(vpath, vrange), is_horizon_(false) {}
+
+PathManager* HorizonPathManager::clone() {
+	HorizonPathManager *pm 
+		= new HorizonPathManager(vpath_, vrange_);
+	pm->index_ = index_;
+	pm->is_horizon_ = is_horizon_;
+	return pm;
+}
+
+bool HorizonPathManager::less(const PathManager &b) const {
+	const HorizonPathManager *vpm 
+		= static_cast<const HorizonPathManager*>(&b);
+	if (vrange_.less(vpm->vrange_))
+		return true;
+	return vpath_->less(*(vpm->vpath_));
+}
+
+/// Always returns true.
+bool HorizonPathManager::try_branch(bool direction, 
+		klee::Solver::Validity validity, klee::KInstruction* inst, 
+		CVExecutionState *state) {
+
+	assert(vpath_ && "path is null");
+	assert(false == is_horizon_ && "must stop execution at horizon");
+
+	if (index_ >= vpath_->length() || direction != vpath_->get_branch(index_)) {
+		is_horizon_ = true;
+		VerifyProperty* p = static_cast<VerifyProperty*>(state->property());
+		assert(p->phase == VerifyProperty::Execute && "Wrong state property");
+		p->phase = VerifyProperty::Horizon;
+	}
+
+	return true;
+}
+
+void HorizonPathManager::branch(bool direction, 
+		klee::Solver::Validity validity, klee::KInstruction* inst, 
+		CVExecutionState *state) {
+
+	index_++;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
