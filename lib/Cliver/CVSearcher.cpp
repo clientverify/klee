@@ -506,6 +506,9 @@ CVExecutionState* VerifyStage::next_state() {
 				// XXX add this state to VerifyState::non_active_states_ ?
 				states_.erase(state);
 			} else {
+				HorizonPathManager* pm = 
+					static_cast<HorizonPathManager*>(state->path_manager());
+				assert(pm->is_horizon() == false && "Cannot return state at horizon!!");
 				return state;
 			}
 		}
