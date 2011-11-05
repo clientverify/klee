@@ -36,6 +36,9 @@ class PathTree {
 	void branch(bool direction, klee::Solver::Validity validity, 
 			klee::KInstruction* inst, CVExecutionState *state);
 
+	void add_branched_state(CVExecutionState* state, 
+			CVExecutionState* branched_state);
+
 	int get_states(const Path* path, const PathRange &range,
 			ExecutionStateSet& states);
 

@@ -3,7 +3,7 @@
 // <insert license>
 //
 //===----------------------------------------------------------------------===//
-// 
+// XXX Handle terminated states!
 //
 //===----------------------------------------------------------------------===//
 
@@ -22,6 +22,16 @@ PathTree::PathTree(CVExecutionState* root_state) {
 	root_ = new PathTreeNode(NULL, root_state->prevPC);
 	root_->add_state(root_state);
  	state_node_map_[root_state] = root_;
+}
+
+void PathTree::add_branched_state(CVExecutionState* state,
+		CVExecutionState* branched_state) {
+	
+	StateNodeMap::iterator it = state_node_map_.find(state);
+	assert(it != state_node_map_.end());
+	PathTreeNode *node = it->second;
+	node->add_state(branched_state);
+ 	state_node_map_[branched_state] = node;
 }
 
 bool PathTree::get_states(const Path* path, const PathRange &range,

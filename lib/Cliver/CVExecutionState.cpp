@@ -79,6 +79,7 @@ CVExecutionState* CVExecutionState::clone() {
 CVExecutionState* CVExecutionState::branch() {
   depth++;
   CVExecutionState *branched_state = clone();
+	path_tree_->add_branched_state(this, branched_state);
   branched_state->coveredNew = false;
   branched_state->coveredLines.clear();
   weight *= .5;
