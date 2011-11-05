@@ -448,6 +448,7 @@ VerifyStage::VerifyStage(PathSelector *path_selector,
 /// XXX Need comment explaining final version of next_state 
 CVExecutionState* VerifyStage::next_state() {
 	if (states_.empty()) {
+		CVDEBUG("VerifyStage::next_state(): states_.empty() == true");
 
 		if (search_mode == Exhaustive) 
 			return NULL;
@@ -457,9 +458,11 @@ CVExecutionState* VerifyStage::next_state() {
 		PathRange range(root_state_->prevPC, NULL);
 
 		if (search_mode == FullTraining) {
+			CVDEBUG("VerifyStage::next_state(): FullTraining is active");
 			PathManager* training = NULL;
 			do {
 				if (training = path_selector_->next_path(range)) {
+					CVDEBUG("VerifyStage::next_state(): training path found");
 					const Path* tpath     = training->path();
 					PathRange trange      = training->range();
 					PathTree* path_tree = root_state_->path_tree();
@@ -467,6 +470,7 @@ CVExecutionState* VerifyStage::next_state() {
 					ExecutionStateSet tree_states;
 
 					if (path_tree->get_states(tpath, trange, tree_states, index)) {
+						CVDEBUG("VerifyStage::next_state(): states found in path_tree");
 						// XXX Do we need to clone states here?
 						foreach (CVExecutionState* s, tree_states) {
 							HorizonPathManager* pm = new HorizonPathManager(tpath, range);
