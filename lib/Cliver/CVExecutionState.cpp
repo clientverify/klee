@@ -13,6 +13,7 @@
 #include "ExecutionStateProperty.h"
 #include "NetworkManager.h"
 #include "PathManager.h"
+#include "PathTree.h"
 
 #include "../Core/Common.h"
 #include "llvm/Support/raw_ostream.h"
@@ -60,6 +61,7 @@ void CVExecutionState::initialize(CVExecutor *executor) {
 	network_manager_ = NetworkManagerFactory::create(this);
 	path_manager_ = PathManagerFactory::create();
 	property_ = ExecutionStatePropertyFactory::create();
+	path_tree_ = PathTreeFactory::create();
 }
 
 CVExecutionState* CVExecutionState::clone() {
@@ -69,6 +71,7 @@ CVExecutionState* CVExecutionState::clone() {
 		= network_manager_->clone(cloned_state); 
 	cloned_state->path_manager_ = path_manager_->clone();
   cloned_state->property_ = property_->clone();
+	cloned_state->path_tree_ = path_tree_;
 
   return cloned_state;
 }
