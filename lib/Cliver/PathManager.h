@@ -249,6 +249,9 @@ class HorizonPathManager : public VerifyPathManager {
 	virtual void branch(bool direction, klee::Solver::Validity validity, 
 			klee::KInstruction* inst, CVExecutionState *state);
 
+	void set_index(int index);
+	bool is_horizon() { return is_horizon_; }
+
  private:
 	virtual bool merge(const PathManager &pm) { return false; }
 

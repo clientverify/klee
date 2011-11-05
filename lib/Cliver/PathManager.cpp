@@ -466,8 +466,11 @@ bool HorizonPathManager::try_branch(bool direction,
 void HorizonPathManager::branch(bool direction, 
 		klee::Solver::Validity validity, klee::KInstruction* inst, 
 		CVExecutionState *state) {
-
 	index_++;
+}
+
+void HorizonPathManager::set_index(int index) {
+	index_ = index;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
