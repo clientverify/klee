@@ -446,34 +446,40 @@ VerifyStage::VerifyStage(PathSelector *path_selector,
 }
 
 CVExecutionState* VerifyStage::next_state() {
-	if (states_.size() == 0) {
-		if (search_mode == Exhaustive) return NULL;
+	if (states_.empty()) {
+
+		if (search_mode == Exhaustive) 
+			return NULL;
+
 		assert(root_state_);
+
 		PathRange range(root_state_->prevPC, NULL);
-		CVExecutionState *state = root_state_->clone();
-		g_executor->add_state(state);
 
 		if (search_mode == FullTraining) {
-			if (PathManager* training = path_selector_->next_path(range)) {
+			do {
+				PathManager* training = path_selector_->next_path(range);
+				const Path* tpath     = training->path();
+				PathRange trange      = training->range();
+				PathTree* path_tree = root_state_->path_tree();
+				int index;
+				ExecutionStateSet tree_states;
 
-				int index = root_state_->path_tree()->get_states(training->path(), 
-						training->range(), states_);
-
-				// Could clone the states here...
-				foreach (CVExecutionState* s, states_) {
-					HorizonPathManager* pm = 
-							new HorizonPathManager(training->path(), training->range());
-					pm->set_index(index);
-					s->reset_path_manager(pm);
+				if (path_tree->get_states(tpath, trange, tree_states, index)) {
+					// XXX Do we need to clone states here?
+					foreach (CVExecutionState* s, tree_states) {
+						HorizonPathManager* pm = new HorizonPathManager(tpath, range);
+						pm->set_index(index);
+						s->reset_path_manager(pm);
+						states_.insert(s);
+					}
 				}
+			} while (states_.empty());
 
-			} else {
-				CVDEBUG("Switching to ConcreteTraining search mode");
-				search_mode = ConcreteTraining;
-				PathSelector *old_path_selector = path_selector_;
-				path_selector_ = path_selector_->clone();
-				delete old_path_selector;
+			if (states_.empty()) {
+				CVDEBUG("Switching to Exhaustive search mode");
+				search_mode = Exhaustive;
 			}
+
 		}
 
 		//if (search_mode == FullTraining) {
@@ -489,35 +495,13 @@ CVExecutionState* VerifyStage::next_state() {
 		//	}
 		//}
 
-		//if (search_mode == ConcreteTraining) {
-		//	if (PathManager* training = path_selector_->next_path(range)) {
-		//		state->reset_path_manager(
-		//				new VerifyConcretePathManager(training->path(), training->range()));
-		//	} else {
-		//		CVDEBUG("Switching to PrefixTraining search mode");
-		//		search_mode = PrefixTraining;
-		//		PathSelector *old_path_selector = path_selector_;
-		//		path_selector_ = path_selector_->clone();
-		//		delete old_path_selector;
-		//	}
-		//}
-
-		//if (search_mode == PrefixTraining) {
-		//	if (PathManager* training = path_selector_->next_path(range)) {
-		//		state->reset_path_manager(
-		//				new VerifyPrefixPathManager(training->path(), training->range()));
-		//	} else {
-		//		CVDEBUG("Switching to Exhaustive search mode");
-		//		search_mode = Exhaustive;
-		//	}
-		//}
-
 		if (search_mode == Exhaustive) {
+			CVExecutionState *state = root_state_->clone();
+			g_executor->add_state(state);
 			state->reset_path_manager();
+			states_.insert(state);
 		}
 
-		states_.insert(state);
-		return state;
 	}
 	return *(states_.begin());
 }
@@ -573,6 +557,7 @@ void VerifyStage::finish(CVExecutionState *finished_state) {
 
 	VerifyStage *child_stage = new VerifyStage(path_selector_, &se, this);
 	child_stage->root_state_ = state;
+	child_stage->root_state_->reset_path_tree();
 	children_.push_back(child_stage);
 }
 
@@ -581,9 +566,8 @@ VerifySearcher::VerifySearcher(klee::Searcher* base_searcher,
 	: CVSearcher(base_searcher, merger), 
 	  path_selector_(PathSelectorFactory::create(paths)) {
 
-	//const SocketEvent &se = state->network_manager()->socket()->event();
-	root_stage_ = current_stage_ = new VerifyStage(path_selector_, NULL, NULL);
-			
+	root_stage_ = current_stage_ 
+		= new VerifyStage(path_selector_, NULL, NULL);
 }
 
 klee::ExecutionState &VerifySearcher::selectState() {
