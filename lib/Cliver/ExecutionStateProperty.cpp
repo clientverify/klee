@@ -78,7 +78,7 @@ int VerifyProperty::compare(const ExecutionStateProperty &b) const {
 void VerifyProperty::print(std::ostream &os) const {
 	os << "[round: " << round
 	   << ", range: " << path_range
-	   //<< ", trainingstate: " << phase
+	   << ", phase: " << phase
 		 << "]";
 }
 

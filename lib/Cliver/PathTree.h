@@ -33,6 +33,7 @@ class PathTree {
 	PathTree();
 	void branch(bool direction, klee::Solver::Validity validity, 
 			klee::KInstruction* inst, CVExecutionState *state);
+	CVExecutionState* get_state(const Path* path, const PathRange &range);
 
  private:
 	PathTreeNode *root_;
@@ -43,6 +44,10 @@ class PathTree {
 class PathTreeNode {
  public:
 	PathTreeNode(PathTreeNode* parent, klee::KInstruction* instruction);
+
+	PathTreeNode* true_node();
+	PathTreeNode* false_node();
+	bool is_fully_explored(); 
 
  private:
 	PathTreeNode *parent_;

@@ -81,6 +81,7 @@ inline std::ostream &operator<<(std::ostream &os,
 class TrainingPathManager : public PathManager {
  public:
 	TrainingPathManager();
+	TrainingPathManager(Path *path, PathRange &range); // make private?
 	virtual ~TrainingPathManager();
 	virtual PathManager* clone();
 	virtual bool merge(const PathManager &pm);
@@ -101,7 +102,6 @@ class TrainingPathManager : public PathManager {
 
  protected:
 	explicit TrainingPathManager(const TrainingPathManager &pm);
-	explicit TrainingPathManager(Path *path, PathRange &range);
 	explicit TrainingPathManager(Path *path, PathRange &range, 
 			SocketEventDataSet &socket_events); // only used by clone
 
@@ -233,6 +233,34 @@ class StackDepthVerifyPathManager : public VerifyPathManager {
 
 inline std::ostream &operator<<(std::ostream &os, 
 		const StackDepthVerifyPathManager &p) {
+  p.print(os);
+  return os;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+class HorizonPathManager : public VerifyPathManager {
+ public:
+	HorizonPathManager(const Path *vpath, PathRange &vrange);
+	virtual PathManager* clone();
+	virtual bool less(const PathManager &b) const;
+	virtual bool try_branch(bool direction, klee::Solver::Validity validity, 
+			klee::KInstruction* inst, CVExecutionState *state);
+	virtual void branch(bool direction, klee::Solver::Validity validity, 
+			klee::KInstruction* inst, CVExecutionState *state);
+
+ private:
+	virtual bool merge(const PathManager &pm) { return false; }
+
+ protected:
+	explicit HorizonPathManager(const VerifyConcretePathManager &pm);
+	explicit HorizonPathManager();
+
+	bool is_horizon_;
+};
+
+inline std::ostream &operator<<(std::ostream &os, 
+		const HorizonPathManager &p) {
   p.print(os);
   return os;
 }

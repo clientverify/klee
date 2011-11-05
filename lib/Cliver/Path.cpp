@@ -3,7 +3,9 @@
 // <insert license>
 //
 //===----------------------------------------------------------------------===//
-//
+// TODO some function calls make unnecessary consolidate_branches, either make
+// this a commandline option (i.e., consolidate all branches when a path is
+// created with a parent or some other optimization
 //
 //===----------------------------------------------------------------------===//
 
