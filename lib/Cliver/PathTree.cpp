@@ -18,28 +18,37 @@ namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-PathTree::PathTree() {}
+PathTree::PathTree(CVExecutionState* root_state) {
+	root_ = new PathTreeNode(NULL, root_state->prevPC);
+	root_->add_state(root_state);
+}
 
-int PathTree::get_states(const Path* path, const PathRange &range,
-		ExecutionStateSet& states) {
+bool PathTree::get_states(const Path* path, const PathRange &range,
+		ExecutionStateSet& states, int &index) {
 
 	PathTreeNode* node = root_;
-	unsigned index = 0;
+	unsigned i = 0;
 
 	while (node->is_fully_explored()) {
-		if (true == path->get_branch(index)) {
+		if (true == path->get_branch(i)) {
+			/// XXX fixme true_node may be null
 			node = node->true_node();
 		} else {
 			node = node->false_node();
 		}
-		index++;
+		i++;
 	}
 
+	if (node->states().empty()) {
+		index = -1;
+		return false;
+	}
+
+	index = i;
 	foreach (CVExecutionState* s, node->states()) {
 		states.insert(s);
 	}
-
-	return index;
+	return true;
 }
 
 void PathTree::branch(bool direction, klee::Solver::Validity validity, 
@@ -119,7 +128,7 @@ bool PathTreeNode::is_fully_explored() {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-PathTree* PathTreeFactory::create() {
+PathTree* PathTreeFactory::create(CVExecutionState* root_state) {
   switch (g_cliver_mode) {
 		case DefaultTrainingMode:
 		case VerifyWithTrainingPaths:
@@ -127,7 +136,7 @@ PathTree* PathTreeFactory::create() {
 		default:
 			break;
   }
-  return new PathTree();
+  return new PathTree(root_state);
 }
 
 

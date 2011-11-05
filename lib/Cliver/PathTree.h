@@ -32,12 +32,15 @@ class PathTreeNode;
 class PathTree {
  typedef std::map< CVExecutionState*, PathTreeNode* > StateNodeMap;
  public:
-	PathTree();
+	PathTree(CVExecutionState* root_state);
 	void branch(bool direction, klee::Solver::Validity validity, 
 			klee::KInstruction* inst, CVExecutionState *state);
 
 	int get_states(const Path* path, const PathRange &range,
 			ExecutionStateSet& states);
+
+	bool get_states(const Path* path, const PathRange &range,
+			ExecutionStateSet& states, int &index);
 
  private:
 	PathTreeNode *root_;
@@ -46,6 +49,7 @@ class PathTree {
 };
 
 class PathTreeNode {
+ friend class PathTree;
  public:
 	PathTreeNode(PathTreeNode* parent, klee::KInstruction* instruction);
 
@@ -73,7 +77,7 @@ class PathTreeNode {
 
 class PathTreeFactory {
  public:
-  static PathTree* create();
+  static PathTree* create(CVExecutionState *root_state);
 };
 
 

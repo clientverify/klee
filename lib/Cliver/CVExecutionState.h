@@ -50,11 +50,12 @@ class CVExecutionState : public klee::ExecutionState {
   const CVContext* context() { return context_; }
 
 	NetworkManager* network_manager() const { return network_manager_; }
-	PathManager*    path_manager() { return path_manager_; }
+	PathManager* path_manager() { return path_manager_; }
+	PathTree*	path_tree() { return path_tree_; }
 	ExecutionStateProperty* property() { return property_; }
-	void reset_path_manager(PathManager* path_manager=NULL);
 
-	PathTree*    path_tree() { return path_tree_; }
+	void reset_path_manager(PathManager* path_manager=NULL);
+	void reset_path_tree(PathTree* path_tree=NULL);
 
  private:
   int increment_id() { return next_id_++; }

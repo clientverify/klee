@@ -61,7 +61,7 @@ void CVExecutionState::initialize(CVExecutor *executor) {
 	network_manager_ = NetworkManagerFactory::create(this);
 	path_manager_ = PathManagerFactory::create();
 	property_ = ExecutionStatePropertyFactory::create();
-	path_tree_ = PathTreeFactory::create();
+	path_tree_ = PathTreeFactory::create(this);
 }
 
 CVExecutionState* CVExecutionState::clone() {
@@ -94,6 +94,13 @@ void CVExecutionState::reset_path_manager(PathManager* path_manager) {
 		path_manager_ = path_manager;
 	else
 		path_manager_ = PathManagerFactory::create();
+}
+
+void CVExecutionState::reset_path_tree(PathTree* path_tree) {
+	if (path_tree)
+		path_tree_ = path_tree;
+	else
+		path_tree_ = PathTreeFactory::create(this);
 }
 
 bool CVExecutionStateLT::operator()(const CVExecutionState* a, 
