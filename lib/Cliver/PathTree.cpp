@@ -109,6 +109,9 @@ PathTreeNode* PathTreeNode::move_state_to_branch(bool direction,
 	} else if (states_.empty() && parent_->is_fully_explored()) {
 		is_fully_explored_  = true;
 	}
+
+	assert(branch_node);
+	return branch_node;
 }
 
 void PathTreeNode::add_state(CVExecutionState* state) {
