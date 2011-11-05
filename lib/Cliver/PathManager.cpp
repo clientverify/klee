@@ -450,6 +450,13 @@ bool HorizonPathManager::try_branch(bool direction,
 		klee::Solver::Validity validity, klee::KInstruction* inst, 
 		CVExecutionState *state) {
 
+	return true;
+}
+
+void HorizonPathManager::branch(bool direction, 
+		klee::Solver::Validity validity, klee::KInstruction* inst, 
+		CVExecutionState *state) {
+
 	assert(vpath_ && "path is null");
 	assert(false == is_horizon_ && "must stop execution at horizon");
 
@@ -460,12 +467,6 @@ bool HorizonPathManager::try_branch(bool direction,
 		p->phase = VerifyProperty::Horizon;
 	}
 
-	return true;
-}
-
-void HorizonPathManager::branch(bool direction, 
-		klee::Solver::Validity validity, klee::KInstruction* inst, 
-		CVExecutionState *state) {
 	index_++;
 }
 
