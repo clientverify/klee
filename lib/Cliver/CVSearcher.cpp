@@ -16,6 +16,7 @@
 #include "NetworkManager.h"
 #include "PathManager.h"
 #include "PathSelector.h"
+#include "PathTree.h"
 
 #include "klee/Internal/Module/InstructionInfoTable.h"
 
@@ -455,12 +456,17 @@ CVExecutionState* VerifyStage::next_state() {
 		if (search_mode == FullTraining) {
 			if (PathManager* training = path_selector_->next_path(range)) {
 
-				//PathTree* path_tree = root_state_->path_tree();
-				//CVExecutionState* next_state 
-				//	= path_tree->get_next_state(training->path(), training->range());
+				int index = root_state_->path_tree()->get_states(training->path(), 
+						training->range(), states_);
 
-				state->reset_path_manager(
-						new VerifyPathManager(training->path(), training->range()));
+				// Could clone the states here...
+				foreach (CVExecutionState* s, states_) {
+					HorizonPathManager* pm = 
+							new HorizonPathManager(training->path(), training->range());
+					pm->set_index(index);
+					s->reset_path_manager(pm);
+				}
+
 			} else {
 				CVDEBUG("Switching to ConcreteTraining search mode");
 				search_mode = ConcreteTraining;
