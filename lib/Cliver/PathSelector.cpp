@@ -62,18 +62,23 @@ PathSelector* PathSelectorFactory::create(PathManagerSet* training_paths) {
 				}
 				worklist.erase(static_cast<PathManager*>(max_size_tpm));
 
-				VerifyPathManager *new_vpm = new VerifyPathManager();
-				new_vpm->set_path(max_size_tpm->path());
-				new_vpm->set_range(max_size_tpm->range());
-				foreach (SocketEvent *se, max_size_tpm->socket_events()) {
-					new_vpm->add_socket_event(se);
-				}
 
-				g_ordered_training_paths.push_back(new_vpm);
+				//VerifyPathManager *new_vpm = new VerifyPathManager();
+				//new_vpm->set_path(max_size_tpm->path());
+				//new_vpm->set_range(max_size_tpm->range());
+				//foreach (SocketEvent *se, max_size_tpm->socket_events()) {
+				//	new_vpm->add_socket_event(se);
+				//}
+				//g_ordered_training_paths.push_back(new_vpm);
+				
+				TrainingPathManager *new_tpm 
+					= static_cast<TrainingPathManager*>(max_size_tpm->clone());
+				g_ordered_training_paths.push_back(new_tpm);
 
 				foreach (pm, worklist) {
 					TrainingPathManager* tpm = static_cast<TrainingPathManager*>(pm);
-					foreach (SocketEvent *se, new_vpm->socket_events()) {
+					//foreach (SocketEvent *se, new_vpm->socket_events()) {
+					foreach (SocketEvent *se, new_tpm->socket_events()) {
 						tpm->erase_socket_event(se);
 					}
 				}

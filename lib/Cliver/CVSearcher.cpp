@@ -453,10 +453,9 @@ CVExecutionState* VerifyStage::next_state() {
 		g_executor->add_state(state);
 
 		if (search_mode == FullTraining) {
-			if (PathManager* path_manager = path_selector_->next_path(range)) {
-				state->reset_path_manager(new VerifyPathManager());
-				state->path_manager()->set_path(path_manager->path());
-				state->path_manager()->set_range(path_manager->range());
+			if (PathManager* training = path_selector_->next_path(range)) {
+				state->reset_path_manager(
+						new VerifyPathManager(training->path(), training->range()));
 			} else {
 				CVDEBUG("Switching to ConcreteTraining search mode");
 				search_mode = ConcreteTraining;
@@ -467,10 +466,9 @@ CVExecutionState* VerifyStage::next_state() {
 		}
 
 		if (search_mode == ConcreteTraining) {
-			if (PathManager* path_manager = path_selector_->next_path(range)) {
-				state->reset_path_manager(new VerifyConcretePathManager());
-				state->path_manager()->set_path(path_manager->path());
-				state->path_manager()->set_range(path_manager->range());
+			if (PathManager* training = path_selector_->next_path(range)) {
+				state->reset_path_manager(
+						new VerifyConcretePathManager(training->path(), training->range()));
 			} else {
 				CVDEBUG("Switching to PrefixTraining search mode");
 				search_mode = PrefixTraining;
@@ -481,10 +479,9 @@ CVExecutionState* VerifyStage::next_state() {
 		}
 
 		if (search_mode == PrefixTraining) {
-			if (PathManager* path_manager = path_selector_->next_path(range)) {
-				state->reset_path_manager(new VerifyPrefixPathManager());
-				state->path_manager()->set_path(path_manager->path());
-				state->path_manager()->set_range(path_manager->range());
+			if (PathManager* training = path_selector_->next_path(range)) {
+				state->reset_path_manager(
+						new VerifyPrefixPathManager(training->path(), training->range()));
 			} else {
 				CVDEBUG("Switching to Exhaustive search mode");
 				search_mode = Exhaustive;
@@ -492,7 +489,7 @@ CVExecutionState* VerifyStage::next_state() {
 		}
 
 		if (search_mode == Exhaustive) {
-			state->reset_path_manager(new PathManager(new Path));
+			state->reset_path_manager();
 		}
 
 		states_.insert(state);
