@@ -21,6 +21,7 @@ namespace cliver {
 PathTree::PathTree(CVExecutionState* root_state) {
 	root_ = new PathTreeNode(NULL, root_state->prevPC);
 	root_->add_state(root_state);
+ 	state_node_map_[root_state] = root_;
 }
 
 bool PathTree::get_states(const Path* path, const PathRange &range,
