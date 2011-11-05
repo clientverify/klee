@@ -498,7 +498,7 @@ CVExecutionState* VerifyStage::next_state() {
 	}
 
 	if (search_mode == FullTraining) {
-		CVDEBUG("VerifyStage::next_state(): states_.empty() == true");
+		CVDEBUG("VerifyStage::next_state(): Checking for states at Horizon" );
 		while (!states_.empty()) {
 			CVExecutionState* state = *(states_.begin());
 			VerifyProperty* p = static_cast<VerifyProperty*>(state->property());
@@ -547,7 +547,7 @@ void VerifyStage::finish(CVExecutionState *finished_state) {
 	CVExecutionState* state = finished_state->clone();
 	g_executor->add_state(state);
 
-	PathProperty *p = static_cast<PathProperty*>(state->property());
+	VerifyProperty *p = static_cast<VerifyProperty*>(state->property());
 	p->path_range = PathRange(p->path_range.start(), state->prevPC);
 
 	CVDEBUG("end_path: " << state->path_manager()->range()
@@ -565,7 +565,7 @@ void VerifyStage::finish(CVExecutionState *finished_state) {
 
 	//assert(state->path_manager()->range().equal(p->path_range));
 
-	p->phase = PathProperty::PrepareExecute;
+	p->phase = VerifyProperty::Execute;
 	p->round++;
 	const SocketEvent &se = state->network_manager()->socket()->event();
 
