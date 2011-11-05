@@ -123,6 +123,7 @@ class VerifyStage {
 	CVExecutionState* next_state();
 	void add_state(CVExecutionState *state);
 	void remove_state(CVExecutionState *state);
+	bool contains_state(CVExecutionState *state);
 	void finish(CVExecutionState *state);
 
 	ExecutionStateSet& finished_states() { return finished_states_; }

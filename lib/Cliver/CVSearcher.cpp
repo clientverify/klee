@@ -445,6 +445,7 @@ VerifyStage::VerifyStage(PathSelector *path_selector,
 	}
 }
 
+/// XXX Need comment explaining final version of next_state 
 CVExecutionState* VerifyStage::next_state() {
 	if (states_.empty()) {
 
@@ -456,59 +457,66 @@ CVExecutionState* VerifyStage::next_state() {
 		PathRange range(root_state_->prevPC, NULL);
 
 		if (search_mode == FullTraining) {
+			PathManager* training = NULL;
 			do {
-				PathManager* training = path_selector_->next_path(range);
-				const Path* tpath     = training->path();
-				PathRange trange      = training->range();
-				PathTree* path_tree = root_state_->path_tree();
-				int index;
-				ExecutionStateSet tree_states;
+				if (training = path_selector_->next_path(range)) {
+					const Path* tpath     = training->path();
+					PathRange trange      = training->range();
+					PathTree* path_tree = root_state_->path_tree();
+					int index;
+					ExecutionStateSet tree_states;
 
-				if (path_tree->get_states(tpath, trange, tree_states, index)) {
-					// XXX Do we need to clone states here?
-					foreach (CVExecutionState* s, tree_states) {
-						HorizonPathManager* pm = new HorizonPathManager(tpath, range);
-						pm->set_index(index);
-						s->reset_path_manager(pm);
-						states_.insert(s);
+					if (path_tree->get_states(tpath, trange, tree_states, index)) {
+						// XXX Do we need to clone states here?
+						foreach (CVExecutionState* s, tree_states) {
+							HorizonPathManager* pm = new HorizonPathManager(tpath, range);
+							pm->set_index(index);
+							s->reset_path_manager(pm);
+							states_.insert(s);
+						}
 					}
 				}
-			} while (states_.empty());
+			} while (training && states_.empty());
 
 			if (states_.empty()) {
 				CVDEBUG("Switching to Exhaustive search mode");
 				search_mode = Exhaustive;
 			}
-
 		}
-
-		//if (search_mode == FullTraining) {
-		//	if (PathManager* training = path_selector_->next_path(range)) {
-		//		state->reset_path_manager(
-		//				new VerifyPathManager(training->path(), training->range()));
-		//	} else {
-		//		CVDEBUG("Switching to ConcreteTraining search mode");
-		//		search_mode = ConcreteTraining;
-		//		PathSelector *old_path_selector = path_selector_;
-		//		path_selector_ = path_selector_->clone();
-		//		delete old_path_selector;
-		//	}
-		//}
-
+		
 		if (search_mode == Exhaustive) {
 			CVExecutionState *state = root_state_->clone();
 			g_executor->add_state(state);
 			state->reset_path_manager();
 			states_.insert(state);
 		}
-
 	}
+
+	if (search_mode == FullTraining) {
+		while (!states_.empty()) {
+			CVExecutionState* state = *(states_.begin());
+			VerifyProperty* p = static_cast<VerifyProperty*>(state->property());
+			if (VerifyProperty::Horizon == p->phase) {
+				// XXX add this state to VerifyState::non_active_states_ ?
+				states_.erase(state);
+			} else {
+				return state;
+			}
+		}
+		// All states are at Horizon; need new path or next search_mode
+		return next_state();
+	}
+
 	return *(states_.begin());
+}
+
+bool VerifyStage::contains_state(CVExecutionState *state) {
+	return states_.count(state);
 }
 
 void VerifyStage::add_state(CVExecutionState *state) {
 	if (root_state_ == NULL) {
-		assert(states_.size() == 0);
+		assert(states_.empty());
 		root_state_ = state;
 	} else {
 		states_.insert(state);
@@ -590,6 +598,11 @@ void VerifySearcher::update(klee::ExecutionState *current,
 		const std::set<klee::ExecutionState*> &addedStates,
 		const std::set<klee::ExecutionState*> &removedStates) {
 	//klee::TimerStatIncrementer timer(stats::searcher_time);
+	
+	// Check and add current if needed
+	CVExecutionState *cvcurrent = static_cast<CVExecutionState*>(current);
+	if (false == current_stage_->contains_state(cvcurrent))
+		current_stage_->add_state(cvcurrent);
 
 	// add any added states via current_stage_->add_state()
 	foreach (klee::ExecutionState* klee_state, addedStates) {

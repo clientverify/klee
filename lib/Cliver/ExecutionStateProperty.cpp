@@ -61,7 +61,7 @@ void PathProperty::print(std::ostream &os) const {
 
 VerifyProperty::VerifyProperty() 
 	: round(0),
-	  phase(VerifyProperty::PrepareExecute) {}
+	  phase(VerifyProperty::Execute) {}
 
 int VerifyProperty::compare(const ExecutionStateProperty &b) const {
 	const VerifyProperty *_b = static_cast<const VerifyProperty*>(&b);
