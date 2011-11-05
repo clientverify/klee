@@ -101,7 +101,11 @@ PathTreeNode* PathTreeNode::move_state_to_branch(bool direction,
 	assert(branch_node->instruction() == instruction);
 	branch_node->add_state(state);
 
-	if (states_.empty() && parent_->is_fully_explored()) {
+	if (!parent_) { // root node
+		if (states_.empty()) {
+			is_fully_explored_ = true;
+		}
+	} else if (states_.empty() && parent_->is_fully_explored()) {
 		is_fully_explored_  = true;
 	}
 }
