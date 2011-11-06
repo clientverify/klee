@@ -107,7 +107,7 @@ bool PathManager::try_branch(bool direction,
 void PathManager::branch(bool direction, 
 		klee::Solver::Validity validity, klee::KInstruction* inst, 
 		CVExecutionState *state) {
-	path_->add(direction, inst);
+	path_->add(direction, inst, state->stack.size());
 }
 
 void PathManager::state_branch(CVExecutionState* state, 
@@ -179,7 +179,7 @@ bool TrainingPathManager::try_branch(bool direction,
 void TrainingPathManager::branch(bool direction, 
 		klee::Solver::Validity validity, klee::KInstruction* inst, 
 		CVExecutionState *state) {
-	path_->add(direction, inst);
+	path_->add(direction, inst, state->stack.size());
 }
 
 bool TrainingPathManager::add_socket_event(const SocketEvent* se) {
