@@ -27,20 +27,21 @@ PathTree::PathTree(CVExecutionState* root_state) {
 void PathTree::add_branched_state(CVExecutionState* state,
 		CVExecutionState* branched_state) {
 	
-	StateNodeMap::iterator it = state_node_map_.find(state);
-	assert(it != state_node_map_.end());
-	PathTreeNode *node = it->second;
+	PathTreeNode *node = lookup_node(state);
+	assert(node && "Node lookup failed");
+
 	node->add_state(branched_state);
  	state_node_map_[branched_state] = node;
 }
 
+/// TODO rename, too vague
 bool PathTree::get_states(const Path* path, const PathRange &range,
 		ExecutionStateSet& states, int &index) {
 
 	PathTreeNode* node = root_;
 	unsigned i = 0;
 
-	while (node->is_fully_explored()) {
+	while (node != NULL && node->is_fully_explored()) {
 		if (true == path->get_branch(i)) {
 			/// XXX fixme true_node may be null
 			node = node->true_node();
@@ -50,7 +51,7 @@ bool PathTree::get_states(const Path* path, const PathRange &range,
 		i++;
 	}
 
-	if (node->states().empty()) {
+	if (node == NULL || node->states().empty()) {
 		index = -1;
 		return false;
 	}
@@ -66,9 +67,8 @@ void PathTree::branch(bool direction, klee::Solver::Validity validity,
 			klee::KInstruction* inst, CVExecutionState *state) {
 	
 	// Lookup state in state_map_
-	StateNodeMap::iterator it = state_node_map_.find(state);
-	assert(it != state_node_map_.end());
-	PathTreeNode *node = it->second;
+	PathTreeNode *node = lookup_node(state);
+	assert(node && "State not found during branch");
 	
 	// Move state from current node to child node; direction (false/true)
 	//   Node may need to be created
@@ -77,6 +77,33 @@ void PathTree::branch(bool direction, klee::Solver::Validity validity,
 
 	// Update state_map_ with new (state,node) pair
  	state_node_map_[state] = branch_node;
+}
+
+bool PathTree::contains_state(CVExecutionState* state) {
+	if (lookup_node(state) != NULL) {
+		return true;
+	}
+	return false;
+}
+
+void PathTree::remove_state(CVExecutionState* state) {
+	// Lookup state in state_map_
+	PathTreeNode *node = lookup_node(state);
+	assert(node && "State not found during remove");
+
+	node->remove_state(state);
+
+ 	state_node_map_.erase(state);
+}
+
+PathTreeNode* PathTree::lookup_node(CVExecutionState* state) {
+	PathTreeNode* node = NULL;
+
+	StateNodeMap::iterator it = state_node_map_.find(state);
+	if (it != state_node_map_.end())
+		node = it->second;
+
+	return node;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -112,13 +139,7 @@ PathTreeNode* PathTreeNode::move_state_to_branch(bool direction,
 	assert(branch_node->instruction() == instruction);
 	branch_node->add_state(state);
 
-	if (!parent_) { // root node
-		if (states_.empty()) {
-			is_fully_explored_ = true;
-		}
-	} else if (states_.empty() && parent_->is_fully_explored()) {
-		is_fully_explored_  = true;
-	}
+	update_explored_status();
 
 	assert(branch_node);
 	return branch_node;
@@ -129,19 +150,35 @@ void PathTreeNode::add_state(CVExecutionState* state) {
 	states_.insert(state);
 }
 
+void PathTreeNode::remove_state(CVExecutionState* state) {
+	assert(states_.count(state) != 0 && "State not found during remove");
+	states_.erase(state);
+	update_explored_status();
+}
+
 PathTreeNode* PathTreeNode::true_node() {
-	assert(true_node_);
+	//assert(true_node_);
 	return true_node_;
 }
 
 PathTreeNode* PathTreeNode::false_node() {
-	assert(false_node_);
+	//assert(false_node_);
 	return false_node_;
 }
 
 bool PathTreeNode::is_fully_explored() {
 	assert(is_fully_explored_ == states_.empty());
 	return is_fully_explored_;
+}
+
+void PathTreeNode::update_explored_status() {
+	if (!parent_) { // root node
+		if (states_.empty()) {
+			is_fully_explored_ = true;
+		}
+	} else if (states_.empty() && parent_->is_fully_explored()) {
+		is_fully_explored_  = true;
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
