@@ -496,6 +496,7 @@ CVExecutionState* VerifyStage::next_state() {
 			// Get ALl states from PathTree
 			ExecutionStateSet &path_tree_states = path_tree_->states();
 			// foreach state: reset path manager to use NthLevelPM
+			assert(!path_tree_states.empty());
 			foreach (CVExecutionState* s, path_tree_states) {
 				NthLevelPathManager* pm = new NthLevelPathManager(path_tree_);
 				s->reset_path_manager(pm);
@@ -532,7 +533,7 @@ CVExecutionState* VerifyStage::next_state() {
 			CVExecutionState* state = *(states_.begin());
 			NthLevelPathManager* pm 
 				= static_cast<NthLevelPathManager*>(state->path_manager());
-			if (pm->level() >= exhaustive_search_level_) {
+			if (pm->symbolic_level() >= exhaustive_search_level_) {
 				states_.erase(state);
 			} else {
 				return state;
