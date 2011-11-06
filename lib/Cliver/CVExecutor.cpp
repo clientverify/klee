@@ -681,6 +681,10 @@ void CVExecutor::add_state(CVExecutionState* state) {
 	addedStates.insert(state);
 }
 
+void CVExecutor::add_state_internal(CVExecutionState* state) {
+	states.insert(state);
+}
+
 void CVExecutor::rebuild_solvers() {
   delete solver;                                                                                                                                                                                            
   klee::STPSolver *stpSolver = new klee::STPSolver(false);                                                                                                                                                                       
