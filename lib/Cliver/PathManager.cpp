@@ -436,7 +436,7 @@ void StackDepthVerifyPathManager::branch(bool direction,
 HorizonPathManager::HorizonPathManager(const Path *vpath, PathRange &vrange,
 		PathTree* path_tree)
   : VerifyPathManager(vpath, vrange), 
-	  path_tree_(path_tree_), 
+	  path_tree_(path_tree), 
 	  is_horizon_(false) {}
 
 PathManager* HorizonPathManager::clone() {
