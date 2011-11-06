@@ -486,27 +486,25 @@ CVExecutionState* VerifyStage::next_state() {
 			}
 		}
 		
+		// For the Exhaustive strategy we collect all of the remaining states
+		// from the PathTree and begin a complete search for a valid path from
+		// all possible paths
 		if (search_strategy_ == Exhaustive) {
 			assert(states_.empty());
-			//CVExecutionState *state = root_state_->clone();
-			//g_executor->add_state(state);
-			//state->reset_path_manager();
-			//states_.insert(state);
 			exhaustive_search_level_ *= 2;
-			// Get ALl states from PathTree
+			
 			ExecutionStateSet &path_tree_states = path_tree_->states();
-			// foreach state: reset path manager to use NthLevelPM
+
+			// XXX need better handling of this event
 			assert(!path_tree_states.empty());
+
 			foreach (CVExecutionState* s, path_tree_states) {
+				// XXX We only need to reset the PathManager once...
 				NthLevelPathManager* pm = new NthLevelPathManager(path_tree_);
 				s->reset_path_manager(pm);
 				states_.insert(s);
 				g_executor->add_state_internal(s);
 			}
-			// Exhaustive search on every state upto some level until
-			//   no states are left, then raise the level and repeat, until
-			//   a valid state is found
-
 		}
 	}
 
@@ -558,43 +556,32 @@ bool VerifyStage::contains_state(CVExecutionState *state) {
 void VerifyStage::add_state(CVExecutionState *state) {
 	if (root_state_ == NULL) {
 		assert(states_.empty());
-		root_state_ = state;
 		assert(path_tree_ == NULL && "PathTree already created");
-		/// XXX FIXME we should not clone this state!
+		root_state_ = state;
 		path_tree_ = new PathTree(root_state_->clone());
 	} else {
 		states_.insert(state);
 	}
 }
 
-/// XXX  State remove semantics need to be clarified
 void VerifyStage::remove_state(CVExecutionState *state) {
-
-	if (state == root_state_) {
-		//CVDEBUG("Removal of root state requested");
-	}
+	assert(state != root_state_ && "unexpected state removal");
+	assert(!(states_.count(state) && finished_states_.count(state)));
 
 	if (states_.count(state)) {
 		//CVDEBUG("VerifyStage::remove_state: state removed from current stage");
 		states_.erase(state);
-	} else {
-		//CVDEBUG("VerifyStage::remove_state: state not found in current stage");
+	}
+
+	if (finished_states_.count(state)) {
+		CVDEBUG_S(state->id(), "VerifyStage::removing finished state");
+		finished_states_.erase(state);
 	}
 
 	if (path_tree_->contains_state(state)) {
 		//CVDEBUG("VerifyStage::remove_state: state removed from PathTree");
 		path_tree_->remove_state(state);
-	} else {
-		//CVDEBUG("VerifyStage::remove_state: state not found inPathTree");
 	}
-
-	//assert(state != root_state_ && "unexpected state removal");
-	//assert(!(states_.count(state) && finished_states_.count(state)));
-	//states_.erase(state);
-	//if (finished_states_.count(state)) {
-	//	CVDEBUG_S(state->id(), "VerifyStage::removing finished state");
-	//	finished_states_.erase(state);
-	//}
 
 }
 
