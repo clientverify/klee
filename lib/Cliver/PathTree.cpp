@@ -21,7 +21,7 @@ namespace cliver {
 PathTree::PathTree(CVExecutionState* root_state) {
 	root_ = new PathTreeNode(NULL, root_state->prevPC);
 	root_->add_state(root_state);
- 	state_node_map_[root_state] = root_;
+	add_state_to_map(root_state, root_);
 }
 
 PathTree::~PathTree() {
@@ -35,7 +35,7 @@ void PathTree::add_branched_state(CVExecutionState* state,
 	assert(node && "Node lookup failed");
 
 	node->add_state(branched_state);
- 	state_node_map_[branched_state] = node;
+	add_state_to_map(branched_state, node);
 }
 
 /// TODO rename, too vague
@@ -80,7 +80,7 @@ void PathTree::branch(bool direction, klee::Solver::Validity validity,
 		= node->move_state_to_branch(direction, state, inst);
 
 	// Update state_map_ with new (state,node) pair
- 	state_node_map_[state] = branch_node;
+	add_state_to_map(state, branch_node);
 }
 
 bool PathTree::contains_state(CVExecutionState* state) {
@@ -91,13 +91,10 @@ bool PathTree::contains_state(CVExecutionState* state) {
 }
 
 void PathTree::remove_state(CVExecutionState* state) {
-	// Lookup state in state_map_
 	PathTreeNode *node = lookup_node(state);
 	assert(node && "State not found during remove");
-
 	node->remove_state(state);
-
- 	state_node_map_.erase(state);
+	remove_state_from_map(state);
 }
 
 PathTreeNode* PathTree::lookup_node(CVExecutionState* state) {
@@ -108,6 +105,16 @@ PathTreeNode* PathTree::lookup_node(CVExecutionState* state) {
 		node = it->second;
 
 	return node;
+}
+
+void PathTree::add_state_to_map(CVExecutionState* state, PathTreeNode* node) {
+ 	state_node_map_[state] = node;
+	states_.insert(state);
+}
+
+void PathTree::remove_state_from_map(CVExecutionState* state) {
+ 	state_node_map_.erase(state);
+	states_.erase(state);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
