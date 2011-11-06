@@ -500,6 +500,7 @@ CVExecutionState* VerifyStage::next_state() {
 				NthLevelPathManager* pm = new NthLevelPathManager(path_tree_);
 				s->reset_path_manager(pm);
 				states_.insert(s);
+				g_executor->add_state_internal(s);
 			}
 			// Exhaustive search on every state upto some level until
 			//   no states are left, then raise the level and repeat, until
