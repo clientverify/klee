@@ -51,6 +51,8 @@ class PathManager {
 			klee::KInstruction* inst, CVExecutionState *state);
 	virtual void branch(bool direction, klee::Solver::Validity validity, 
 			klee::KInstruction* inst, CVExecutionState *state);
+	virtual void state_branch(CVExecutionState* state, 
+			CVExecutionState *branched_state);
 	virtual void print(std::ostream &os) const;
 
 	void set_range(const PathRange& range);
@@ -132,6 +134,8 @@ class VerifyPathManager : public PathManager {
 			klee::KInstruction* inst, CVExecutionState *state);
 	virtual void branch(bool direction, klee::Solver::Validity validity, 
 			klee::KInstruction* inst, CVExecutionState *state);
+	virtual void state_branch(CVExecutionState* state, 
+			CVExecutionState *branched_state);
 	virtual void print(std::ostream &os) const;
 
 	unsigned index() { return index_; }
@@ -239,15 +243,19 @@ inline std::ostream &operator<<(std::ostream &os,
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class PathTree;
+
 class HorizonPathManager : public VerifyPathManager {
  public:
-	HorizonPathManager(const Path *vpath, PathRange &vrange);
+	HorizonPathManager(const Path *vpath, PathRange &vrange, PathTree* path_tree);
 	virtual PathManager* clone();
 	virtual bool less(const PathManager &b) const;
 	virtual bool try_branch(bool direction, klee::Solver::Validity validity, 
 			klee::KInstruction* inst, CVExecutionState *state);
 	virtual void branch(bool direction, klee::Solver::Validity validity, 
 			klee::KInstruction* inst, CVExecutionState *state);
+	virtual void state_branch(CVExecutionState* state, 
+			CVExecutionState *branched_state);
 
 	void set_index(int index);
 	bool is_horizon() { return is_horizon_; }
@@ -259,6 +267,7 @@ class HorizonPathManager : public VerifyPathManager {
 	explicit HorizonPathManager(const VerifyConcretePathManager &pm);
 	explicit HorizonPathManager();
 
+	PathTree* path_tree_;
 	bool is_horizon_;
 };
 

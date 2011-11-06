@@ -12,6 +12,7 @@
 #include "CVExecutor.h"
 #include "CVExecutionState.h"
 #include "ExecutionStateProperty.h"
+#include "PathTree.h"
 
 #include <boost/serialization/set.hpp>
 #include <boost/serialization/vector.hpp>
@@ -108,6 +109,9 @@ void PathManager::branch(bool direction,
 		CVExecutionState *state) {
 	path_->add(direction, inst);
 }
+
+void PathManager::state_branch(CVExecutionState* state, 
+		CVExecutionState* branched_state) { /* Not used */ }
 
 void PathManager::set_range(const PathRange& range) {
 	range_ = range;
@@ -261,6 +265,9 @@ void VerifyPathManager::branch(bool direction,
 	assert(direction == vpath_->get_branch(index_));
 	index_++;
 }
+
+void VerifyPathManager::state_branch(CVExecutionState* state, 
+		CVExecutionState* branched_state) { /* Not used */ }
 
 void VerifyPathManager::print(std::ostream &os) const {
 	os << "vPath [" << vpath_->length() << "][" 
@@ -426,30 +433,30 @@ void StackDepthVerifyPathManager::branch(bool direction,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-HorizonPathManager::HorizonPathManager(const Path *vpath, PathRange &vrange)
-  : VerifyPathManager(vpath, vrange), is_horizon_(false) {}
+HorizonPathManager::HorizonPathManager(const Path *vpath, PathRange &vrange,
+		PathTree* path_tree)
+  : VerifyPathManager(vpath, vrange), 
+	  path_tree_(path_tree_), 
+	  is_horizon_(false) {}
 
 PathManager* HorizonPathManager::clone() {
-	HorizonPathManager *pm 
-		= new HorizonPathManager(vpath_, vrange_);
-	pm->index_ = index_;
+	HorizonPathManager *pm = new HorizonPathManager(vpath_, vrange_, path_tree_);
+	pm->index_ 			= index_;
 	pm->is_horizon_ = is_horizon_;
 	return pm;
 }
 
 bool HorizonPathManager::less(const PathManager &b) const {
-	const HorizonPathManager *vpm 
-		= static_cast<const HorizonPathManager*>(&b);
-	if (vrange_.less(vpm->vrange_))
+	const HorizonPathManager *pm = static_cast<const HorizonPathManager*>(&b);
+	if (vrange_.less(pm->vrange_))
 		return true;
-	return vpath_->less(*(vpm->vpath_));
+	return vpath_->less(*(pm->vpath_));
 }
 
 /// Always returns true.
 bool HorizonPathManager::try_branch(bool direction, 
 		klee::Solver::Validity validity, klee::KInstruction* inst, 
 		CVExecutionState *state) {
-
 	return true;
 }
 
@@ -468,6 +475,13 @@ void HorizonPathManager::branch(bool direction,
 	}
 
 	index_++;
+
+	path_tree_->branch(direction, validity, inst, state);
+}
+
+void HorizonPathManager::state_branch(CVExecutionState* state, 
+		CVExecutionState* branched_state) {
+	path_tree_->add_branched_state(state, branched_state);
 }
 
 void HorizonPathManager::set_index(int index) {
