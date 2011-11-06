@@ -45,7 +45,7 @@ bool PathTree::get_states(const Path* path, const PathRange &range,
 	PathTreeNode* node = root_;
 	unsigned i = 0;
 
-	while (node != NULL && node->is_fully_explored()) {
+	while (node != NULL && node->is_fully_explored() && i < path->length()) {
 		if (true == path->get_branch(i)) {
 			/// XXX fixme true_node may be null
 			node = node->true_node();
@@ -55,7 +55,7 @@ bool PathTree::get_states(const Path* path, const PathRange &range,
 		i++;
 	}
 
-	if (node == NULL || node->states().empty()) {
+	if (node == NULL || node->states().empty() || i > path->length()) {
 		index = -1;
 		return false;
 	}
