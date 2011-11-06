@@ -24,6 +24,10 @@ PathTree::PathTree(CVExecutionState* root_state) {
  	state_node_map_[root_state] = root_;
 }
 
+PathTree::~PathTree() {
+	CVDEBUG("PathTree deleted");
+}
+
 void PathTree::add_branched_state(CVExecutionState* state,
 		CVExecutionState* branched_state) {
 	

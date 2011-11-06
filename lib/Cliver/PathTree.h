@@ -60,6 +60,7 @@ class PathTree {
  typedef std::map< CVExecutionState*, PathTreeNode* > StateNodeMap;
  public:
 	PathTree(CVExecutionState* root_state);
+	~PathTree();
 	void branch(bool direction, klee::Solver::Validity validity, 
 			klee::KInstruction* inst, CVExecutionState *state);
 
