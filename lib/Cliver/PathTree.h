@@ -67,9 +67,6 @@ class PathTree {
 	void add_branched_state(CVExecutionState* state, 
 			CVExecutionState* branched_state);
 
-	int get_states(const Path* path, const PathRange &range,
-			ExecutionStateSet& states);
-
 	bool get_states(const Path* path, const PathRange &range,
 			ExecutionStateSet& states, int &index);
 
@@ -77,12 +74,16 @@ class PathTree {
 
 	void remove_state(CVExecutionState* state);
 
+	ExecutionStateSet& states() { return states_; }
+
  private:
 	PathTreeNode* lookup_node(CVExecutionState* state);
-
+	void add_state_to_map(CVExecutionState* state, PathTreeNode* node);
+	void remove_state_from_map(CVExecutionState* state);
 
 	PathTreeNode *root_;
 	StateNodeMap state_node_map_;
+	ExecutionStateSet states_;
 
 };
 
@@ -92,7 +93,6 @@ class PathTreeFactory {
  public:
   static PathTree* create(CVExecutionState *root_state);
 };
-
 
 } // end namespace cliver
 
