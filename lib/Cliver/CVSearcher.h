@@ -158,11 +158,14 @@ class VerifyStage {
 	std::vector<VerifyStage*> children_;
 	// Flavor of the search
 	SearchStrategy search_strategy_;
+	// For Exhaustive Search strategy
+	unsigned exhaustive_search_level_;
 };
 
 class VerifySearcher : public CVSearcher {
  public:
-	VerifySearcher(klee::Searcher* base_searcher, StateMerger* merger, PathManagerSet *paths);
+	VerifySearcher(klee::Searcher* base_searcher, StateMerger* merger, 
+			PathManagerSet *paths);
 
 	klee::ExecutionState &selectState();
 
