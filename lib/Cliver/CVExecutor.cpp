@@ -12,7 +12,6 @@
 #include "CVSearcher.h"
 #include "NetworkManager.h"
 #include "PathManager.h"
-#include "PathTree.h"
 #include "StateMerger.h"
 #include "ConstraintPruner.h"
 
@@ -498,8 +497,6 @@ klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current,
 	CVExecutionState* cvcurrent = static_cast<CVExecutionState*>(&current);
 	PathManager *path_manager  
 		= static_cast<CVExecutionState*>(&current)->path_manager();
-	PathTree *path_tree
-		= static_cast<CVExecutionState*>(&current)->path_tree();
 
 	double timeout = stpTimeout;
 	solver->setTimeout(timeout);
@@ -531,7 +528,6 @@ klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current,
 					current.pathOS << "1";
 				}
 				path_manager->branch(true, res, current.prevPC, cvcurrent);
-				path_tree->branch(true, res, current.prevPC, cvcurrent);
 				return klee::Executor::StatePair(&current, 0);
 			} else {
 				terminateState(current);
@@ -544,7 +540,6 @@ klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current,
 					current.pathOS << "0";
 				}
 				path_manager->branch(false, res, current.prevPC, cvcurrent);
-				path_tree->branch(false, res, current.prevPC, cvcurrent);
 				return klee::Executor::StatePair(0, &current);
 			} else {
 				terminateState(current);
@@ -574,13 +569,7 @@ klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current,
 				PathManager *false_path_manager 
 					= static_cast<CVExecutionState*>(falseState)->path_manager();
 
-				PathTree *false_path_tree
-					= static_cast<CVExecutionState*>(falseState)->path_tree();
-
 				false_path_manager->branch(false, res, current.prevPC,
-						static_cast<CVExecutionState*>(falseState));
-
-				false_path_tree->branch(false, res, current.prevPC,
 						static_cast<CVExecutionState*>(falseState));
 			}
 
@@ -594,7 +583,6 @@ klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current,
 
 				addConstraint(*trueState, condition);
 				path_manager->branch(true, res, current.prevPC, cvcurrent);
-				path_tree->branch(true, res, current.prevPC, cvcurrent);
 
 			} else {
 				terminateState(*trueState);
