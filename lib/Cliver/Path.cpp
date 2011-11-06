@@ -96,10 +96,12 @@ Path::Path(Path* parent) : parent_(parent), ref_count_(0), length_(-1) {
 	parent->inc_ref();
 }
 
-void Path::add(bool direction, klee::KInstruction* inst) {
+void Path::add(bool direction, klee::KInstruction* inst, int stack_depth) {
 	assert(ref_count_ == 0);
 	branches_.push_back(direction);
 	branch_ids_.push_back(inst->info->id);
+	if (stack_depth > 0)
+		stack_depths_.push_back(stack_depth);
 }
 
 Path::~Path() { 
@@ -164,7 +166,7 @@ bool Path::get_branch(int index) const {
 	return branches[index];
 }
 
-bool Path::get_branch_id(int index) const {
+unsigned Path::get_branch_id(int index) const {
 	if (parent_ == NULL) {
 		assert( index >= 0 && index < branch_ids_.size());
 		return branch_ids_[index];
@@ -173,6 +175,17 @@ bool Path::get_branch_id(int index) const {
 	consolidate_branch_ids(branch_ids);
 	assert( index >= 0 && index < branch_ids.size());
 	return branch_ids[index];
+}
+
+unsigned Path::get_stack_depth(int index) const {
+	if (parent_ == NULL) {
+		assert( index >= 0 && index < stack_depths_.size());
+		return stack_depths_[index];
+	}
+	std::vector<unsigned> stack_depths;
+	consolidate_stack_depths(stack_depths);
+	assert( index >= 0 && index < stack_depths.size());
+	return stack_depths[index];
 }
 
 klee::KInstruction* Path::get_branch_kinst(int index) {
@@ -214,6 +227,16 @@ void Path::consolidate_branch_ids(std::vector<unsigned> &branch_ids) const {
 	while (p != NULL) {
 		branch_ids.insert(branch_ids.begin(), 
 				p->branch_ids_.begin(), p->branch_ids_.end());
+		p = p->parent_;
+	}
+}
+
+void Path::consolidate_stack_depths(std::vector<unsigned> &stack_depths) const {
+	stack_depths.reserve(length());
+	const Path* p = this;
+	while (p != NULL) {
+		stack_depths.insert(stack_depths.begin(), 
+				p->stack_depths_.begin(), p->stack_depths_.end());
 		p = p->parent_;
 	}
 }

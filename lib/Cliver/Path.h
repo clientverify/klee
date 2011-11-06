@@ -106,13 +106,14 @@ class Path {
 	Path(Path* parent);
 	~Path();
 	unsigned length() const;
-	void add(bool direction, klee::KInstruction* inst);
+	void add(bool direction, klee::KInstruction* inst, int stack_depth=-1);
 	bool less(const Path &b) const;
 	bool equal(const Path &b) const;
 	void inc_ref();
 	void dec_ref();
 	bool get_branch(int index) const;
-	bool get_branch_id(int index) const;
+	unsigned get_branch_id(int index) const;
+	unsigned get_stack_depth(int index) const;
 	klee::KInstruction* get_branch_kinst(int index);
 	void print(std::ostream &os) const;
 
@@ -122,6 +123,7 @@ class Path {
 	// Helper functions
 	void consolidate_branches(std::vector<bool> &branches) const;
 	void consolidate_branch_ids(std::vector<unsigned> &branch_ids) const;
+	void consolidate_stack_depths(std::vector<unsigned> &stack_depths) const;
 	klee::KInstruction* get_kinst(unsigned id);
 
 	// Serialization
@@ -139,6 +141,7 @@ class Path {
 
 	std::vector<bool> branches_;
 	std::vector<unsigned>  branch_ids_;
+	std::vector<unsigned>  stack_depths_;
 };
 
 inline std::ostream &operator<<(std::ostream &os, const Path &p) {
@@ -154,12 +157,16 @@ void Path::save(archive & ar, const unsigned version) const {
 	std::vector<unsigned> branch_ids;
 	consolidate_branch_ids(branch_ids);
 	ar & branch_ids;
+	std::vector<unsigned> stack_depths;
+	consolidate_stack_depths(stack_depths);
+	ar & stack_depths;
 }
 
 template<class archive> 
 void Path::load(archive & ar, const unsigned version) {
 	ar & branches_;
 	ar & branch_ids_;
+	ar & stack_depths_;
 }
 
 } // end namespace cliver
