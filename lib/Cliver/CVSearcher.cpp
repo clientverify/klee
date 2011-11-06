@@ -520,7 +520,9 @@ CVExecutionState* VerifyStage::next_state() {
 }
 
 bool VerifyStage::contains_state(CVExecutionState *state) {
-	return states_.count(state);
+	if (states_.count(state) || path_tree_->contains_state(state))
+		return true;
+	return false;
 }
 
 void VerifyStage::add_state(CVExecutionState *state) {
@@ -631,9 +633,11 @@ void VerifySearcher::update(klee::ExecutionState *current,
 	//klee::TimerStatIncrementer timer(stats::searcher_time);
 	
 	// Check and add current if needed
-	CVExecutionState *cvcurrent = static_cast<CVExecutionState*>(current);
-	if (false == current_stage_->contains_state(cvcurrent))
-		current_stage_->add_state(cvcurrent);
+	if (current != NULL) {
+		CVExecutionState *cvcurrent = static_cast<CVExecutionState*>(current);
+		if (false == current_stage_->contains_state(cvcurrent))
+			current_stage_->add_state(cvcurrent);
+	}
 
 	// add any added states via current_stage_->add_state()
 	foreach (klee::ExecutionState* klee_state, addedStates) {
