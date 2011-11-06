@@ -569,21 +569,21 @@ void VerifyStage::add_state(CVExecutionState *state) {
 void VerifyStage::remove_state(CVExecutionState *state) {
 
 	if (state == root_state_) {
-		CVDEBUG("Removal of root state requested");
+		//CVDEBUG("Removal of root state requested");
 	}
 
 	if (states_.count(state)) {
-		CVDEBUG("VerifyStage::remove_state: state removed from current stage");
+		//CVDEBUG("VerifyStage::remove_state: state removed from current stage");
 		states_.erase(state);
 	} else {
-		CVDEBUG("VerifyStage::remove_state: state not found in current stage");
+		//CVDEBUG("VerifyStage::remove_state: state not found in current stage");
 	}
 
 	if (path_tree_->contains_state(state)) {
-		CVDEBUG("VerifyStage::remove_state: state removed from PathTree");
+		//CVDEBUG("VerifyStage::remove_state: state removed from PathTree");
 		path_tree_->remove_state(state);
 	} else {
-		CVDEBUG("VerifyStage::remove_state: state not found inPathTree");
+		//CVDEBUG("VerifyStage::remove_state: state not found inPathTree");
 	}
 
 	//assert(state != root_state_ && "unexpected state removal");
