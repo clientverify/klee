@@ -5,6 +5,8 @@
 //===----------------------------------------------------------------------===//
 // TODO Rename this class to StateTree?
 //
+// Handle paths that reach null node, which is complete
+//
 //===----------------------------------------------------------------------===//
 #ifndef CLIVER_PATH_TREE_H
 #define CLIVER_PATH_TREE_H
@@ -45,7 +47,14 @@ class PathTree {
 	bool get_states(const Path* path, const PathRange &range,
 			ExecutionStateSet& states, int &index);
 
+	bool contains_state(CVExecutionState* state);
+
+	void remove_state(CVExecutionState* state);
+
  private:
+	PathTreeNode* lookup_node(CVExecutionState* state);
+
+
 	PathTreeNode *root_;
 	StateNodeMap state_node_map_;
 
@@ -63,10 +72,13 @@ class PathTreeNode {
 	PathTreeNode* false_node();
 	bool is_fully_explored(); 
 	void add_state(CVExecutionState* state);
+	void remove_state(CVExecutionState* state);
 	ExecutionStateSet& states() { return states_; }
 	klee::KInstruction* instruction() { return instruction_; } 
 
  private:
+	void update_explored_status();
+
 	PathTreeNode *parent_;
 	PathTreeNode *true_node_;
 	PathTreeNode *false_node_;
