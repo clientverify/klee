@@ -29,7 +29,32 @@ class CVExecutionState;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class PathTreeNode;
+class PathTreeNode {
+ public:
+	PathTreeNode(PathTreeNode* parent, klee::KInstruction* instruction);
+
+	PathTreeNode* move_state_to_branch(bool direction, CVExecutionState* state, 
+			klee::KInstruction* instruction);
+
+	PathTreeNode* true_node();
+	PathTreeNode* false_node();
+	bool is_fully_explored(); 
+	void add_state(CVExecutionState* state);
+	void remove_state(CVExecutionState* state);
+	ExecutionStateSet& states() { return states_; }
+	klee::KInstruction* instruction() { return instruction_; } 
+
+ private:
+	void update_explored_status();
+
+	PathTreeNode *parent_;
+	PathTreeNode *true_node_;
+	PathTreeNode *false_node_;
+	klee::KInstruction* instruction_;
+	ExecutionStateSet states_;
+	bool is_fully_explored_; // True when all states node have reached a new node
+
+};
 
 class PathTree {
  typedef std::map< CVExecutionState*, PathTreeNode* > StateNodeMap;
@@ -57,34 +82,6 @@ class PathTree {
 
 	PathTreeNode *root_;
 	StateNodeMap state_node_map_;
-
-};
-
-class PathTreeNode {
- friend class PathTree;
- public:
-	PathTreeNode(PathTreeNode* parent, klee::KInstruction* instruction);
-
-	PathTreeNode* move_state_to_branch(bool direction, CVExecutionState* state, 
-			klee::KInstruction* instruction);
-
-	PathTreeNode* true_node();
-	PathTreeNode* false_node();
-	bool is_fully_explored(); 
-	void add_state(CVExecutionState* state);
-	void remove_state(CVExecutionState* state);
-	ExecutionStateSet& states() { return states_; }
-	klee::KInstruction* instruction() { return instruction_; } 
-
- private:
-	void update_explored_status();
-
-	PathTreeNode *parent_;
-	PathTreeNode *true_node_;
-	PathTreeNode *false_node_;
-	klee::KInstruction* instruction_;
-	ExecutionStateSet states_;
-	bool is_fully_explored_; // True when all states node have reached a new node
 
 };
 
