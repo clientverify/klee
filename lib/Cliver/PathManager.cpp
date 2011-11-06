@@ -490,6 +490,39 @@ void HorizonPathManager::set_index(int index) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NthLevelPathManager::NthLevelPathManager(PathTree* path_tree)
+	: path_tree_(path_tree), level_(0), symbolic_level_(0) {}
+
+PathManager* NthLevelPathManager::clone() {
+	NthLevelPathManager *pm = new NthLevelPathManager(path_tree_);
+	pm->level_ = level_;
+	pm->symbolic_level_ = symbolic_level_;
+	return pm;
+}
+
+/// Always returns true.
+bool NthLevelPathManager::try_branch(bool direction, 
+		klee::Solver::Validity validity, klee::KInstruction* inst, 
+		CVExecutionState *state) {
+	return true;
+}
+
+void NthLevelPathManager::branch(bool direction, 
+		klee::Solver::Validity validity, klee::KInstruction* inst, 
+		CVExecutionState *state) {
+	level_++;
+	if (validity == klee::Solver::Unknown)
+		symbolic_level_++;
+	path_tree_->branch(direction, validity, inst, state);
+}
+
+void NthLevelPathManager::state_branch(CVExecutionState* state, 
+		CVExecutionState* branched_state) {
+	path_tree_->add_branched_state(state, branched_state);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 PathManagerSet::PathManagerSet() {}
 
 bool PathManagerSet::insert(PathManager* path) {

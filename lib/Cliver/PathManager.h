@@ -264,7 +264,7 @@ class HorizonPathManager : public VerifyPathManager {
 	virtual bool merge(const PathManager &pm) { return false; }
 
  protected:
-	explicit HorizonPathManager(const VerifyConcretePathManager &pm);
+	explicit HorizonPathManager(const HorizonPathManager &pm);
 	explicit HorizonPathManager();
 
 	PathTree* path_tree_;
@@ -273,6 +273,45 @@ class HorizonPathManager : public VerifyPathManager {
 
 inline std::ostream &operator<<(std::ostream &os, 
 		const HorizonPathManager &p) {
+  p.print(os);
+  return os;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+class NthLevelPathManager : public PathManager {
+ public:
+	NthLevelPathManager(PathTree* path_tree);
+
+	virtual PathManager* clone();
+
+	virtual bool try_branch(bool direction, klee::Solver::Validity validity, 
+			klee::KInstruction* inst, CVExecutionState *state);
+
+	virtual void branch(bool direction, klee::Solver::Validity validity, 
+			klee::KInstruction* inst, CVExecutionState *state);
+
+	virtual void state_branch(CVExecutionState* state, 
+			CVExecutionState *branched_state);
+
+	unsigned level() { return level_; }
+	unsigned symbolic_level() { return symbolic_level_; }
+
+ private:
+	virtual bool less(const PathManager &b) const { return false; }
+	virtual bool merge(const PathManager &pm) { return false; }
+
+ protected:
+	explicit NthLevelPathManager(const NthLevelPathManager &pm);
+	explicit NthLevelPathManager();
+
+	PathTree* path_tree_;
+	unsigned level_;
+	unsigned symbolic_level_;
+};
+
+inline std::ostream &operator<<(std::ostream &os, 
+		const NthLevelPathManager &p) {
   p.print(os);
   return os;
 }
