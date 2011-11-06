@@ -109,6 +109,7 @@ class TrainingSearcher : public CVSearcher {
 ////////////////////////////////////////////////////////////////////////////////
 
 class PathSelector;
+class PathTree;
 
 /// Each VerifyStage object holds ExecutionStates, where all the states in a 
 /// given VerifyStage have processed network events 1 to i, where i is equal
@@ -116,7 +117,12 @@ class PathSelector;
 /// all of the other states began execution.
 class VerifyStage {
  public:
-	typedef enum { FullTraining, ConcreteTraining, PrefixTraining, Exhaustive } SearchMode;
+	typedef enum { 
+		FullTraining, 
+		ConcreteTraining, 
+		PrefixTraining, 
+		Exhaustive } 
+	SearchStrategy;
 
 	VerifyStage(PathSelector *path_selector, const SocketEvent* socket_event, 
 			VerifyStage* parent=NULL);
@@ -134,6 +140,8 @@ class VerifyStage {
 	CVExecutionState *root_state_;
 	// Used when cloning root_state_ to assign a new PathManager to explore
 	PathSelector *path_selector_;
+	// Keep track of paths we've explored
+	PathTree* path_tree_;
   // States that are currently ready to continue executions
 	ExecutionStateSet states_; 
   // States that are not active
@@ -148,9 +156,8 @@ class VerifyStage {
 	const VerifyStage* parent_;
 	// Children of this VerifyStage
 	std::vector<VerifyStage*> children_;
-
-	SearchMode search_mode;
-
+	// Flavor of the search
+	SearchStrategy search_strategy_;
 };
 
 class VerifySearcher : public CVSearcher {

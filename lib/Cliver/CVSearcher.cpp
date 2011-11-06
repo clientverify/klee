@@ -433,10 +433,11 @@ VerifyStage::VerifyStage(PathSelector *path_selector,
 		const SocketEvent* socket_event, VerifyStage* parent)
 	: root_state_(NULL),
 	  path_selector_(path_selector->clone()),
+		path_tree_(NULL),
 		socket_event_(socket_event), // XXX needed?
 		network_event_index_(0), /// XXX needed?
 		parent_(parent),
-		search_mode(FullTraining) {
+		search_strategy_(FullTraining) {
 
 	if (parent_ == NULL) {
 		network_event_index_ = 0;
@@ -450,14 +451,14 @@ CVExecutionState* VerifyStage::next_state() {
 	if (states_.empty()) {
 		CVDEBUG("VerifyStage::next_state(): states_.empty() == true");
 
-		if (search_mode == Exhaustive) 
+		if (search_strategy_ == Exhaustive) 
 			return NULL;
 
 		assert(root_state_);
 
 		PathRange range(root_state_->prevPC, NULL);
 
-		if (search_mode == FullTraining) {
+		if (search_strategy_ == FullTraining) {
 			CVDEBUG("VerifyStage::next_state(): FullTraining is active");
 			PathManager* training = NULL;
 			do {
@@ -465,15 +466,15 @@ CVExecutionState* VerifyStage::next_state() {
 					CVDEBUG("VerifyStage::next_state(): training path found");
 					const Path* tpath     = training->path();
 					PathRange trange      = training->range();
-					PathTree* path_tree = root_state_->path_tree();
 					int index;
 					ExecutionStateSet tree_states;
 
-					if (path_tree->get_states(tpath, trange, tree_states, index)) {
+					if (path_tree_->get_states(tpath, trange, tree_states, index)) {
 						CVDEBUG("VerifyStage::next_state(): states found in path_tree");
 						// XXX Do we need to clone states here?
 						foreach (CVExecutionState* s, tree_states) {
-							HorizonPathManager* pm = new HorizonPathManager(tpath, range);
+							HorizonPathManager* pm 
+								= new HorizonPathManager(tpath, trange, path_tree_);
 							pm->set_index(index);
 							s->reset_path_manager(pm);
 							states_.insert(s);
@@ -484,20 +485,19 @@ CVExecutionState* VerifyStage::next_state() {
 
 			if (states_.empty()) {
 				CVDEBUG("Switching to Exhaustive search mode");
-				search_mode = Exhaustive;
+				search_strategy_ = Exhaustive;
 			}
 		}
 		
-		if (search_mode == Exhaustive) {
-			// XXX Should we clone and store the root state for later?
-			CVExecutionState *state = root_state_;
+		if (search_strategy_ == Exhaustive) {
+			CVExecutionState *state = root_state_->clone();
 			g_executor->add_state(state);
 			state->reset_path_manager();
 			states_.insert(state);
 		}
 	}
 
-	if (search_mode == FullTraining) {
+	if (search_strategy_ == FullTraining) {
 		CVDEBUG("VerifyStage::next_state(): Checking for states at Horizon" );
 		while (!states_.empty()) {
 			CVExecutionState* state = *(states_.begin());
@@ -512,7 +512,7 @@ CVExecutionState* VerifyStage::next_state() {
 				return state;
 			}
 		}
-		// All states are at Horizon; need new path or next search_mode
+		// All states are at Horizon; need new path or next search_strategy_
 		return next_state();
 	}
 
@@ -527,19 +527,42 @@ void VerifyStage::add_state(CVExecutionState *state) {
 	if (root_state_ == NULL) {
 		assert(states_.empty());
 		root_state_ = state;
+		assert(path_tree_ == NULL && "PathTree already created");
+		/// XXX FIXME we should not clone this state!
+		path_tree_ = new PathTree(root_state_->clone());
 	} else {
 		states_.insert(state);
 	}
 }
 
+/// XXX  State remove semantics need to be clarified
 void VerifyStage::remove_state(CVExecutionState *state) {
-	assert(state != root_state_ && "unexpected state removal");
-	assert(!(states_.count(state) && finished_states_.count(state)));
-	states_.erase(state);
-	if (finished_states_.count(state)) {
-		CVDEBUG_S(state->id(), "VerifyStage::removing finished state");
-		finished_states_.erase(state);
+
+	if (state == root_state_) {
+		CVDEBUG("Removal of root state requested");
 	}
+
+	if (states_.count(state)) {
+		CVDEBUG("VerifyStage::remove_state: state removed from current stage");
+		states_.erase(state);
+	} else {
+		CVDEBUG("VerifyStage::remove_state: state not found in current stage");
+	}
+
+	if (path_tree_->contains_state(state)) {
+		CVDEBUG("VerifyStage::remove_state: state removed from PathTree");
+		path_tree_->remove_state(state);
+	} else {
+		CVDEBUG("VerifyStage::remove_state: state not found inPathTree");
+	}
+
+	//assert(state != root_state_ && "unexpected state removal");
+	//assert(!(states_.count(state) && finished_states_.count(state)));
+	//states_.erase(state);
+	//if (finished_states_.count(state)) {
+	//	CVDEBUG_S(state->id(), "VerifyStage::removing finished state");
+	//	finished_states_.erase(state);
+	//}
 }
 
 void VerifyStage::finish(CVExecutionState *finished_state) {
@@ -573,8 +596,7 @@ void VerifyStage::finish(CVExecutionState *finished_state) {
 	const SocketEvent &se = state->network_manager()->socket()->event();
 
 	VerifyStage *child_stage = new VerifyStage(path_selector_, &se, this);
-	child_stage->root_state_ = state;
-	child_stage->root_state_->reset_path_tree();
+	child_stage->add_state(state);
 	children_.push_back(child_stage);
 }
 
