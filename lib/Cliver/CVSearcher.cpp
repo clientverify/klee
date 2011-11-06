@@ -437,7 +437,8 @@ VerifyStage::VerifyStage(PathSelector *path_selector,
 		socket_event_(socket_event), // XXX needed?
 		network_event_index_(0), /// XXX needed?
 		parent_(parent),
-		search_strategy_(FullTraining) {
+		search_strategy_(FullTraining),
+    exhaustive_search_level_(1) {
 
 	if (parent_ == NULL) {
 		network_event_index_ = 0;
@@ -446,32 +447,28 @@ VerifyStage::VerifyStage(PathSelector *path_selector,
 	}
 }
 
-/// XXX Need comment explaining final version of next_state 
+/// XXX Needs explanatory comment!
 CVExecutionState* VerifyStage::next_state() {
 	if (states_.empty()) {
-		CVDEBUG("VerifyStage::next_state(): states_.empty() == true");
-
-		if (search_strategy_ == Exhaustive) 
-			return NULL;
+		//CVDEBUG("VerifyStage::next_state(): states_.empty() == true");
 
 		assert(root_state_);
 
 		PathRange range(root_state_->prevPC, NULL);
 
 		if (search_strategy_ == FullTraining) {
-			CVDEBUG("VerifyStage::next_state(): FullTraining is active");
+			//CVDEBUG("VerifyStage::next_state(): FullTraining is active");
 			PathManager* training = NULL;
 			do {
 				if (training = path_selector_->next_path(range)) {
-					CVDEBUG("VerifyStage::next_state(): training path found");
+					//CVDEBUG("VerifyStage::next_state(): training path found");
 					const Path* tpath     = training->path();
 					PathRange trange      = training->range();
 					int index;
 					ExecutionStateSet tree_states;
 
 					if (path_tree_->get_states(tpath, trange, tree_states, index)) {
-						CVDEBUG("VerifyStage::next_state(): states found in path_tree");
-						// XXX Do we need to clone states here?
+						//CVDEBUG("VerifyStage::next_state(): states found in path_tree");
 						foreach (CVExecutionState* s, tree_states) {
 							HorizonPathManager* pm 
 								= new HorizonPathManager(tpath, trange, path_tree_);
@@ -490,32 +487,63 @@ CVExecutionState* VerifyStage::next_state() {
 		}
 		
 		if (search_strategy_ == Exhaustive) {
-			CVExecutionState *state = root_state_->clone();
-			g_executor->add_state(state);
-			state->reset_path_manager();
-			states_.insert(state);
+			assert(states_.empty());
+			//CVExecutionState *state = root_state_->clone();
+			//g_executor->add_state(state);
+			//state->reset_path_manager();
+			//states_.insert(state);
+			exhaustive_search_level_ *= 2;
+			// Get ALl states from PathTree
+			ExecutionStateSet &path_tree_states = path_tree_->states();
+			// foreach state: reset path manager to use NthLevelPM
+			foreach (CVExecutionState* s, path_tree_states) {
+				NthLevelPathManager* pm = new NthLevelPathManager(path_tree_);
+				s->reset_path_manager(pm);
+				states_.insert(s);
+			}
+			// Exhaustive search on every state upto some level until
+			//   no states are left, then raise the level and repeat, until
+			//   a valid state is found
+
 		}
 	}
 
+	// Find a state that is not at the search "horizon"
 	if (search_strategy_ == FullTraining) {
-		CVDEBUG("VerifyStage::next_state(): Checking for states at Horizon" );
 		while (!states_.empty()) {
 			CVExecutionState* state = *(states_.begin());
 			VerifyProperty* p = static_cast<VerifyProperty*>(state->property());
 			if (VerifyProperty::Horizon == p->phase) {
-				// XXX add this state to VerifyState::non_active_states_ ?
 				states_.erase(state);
 			} else {
-				HorizonPathManager* pm = 
-					static_cast<HorizonPathManager*>(state->path_manager());
+				HorizonPathManager* pm 
+					= static_cast<HorizonPathManager*>(state->path_manager());
 				assert(pm->is_horizon() == false && "Cannot return state at horizon!!");
 				return state;
 			}
 		}
-		// All states are at Horizon; need new path or next search_strategy_
+		// All states are at Horizon; need new path or next search_strategy
 		return next_state();
 	}
 
+	if (search_strategy_ == Exhaustive) {
+		while (!states_.empty()) {
+			CVExecutionState* state = *(states_.begin());
+			NthLevelPathManager* pm 
+				= static_cast<NthLevelPathManager*>(state->path_manager());
+			if (pm->level() >= exhaustive_search_level_) {
+				states_.erase(state);
+			} else {
+				return state;
+			}
+		}
+		// All states are at exhaustive_search_level_;
+		CVDEBUG("All states have reached " << exhaustive_search_level_
+				<< ", raising level to " << exhaustive_search_level_*2);
+		return next_state();
+	}
+
+	cv_error("no states remaining");
 	return *(states_.begin());
 }
 
@@ -565,6 +593,7 @@ void VerifyStage::remove_state(CVExecutionState *state) {
 	//	CVDEBUG_S(state->id(), "VerifyStage::removing finished state");
 	//	finished_states_.erase(state);
 	//}
+
 }
 
 void VerifyStage::finish(CVExecutionState *finished_state) {
