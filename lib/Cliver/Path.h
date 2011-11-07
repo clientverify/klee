@@ -21,6 +21,7 @@
 
 namespace llvm {
  class Instruction;
+ class BasicBlock;
 }
 
 namespace klee {
@@ -114,8 +115,13 @@ class Path {
 	bool get_branch(int index) const;
 	unsigned get_branch_id(int index) const;
 	unsigned get_stack_depth(int index) const;
-	klee::KInstruction* get_branch_kinst(int index);
+	llvm::BasicBlock* get_successor(int index) const;
+	klee::KInstruction* get_branch_kinst(int index) const;
 	void print(std::ostream &os) const;
+
+	// Static Helper Functions
+	static klee::KInstruction* lookup_kinst(unsigned id);
+	static llvm::BasicBlock* lookup_successor(bool direction, klee::KInstruction* inst);
 
  private: 
 	explicit Path(const Path &p);
@@ -124,7 +130,6 @@ class Path {
 	void consolidate_branches(std::vector<bool> &branches) const;
 	void consolidate_branch_ids(std::vector<unsigned> &branch_ids) const;
 	void consolidate_stack_depths(std::vector<unsigned> &stack_depths) const;
-	klee::KInstruction* get_kinst(unsigned id);
 
 	// Serialization
 	friend class boost::serialization::access;
