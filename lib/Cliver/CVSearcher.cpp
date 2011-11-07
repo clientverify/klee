@@ -487,12 +487,19 @@ CVExecutionState* VerifyStage::next_state() {
 			}
 		}
 		
+		// For the Exhaustive strategy we collect all of the remaining states
+		// from the PathTree and begin a complete search for a valid path from
+		// all possible paths
 		if (search_strategy_ == Exhaustive) {
 			assert(states_.empty());
 			exhaustive_search_level_ *= 2;
 			ExecutionStateSet &path_tree_states = path_tree_->states();
+
+			// XXX need better handling of this event
 			assert(!path_tree_states.empty());
+
 			foreach (CVExecutionState* s, path_tree_states) {
+				// XXX We only need to reset the PathManager once...
 				NthLevelPathManager* pm = new NthLevelPathManager(path_tree_);
 				s->reset_path_manager(pm);
 				states_.insert(s);
@@ -551,9 +558,8 @@ bool VerifyStage::contains_state(CVExecutionState *state) {
 void VerifyStage::add_state(CVExecutionState *state) {
 	if (root_state_ == NULL) {
 		assert(states_.empty());
-		root_state_ = state;
 		assert(path_tree_ == NULL && "PathTree already created");
-		/// XXX FIXME we should not clone this state!
+		root_state_ = state;
 		path_tree_ = new PathTree(root_state_->clone());
 	} else {
 		states_.insert(state);
@@ -561,7 +567,6 @@ void VerifyStage::add_state(CVExecutionState *state) {
 }
 
 void VerifyStage::remove_state(CVExecutionState *state) {
-
 	if (states_.count(state)) {
 		//CVDEBUG_S(state->id(), "removing state from VerifyStage");
 		states_.erase(state);
@@ -576,7 +581,6 @@ void VerifyStage::remove_state(CVExecutionState *state) {
 		//CVDEBUG_S(state->id(), "removing finished state from VerifyStage");
 		finished_states_.erase(state);
 	}
-
 }
 
 void VerifyStage::finish(CVExecutionState *finished_state) {
