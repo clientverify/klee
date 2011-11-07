@@ -23,6 +23,9 @@
 #include "klee/Internal/Module/InstructionInfoTable.h"
 #include "klee/Internal/Module/KInstruction.h"
 
+#include "llvm/BasicBlock.h"
+#include "llvm/Instructions.h"
+
 namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -188,15 +191,15 @@ unsigned Path::get_stack_depth(int index) const {
 	return stack_depths[index];
 }
 
-klee::KInstruction* Path::get_branch_kinst(int index) {
-	return get_kinst(get_branch_id(index));
+llvm::BasicBlock* Path::get_successor(int index) const {
+	// error handling of invalid or out of range index value? 
+	bool direction = get_branch(index);
+	klee::KInstruction *kinst = Path::lookup_kinst(get_branch_id(index));
+	return Path::lookup_successor(direction, kinst);
 }
 
-klee::KInstruction* Path::get_kinst(unsigned id) {
-	assert(g_executor && "CVExecutor not initialized");
-	klee::KInstruction* kinst = g_executor->get_instruction(id);
-	assert(kinst != NULL && "invalid KInstruction id");
-	return kinst;
+klee::KInstruction* Path::get_branch_kinst(int index) const {
+	return Path::lookup_kinst(get_branch_id(index));
 }
 
 void Path::print(std::ostream &os) const {
@@ -239,6 +242,33 @@ void Path::consolidate_stack_depths(std::vector<unsigned> &stack_depths) const {
 				p->stack_depths_.begin(), p->stack_depths_.end());
 		p = p->parent_;
 	}
+}
+
+klee::KInstruction* Path::lookup_kinst(unsigned id) {
+	assert(g_executor && "CVExecutor not initialized");
+	klee::KInstruction* kinst = g_executor->get_instruction(id);
+	assert(kinst != NULL && "invalid KInstruction id");
+	return kinst;
+}
+
+llvm::BasicBlock* Path::lookup_successor(bool direction, 
+		klee::KInstruction* kinst) {
+	assert(kinst && "Null KInstruction");
+	llvm::BranchInst *bi = cast<llvm::BranchInst>(kinst->inst);
+	if (bi) {
+		if (bi->isUnconditional()) {
+			cv_error("Unconditional Branch Instructions not supported.");
+			return NULL;
+		}
+		if (direction) {
+			llvm::BasicBlock *bb_true = bi->getSuccessor(0);
+			return bb_true;
+		} else {
+			llvm::BasicBlock *bb_false = bi->getSuccessor(1);
+			return bb_false;
+		}
+	}
+	return NULL;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
