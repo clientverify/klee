@@ -539,6 +539,115 @@ void NthLevelPathManager::state_branch(CVExecutionState* state,
 
 ////////////////////////////////////////////////////////////////////////////////
 
+KLookaheadPathManager::KLookaheadPathManager(const Path *vpath, 
+		PathRange &vrange, PathTree* path_tree, unsigned max_k)
+  : VerifyPathManager(vpath, vrange), 
+	  path_tree_(path_tree), 
+	  is_horizon_(false),
+		max_k_(max_k),
+		num_lookaheads_(0),
+		last_lookahead_index_(0) {}
+
+PathManager* KLookaheadPathManager::clone() {
+	KLookaheadPathManager *pm 
+		= new KLookaheadPathManager(vpath_, vrange_, path_tree_, max_k_);
+	pm->index_ 			= index_;
+	pm->is_horizon_ = is_horizon_;
+	pm->num_lookaheads_ = num_lookaheads_;
+	pm->last_lookahead_index_ = last_lookahead_index_;
+	return pm;
+}
+
+bool KLookaheadPathManager::less(const PathManager &b) const {
+	const KLookaheadPathManager *pm = static_cast<const KLookaheadPathManager*>(&b);
+	if (vrange_.less(pm->vrange_))
+		return true;
+	return vpath_->less(*(pm->vpath_));
+}
+
+/// Always returns true.
+bool KLookaheadPathManager::try_branch(bool direction, 
+		klee::Solver::Validity validity, klee::KInstruction* inst, 
+		CVExecutionState *state) {
+	return true;
+}
+
+void KLookaheadPathManager::branch(bool direction, 
+		klee::Solver::Validity validity, klee::KInstruction* inst, 
+		CVExecutionState *state) {
+
+	// Remove Rule:
+	// TP has branch segment no found in actual verification on mbranch miss, look 
+	// up to k branches in alt BB and advance index appropriately
+	
+	assert(vpath_ && "path is null");
+	assert(false == is_horizon_ && "must stop execution at horizon");
+
+	if (index_ < vpath_->length() && direction != vpath_->get_branch(index_)) {
+
+		if (llvm::BranchInst *bi = cast<llvm::BranchInst>(inst->inst)) {
+			if (bi->isUnconditional()) {
+				cv_error("Unconditional Branch Instructions not supported.");
+			}
+		}
+
+		llvm::BasicBlock *bb = Path::lookup_successor(direction, inst);
+		llvm::BasicBlock *bb_verify = Path::lookup_successor(!direction, inst);
+
+		int k = 0;
+		while (k < max_k_ && (index_ + k) < vpath_->length()) {
+			llvm::BasicBlock *lookahead_bb 
+				= vpath_->get_successor(index_ + k);
+
+			if (lookahead_bb == bb) {
+				num_lookaheads_++;
+				index_ += (k + 1);
+				last_lookahead_index_ = index_;
+
+				CVDEBUG("Lookhead " << k << " branches at "
+						<< "(" << index_ <<"/"<< vpath_->length() << ") "
+						<< *inst);
+
+				path_tree_->branch(direction, validity, inst, state);
+				return;
+			}
+			k++;
+		}
+	}
+
+	if (index_ >= vpath_->length() || direction != vpath_->get_branch(index_)) {
+		is_horizon_ = true;
+		VerifyProperty* p = static_cast<VerifyProperty*>(state->property());
+		assert(p->phase == VerifyProperty::Execute && "Wrong state property");
+		p->phase = VerifyProperty::Horizon;
+
+		if (validity == klee::Solver::Unknown) {
+			//CVDEBUG("Reached Solver::Unknown Horizon after covering " << (float)index_/(float)vpath_->length()
+			//		<< " of branches (" << index_ <<"/"<< vpath_->length() << ") "
+			//		<< *inst);
+		} else {
+			CVDEBUG("Reached Horizon after covering " << (float)index_/(float)vpath_->length()
+					<< " of branches (" << index_ <<"/"<< vpath_->length() << ") "
+					<< *inst);
+		}
+	}
+
+	index_++;
+
+	path_tree_->branch(direction, validity, inst, state);
+}
+
+void KLookaheadPathManager::state_branch(CVExecutionState* state, 
+		CVExecutionState* branched_state) {
+	path_tree_->add_branched_state(state, branched_state);
+}
+
+void KLookaheadPathManager::set_index(int index) {
+	index_ = index;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 PathManagerSet::PathManagerSet() {}
 
 bool PathManagerSet::insert(PathManager* path) {
