@@ -248,12 +248,18 @@ bool VerifyPathManager::try_branch(bool direction,
 	assert(vpath_ && "path is null");
 	if (index_ < vpath_->length()) {
     if (direction != vpath_->get_branch(index_)) {
-			CVDEBUG("Failed after covering " << (float)index_/vpath_->length()
-					<< " of branches (" << index_ <<"/"<< vpath_->length() << ") "
-					<< *inst);
+			if (validity != klee::Solver::Unknown) {
+				CVDEBUG("Failed after covering " << (float)index_/vpath_->length()
+						<< " of branches (" << index_ <<"/"<< vpath_->length() << ") "
+						<< *inst);
+			}
 		}
 		return direction == vpath_->get_branch(index_);
 	}
+
+	CVDEBUG("End of vpath, Failed after covering " << (float)index_/vpath_->length()
+			<< " of branches (" << index_ <<"/"<< vpath_->length() << ") "
+			<< *inst);
 	return false;
 }
 
@@ -472,6 +478,16 @@ void HorizonPathManager::branch(bool direction,
 		VerifyProperty* p = static_cast<VerifyProperty*>(state->property());
 		assert(p->phase == VerifyProperty::Execute && "Wrong state property");
 		p->phase = VerifyProperty::Horizon;
+
+		if (validity == klee::Solver::Unknown) {
+			//CVDEBUG("Reached Solver::Unknown Horizon after covering " << (float)index_/(float)vpath_->length()
+			//		<< " of branches (" << index_ <<"/"<< vpath_->length() << ") "
+			//		<< *inst);
+		} else {
+			CVDEBUG("Reached Horizon after covering " << (float)index_/(float)vpath_->length()
+					<< " of branches (" << index_ <<"/"<< vpath_->length() << ") "
+					<< *inst);
+		}
 	}
 
 	index_++;
