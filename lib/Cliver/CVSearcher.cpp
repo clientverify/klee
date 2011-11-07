@@ -467,7 +467,8 @@ CVExecutionState* VerifyStage::next_state() {
 					ExecutionStateSet tree_states;
 
 					if (path_tree_->get_states(tpath, trange, tree_states, index)) {
-						CVDEBUG("VerifyStage::next_state(): " << tree_states.size() << " states found in path_tree starting at inst " << index); 
+						CVDEBUG("VerifyStage::next_state(): " << tree_states.size() 
+								<< " states found in path_tree starting at inst " << index); 
 						foreach (CVExecutionState* s, tree_states) {
 							HorizonPathManager* pm 
 								= new HorizonPathManager(tpath, trange, path_tree_);
