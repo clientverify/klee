@@ -595,18 +595,24 @@ void KLookaheadPathManager::branch(bool direction,
 		llvm::BasicBlock *bb_verify = Path::lookup_successor(!direction, inst);
 
 		int k = 0;
+		std::vector<klee::KInstruction*> skipped_insts;
 		while (k < max_k_ && (index_ + k) < vpath_->length()) {
 			llvm::BasicBlock *lookahead_bb 
 				= vpath_->get_successor(index_ + k);
 
+			skipped_insts.push_back(Path::lookup_kinst(vpath_->get_branch_id(index_ + k)));
 			if (lookahead_bb == bb) {
 				num_lookaheads_++;
 				index_ += (k + 1);
 				last_lookahead_index_ = index_;
 
-				CVDEBUG("Lookhead " << k << " branches at "
+				foreach(klee::KInstruction* ki, skipped_insts) {
+					CVDEBUG("Skipped : " << *ki);
+				}
+				CVDEBUG("Lookahead " << k << " branches at "
 						<< "(" << index_ <<"/"<< vpath_->length() << ") "
 						<< *inst);
+
 
 				path_tree_->branch(direction, validity, inst, state);
 				return;
