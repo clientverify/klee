@@ -160,6 +160,8 @@ class VerifyStage {
 	SearchStrategy search_strategy_;
 	// For Exhaustive Search strategy
 	unsigned exhaustive_search_level_;
+
+	unsigned training_paths_used_;
 };
 
 class VerifySearcher : public CVSearcher {
