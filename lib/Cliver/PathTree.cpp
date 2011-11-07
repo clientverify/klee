@@ -16,6 +16,30 @@
 
 namespace cliver {
 
+llvm::cl::opt<bool>
+DebugPathTree("debug-pathtree",llvm::cl::init(false));
+
+#ifndef NDEBUG
+
+#undef CVDEBUG
+#define CVDEBUG(x) \
+	__CVDEBUG(DebugPathTree, x);
+
+#undef CVDEBUG_S
+#define CVDEBUG_S(__state_id, __x) \
+	__CVDEBUG_S(DebugPathTree, __state_id, __x)
+
+#else
+
+#undef CVDEBUG
+#define CVDEBUG(x)
+
+#undef CVDEBUG_S
+#define CVDEBUG_S(__state_id, __x)
+
+#endif
+
+
 ////////////////////////////////////////////////////////////////////////////////
 
 PathTree::PathTree(CVExecutionState* root_state) {
@@ -47,7 +71,6 @@ bool PathTree::get_states(const Path* path, const PathRange &range,
 
 	while (node != NULL && node->is_fully_explored() && i < path->length()) {
 		if (true == path->get_branch(i)) {
-			/// XXX fixme true_node may be null
 			node = node->true_node();
 		} else {
 			node = node->false_node();
@@ -56,6 +79,16 @@ bool PathTree::get_states(const Path* path, const PathRange &range,
 	}
 
 	if (node == NULL || node->states().empty() || i > path->length()) {
+		if (node == NULL) {
+			CVDEBUG("PathTree::get_states() node == NULL, i = "
+				 	<< i << ", path->length() = " << path->length());
+		} else if (node->states().empty()) {
+			CVDEBUG("PathTree::get_states() node->states.empty(), i = " 
+					<< i << ", path->length() = " << path->length());
+		} else {
+			CVDEBUG("PathTree::get_states() i > path->length(), i = "
+				 	<< i << ", path->length() = " << path->length());
+		}
 		index = -1;
 		return false;
 	}
