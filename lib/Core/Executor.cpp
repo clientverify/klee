@@ -1421,7 +1421,10 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   case Instruction::Br: {
     BranchInst *bi = cast<BranchInst>(i);
     if (bi->isUnconditional()) {
-      transferToBasicBlock(bi->getSuccessor(0), bi->getParent(), state);
+      ref<Expr> cond = ConstantExpr::alloc(1, Expr::Bool);
+      Executor::StatePair branches = fork(state, cond, false);
+			assert(branches.first && !branches.second);
+      transferToBasicBlock(bi->getSuccessor(0), bi->getParent(), *branches.first);
     } else {
       // FIXME: Find a way that we don't have this hidden dependency.
       assert(bi->getCondition() == bi->getOperand(0) &&
