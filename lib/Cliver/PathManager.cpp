@@ -709,6 +709,7 @@ void KLookPathManager::branch(bool direction,
 			int k = 0;
 			while ((index_ + k) < vpath_->length() && k < max_k_) {
 				basicblock_list_.push_back(vpath_->get_successor(index_ + k));
+				k++;
 			}
 		}
 	}
