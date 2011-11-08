@@ -147,7 +147,7 @@ class ClientVerifier : public klee::InterpreterHandler {
 
 	// Stats
 	void handle_statistics();
-	void update_time_statistics();
+	void next_statistics();
 	void print_current_statistics();
 
 	// Arrays

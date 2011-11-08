@@ -141,6 +141,7 @@ ClientVerifier::ClientVerifier()
  
 	cvstream_->init();
 	handle_statistics();
+	next_statistics();
 }
 
 ClientVerifier::~ClientVerifier() {
@@ -346,8 +347,6 @@ CVSearcher* ClientVerifier::searcher() {
 }
 
 void ClientVerifier::handle_statistics() {
-	statistics_.push_back(new klee::StatisticRecord());
-	klee::theStatisticManager->setCliverContext(statistics_.back());
 
   static llvm::sys::TimeValue lastNowTime(0,0),lastUserTime(0,0);
 
@@ -368,10 +367,10 @@ void ClientVerifier::handle_statistics() {
 
 void ClientVerifier::print_current_statistics() {
 	static unsigned statistic_round = 0;
-  static llvm::sys::TimeValue lastNowTime(0,0),lastUserTime(0,0);
-	klee::StatisticRecord *sr = statistics_.back();
+  //static llvm::sys::TimeValue lastNowTime(0,0),lastUserTime(0,0);
 
 	handle_statistics();
+	klee::StatisticRecord *sr = statistics_.back();
 
   *cv_message_stream << "STATS " << ++statistic_round
     << " " << sr->getValue(stats::active_states)
@@ -386,6 +385,7 @@ void ClientVerifier::print_current_statistics() {
     << " " << sr->getValue(stats::fork_time) / 1000000.
     << " " << llvm::sys::Process::GetTotalMemoryUsage()
     << "\n";
+
 
   // Rebuild solvers each round to keep caches fresh.                                                                                                                                                                
 	g_executor->rebuild_solvers();
@@ -408,6 +408,12 @@ void ClientVerifier::print_current_statistics() {
 		ProfilerFlush();
 	}
 #endif
+	next_statistics();
+}
+
+void ClientVerifier::next_statistics() {
+	statistics_.push_back(new klee::StatisticRecord());
+	klee::theStatisticManager->setCliverContext(statistics_.back());
 }
 
 //////////////////////////////////////////////////////////////////////////////
