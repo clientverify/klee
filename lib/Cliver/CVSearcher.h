@@ -121,6 +121,7 @@ class VerifyStage {
 		FullTraining, 
 		ConcreteTraining, 
 		PrefixTraining, 
+		KLookSearch,
 		Exhaustive } 
 	SearchStrategy;
 

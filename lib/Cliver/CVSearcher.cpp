@@ -460,15 +460,15 @@ CVExecutionState* VerifyStage::next_state() {
 			PathManager* training = NULL;
 			do {
 				if (training = path_selector_->next_path(range)) {
-					training_paths_used_++;
 					const Path* tpath     = training->path();
 					PathRange trange      = training->range();
 					int index;
 					ExecutionStateSet tree_states;
 
 					if (path_tree_->get_states(tpath, trange, tree_states, index)) {
-						CVDEBUG("VerifyStage::next_state(): " << tree_states.size() 
-								<< " states found in path_tree starting at inst " << index); 
+						training_paths_used_++;
+						//CVDEBUG("VerifyStage::next_state(): " << tree_states.size() 
+						//		<< " states found in path_tree starting at inst " << index); 
 						foreach (CVExecutionState* s, tree_states) {
 							HorizonPathManager* pm 
 								= new HorizonPathManager(tpath, trange, path_tree_);
@@ -483,11 +483,43 @@ CVExecutionState* VerifyStage::next_state() {
 			} while (training && states_.empty());
 
 			if (states_.empty()) {
+				CVDEBUG("Switching to KLook search mode");
+				search_strategy_ = KLookSearch;
+			}
+		}
+	
+		if (search_strategy_ == KLookSearch) {
+			PathManager* training = NULL;
+			do {
+				if (training = path_selector_->next_path(range)) {
+					const Path* tpath     = training->path();
+					PathRange trange      = training->range();
+					int index;
+					ExecutionStateSet tree_states;
+
+					if (path_tree_->get_states(tpath, trange, tree_states, index)) {
+						training_paths_used_++;
+						//CVDEBUG("VerifyStage::next_state(): " << tree_states.size() 
+						//		<< " states found in path_tree starting at inst " << index); 
+						foreach (CVExecutionState* s, tree_states) {
+							KLookPathManager* pm 
+								= new KLookPathManager(tpath, trange, path_tree_, 4096);
+							pm->set_index(index);
+							s->reset_path_manager(pm);
+							VerifyProperty* p = static_cast<VerifyProperty*>(s->property());
+							p->phase = VerifyProperty::Execute;
+							states_.insert(s);
+						}
+					}
+				}
+			} while (training && states_.empty());
+
+			if (states_.empty()) {
 				CVDEBUG("Switching to Exhaustive search mode");
 				search_strategy_ = Exhaustive;
 			}
-		}
-		
+		}	
+
 		// For the Exhaustive strategy we collect all of the remaining states
 		// from the PathTree and begin a complete search for a valid path from
 		// all possible paths
@@ -510,22 +542,16 @@ CVExecutionState* VerifyStage::next_state() {
 	}
 
 	// Find a state that is not at the search "horizon"
-	if (search_strategy_ == FullTraining) {
+	if (search_strategy_ == KLookSearch || search_strategy_ == FullTraining) {
 		while (!states_.empty()) {
 			CVExecutionState* state = *(states_.begin());
 			VerifyProperty* p = static_cast<VerifyProperty*>(state->property());
 			if (VerifyProperty::Horizon == p->phase) {
-				//CVDEBUG("Erasing Horizon-state");
 				states_.erase(state);
 			} else {
-				//CVDEBUG("Returning  non Horizon-state");
-				HorizonPathManager* pm 
-					= static_cast<HorizonPathManager*>(state->path_manager());
-				assert(pm->is_horizon() == false && "Cannot return state at horizon!!");
 				return state;
 			}
 		}
-		//CVDEBUG("All states are at Horizon; need new path or next search_strategy");
 		return next_state();
 	}
 
@@ -561,7 +587,9 @@ void VerifyStage::add_state(CVExecutionState *state) {
 		assert(states_.empty());
 		assert(path_tree_ == NULL && "PathTree already created");
 		root_state_ = state;
-		path_tree_ = new PathTree(root_state_->clone());
+		CVExecutionState* cloned_state = root_state_->clone();
+		path_tree_ = new PathTree(cloned_state);
+		g_executor->add_state_internal(cloned_state);
 	} else {
 		states_.insert(state);
 	}
@@ -587,6 +615,14 @@ void VerifyStage::remove_state(CVExecutionState *state) {
 void VerifyStage::finish(CVExecutionState *finished_state) {
 
 	CVDEBUG("Used " << training_paths_used_ << " training paths.");
+
+#ifdef DEBUG_CLIVER_STATE_LOG
+	CVDEBUG("\n" << finished_state->debug_log().str());
+	finished_state->reset_debug_log();
+	finished_state->debug_log() << "---------------------------------------------\n";
+	finished_state->debug_log() << finished_state->network_manager()->socket()->event() << "\n";
+	finished_state->debug_log() << "---------------------------------------------\n";
+#endif
 
 	// XXX attempt to merge?
 	finished_states_.insert(finished_state);
