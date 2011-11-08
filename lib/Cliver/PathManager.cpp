@@ -596,7 +596,7 @@ void KLookaheadPathManager::branch(bool direction,
 
 		if (llvm::BranchInst *bi = cast<llvm::BranchInst>(inst->inst)) {
 			if (bi->isUnconditional()) {
-				cv_error("Unconditional Branch Instructions not supported.");
+				assert(direction && "False direction on unconditional branch");
 			}
 		}
 
@@ -713,7 +713,7 @@ void KLookPathManager::branch(bool direction,
 
 			if (llvm::BranchInst *bi = cast<llvm::BranchInst>(inst->inst)) {
 				if (bi->isUnconditional()) {
-					cv_error("Unconditional Branch Instructions not supported.");
+					assert(direction && "False direction on unconditional branch");
 				}
 			}
 

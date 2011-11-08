@@ -257,8 +257,7 @@ llvm::BasicBlock* Path::lookup_successor(bool direction,
 	llvm::BranchInst *bi = cast<llvm::BranchInst>(kinst->inst);
 	if (bi) {
 		if (bi->isUnconditional()) {
-			cv_error("Unconditional Branch Instructions not supported.");
-			return NULL;
+			assert(direction && "False direction on unconditional branch");
 		}
 		if (direction) {
 			llvm::BasicBlock *bb_true = bi->getSuccessor(0);
