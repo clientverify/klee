@@ -14,6 +14,7 @@
 #include "llvm/Instructions.h"
 
 #include <list>
+#include <sstream>
 
 namespace klee {
 class KFunction;
@@ -53,6 +54,12 @@ class CVExecutionState : public klee::ExecutionState {
 	ExecutionStateProperty* property() { return property_; }
 
 	void reset_path_manager(PathManager* path_manager=NULL);
+
+#ifdef DEBUG_CLIVER_STATE_LOG
+	std::stringstream& debug_log() { return *debug_log_; }
+	void reset_debug_log() { delete debug_log_; debug_log_ = new std::stringstream(); }
+	std::stringstream *debug_log_;
+#endif
 
  private:
   int increment_id() { return next_id_++; }
