@@ -344,12 +344,51 @@ class KLookaheadPathManager : public VerifyPathManager {
 	PathTree* path_tree_;
 	bool is_horizon_;
 	unsigned max_k_;
-	unsigned num_lookaheads_;
-	unsigned last_lookahead_index_;
+	unsigned lookahead_count_;
+	unsigned lookahead_index_;
 };
 
 inline std::ostream &operator<<(std::ostream &os, 
 		const KLookaheadPathManager &p) {
+  p.print(os);
+  return os;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+class KLookPathManager : public VerifyPathManager {
+ public:
+	KLookPathManager(const Path *vpath, PathRange &vrange, 
+			PathTree* path_tree, unsigned max_k);
+	virtual PathManager* clone();
+	virtual bool less(const PathManager &b) const;
+	virtual bool try_branch(bool direction, klee::Solver::Validity validity, 
+			klee::KInstruction* inst, CVExecutionState *state);
+	virtual void branch(bool direction, klee::Solver::Validity validity, 
+			klee::KInstruction* inst, CVExecutionState *state);
+	virtual void state_branch(CVExecutionState* state, 
+			CVExecutionState *branched_state);
+
+	void set_index(int index);
+	bool is_horizon() { return is_horizon_; }
+
+ private:
+	virtual bool merge(const PathManager &pm) { return false; }
+
+ protected:
+	explicit KLookPathManager(const KLookPathManager &pm);
+	explicit KLookPathManager();
+
+	PathTree* path_tree_;
+	bool is_horizon_;
+	unsigned max_k_;
+	unsigned lookahead_index_;
+	unsigned lookahead_count_;
+	std::vector<llvm::BasicBlock*> basicblock_list_;
+};
+
+inline std::ostream &operator<<(std::ostream &os, 
+		const KLookPathManager &p) {
   p.print(os);
   return os;
 }

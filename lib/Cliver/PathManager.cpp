@@ -545,16 +545,16 @@ KLookaheadPathManager::KLookaheadPathManager(const Path *vpath,
 	  path_tree_(path_tree), 
 	  is_horizon_(false),
 		max_k_(max_k),
-		num_lookaheads_(0),
-		last_lookahead_index_(0) {}
+		lookahead_count_(0),
+		lookahead_index_(0) {}
 
 PathManager* KLookaheadPathManager::clone() {
 	KLookaheadPathManager *pm 
 		= new KLookaheadPathManager(vpath_, vrange_, path_tree_, max_k_);
 	pm->index_ 			= index_;
 	pm->is_horizon_ = is_horizon_;
-	pm->num_lookaheads_ = num_lookaheads_;
-	pm->last_lookahead_index_ = last_lookahead_index_;
+	pm->lookahead_count_ = lookahead_count_;
+	pm->lookahead_index_ = lookahead_index_;
 	return pm;
 }
 
@@ -602,9 +602,9 @@ void KLookaheadPathManager::branch(bool direction,
 
 			skipped_insts.push_back(Path::lookup_kinst(vpath_->get_branch_id(index_ + k)));
 			if (lookahead_bb == bb) {
-				num_lookaheads_++;
+				lookahead_count_++;
 				index_ += (k + 1);
-				last_lookahead_index_ = index_;
+				lookahead_index_ = index_;
 
 				foreach(klee::KInstruction* ki, skipped_insts) {
 					CVDEBUG("Skipped : " << *ki);
@@ -649,6 +649,133 @@ void KLookaheadPathManager::state_branch(CVExecutionState* state,
 }
 
 void KLookaheadPathManager::set_index(int index) {
+	index_ = index;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+KLookPathManager::KLookPathManager(const Path *vpath, 
+		PathRange &vrange, PathTree* path_tree, unsigned max_k)
+  : VerifyPathManager(vpath, vrange), 
+	  path_tree_(path_tree), 
+	  is_horizon_(false),
+		max_k_(max_k),
+		lookahead_count_(0),
+		lookahead_index_(0) {}
+
+PathManager* KLookPathManager::clone() {
+	KLookPathManager *pm 
+		= new KLookPathManager(vpath_, vrange_, path_tree_, max_k_);
+	pm->index_ 			= index_;
+	pm->is_horizon_ = is_horizon_;
+	pm->lookahead_count_ = lookahead_count_;
+	pm->lookahead_index_ = lookahead_index_;
+	return pm;
+}
+
+bool KLookPathManager::less(const PathManager &b) const {
+	const KLookPathManager *pm = static_cast<const KLookPathManager*>(&b);
+	if (vrange_.less(pm->vrange_))
+		return true;
+	return vpath_->less(*(pm->vpath_));
+}
+
+/// Always returns true.
+bool KLookPathManager::try_branch(bool direction, 
+		klee::Solver::Validity validity, klee::KInstruction* inst, 
+		CVExecutionState *state) {
+	return true;
+}
+
+void KLookPathManager::branch(bool direction, 
+		klee::Solver::Validity validity, klee::KInstruction* inst, 
+		CVExecutionState *state) {
+
+	assert(vpath_ && "path is null");
+	assert(false == is_horizon_ && "must stop execution at horizon");
+
+
+	// Build a new bb list if this direction doesn't match the verify path
+	if (index_ < vpath_->length() && direction != vpath_->get_branch(index_)) {
+		// If we are not already tracking a BasicBlock list
+		if (basicblock_list_.empty()) {
+
+			if (llvm::BranchInst *bi = cast<llvm::BranchInst>(inst->inst)) {
+				if (bi->isUnconditional()) {
+					cv_error("Unconditional Branch Instructions not supported.");
+				}
+			}
+
+			int k = 0;
+			while ((index_ + k) < vpath_->length() && k < max_k_) {
+				basicblock_list_.push_back(vpath_->get_successor(index_ + k));
+			}
+		}
+	}
+
+	if (!basicblock_list_.empty()) {
+		lookahead_count_++;
+
+		llvm::BasicBlock *successor_bb = Path::lookup_successor(direction, inst);
+		for (int k=0; k < basicblock_list_.size(); ++k) {
+			llvm::BasicBlock *bb = basicblock_list_[k];
+			if (bb == successor_bb) {
+				// Path Match!
+				CVDEBUG("KLook success. Found match in "
+					 	<< k << " training path skips and "
+					 	<< lookahead_count_ << " lookaheads at (" 
+						<< index_ + k + 1 <<"/"<< vpath_->length() << ") " << *inst);
+				
+				index_ += (k + 1);
+				lookahead_count_ = 0;
+				basicblock_list_.clear();
+			}
+		}
+
+		if (lookahead_count_ >= max_k_) {
+			// We've reached the branch threshold
+			is_horizon_ = true;
+			VerifyProperty* p = static_cast<VerifyProperty*>(state->property());
+			assert(p->phase == VerifyProperty::Execute && "Wrong state property");
+			p->phase = VerifyProperty::Horizon;
+
+			CVDEBUG("KLook failed at (" 
+					<< index_ <<"/"<< vpath_->length() << ") " << *inst);
+		}
+
+	} else {
+
+		if (index_ >= vpath_->length() || direction != vpath_->get_branch(index_)) {
+			is_horizon_ = true;
+			VerifyProperty* p = static_cast<VerifyProperty*>(state->property());
+			assert(p->phase == VerifyProperty::Execute && "Wrong state property");
+			p->phase = VerifyProperty::Horizon;
+
+			if (validity == klee::Solver::Unknown) {
+				//CVDEBUG("Reached Solver::Unknown Horizon after covering " 
+				//    << (float)index_/(float)vpath_->length()
+				//		<< " of branches (" << index_ <<"/"<< vpath_->length() << ") "
+				//		<< *inst);
+			} else {
+				CVDEBUG("Reached Horizon after covering " 
+						<< (float)index_/(float)vpath_->length() << " of branches (" 
+						<< index_ <<"/"<< vpath_->length() << ") "
+						<< *inst);
+			}
+		}
+
+		index_++;
+	}
+
+	path_tree_->branch(direction, validity, inst, state);
+}
+
+void KLookPathManager::state_branch(CVExecutionState* state, 
+		CVExecutionState* branched_state) {
+	path_tree_->add_branched_state(state, branched_state);
+}
+
+void KLookPathManager::set_index(int index) {
 	index_ = index;
 }
 
