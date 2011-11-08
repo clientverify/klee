@@ -60,6 +60,9 @@ void CVExecutionState::initialize(CVExecutor *executor) {
 	network_manager_ = NetworkManagerFactory::create(this);
 	path_manager_ = PathManagerFactory::create();
 	property_ = ExecutionStatePropertyFactory::create();
+#ifdef DEBUG_CLIVER_STATE_LOG
+	debug_log_ = new std::stringstream();
+#endif
 }
 
 CVExecutionState* CVExecutionState::clone() {
@@ -69,7 +72,10 @@ CVExecutionState* CVExecutionState::clone() {
 		= network_manager_->clone(cloned_state); 
 	cloned_state->path_manager_ = path_manager_->clone();
   cloned_state->property_ = property_->clone();
-
+#ifdef DEBUG_CLIVER_STATE_LOG
+	cloned_state->debug_log_ = new std::stringstream();
+	*(cloned_state->debug_log_) << debug_log_->str();
+#endif
   return cloned_state;
 }
 
