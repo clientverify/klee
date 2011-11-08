@@ -40,9 +40,22 @@ DebugPathManager("debug-pathmanager",llvm::cl::init(false));
 #define CVDEBUG(x) \
 	__CVDEBUG(DebugPathManager, x);
 
+#ifdef DEBUG_CLIVER_STATE_LOG 
+
+#undef CVDEBUG_S
+
+#define CVDEBUG_S(__state, __x) \
+	if (DebugPathManager) { \
+	(__state)->debug_log() << __CVDEBUG_FILE << "State: " \
+   << std::setw(4) << std::right << (__state)->id() << " - " << __x << "\n"; } 
+
+#else
+
 #undef CVDEBUG_S
 #define CVDEBUG_S(__state_id, __x) \
 	__CVDEBUG_S(DebugPathManager, __state_id, __x)
+
+#endif
 
 #else
 
@@ -480,9 +493,9 @@ void HorizonPathManager::branch(bool direction,
 		p->phase = VerifyProperty::Horizon;
 
 		if (validity == klee::Solver::Unknown) {
-			//CVDEBUG("Reached Solver::Unknown Horizon after covering " << (float)index_/(float)vpath_->length()
-			//		<< " of branches (" << index_ <<"/"<< vpath_->length() << ") "
-			//		<< *inst);
+			CVDEBUG("Reached Solver::Unknown Horizon after covering " << (float)index_/(float)vpath_->length()
+					<< " of branches (" << index_ <<"/"<< vpath_->length() << ") "
+					<< *inst);
 		} else {
 			CVDEBUG("Reached Horizon after covering " << (float)index_/(float)vpath_->length()
 					<< " of branches (" << index_ <<"/"<< vpath_->length() << ") "
@@ -576,10 +589,6 @@ void KLookaheadPathManager::branch(bool direction,
 		klee::Solver::Validity validity, klee::KInstruction* inst, 
 		CVExecutionState *state) {
 
-	// Remove Rule:
-	// TP has branch segment no found in actual verification on mbranch miss, look 
-	// up to k branches in alt BB and advance index appropriately
-	
 	assert(vpath_ && "path is null");
 	assert(false == is_horizon_ && "must stop execution at horizon");
 
@@ -628,9 +637,9 @@ void KLookaheadPathManager::branch(bool direction,
 		p->phase = VerifyProperty::Horizon;
 
 		if (validity == klee::Solver::Unknown) {
-			//CVDEBUG("Reached Solver::Unknown Horizon after covering " << (float)index_/(float)vpath_->length()
-			//		<< " of branches (" << index_ <<"/"<< vpath_->length() << ") "
-			//		<< *inst);
+			CVDEBUG("Reached Solver::Unknown Horizon after covering " << (float)index_/(float)vpath_->length()
+					<< " of branches (" << index_ <<"/"<< vpath_->length() << ") "
+					<< *inst);
 		} else {
 			CVDEBUG("Reached Horizon after covering " << (float)index_/(float)vpath_->length()
 					<< " of branches (" << index_ <<"/"<< vpath_->length() << ") "
@@ -670,6 +679,8 @@ PathManager* KLookPathManager::clone() {
 	pm->is_horizon_ = is_horizon_;
 	pm->lookahead_count_ = lookahead_count_;
 	pm->lookahead_index_ = lookahead_index_;
+	pm->basicblock_list_ = basicblock_list_;
+	pm->kinst_list_ = kinst_list_;
 	return pm;
 }
 
@@ -709,39 +720,60 @@ void KLookPathManager::branch(bool direction,
 			int k = 0;
 			while ((index_ + k) < vpath_->length() && k < max_k_) {
 				basicblock_list_.push_back(vpath_->get_successor(index_ + k));
+				kinst_list_.push_back(Path::lookup_kinst(vpath_->get_branch_id(index_ + k)));
 				k++;
 			}
 		}
 	}
 
 	if (!basicblock_list_.empty()) {
-		lookahead_count_++;
 
-		llvm::BasicBlock *successor_bb = Path::lookup_successor(direction, inst);
-		for (int k=0; k < basicblock_list_.size(); ++k) {
-			llvm::BasicBlock *bb = basicblock_list_[k];
-			if (bb == successor_bb) {
-				// Path Match!
-				CVDEBUG("KLook success. Found match in "
-					 	<< k << " training path skips and "
-					 	<< lookahead_count_ << " lookaheads at (" 
-						<< index_ + k + 1 <<"/"<< vpath_->length() << ") " << *inst);
-				
-				index_ += (k + 1);
-				lookahead_count_ = 0;
-				basicblock_list_.clear();
-			}
-		}
-
-		if (lookahead_count_ >= max_k_) {
-			// We've reached the branch threshold
+		if (validity == klee::Solver::Unknown) {
 			is_horizon_ = true;
 			VerifyProperty* p = static_cast<VerifyProperty*>(state->property());
 			assert(p->phase == VerifyProperty::Execute && "Wrong state property");
 			p->phase = VerifyProperty::Horizon;
+			CVDEBUG("Reached Solver::Unknown Horizon after covering " 
+			    << (float)index_/(float)vpath_->length()
+					<< " of branches (" << index_ <<"/"<< vpath_->length() << ") "
+					<< " and deviating " << lookahead_count_ << " branches to "
+					<< *inst);
+		} else {
+			CVDEBUG_S(state, "KLook branch " << lookahead_count_ << " () " << *inst);
 
-			CVDEBUG("KLook failed at (" 
-					<< index_ <<"/"<< vpath_->length() << ") " << *inst);
+
+			lookahead_count_++;
+			llvm::BasicBlock *successor_bb = Path::lookup_successor(direction, inst);
+			for (int k=0; k < basicblock_list_.size(); ++k) {
+				llvm::BasicBlock *bb = basicblock_list_[k];
+				if (bb == successor_bb) {
+					for (int i=0; i < basicblock_list_.size(); ++i) {
+						CVDEBUG_S(state, "Skipped " << i << " () " << *(kinst_list_[i]));
+
+					}
+					// Path Match!
+					CVDEBUG_S(state, "KLook success. Found match in "
+							<< k << " training path skips and "
+							<< lookahead_count_ << " lookaheads at (" 
+							<< index_ + k + 1 <<"/"<< vpath_->length() << ") " << *inst);
+					
+					index_ += (k + 1);
+					lookahead_count_ = 0;
+					basicblock_list_.clear();
+					kinst_list_.clear();
+				}
+			}
+
+			if (lookahead_count_ >= max_k_) {
+				// We've reached the branch threshold
+				is_horizon_ = true;
+				VerifyProperty* p = static_cast<VerifyProperty*>(state->property());
+				assert(p->phase == VerifyProperty::Execute && "Wrong state property");
+				p->phase = VerifyProperty::Horizon;
+
+				CVDEBUG_S(state, "KLook failed at (" 
+						<< index_ <<"/"<< vpath_->length() << ") " << *inst);
+			}
 		}
 
 	} else {
@@ -753,12 +785,12 @@ void KLookPathManager::branch(bool direction,
 			p->phase = VerifyProperty::Horizon;
 
 			if (validity == klee::Solver::Unknown) {
-				//CVDEBUG("Reached Solver::Unknown Horizon after covering " 
-				//    << (float)index_/(float)vpath_->length()
-				//		<< " of branches (" << index_ <<"/"<< vpath_->length() << ") "
-				//		<< *inst);
+				CVDEBUG("Reached Solver::Unknown Horizon after covering " 
+				    << (float)index_/(float)vpath_->length()
+						<< " of branches (" << index_ <<"/"<< vpath_->length() << ") "
+						<< *inst);
 			} else {
-				CVDEBUG("Reached Horizon after covering " 
+				CVDEBUG_S(state, "Reached Horizon after covering " 
 						<< (float)index_/(float)vpath_->length() << " of branches (" 
 						<< index_ <<"/"<< vpath_->length() << ") "
 						<< *inst);

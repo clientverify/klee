@@ -385,6 +385,7 @@ class KLookPathManager : public VerifyPathManager {
 	unsigned lookahead_index_;
 	unsigned lookahead_count_;
 	std::vector<llvm::BasicBlock*> basicblock_list_;
+	std::vector<klee::KInstruction*> kinst_list_;
 };
 
 inline std::ostream &operator<<(std::ostream &os, 
