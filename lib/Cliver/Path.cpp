@@ -28,6 +28,9 @@
 
 namespace cliver {
 
+llvm::cl::opt<bool>
+UsePathStackDepth("path-stack-depth",llvm::cl::init(false));
+
 ////////////////////////////////////////////////////////////////////////////////
 
 PathRange::PathRange(klee::KInstruction* s, klee::KInstruction* e) 
@@ -103,8 +106,10 @@ void Path::add(bool direction, klee::KInstruction* inst, int stack_depth) {
 	assert(ref_count_ == 0);
 	branches_.push_back(direction);
 	branch_ids_.push_back(inst->info->id);
-	if (stack_depth > 0)
-		stack_depths_.push_back(stack_depth);
+	if (UsePathStackDepth) {
+		if (stack_depth > 0)
+			stack_depths_.push_back(stack_depth);
+	}
 }
 
 Path::~Path() { 

@@ -30,6 +30,8 @@ namespace klee {
 
 namespace cliver {
 
+extern llvm::cl::opt<bool> UsePathStackDepth;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 /// PathRange holds the starting instruction and ending instruction (if closed)
@@ -162,16 +164,20 @@ void Path::save(archive & ar, const unsigned version) const {
 	std::vector<unsigned> branch_ids;
 	consolidate_branch_ids(branch_ids);
 	ar & branch_ids;
-	std::vector<unsigned> stack_depths;
-	consolidate_stack_depths(stack_depths);
-	ar & stack_depths;
+	if (UsePathStackDepth) {
+		std::vector<unsigned> stack_depths;
+		consolidate_stack_depths(stack_depths);
+		ar & stack_depths;
+	}
 }
 
 template<class archive> 
 void Path::load(archive & ar, const unsigned version) {
 	ar & branches_;
 	ar & branch_ids_;
-	ar & stack_depths_;
+	if (UsePathStackDepth) {
+		ar & stack_depths_;
+	}
 }
 
 } // end namespace cliver
