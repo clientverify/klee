@@ -619,9 +619,12 @@ void VerifyStage::finish(CVExecutionState *finished_state) {
 #ifdef DEBUG_CLIVER_STATE_LOG
 	CVDEBUG("\n" << finished_state->debug_log().str());
 	finished_state->reset_debug_log();
-	finished_state->debug_log() << "---------------------------------------------\n";
-	finished_state->debug_log() << finished_state->network_manager()->socket()->event() << "\n";
-	finished_state->debug_log() << "---------------------------------------------\n";
+	finished_state->debug_log() 
+		<< "---------------------------------------------\n";
+	finished_state->debug_log() 
+		<< finished_state->network_manager()->socket()->event() << "\n";
+	finished_state->debug_log() 
+		<< "---------------------------------------------\n";
 #endif
 
 	// XXX attempt to merge?
