@@ -339,16 +339,18 @@ bool AddressSpaceGraph::locals_equal(const AddressSpaceGraph &b) const {
           b_expr = get_canonical_expr(b, b.locals_[i].first);
         }
         if (a_expr != b_expr) {
-          if (locals_info_[i].isArg) {
-            CVDEBUG_S2(id_a, id_b, "locals not equal in Function: "
-              << locals_info_[i].kf->function->getNameStr() << "(), " <<
-              a_expr << " != " << b_expr << ", Arg "
-              << locals_info_[i].index);
-          } else {
-            CVDEBUG_S2(id_a, id_b, "locals not equal in Function: "
-              << locals_info_[i].kf->function->getNameStr() << "(), " <<
-              a_expr << " != " << b_expr << ", "
-              << *(locals_info_[i].kf->instructions[locals_info_[i].index]));
+          if (DebugAddressSpaceGraph) {
+            if (locals_info_[i].isArg) {
+              CVDEBUG_S2(id_a, id_b, "locals not equal in Function: "
+                << locals_info_[i].kf->function->getNameStr() << "(), " <<
+                a_expr << " != " << b_expr << ", Arg "
+                << locals_info_[i].index);
+            } else {
+              CVDEBUG_S2(id_a, id_b, "locals not equal in Function: "
+                << locals_info_[i].kf->function->getNameStr() << "(), " <<
+                a_expr << " != " << b_expr << ", "
+                << *(locals_info_[i].kf->instructions[locals_info_[i].index]));
+            }
           }
           return false;
         }
