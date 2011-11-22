@@ -43,6 +43,7 @@ class PathTreeNode {
 	void remove_state(CVExecutionState* state);
 	ExecutionStateSet& states() { return states_; }
 	klee::KInstruction* instruction() { return instruction_; } 
+  PathTreeNode* parent() { return parent_; }
 
  private:
 	void update_explored_status();
@@ -69,6 +70,8 @@ class PathTree {
 
 	bool get_states(const Path* path, const PathRange &range,
 			ExecutionStateSet& states, int &index);
+
+  bool get_child_states(PathTreeNode* node, ExecutionStateSet &states);
 
 	bool contains_state(CVExecutionState* state);
 
