@@ -139,6 +139,7 @@ class VerifyPathManager : public PathManager {
 	virtual void print(std::ostream &os) const;
 
 	unsigned index() { return index_; }
+	void set_index(unsigned index);
 
  private:
 	virtual bool merge(const PathManager &pm) { return false; }
@@ -257,7 +258,6 @@ class HorizonPathManager : public VerifyPathManager {
 	virtual void state_branch(CVExecutionState* state, 
 			CVExecutionState *branched_state);
 
-	void set_index(int index);
 	bool is_horizon() { return is_horizon_; }
 
  private:
@@ -331,7 +331,6 @@ class KLookaheadPathManager : public VerifyPathManager {
 	virtual void state_branch(CVExecutionState* state, 
 			CVExecutionState *branched_state);
 
-	void set_index(int index);
 	bool is_horizon() { return is_horizon_; }
 
  private:
@@ -369,7 +368,6 @@ class KLookPathManager : public VerifyPathManager {
 	virtual void state_branch(CVExecutionState* state, 
 			CVExecutionState *branched_state);
 
-	void set_index(int index);
 	bool is_horizon() { return is_horizon_; }
 
  private:
