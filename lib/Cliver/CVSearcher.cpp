@@ -641,7 +641,8 @@ void VerifyStage::finish(CVExecutionState *finished_state) {
 	VerifyProperty *p = static_cast<VerifyProperty*>(state->property());
 	p->path_range = PathRange(p->path_range.start(), state->prevPC);
 
-  static_cast<VerifyPathManager*>(state->path_manager())->set_index(0);
+  state->path_manager()->set_index(0);
+
 	CVDEBUG("end_path: " << state->path_manager()->range()
 			<< ", " << p->path_range);
  

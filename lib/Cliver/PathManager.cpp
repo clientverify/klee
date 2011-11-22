@@ -43,7 +43,6 @@ DebugPathManager("debug-pathmanager",llvm::cl::init(false));
 #ifdef DEBUG_CLIVER_STATE_LOG 
 
 #undef CVDEBUG_S
-
 #define CVDEBUG_S(__state, __x) \
 	if (DebugPathManager) { \
 	(__state)->debug_log() << __CVDEBUG_FILE << "State: " \
@@ -846,11 +845,7 @@ PathManager* PathManagerFactory::create() {
   switch (g_cliver_mode) {
 		case DefaultTrainingMode:
 			return new TrainingPathManager();
-		case VerifyWithTrainingPaths: {
-      /// XXX HACK so that we can always call index() on the pathmanager
-      PathRange pr;
-			return new VerifyPathManager(NULL, pr);
-    }
+		case VerifyWithTrainingPaths:
 		case DefaultMode:
 			break;
   }
