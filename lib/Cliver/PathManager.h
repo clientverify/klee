@@ -54,8 +54,8 @@ class PathManager {
 	virtual void state_branch(CVExecutionState* state, 
 			CVExecutionState *branched_state);
 	virtual void print(std::ostream &os) const;
-	virtual unsigned index() { return length(); }
-	virtual void set_index(unsigned index) { assert(0); }
+	virtual unsigned index() { return 0; }
+	virtual void set_index(unsigned index) {}
 
 	void set_range(const PathRange& range);
 
