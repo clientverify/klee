@@ -445,7 +445,7 @@ VerifyStage::VerifyStage(PathSelector *path_selector,
 		network_event_index_(0), /// XXX needed?
 		parent_(parent),
 		search_strategy_(FullTraining),
-    exhaustive_search_level_(1),
+    exhaustive_search_level_(0),
     training_paths_used_(0) {
 
 	if (parent_ == NULL) {
@@ -478,38 +478,6 @@ CVExecutionState* VerifyStage::next_state() {
 						//		<< " states found in path_tree starting at inst " << index); 
 						foreach (CVExecutionState* s, tree_states) {
               assert(index == static_cast<VerifyPathManager*>(s->path_manager())->index());
-							HorizonPathManager* pm 
-								= new HorizonPathManager(tpath, trange, path_tree_);
-							pm->set_index(index);
-							s->reset_path_manager(pm);
-							VerifyProperty* p = static_cast<VerifyProperty*>(s->property());
-							p->phase = VerifyProperty::Execute;
-							states_.insert(s);
-						}
-					}
-				}
-			} while (training && states_.empty());
-
-			if (states_.empty()) {
-				CVDEBUG("Switching to KLook search mode");
-				search_strategy_ = KLookSearch;
-			}
-		}
-	
-		if (search_strategy_ == KLookSearch) {
-			PathManager* training = NULL;
-			do {
-				if (training = path_selector_->next_path(range)) {
-					const Path* tpath     = training->path();
-					PathRange trange      = training->range();
-					int index;
-					ExecutionStateSet tree_states;
-
-					if (path_tree_->get_states(tpath, trange, tree_states, index)) {
-						training_paths_used_++;
-						//CVDEBUG("VerifyStage::next_state(): " << tree_states.size() 
-						//		<< " states found in path_tree starting at inst " << index); 
-						foreach (CVExecutionState* s, tree_states) {
 							KLookPathManager* pm 
 								= new KLookPathManager(tpath, trange, path_tree_, 
                                        KLookAheadValue);
@@ -525,6 +493,7 @@ CVExecutionState* VerifyStage::next_state() {
 
 			if (states_.empty()) {
 				CVDEBUG("Switching to Exhaustive search mode");
+        exhaustive_search_level_++;
 				search_strategy_ = Exhaustive;
 			}
 		}	
@@ -578,7 +547,7 @@ CVExecutionState* VerifyStage::next_state() {
 		}
 		// All states are at exhaustive_search_level_;
 		CVDEBUG("All states have reached " << exhaustive_search_level_
-				<< ", raising level to " << exhaustive_search_level_*2);
+				<< ", raising level to " << exhaustive_search_level_+1);
 		return next_state();
 	}
 
@@ -662,6 +631,10 @@ void VerifyStage::finish(CVExecutionState *finished_state) {
 	//		<< " [End "   << *state->path_manager()->range().kinsts().second << "]");
 
 	//assert(state->path_manager()->range().equal(p->path_range));
+
+  // Statistics
+  stats::training_paths += training_paths_used_;
+  stats::exhaustive_search_level += exhaustive_search_level_;
 
 	p->phase = VerifyProperty::Execute;
 	p->round++;

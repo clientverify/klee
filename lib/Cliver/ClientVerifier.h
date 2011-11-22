@@ -55,6 +55,8 @@ namespace stats {
 	extern klee::Statistic pruned_constraints;
 	extern klee::Statistic searcher_time;
 	extern klee::Statistic fork_time;
+	extern klee::Statistic training_paths;
+	extern klee::Statistic exhaustive_search_level;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

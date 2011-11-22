@@ -99,6 +99,8 @@ namespace stats {
 	klee::Statistic pruned_constraints("PrunedConstraints", "prunes");
 	klee::Statistic searcher_time("SearcherTime", "Stime");
 	klee::Statistic fork_time("ForkTime", "Ftime");
+	klee::Statistic training_paths("TrainingPaths", "TPaths");
+	klee::Statistic exhaustive_search_level("ExhaustiveSearchLevel", "ESLevel");
 }
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -387,6 +389,8 @@ void ClientVerifier::print_current_statistics() {
     << " " << sr->getValue(klee::stats::solverTime) / 1000000.
     << " " << sr->getValue(stats::fork_time) / 1000000.
     << " " << llvm::sys::Process::GetTotalMemoryUsage()
+    << " " << sr->getValue(stats::training_paths)
+    << " " << sr->getValue(stats::exhaustive_search_level)
     << "\n";
 
 
