@@ -274,6 +274,10 @@ klee::ExecutionState &TrainingSearcher::selectState() {
 		foreach (CVExecutionState* state, result) {
 			phases_[PathProperty::Execute].insert(state);
 		}
+	
+		CVExecutionState* state = *(phases_[PathProperty::Execute].begin());                                                                                                                                                 
+		Socket *socket = state->network_manager()->socket();                                                                                                                                                                 
+		CVMESSAGE("SocketEvent: " << *socket);   
 
 		return selectState();
 	}
