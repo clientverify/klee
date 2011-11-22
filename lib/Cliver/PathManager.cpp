@@ -701,10 +701,10 @@ void KLookPathManager::branch(bool direction,
 	assert(false == is_horizon_ && "must stop execution at horizon");
 
 
-	// Build a new bb list if this direction doesn't match the verify path
-	if (index_ < vpath_->length() && direction != vpath_->get_branch(index_)) {
-		// If we are not already tracking a BasicBlock list
-		if (basicblock_list_.empty()) {
+  // If we are not already tracking a BasicBlock list
+  if (basicblock_list_.empty()) {
+    // Build a new bb list if this direction doesn't match the verify path
+    if (index_ < vpath_->length() && direction != vpath_->get_branch(index_)) {
 
 			if (llvm::BranchInst *bi = cast<llvm::BranchInst>(inst->inst)) {
 				if (bi->isUnconditional()) {
@@ -723,53 +723,53 @@ void KLookPathManager::branch(bool direction,
 
 	if (!basicblock_list_.empty()) {
 
-		if (validity == klee::Solver::Unknown) {
-			is_horizon_ = true;
-			VerifyProperty* p = static_cast<VerifyProperty*>(state->property());
-			assert(p->phase == VerifyProperty::Execute && "Wrong state property");
-			p->phase = VerifyProperty::Horizon;
-			CVDEBUG("Reached Solver::Unknown Horizon after covering " 
-			    << (float)index_/(float)vpath_->length()
-					<< " of branches (" << index_ <<"/"<< vpath_->length() << ") "
-					<< " and deviating " << lookahead_count_ << " branches to "
-					<< *inst);
-		} else {
-			CVDEBUG_S(state, "KLook branch " << lookahead_count_ << " () " << *inst);
+    CVDEBUG_S(state, "KLook branch " << lookahead_count_ << " () " << *inst);
 
+    lookahead_count_++;
+    llvm::BasicBlock *successor_bb = Path::lookup_successor(direction, inst);
+    for (int k=0; k < basicblock_list_.size(); ++k) {
+      llvm::BasicBlock *bb = basicblock_list_[k];
+      if (bb == successor_bb) {
+        for (int i=0; i < basicblock_list_.size(); ++i) {
+          CVDEBUG_S(state, "Skipped " << i << " () " << *(kinst_list_[i]));
 
-			lookahead_count_++;
-			llvm::BasicBlock *successor_bb = Path::lookup_successor(direction, inst);
-			for (int k=0; k < basicblock_list_.size(); ++k) {
-				llvm::BasicBlock *bb = basicblock_list_[k];
-				if (bb == successor_bb) {
-					for (int i=0; i < basicblock_list_.size(); ++i) {
-						CVDEBUG_S(state, "Skipped " << i << " () " << *(kinst_list_[i]));
+        }
+        // Path Match!
+        CVDEBUG_S(state, "KLook success. Found match in "
+            << k << " training path skips and "
+            << lookahead_count_ << " lookaheads at (" 
+            << index_ + k + 1 <<"/"<< vpath_->length() << ") " << *inst);
+        
+        index_ += (k + 1);
+        lookahead_count_ = 0;
+        basicblock_list_.clear();
+        kinst_list_.clear();
+      }
+    }
 
-					}
-					// Path Match!
-					CVDEBUG_S(state, "KLook success. Found match in "
-							<< k << " training path skips and "
-							<< lookahead_count_ << " lookaheads at (" 
-							<< index_ + k + 1 <<"/"<< vpath_->length() << ") " << *inst);
-					
-					index_ += (k + 1);
-					lookahead_count_ = 0;
-					basicblock_list_.clear();
-					kinst_list_.clear();
-				}
-			}
+    if (lookahead_count_ >= max_k_) {
+      // We've reached the branch threshold
+      is_horizon_ = true;
+      VerifyProperty* p = static_cast<VerifyProperty*>(state->property());
+      assert(p->phase == VerifyProperty::Execute && "Wrong state property");
+      p->phase = VerifyProperty::Horizon;
 
-			if (lookahead_count_ >= max_k_) {
-				// We've reached the branch threshold
-				is_horizon_ = true;
-				VerifyProperty* p = static_cast<VerifyProperty*>(state->property());
-				assert(p->phase == VerifyProperty::Execute && "Wrong state property");
-				p->phase = VerifyProperty::Horizon;
+      CVDEBUG_S(state, "KLook failed at (" 
+          << index_ <<"/"<< vpath_->length() << ") " << *inst);
+    }
 
-				CVDEBUG_S(state, "KLook failed at (" 
-						<< index_ <<"/"<< vpath_->length() << ") " << *inst);
-			}
-		}
+    if (lookahead_count_ != 0 && validity == klee::Solver::Unknown) {
+      is_horizon_ = true;
+      VerifyProperty* p = static_cast<VerifyProperty*>(state->property());
+      assert(p->phase == VerifyProperty::Execute && "Wrong state property");
+      p->phase = VerifyProperty::Horizon;
+
+      CVDEBUG("Reached Solver::Unknown Horizon after covering " 
+          << (float)index_/(float)vpath_->length()
+          << " of branches (" << index_ <<"/"<< vpath_->length() << ") "
+          << " and deviating " << lookahead_count_ << " branches to "
+          << *inst);
+    }
 
 	} else {
 

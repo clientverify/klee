@@ -35,6 +35,9 @@ DebugSearcher("debug-searcher",llvm::cl::init(false));
 llvm::cl::opt<bool>
 PrintTrainingPaths("print-training-paths",llvm::cl::init(false));
 
+llvm::cl::opt<int>
+KLookAheadValue("klookahead",llvm::cl::init(16));
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef NDEBUG
@@ -508,7 +511,8 @@ CVExecutionState* VerifyStage::next_state() {
 						//		<< " states found in path_tree starting at inst " << index); 
 						foreach (CVExecutionState* s, tree_states) {
 							KLookPathManager* pm 
-								= new KLookPathManager(tpath, trange, path_tree_, 4096);
+								= new KLookPathManager(tpath, trange, path_tree_, 
+                                       KLookAheadValue);
 							pm->set_index(index);
 							s->reset_path_manager(pm);
 							VerifyProperty* p = static_cast<VerifyProperty*>(s->property());
@@ -530,7 +534,8 @@ CVExecutionState* VerifyStage::next_state() {
 		// all possible paths
 		if (search_strategy_ == Exhaustive) {
 			assert(states_.empty());
-			exhaustive_search_level_ *= 2;
+			//exhaustive_search_level_ *= 2;
+			exhaustive_search_level_++;
 			ExecutionStateSet &path_tree_states = path_tree_->states();
 
 			// XXX need better handling of this event
