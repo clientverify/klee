@@ -54,6 +54,8 @@ class PathManager {
 	virtual void state_branch(CVExecutionState* state, 
 			CVExecutionState *branched_state);
 	virtual void print(std::ostream &os) const;
+	virtual unsigned index() { return length(); }
+	virtual void set_index(unsigned index) { assert(0); }
 
 	void set_range(const PathRange& range);
 
@@ -138,8 +140,8 @@ class VerifyPathManager : public PathManager {
 			CVExecutionState *branched_state);
 	virtual void print(std::ostream &os) const;
 
-	unsigned index() { return index_; }
-	void set_index(unsigned index);
+	virtual unsigned index() { return index_; }
+	virtual void set_index(unsigned index);
 
  private:
 	virtual bool merge(const PathManager &pm) { return false; }
@@ -391,6 +393,8 @@ inline std::ostream &operator<<(std::ostream &os,
   p.print(os);
   return os;
 }
+////////////////////////////////////////////////////////////////////////////////
+// MultiVerifyPathManager
 
 ////////////////////////////////////////////////////////////////////////////////
 
