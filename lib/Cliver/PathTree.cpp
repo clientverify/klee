@@ -62,6 +62,44 @@ void PathTree::add_branched_state(CVExecutionState* state,
 	add_state_to_map(branched_state, node);
 }
 
+bool PathTree::get_child_states(PathTreeNode* node, 
+                                ExecutionStateSet &states) {
+  PathTreeNode* curr_node = node;
+  PathTreeNode* prev_node = NULL;
+
+  while (curr_node) {
+    PathTreeNode* next_node = NULL;
+
+    if (prev_node == curr_node->parent()) {
+      next_node = curr_node->true_node();
+      if (!next_node) {
+        if (!curr_node->states().empty()) {
+          states.insert(curr_node->states().begin(),
+                        curr_node->states().end());
+        }
+        if (curr_node->false_node() != NULL)
+          next_node = curr_node->false_node();
+        else 
+          next_node = curr_node->parent();
+      }
+    } else if (prev_node == curr_node->true_node()) {
+      if (!curr_node->states().empty()) {
+        states.insert(curr_node->states().begin(),
+                      curr_node->states().end());
+      }
+      if (curr_node->false_node())
+        next_node = curr_node->false_node();
+      else 
+        next_node = curr_node->parent();
+
+    } else if (prev_node == curr_node->false_node()) {
+      next_node = curr_node->parent();
+    }
+    prev_node = curr_node;
+    curr_node = next_node;
+  }
+}
+
 /// TODO rename, too vague
 bool PathTree::get_states(const Path* path, const PathRange &range,
 		ExecutionStateSet& states, int &index) {

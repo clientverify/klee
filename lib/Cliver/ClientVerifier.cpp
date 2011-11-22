@@ -274,6 +274,7 @@ void ClientVerifier::initialize_external_handlers(CVExecutor *executor) {
 
 int ClientVerifier::read_training_paths(std::vector<std::string> &filename_list,
 		PathManagerSet *path_manager_set) {
+  static unsigned duplicate_training_path_count = 0;
 
 	foreach (std::string filename, filename_list) {
 		std::ifstream *is = new std::ifstream(filename.c_str(),
@@ -287,6 +288,7 @@ int ClientVerifier::read_training_paths(std::vector<std::string> &filename_list,
 						<< pm->length() << ", " << pm->range() 
 						<< ", File: " << filename );
 			} else {
+        duplicate_training_path_count++;
 				TrainingPathManager *merged_pm 
 					= static_cast<TrainingPathManager*>(path_manager_set->merge(pm));
 				if (merged_pm)
@@ -298,6 +300,7 @@ int ClientVerifier::read_training_paths(std::vector<std::string> &filename_list,
 			delete is;
 		}
 	}
+  CVMESSAGE("Duplicate Paths " << duplicate_training_path_count);
 	return path_manager_set->size();
 }
 
