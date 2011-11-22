@@ -854,7 +854,11 @@ PathManager* PathManagerFactory::create() {
   switch (g_cliver_mode) {
 		case DefaultTrainingMode:
 			return new TrainingPathManager();
-		case VerifyWithTrainingPaths:
+		case VerifyWithTrainingPaths: {
+      /// XXX HACK so that we can always call index() on the pathmanager
+      PathRange pr;
+			return new VerifyPathManager(NULL, pr);
+    }
 		case DefaultMode:
 			break;
   }
