@@ -477,7 +477,7 @@ CVExecutionState* VerifyStage::next_state() {
 						//CVDEBUG("VerifyStage::next_state(): " << tree_states.size() 
 						//		<< " states found in path_tree starting at inst " << index); 
 						foreach (CVExecutionState* s, tree_states) {
-              assert(index == static_cast<VerifyPathManager*>(s->path_manager())->index());
+              //assert(index == static_cast<VerifyPathManager*>(s->path_manager())->index());
 							KLookPathManager* pm 
 								= new KLookPathManager(tpath, trange, path_tree_, 
                                        KLookAheadValue);
