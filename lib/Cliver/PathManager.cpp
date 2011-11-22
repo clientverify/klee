@@ -293,6 +293,10 @@ void VerifyPathManager::print(std::ostream &os) const {
 		<< vrange_.ids().first << ", " << vrange_.ids().second << "] " << *vpath_;
 }
 
+void VerifyPathManager::set_index(unsigned index) {
+	index_ = index;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 VerifyConcretePathManager::VerifyConcretePathManager(const Path *vpath, 
@@ -513,10 +517,6 @@ void HorizonPathManager::state_branch(CVExecutionState* state,
 	path_tree_->add_branched_state(state, branched_state);
 }
 
-void HorizonPathManager::set_index(int index) {
-	index_ = index;
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 NthLevelPathManager::NthLevelPathManager(PathTree* path_tree)
@@ -655,10 +655,6 @@ void KLookaheadPathManager::branch(bool direction,
 void KLookaheadPathManager::state_branch(CVExecutionState* state, 
 		CVExecutionState* branched_state) {
 	path_tree_->add_branched_state(state, branched_state);
-}
-
-void KLookaheadPathManager::set_index(int index) {
-	index_ = index;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -806,10 +802,6 @@ void KLookPathManager::branch(bool direction,
 void KLookPathManager::state_branch(CVExecutionState* state, 
 		CVExecutionState* branched_state) {
 	path_tree_->add_branched_state(state, branched_state);
-}
-
-void KLookPathManager::set_index(int index) {
-	index_ = index;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
