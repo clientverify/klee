@@ -472,8 +472,8 @@ CVExecutionState* VerifyStage::next_state() {
 					int index;
 					ExecutionStateSet tree_states;
 
+          training_paths_used_++;
 					if (path_tree_->get_states(tpath, trange, tree_states, index)) {
-						training_paths_used_++;
 						//CVDEBUG("VerifyStage::next_state(): " << tree_states.size() 
 						//		<< " states found in path_tree starting at inst " << index); 
 						foreach (CVExecutionState* s, tree_states) {
@@ -701,7 +701,11 @@ bool VerifySearcher::empty() {
 
 void VerifySearcher::end_path(CVExecutionState *state,
 		CVExecutor* executor, CliverEvent::Type et) {
-	current_stage_->finish(state);
+  ExecutionStateSet state_set, merged_set;
+  state_set.insert(state);
+  merger_->merge(state_set, merged_set);
+	current_stage_->finish(*(merged_set.begin()));
+	//current_stage_->finish(state);
 }
 
 void VerifySearcher::handle_post_event(CVExecutionState *state,
