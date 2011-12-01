@@ -397,11 +397,6 @@ void ClientVerifier::print_current_statistics() {
   // Rebuild solvers each round to keep caches fresh.                                                                                                                                                                
 	g_executor->rebuild_solvers();
 
-	if (MaxRoundNumber && statistic_round > MaxRoundNumber) {
-		// need cleaner exit
-		exit(1);
-	}
-
 #ifdef GOOGLE_PROFILER
   if (ProfilerStartRoundNumber > 0 
 			&& statistic_round == ProfilerStartRoundNumber) {
@@ -416,6 +411,11 @@ void ClientVerifier::print_current_statistics() {
 	}
 #endif
 	next_statistics();
+
+	if (MaxRoundNumber && statistic_round > MaxRoundNumber) {
+		// need cleaner exit
+		exit(1);
+	}
 }
 
 void ClientVerifier::next_statistics() {
