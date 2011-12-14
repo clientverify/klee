@@ -436,7 +436,7 @@ void TrainingSearcher::handle_pre_event(CVExecutionState *state,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-VerifyStage::VerifyStage(PathSelector *path_selector, 
+VerifyStage::VerifyStage(StateMerger *merger, PathSelector *path_selector, 
 		const SocketEvent* socket_event, VerifyStage* parent)
 	: root_state_(NULL),
 	  path_selector_(path_selector->clone()),
@@ -446,7 +446,8 @@ VerifyStage::VerifyStage(PathSelector *path_selector,
 		parent_(parent),
 		search_strategy_(FullTraining),
     exhaustive_search_level_(0),
-    training_paths_used_(0) {
+    training_paths_used_(0),
+    merger_(merger) {
 
 	if (parent_ == NULL) {
 		network_event_index_ = 0;
@@ -459,37 +460,43 @@ VerifyStage::VerifyStage(PathSelector *path_selector,
 CVExecutionState* VerifyStage::next_state() {
 	if (states_.empty()) {
 
+		if (search_strategy_ == Exhaustive) {
+			CVDEBUG("Current Exhaustive search level: " << exhaustive_search_level_);
+		}
+
 		assert(root_state_);
 
 		PathRange range(root_state_->prevPC, NULL);
 
 		if (search_strategy_ == FullTraining) {
-			PathManager* training = NULL;
-			do {
-				if (training = path_selector_->next_path(range)) {
-					const Path* tpath     = training->path();
-					PathRange trange      = training->range();
-					int index;
-					ExecutionStateSet tree_states;
+			if (KLookAheadValue >= 0) {
+				PathManager* training = NULL;
+				do {
+					if (training = path_selector_->next_path(range)) {
+						const Path* tpath     = training->path();
+						PathRange trange      = training->range();
+						int index;
+						ExecutionStateSet tree_states;
 
-          training_paths_used_++;
-					if (path_tree_->get_states(tpath, trange, tree_states, index)) {
-						//CVDEBUG("VerifyStage::next_state(): " << tree_states.size() 
-						//		<< " states found in path_tree starting at inst " << index); 
-						foreach (CVExecutionState* s, tree_states) {
-              //assert(index == static_cast<VerifyPathManager*>(s->path_manager())->index());
-							KLookPathManager* pm 
-								= new KLookPathManager(tpath, trange, path_tree_, 
-                                       KLookAheadValue);
-							pm->set_index(index);
-							s->reset_path_manager(pm);
-							VerifyProperty* p = static_cast<VerifyProperty*>(s->property());
-							p->phase = VerifyProperty::Execute;
-							states_.insert(s);
+						training_paths_used_++;
+						if (path_tree_->get_states(tpath, trange, tree_states, index)) {
+							//CVDEBUG("VerifyStage::next_state(): " << tree_states.size() 
+							//		<< " states found in path_tree starting at inst " << index); 
+							foreach (CVExecutionState* s, tree_states) {
+								//assert(index == static_cast<VerifyPathManager*>(s->path_manager())->index());
+								KLookPathManager* pm 
+									= new KLookPathManager(tpath, trange, path_tree_, 
+																				KLookAheadValue);
+								pm->set_index(index);
+								s->reset_path_manager(pm);
+								VerifyProperty* p = static_cast<VerifyProperty*>(s->property());
+								p->phase = VerifyProperty::Execute;
+								states_.insert(s);
+							}
 						}
 					}
-				}
-			} while (training && states_.empty());
+				} while (training && states_.empty());
+			}
 
 			if (states_.empty()) {
 				CVDEBUG("Switching to Exhaustive search mode");
@@ -506,6 +513,11 @@ CVExecutionState* VerifyStage::next_state() {
 			//exhaustive_search_level_ *= 2;
 			exhaustive_search_level_++;
 			ExecutionStateSet &path_tree_states = path_tree_->states();
+			CVDEBUG("PathTreeStates.size() = " << path_tree_states.size());
+
+			ExecutionStateSet merged_set;
+			merger_->merge(path_tree_states, merged_set);
+			CVDEBUG("Could have merged " << path_tree_states.size() - merged_set.size() << " states.");
 
 			// XXX need better handling of this event
 			assert(!path_tree_states.empty());
@@ -583,6 +595,8 @@ void VerifyStage::remove_state(CVExecutionState *state) {
 	if (path_tree_->contains_state(state)) {
 		//CVDEBUG_S(state->id(), "removing state from PathTree");
 		path_tree_->remove_state(state);
+	} else {
+		CVDEBUG_S(state->id(), "Can't remove state from PathTree");
 	}
 
 	if (finished_states_.count(state)) {
@@ -640,7 +654,7 @@ void VerifyStage::finish(CVExecutionState *finished_state) {
 	p->round++;
 	const SocketEvent &se = state->network_manager()->socket()->event();
 
-	VerifyStage *child_stage = new VerifyStage(path_selector_, &se, this);
+	VerifyStage *child_stage = new VerifyStage(merger_, path_selector_, &se, this);
 	child_stage->add_state(state);
 	children_.push_back(child_stage);
 }
@@ -651,7 +665,7 @@ VerifySearcher::VerifySearcher(klee::Searcher* base_searcher,
 	  path_selector_(PathSelectorFactory::create(paths)) {
 
 	root_stage_ = current_stage_ 
-		= new VerifyStage(path_selector_, NULL, NULL);
+		= new VerifyStage(merger_, path_selector_, NULL, NULL);
 }
 
 klee::ExecutionState &VerifySearcher::selectState() {

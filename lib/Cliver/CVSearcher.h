@@ -125,7 +125,7 @@ class VerifyStage {
 		Exhaustive } 
 	SearchStrategy;
 
-	VerifyStage(PathSelector *path_selector, const SocketEvent* socket_event, 
+	VerifyStage(StateMerger* merger, PathSelector *path_selector, const SocketEvent* socket_event, 
 			VerifyStage* parent=NULL);
 	CVExecutionState* next_state();
 	void add_state(CVExecutionState *state);
@@ -163,6 +163,7 @@ class VerifyStage {
 	unsigned exhaustive_search_level_;
 
 	unsigned training_paths_used_;
+	StateMerger *merger_;
 };
 
 class VerifySearcher : public CVSearcher {
