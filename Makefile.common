@@ -19,6 +19,7 @@ override ENABLE_COVERAGE := $(RUNTIME_ENABLE_COVERAGE)
 endif
 
 include $(LLVM_SRC_ROOT)/Makefile.rules
+include $(LEVEL)/Makefile.rules
 
 # LLVMCC was added in 2.7.
 ifeq ($(LLVMCC),)
@@ -46,34 +47,4 @@ REQUIRES_RTTI=1
 
 LD.Flags += -lboost_signals -lboost_serialization
 CXX.Flags += -Wno-deprecated
-
-ifdef BOOST_ROOT
-  LD.Flags += -L$(BOOST_ROOT)/lib
-  CXX.Flags += -I$(BOOST_ROOT)/include
-else
-  #CXX.Flags += -I/usr/include/boost
-  $(error "BOOST_ROOT undefined")
-endif
-
-# Google Performance Profilers 
-ifeq ($(ENABLE_GOOGLE_PROFILER),1)
-  CXX.Flags += -DGOOGLE_PROFILER 
-  LD.Flags += -lprofiler 
-  ifdef GOOGLE_PERFTOOLS_ROOT
-    LD.Flags += -L$(GOOGLE_PERFTOOLS_ROOT)/lib
-    CXX.Flags += -I$(GOOGLE_PERFTOOLS_ROOT)/include
-  else
-    $(error "GOOGLE_PERFTOOLS_ROOT undefined")
-  endif
-endif
-
-ifeq ($(ENABLE_GOOGLE_MALLOC),1)
-  CXX.Flags += -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
-  LD.Flags += -ltcmalloc
-  ifdef GOOGLE_PERFTOOLS_ROOT
-    LD.Flags += -L$(GOOGLE_PERFTOOLS_ROOT)/lib
-  else
-    $(error "GOOGLE_PERFTOOLS_ROOT undefined")
-  endif
-endif
 
