@@ -42,9 +42,23 @@ CXX.Flags += -DKLEE_DIR=\"$(PROJ_OBJ_ROOT)\"
 # For STP.
 CXX.Flags += -DEXT_HASH_MAP
 
-# Required by Boost 
+# Required for Boost 
 REQUIRES_RTTI=1
-
 LD.Flags += -lboost_signals -lboost_serialization
 CXX.Flags += -Wno-deprecated
+
+ifeq ($(DISABLE_GOOGLE_PROFILING),1)
+else
+  # Default is to compile with google profiler, no performance 
+  # hit unless enabled via commandline or environment var
+  LD.Flags  += -lprofiler
+  CPP.Defines += -DGOOGLE_PROFILER 
+endif
+
+ifeq ($(DISABLE_TCMALLOC),1)
+else
+  # Default is to compile with tcmalloc 
+  CXX.Flags += -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
+  LD.Flags += -ltcmalloc
+endif
 
