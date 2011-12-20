@@ -45,14 +45,16 @@ CXX.Flags += -DEXT_HASH_MAP
 REQUIRES_RTTI=1
 
 LD.Flags += -lboost_signals -lboost_serialization
+CXX.Flags += -Wno-deprecated
 
 ifdef ($(BOOST_ROOT))
   LD.Flags += -L$(BOOST_ROOT)/lib
   CXX.Flags += -I$(BOOST_ROOT)/include
+else
+  CXX.Flags += -I/usr/include/boost
 endif
 
 # Google Performance Profilers 
-CXX.Flags += -Wno-deprecated
 ifeq ($(ENABLE_GOOGLE_PROFILER),1)
   CXX.Flags += -DGOOGLE_PROFILER 
   LD.Flags += -lprofiler 
@@ -60,8 +62,6 @@ ifeq ($(ENABLE_GOOGLE_PROFILER),1)
     LD.Flags += -L$(GOOGLE_PERFTOOLS_ROOT)/lib
     CXX.Flags += -I$(GOOGLE_PERFTOOLS_ROOT)/include
   endif
-else
-  CXX.Flags += -I/usr/include/boost
 endif
 
 ifeq ($(ENABLE_GOOGLE_MALLOC),1)
