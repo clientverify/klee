@@ -6,19 +6,20 @@
 # License. See LICENSE.TXT for details.
 #
 #===------------------------------------------------------------------------===#
+#
+#===------------------------------------------------------------------------===#
 
-ifeq ($(ENABLE_GOOGLE_PROFILING),1)
-  BuildMode := $(BuildMode)+GProfile
-  CXX.Flags := $(filter-out -fomit-frame-pointer,$(CXX.Flags))
-  C.Flags   := $(filter-out -fomit-frame-pointer,$(C.Flags))
-  LD.Flags  := $(filter-out -fomit-frame-pointer,$(LD.Flags))
-  KEEP_SYMBOLS := 1
-  CPP.Defines += -DGOOGLE_PROFILER 
-  LD.Flags += -lprofiler 
+ifeq ($(ENABLE_PROFILING),1)
+  ifeq ($(DISABLE_GOOGLE_PROFILING),1)
+  else
+    CXX.Flags := $(filter-out -pg -g,$(CXX.Flags))
+    C.Flags   := $(filter-out -pg -g,$(C.Flags))
+    LD.Flags  := $(filter-out -pg -g,$(LD.Flags)) -lprofiler
+    CPP.Defines += -DGOOGLE_PROFILER 
+  endif
 endif
 
 ifeq ($(DISABLE_TCMALLOC),1)
-  BuildMode := $(BuildMode)-TCMalloc
 else
   CXX.Flags += -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
   LD.Flags += -ltcmalloc
