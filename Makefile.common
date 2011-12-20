@@ -51,7 +51,8 @@ ifdef ($(BOOST_ROOT))
   LD.Flags += -L$(BOOST_ROOT)/lib
   CXX.Flags += -I$(BOOST_ROOT)/include
 else
-  CXX.Flags += -I/usr/include/boost
+  #CXX.Flags += -I/usr/include/boost
+  $(error "BOOST_ROOT undefined")
 endif
 
 # Google Performance Profilers 
@@ -61,6 +62,8 @@ ifeq ($(ENABLE_GOOGLE_PROFILER),1)
   ifdef ($(GOOGLE_PERFTOOLS_ROOT))
     LD.Flags += -L$(GOOGLE_PERFTOOLS_ROOT)/lib
     CXX.Flags += -I$(GOOGLE_PERFTOOLS_ROOT)/include
+  else
+    $(error "GOOGLE_PERFTOOLS_ROOT undefined")
   endif
 endif
 
@@ -69,6 +72,8 @@ ifeq ($(ENABLE_GOOGLE_MALLOC),1)
   LD.Flags += -ltcmalloc
   ifdef ($(GOOGLE_PERFTOOLS_ROOT))
     LD.Flags += -L$(GOOGLE_PERFTOOLS_ROOT)/lib
+  else
+    $(error "GOOGLE_PERFTOOLS_ROOT undefined")
   endif
 endif
 
