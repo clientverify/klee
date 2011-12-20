@@ -41,28 +41,34 @@ CXX.Flags += -DKLEE_DIR=\"$(PROJ_OBJ_ROOT)\"
 # For STP.
 CXX.Flags += -DEXT_HASH_MAP
 
-# For C++ Boost libaries
-CXX.Flags += -I/usr/include/boost -Wno-deprecated
-
 # Required by Boost 
 REQUIRES_RTTI=1
 
 LD.Flags += -lboost_signals -lboost_serialization
 
-LD.Flags += -L$(GSECROOT)/local/boost/lib
-CXX.Flags += -I$(GSECROOT)/local/boost/include
+ifdef ($(BOOST_ROOT))
+  LD.Flags += -L$(BOOST_ROOT)/lib
+  CXX.Flags += -I$(BOOST_ROOT)/include
+endif
 
 # Google Performance Profilers 
+CXX.Flags += -Wno-deprecated
 ifeq ($(ENABLE_GOOGLE_PROFILER),1)
   CXX.Flags += -DGOOGLE_PROFILER 
-  CXX.Flags += -I$(GSECROOT)/local/google-perftools/include
   LD.Flags += -lprofiler 
-  ENABLE_GOOGLE_MALLOC=1
+  ifdef ($(GOOGLE_PERFTOOLS_ROOT))
+    LD.Flags += -L$(GOOGLE_PERFTOOLS_ROOT)/lib
+    CXX.Flags += -I$(GOOGLE_PERFTOOLS_ROOT)/include
+  endif
+else
+  CXX.Flags += -I/usr/include/boost
 endif
 
 ifeq ($(ENABLE_GOOGLE_MALLOC),1)
   CXX.Flags += -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
-  LD.Flags += -L$(GSECROOT)/local/google-perftools/lib
   LD.Flags += -ltcmalloc
+  ifdef ($(GOOGLE_PERFTOOLS_ROOT))
+    LD.Flags += -L$(GOOGLE_PERFTOOLS_ROOT)/lib
+  endif
 endif
 
