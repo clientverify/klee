@@ -1,10 +1,10 @@
 #!/bin/bash
 
-EXTRA_LIBS=@EXTRA_LIBS@
-
 WRAPPER="`readlink -f "$0"`"
 
 HERE="`dirname $WRAPPER"`"
+
+EXTRA_LIBS="$HERE/../lib:$HERE/../../local/lib"
 
 if [[ -n "$LD_LIBRARY_PATH" ]]; then
   LD_LIBRARY_PATH="$EXTRA_LIBS:$LD_LIBRARY_PATH"
