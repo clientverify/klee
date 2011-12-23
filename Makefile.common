@@ -18,6 +18,9 @@ override ENABLE_PROFILING := $(RUNTIME_ENABLE_PROFILING)
 override ENABLE_COVERAGE := $(RUNTIME_ENABLE_COVERAGE)
 endif
 
+# Required for Boost 
+LIBS += -lboost_signals -lboost_serialization
+
 include $(LLVM_SRC_ROOT)/Makefile.rules
 
 # LLVMCC was added in 2.7.
@@ -43,21 +46,17 @@ CXX.Flags += -DEXT_HASH_MAP
 
 # Required for Boost 
 REQUIRES_RTTI=1
-LD.Flags += -lboost_signals -lboost_serialization
 CXX.Flags += -Wno-deprecated
 
-ifeq ($(DISABLE_GOOGLE_PROFILING),1)
-else
+ifneq ($(DISABLE_GOOGLE_PROFILING),1)
   # Default is to compile with google profiler, no performance 
   # hit unless enabled via commandline or environment var
-  LD.Flags  += -lprofiler
   CPP.Defines += -DGOOGLE_PROFILER 
 endif
 
-ifeq ($(DISABLE_TCMALLOC),1)
-else
+ifneq ($(DISABLE_TCMALLOC),1)
   # Default is to compile with tcmalloc 
   CXX.Flags += -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
-  LD.Flags += -ltcmalloc
+  LIBS += -ltcmalloc
 endif
 
