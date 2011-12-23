@@ -18,6 +18,11 @@ USEDLIBS = Cliver.a kleeCore.a kleeModule.a kleaverSolver.a kleaverExpr.a kleeSu
 ifeq ($(ENABLE_EXT_STP),0)
   USEDLIBS += $(STP_LIBS)
 endif
+
+ifneq ($(DISABLE_GOOGLE_PROFILING),1)
+  LIBS += -lprofiler
+endif
+
 LINK_COMPONENTS = jit bitreader bitwriter ipo linker engine
 
 include $(LEVEL)/Makefile.common
@@ -25,3 +30,4 @@ include $(LEVEL)/Makefile.common
 ifeq ($(ENABLE_EXT_STP),1)
   LIBS += -lstp
 endif
+
