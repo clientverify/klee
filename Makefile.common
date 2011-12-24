@@ -19,7 +19,22 @@ override ENABLE_COVERAGE := $(RUNTIME_ENABLE_COVERAGE)
 endif
 
 # Required for Boost 
+REQUIRES_RTTI=1
 LIBS += -lboost_signals -lboost_serialization
+CPPFLAGS += -Wno-deprecated
+
+# TCMalloc enabled by default
+ifneq ($(DISABLE_TCMALLOC),1)
+  LIBS += -ltcmalloc
+  CPPFLAGS += -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
+endif
+
+# Google perftools included by default, no performance hit unless enabled
+# at runtime.
+ifneq ($(DISABLE_GOOGLE_PROFILING),1)
+  LIBS += -lprofiler
+  CPPFLAGS += -DGOOGLE_PROFILER 
+endif
 
 include $(LLVM_SRC_ROOT)/Makefile.rules
 
@@ -44,19 +59,4 @@ CXX.Flags += -DKLEE_DIR=\"$(PROJ_OBJ_ROOT)\"
 # For STP.
 CXX.Flags += -DEXT_HASH_MAP
 
-# Required for Boost 
-REQUIRES_RTTI=1
-CXX.Flags += -Wno-deprecated
-
-ifneq ($(DISABLE_GOOGLE_PROFILING),1)
-  # Default is to compile with google profiler, no performance 
-  # hit unless enabled via commandline or environment var
-  CPP.Defines += -DGOOGLE_PROFILER 
-endif
-
-ifneq ($(DISABLE_TCMALLOC),1)
-  # Default is to compile with tcmalloc 
-  CXX.Flags += -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
-  LIBS += -ltcmalloc
-endif
 
