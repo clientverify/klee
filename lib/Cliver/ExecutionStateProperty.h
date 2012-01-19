@@ -11,6 +11,8 @@
 #include "CVCommon.h"
 #include "PathManager.h"
 
+#include <llvm/ADT/PriorityQueue.h>
+
 #include <map>
 #include <set>
 #include <iostream>
@@ -49,6 +51,10 @@ inline std::ostream &operator<<(std::ostream &os,
   return os;
 }
 
+struct ExecutionStatePropertyFactory {
+	static ExecutionStateProperty* create();
+};
+
 ////////////////////////////////////////////////////////////////////////////////
  
 struct CVExecutionStateLT {
@@ -66,9 +72,9 @@ typedef std::map<ExecutionStateProperty*,
 								 ExecutionStateSet,
 								 ExecutionStatePropertyLT> ExecutionStatePropertyMap;
 
-struct ExecutionStatePropertyFactory {
-	static ExecutionStateProperty* create();
-};
+typedef llvm::PriorityQueue< CVExecutionState*, 
+				                     std::vector<CVExecutionState*>,
+														 CVExecutionStateLT > ExecutionStatePriorityQueue;
 
 ////////////////////////////////////////////////////////////////////////////////
 
