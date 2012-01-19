@@ -48,13 +48,17 @@ inline std::ostream &operator<<(std::ostream &os,
   p.print(os);
   return os;
 }
+
+////////////////////////////////////////////////////////////////////////////////
  
+struct CVExecutionStateLT {
+	bool operator()(const CVExecutionState* a, const CVExecutionState* b) const;
+};
+
 struct ExecutionStatePropertyLT {
 	bool operator()(const ExecutionStateProperty* a, 
 			const ExecutionStateProperty* b) const;
 };
-
-////////////////////////////////////////////////////////////////////////////////
 
 typedef std::set<CVExecutionState*> ExecutionStateSet;
 

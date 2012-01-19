@@ -7,12 +7,18 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "ExecutionStateProperty.h"
 #include "ClientVerifier.h"
+#include "CVExecutionState.h"
+#include "ExecutionStateProperty.h"
 
 namespace cliver {
 	
 ////////////////////////////////////////////////////////////////////////////////
+
+bool CVExecutionStateLT::operator()(const CVExecutionState* a, 
+		const CVExecutionState* b) const {
+	return a->compare(*b) < 0;
+}
 
 bool ExecutionStatePropertyLT::operator()(const ExecutionStateProperty* a, 
 		const ExecutionStateProperty* b) const {

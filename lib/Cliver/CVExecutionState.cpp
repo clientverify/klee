@@ -101,10 +101,5 @@ void CVExecutionState::reset_path_manager(PathManager* path_manager) {
 		path_manager_ = PathManagerFactory::create();
 }
 
-bool CVExecutionStateLT::operator()(const CVExecutionState* a, 
-		const CVExecutionState* b) const {
-	return a->compare(*b) < 0;
-}
-
 } // End cliver namespace
 
