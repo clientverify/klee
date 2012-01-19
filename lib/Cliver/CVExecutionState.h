@@ -72,10 +72,6 @@ class CVExecutionState : public klee::ExecutionState {
 	ExecutionStateProperty* property_;
 };
 
-struct CVExecutionStateLT {
-	bool operator()(const CVExecutionState* a, const CVExecutionState* b) const;
-};
-
 } // End cliver namespace
 
 #endif // CLIVER_EXECUTION_STATE_H
