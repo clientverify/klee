@@ -131,6 +131,18 @@ class VerifyProperty : public ExecutionStateProperty {
 	PathRange path_range;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+class EditCostProperty : public ExecutionStateProperty {
+ public: 
+	EditCostProperty();
+	EditCostProperty* clone() { return new EditCostProperty(*this); }
+  void print(std::ostream &os) const;
+	int compare(const ExecutionStateProperty &b) const;
+
+	// Property values
+	double edit_cost;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
