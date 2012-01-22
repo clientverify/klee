@@ -88,6 +88,22 @@ void VerifyProperty::print(std::ostream &os) const {
 		 << "]";
 }
 
+//////////////////////////////////////////////////////////////////////////////
+
+EditCostProperty::EditCostProperty() 
+	: edit_cost(0) {}
+
+int EditCostProperty::compare(const ExecutionStateProperty &b) const {
+	const EditCostProperty *_b = static_cast<const EditCostProperty*>(&b);
+
+	return edit_cost - _b->edit_cost;
+}
+
+void EditCostProperty::print(std::ostream &os) const {
+	os << "[edit cost: " << edit_cost
+		 << "]";
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 ExecutionStateProperty* ExecutionStatePropertyFactory::create() {
