@@ -303,7 +303,7 @@ static void parseArguments(int argc, char **argv) {
     argArray[i] = arguments[i-1].c_str();
   }
 
-  llvm::cl::ParseCommandLineOptions(numArgs, (char**) argArray, " klee\n");
+  llvm::cl::ParseCommandLineOptions(numArgs, (char**) argArray, " cliver\n");
   delete[] argArray;
 }
 
