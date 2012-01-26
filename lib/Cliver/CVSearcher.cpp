@@ -742,4 +742,160 @@ void VerifySearcher::handle_post_event(CVExecutionState *state,
 void VerifySearcher::handle_pre_event(CVExecutionState *state,
 		CVExecutor* executor, CliverEvent::Type et) {}
 
+////////////////////////////////////////////////////////////////////////////////
+
+EditCostVerifyStage::EditCostVerifyStage(StateMerger *merger, 
+                                         EditCostVerifyStage* parent)
+  : root_state_(NULL),
+    parent_(parent),
+    merger_(merger) {}
+
+/// XXX Needs explanatory comment!
+CVExecutionState* EditCostVerifyStage::next_state() {
+  if (state_queue_.empty()) {
+    cv_error("no states remaining");
+  }
+
+  CVExecutionState* state = state_queue_.top();
+  state_queue_.pop();
+  state_set_.erase(state);
+  return state;
+}
+
+bool EditCostVerifyStage::contains_state(CVExecutionState *state) {
+  if (state_set_.count(state))
+    return true;
+  return false;
+}
+
+void EditCostVerifyStage::add_state(CVExecutionState *state) {
+  assert(NULL != state);
+  if (root_state_ == NULL) {
+    assert(state_set_.empty() && state_queue_.empty());
+    root_state_ = state->clone();
+    g_executor->add_state_internal(root_state_);
+  }
+  state_set_.insert(state);
+  state_queue_.push(state);
+}
+
+void EditCostVerifyStage::remove_state(CVExecutionState *state) {
+  if (state_set_.count(state)) {
+    state_set_.erase(state);
+    state_queue_.erase_one(state);
+  }
+}
+
+void EditCostVerifyStage::finish(CVExecutionState *finished_state) {
+
+#ifdef DEBUG_CLIVER_STATE_LOG
+  CVDEBUG("\n" << finished_state->debug_log().str());
+  finished_state->reset_debug_log();
+  finished_state->debug_log() 
+    << "---------------------------------------------\n";
+  finished_state->debug_log() 
+    << finished_state->network_manager()->socket()->event() << "\n";
+  finished_state->debug_log() 
+    << "---------------------------------------------\n";
+#endif
+
+  CVExecutionState* state = finished_state;
+
+  VerifyProperty *p = static_cast<VerifyProperty*>(state->property());
+  p->path_range = PathRange(p->path_range.start(), state->prevPC);
+
+  state->path_manager()->set_index(0);
+
+  CVDEBUG("end_path: " << state->path_manager()->range()
+      << ", " << p->path_range);
+ 
+  p->phase = VerifyProperty::Execute;
+  p->round++;
+
+  EditCostVerifyStage *child_stage = new EditCostVerifyStage(merger_, this);
+  child_stage->add_state(state);
+  children_.push_back(child_stage);
+}
+
+EditCostSearcher::EditCostSearcher(klee::Searcher* base_searcher, 
+                                   StateMerger* merger)
+  : CVSearcher(base_searcher, merger) {
+
+  root_stage_ = current_stage_ = new EditCostVerifyStage(merger_, NULL);
+}
+
+klee::ExecutionState &EditCostSearcher::selectState() {
+  //klee::TimerStatIncrementer timer(stats::searcher_time);
+
+  if (current_stage_->children().size() > 0) {
+    current_stage_ = current_stage_->children().back();
+    g_client_verifier->print_current_statistics();
+  }
+
+  CVExecutionState *state = current_stage_->next_state();
+
+  if (state == NULL)
+    cv_error("Null State");
+
+  return *(static_cast<klee::ExecutionState*>(state));
+}
+
+void EditCostSearcher::update(klee::ExecutionState *current,
+    const std::set<klee::ExecutionState*> &addedStates,
+    const std::set<klee::ExecutionState*> &removedStates) {
+  //klee::TimerStatIncrementer timer(stats::searcher_time);
+  
+  // Check and add current if needed
+  if (current != NULL) {
+    CVExecutionState *cvcurrent = static_cast<CVExecutionState*>(current);
+    if (false == current_stage_->contains_state(cvcurrent))
+      current_stage_->add_state(cvcurrent);
+  }
+
+  // add any added states via current_stage_->add_state()
+  foreach (klee::ExecutionState* klee_state, addedStates) {
+    CVExecutionState *state = static_cast<CVExecutionState*>(klee_state);
+    current_stage_->add_state(state);
+  }
+  // remove any removed states via current_stage_->remove_state()
+  foreach (klee::ExecutionState* klee_state, removedStates) {
+    CVExecutionState *state = static_cast<CVExecutionState*>(klee_state);
+    current_stage_->remove_state(state);
+  }
+}
+
+bool EditCostSearcher::empty() {
+  // XXX fix me!
+  return false;
+}
+
+void EditCostSearcher::end_path(CVExecutionState *state,
+    CVExecutor* executor, CliverEvent::Type et) {
+  ExecutionStateSet state_set, merged_set;
+  state_set.insert(state);
+  merger_->merge(state_set, merged_set);
+  current_stage_->finish(*(merged_set.begin()));
+}
+
+void EditCostSearcher::handle_post_event(CVExecutionState *state,
+    CVExecutor *executor, CliverEvent::Type et) {
+
+  PathProperty* p = static_cast<PathProperty*>(state->property());
+  EditCostSearcher* searcher 
+    = static_cast<EditCostSearcher*>(g_client_verifier->searcher());
+
+  switch(et) {
+    case CliverEvent::NetworkSend:
+    case CliverEvent::NetworkRecv:
+      searcher->end_path(state, executor, et);
+      break;
+    default:
+      break;
+  }
+}
+
+void EditCostSearcher::handle_pre_event(CVExecutionState *state,
+    CVExecutor* executor, CliverEvent::Type et) {}
+
+
 } // end namespace cliver

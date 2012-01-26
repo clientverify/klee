@@ -196,5 +196,73 @@ class VerifySearcher : public CVSearcher {
 	VerifyStage *current_stage_;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+// Each EditCostVerifyStage object holds ExecutionStates, where all the states
+// in a given EditCostVerifyStage have processed network events 1 to i, where i
+// is equal among all the states. Each EditCostVerifyStage has a single root
+// state from which all of the other states began execution.
+
+class EditCostVerifyStage {
+ public:
+  EditCostVerifyStage(StateMerger* merger, 
+                      EditCostVerifyStage* parent=NULL);
+
+  CVExecutionState* next_state();
+  void add_state(CVExecutionState *state);
+  void remove_state(CVExecutionState *state);
+  bool contains_state(CVExecutionState *state);
+  void finish(CVExecutionState *state);
+
+  std::vector<EditCostVerifyStage*>& children() { return children_; }
+
+ private: 
+  // Root state from which all other states began execution
+  CVExecutionState *root_state_;
+  // States that are currently ready to continue executions
+  ExecutionStatePriorityQueue state_queue_; 
+  ExecutionStateSet state_set_;
+  // States that are not active
+  ExecutionStateSet deactivated_states_;
+  // Parent 
+  const EditCostVerifyStage* parent_;
+  // Children of this EditCostVerifyStage
+  std::vector<EditCostVerifyStage*> children_;
+
+  StateMerger *merger_;
+};
+
+class EditCostSearcher : public CVSearcher {
+ public:
+  EditCostSearcher(klee::Searcher* base_searcher, 
+                   StateMerger* merger);
+
+  klee::ExecutionState &selectState();
+
+  void update(klee::ExecutionState *current,
+              const std::set<klee::ExecutionState*> &addedStates,
+              const std::set<klee::ExecutionState*> &removedStates);
+
+  bool empty();
+
+  void end_path(CVExecutionState *state, CVExecutor* executor,
+                CliverEvent::Type et);
+
+  void printName(std::ostream &os) { os << "EditCostSearcher\n"; }
+
+  static void handle_pre_event(CVExecutionState *state, 
+                               CVExecutor *executor, 
+                               CliverEvent::Type et);
+
+  static void handle_post_event(CVExecutionState *state, 
+                                CVExecutor *executor, 
+                                CliverEvent::Type et);
+
+ private:
+  PathSelector *path_selector_;
+  EditCostVerifyStage *root_stage_;
+  EditCostVerifyStage *current_stage_;
+};
+
 } // end namespace cliver
 #endif // CV_SEARCHER_H
