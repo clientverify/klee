@@ -92,6 +92,57 @@ class PathTree {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+//template <class T>
+//class Tree {
+//  typedef Node<T> node_t;
+// public:
+//  Tree();
+//  node_t* root() { return root_; }
+//
+// private:
+//  node_t* root_;
+//};
+//
+//template <class T>
+//class Node {
+// public:
+//  typedef Node<T> node_t;
+//
+//  Node();
+//  Node(node_t*);
+//  Node(node_t*, const T&);
+//
+//  void add_child(node_t* node);
+//  void insert_child_after(node_t* prev_node, node_t* node);
+//  void insert_child_before(node_t* next_node, node_t* node);
+//
+//  node_t* parent()            { return parent_; }
+//  node_t* first_child()       { return first_child_; }
+//  node_t* last_child()        { return last_child_; }
+//  node_t* next_sibling()      { return next_sibling_; }
+//  node_t* previous_sibling()  { return previous_sibling_; }
+//
+//  void set_parent();
+//
+// private:
+//  node_t* parent_;
+//  node_t* first_child_, last_child_;
+//  node_t* next_sibling_, previous_sibling_;
+//
+//  T info_;
+//};
+//
+//template <class T>
+//Node<T>::Node(node_t* parent, const T& info)
+//  : parent_(parent), 
+//    first_child_(0), 
+//    last_child_(0), 
+//    first_sibling_(0), 
+//    prev_sibling_(0),
+//    info_(info) {}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class PathTreeFactory {
  public:
   static PathTree* create(CVExecutionState *root_state);
