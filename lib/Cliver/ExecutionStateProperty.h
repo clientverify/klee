@@ -140,6 +140,12 @@ class EditCostProperty : public ExecutionStateProperty {
   void print(std::ostream &os) const;
 	int compare(const ExecutionStateProperty &b) const;
 
+ //private:
+ // std::vector<EditCost> *edit_cost_values_;
+ // bool cow_edit_cost_values_;
+ // const PathTree *training_paths_;
+  
+ public: 
 	// Property values
 	double edit_cost;
 };
