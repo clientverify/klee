@@ -327,6 +327,7 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
 
   while (!states.empty() && !haltExecution) {
 		klee::ExecutionState &state = searcher->selectState();
+    if (haltExecution) goto dump;
 		klee::KInstruction *ki = state.pc;
 
 		// Handle pre execution events
