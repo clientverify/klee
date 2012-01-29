@@ -207,7 +207,7 @@ void ClientVerifier::initialize(CVExecutor *executor) {
 			// Construct searcher
 			pruner_ = new ConstraintPruner();
 			merger_ = new StateMerger(pruner_);
-			searcher_ = new LogIndexSearcher(new klee::DFSSearcher(), merger_);
+			searcher_ = new LogIndexSearcher(NULL, merger_);
 
 			// Set event callbacks
 			//pre_event_callbacks_.connect(&LogIndexSearcher::handle_pre_event);
