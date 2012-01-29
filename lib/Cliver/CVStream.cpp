@@ -18,9 +18,14 @@
 #include <iostream>
 #include <sstream>
 #include <fstream>
+#include <list>
 
 #include "llvm/System/Path.h"
 #include "llvm/Support/ErrorHandling.h"
+
+#include "klee/Interpreter.h"
+
+extern klee::Interpreter *g_interpreter;
 
 namespace {
 llvm::cl::opt<std::string>
@@ -44,6 +49,11 @@ DebugStderr("debug-stderr",
   llvm::cl::init(false));
 
 llvm::cl::opt<bool>
+UseTeeBuf("use-tee-buf",
+  llvm::cl::desc("Output to stdout, stderr and files"),
+  llvm::cl::init(true));
+
+llvm::cl::opt<bool>
 CVStreamPrintInstructions("cvstream-print-inst",
   llvm::cl::desc("Print instructions in CVStream"),
   llvm::cl::init(false));
@@ -63,30 +73,36 @@ class teebuf: public std::streambuf {
  public:
   teebuf() {}
   teebuf(std::streambuf* sb1, std::streambuf* sb2) {
-    bufs_.insert(sb1);
-    bufs_.insert(sb2);
+    add(sb1); add(sb2);
   }
   void add(std::streambuf* sb) { 
-    bufs_.insert(sb);
+    bufs_.push_back(sb);
   }
   virtual int overflow(int c) {
-    foreach(std::streambuf* buf, bufs_)
-      buf->sputc(c);
-    return 1;
+    if (c == EOF) return !EOF;
+    int res = c;
+    foreach (std::streambuf* buf, bufs_) {
+      res = (buf->sputc(c) == EOF) ? EOF : res;
+    }
+    return res;
   }
   virtual int sync() {
-      int r = 0;
-      foreach(std::streambuf* buf, bufs_)
-          r = buf->pubsync();
-    return r;
+    int res = 0;
+    foreach (std::streambuf* buf, bufs_) {
+      res = (buf->pubsync() == 0) ? res : -1;
+    }
+    return res;
   }   
   virtual std::streamsize xsputn(const char* s, std::streamsize n) {
-    foreach(std::streambuf* buf, bufs_)
-      buf->sputn(s, n);
-    return n;
+    std::streamsize res = n;
+    foreach(std::streambuf* buf, bufs_) {
+      std::streamsize ssize = buf->sputn(s, n);
+      res = ssize < res ? ssize : res;
+    }
+    return res;
   }
  private:
-  std::set<std::streambuf*> bufs_;
+  std::list<std::streambuf*> bufs_;
 };
 
 class teestream : public std::ostream {
@@ -141,10 +157,7 @@ void cv_error(const char *msg, ...) {
   va_start(ap, msg);
   cv_vomessage(cv_warning_stream, "ERROR", msg, ap);
   va_end(ap);
-#ifndef NDEBUG
-	raise(SIGABRT);
-#endif
-  exit(1);
+  g_interpreter->setHaltExecution(true);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -278,47 +291,64 @@ void CVStream::init() {
   std::cout.setf(ios_base::unitbuf);
   std::cerr.setf(ios_base::unitbuf);
 
-  if (!NoOutput) {
-    info_file_stream_    = openOutputFile(CV_INFO_FILE);
-    warning_file_stream_ = openOutputFile(CV_WARNING_FILE);
-    message_file_stream_ = openOutputFile(CV_MESSAGE_FILE);
-    debug_file_stream_   = openOutputFile(CV_DEBUG_FILE);
+  if (UseTeeBuf) {
+    if (!NoOutput) {
+      info_file_stream_    = openOutputFile(CV_INFO_FILE);
+      warning_file_stream_ = openOutputFile(CV_WARNING_FILE);
+      message_file_stream_ = openOutputFile(CV_MESSAGE_FILE);
+      debug_file_stream_   = openOutputFile(CV_DEBUG_FILE);
 
-    // Flush stream with every write operation
-    info_file_stream_->setf(ios_base::unitbuf);
-    debug_file_stream_->setf(ios_base::unitbuf);
-    warning_file_stream_->setf(ios_base::unitbuf);
-    message_file_stream_->setf(ios_base::unitbuf);
+      // Flush stream with every write operation
+      info_file_stream_->setf(ios_base::unitbuf);
+      debug_file_stream_->setf(ios_base::unitbuf);
+      warning_file_stream_->setf(ios_base::unitbuf);
+      message_file_stream_->setf(ios_base::unitbuf);
+    }
+
+    teestream* info_teestream = new teestream();
+    teestream* message_teestream = new teestream();
+    teestream* warning_teestream = new teestream();
+    teestream* debug_teestream = new teestream();
+
+    info_teestream->setf(ios_base::unitbuf);
+    debug_teestream->setf(ios_base::unitbuf);
+    warning_teestream->setf(ios_base::unitbuf);
+    message_teestream->setf(ios_base::unitbuf);
+ 
+    info_teestream->add(std::cout);
+    message_teestream->add(std::cout);
+    warning_teestream->add(std::cout);
+    if (DebugStderr) 
+      debug_teestream->add(std::cerr);
+
+    if (!NoOutput) {
+      info_teestream->add(*info_file_stream_);
+      info_teestream->add(*debug_file_stream_);
+
+      message_teestream->add(*message_file_stream_);
+      message_teestream->add(*debug_file_stream_);
+
+      warning_teestream->add(*warning_file_stream_);
+      warning_teestream->add(*debug_file_stream_);
+
+      debug_teestream->add(*debug_file_stream_);
+    }
+
+    info_stream_    = static_cast<std::ostream*>(info_teestream);
+    message_stream_ = static_cast<std::ostream*>(message_teestream);
+    warning_stream_ = static_cast<std::ostream*>(warning_teestream);
+    debug_stream_   = static_cast<std::ostream*>(debug_teestream);
+
+  } else {
+
+    info_stream_    = &(std::cout);
+    message_stream_ = &(std::cout);
+    warning_stream_ = &(std::cout);
+    if (DebugStderr) 
+      debug_stream_   = &(std::cerr);
+    else
+      debug_stream_   = &(std::cout);
   }
-
-  teestream* info_teestream = new teestream();
-  teestream* message_teestream = new teestream();
-  teestream* warning_teestream = new teestream();
-  teestream* debug_teestream = new teestream();
-
-  info_teestream->add(std::cout);
-  message_teestream->add(std::cout);
-  warning_teestream->add(std::cout);
-  if (DebugStderr) 
-    debug_teestream->add(std::cerr);
-
-  if (!NoOutput) {
-    info_teestream->add(*info_file_stream_);
-    info_teestream->add(*debug_file_stream_);
-
-    message_teestream->add(*message_file_stream_);
-    message_teestream->add(*debug_file_stream_);
-
-    warning_teestream->add(*warning_file_stream_);
-    warning_teestream->add(*debug_file_stream_);
-
-    debug_teestream->add(*debug_file_stream_);
-  }
-
-  info_stream_    = static_cast<std::ostream*>(info_teestream);
-  message_stream_ = static_cast<std::ostream*>(message_teestream);
-  warning_stream_ = static_cast<std::ostream*>(warning_teestream);
-  debug_stream_   = static_cast<std::ostream*>(debug_teestream);
 
   klee::klee_warning_stream = warning_stream_;
   klee::klee_message_stream = message_stream_;
