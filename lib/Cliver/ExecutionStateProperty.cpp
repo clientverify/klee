@@ -91,12 +91,21 @@ void VerifyProperty::print(std::ostream &os) const {
 //////////////////////////////////////////////////////////////////////////////
 
 EditCostProperty::EditCostProperty() 
-	: edit_cost(0) {}
+	: edit_cost(rand()/(double)RAND_MAX) {}
+
+EditCostProperty* EditCostProperty::clone() { 
+  EditCostProperty* ecp = new EditCostProperty(*this);
+  ecp->edit_cost = rand()/(double)RAND_MAX;
+}
 
 int EditCostProperty::compare(const ExecutionStateProperty &b) const {
 	const EditCostProperty *_b = static_cast<const EditCostProperty*>(&b);
 
-	return edit_cost - _b->edit_cost;
+  if (edit_cost > _b->edit_cost)
+    return 1;
+  else if (edit_cost < _b->edit_cost)
+    return -1;
+  return 0;
 }
 
 void EditCostProperty::print(std::ostream &os) const {
@@ -116,6 +125,8 @@ ExecutionStateProperty* ExecutionStatePropertyFactory::create() {
 			return new PathProperty();
 		case VerifyWithTrainingPaths: 
 			return new VerifyProperty();
+    case VerifyWithEditCost:
+			return new EditCostProperty();
 	}
 	cv_error("invalid cliver mode");
 	return NULL;

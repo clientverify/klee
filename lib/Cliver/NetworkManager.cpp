@@ -459,6 +459,7 @@ NetworkManager* NetworkManagerFactory::create(CVExecutionState* state) {
 	switch (g_cliver_mode) {
 		case DefaultMode: {
 		case DefaultTrainingMode: 
+    case VerifyWithEditCost: 
 		case VerifyWithTrainingPaths:
 			NetworkManager *nm = new NetworkManager(state);
 			foreach( SocketEventList *sel, g_client_verifier->socket_events()) {

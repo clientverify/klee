@@ -136,18 +136,14 @@ class VerifyProperty : public ExecutionStateProperty {
 class EditCostProperty : public ExecutionStateProperty {
  public: 
 	EditCostProperty();
-	EditCostProperty* clone() { return new EditCostProperty(*this); }
+	EditCostProperty* clone();
   void print(std::ostream &os) const;
 	int compare(const ExecutionStateProperty &b) const;
 
- //private:
- // std::vector<EditCost> *edit_cost_values_;
- // bool cow_edit_cost_values_;
- // const PathTree *training_paths_;
-  
  public: 
 	// Property values
 	double edit_cost;
+  int state_depth;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

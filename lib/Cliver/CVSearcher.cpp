@@ -801,17 +801,6 @@ void EditCostVerifyStage::finish(CVExecutionState *finished_state) {
 
   CVExecutionState* state = finished_state;
 
-  VerifyProperty *p = static_cast<VerifyProperty*>(state->property());
-  p->path_range = PathRange(p->path_range.start(), state->prevPC);
-
-  state->path_manager()->set_index(0);
-
-  CVDEBUG("end_path: " << state->path_manager()->range()
-      << ", " << p->path_range);
- 
-  p->phase = VerifyProperty::Execute;
-  p->round++;
-
   EditCostVerifyStage *child_stage = new EditCostVerifyStage(merger_, this);
   child_stage->add_state(state);
   children_.push_back(child_stage);
@@ -896,6 +885,5 @@ void EditCostSearcher::handle_post_event(CVExecutionState *state,
 
 void EditCostSearcher::handle_pre_event(CVExecutionState *state,
     CVExecutor* executor, CliverEvent::Type et) {}
-
 
 } // end namespace cliver

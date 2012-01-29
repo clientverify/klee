@@ -846,6 +846,7 @@ PathManager* PathManagerFactory::create() {
 		case DefaultTrainingMode:
 			return new TrainingPathManager();
 		case VerifyWithTrainingPaths:
+    case VerifyWithEditCost:
 		case DefaultMode:
 			break;
   }

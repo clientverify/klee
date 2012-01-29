@@ -86,6 +86,8 @@ llvm::cl::opt<CliverMode> g_cliver_mode("cliver-mode",
       "Tetrinet training mode"),
     clEnumValN(VerifyWithTrainingPaths, "verify-with-paths", 
       "Verify with training paths"),
+    clEnumValN(VerifyWithEditCost, "verify-with-edit-cost", 
+      "Verify using edit costs"),
   clEnumValEnd),
   llvm::cl::init(DefaultMode));
 
@@ -152,6 +154,13 @@ ClientVerifier::~ClientVerifier() {
 #ifdef GOOGLE_PROFILER
 	ProfilerFlush();
 #endif
+  if (merger_)
+    delete merger_;
+  if (pruner_)
+    delete pruner_;
+  if (searcher_)
+    delete searcher_;
+
 	delete cvstream_;
 }	
 
@@ -245,6 +254,21 @@ void ClientVerifier::initialize(CVExecutor *executor) {
 			//post_event_callbacks_.connect(&VerifySearcher::handle_post_event);
 			pre_event_callback_func_   = &VerifySearcher::handle_pre_event;
 			post_event_callback_func_ = &VerifySearcher::handle_post_event;
+			break;
+		}
+
+    case VerifyWithEditCost: {
+
+			// Construct searcher
+			pruner_ = new ConstraintPruner();
+			merger_ = new StateMerger(pruner_);
+			searcher_ = new EditCostSearcher(NULL, merger_);
+
+			// Set event callbacks
+			//pre_event_callbacks_.connect(&VerifySearcher::handle_pre_event);
+			//post_event_callbacks_.connect(&VerifySearcher::handle_post_event);
+			pre_event_callback_func_   = &EditCostSearcher::handle_pre_event;
+			post_event_callback_func_ = &EditCostSearcher::handle_post_event;
 			break;
 		}
 
@@ -395,8 +419,7 @@ void ClientVerifier::print_current_statistics() {
     << " " << sr->getValue(stats::exhaustive_search_level)
     << "\n";
 
-
-  // Rebuild solvers each round to keep caches fresh.                                                                                                                                                                
+  // Rebuild solvers each round to keep caches fresh.
 	g_executor->rebuild_solvers();
 
 #ifdef GOOGLE_PROFILER
