@@ -38,7 +38,8 @@ enum CliverMode {
 	OutOfOrderTrainingMode, 
 	TetrinetTrainingMode,
 	XpilotTrainingMode,
-	VerifyWithTrainingPaths
+	VerifyWithTrainingPaths,
+	VerifyWithEditCost
 };
 
 extern llvm::cl::opt<CliverMode> g_cliver_mode;
