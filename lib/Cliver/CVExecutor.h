@@ -12,6 +12,7 @@
 #include "../Core/Executor.h"
 #include "../Core/SpecialFunctionHandler.h"
 #include "ClientVerifier.h"
+#include "ExecutionObserver.h"
 
 namespace cliver {
 
@@ -30,6 +31,10 @@ class CVExecutor : public klee::Executor {
   virtual void stepInstruction(klee::ExecutionState &state);
 
   virtual void updateStates(klee::ExecutionState *current);
+
+  virtual void transferToBasicBlock(llvm::BasicBlock *dst, 
+                                    llvm::BasicBlock *src,
+                                    klee::ExecutionState &state);
 
   virtual void runFunctionAsMain(llvm::Function *f,
 				                 int argc, char **argv, char **envp);
@@ -67,8 +72,11 @@ class CVExecutor : public klee::Executor {
   void add_constraint(CVExecutionState *state, 
 			klee::ref<klee::Expr> condition);
 
-	void register_event(const CliverEventInfo& event_info);
-	CliverEventInfo* lookup_event(llvm::Instruction *inst);
+	//void register_event(const CliverEventInfo& event_info);
+	//CliverEventInfo* lookup_event(llvm::Instruction *inst);
+  
+  void register_function_call_event(const char **fname,
+                                    ExecutionEventType event_type);
 
 	void add_state(CVExecutionState* state);
 
@@ -80,12 +88,15 @@ class CVExecutor : public klee::Executor {
 
 	klee::KInstruction* get_instruction(unsigned id);
 
+  void handle_pre_execution_events(klee::ExecutionState &state);
+
+  void handle_post_execution_events(klee::ExecutionState &state);
+
  private:
   ClientVerifier *cv_;
 	StateMerger *merger_;
 	ConstraintPruner *pruner_;
-	std::map<unsigned, CliverEventInfo> instruction_events_;
-	std::map<llvm::Function*, CliverEventInfo> function_call_events_;
+	std::map<llvm::Function*, ExecutionEventType> function_call_events_;
 };
 
 } // end cliver namespace

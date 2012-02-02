@@ -15,6 +15,7 @@
 #include "PathManager.h"
 
 #include "../Core/Common.h"
+#include "klee/Internal/Module/InstructionInfoTable.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace cliver {
@@ -22,7 +23,7 @@ namespace cliver {
 int CVExecutionState::next_id_ = 0;
 
 CVExecutionState::CVExecutionState(klee::KFunction *kF, klee::MemoryManager *mem)
- : klee::ExecutionState(kF, mem), 
+ : klee::ExecutionState(kF, mem),
 	 id_(increment_id()) {}
 
 CVExecutionState::CVExecutionState(
@@ -76,6 +77,8 @@ CVExecutionState* CVExecutionState::clone() {
 	cloned_state->debug_log_ = new std::stringstream();
 	*(cloned_state->debug_log_) << debug_log_->str();
 #endif
+  g_client_verifier->notify_all(
+      ExecutionEvent(CV_STATE_CLONE, cloned_state, this));
   return cloned_state;
 }
 
