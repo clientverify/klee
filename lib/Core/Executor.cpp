@@ -620,7 +620,8 @@ void Executor::branch(ExecutionState &state,
   // XXX do proper balance or keep random?
   result.push_back(&state);
   for (unsigned i=1; i<N; ++i) {
-    ExecutionState *es = result[theRNG.getInt32() % i];
+    //ExecutionState *es = result[theRNG.getInt32() % i];
+    ExecutionState *es = result[0];
     ExecutionState *ns = es->branch();
     addedStates.insert(ns);
     result.push_back(ns);
