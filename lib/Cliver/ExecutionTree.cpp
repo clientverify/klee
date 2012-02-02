@@ -3,7 +3,7 @@
 // <insert license>
 //
 //===----------------------------------------------------------------------===//
-//
+// TODO: Store BasicBlock entry id's in a vector rather than a path of nodes
 //===----------------------------------------------------------------------===//
 
 #include "CVCommon.h"
@@ -102,6 +102,7 @@ void ExecutionTree::notify(ExecutionEvent ev) {
 
       node_iterator node;
       if (state_map_.empty()) {
+        CVDEBUG("Adding state at root: " << state->id() );
         node = tree_.root();
 
       } else if (state_map_.count(state)) {
@@ -116,8 +117,11 @@ void ExecutionTree::notify(ExecutionEvent ev) {
         assert((*node)->pending_count > 0);
         (*node)->pending_count--;
 
+      } else if (g_cliver_mode == DefaultTrainingMode ) {
+        CVDEBUG("Adding training state at root: " << state->id() );
+        node = tree_.root();
       } else {
-        CVDEBUG("State not found on in state_map");
+        CVDEBUG("State not found in state_map: " << state->id());
         assert(0);
       }
 
@@ -132,12 +136,14 @@ void ExecutionTree::notify(ExecutionEvent ev) {
       assert(state_map_.count(state) == 1);
       node_iterator node;
       if (pending_cloned_states_.count(state)) {
+        CVDEBUG("Removing pending state: " << state->id() );
         state_map_t::iterator it = pending_cloned_states_.find(state);
         node = it->second;
         pending_cloned_states_.erase(state);
         assert((*node)->pending_count > 0);
         (*node)->pending_count--;
       } else if (state_map_.count(state)) {
+        CVDEBUG("Removing state: " << state->id() );
         state_map_t::iterator it = state_map_.find(state);
         node = it->second;
         (*node)->states.erase(state);
@@ -164,9 +170,9 @@ void ExecutionTree::notify(ExecutionEvent ev) {
     }
 
     case CV_STATE_CLONE: {
-      //CVDEBUG("Pending Node: " << *(state->prevPC));
       CVExecutionState* state = static_cast<CVExecutionState*>(ev.state);
       CVExecutionState* parent = static_cast<CVExecutionState*>(ev.parent);
+      CVDEBUG("Cloned state: " << state->id() << ", parent " << parent->id() << ", "<< *(state->prevPC));
       assert(parent);
       node_iterator node;
       if (state_map_.count(parent)) {
@@ -200,8 +206,9 @@ void ExecutionTree::add_child_node(node_iterator &node,
       node_info->states.insert(state);
       state_map_[state] = node_iterator(cit.node);
       if (node_info->states.size()) {
-        CVDEBUG("Duplicate States (" << node_info->states.size() << ") at Node: " 
-                << *(g_executor->get_instruction(node_info->basic_block_entry_id)));
+        CVDEBUG("Duplicate state: " << state->id() << " " << *(state->prevPC));
+        //CVDEBUG("Duplicate States (" << node_info->states.size() << ") at Node: " 
+        //        << *(g_executor->get_instruction(node_info->basic_block_entry_id)));
       }
       return;
     }
