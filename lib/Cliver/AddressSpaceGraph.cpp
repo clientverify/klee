@@ -663,7 +663,6 @@ void AddressSpaceGraph::build() {
 void AddressSpaceGraph::process() {
   std::set<Vertex> visited;
   AddressSpaceGraphVisitor graph_visitor(this, &visited);
-  unsigned register_count = 0;
 
   // Use the stack to determine reachable objects
   foreach (klee::StackFrame sf, state_->stack) {
