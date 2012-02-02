@@ -1,9 +1,14 @@
-//===-- ExecutionTree.cpp -====---------------------------------------*- C++ -*-===//
+//===-- ExecutionTree.cpp -====----------------------------------*- C++ -*-===//
 //
 // <insert license>
 //
 //===----------------------------------------------------------------------===//
-// TODO: Store BasicBlock entry id's in a vector rather than a path of nodes
+// TODO: Method to merge ExecutionTrees
+// TODO: Method to modify pre-existing ExecutionTree
+// TODO: Method to split an ExecutionTree given a list of Leaf nodes
+// TODO: Optimization: store BasicBlock entry id's in a vector rather than a 
+//       path of nodes
+// TODO: Unit tests for execution trees
 //===----------------------------------------------------------------------===//
 
 #include "CVCommon.h"
@@ -161,7 +166,7 @@ void ExecutionTree::notify(ExecutionEvent ev) {
           tree_.erase(removed_node);
         }
         state_map_.erase(state);
-        //CVDEBUG("Pruned " << count << " Nodes from tree");
+        CVDEBUG("Pruned " << count << " nodes from tree");
       } else {
         CVDEBUG("Removed state not found on in state_map");
         assert(0);
