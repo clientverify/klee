@@ -143,7 +143,6 @@ class EditCostProperty : public ExecutionStateProperty {
  public: 
 	// Property values
 	double edit_cost;
-  int state_depth;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -6,7 +6,8 @@
 //
 //
 //===----------------------------------------------------------------------===//
-
+#include "CVCommon.h"
+#include "CVStream.h"
 #include "ClientVerifier.h"
 #include "CVExecutionState.h"
 #include "ExecutionStateProperty.h"
@@ -96,6 +97,7 @@ EditCostProperty::EditCostProperty()
 EditCostProperty* EditCostProperty::clone() { 
   EditCostProperty* ecp = new EditCostProperty(*this);
   ecp->edit_cost = rand()/(double)RAND_MAX;
+  return ecp;
 }
 
 int EditCostProperty::compare(const ExecutionStateProperty &b) const {
