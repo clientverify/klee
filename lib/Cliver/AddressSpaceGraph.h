@@ -24,7 +24,7 @@
 #include "klee/IndependentElementSet.h"
 
 namespace klee {
-  class KFunction;
+  struct KFunction;
 }
 
 namespace cliver {
