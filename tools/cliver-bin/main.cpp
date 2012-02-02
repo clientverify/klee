@@ -7,6 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <stdlib.h>
+
 #if (LLVM_VERSION_MAJOR == 2 && LLVM_VERSION_MINOR < 7)
 #error
 #endif
@@ -345,6 +347,10 @@ int main(int argc, char **argv, char **envp) {
 #if ENABLE_STPLOG == 1
   STPLOG_init("stplog.c");
 #endif
+
+  // Initialize RNG state
+  srand(time(NULL));
+
   parseArguments(argc, argv);
 
 	g_client_verifier = new cliver::ClientVerifier();
