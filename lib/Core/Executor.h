@@ -192,7 +192,7 @@ protected:
 
   virtual void stepInstruction(ExecutionState &state);
   virtual void updateStates(ExecutionState *current);
-  void transferToBasicBlock(llvm::BasicBlock *dst, 
+  virtual void transferToBasicBlock(llvm::BasicBlock *dst, 
 			    llvm::BasicBlock *src,
 			    ExecutionState &state);
 
