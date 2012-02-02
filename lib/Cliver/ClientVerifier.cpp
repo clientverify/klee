@@ -16,6 +16,8 @@
 #include "CVExecutor.h"
 #include "CVSearcher.h"
 #include "CVStream.h"
+#include "ExecutionObserver.h"
+#include "ExecutionTree.h"
 #include "NetworkManager.h"
 #include "PathManager.h"
 #include "StateMerger.h"
@@ -70,6 +72,8 @@ llvm::cl::list<std::string> TrainingPathDir("training-path-dir",
 	llvm::cl::desc("Specify directory containint .tpath files"),
 	llvm::cl::value_desc("tpath directory"));
 
+llvm::cl::opt<bool> DebugPrintExecutionEvents("debug-print-execution-events",
+  llvm::cl::init(false));
 
 llvm::cl::opt<CliverMode> g_cliver_mode("cliver-mode", 
   llvm::cl::desc("Choose the mode in which cliver should run."),
@@ -112,23 +116,22 @@ void ExternalHandler_nop (klee::Executor* executor, klee::ExecutionState *state,
 		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {}
 
 ExternalHandlerInfo external_handler_info[] = {
-	{"cliver_test_extract_pointers", ExternalHandler_test_extract_pointers, false},
-	{"cliver_socket_shutdown", ExternalHandler_socket_shutdown, true},
-	{"cliver_socket_write", ExternalHandler_socket_write, true},
-	{"cliver_socket_read", ExternalHandler_socket_read, true},
-	{"cliver_socket_create", ExternalHandler_socket_create, true},
-	//{"cliver_training_start", ExternalHandler_nop, false},
+	{"cliver_test_extract_pointers", ExternalHandler_test_extract_pointers, false, CV_NULL_EVENT},
+	{"cliver_socket_shutdown", ExternalHandler_socket_shutdown, true, CV_SOCKET_SHUTDOWN},
+	{"cliver_socket_write", ExternalHandler_socket_write, true, CV_SOCKET_WRITE},
+	{"cliver_socket_read", ExternalHandler_socket_read, true, CV_SOCKET_READ},
+	{"cliver_socket_create", ExternalHandler_socket_create, true, CV_SOCKET_CREATE}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-CliverEventInfo cliver_event_info[] = {
-	//{CliverEvent::Network, llvm::Instruction::Call, "cliver_socket_create"},
-	{CliverEvent::Network, llvm::Instruction::Call, "cliver_socket_shutdown"},
-	{CliverEvent::NetworkSend, llvm::Instruction::Call, "cliver_socket_write"},
-	{CliverEvent::NetworkRecv, llvm::Instruction::Call, "cliver_socket_read"},
-	//{CliverEvent::Training, llvm::Instruction::Call, "cliver_training_start"},
-};
+//CliverEventInfo cliver_event_info[] = {
+//	//{CliverEvent::Network, llvm::Instruction::Call, "cliver_socket_create"},
+//	{CliverEvent::Network, llvm::Instruction::Call, "cliver_socket_shutdown"},
+//	{CliverEvent::NetworkSend, llvm::Instruction::Call, "cliver_socket_write"},
+//	{CliverEvent::NetworkRecv, llvm::Instruction::Call, "cliver_socket_read"},
+//	//{CliverEvent::Training, llvm::Instruction::Call, "cliver_training_start"},
+//};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -186,7 +189,7 @@ void ClientVerifier::processTestCase(const klee::ExecutionState &state,
 
 void ClientVerifier::initialize(CVExecutor *executor) {
 	initialize_external_handlers(executor);
-	register_events(executor);
+	//register_events(executor);
 
 	// Load Socket files (at lease one socket file required in all modes)
 	if (!SocketLogDir.empty()) {
@@ -198,6 +201,9 @@ void ClientVerifier::initialize(CVExecutor *executor) {
 	if (SocketLogFile.empty() || read_socket_logs(SocketLogFile) == 0) {
 		cv_error("Error loading socket log files, exiting now.");
 	}
+
+  if (DebugPrintExecutionEvents)
+    hook(new ExecutionObserverPrinter());
 
 	switch(g_cliver_mode) {
 		case DefaultMode:
@@ -212,8 +218,8 @@ void ClientVerifier::initialize(CVExecutor *executor) {
 			// Set event callbacks
 			//pre_event_callbacks_.connect(&LogIndexSearcher::handle_pre_event);
 			//post_event_callbacks_.connect(&LogIndexSearcher::handle_post_event);
-			pre_event_callback_func_   = &LogIndexSearcher::handle_pre_event;
-			post_event_callback_func_ = &LogIndexSearcher::handle_post_event;
+			//pre_event_callback_func_   = &LogIndexSearcher::handle_pre_event;
+			//post_event_callback_func_ = &LogIndexSearcher::handle_post_event;
 			break;
 
 		case DefaultTrainingMode:
@@ -226,36 +232,36 @@ void ClientVerifier::initialize(CVExecutor *executor) {
 			// Set event callbacks
 			//pre_event_callbacks_.connect(&TrainingSearcher::handle_pre_event);
 			//post_event_callbacks_.connect(&TrainingSearcher::handle_post_event);
-			pre_event_callback_func_   = &TrainingSearcher::handle_pre_event;
-			post_event_callback_func_ = &TrainingSearcher::handle_post_event;
+			//pre_event_callback_func_   = &TrainingSearcher::handle_pre_event;
+			//post_event_callback_func_ = &TrainingSearcher::handle_post_event;
 			break;
 
-		case VerifyWithTrainingPaths: {
+		//case VerifyWithTrainingPaths: {
 
-			// Read training paths
-			PathManagerSet* training_paths = new PathManagerSet();
-			if (!TrainingPathDir.empty()) {
-				foreach(std::string path, TrainingPathDir) {
-					cvstream_->getFiles(path, ".tpath", TrainingPathFile);
-				}
-			}
-			if (TrainingPathFile.empty() || read_training_paths(TrainingPathFile,
-						training_paths) == 0) {
-				cv_error("Error reading training path files, exiting now.");
-			} 
+		//	// Read training paths
+		//	PathManagerSet* training_paths = new PathManagerSet();
+		//	if (!TrainingPathDir.empty()) {
+		//		foreach(std::string path, TrainingPathDir) {
+		//			cvstream_->getFiles(path, ".tpath", TrainingPathFile);
+		//		}
+		//	}
+		//	if (TrainingPathFile.empty() || read_training_paths(TrainingPathFile,
+		//				training_paths) == 0) {
+		//		cv_error("Error reading training path files, exiting now.");
+		//	} 
 
-			// Construct searcher
-			pruner_ = new ConstraintPruner();
-			merger_ = new StateMerger(pruner_);
-			searcher_ = new VerifySearcher(NULL, merger_, training_paths);
+		//	// Construct searcher
+		//	pruner_ = new ConstraintPruner();
+		//	merger_ = new StateMerger(pruner_);
+		//	searcher_ = new VerifySearcher(NULL, merger_, training_paths);
 
-			// Set event callbacks
-			//pre_event_callbacks_.connect(&VerifySearcher::handle_pre_event);
-			//post_event_callbacks_.connect(&VerifySearcher::handle_post_event);
-			pre_event_callback_func_   = &VerifySearcher::handle_pre_event;
-			post_event_callback_func_ = &VerifySearcher::handle_post_event;
-			break;
-		}
+		//	// Set event callbacks
+		//	//pre_event_callbacks_.connect(&VerifySearcher::handle_pre_event);
+		//	//post_event_callbacks_.connect(&VerifySearcher::handle_post_event);
+		//	pre_event_callback_func_   = &VerifySearcher::handle_pre_event;
+		//	post_event_callback_func_ = &VerifySearcher::handle_post_event;
+		//	break;
+		//}
 
     case VerifyWithEditCost: {
 
@@ -267,8 +273,10 @@ void ClientVerifier::initialize(CVExecutor *executor) {
 			// Set event callbacks
 			//pre_event_callbacks_.connect(&VerifySearcher::handle_pre_event);
 			//post_event_callbacks_.connect(&VerifySearcher::handle_post_event);
-			pre_event_callback_func_   = &EditCostSearcher::handle_pre_event;
-			post_event_callback_func_ = &EditCostSearcher::handle_post_event;
+			//pre_event_callback_func_   = &EditCostSearcher::handle_pre_event;
+			//post_event_callback_func_ = &EditCostSearcher::handle_post_event;
+
+
 			break;
 		}
 
@@ -289,6 +297,11 @@ void ClientVerifier::initialize(CVExecutor *executor) {
 		//	post_event_callbacks_.connect(&OutOfOrderTrainingSearcher::handle_post_event);
 		//	break;
 	}
+  
+  hook(searcher_);
+
+  current_execution_tree_ = new ExecutionTree();
+  hook(current_execution_tree_);
 
 }
 
@@ -297,6 +310,9 @@ void ClientVerifier::initialize_external_handlers(CVExecutor *executor) {
   for (unsigned i=0; i<N; ++i) {
     ExternalHandlerInfo &hi = external_handler_info[i];
 		executor->add_external_handler(hi.name, hi.handler, hi.has_return_value);
+    if (hi.event_triggered != CV_NULL_EVENT) {
+      executor->register_function_call_event(&hi.name, hi.event_triggered);
+    }
 	}
 }
 
@@ -352,24 +368,40 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
 	return socket_events_.size();
 }
 
-void ClientVerifier::register_events(CVExecutor *executor) {
-  unsigned N = sizeof(cliver_event_info)/sizeof(cliver_event_info[0]);
-  for (unsigned i=0; i<N; ++i) {
-    CliverEventInfo &ei = cliver_event_info[i];
-		executor->register_event(ei);
-	}
+//void ClientVerifier::register_events(CVExecutor *executor) {
+//  unsigned N = sizeof(cliver_event_info)/sizeof(cliver_event_info[0]);
+//  for (unsigned i=0; i<N; ++i) {
+//    CliverEventInfo &ei = cliver_event_info[i];
+//		executor->register_event(ei);
+//	}
+//}
+
+//void ClientVerifier::pre_event(CVExecutionState* state, 
+//		CVExecutor* executor, CliverEvent::Type t) {
+//	//pre_event_callbacks_(state, executor, t);
+//	pre_event_callback_func_(state, executor, t);
+//}
+
+//void ClientVerifier::post_event(CVExecutionState* state, 
+//		CVExecutor* executor, CliverEvent::Type t) {
+//	//post_event_callbacks_(state, executor, t);
+//	post_event_callback_func_(state, executor, t);
+//}
+
+void ClientVerifier::hook(ExecutionObserver* observer) {
+  observers_.push_back(observer);
 }
 
-void ClientVerifier::pre_event(CVExecutionState* state, 
-		CVExecutor* executor, CliverEvent::Type t) {
-	//pre_event_callbacks_(state, executor, t);
-	pre_event_callback_func_(state, executor, t);
+void ClientVerifier::unhook(ExecutionObserver* observer) {
+  observers_.remove(observer);
 }
 
-void ClientVerifier::post_event(CVExecutionState* state, 
-		CVExecutor* executor, CliverEvent::Type t) {
-	//post_event_callbacks_(state, executor, t);
-	post_event_callback_func_(state, executor, t);
+void ClientVerifier::notify_all(ExecutionEvent ev) {
+  foreach (ExecutionObserver* observer, observers_) {
+    observer->notify(ev);
+  }
+
+  ev.state->notify(ev);
 }
 
 CVSearcher* ClientVerifier::searcher() {
@@ -441,6 +473,11 @@ void ClientVerifier::print_current_statistics() {
 		// need cleaner exit
 		exit(1);
 	}
+
+  unhook(current_execution_tree_);
+  delete current_execution_tree_;
+  current_execution_tree_ = new ExecutionTree();
+  hook(current_execution_tree_);
 }
 
 void ClientVerifier::next_statistics() {

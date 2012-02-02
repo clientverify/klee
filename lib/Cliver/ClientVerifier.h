@@ -13,8 +13,10 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <list>
 
 #include "Socket.h" // For SocketEventList typedef
+#include "ExecutionObserver.h"
 
 #include "klee/TimerStatIncrementer.h"
 #include "klee/Internal/ADT/KTest.h"
@@ -69,19 +71,7 @@ struct ExternalHandlerInfo {
 	const char* name;
 	klee::SpecialFunctionHandler::ExternalHandler handler;
 	bool has_return_value;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class CliverEvent { 
-	public:
-	enum Type {Network, NetworkSend, NetworkRecv, Training};
-};
-
-struct CliverEventInfo {
-	CliverEvent::Type type;
-	int opcode;
-	char* function_name;
+  ExecutionEventType event_triggered;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -90,6 +80,8 @@ class CVExecutor;
 class CVExecutionState;
 class CVSearcher;
 class ConstraintPruner;
+class ExecutionEvent;
+class ExecutionTree;
 class StateMerger;
 class PathManager;
 class PathManagerSet;
@@ -111,12 +103,12 @@ class CVStream;
 
 class ClientVerifier : public klee::InterpreterHandler {
  public:
-	typedef 
-		boost::function<void (CVExecutionState*, CVExecutor*, CliverEvent::Type)> 
-		callback_func_ty;
-	typedef 
-		boost::signal<void (CVExecutionState*, CVExecutor*, CliverEvent::Type)> 
-		signal_ty;
+	//typedef 
+	//	boost::function<void (CVExecutionState*, CVExecutor*, CliverEvent::Type)> 
+	//	callback_func_ty;
+	//typedef 
+	//	boost::signal<void (CVExecutionState*, CVExecutor*, CliverEvent::Type)> 
+	//	signal_ty;
 
   ClientVerifier();
   virtual ~ClientVerifier();
@@ -139,12 +131,17 @@ class ClientVerifier : public klee::InterpreterHandler {
 	std::vector<SocketEventList*>& socket_events() { return socket_events_; }
 	
 	// Events
-	void register_events(CVExecutor *executor);
-	void pre_event(CVExecutionState* state, 
-			CVExecutor* executor, CliverEvent::Type t); 
-	void post_event(CVExecutionState* state,
-			CVExecutor* executor, CliverEvent::Type t); 
+	//void register_events(CVExecutor *executor);
+	//void pre_event(CVExecutionState* state, 
+	//		CVExecutor* executor, CliverEvent::Type t); 
+	//void post_event(CVExecutionState* state,
+	//		CVExecutor* executor, CliverEvent::Type t); 
 
+  // Observers
+  void hook(ExecutionObserver* observer);
+  void unhook(ExecutionObserver* observer);
+  void notify_all(ExecutionEvent ev);
+ 
 	// Searcher
 	CVSearcher* searcher();
 
@@ -170,12 +167,16 @@ class ClientVerifier : public klee::InterpreterHandler {
   ConstraintPruner* pruner_;
 	StateMerger* merger_;
 
-	signal_ty pre_event_callbacks_;
-	signal_ty post_event_callbacks_;
-	callback_func_ty pre_event_callback_func_;
-	callback_func_ty post_event_callback_func_;
+  ExecutionTree *current_execution_tree_;
+
+	//signal_ty pre_event_callbacks_;
+	//signal_ty post_event_callbacks_;
+	//callback_func_ty pre_event_callback_func_;
+	//callback_func_ty post_event_callback_func_;
 
 	std::vector<SocketEventList*> socket_events_;
+
+  std::list<ExecutionObserver*> observers_;
 
 	unsigned array_id_;
 };

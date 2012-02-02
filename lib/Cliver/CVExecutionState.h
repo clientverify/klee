@@ -10,6 +10,7 @@
 #define CLIVER_EXECUTION_STATE_H
 
 #include "ClientVerifier.h"
+#include "ExecutionObserver.h"
 #include "klee/ExecutionState.h"
 #include "llvm/Instructions.h"
 
@@ -17,7 +18,7 @@
 #include <sstream>
 
 namespace klee {
-class KFunction;
+struct KFunction;
 class MemoryManager;
 }
 
@@ -32,11 +33,11 @@ class PathManager;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class CVExecutionState : public klee::ExecutionState {
+class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
  public:
   CVExecutionState(klee::KFunction *kF, klee::MemoryManager *mem);
   CVExecutionState(const std::vector< klee::ref<klee::Expr> > &assumptions);
-  virtual ~CVExecutionState();
+  ~CVExecutionState();
   virtual CVExecutionState *branch();
   CVExecutionState *clone();
 
@@ -60,6 +61,8 @@ class CVExecutionState : public klee::ExecutionState {
 	void reset_debug_log() { delete debug_log_; debug_log_ = new std::stringstream(); }
 	std::stringstream *debug_log_;
 #endif
+
+  void notify(ExecutionEvent ev) {}
 
  private:
   int increment_id() { return next_id_++; }
