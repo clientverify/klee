@@ -9,6 +9,7 @@
 // TODO: Optimization: store BasicBlock entry id's in a vector rather than a 
 //       path of nodes
 // TODO: Unit tests for execution trees
+// TODO: Remove static_casts in notify()
 //===----------------------------------------------------------------------===//
 
 #include "CVCommon.h"
