@@ -4,6 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
+// TODO: make CVSearcher Pure virtual
 //
 //===----------------------------------------------------------------------===//
 #ifndef CV_SEARCHER_H
@@ -193,6 +194,59 @@ class PathTree;
 // is equal among all the states. Each EditCostVerifyStage has a single root
 // state from which all of the other states began execution.
 
+
+
+class SearcherStage {
+ public:
+  SearcherStage() {}
+  virtual ~SearcherStage() {}
+  virtual CVExecutionState* next_state() = 0;
+  virtual void add_state(CVExecutionState *state) = 0;
+  virtual void remove_state(CVExecutionState *state) = 0;
+  virtual bool empty() = 0;
+};
+
+typedef std::list<SearcherStage*> SearcherStageList;
+
+class PQSearcherStage : public SearcherStage {
+ public:
+  PQSearcherStage(StateMerger* merger, CVExecutionState* root_state);
+  ~PQSearcherStage() {}
+  bool empty() { return live_state_ && states_.empty(); }
+  CVExecutionState* next_state();
+  void add_state(CVExecutionState *state);
+  void remove_state(CVExecutionState *state);
+
+ private:
+  StateMerger* merger_;
+  CVExecutionState* live_state_;
+  ExecutionStateSet states_;
+  ExecutionStatePriorityQueue pq_states_;
+};
+
+class VerifySearcher : public CVSearcher {
+ public:
+  VerifySearcher(StateMerger* merger);
+  klee::ExecutionState &selectState();
+  void update(klee::ExecutionState *current,
+              const std::set<klee::ExecutionState*> &addedStates,
+              const std::set<klee::ExecutionState*> &removedStates);
+  bool empty();
+  void printName(std::ostream &os) { os << "VerifySearcher\n"; }
+
+  void notify(ExecutionEvent ev);
+
+ private:
+  SearcherStage* get_new_stage(CVExecutionState* state);
+  void add_state(CVExecutionState* state);
+  void remove_state(CVExecutionState* state);
+
+  StateMerger* merger_;
+  SearcherStageList stages_;
+  std::vector<CVExecutionState*> finished_pending_;
+};
+
+
 class EditCostVerifyStage {
  public:
   EditCostVerifyStage(StateMerger* merger, 
@@ -247,6 +301,11 @@ class EditCostSearcher : public CVSearcher {
   PathSelector *path_selector_;
   EditCostVerifyStage *root_stage_;
   EditCostVerifyStage *current_stage_;
+};
+
+class SearcherStageFactory {
+ public:
+  static SearcherStage* create(StateMerger* merger, CVExecutionState* state);
 };
 
 } // end namespace cliver

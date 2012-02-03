@@ -721,6 +721,147 @@ void TrainingSearcher::notify(ExecutionEvent ev) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+PQSearcherStage::PQSearcherStage(StateMerger *merger, 
+                                 CVExecutionState* root_state)
+  : merger_(merger), live_state_(NULL) { 
+  CVDEBUG("PQSearcherStage NEW ( " << root_state->id() << " ) ");
+  this->add_state(root_state);
+}
+
+CVExecutionState* PQSearcherStage::next_state() {
+  if (empty()) {
+    CVDEBUG("PQSearcherStage::next_state() queue is empty");
+    return NULL;
+  }
+  live_state_ = pq_states_.top();
+  pq_states_.pop();
+  return live_state_;
+}
+
+void PQSearcherStage::add_state(CVExecutionState *state) {
+  assert(state);
+  if (state == live_state_) {
+    live_state_ = NULL;
+  } else {
+    assert(states_.count(state) == 0);
+    states_.insert(state);
+  }
+  pq_states_.push(state);
+}
+
+void PQSearcherStage::remove_state(CVExecutionState *state) {
+  if (state == live_state_) {
+    live_state_ = NULL;
+    states_.erase(state);
+  } else if (states_.count(state)) {
+    states_.erase(state);
+    pq_states_.erase_one(state);
+  } else {
+    cv_error("PQSearcherStage::remove_state() state not found");
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+VerifySearcher::VerifySearcher(StateMerger* merger)
+  : CVSearcher(NULL, NULL), merger_(merger) {}
+
+klee::ExecutionState &VerifySearcher::selectState() {
+  //klee::TimerStatIncrementer timer(stats::searcher_time);
+  
+  if (finished_pending_.size()) {
+
+    // Should only be 1 for now.
+    assert(finished_pending_.size() == 1);
+
+    foreach (CVExecutionState* state, finished_pending_) {
+      // Remove State from current stage
+      this->remove_state(state);
+    }
+
+    foreach (CVExecutionState* state, finished_pending_) {
+      // XXX Hack to prune state constraints
+      ExecutionStateSet state_set, merged_set;
+      state_set.insert(state);
+      merger_->merge(state_set, merged_set);
+
+      // Create new stage and add to list
+      stages_.push_back(get_new_stage(*(merged_set.begin())));
+    }
+
+    // Compute and output statistics for the previous round
+    g_client_verifier->print_current_statistics();
+
+    finished_pending_.clear();
+  }
+
+  while (!stages_.empty() && stages_.back()->empty()) {
+    delete stages_.back();
+    stages_.pop_back();
+  }
+
+  assert(!stages_.empty());
+
+  return *(static_cast<klee::ExecutionState*>(stages_.back()->next_state()));
+}
+
+SearcherStage* VerifySearcher::get_new_stage(CVExecutionState* state) {
+  return SearcherStageFactory::create(merger_, state);
+}
+
+void VerifySearcher::add_state(CVExecutionState* state) {
+  if (stages_.empty()) {
+    stages_.push_back(get_new_stage(state));
+  } else {
+    stages_.back()->add_state(state);
+  }
+}
+
+void VerifySearcher::remove_state(CVExecutionState* state) {
+  assert(!stages_.empty());
+  stages_.back()->remove_state(state);
+}
+
+void VerifySearcher::update(klee::ExecutionState *current,
+    const std::set<klee::ExecutionState*> &addedStates,
+    const std::set<klee::ExecutionState*> &removedStates) {
+  //klee::TimerStatIncrementer timer(stats::searcher_time);
+
+  if (current != NULL && removedStates.count(current) == 0) {
+    this->add_state(static_cast<CVExecutionState*>(current));
+  }
+
+  if (addedStates.size()) {
+    foreach (klee::ExecutionState* klee_state, addedStates) {
+     this->add_state(static_cast<CVExecutionState*>(klee_state));
+    }
+  }
+
+  if (removedStates.size()) {
+    foreach (klee::ExecutionState* klee_state, removedStates) {
+     this->remove_state(static_cast<CVExecutionState*>(klee_state));
+    }
+  }
+}
+
+bool VerifySearcher::empty() {
+  reverse_foreach (SearcherStage* stage, stages_)
+    if (!stage->empty()) return false;
+  return true;
+}
+
+void VerifySearcher::notify(ExecutionEvent ev) {
+  switch(ev.event_type) {
+    case CV_SOCKET_WRITE:
+    case CV_SOCKET_READ: {
+			finished_pending_.push_back(ev.state);
+      break;
+    }
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 EditCostVerifyStage::EditCostVerifyStage(StateMerger *merger, 
                                          EditCostVerifyStage* parent)
   : root_state_(NULL),
@@ -855,5 +996,23 @@ void EditCostSearcher::notify(ExecutionEvent ev) {
     }
   }
 }
+
+SearcherStage* SearcherStageFactory::create(StateMerger* merger, 
+                                            CVExecutionState* state) {
+	switch (g_cliver_mode) {
+    case DefaultMode:
+		case DefaultTrainingMode: 
+    case VerifyWithEditCost: 
+		case VerifyWithTrainingPaths:
+		case TetrinetMode:
+		case OutOfOrderTrainingMode:
+		case TetrinetTrainingMode: 
+    default:
+      return new PQSearcherStage(merger, state);
+	}
+	cv_error("cliver mode not supported in SearcherStage");
+	return NULL;
+}
+
 
 } // end namespace cliver
