@@ -81,7 +81,7 @@ using namespace klee;
 namespace klee {
   cl::opt<bool>
   DumpStatesOnHalt("dump-states-on-halt",
-                   cl::init(true));
+                   cl::init(false));
  
   cl::opt<bool>
   NoPreferCex("no-prefer-cex",
