@@ -36,7 +36,9 @@ void ExecutionObserverPrinter::notify(ExecutionEvent ev) {
 #undef X
 
   switch(ev.event_type) {
-#define X(x) case x : { CVDEBUG( #x ); break; }
+#define X(x) case x : { \
+  CVDEBUG( #x << " " << ev.state->id() << " " \
+  << (ev.parent ? ev.parent->id() : 0 ) ); break; }
     CV_EXECUTION_EVENT_TYPES
 #undef X
   }
