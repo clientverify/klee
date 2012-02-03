@@ -16,6 +16,9 @@
 
 #include "../Core/Searcher.h"
 
+#include <stack>
+#include <queue>
+
 namespace cliver {
 class CVExecutionState;
 class StateMerger;
@@ -83,9 +86,6 @@ class TrainingSearcher : public CVSearcher {
 
 	bool empty();
 
-	//void clone_for_network_events(CVExecutionState *state, CVExecutor* executor, 
-	//		CliverEvent::Type et);
-
 	void record_path(CVExecutionState *state);
 
 	void printName(std::ostream &os) { os << "TrainingSearcher\n"; }
@@ -99,102 +99,17 @@ class TrainingSearcher : public CVSearcher {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class PathSelector;
-class PathTree;
-//
-///// Each VerifyStage object holds ExecutionStates, where all the states in a 
-///// given VerifyStage have processed network events 1 to i, where i is equal
-///// among all the states. Each VerifyStage has a single root state from which
-///// all of the other states began execution.
-//class VerifyStage {
-// public:
-//	typedef enum { 
-//		FullTraining, 
-//		ConcreteTraining, 
-//		PrefixTraining, 
-//		KLookSearch,
-//		Exhaustive } 
-//	SearchStrategy;
-//
-//	VerifyStage(StateMerger* merger, PathSelector *path_selector, const SocketEvent* socket_event, 
-//			VerifyStage* parent=NULL);
-//	CVExecutionState* next_state();
-//	void add_state(CVExecutionState *state);
-//	void remove_state(CVExecutionState *state);
-//	bool contains_state(CVExecutionState *state);
-//	void finish(CVExecutionState *state);
-//
-//	ExecutionStateSet& finished_states() { return finished_states_; }
-//	std::vector<VerifyStage*>& children() { return children_; }
-//
-// private: 
-//	// Root state from which all other states began execution
-//	CVExecutionState *root_state_;
-//	// Used when cloning root_state_ to assign a new PathManager to explore
-//	PathSelector *path_selector_;
-//	// Keep track of paths we've explored
-//	PathTree* path_tree_;
-//  // States that are currently ready to continue executions
-//	ExecutionStateSet states_; 
-//  // States that are not active
-//	ExecutionStateSet deactivated_states_;
-//  // States that have finished execution
-//  ExecutionStateSet finished_states_; 
-//  // The socket event that this stage is associated with
-//	const SocketEvent* socket_event_; 
-//	// Network event index
-//	unsigned network_event_index_;
-//	// Parent 
-//	const VerifyStage* parent_;
-//	// Children of this VerifyStage
-//	std::vector<VerifyStage*> children_;
-//	// Flavor of the search
-//	SearchStrategy search_strategy_;
-//	// For Exhaustive Search strategy
-//	unsigned exhaustive_search_level_;
-//
-//	unsigned training_paths_used_;
-//	StateMerger *merger_;
-//};
-//
-//class VerifySearcher : public CVSearcher {
-// public:
-//	VerifySearcher(klee::Searcher* base_searcher, StateMerger* merger, 
-//			PathManagerSet *paths);
-//
-//	klee::ExecutionState &selectState();
-//
-//	void update(klee::ExecutionState *current,
-//							const std::set<klee::ExecutionState*> &addedStates,
-//							const std::set<klee::ExecutionState*> &removedStates);
-//
-//	bool empty();
-//
-//	void end_path(CVExecutionState *state, CVExecutor* executor,
-//			CliverEvent::Type et);
-//
-//	void printName(std::ostream &os) { os << "VerifySearcher\n"; }
-//
-//	static void handle_pre_event(CVExecutionState *state, 
-//			CVExecutor *executor, CliverEvent::Type et);
-//
-//	static void handle_post_event(CVExecutionState *state, 
-//			CVExecutor *executor, CliverEvent::Type et);
-//
-// private:
-//	PathSelector *path_selector_;
-//	VerifyStage *root_stage_;
-//	VerifyStage *current_stage_;
-//};
+/// Each SearcherStage object holds ExecutionStates, where all the states in a
+/// given SearcherStage have processed network events 1 to i, where i is equal
+/// among all the states. Each SearcherStage has a single root state from which
+/// all of the other states began execution.
 
-////////////////////////////////////////////////////////////////////////////////
-
-// Each EditCostVerifyStage object holds ExecutionStates, where all the states
-// in a given EditCostVerifyStage have processed network events 1 to i, where i
-// is equal among all the states. Each EditCostVerifyStage has a single root
-// state from which all of the other states began execution.
-
-
+enum SearcherStageMode {
+  RandomSearcherStageMode,
+  PQSearcherStageMode,
+  DFSSearcherStageMode,
+  BFSSearcherStageMode,
+};
 
 class SearcherStage {
  public:
@@ -208,21 +123,87 @@ class SearcherStage {
 
 typedef std::list<SearcherStage*> SearcherStageList;
 
-class PQSearcherStage : public SearcherStage {
+template <class Collection>
+class BasicSearcherStage : public SearcherStage {
  public:
-  PQSearcherStage(StateMerger* merger, CVExecutionState* root_state);
-  ~PQSearcherStage() {}
-  bool empty() { return live_state_ && states_.empty(); }
-  CVExecutionState* next_state();
-  void add_state(CVExecutionState *state);
-  void remove_state(CVExecutionState *state);
+  BasicSearcherStage(CVExecutionState* root_state)
+    : live_state_(NULL) {
+    this->add_state(root_state);
+  }
+
+  virtual ~BasicSearcherStage() {}
+
+  virtual bool empty() {
+    return state_set_.empty();
+  }
+
+  virtual CVExecutionState* next_state() {
+    if (empty()) return NULL;
+    assert(live_state_ == NULL);
+    live_state_ = states_.top();
+    states_.pop();
+    return live_state_;
+  }
+
+  virtual void add_state(CVExecutionState *state) {
+    assert(state);
+    if (state == live_state_) {
+      live_state_ = NULL;
+    } else {
+      assert(!state_set_.count(state));
+      state_set_.insert(state);
+    }
+    states_.push(state);
+  }
+
+  virtual void remove_state(CVExecutionState *state) {
+    assert(state == live_state_);
+    live_state_ = NULL;
+    state_set_.erase(state);
+  }
+
+ protected:
+  CVExecutionState* live_state_;
+  ExecutionStateSet state_set_;
+  Collection states_;
+};
+
+class ExecutionStateQueue : public std::queue<CVExecutionState*> {
+ public:
+  CVExecutionState* top() { return front(); }
+};
+
+class ExecutionStateRandomSelector : public std::vector<CVExecutionState*> {
+ public:
+  ExecutionStateRandomSelector() : size_(0) {}
+
+  CVExecutionState* top() { return random_swap(); }
+
+  void pop() { size_ = std::max(0, size_-1); }
+
+  void push(CVExecutionState* state) {
+    if (size_ == size())
+      push_back(state);
+    else
+      at(size_) = state;
+    size_++;
+  }
 
  private:
-  StateMerger* merger_;
-  CVExecutionState* live_state_;
-  ExecutionStateSet states_;
-  ExecutionStatePriorityQueue pq_states_;
+  CVExecutionState* random_swap() {
+    std::swap(at(rand() % size_), at(size_-1));
+    return at(size_-1);
+  }
+
+  int size_;
 };
+
+typedef BasicSearcherStage<std::stack<CVExecutionState*> > DFSSearcherStage;
+typedef BasicSearcherStage<ExecutionStateQueue>            BFSSearcherStage;
+typedef BasicSearcherStage<ExecutionStatePriorityQueue>    PQSearcherStage;
+typedef BasicSearcherStage<ExecutionStateRandomSelector>   RandomSearcherStage;
+
+////////////////////////////////////////////////////////////////////////////////
 
 class VerifySearcher : public CVSearcher {
  public:
@@ -240,67 +221,12 @@ class VerifySearcher : public CVSearcher {
   SearcherStage* get_new_stage(CVExecutionState* state);
   void add_state(CVExecutionState* state);
   void remove_state(CVExecutionState* state);
+  bool check_pending(CVExecutionState* state);
 
   StateMerger* merger_;
   SearcherStageList stages_;
-  std::vector<CVExecutionState*> finished_pending_;
-};
-
-
-class EditCostVerifyStage {
- public:
-  EditCostVerifyStage(StateMerger* merger, 
-                      EditCostVerifyStage* parent=NULL);
-
-  CVExecutionState* next_state();
-  CVExecutionState* root_state() { return root_state_; }
-  void add_state(CVExecutionState *state);
-  void remove_state(CVExecutionState *state);
-  bool contains_state(CVExecutionState *state);
-  void finish(CVExecutionState *state);
-
-
-  std::vector<EditCostVerifyStage*>& children() { return children_; }
-
- private: 
-  // Root state from which all other states began execution
-  CVExecutionState *root_state_;
-  // States that are currently ready to continue executions
-  ExecutionStatePriorityQueue state_queue_; 
-  ExecutionStateSet state_set_;
-  // States that are not active
-  ExecutionStateSet deactivated_states_;
-  // Parent 
-  const EditCostVerifyStage* parent_;
-  // Children of this EditCostVerifyStage
-  std::vector<EditCostVerifyStage*> children_;
-
-  StateMerger *merger_;
-};
-
-class EditCostSearcher : public CVSearcher {
- public:
-  EditCostSearcher(klee::Searcher* base_searcher, 
-                   StateMerger* merger);
-
-  klee::ExecutionState &selectState();
-
-  void update(klee::ExecutionState *current,
-              const std::set<klee::ExecutionState*> &addedStates,
-              const std::set<klee::ExecutionState*> &removedStates);
-
-  bool empty();
-
-  void end_path(CVExecutionState *state);
-
-  void printName(std::ostream &os) { os << "EditCostSearcher\n"; }
-
-  void notify(ExecutionEvent ev);
-
- private:
-  PathSelector *path_selector_;
-  EditCostVerifyStage *root_stage_;
-  EditCostVerifyStage *current_stage_;
+  SearcherStageList pending_stages_;
+  ExecutionStateSet pending_states_;
 };
 
 class SearcherStageFactory {
