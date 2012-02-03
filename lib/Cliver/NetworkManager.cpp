@@ -16,9 +16,13 @@
 #include "llvm/Support/CommandLine.h"
 
 #include "klee/Internal/Module/KInstruction.h"
+#include "klee/Interpreter.h"
 #include "../Core/Executor.h"
 #include "../Core/Memory.h"
 #include "../Core/TimingSolver.h"
+
+// HACK
+extern klee::Interpreter *g_interpreter;
 
 namespace cliver {
 
@@ -344,6 +348,8 @@ void NetworkManager::execute_shutdown(CVExecutor* executor,
 	if (socket.is_open())
 		RETURN_FAILURE("shutdown", "events remain");
 
+  CVMESSAGE("Halting on successful shutdown of complete socket log");
+  g_interpreter->setHaltExecution(true);
 	RETURN_SUCCESS("shutdown", 0);
 }
 ////////////////////////////////////////////////////////////////////////////////
