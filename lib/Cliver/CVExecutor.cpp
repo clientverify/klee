@@ -328,7 +328,7 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
 
   searcher->update(0, states, std::set<klee::ExecutionState*>());
 
-  while (!states.empty() && !haltExecution) {
+  while (!states.empty() && !searcher->empty() && !haltExecution) {
 		klee::ExecutionState &state = searcher->selectState();
     if (haltExecution) goto dump;
 
@@ -415,9 +415,6 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
     updateStates(&state);
   }
 
-  delete searcher;
-  searcher = 0;
-  
  dump:
   if (klee::DumpStatesOnHalt && !states.empty()) {
     //std::cerr << "KLEE: halting execution, dumping remaining states\n";
