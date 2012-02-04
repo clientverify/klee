@@ -64,6 +64,7 @@ inline std::ostream &operator<<(std::ostream &os,
 BasicBlockEntryInfo::BasicBlockEntryInfo(CVExecutionState* state) {
   states.insert(state);
   basic_block_entry_id = state->prevPC->info->id;
+  basic_block_ = state->prevPC->inst->getParent();
   pending_count = 0;
 }
 
