@@ -14,6 +14,7 @@
 #include "klee/Solver.h"
 #include "ExecutionStateProperty.h"
 #include "ExecutionObserver.h"
+#include "llvm/Analysis/Trace.h"
 #include <set>
 #include <map>
 
@@ -27,6 +28,7 @@
 #include <boost/archive/text_oarchive.hpp>
 #include <boost/archive/text_iarchive.hpp>
 
+#include "EditDistance.h"
 
 #include "tree.h"
 
@@ -45,6 +47,7 @@ namespace cliver {
 class BasicBlockEntryInfo {
  public:
   unsigned basic_block_entry_id;
+  llvm::BasicBlock* basic_block_;
   std::set<CVExecutionState*> states;
   int pending_count;
 
@@ -65,6 +68,23 @@ inline std::ostream& operator<<(std::ostream &os, const BasicBlockEntryInfo &b){
   return os;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+class ExecutionTrace {
+  typedef std::vector<llvm::BasicBlock *> BasicBlockList;
+ public:
+  ExecutionTrace();
+  void append(const ExecutionTrace& etrace);
+  void prepend(const ExecutionTrace& etrace);
+
+  llvm::BasicBlock* operator[](unsigned i) { return basic_blocks_[i]; }
+  llvm::BasicBlock* get_block(unsigned i) { return basic_blocks_[i]; }
+
+  size_t size() { return basic_blocks_.size(); } 
+
+ private:
+  BasicBlockList basic_blocks_;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -116,8 +136,6 @@ class ExecutionTree : public ExecutionObserver {
   tree_t tree_;
   state_map_t state_map_; 
   state_map_t pending_cloned_states_;
-
-
 };
 
 ////////////////////////////////////////////////////////////////////////////////
