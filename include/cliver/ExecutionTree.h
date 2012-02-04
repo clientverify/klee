@@ -11,13 +11,17 @@
 #ifndef CLIVER_EXECUTION_TREE_H
 #define CLIVER_EXECUTION_TREE_H
 
+#include "cliver/EditDistance.h"
+#include "cliver/ExecutionStateProperty.h"
+#include "cliver/ExecutionObserver.h"
+#include "cliver/tree.h"
+
 #include "klee/Solver.h"
-#include "ExecutionStateProperty.h"
-#include "ExecutionObserver.h"
+
 #include "llvm/Analysis/Trace.h"
+
 #include <set>
 #include <map>
-
 #include <iostream>
 #include <vector>
 
@@ -27,10 +31,6 @@
 #include <boost/archive/binary_iarchive.hpp>
 #include <boost/archive/text_oarchive.hpp>
 #include <boost/archive/text_iarchive.hpp>
-
-#include "EditDistance.h"
-
-#include "tree.h"
 
 namespace llvm {
 	class BasicBlock;

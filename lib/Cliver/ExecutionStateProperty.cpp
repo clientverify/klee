@@ -7,10 +7,10 @@
 //
 //===----------------------------------------------------------------------===//
 #include "CVCommon.h"
-#include "CVStream.h"
-#include "ClientVerifier.h"
-#include "CVExecutionState.h"
-#include "ExecutionStateProperty.h"
+#include "cliver/CVStream.h"
+#include "cliver/ClientVerifier.h"
+#include "cliver/CVExecutionState.h"
+#include "cliver/ExecutionStateProperty.h"
 
 namespace cliver {
 	

@@ -9,9 +9,9 @@
 #ifndef CLIVER_PATH_MANAGER_H
 #define CLIVER_PATH_MANAGER_H
 
-#include "ClientVerifier.h"
-#include "Path.h"
-#include "Socket.h"
+#include "cliver/ClientVerifier.h"
+#include "cliver/Path.h"
+#include "cliver/Socket.h"
 #include "klee/Solver.h"
 
 #include <list>

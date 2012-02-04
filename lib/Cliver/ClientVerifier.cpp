@@ -9,19 +9,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "ClientVerifier.h"
-#include "ConstraintPruner.h"
+#include "cliver/ClientVerifier.h"
+#include "cliver/ConstraintPruner.h"
 #include "CVCommon.h"
-#include "CVExecutionState.h"
-#include "CVExecutor.h"
-#include "CVSearcher.h"
-#include "CVStream.h"
-#include "ExecutionObserver.h"
-#include "ExecutionTree.h"
-#include "NetworkManager.h"
-#include "PathManager.h"
-#include "StateMerger.h"
-#include "TestHelper.h"
+#include "cliver/CVExecutionState.h"
+#include "cliver/CVExecutor.h"
+#include "cliver/CVSearcher.h"
+#include "cliver/CVStream.h"
+#include "cliver/ExecutionObserver.h"
+#include "cliver/ExecutionTree.h"
+#include "cliver/NetworkManager.h"
+#include "cliver/PathManager.h"
+#include "cliver/StateMerger.h"
+#include "cliver/TestHelper.h"
 
 #include "klee/SpecialFunctionHandler.h"
 

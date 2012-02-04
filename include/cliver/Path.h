@@ -9,7 +9,7 @@
 #ifndef CLIVER_PATH_H
 #define CLIVER_PATH_H
 
-#include "ClientVerifier.h"
+#include "cliver/ClientVerifier.h"
 
 #include <iostream>
 #include <vector>

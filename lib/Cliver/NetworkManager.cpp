@@ -7,11 +7,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "NetworkManager.h"
+#include "cliver/NetworkManager.h"
 #include "CVCommon.h"
-#include "CVExecutor.h"
-#include "CVExecutionState.h"
-#include "ClientVerifier.h"
+#include "cliver/CVExecutor.h"
+#include "cliver/CVExecutionState.h"
+#include "cliver/ClientVerifier.h"
 
 #include "llvm/Support/CommandLine.h"
 

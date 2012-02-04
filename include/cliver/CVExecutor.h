@@ -9,8 +9,8 @@
 #ifndef CLIVER_EXECUTOR_H
 #define CLIVER_EXECUTOR_H
 
-#include "ClientVerifier.h"
-#include "ExecutionObserver.h"
+#include "cliver/ClientVerifier.h"
+#include "cliver/ExecutionObserver.h"
 
 #include "klee/Executor.h"
 #include "klee/SpecialFunctionHandler.h"

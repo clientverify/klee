@@ -8,15 +8,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "CVCommon.h"
-#include "CVSearcher.h"
-#include "CVExecutionState.h"
-#include "CVExecutor.h"
-#include "StateMerger.h"
-#include "ClientVerifier.h"
-#include "NetworkManager.h"
-#include "PathManager.h"
-#include "PathSelector.h"
-#include "PathTree.h"
+#include "cliver/CVSearcher.h"
+#include "cliver/CVExecutionState.h"
+#include "cliver/CVExecutor.h"
+#include "cliver/StateMerger.h"
+#include "cliver/ClientVerifier.h"
+#include "cliver/NetworkManager.h"
+#include "cliver/PathManager.h"
+#include "cliver/PathSelector.h"
+#include "cliver/PathTree.h"
 
 #include "klee/Internal/Module/InstructionInfoTable.h"
 

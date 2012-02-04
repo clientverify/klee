@@ -8,10 +8,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "CVCommon.h"
-#include "Path.h"
-#include "PathTree.h"
+#include "cliver/Path.h"
+#include "cliver/PathTree.h"
 #include "CVCommon.h"
-#include "CVExecutionState.h"
+#include "cliver/CVExecutionState.h"
 #include "klee/Internal/Module/KInstruction.h"
 
 namespace cliver {

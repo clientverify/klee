@@ -15,8 +15,8 @@
 #include <vector>
 #include <list>
 
-#include "Socket.h" // For SocketEventList typedef
-#include "ExecutionObserver.h"
+#include "cliver/Socket.h" // For SocketEventList typedef
+#include "cliver/ExecutionObserver.h"
 
 #include "klee/Interpreter.h"
 #include "klee/Statistic.h"

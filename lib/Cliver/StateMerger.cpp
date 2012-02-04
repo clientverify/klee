@@ -7,14 +7,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "CVSearcher.h"
-#include "CVExecutionState.h"
-#include "StateMerger.h"
-#include "AddressSpaceGraph.h"
-#include "ConstraintPruner.h"
-#include "ClientVerifier.h"
-#include "NetworkManager.h"
-#include "Socket.h"
+#include "cliver/CVSearcher.h"
+#include "cliver/CVExecutionState.h"
+#include "cliver/StateMerger.h"
+#include "cliver/AddressSpaceGraph.h"
+#include "cliver/ConstraintPruner.h"
+#include "cliver/ClientVerifier.h"
+#include "cliver/NetworkManager.h"
+#include "cliver/Socket.h"
 
 #include "../Core/Memory.h"
 

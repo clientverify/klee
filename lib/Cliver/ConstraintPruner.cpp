@@ -7,13 +7,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "AddressSpaceGraph.h"
-#include "ConstraintPruner.h"
-#include "CVExecutionState.h"
+#include "cliver/AddressSpaceGraph.h"
+#include "cliver/ConstraintPruner.h"
+#include "cliver/CVExecutionState.h"
 #include "CVCommon.h"
 #include "klee/IndependentElementSet.h"
 #include "klee/Constraints.h"
-#include "ClientVerifier.h"
+#include "cliver/ClientVerifier.h"
 
 namespace cliver {
 
