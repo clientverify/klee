@@ -14,7 +14,7 @@
 #include "ExecutionStateProperty.h"
 #include "ExecutionObserver.h"
 
-#include "../Core/Searcher.h"
+#include "klee/Searcher.h"
 
 #include <stack>
 #include <queue>
@@ -108,7 +108,7 @@ enum SearcherStageMode {
   RandomSearcherStageMode,
   PQSearcherStageMode,
   DFSSearcherStageMode,
-  BFSSearcherStageMode,
+  BFSSearcherStageMode
 };
 
 class SearcherStage {
@@ -182,7 +182,7 @@ class ExecutionStateRandomSelector : public std::vector<CVExecutionState*> {
   void pop() { size_ = std::max(0, size_-1); }
 
   void push(CVExecutionState* state) {
-    if (size_ == size())
+    if (size_ == (int)size())
       push_back(state);
     else
       at(size_) = state;

@@ -17,8 +17,6 @@
 #include <set>
 #include <vector>
 
-#include "../Core/AddressSpace.h"
-#include "../Core/Memory.h"
 #include "klee/ExecutionState.h"
 #include "klee/util/ExprVisitor.h"
 #include "klee/IndependentElementSet.h"

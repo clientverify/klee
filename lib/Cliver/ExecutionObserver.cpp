@@ -41,6 +41,8 @@ void ExecutionObserverPrinter::notify(ExecutionEvent ev) {
   << (ev.parent ? ev.parent->id() : 0 ) ); break; }
     CV_EXECUTION_EVENT_TYPES
 #undef X
+    default:
+      break;
   }
 }
 

@@ -12,7 +12,7 @@
 
 #include "klee/Expr.h"
 
-using namespace klee;
+//using namespace klee;
 //using namespace cliver;
 
 namespace {

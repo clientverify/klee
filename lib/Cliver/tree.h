@@ -537,7 +537,6 @@ void tree<T, tree_node_allocator>::erase_children(const iterator_base& it)
 	if(it.node==0) return;
 
 	tree_node *cur=it.node->first_child;
-	tree_node *prev=0;
 
   if (cur) {
     std::stack<tree_node*> node_stack;
@@ -579,7 +578,6 @@ iter tree<T, tree_node_allocator>::erase(iter it)
 	assert(cur!=head);
 	iter ret=it;
 	++ret;
-
 
 	erase_children(it);
 

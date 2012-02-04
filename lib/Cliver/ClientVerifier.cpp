@@ -23,11 +23,12 @@
 #include "StateMerger.h"
 #include "TestHelper.h"
 
+#include "klee/SpecialFunctionHandler.h"
+
 #include "llvm/Support/Debug.h"
 #include "llvm/System/Process.h"
 
-#include "klee/Statistics.h"
-#include "../lib/Core/SpecialFunctionHandler.h"
+#include "../lib/Core/CoreStats.h"
 
 #ifdef GOOGLE_PROFILER
 #include <google/profiler.h>
@@ -112,8 +113,12 @@ namespace stats {
 }
 ////////////////////////////////////////////////////////////////////////////////
 
-void ExternalHandler_nop (klee::Executor* executor, klee::ExecutionState *state, 
-		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {}
+struct ExternalHandlerInfo {
+	const char* name;
+	klee::SpecialFunctionHandler::ExternalHandler handler;
+	bool has_return_value;
+  ExecutionEventType event_triggered;
+};
 
 ExternalHandlerInfo external_handler_info[] = {
 	{"cliver_test_extract_pointers", ExternalHandler_test_extract_pointers, false, CV_NULL_EVENT},
@@ -298,6 +303,9 @@ void ClientVerifier::initialize(CVExecutor *executor) {
 		//	pre_event_callbacks_.connect(&OutOfOrderTrainingSearcher::handle_pre_event);
 		//	post_event_callbacks_.connect(&OutOfOrderTrainingSearcher::handle_post_event);
 		//	break;
+    default:
+			cv_error("Invalid cliver mode!");
+      break;
 	}
   
   hook(searcher_);
@@ -431,7 +439,7 @@ void ClientVerifier::handle_statistics() {
 }
 
 void ClientVerifier::print_current_statistics() {
-	static unsigned statistic_round = 0;
+	static int statistic_round = 0;
   //static llvm::sys::TimeValue lastNowTime(0,0),lastUserTime(0,0);
 
 	handle_statistics();

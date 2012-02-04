@@ -341,7 +341,8 @@ PathManager* PathManagerFactory::create() {
 		case VerifyWithTrainingPaths:
     case VerifyWithEditCost:
 		case DefaultMode:
-			break;
+    default:
+      break;
   }
   return new PathManager();
 }

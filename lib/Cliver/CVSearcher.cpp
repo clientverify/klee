@@ -233,6 +233,8 @@ void LogIndexSearcher::notify(ExecutionEvent ev) {
       p->socket_log_index = state->network_manager()->socket_log_index();
       break;
     }
+    default:
+      break;
   }
 }
 
@@ -422,6 +424,8 @@ void TrainingSearcher::notify(ExecutionEvent ev) {
 			record_path(static_cast<CVExecutionState*>(ev.state));
       break;
     }
+    default:
+      break;
   }
 }
 
@@ -537,6 +541,8 @@ void VerifySearcher::notify(ExecutionEvent ev) {
 			pending_states_.insert(ev.state);
       break;
     }
+    default:
+      break;
   }
 }
 
@@ -664,6 +670,8 @@ void NewTrainingSearcher::notify(ExecutionEvent ev) {
 			pending_states_.insert(ev.state);
       break;
     }
+    default:
+      break;
   }
 }
 

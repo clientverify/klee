@@ -15,9 +15,9 @@
 
 #include "llvm/Support/CommandLine.h"
 
+#include "klee/Executor.h"
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/Interpreter.h"
-#include "../Core/Executor.h"
 #include "../Core/Memory.h"
 #include "../Core/TimingSolver.h"
 
@@ -178,9 +178,9 @@ void NetworkManager::add_socket(const SocketEventList &log) {
 	sockets_.push_back(Socket(log));
 }
 
-void NetworkManager::add_socket(const SocketEvent &se, bool is_open) {
-	sockets_.push_back(Socket(se,is_open));
-}
+//void NetworkManager::add_socket(const SocketEvent &se, bool is_open) {
+//	sockets_.push_back(Socket(se,is_open));
+//}
 
 void NetworkManager::clear_sockets() {
 	sockets_.clear();
@@ -259,13 +259,13 @@ void NetworkManager::execute_write(CVExecutor* executor,
 	if (socket.state() != Socket::IDLE)
 		RETURN_FAILURE("send", "wrong state");
 
-	if (socket.length() != len)
+	if ((int)socket.length() != len)
 		RETURN_FAILURE("send", "wrong length" << " " << socket.length() << " != " << len);
 
 	klee::ref<klee::Expr> write_condition 
 		= klee::ConstantExpr::alloc(1, klee::Expr::Bool);
 
-	unsigned bytes_read = 0;
+	int bytes_read = 0;
 
 	while (socket.has_data() && bytes_read < len) {
 		klee::ref<klee::Expr> condition
@@ -327,7 +327,7 @@ void NetworkManager::execute_read(CVExecutor* executor,
 	if (socket.type() != SocketEvent::RECV)
 		RETURN_FAILURE("read", "wrong type");
 
-	unsigned bytes_written = 0;
+	int bytes_written = 0;
 
 	while (socket.has_data() && bytes_written < len) {
 		object->write8(bytes_written++, socket.next_byte());
@@ -372,7 +372,7 @@ void NetworkManagerTetrinet::execute_read(CVExecutor* executor,
 	if (socket.type() != SocketEvent::RECV)
 		RETURN_FAILURE("read", "wrong type");
 
-	unsigned bytes_written = 0;
+	int bytes_written = 0;
 
 	while (socket.has_data() && bytes_written < len) {
 		object->write8(bytes_written++, socket.next_byte());
@@ -487,6 +487,7 @@ NetworkManager* NetworkManagerFactory::create(CVExecutionState* state) {
 			return nm;
 		}
 		case TetrinetTrainingMode: 
+    default:
 			break;
 	}
 	cv_error("cliver mode not supported in NetworkManager");

@@ -10,15 +10,14 @@
 #include "Common.h"
 
 #include "Memory.h"
-#include "SpecialFunctionHandler.h"
 #include "TimingSolver.h"
 
+#include "klee/Executor.h"
 #include "klee/ExecutionState.h"
-
+#include "klee/SpecialFunctionHandler.h"
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/Internal/Module/KModule.h"
 
-#include "Executor.h"
 #include "MemoryManager.h"
 
 #include "llvm/Module.h"

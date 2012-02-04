@@ -129,6 +129,8 @@ ExecutionStateProperty* ExecutionStatePropertyFactory::create() {
 			return new VerifyProperty();
     case VerifyWithEditCost:
 			return new EditCostProperty();
+    default:
+      break;
 	}
 	cv_error("invalid cliver mode");
 	return NULL;

@@ -8,8 +8,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "Common.h"
-
-#include "Executor.h"
  
 #include "Context.h"
 #include "CoreStats.h"
@@ -18,17 +16,18 @@
 #include "Memory.h"
 #include "MemoryManager.h"
 #include "PTree.h"
-#include "Searcher.h"
 #include "SeedInfo.h"
-#include "SpecialFunctionHandler.h"
 #include "StatsTracker.h"
 #include "TimingSolver.h"
 #include "UserSearcher.h"
 #include "../Solver/SolverStats.h"
 
+#include "klee/Executor.h"
 #include "klee/ExecutionState.h"
 #include "klee/Expr.h"
 #include "klee/Interpreter.h"
+#include "klee/Searcher.h"
+#include "klee/SpecialFunctionHandler.h"
 #include "klee/TimerStatIncrementer.h"
 #include "klee/util/Assignment.h"
 #include "klee/util/ExprPPrinter.h"

@@ -12,12 +12,12 @@
 #include "CVExecutor.h"
 #include "AddressSpaceGraph.h"
 
+#include "klee/Executor.h"
 #include "klee/ExecutionState.h"
+#include "klee/SpecialFunctionHandler.h"
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/Internal/Module/KModule.h"
 
-#include "../Core/SpecialFunctionHandler.h"
-#include "../Core/Executor.h"
 #include "../Core/Memory.h"
 #include "../Core/MemoryManager.h"
 
@@ -46,7 +46,8 @@ void ExternalHandler_test_extract_pointers(klee::Executor* executor,
 		asg->extract_pointers(it->second, results_a);
 		asg->extract_pointers_by_resolving(it->second, results_b);
 		if (results_a.size() != results_b.size()) {
-			cv_warning("pointer extraction count mismatch %d != %d", results_a.size(), results_b.size());
+			cv_warning("pointer extraction count mismatch %d != %d", 
+                 (int)results_a.size(), (int)results_b.size());
 			(*it->second).print(*cv_warning_stream);
 			return;
 		} else {
