@@ -7,10 +7,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "TestHelper.h"
+#include "cliver/TestHelper.h"
 #include "CVCommon.h"
-#include "CVExecutor.h"
-#include "AddressSpaceGraph.h"
+#include "cliver/CVExecutor.h"
+#include "cliver/AddressSpaceGraph.h"
 
 #include "klee/Executor.h"
 #include "klee/ExecutionState.h"

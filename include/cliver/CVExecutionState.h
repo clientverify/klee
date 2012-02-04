@@ -9,8 +9,8 @@
 #ifndef CLIVER_EXECUTION_STATE_H
 #define CLIVER_EXECUTION_STATE_H
 
-#include "ClientVerifier.h"
-#include "ExecutionObserver.h"
+#include "cliver/ClientVerifier.h"
+#include "cliver/ExecutionObserver.h"
 #include "klee/ExecutionState.h"
 #include "llvm/Instructions.h"
 

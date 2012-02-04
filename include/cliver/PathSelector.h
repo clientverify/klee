@@ -9,7 +9,7 @@
 #ifndef CLIVER_PATH_SELECTOR_H
 #define CLIVER_PATH_SELECTOR_H
 
-#include "Path.h"
+#include "cliver/Path.h"
 #include <set>
 #include <vector>
 

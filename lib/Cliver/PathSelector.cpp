@@ -7,9 +7,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "PathSelector.h"
-#include "Path.h"
-#include "PathManager.h"
+#include "cliver/PathSelector.h"
+#include "cliver/Path.h"
+#include "cliver/PathManager.h"
 #include "CVCommon.h"
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -10,9 +10,9 @@
 #ifndef CV_SEARCHER_H
 #define CV_SEARCHER_H
 
-#include "ClientVerifier.h" // For CliverEvent::Type
-#include "ExecutionStateProperty.h"
-#include "ExecutionObserver.h"
+#include "cliver/ClientVerifier.h" // For CliverEvent::Type
+#include "cliver/ExecutionStateProperty.h"
+#include "cliver/ExecutionObserver.h"
 
 #include "klee/Searcher.h"
 

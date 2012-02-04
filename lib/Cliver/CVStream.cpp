@@ -8,7 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "CVCommon.h"
-#include "CVStream.h"
+#include "cliver/CVStream.h"
 #include <signal.h>
 #include <dirent.h>
 #include <sys/stat.h>

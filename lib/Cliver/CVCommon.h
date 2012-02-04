@@ -27,6 +27,6 @@
 
 #include "llvm/Support/CommandLine.h"
 
-#include "CVStream.h"
+#include "cliver/CVStream.h"
 
 #endif // CLIVER_COMMON_H

@@ -14,9 +14,9 @@
 #endif
 
 #include "../lib/Core/Common.h"
-#include "../lib/Cliver/ClientVerifier.h"
-#include "../lib/Cliver/CVExecutor.h"
-#include "../lib/Cliver/CVStream.h"
+#include "cliver/ClientVerifier.h"
+#include "cliver/CVExecutor.h"
+#include "cliver/CVStream.h"
 
 #include "klee/Config/config.h"
 #include "klee/ExecutionState.h"

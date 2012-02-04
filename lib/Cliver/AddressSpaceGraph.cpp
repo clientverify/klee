@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "AddressSpaceGraph.h"
+#include "cliver/AddressSpaceGraph.h"
 
 #include <utility>
 #include <map>
@@ -28,7 +28,7 @@
 #include "../Core/Context.h"
 
 #include "CVCommon.h"
-#include "CVExecutionState.h"
+#include "cliver/CVExecutionState.h"
 
 namespace cliver {
 

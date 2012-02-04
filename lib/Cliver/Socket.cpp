@@ -7,8 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Socket.h"
-#include "ClientVerifier.h"
+#include "cliver/Socket.h"
+#include "cliver/ClientVerifier.h"
 #include "CVCommon.h"
 
 namespace cliver {
