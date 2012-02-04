@@ -227,7 +227,7 @@ void ClientVerifier::initialize(CVExecutor *executor) {
 			// Construct searcher
 			pruner_ = new ConstraintPruner();
 			merger_ = new StateMerger(pruner_);
-			searcher_ = new TrainingSearcher(NULL, merger_);
+			searcher_ = new NewTrainingSearcher(merger_);
 
 			// Set event callbacks
 			//pre_event_callbacks_.connect(&TrainingSearcher::handle_pre_event);

@@ -82,6 +82,8 @@ class CVExecutor : public klee::Executor {
 
 	void add_state_internal(CVExecutionState* state);
 
+	void remove_state_internal(CVExecutionState* state);
+
 	void rebuild_solvers();
 
 	uint64_t check_memory_usage();
