@@ -734,6 +734,12 @@ void CVExecutor::terminate_state(CVExecutionState* state) {
 	terminateState(*state);
 }
 
+void CVExecutor::remove_state_internal(CVExecutionState* state) {
+  cv_->notify_all(ExecutionEvent(CV_STATE_REMOVED, state));
+  states.erase(state);
+  delete state;
+}
+
 void CVExecutor::bind_local(klee::KInstruction *target, 
 		CVExecutionState *state, unsigned i) {
 	bindLocal(target, *state, klee::ConstantExpr::alloc(i, klee::Expr::Int32));
