@@ -229,6 +229,32 @@ class VerifySearcher : public CVSearcher {
   ExecutionStateSet pending_states_;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+class NewTrainingSearcher : public CVSearcher {
+ public:
+  NewTrainingSearcher(StateMerger* merger);
+  klee::ExecutionState &selectState();
+  void update(klee::ExecutionState *current,
+              const std::set<klee::ExecutionState*> &addedStates,
+              const std::set<klee::ExecutionState*> &removedStates);
+  bool empty();
+  void printName(std::ostream &os) { os << "NewTrainingSearcher\n"; }
+
+  void notify(ExecutionEvent ev);
+
+ private:
+  SearcherStage* get_new_stage(CVExecutionState* state);
+  void add_state(CVExecutionState* state);
+  void remove_state(CVExecutionState* state);
+  bool check_pending(CVExecutionState* state);
+
+  StateMerger* merger_;
+  SearcherStageList stages_;
+  SearcherStageList pending_stages_;
+  ExecutionStateSet pending_states_;
+};
+
 class SearcherStageFactory {
  public:
   static SearcherStage* create(StateMerger* merger, CVExecutionState* state);

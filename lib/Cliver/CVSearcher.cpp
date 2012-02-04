@@ -542,9 +542,135 @@ void VerifySearcher::notify(ExecutionEvent ev) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NewTrainingSearcher::NewTrainingSearcher(StateMerger* merger)
+  : CVSearcher(NULL, NULL), merger_(merger) {}
+
+klee::ExecutionState &NewTrainingSearcher::selectState() {
+  //klee::TimerStatIncrementer timer(stats::searcher_time);
+ 
+  while (!stages_.empty() && stages_.back()->empty()) {
+    delete stages_.back();
+    stages_.pop_back();
+  }
+ 
+  if (stages_.empty()) {
+    assert(!pending_states_.empty());
+
+    // Prune state constraints and merge states
+    ExecutionStateSet state_set, merged_set;
+    state_set.insert(pending_states_.begin(), pending_states_.end());
+    merger_->merge(state_set, merged_set);
+
+    foreach (CVExecutionState* state, pending_states_) {
+      if (!merged_set.count(state)) {
+        // Remove/delete states that are duplicates 
+        g_executor->remove_state_internal(state);
+        pending_states_.erase(state);
+        ++stats::merged_states;
+      } else {
+        // Create new stage and add to pending list
+        pending_stages_.push_back(get_new_stage(state));
+        ++stats::active_states;
+      }
+    }
+
+    assert(!pending_stages_.empty()); 
+
+    // Compute and output statistics for the previous round
+    g_client_verifier->print_current_statistics();
+
+    // Add all pending stages to active stage list
+    stages_.insert(stages_.end(), 
+                   pending_stages_.begin(), pending_stages_.end());
+
+    pending_stages_.clear();
+    pending_states_.clear();
+  } 
+
+  assert(!stages_.empty());
+  assert(!stages_.back()->empty());
+
+  return *(static_cast<klee::ExecutionState*>(stages_.back()->next_state()));
+}
+
+void NewTrainingSearcher::update(klee::ExecutionState *current,
+    const std::set<klee::ExecutionState*> &addedStates,
+    const std::set<klee::ExecutionState*> &removedStates) {
+  //klee::TimerStatIncrementer timer(stats::searcher_time);
+
+  if (current != NULL && removedStates.count(current) == 0) {
+    this->add_state(static_cast<CVExecutionState*>(current));
+  }
+
+  if (addedStates.size()) {
+    foreach (klee::ExecutionState* klee_state, addedStates) {
+     this->add_state(static_cast<CVExecutionState*>(klee_state));
+    }
+  }
+
+  if (removedStates.size()) {
+    foreach (klee::ExecutionState* klee_state, removedStates) {
+     this->remove_state(static_cast<CVExecutionState*>(klee_state));
+    }
+  }
+}
+
+bool NewTrainingSearcher::empty() {
+  reverse_foreach (SearcherStage* stage, stages_)
+    if (!stage->empty()) return false;
+
+  reverse_foreach (SearcherStage* stage, pending_stages_)
+    if (!stage->empty()) return false;
+
+  if (!pending_states_.empty())
+    return false;
+
+  return true;
+}
+
+SearcherStage* NewTrainingSearcher::get_new_stage(CVExecutionState* state) {
+  return SearcherStageFactory::create(merger_, state);
+}
+
+void NewTrainingSearcher::add_state(CVExecutionState* state) {
+  if (stages_.empty()) {
+    stages_.push_back(get_new_stage(state));
+  } else {
+    if (!check_pending(state))
+      stages_.back()->add_state(state);
+  }
+}
+
+void NewTrainingSearcher::remove_state(CVExecutionState* state) {
+  assert(!stages_.empty());
+  stages_.back()->remove_state(state);
+}
+
+bool NewTrainingSearcher::check_pending(CVExecutionState* state) {
+  if (pending_states_.count(state)) {
+
+    // Remove State from current stage
+    this->remove_state(state);
+
+    return true;
+  }
+  return false;
+}
+
+void NewTrainingSearcher::notify(ExecutionEvent ev) {
+  switch(ev.event_type) {
+    case CV_SOCKET_WRITE:
+    case CV_SOCKET_READ: {
+			pending_states_.insert(ev.state);
+      break;
+    }
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 SearcherStage* SearcherStageFactory::create(StateMerger* merger, 
                                             CVExecutionState* state) {
-  CVDEBUG("CREATING SEARCHER!");
 	switch (g_searcher_stage_mode) {
     case RandomSearcherStageMode: {
       return new RandomSearcherStage(state);
