@@ -62,7 +62,7 @@ void PathTree::add_branched_state(CVExecutionState* state,
 	add_state_to_map(branched_state, node);
 }
 
-bool PathTree::get_child_states(PathTreeNode* node, 
+void PathTree::get_child_states(PathTreeNode* node, 
                                 ExecutionStateSet &states) {
   PathTreeNode* curr_node = node;
   PathTreeNode* prev_node = NULL;

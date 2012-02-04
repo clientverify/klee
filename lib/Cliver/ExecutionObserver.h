@@ -51,9 +51,9 @@ enum ExecutionEventType {
 
 class ExecutionEvent {
  public:
+  ExecutionEventType event_type;
   CVExecutionState* state;
   CVExecutionState* parent;
-  ExecutionEventType event_type;
 
   ExecutionEvent(ExecutionEventType t, 
                  CVExecutionState* s, CVExecutionState* p = NULL);

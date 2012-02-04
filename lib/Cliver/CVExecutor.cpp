@@ -17,7 +17,6 @@
 #include "ConstraintPruner.h"
 
 #include "../Core/Common.h"
-#include "../Core/Executor.h"
 #include "../Core/Context.h"
 #include "../Core/CoreStats.h"
 #include "../Core/ExternalDispatcher.h"
@@ -25,9 +24,7 @@
 #include "../Core/Memory.h"
 #include "../Core/MemoryManager.h"
 #include "../Core/PTree.h"
-#include "../Core/Searcher.h"
 #include "../Core/SeedInfo.h"
-#include "../Core/SpecialFunctionHandler.h"
 #include "../Core/StatsTracker.h"
 #include "../Core/TimingSolver.h"
 #include "../Core/UserSearcher.h"
@@ -37,6 +34,8 @@
 #include "klee/ExecutionState.h"
 #include "klee/Expr.h"
 #include "klee/Interpreter.h"
+#include "klee/Searcher.h"
+#include "klee/SpecialFunctionHandler.h"
 #include "klee/TimerStatIncrementer.h"
 #include "klee/util/Assignment.h"
 #include "klee/util/ExprPPrinter.h"
@@ -404,12 +403,12 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
     }
 
     foreach (klee::ExecutionState* astate, addedStates) {
-      cv_->notify_all(ExecutionEvent(CV_STATE_FORK, &state));
+      cv_->notify_all(ExecutionEvent(CV_STATE_FORK, astate));
       handle_post_execution_events(*astate);
     }
 
     foreach (klee::ExecutionState* rstate, removedStates) {
-      cv_->notify_all(ExecutionEvent(CV_STATE_REMOVED, &state));
+      cv_->notify_all(ExecutionEvent(CV_STATE_REMOVED, rstate));
     }
 
     updateStates(&state);
@@ -844,7 +843,7 @@ uint64_t CVExecutor::check_memory_usage() {
 
 	char buffer[512];
 	while(!peakMem && fgets(buffer, sizeof(buffer), fp)) { 
-		if (sscanf(buffer, "VmSize: %llu", &peakMem)) {
+		if (sscanf(buffer, "VmSize: %llu", (long long unsigned int*)&peakMem)) {
 			break; 
 		}
 	}

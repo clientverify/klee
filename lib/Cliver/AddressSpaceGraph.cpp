@@ -22,6 +22,9 @@
 #include "klee/Internal/Module/InstructionInfoTable.h"
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/Internal/Module/KModule.h"
+
+#include "../Core/AddressSpace.h"
+#include "../Core/Memory.h"
 #include "../Core/Context.h"
 
 #include "CVCommon.h"

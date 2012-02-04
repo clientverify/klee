@@ -165,34 +165,34 @@ void Path::dec_ref() {
 
 bool Path::get_branch(int index) const {
 	if (parent_ == NULL) {
-		assert( index >= 0 && index < branches_.size());
+		assert( index >= 0 && index < (int)branches_.size());
 		return branches_[index];
 	}
 	std::vector<bool> branches;
 	consolidate_branches(branches);
-	assert( index >= 0 && index < branches.size());
+	assert( index >= 0 && index < (int)branches.size());
 	return branches[index];
 }
 
 unsigned Path::get_branch_id(int index) const {
 	if (parent_ == NULL) {
-		assert( index >= 0 && index < branch_ids_.size());
+		assert( index >= 0 && index < (int)branch_ids_.size());
 		return branch_ids_[index];
 	}
 	std::vector<unsigned> branch_ids;
 	consolidate_branch_ids(branch_ids);
-	assert( index >= 0 && index < branch_ids.size());
+	assert( index >= 0 && index < (int)branch_ids.size());
 	return branch_ids[index];
 }
 
 unsigned Path::get_stack_depth(int index) const {
 	if (parent_ == NULL) {
-		assert( index >= 0 && index < stack_depths_.size());
+		assert( index >= 0 && index < (int)stack_depths_.size());
 		return stack_depths_[index];
 	}
 	std::vector<unsigned> stack_depths;
 	consolidate_stack_depths(stack_depths);
-	assert( index >= 0 && index < stack_depths.size());
+	assert( index >= 0 && index < (int)stack_depths.size());
 	return stack_depths[index];
 }
 

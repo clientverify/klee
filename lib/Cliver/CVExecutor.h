@@ -9,10 +9,11 @@
 #ifndef CLIVER_EXECUTOR_H
 #define CLIVER_EXECUTOR_H
 
-#include "../Core/Executor.h"
-#include "../Core/SpecialFunctionHandler.h"
 #include "ClientVerifier.h"
 #include "ExecutionObserver.h"
+
+#include "klee/Executor.h"
+#include "klee/SpecialFunctionHandler.h"
 
 namespace cliver {
 

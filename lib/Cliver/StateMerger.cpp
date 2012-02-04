@@ -15,6 +15,11 @@
 #include "ClientVerifier.h"
 #include "NetworkManager.h"
 #include "Socket.h"
+
+#include "../Core/Memory.h"
+
+#include "klee/Internal/Module/KModule.h"
+
 #include "llvm/Function.h"
 
 namespace cliver {

@@ -18,11 +18,11 @@
 #include "Socket.h" // For SocketEventList typedef
 #include "ExecutionObserver.h"
 
+#include "klee/Interpreter.h"
+#include "klee/Statistic.h"
+#include "klee/Statistics.h"
 #include "klee/TimerStatIncrementer.h"
 #include "klee/Internal/ADT/KTest.h"
-#include "../lib/Core/CoreStats.h"
-#include "../lib/Core/SpecialFunctionHandler.h"
-#include "../Core/Executor.h"
 
 #include "llvm/Support/CommandLine.h"
 
@@ -61,18 +61,6 @@ namespace stats {
 	extern klee::Statistic training_paths;
 	extern klee::Statistic exhaustive_search_level;
 }
-
-////////////////////////////////////////////////////////////////////////////////
-
-void ExternalHandler_nop (klee::Executor* executor, klee::ExecutionState *state, 
-		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
-
-struct ExternalHandlerInfo {
-	const char* name;
-	klee::SpecialFunctionHandler::ExternalHandler handler;
-	bool has_return_value;
-  ExecutionEventType event_triggered;
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 

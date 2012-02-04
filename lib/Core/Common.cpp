@@ -26,17 +26,17 @@ FILE* klee::klee_message_file = NULL;
 std::ostream* klee::klee_warning_stream = NULL;
 std::ostream* klee::klee_message_stream = NULL;
 
-static void klee_vfmessage(FILE *fp, const char *pfx, const char *msg, 
-                           va_list ap) {
-  if (!fp)
-    return;
-
-  fprintf(fp, "KLEE: ");
-  if (pfx) fprintf(fp, "%s: ", pfx);
-  vfprintf(fp, msg, ap);
-  fprintf(fp, "\n");
-  fflush(fp);
-}
+//static void klee_vfmessage(FILE *fp, const char *pfx, const char *msg, 
+//                           va_list ap) {
+//  if (!fp)
+//    return;
+//
+//  fprintf(fp, "KLEE: ");
+//  if (pfx) fprintf(fp, "%s: ", pfx);
+//  vfprintf(fp, msg, ap);
+//  fprintf(fp, "\n");
+//  fflush(fp);
+//}
 
 static void klee_vomessage(std::ostream* os, const char *pfx, const char *msg, 
                            va_list ap) {

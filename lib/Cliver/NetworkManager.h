@@ -50,7 +50,7 @@ class NetworkManager {
 
 	virtual void add_socket(const KTest* ktest);
 	virtual void add_socket(const SocketEventList &log);
-	virtual void add_socket(const SocketEvent &se, bool is_open = true);
+	//virtual void add_socket(const SocketEvent &se, bool is_open = true);
 	virtual void clear_sockets();
 
 	virtual NetworkManager* clone(CVExecutionState *state);

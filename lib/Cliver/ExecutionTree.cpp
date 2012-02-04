@@ -196,6 +196,8 @@ void ExecutionTree::notify(ExecutionEvent ev) {
       (*node)->pending_count++;
       break;
     }
+    default:
+      break;
   }
 }
 

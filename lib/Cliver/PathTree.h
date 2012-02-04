@@ -71,7 +71,7 @@ class PathTree {
 	bool get_states(const Path* path, const PathRange &range,
 			ExecutionStateSet& states, int &index);
 
-  bool get_child_states(PathTreeNode* node, ExecutionStateSet &states);
+  void get_child_states(PathTreeNode* node, ExecutionStateSet &states);
 
 	bool contains_state(CVExecutionState* state);
 
