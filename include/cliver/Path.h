@@ -30,6 +30,8 @@ namespace klee {
 
 namespace cliver {
 
+class CVExecutor;
+
 extern llvm::cl::opt<bool> UsePathStackDepth;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -60,8 +62,9 @@ class PathRange {
 
 	void print(std::ostream &os) const;
 
+  void finish_loading_kinst(CVExecutor *executor);
+
  private:
-	klee::KInstruction* get_kinst(unsigned id);
 	// Serialization
 	friend class boost::serialization::access;
 	template<class archive> 
@@ -72,6 +75,7 @@ class PathRange {
 
 	klee::KInstruction* start_;
 	klee::KInstruction* end_;
+  unsigned serialized_start_, serialized_end_; /* only valid during serialization */
 };
 
 inline std::ostream &operator<<(std::ostream &os, 
@@ -89,14 +93,8 @@ void PathRange::save(archive & ar, const unsigned version) const {
 
 template<class archive> 
 void PathRange::load(archive & ar, const unsigned version) {
-	unsigned start_id, end_id;
-	ar & start_id;
-	ar & end_id;
-	
-	if (start_id != 0)
-		start_ = get_kinst(start_id);
-	if (end_id != 0)
-		end_ = get_kinst(end_id);
+	ar & serialized_start_;
+	ar & serialized_end_;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -117,13 +115,7 @@ class Path {
 	bool get_branch(int index) const;
 	unsigned get_branch_id(int index) const;
 	unsigned get_stack_depth(int index) const;
-	llvm::BasicBlock* get_successor(int index) const;
-	klee::KInstruction* get_branch_kinst(int index) const;
 	void print(std::ostream &os) const;
-
-	// Static Helper Functions
-	static klee::KInstruction* lookup_kinst(unsigned id);
-	static llvm::BasicBlock* lookup_successor(bool direction, klee::KInstruction* inst);
 
  private: 
 	explicit Path(const Path &p);

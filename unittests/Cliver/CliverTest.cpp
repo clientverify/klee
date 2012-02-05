@@ -11,12 +11,15 @@
 #include "gtest/gtest.h"
 
 #include "klee/Expr.h"
+#include "cliver/ClientVerifier.h"
 
-//using namespace klee;
-//using namespace cliver;
+using namespace klee;
+using namespace cliver;
 
 namespace {
 
-TEST(CliverTest, ClientVerifierConstructionDestruction) {}
-
+TEST(CliverTest, ClientVerifierConstructionDestruction) {
+  ClientVerifier *cv = new ClientVerifier();
+  delete cv;
+}
 }

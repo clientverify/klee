@@ -40,52 +40,40 @@ PathSelector* OrderedSetPathSelector::clone() {
 ////////////////////////////////////////////////////////////////////////////////
 
 PathSelector* PathSelectorFactory::create(PathManagerSet* training_paths) {
-  switch (g_cliver_mode) {
-		case VerifyWithTrainingPaths: 
-		{
-			SocketEventDataSet socket_events;
-			std::set<PathManager*> worklist(training_paths->begin(),
-					training_paths->end());
+  SocketEventDataSet socket_events;
+  std::set<PathManager*> worklist(training_paths->begin(),
+      training_paths->end());
 
-			// Recursively select path that covers the largest number of messages
-			// and add to g_ordered_trainin_paths, then remove covered messages from
-			// the rest of the paths and repeat.
-			while (worklist.size() > 0) {
-				TrainingPathManager* max_size_tpm = NULL;
-				PathManager *pm;
-				foreach (pm, worklist) {
-					TrainingPathManager* tpm = static_cast<TrainingPathManager*>(pm);
-					if (max_size_tpm == NULL || 
-							tpm->socket_events().size() > max_size_tpm->socket_events().size()) {
-						max_size_tpm = tpm;
-					}
-				}
-				worklist.erase(static_cast<PathManager*>(max_size_tpm));
+  // Recursively select path that covers the largest number of messages
+  // and add to g_ordered_trainin_paths, then remove covered messages from
+  // the rest of the paths and repeat.
+  while (worklist.size() > 0) {
+    TrainingPathManager* max_size_tpm = NULL;
+    PathManager *pm;
+    foreach (pm, worklist) {
+      TrainingPathManager* tpm = static_cast<TrainingPathManager*>(pm);
+      if (max_size_tpm == NULL || 
+          tpm->socket_events().size() > max_size_tpm->socket_events().size()) {
+        max_size_tpm = tpm;
+      }
+    }
+    worklist.erase(static_cast<PathManager*>(max_size_tpm));
 
-				// HACK don't clone so that Path will not have a parent...
-				TrainingPathManager *new_tpm 
-					= new TrainingPathManager(const_cast<Path*>(max_size_tpm->path()), max_size_tpm->range());
-				foreach (SocketEvent *se, max_size_tpm->socket_events()) {
-					new_tpm->add_socket_event(se);
-				}
-				g_ordered_training_paths.push_back(new_tpm);
+    // HACK don't clone so that Path will not have a parent...
+    TrainingPathManager *new_tpm 
+      = new TrainingPathManager(const_cast<Path*>(max_size_tpm->path()), max_size_tpm->range());
+    foreach (SocketEvent *se, max_size_tpm->socket_events()) {
+      new_tpm->add_socket_event(se);
+    }
+    g_ordered_training_paths.push_back(new_tpm);
 
-				foreach (pm, worklist) {
-					TrainingPathManager* tpm = static_cast<TrainingPathManager*>(pm);
-					foreach (SocketEvent *se, new_tpm->socket_events()) {
-						tpm->erase_socket_event(se);
-					}
-				}
-			}
-
-			return new OrderedSetPathSelector();
-		}
-		case DefaultMode:
-		case DefaultTrainingMode:
-		default:
-			break;
+    foreach (pm, worklist) {
+      TrainingPathManager* tpm = static_cast<TrainingPathManager*>(pm);
+      foreach (SocketEvent *se, new_tpm->socket_events()) {
+        tpm->erase_socket_event(se);
+      }
+    }
   }
-	cv_error("PathSelector only used in verification modes.");
 }
 
 } // end namespace cliver

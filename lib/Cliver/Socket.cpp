@@ -16,13 +16,16 @@ namespace cliver {
 llvm::cl::opt<bool>
 DebugSocket("debug-socket",llvm::cl::init(false));
 
+llvm::cl::opt<bool>
+XpilotSocket("xpilot-socket",llvm::cl::init(false));
+
 int Socket::NextFileDescriptor = 1000;
 
 SocketEvent::SocketEvent(const KTestObject &object) {
 	unsigned char *buf = object.bytes;
 	length = object.numBytes;
 	
-	if (g_cliver_mode == XpilotMode) {
+	if (XpilotSocket) {
 		// Extract the round number prefix
 		round = (int)(((unsigned)buf[0] << 24) 
 								| ((unsigned)buf[1] << 16) 

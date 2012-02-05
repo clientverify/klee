@@ -263,18 +263,4 @@ void PathTreeNode::update_explored_status() {
 	}
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-PathTree* PathTreeFactory::create(CVExecutionState* root_state) {
-  switch (g_cliver_mode) {
-		case DefaultTrainingMode:
-		case VerifyWithTrainingPaths:
-		case DefaultMode:
-		default:
-			break;
-  }
-  return new PathTree(root_state);
-}
-
-
 } // end namespace cliver

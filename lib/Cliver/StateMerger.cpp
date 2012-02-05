@@ -63,7 +63,8 @@ TrainingMakeSymbolic("training-make-symbolic", llvm::cl::init(false));
 
 #endif
 
-StateMerger::StateMerger(ConstraintPruner *pruner) : pruner_(pruner) {}
+StateMerger::StateMerger(ConstraintPruner *pruner, ClientVerifier *cv) 
+  : pruner_(pruner), cv_(cv) {}
 
 // Pre-merging Steps
 // 1. Build AddressSpaceGraph on each state
@@ -223,8 +224,9 @@ void StateMerger::merge(ExecutionStateSet &state_set,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-SymbolicStateMerger::SymbolicStateMerger(ConstraintPruner *pruner) 
-	: StateMerger(pruner) {}
+SymbolicStateMerger::SymbolicStateMerger(ConstraintPruner *pruner, 
+                                         ClientVerifier *cv)
+	: StateMerger(pruner, cv) {}
 
 void SymbolicStateMerger::merge(ExecutionStateSet &state_set, 
 		ExecutionStateSet &merged_set) {
@@ -319,7 +321,7 @@ void SymbolicStateMerger::merge(ExecutionStateSet &state_set,
 			foreach (klee::ObjectState* obj, non_equal_concrete_objects) {
 				CVDEBUG("Making object state symbolic: " << *obj);
 				const klee::MemoryObject* mo = obj->getObject();
-				unsigned id = g_client_verifier->next_array_id();
+				unsigned id = cv_->next_array_id();
 				const klee::Array *array 
 					= new klee::Array(mo->name + llvm::utostr(id), mo->size);
 

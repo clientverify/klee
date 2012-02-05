@@ -157,7 +157,6 @@ void cv_error(const char *msg, ...) {
   va_start(ap, msg);
   cv_vomessage(cv_warning_stream, "ERROR", msg, ap);
   va_end(ap);
-  g_interpreter->setHaltExecution(true);
   exit(1);
 }
 

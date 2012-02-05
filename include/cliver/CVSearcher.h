@@ -28,7 +28,8 @@ class PathManagerSet;
 
 class CVSearcher : public klee::Searcher, public ExecutionObserver {
  public:
-	CVSearcher(klee::Searcher* base_searcher, StateMerger* merger);
+	CVSearcher(klee::Searcher* base_searcher, ClientVerifier* cv, 
+             StateMerger* merger);
 
 	virtual klee::ExecutionState &selectState();
 
@@ -44,6 +45,7 @@ class CVSearcher : public klee::Searcher, public ExecutionObserver {
 
  protected:
 	klee::Searcher* base_searcher_;
+  ClientVerifier* cv_;
 	StateMerger* merger_;
 };
 
@@ -51,7 +53,8 @@ class CVSearcher : public klee::Searcher, public ExecutionObserver {
 
 class LogIndexSearcher : public CVSearcher { 
  public:
-	LogIndexSearcher(klee::Searcher* base_searcher, StateMerger* merger);
+	LogIndexSearcher(klee::Searcher* base_searcher, ClientVerifier* cv,
+                   StateMerger* merger);
 
 	klee::ExecutionState &selectState();
 
@@ -65,18 +68,18 @@ class LogIndexSearcher : public CVSearcher {
 
   void notify(ExecutionEvent ev);
 
- protected:
+ private:
 	int state_count();
 	ExecutionStatePropertyMap states_;
 	klee::Searcher* base_searcher_;
-	StateMerger* merger_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 class TrainingSearcher : public CVSearcher {
  public:
-	TrainingSearcher(klee::Searcher* base_searcher, StateMerger* merger);
+	TrainingSearcher(klee::Searcher* base_searcher, ClientVerifier *cv,
+                   StateMerger* merger);
 
 	klee::ExecutionState &selectState();
 
@@ -207,7 +210,7 @@ typedef BasicSearcherStage<ExecutionStateRandomSelector>   RandomSearcherStage;
 
 class VerifySearcher : public CVSearcher {
  public:
-  VerifySearcher(StateMerger* merger);
+  VerifySearcher(ClientVerifier *cv, StateMerger* merger);
   klee::ExecutionState &selectState();
   void update(klee::ExecutionState *current,
               const std::set<klee::ExecutionState*> &addedStates,
@@ -223,7 +226,6 @@ class VerifySearcher : public CVSearcher {
   void remove_state(CVExecutionState* state);
   bool check_pending(CVExecutionState* state);
 
-  StateMerger* merger_;
   SearcherStageList stages_;
   SearcherStageList pending_stages_;
   ExecutionStateSet pending_states_;
@@ -233,7 +235,7 @@ class VerifySearcher : public CVSearcher {
 
 class NewTrainingSearcher : public CVSearcher {
  public:
-  NewTrainingSearcher(StateMerger* merger);
+  NewTrainingSearcher(ClientVerifier *cv, StateMerger* merger);
   klee::ExecutionState &selectState();
   void update(klee::ExecutionState *current,
               const std::set<klee::ExecutionState*> &addedStates,
@@ -249,15 +251,21 @@ class NewTrainingSearcher : public CVSearcher {
   void remove_state(CVExecutionState* state);
   bool check_pending(CVExecutionState* state);
 
-  StateMerger* merger_;
   SearcherStageList stages_;
   SearcherStageList pending_stages_;
   ExecutionStateSet pending_states_;
+  ExecutionStateSet pruned_states_;
 };
 
 class SearcherStageFactory {
  public:
   static SearcherStage* create(StateMerger* merger, CVExecutionState* state);
+};
+
+class CVSearcherFactory {
+ public:
+  static CVSearcher* create(klee::Searcher* base_searcher, 
+                            ClientVerifier* cv, StateMerger* merger);
 };
 
 } // end namespace cliver

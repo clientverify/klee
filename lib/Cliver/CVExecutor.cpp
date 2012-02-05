@@ -212,7 +212,7 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
 	// Only difference from klee::Executor::runFunctionAsMain()
   CVExecutionState *state 
 		= new CVExecutionState(kmodule->functionMap[f], memory);
-	state->initialize(this);
+	state->initialize(cv_);
   
   // In order to make uclibc happy and be closer to what the system is
   // doing we lay out the environments at the end of the argv array

@@ -353,7 +353,7 @@ int main(int argc, char **argv, char **envp) {
 
   parseArguments(argc, argv);
 
-	g_client_verifier = new cliver::ClientVerifier();
+  cliver::ClientVerifier* client_verifier = new cliver::ClientVerifier();
 
   atexit(llvm::llvm_shutdown);  // Call llvm_shutdown() on exit.
 
@@ -477,11 +477,11 @@ int main(int argc, char **argv, char **envp) {
 
   klee::Interpreter::InterpreterOptions IOpts;
   IOpts.MakeConcreteSymbolic = false;
-	g_executor = new cliver::CVExecutor(IOpts, g_client_verifier);
+	g_executor = new cliver::CVExecutor(IOpts, client_verifier);
 	g_interpreter = g_executor;
 
   // Print args to info file
-  std::ostream &infoFile = g_client_verifier->getInfoStream();
+  std::ostream &infoFile = client_verifier->getInfoStream();
   for (int i=0; i<argc; i++) {
     infoFile << argv[i] << (i+1<argc ? " ":"\n");
   }
@@ -499,7 +499,7 @@ int main(int argc, char **argv, char **envp) {
   infoFile << buf;
   infoFile.flush();
 
-	g_client_verifier->initialize(g_executor);
+	client_verifier->initialize(g_executor);
   g_interpreter->runFunctionAsMain(main_fn, pArgc, pArgv, pEnvp);
 
   // End time
@@ -512,7 +512,7 @@ int main(int argc, char **argv, char **envp) {
   strcpy(format_tdiff(buf, t[1] - t[0]), "\n");
   infoFile << buf;
 
-  delete g_client_verifier;
+  delete client_verifier;
   return 0;
 }
 

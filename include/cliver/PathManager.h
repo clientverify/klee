@@ -32,6 +32,8 @@ namespace klee {
 
 namespace cliver {
 
+class CVExecutor;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 /// PathManager is a wrapper around a single Path that allows for additional
@@ -102,7 +104,7 @@ class TrainingPathManager : public PathManager {
 	const SocketEventDataSet& socket_events() { return socket_events_; }
 
 	void write(std::ostream &os);
-	void read(std::ifstream &is);
+	void read(std::ifstream &is, CVExecutor *executor);
 
  protected:
 	explicit TrainingPathManager(const TrainingPathManager &pm);

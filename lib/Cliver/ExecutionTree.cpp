@@ -124,12 +124,9 @@ void ExecutionTree::notify(ExecutionEvent ev) {
         assert((*node)->pending_count > 0);
         (*node)->pending_count--;
 
-      } else if (g_cliver_mode == DefaultTrainingMode ) {
-        CVDEBUG("Adding training state at root: " << state->id() );
-        node = tree_.root();
       } else {
-        CVDEBUG("State not found in state_map: " << state->id());
-        assert(0);
+        CVDEBUG("Adding state at root: " << state->id() );
+        node = tree_.root();
       }
 
       //CVDEBUG("Adding Node: " << *(state->prevPC));
@@ -158,8 +155,6 @@ void ExecutionTree::notify(ExecutionEvent ev) {
         while ((*node)->states.empty() && (*node)->pending_count == 0 
                && node != tree_.root() && node.number_of_children() == 0) {
           // Prune up to first state without pending nodes
-          //CVDEBUG("Pruning Node: "
-          //  << *(g_executor->get_instruction((*node)->basic_block_entry_id)));
           count++;
           node_iterator removed_node(node.node);
           node = tree_.parent(node);
@@ -216,8 +211,6 @@ void ExecutionTree::add_child_node(node_iterator &node,
       state_map_[state] = node_iterator(cit.node);
       if (node_info->states.size()) {
         CVDEBUG("Duplicate state: " << state->id() << " " << *(state->prevPC));
-        //CVDEBUG("Duplicate States (" << node_info->states.size() << ") at Node: " 
-        //        << *(g_executor->get_instruction(node_info->basic_block_entry_id)));
       }
       return;
     }

@@ -27,7 +27,7 @@ struct MergeInfo {
 
 class StateMerger {
  public:
-	StateMerger( ConstraintPruner *pruner );
+	StateMerger( ConstraintPruner *pruner, ClientVerifier *cv );
 	virtual void merge( ExecutionStateSet &state_set, 
 			ExecutionStateSet &merged_set);
 
@@ -39,13 +39,14 @@ class StateMerger {
 		const klee::ConstraintManager *a, const klee::ConstraintManager *b);
 
 	ConstraintPruner *pruner_;
+  ClientVerifier *cv_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 class SymbolicStateMerger : public StateMerger {
  public:
-	SymbolicStateMerger( ConstraintPruner *pruner );
+	SymbolicStateMerger( ConstraintPruner *pruner, ClientVerifier *cv );
 	virtual void merge( ExecutionStateSet &state_set, 
 			ExecutionStateSet &merged_set);
 
