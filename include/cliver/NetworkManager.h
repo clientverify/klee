@@ -42,6 +42,7 @@ void ExternalHandler_socket_shutdown(
 
 class CVExecutor;
 class CVExecutionState;
+class ClientVerifier;
 
 class NetworkManager {
  public:
@@ -159,7 +160,7 @@ class NetworkManagerTraining: public NetworkManager {
 
 class NetworkManagerFactory {
  public:
-  static NetworkManager* create(CVExecutionState* state);
+  static NetworkManager* create(CVExecutionState* state, ClientVerifier *cv);
 };
 
 } // end namespace cliver

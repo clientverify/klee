@@ -54,11 +54,12 @@ void CVExecutionState::get_pc_string(std::string &rstr,
 	ros.flush();
 }
 
-void CVExecutionState::initialize(CVExecutor *executor) {
+void CVExecutionState::initialize(ClientVerifier *cv) {
+  cv_ = cv_;
   id_ = increment_id();
   coveredNew = false;
   coveredLines.clear();
-	network_manager_ = NetworkManagerFactory::create(this);
+	network_manager_ = NetworkManagerFactory::create(this,cv);
 	path_manager_ = PathManagerFactory::create();
 	property_ = ExecutionStatePropertyFactory::create();
 #ifdef DEBUG_CLIVER_STATE_LOG
@@ -77,8 +78,8 @@ CVExecutionState* CVExecutionState::clone() {
 	cloned_state->debug_log_ = new std::stringstream();
 	*(cloned_state->debug_log_) << debug_log_->str();
 #endif
-  g_client_verifier->notify_all(
-      ExecutionEvent(CV_STATE_CLONE, cloned_state, this));
+  cloned_state->cv_ = cv_;
+  cv_->notify_all(ExecutionEvent(CV_STATE_CLONE, cloned_state, this));
   return cloned_state;
 }
 

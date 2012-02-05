@@ -27,6 +27,7 @@ class AddressManager;
 class CVContext;
 class CVExecutionState;
 class CVExecutor;
+class ClientVerifier;
 class ExecutionStateProperty;
 class NetworkManager;
 class PathManager;
@@ -46,7 +47,7 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
 	void get_pc_string(std::string &result, 
 			llvm::Instruction* inst=NULL);
 
-  void initialize(CVExecutor* executor);
+  void initialize(ClientVerifier *cv);
   int id() { return id_; }
   const CVContext* context() { return context_; }
 
@@ -73,6 +74,7 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
 	NetworkManager* network_manager_;
 	PathManager* path_manager_;
 	ExecutionStateProperty* property_;
+  ClientVerifier *cv_;
 };
 
 } // End cliver namespace

@@ -348,8 +348,6 @@ void NetworkManager::execute_shutdown(CVExecutor* executor,
 	if (socket.is_open())
 		RETURN_FAILURE("shutdown", "events remain");
 
-  CVMESSAGE("Halting on successful shutdown of complete socket log");
-  g_interpreter->setHaltExecution(true);
 	RETURN_SUCCESS("shutdown", 0);
 }
 ////////////////////////////////////////////////////////////////////////////////
@@ -460,38 +458,5 @@ void NetworkManagerTraining::execute_shutdown(CVExecutor* executor,
 //}
 
 ////////////////////////////////////////////////////////////////////////////////
-
-NetworkManager* NetworkManagerFactory::create(CVExecutionState* state) {
-	switch (g_cliver_mode) {
-		case DefaultMode:
-		case DefaultTrainingMode: 
-    case VerifyWithEditCost: 
-		case VerifyWithTrainingPaths: {
-			NetworkManager *nm = new NetworkManager(state);
-			foreach( SocketEventList *sel, g_client_verifier->socket_events()) {
-				nm->add_socket(*sel);
-			}
-			return nm;
-			break;
-		}
-		case TetrinetMode: {
-			NetworkManagerTetrinet *nm = new NetworkManagerTetrinet(state);
-			foreach( SocketEventList *sel, g_client_verifier->socket_events()) {
-				nm->add_socket(*sel);
-			}
-			return nm;
-	  }
-		case OutOfOrderTrainingMode: {
-			NetworkManagerTraining *nm 
-				= new NetworkManagerTraining(state);
-			return nm;
-		}
-		case TetrinetTrainingMode: 
-    default:
-			break;
-	}
-	cv_error("cliver mode not supported in NetworkManager");
-	return NULL;
-}
 
 } // end namespace cliver

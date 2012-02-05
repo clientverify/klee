@@ -9,9 +9,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "CVCommon.h"
+
 #include "cliver/ClientVerifier.h"
 #include "cliver/ConstraintPruner.h"
-#include "CVCommon.h"
 #include "cliver/CVExecutionState.h"
 #include "cliver/CVExecutor.h"
 #include "cliver/CVSearcher.h"
@@ -42,8 +43,6 @@ MaxRoundNumber("max-round",llvm::cl::init(0));
 
 // needed for boost::signal
 void boost::throw_exception(std::exception const& e) {}
-
-cliver::ClientVerifier *g_client_verifier = 0;
 
 namespace cliver {
 
@@ -76,26 +75,6 @@ llvm::cl::list<std::string> TrainingPathDir("training-path-dir",
 llvm::cl::opt<bool> DebugPrintExecutionEvents("debug-print-execution-events",
   llvm::cl::init(false));
 
-llvm::cl::opt<CliverMode> g_cliver_mode("cliver-mode", 
-  llvm::cl::desc("Choose the mode in which cliver should run."),
-  llvm::cl::values(
-    clEnumValN(DefaultMode, "default", 
-      "Default mode"),
-    clEnumValN(TetrinetMode, "tetrinet", 
-      "Tetrinet mode"),
-    clEnumValN(DefaultTrainingMode, "training", 
-      "Default training mode"),
-    clEnumValN(OutOfOrderTrainingMode, "out-of-order-training", 
-      "Default training mode"),
-    clEnumValN(TetrinetTrainingMode, "tetrinet-training", 
-      "Tetrinet training mode"),
-    clEnumValN(VerifyWithTrainingPaths, "verify-with-paths", 
-      "Verify with training paths"),
-    clEnumValN(VerifyWithEditCost, "verify-with-edit-cost", 
-      "Verify using edit costs"),
-  clEnumValEnd),
-  llvm::cl::init(DefaultMode));
-
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace stats {
@@ -127,16 +106,6 @@ ExternalHandlerInfo external_handler_info[] = {
 	{"cliver_socket_read", ExternalHandler_socket_read, true, CV_SOCKET_READ},
 	{"cliver_socket_create", ExternalHandler_socket_create, true, CV_SOCKET_CREATE}
 };
-
-////////////////////////////////////////////////////////////////////////////////
-
-//CliverEventInfo cliver_event_info[] = {
-//	//{CliverEvent::Network, llvm::Instruction::Call, "cliver_socket_create"},
-//	{CliverEvent::Network, llvm::Instruction::Call, "cliver_socket_shutdown"},
-//	{CliverEvent::NetworkSend, llvm::Instruction::Call, "cliver_socket_write"},
-//	{CliverEvent::NetworkRecv, llvm::Instruction::Call, "cliver_socket_read"},
-//	//{CliverEvent::Training, llvm::Instruction::Call, "cliver_training_start"},
-//};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -193,8 +162,9 @@ void ClientVerifier::processTestCase(const klee::ExecutionState &state,
 }
 
 void ClientVerifier::initialize(CVExecutor *executor) {
+  executor_ = executor;
+
 	initialize_external_handlers(executor);
-	//register_events(executor);
 
 	// Load Socket files (at lease one socket file required in all modes)
 	if (!SocketLogDir.empty()) {
@@ -210,103 +180,10 @@ void ClientVerifier::initialize(CVExecutor *executor) {
   if (DebugPrintExecutionEvents)
     hook(new ExecutionObserverPrinter());
 
-	switch(g_cliver_mode) {
-		case DefaultMode:
-		case TetrinetMode:
-		case XpilotMode:
+  pruner_ = new ConstraintPruner();
+  merger_ = new StateMerger(pruner_, this);
 
-			// Construct searcher
-			pruner_ = new ConstraintPruner();
-			merger_ = new StateMerger(pruner_);
-			searcher_ = new LogIndexSearcher(NULL, merger_);
-
-			// Set event callbacks
-			//pre_event_callbacks_.connect(&LogIndexSearcher::handle_pre_event);
-			//post_event_callbacks_.connect(&LogIndexSearcher::handle_post_event);
-			//pre_event_callback_func_   = &LogIndexSearcher::handle_pre_event;
-			//post_event_callback_func_ = &LogIndexSearcher::handle_post_event;
-			break;
-
-		case DefaultTrainingMode:
-
-			// Construct searcher
-			pruner_ = new ConstraintPruner();
-			merger_ = new StateMerger(pruner_);
-			searcher_ = new NewTrainingSearcher(merger_);
-
-			// Set event callbacks
-			//pre_event_callbacks_.connect(&TrainingSearcher::handle_pre_event);
-			//post_event_callbacks_.connect(&TrainingSearcher::handle_post_event);
-			//pre_event_callback_func_   = &TrainingSearcher::handle_pre_event;
-			//post_event_callback_func_ = &TrainingSearcher::handle_post_event;
-			break;
-
-		//case VerifyWithTrainingPaths: {
-
-		//	// Read training paths
-		//	PathManagerSet* training_paths = new PathManagerSet();
-		//	if (!TrainingPathDir.empty()) {
-		//		foreach(std::string path, TrainingPathDir) {
-		//			cvstream_->getFiles(path, ".tpath", TrainingPathFile);
-		//		}
-		//	}
-		//	if (TrainingPathFile.empty() || read_training_paths(TrainingPathFile,
-		//				training_paths) == 0) {
-		//		cv_error("Error reading training path files, exiting now.");
-		//	} 
-
-		//	// Construct searcher
-		//	pruner_ = new ConstraintPruner();
-		//	merger_ = new StateMerger(pruner_);
-		//	searcher_ = new VerifySearcher(NULL, merger_, training_paths);
-
-		//	// Set event callbacks
-		//	//pre_event_callbacks_.connect(&VerifySearcher::handle_pre_event);
-		//	//post_event_callbacks_.connect(&VerifySearcher::handle_post_event);
-		//	pre_event_callback_func_   = &VerifySearcher::handle_pre_event;
-		//	post_event_callback_func_ = &VerifySearcher::handle_post_event;
-		//	break;
-		//}
-
-    case VerifyWithEditCost: {
-
-			// Construct searcher
-			pruner_ = new ConstraintPruner();
-			merger_ = new StateMerger(pruner_);
-
-			//searcher_ = new EditCostSearcher(NULL, merger_);
-			searcher_ = new VerifySearcher(merger_);
-
-			// Set event callbacks
-			//pre_event_callbacks_.connect(&VerifySearcher::handle_pre_event);
-			//post_event_callbacks_.connect(&VerifySearcher::handle_post_event);
-			//pre_event_callback_func_   = &EditCostSearcher::handle_pre_event;
-			//post_event_callback_func_ = &EditCostSearcher::handle_post_event;
-
-
-			break;
-		}
-
-		case TetrinetTrainingMode:
-			cv_error("Tetrinet Training mode is unsupported");
-			break;
-
-		//case OutOfOrderTrainingMode:
-
-		//	// Construct searcher
-		//	pruner_ = new ConstraintPruner();
-		//	merger_ = new SymbolicStateMerger(pruner_);
-		//	searcher_ 
-		//		= new OutOfOrderTrainingSearcher(NULL, merger_);
-
-		//	// Set event callbacks
-		//	pre_event_callbacks_.connect(&OutOfOrderTrainingSearcher::handle_pre_event);
-		//	post_event_callbacks_.connect(&OutOfOrderTrainingSearcher::handle_post_event);
-		//	break;
-    default:
-			cv_error("Invalid cliver mode!");
-      break;
-	}
+  searcher_ = CVSearcherFactory::create(NULL, this, merger_);
   
   hook(searcher_);
 
@@ -335,7 +212,7 @@ int ClientVerifier::read_training_paths(std::vector<std::string> &filename_list,
 				std::ifstream::in | std::ifstream::binary );
 		if (is != NULL && is->good()) {
 			TrainingPathManager *pm = new TrainingPathManager();
-			pm->read(*is);
+			pm->read(*is, executor_);
 			if (!path_manager_set->contains(pm)) {
 				path_manager_set->insert(pm);
 				CVMESSAGE("Path read succuessful: length " 
@@ -378,26 +255,6 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
 	return socket_events_.size();
 }
 
-//void ClientVerifier::register_events(CVExecutor *executor) {
-//  unsigned N = sizeof(cliver_event_info)/sizeof(cliver_event_info[0]);
-//  for (unsigned i=0; i<N; ++i) {
-//    CliverEventInfo &ei = cliver_event_info[i];
-//		executor->register_event(ei);
-//	}
-//}
-
-//void ClientVerifier::pre_event(CVExecutionState* state, 
-//		CVExecutor* executor, CliverEvent::Type t) {
-//	//pre_event_callbacks_(state, executor, t);
-//	pre_event_callback_func_(state, executor, t);
-//}
-
-//void ClientVerifier::post_event(CVExecutionState* state, 
-//		CVExecutor* executor, CliverEvent::Type t) {
-//	//post_event_callbacks_(state, executor, t);
-//	post_event_callback_func_(state, executor, t);
-//}
-
 void ClientVerifier::hook(ExecutionObserver* observer) {
   observers_.push_back(observer);
 }
@@ -417,6 +274,11 @@ void ClientVerifier::notify_all(ExecutionEvent ev) {
 CVSearcher* ClientVerifier::searcher() {
 	assert(searcher_ != NULL && "not initialized");
 	return searcher_;
+}
+
+CVExecutor* ClientVerifier::executor() {
+	assert(executor_ != NULL && "not initialized");
+	return executor_;
 }
 
 void ClientVerifier::handle_statistics() {
@@ -462,7 +324,7 @@ void ClientVerifier::print_current_statistics() {
     << "\n";
 
   // Rebuild solvers each round to keep caches fresh.
-	g_executor->rebuild_solvers();
+	executor_->rebuild_solvers();
 
 #ifdef GOOGLE_PROFILER
   if (ProfilerStartRoundNumber > 0 

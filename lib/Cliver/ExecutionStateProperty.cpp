@@ -117,26 +117,5 @@ void EditCostProperty::print(std::ostream &os) const {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ExecutionStateProperty* ExecutionStatePropertyFactory::create() {
-	switch (g_cliver_mode) {
-		case DefaultMode:
-		case TetrinetMode: 
-			return new LogIndexProperty();
-			break;
-		case DefaultTrainingMode: 
-			return new PathProperty();
-		case VerifyWithTrainingPaths: 
-			return new VerifyProperty();
-    case VerifyWithEditCost:
-			return new EditCostProperty();
-    default:
-      break;
-	}
-	cv_error("invalid cliver mode");
-	return NULL;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 } // End cliver namespace
 

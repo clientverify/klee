@@ -27,22 +27,6 @@
 
 namespace cliver {
 
-llvm::cl::opt<SearcherStageMode> g_searcher_stage_mode("searcher-stage-mode",
-  llvm::cl::desc("Choose the mode in which cliver search each stage."),
-  llvm::cl::values(
-    clEnumValN(RandomSearcherStageMode, "random",
-      "Random mode"),
-    clEnumValN(PQSearcherStageMode, "pq",
-      "Priority queue mode"),
-    clEnumValN(BFSSearcherStageMode, "bfs",
-      "Breadth first mode"),
-    clEnumValN(DFSSearcherStageMode, "dfs",
-      "Depth first mode"),
-  clEnumValEnd),
-  llvm::cl::init(BFSSearcherStageMode));
-
-////////////////////////////////////////////////////////////////////////////////
-
 llvm::cl::opt<bool>
 DebugSearcher("debug-searcher",llvm::cl::init(false));
 
@@ -88,8 +72,9 @@ inline std::ostream &operator<<(std::ostream &os,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-CVSearcher::CVSearcher(klee::Searcher* base_searcher, StateMerger* merger) 
-	: base_searcher_(base_searcher), merger_(merger) {
+CVSearcher::CVSearcher(klee::Searcher* base_searcher, ClientVerifier *cv,
+                       StateMerger* merger) 
+	: base_searcher_(base_searcher), cv_(cv), merger_(merger) {
 }
 
 klee::ExecutionState &CVSearcher::selectState() {
@@ -111,8 +96,8 @@ bool CVSearcher::empty() {
 ////////////////////////////////////////////////////////////////////////////////
 
 LogIndexSearcher::LogIndexSearcher(klee::Searcher* base_searcher, 
-		StateMerger* merger) 
-	: CVSearcher(base_searcher, merger) {}
+		ClientVerifier* cv, StateMerger* merger) 
+	: CVSearcher(base_searcher, cv, merger) {}
 
 bool LogIndexSearcher::empty() {
 	return state_count() == 0;
@@ -162,7 +147,7 @@ klee::ExecutionState &LogIndexSearcher::selectState() {
 					stats::active_states += result.size();
 
 					// Print new stats
-					g_client_verifier->print_current_statistics();
+					cv_->print_current_statistics();
 
 					// swap state sets
 					merge_state_set.swap(result);
@@ -241,8 +226,8 @@ void LogIndexSearcher::notify(ExecutionEvent ev) {
 ////////////////////////////////////////////////////////////////////////////////
 
 TrainingSearcher::TrainingSearcher(klee::Searcher* base_searcher, 
-		StateMerger* merger) 
-	: CVSearcher(base_searcher, merger), paths_(new PathManagerSet()) {}
+		ClientVerifier* cv, StateMerger* merger) 
+	: CVSearcher(base_searcher, cv, merger), paths_(new PathManagerSet()) {}
 
 klee::ExecutionState &TrainingSearcher::selectState() {
 	//klee::TimerStatIncrementer timer(stats::searcher_time);
@@ -254,7 +239,7 @@ klee::ExecutionState &TrainingSearcher::selectState() {
 
 	if (!phases_[PathProperty::PrepareExecute].empty()) {
 		// Print stats
-		g_client_verifier->print_current_statistics();
+		cv_->print_current_statistics();
 		CVMESSAGE("Current Paths (" << paths_->size() << ")");
 		if (PrintTrainingPaths) {
 			foreach(PathManager* path, *paths_) {
@@ -392,7 +377,7 @@ void TrainingSearcher::record_path(CVExecutionState *state) {
 		<< "-round_" << p->round 
 		<< "-length_" << state->path_manager()->length() 
 		<< ".tpath";
-	std::ostream *file = g_client_verifier->openOutputFile(filename.str());
+	std::ostream *file = cv_->openOutputFile(filename.str());
 	static_cast<TrainingPathManager*>(state->path_manager())->write(*file);
 	delete file;
 		
@@ -431,15 +416,15 @@ void TrainingSearcher::notify(ExecutionEvent ev) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-VerifySearcher::VerifySearcher(StateMerger* merger)
-  : CVSearcher(NULL, NULL), merger_(merger) {}
+VerifySearcher::VerifySearcher(ClientVerifier* cv, StateMerger* merger)
+  : CVSearcher(NULL, cv, merger) {}
 
 klee::ExecutionState &VerifySearcher::selectState() {
   //klee::TimerStatIncrementer timer(stats::searcher_time);
   
   if (!pending_stages_.empty()) {
     // Compute and output statistics for the previous round
-    g_client_verifier->print_current_statistics();
+    cv_->print_current_statistics();
 
     // Add pending stage to active stage list
     stages_.push_back(pending_stages_.back());
@@ -548,8 +533,9 @@ void VerifySearcher::notify(ExecutionEvent ev) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NewTrainingSearcher::NewTrainingSearcher(StateMerger* merger)
-  : CVSearcher(NULL, NULL), merger_(merger) {}
+NewTrainingSearcher::NewTrainingSearcher(ClientVerifier *cv, 
+                                         StateMerger* merger)
+  : CVSearcher(NULL, cv, merger) {}
 
 klee::ExecutionState &NewTrainingSearcher::selectState() {
   //klee::TimerStatIncrementer timer(stats::searcher_time);
@@ -570,7 +556,7 @@ klee::ExecutionState &NewTrainingSearcher::selectState() {
     foreach (CVExecutionState* state, pending_states_) {
       if (!merged_set.count(state)) {
         // Remove/delete states that are duplicates 
-        g_executor->remove_state_internal(state);
+        cv_->executor()->remove_state_internal(state);
         pending_states_.erase(state);
         ++stats::merged_states;
       } else {
@@ -583,7 +569,7 @@ klee::ExecutionState &NewTrainingSearcher::selectState() {
     assert(!pending_stages_.empty()); 
 
     // Compute and output statistics for the previous round
-    g_client_verifier->print_current_statistics();
+    cv_->print_current_statistics();
 
     // Add all pending stages to active stage list
     stages_.insert(stages_.end(), 
@@ -676,26 +662,5 @@ void NewTrainingSearcher::notify(ExecutionEvent ev) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
-SearcherStage* SearcherStageFactory::create(StateMerger* merger, 
-                                            CVExecutionState* state) {
-	switch (g_searcher_stage_mode) {
-    case RandomSearcherStageMode: {
-      return new RandomSearcherStage(state);
-    }
-    case PQSearcherStageMode: {
-      return new PQSearcherStage(state);
-    }
-    case DFSSearcherStageMode: {
-      return new DFSSearcherStage(state);
-    }
-    case BFSSearcherStageMode:
-    default: {
-      return new BFSSearcherStage(state);
-    }
-	}
-	cv_error("searcher stage mode not supported!");
-	return NULL;
-}
 
 } // end namespace cliver

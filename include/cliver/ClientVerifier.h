@@ -44,8 +44,6 @@ enum CliverMode {
 	VerifyWithEditCost
 };
 
-extern llvm::cl::opt<CliverMode> g_cliver_mode;
-
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace stats {
@@ -130,8 +128,9 @@ class ClientVerifier : public klee::InterpreterHandler {
   void unhook(ExecutionObserver* observer);
   void notify_all(ExecutionEvent ev);
  
-	// Searcher
+	// Accessors (ugly)
 	CVSearcher* searcher();
+	CVExecutor* executor();
 
 	// Stats
 	void handle_statistics();
@@ -151,6 +150,7 @@ class ClientVerifier : public klee::InterpreterHandler {
 	int paths_explored_;
 	std::vector<klee::StatisticRecord*> statistics_;
 
+  CVExecutor *executor_;
   CVSearcher *searcher_;
   ConstraintPruner* pruner_;
 	StateMerger* merger_;

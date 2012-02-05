@@ -225,9 +225,10 @@ void TrainingPathManager::write(std::ostream &os) {
 	oa << *this;
 }
 
-void TrainingPathManager::read(std::ifstream &is) {
+void TrainingPathManager::read(std::ifstream &is, CVExecutor* executor) {
 	boost::archive::binary_iarchive ia(is);
 	ia >> *this;
+  range_.finish_loading_kinst(executor);
 }
 
 void TrainingPathManager::print(std::ostream &os) const {
@@ -333,18 +334,5 @@ PathManager* PathManagerSet::merge(PathManager* path) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
-PathManager* PathManagerFactory::create() {
-  switch (g_cliver_mode) {
-		case DefaultTrainingMode:
-			return new TrainingPathManager();
-		case VerifyWithTrainingPaths:
-    case VerifyWithEditCost:
-		case DefaultMode:
-    default:
-      break;
-  }
-  return new PathManager();
-}
 
 } // end namespace cliver
