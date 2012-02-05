@@ -78,6 +78,7 @@ class ExecutionTrace {
   void prepend(const ExecutionTrace& etrace);
 
   llvm::BasicBlock* operator[](unsigned i) { return basic_blocks_[i]; }
+  llvm::BasicBlock* operator[] const (unsigned i) { return basic_blocks_[i]; }
   llvm::BasicBlock* get_block(unsigned i) { return basic_blocks_[i]; }
 
   size_t size() { return basic_blocks_.size(); } 
