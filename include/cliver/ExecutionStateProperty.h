@@ -8,7 +8,6 @@
 #ifndef CLIVER_EXECUTION_STATE_PROPERTY_H
 #define CLIVER_EXECUTION_STATE_PROPERTY_H
 
-#include "CVCommon.h"
 #include "cliver/PathManager.h"
 
 #include <llvm/ADT/PriorityQueue.h>
