@@ -119,6 +119,7 @@ namespace klee {
     std::set<llvm::Function*> escapingFunctions;
 
     InstructionInfoTable *infos;
+		std::map<unsigned, KInstruction*> kinsts;
         std::map<llvm::BasicBlock*, KBasicBlock*> llvm_kbasicblocks;
 
     std::vector<llvm::Constant*> constants;
