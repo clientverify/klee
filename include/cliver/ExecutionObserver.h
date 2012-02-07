@@ -22,6 +22,7 @@ class CVExecutionState;
 ////////////////////////////////////////////////////////////////////////////////
 
 #define CV_EXECUTION_EVENT_TYPES \
+  X(CV_ROUND_START)              \
   X(CV_BRANCH)                   \
   X(CV_BRANCH_UNCONDITIONAL)     \
   X(CV_BRANCH_INTERNAL_TRUE)     \
@@ -60,6 +61,8 @@ class ExecutionEvent {
 
   ExecutionEvent(ExecutionEventType t, 
                  klee::ExecutionState* s, klee::ExecutionState* p = NULL);
+
+  ExecutionEvent(ExecutionEventType t);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
