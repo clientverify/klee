@@ -128,18 +128,23 @@ TEST(CliverTest, EditDistance3) {
 ////////////////////////////////////////////////////////////////////////////////
 
 TEST(CliverTest, ExecutionTree) {
-  //ExecutionTree* t = new ExecutionTree();
   ExecutionTrace::BasicBlockList bb_list;
+  ExecutionTrace etrace1, etrace2;
 
-  //for(int i=0;i<100;i++)
-  //  bb_list.push_back(llvm::BasicBlock::Create(llvm::getGlobalContext()));
-  for(int i=0;i<100;i++)
-    bb_list.push_back(new klee::KBasicBlock(NULL, i));
+  etrace2.push_back_bb(
+      new klee::KBasicBlock(
+        llvm::BasicBlock::Create(llvm::getGlobalContext()), 5));
 
-  ExecutionTrace* trace = new ExecutionTrace();
+  for(int i=0;i<10;i++) {
+    bb_list.push_back(
+      new klee::KBasicBlock(
+        llvm::BasicBlock::Create(llvm::getGlobalContext()), i));
+    etrace1.push_back_bb(bb_list.back());
+  }
 
+  etrace2.push_back(etrace1);
+  ASSERT_EQ(11, etrace2.size());
 
-  //delete t;
 }
 
 }
