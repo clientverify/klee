@@ -100,7 +100,7 @@ struct ExternalHandlerInfo {
 };
 
 ExternalHandlerInfo external_handler_info[] = {
-	{"cliver_test_extract_pointers", ExternalHandler_test_extract_pointers, false, CV_NULL_EVENT},
+	//{"cliver_test_extract_pointers", ExternalHandler_test_extract_pointers, false, CV_NULL_EVENT},
 	{"cliver_socket_shutdown", ExternalHandler_socket_shutdown, true, CV_SOCKET_SHUTDOWN},
 	{"cliver_socket_write", ExternalHandler_socket_write, true, CV_SOCKET_WRITE},
 	{"cliver_socket_read", ExternalHandler_socket_read, true, CV_SOCKET_READ},
@@ -187,8 +187,8 @@ void ClientVerifier::initialize(CVExecutor *executor) {
   
   hook(searcher_);
 
-  current_execution_tree_ = new ExecutionTree();
-  hook(current_execution_tree_);
+  execution_tree_manager_ = new ExecutionTreeManager();
+  hook(execution_tree_manager_);
 
 }
 
@@ -268,7 +268,8 @@ void ClientVerifier::notify_all(ExecutionEvent ev) {
     observer->notify(ev);
   }
 
-  ev.state->notify(ev);
+  if (ev.state)
+    ev.state->notify(ev);
 }
 
 CVSearcher* ClientVerifier::searcher() {
@@ -346,10 +347,7 @@ void ClientVerifier::print_current_statistics() {
 		exit(1);
 	}
 
-  unhook(current_execution_tree_);
-  delete current_execution_tree_;
-  current_execution_tree_ = new ExecutionTree();
-  hook(current_execution_tree_);
+   notify_all(ExecutionEvent(CV_ROUND_START));
 }
 
 void ClientVerifier::next_statistics() {
