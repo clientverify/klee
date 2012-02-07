@@ -12,7 +12,12 @@
 
 #include "klee/Expr.h"
 #include "cliver/ClientVerifier.h"
+#include "cliver/ExecutionTree.h"
 #include "cliver/EditDistance.h"
+
+#include "llvm/Analysis/Trace.h"
+#include "llvm/BasicBlock.h"
+#include "llvm/LLVMContext.h"
 
 #include <string>
 #include <iostream>
@@ -93,8 +98,8 @@ StringEDTData test3("you-should-not", "thou-shalt-not", test3_costs);
 ////////////////////////////////////////////////////////////////////////////////
 
 TEST(CliverTest, ClientVerifierConstructionDestruction) {
-  ClientVerifier *cv = new ClientVerifier();
-  delete cv;
+  //ClientVerifier *cv = new ClientVerifier();
+  //delete cv;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -121,5 +126,20 @@ TEST(CliverTest, EditDistance3) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+TEST(CliverTest, ExecutionTree) {
+  //ExecutionTree* t = new ExecutionTree();
+  ExecutionTrace::BasicBlockList bb_list;
+
+  //for(int i=0;i<100;i++)
+  //  bb_list.push_back(llvm::BasicBlock::Create(llvm::getGlobalContext()));
+  for(int i=0;i<100;i++)
+    bb_list.push_back(new klee::KBasicBlock(NULL, i));
+
+  ExecutionTrace* trace = new ExecutionTrace();
+
+
+  //delete t;
+}
 
 }
