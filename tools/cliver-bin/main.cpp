@@ -487,7 +487,7 @@ int main(int argc, char **argv, char **envp) {
   }
   infoFile << "PID: " << getpid() << "\n";
 
-  //const Module *final_module = g_interpreter->setModule(main_module, Opts);
+  const Module *final_module = g_interpreter->setModule(main_module, Opts);
   //externalsAndGlobalsCheck(final_module);
 
   // Start time
