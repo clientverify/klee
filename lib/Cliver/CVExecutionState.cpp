@@ -55,7 +55,7 @@ void CVExecutionState::get_pc_string(std::string &rstr,
 }
 
 void CVExecutionState::initialize(ClientVerifier *cv) {
-  cv_ = cv_;
+  cv_ = cv;
   id_ = increment_id();
   coveredNew = false;
   coveredLines.clear();
