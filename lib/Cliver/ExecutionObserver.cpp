@@ -28,6 +28,9 @@ ExecutionEvent::ExecutionEvent(ExecutionEventType t,
     state(static_cast<CVExecutionState*>(s)), 
     parent(static_cast<CVExecutionState*>(p)) {}
 
+ExecutionEvent::ExecutionEvent(ExecutionEventType t)
+  : event_type(t), state(NULL), parent(NULL) {}
+
 ///////////////////////////////////////////////////////////////////////////////
 
 void ExecutionObserverPrinter::notify(ExecutionEvent ev) {
