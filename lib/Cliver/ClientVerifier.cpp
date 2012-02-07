@@ -60,18 +60,6 @@ llvm::cl::list<std::string> SocketLogDir("socket-log-dir",
 	llvm::cl::desc("Specify socket log directory"),
 	llvm::cl::value_desc("ktest directory"));
 
-llvm::cl::list<std::string> TrainingPathFile("training-path-file",
-	llvm::cl::ZeroOrMore,
-	llvm::cl::ValueRequired,
-	llvm::cl::desc("Specify a training path file (.tpath)"),
-	llvm::cl::value_desc("tpath directory"));
-
-llvm::cl::list<std::string> TrainingPathDir("training-path-dir",
-	llvm::cl::ZeroOrMore,
-	llvm::cl::ValueRequired,
-	llvm::cl::desc("Specify directory containint .tpath files"),
-	llvm::cl::value_desc("tpath directory"));
-
 llvm::cl::opt<bool> DebugPrintExecutionEvents("debug-print-execution-events",
   llvm::cl::init(false));
 
@@ -120,7 +108,8 @@ ClientVerifier::ClientVerifier()
 		searcher_(NULL),
 		pruner_(NULL),
 		merger_(NULL),
-		array_id_(0) {
+		array_id_(0),
+		round_number_(0) {
  
 	cvstream_->init();
 	handle_statistics();
@@ -185,9 +174,10 @@ void ClientVerifier::initialize(CVExecutor *executor) {
 
   searcher_ = CVSearcherFactory::create(NULL, this, merger_);
   
-  hook(searcher_);
+  execution_tree_manager_ = ExecutionTreeManagerFactory::create(this);
+  execution_tree_manager_->initialize();
 
-  execution_tree_manager_ = new ExecutionTreeManager();
+  hook(searcher_);
   hook(execution_tree_manager_);
 
 }
@@ -302,13 +292,12 @@ void ClientVerifier::handle_statistics() {
 }
 
 void ClientVerifier::print_current_statistics() {
-	static int statistic_round = 0;
   //static llvm::sys::TimeValue lastNowTime(0,0),lastUserTime(0,0);
 
 	handle_statistics();
 	klee::StatisticRecord *sr = statistics_.back();
 
-  *cv_message_stream << "STATS " << ++statistic_round
+  *cv_message_stream << "STATS " << ++round_number_
     << " " << sr->getValue(stats::active_states)
     << " " << sr->getValue(stats::merged_states)
     << " " << sr->getValue(stats::pruned_constraints)
@@ -329,20 +318,20 @@ void ClientVerifier::print_current_statistics() {
 
 #ifdef GOOGLE_PROFILER
   if (ProfilerStartRoundNumber > 0 
-			&& statistic_round == ProfilerStartRoundNumber) {
+			&& round_number_ == ProfilerStartRoundNumber) {
 		std::string profile_fn = getOutputFilename("cpu_profile.prof");
 		CVDEBUG("Starting CPU Profiler");
 		ProfilerStart(profile_fn.c_str());
 	}
 
   if (ProfilerStartRoundNumber > 0 
-			&& statistic_round > ProfilerStartRoundNumber) {
+			&& round_number_ > ProfilerStartRoundNumber) {
 		ProfilerFlush();
 	}
 #endif
 	next_statistics();
 
-	if (MaxRoundNumber && statistic_round > MaxRoundNumber) {
+	if (MaxRoundNumber && round_number_ > MaxRoundNumber) {
 		// need cleaner exit
 		exit(1);
 	}

@@ -433,33 +433,33 @@ void CVExecutor::handle_pre_execution_events(klee::ExecutionState &state) {
   klee::KInstruction* ki = state.pc;
   llvm::Instruction* inst = ki->inst;
 
-  switch(inst->getOpcode()) {
-    // terminator instructions: 
-    // 'ret', 'br', 'switch', 'indirectbr', 'invoke', 'unwind', 'resume', 'unreachable'
-    case llvm::Instruction::Ret: {
-      cv_->notify_all(ExecutionEvent(CV_RETURN, &state));
-      break;
-    }
-    //case llvm::Instruction::Br: {
-    //  llvm::BranchInst* bi = cast<llvm::BranchInst>(inst);
-    //  if (bi->isUnconditional()) {
-    //    cv_->notify_all(ExecutionEvent(CV_BRANCH_UNCONDITIONAL, &state));
-    //  } else {
-    //    cv_->notify_all(ExecutionEvent(CV_BRANCH, &state));
-    //  }
-    //  break;
-    //}
-    case llvm::Instruction::Call: {
-      llvm::CallSite cs(inst);
-      llvm::Function *f = getCalledFunction(cs, state);
-      if (f && f->isDeclaration() 
-          && f->getIntrinsicID() == llvm::Intrinsic::not_intrinsic)
-        cv_->notify_all(ExecutionEvent(CV_CALL_EXTERNAL, &state));
-      else
-        cv_->notify_all(ExecutionEvent(CV_CALL, &state));
-      break;
-    }
-  }
+  //switch(inst->getOpcode()) {
+  //  // terminator instructions: 
+  //  // 'ret', 'br', 'switch', 'indirectbr', 'invoke', 'unwind', 'resume', 'unreachable'
+  //  case llvm::Instruction::Ret: {
+  //    cv_->notify_all(ExecutionEvent(CV_RETURN, &state));
+  //    break;
+  //  }
+  //  //case llvm::Instruction::Br: {
+  //  //  llvm::BranchInst* bi = cast<llvm::BranchInst>(inst);
+  //  //  if (bi->isUnconditional()) {
+  //  //    cv_->notify_all(ExecutionEvent(CV_BRANCH_UNCONDITIONAL, &state));
+  //  //  } else {
+  //  //    cv_->notify_all(ExecutionEvent(CV_BRANCH, &state));
+  //  //  }
+  //  //  break;
+  //  //}
+  //  case llvm::Instruction::Call: {
+  //    llvm::CallSite cs(inst);
+  //    llvm::Function *f = getCalledFunction(cs, state);
+  //    if (f && f->isDeclaration() 
+  //        && f->getIntrinsicID() == llvm::Intrinsic::not_intrinsic)
+  //      cv_->notify_all(ExecutionEvent(CV_CALL_EXTERNAL, &state));
+  //    else
+  //      cv_->notify_all(ExecutionEvent(CV_CALL, &state));
+  //    break;
+  //  }
+  //}
 }
 
 void CVExecutor::handle_post_execution_events(klee::ExecutionState &state) {

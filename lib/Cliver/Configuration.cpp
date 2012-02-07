@@ -12,6 +12,7 @@
 #include "cliver/ClientVerifier.h"
 #include "cliver/CVSearcher.h"
 #include "cliver/ExecutionStateProperty.h"
+#include "cliver/ExecutionTree.h"
 #include "cliver/NetworkManager.h"
 #include "cliver/PathManager.h"
 #include "cliver/PathTree.h"
@@ -29,6 +30,8 @@ llvm::cl::opt<CliverMode> g_cliver_mode("cliver-mode",
       "Tetrinet mode"),
     clEnumValN(DefaultTrainingMode, "training", 
       "Default training mode"),
+    clEnumValN(TestTrainingMode, "testtraining", 
+      "Test training mode"),
     clEnumValN(OutOfOrderTrainingMode, "out-of-order-training", 
       "Default training mode"),
     clEnumValN(TetrinetTrainingMode, "tetrinet-training", 
@@ -68,6 +71,7 @@ CVSearcher* CVSearcherFactory::create(klee::Searcher* base_searcher,
 		case DefaultTrainingMode:
 
 			return new NewTrainingSearcher(cv, merger);
+			//return new TrainingSearcher(NULL, cv, merger);
 
 		//case VerifyWithTrainingPaths: {
 
@@ -90,6 +94,7 @@ CVSearcher* CVSearcherFactory::create(klee::Searcher* base_searcher,
 
 		//}
 
+		case TestTrainingMode:
     case VerifyWithEditCost: {
 
 			return new VerifySearcher(cv, merger);
@@ -135,6 +140,7 @@ NetworkManager* NetworkManagerFactory::create(CVExecutionState* state,
 	switch (g_cliver_mode) {
 		case DefaultMode:
 		case DefaultTrainingMode: 
+		case TestTrainingMode: 
     case VerifyWithEditCost: 
 		case VerifyWithTrainingPaths: {
 			NetworkManager *nm = new NetworkManager(state);
@@ -166,6 +172,28 @@ NetworkManager* NetworkManagerFactory::create(CVExecutionState* state,
 
 ////////////////////////////////////////////////////////////////////////////////
 
+ExecutionTreeManager* ExecutionTreeManagerFactory::create(ClientVerifier* cv) {
+  switch (g_cliver_mode) {
+		case DefaultTrainingMode:
+			return new TrainingExecutionTreeManager(cv);
+		case TestTrainingMode:
+			return new TrainingTestExecutionTreeManager(cv);
+		case VerifyWithTrainingPaths:
+    case VerifyWithEditCost:
+		case DefaultMode:
+    default: {
+      return new ExecutionTreeManager(cv);
+      break;
+    }
+  }
+
+	cv_error("cliver mode not supported in ExecutionTreeManager");
+	return NULL;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+
 PathTree* PathTreeFactory::create(CVExecutionState* root_state) {
   switch (g_cliver_mode) {
 		case DefaultTrainingMode:
@@ -189,6 +217,7 @@ ExecutionStateProperty* ExecutionStatePropertyFactory::create() {
 			return new PathProperty();
 		case VerifyWithTrainingPaths: 
 			return new VerifyProperty();
+		case TestTrainingMode: 
     case VerifyWithEditCost:
 			return new EditCostProperty();
     default:

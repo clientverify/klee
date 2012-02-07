@@ -64,26 +64,27 @@ class ExecutionTrace {
   const_iterator begin() const { return basic_blocks_.begin(); }
   const_iterator end() const { return basic_blocks_.end(); }
 
-  bool operator==(const ExecutionTrace& b) const { return true; }
-  bool operator!=(const ExecutionTrace& b) const { return false; }
+  bool operator==(const ExecutionTrace& b) const;
+  bool operator!=(const ExecutionTrace& b) const;
+  bool operator<(const ExecutionTrace& b) const;
 
   size_t size() const { return basic_blocks_.size(); } 
 
-  void deserialize(klee::KModule* kmodule);
+	void write(std::ostream &os);
+	void read(std::ifstream &is, klee::KModule* kmodule);
 
  protected:
+  void deserialize(klee::KModule* kmodule);
   friend class boost::serialization::access;
   template<class Archive>
   void save(Archive & ar, const unsigned int version) const
   {
-    serialized_basic_blocks_ = new SerializedBasicBlockList();
+    SerializedBasicBlockList serialized_basic_blocks;
 
-    for (iterator it=begin(), ie=end(); it!=ie; ++it)
-      serialized_basic_blocks_->push_back((*it)->id);
+    for (const_iterator it=begin(), ie=end(); it!=ie; ++it)
+      serialized_basic_blocks.push_back((*it)->id);
 
-    ar & *serialized_basic_blocks_;
-    delete serialized_basic_blocks_;
-    serialized_basic_blocks_ = 0;
+    ar & serialized_basic_blocks;
   }
 
   template<class Archive>
@@ -92,6 +93,8 @@ class ExecutionTrace {
     serialized_basic_blocks_ = new SerializedBasicBlockList();
     ar & *serialized_basic_blocks_;
   }
+
+  BOOST_SERIALIZATION_SPLIT_MEMBER()
 
  private:
   BasicBlockList basic_blocks_;
@@ -157,6 +160,28 @@ class ExecutionTree : public tree<ListDataType> {
   ExecutionTree() {
     ListDataType root_data;
     set_root(root_data);
+  }
+
+  ~ExecutionTree() {
+    std::set<NodeRef*> to_delete;
+    {
+      typename StateNodeMap::iterator
+        it = state_map_.begin(), ie = state_map_.end();
+      for (; it!=ie; ++it)
+        to_delete.insert(it->second);
+    }
+    {
+      typename NodeMap::iterator
+        it = node_map_.begin(), ie = node_map_.end();
+      for (; it!=ie; ++it)
+        to_delete.insert(it->second);
+    }
+    {
+      typename std::set<NodeRef*>::iterator
+        it = to_delete.begin(), ie = to_delete.end();
+      for (; it!=ie; ++it)
+        delete *it;
+    }
   }
 
   const ListDataType& get_state_data(CVExecutionState* state) {}
@@ -230,14 +255,43 @@ class ExecutionTree : public tree<ListDataType> {
 
 class ExecutionTreeManager : public ExecutionObserver {
  public:
-  ExecutionTreeManager();
+  typedef ExecutionTree<ExecutionTrace> ExecutionTraceTree;
+  ExecutionTreeManager(ClientVerifier *cv);
+  virtual void initialize();
+  virtual void notify(ExecutionEvent ev);
+ protected:
+  std::list< ExecutionTraceTree* > trees_;
+  ClientVerifier *cv_;
+
+};
+
+class TrainingExecutionTreeManager : public ExecutionTreeManager {
+ public:
+  TrainingExecutionTreeManager(ClientVerifier *cv);
+  void initialize();
   void notify(ExecutionEvent ev);
  private:
-  std::vector< ExecutionTree<ExecutionTrace>* > trees_;
+
+};
+
+class TrainingTestExecutionTreeManager : public ExecutionTreeManager {
+ public:
+  TrainingTestExecutionTreeManager(ClientVerifier *cv);
+  void initialize();
+  void notify(ExecutionEvent ev);
+ private:
+  int read_traces(std::vector<std::string> &filename_list);
+  std::map<ExecutionTrace,std::string> training_trace_map_;
 
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+
+class ExecutionTreeManagerFactory {
+ public:
+  static ExecutionTreeManager* create(ClientVerifier *cv);
+};
+
 
 } // end namespace cliver
 

@@ -95,6 +95,8 @@ class CVExecutor : public klee::Executor {
 
   void handle_post_execution_events(klee::ExecutionState &state);
 
+  klee::KModule* get_kmodule() { return kmodule; }
+
  private:
   ClientVerifier *cv_;
 	StateMerger *merger_;
