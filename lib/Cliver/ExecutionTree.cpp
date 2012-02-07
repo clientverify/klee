@@ -318,9 +318,8 @@ int TrainingTestExecutionTreeManager::read_traces(
       ExecutionTrace etrace;
       etrace.read(*is, cv_->executor()->get_kmodule());
 
-      if (training_trace_set_.count(etrace) == 0)
-        training_trace_set_[etrace] = filename;
-       // training_trace_set_.insert(etrace);
+      if (training_trace_map_.count(etrace) == 0)
+        training_trace_map_[etrace] = filename;
       else
         ++dup_count;
 
@@ -328,7 +327,7 @@ int TrainingTestExecutionTreeManager::read_traces(
 		}
 	}
   CVMESSAGE("Duplicate traces " << dup_count );
-	return training_trace_set_.size();
+	return training_trace_map_.size();
 }
 
 void TrainingTestExecutionTreeManager::notify(ExecutionEvent ev) {
@@ -372,8 +371,8 @@ void TrainingTestExecutionTreeManager::notify(ExecutionEvent ev) {
       ExecutionTrace etrace;
       trees_.back()->get_path(state, etrace);
 
-      if (training_trace_set_.count(etrace)) {
-        CVMESSAGE("Matching Training Trace Found!" << training_trace_set_[etrace]);
+      if (training_trace_map_.count(etrace)) {
+        CVMESSAGE("Matching Training Trace Found!" << training_trace_map_[etrace]);
       } else {
         CVMESSAGE("Matching Training Trace Not Found!");
       }
