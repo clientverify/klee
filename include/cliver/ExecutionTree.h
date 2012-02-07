@@ -3,9 +3,9 @@
 // <insert license>
 //
 //===----------------------------------------------------------------------===//
-// TODO Rename this class to StateTree?
 //
-// Handle paths that reach null node, which is complete
+// ??? Make CVExecutionState a template parameter to ExecutionTree?
+// TODO Define add/update/remove semantics for ExecutionTree template class
 //
 //===----------------------------------------------------------------------===//
 #ifndef CLIVER_EXECUTION_TREE_H
@@ -27,10 +27,6 @@
 
 #include <boost/serialization/access.hpp>
 #include <boost/serialization/vector.hpp>
-#include <boost/archive/binary_oarchive.hpp>
-#include <boost/archive/binary_iarchive.hpp>
-#include <boost/archive/text_oarchive.hpp>
-#include <boost/archive/text_iarchive.hpp>
 
 namespace llvm {
 	class BasicBlock;
@@ -38,105 +34,197 @@ namespace llvm {
 
 namespace klee {
 	class KInstruction;
+	class KModule;
 }
 
 namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class BasicBlockEntryInfo {
- public:
-  unsigned basic_block_entry_id;
-  llvm::BasicBlock* basic_block_;
-  std::set<CVExecutionState*> states;
-  int pending_count;
-
-  BasicBlockEntryInfo(CVExecutionState* state);
-  BasicBlockEntryInfo() : basic_block_entry_id(0), pending_count(0) {}
-
-  bool operator==(const BasicBlockEntryInfo& b) const;
-  bool operator!=(const BasicBlockEntryInfo& b) const;
-
-	template<class archive> 
-	void serialize(archive & ar, const unsigned version) {
-    ar & basic_block_entry_id;
-	}
-};
-
-inline std::ostream& operator<<(std::ostream &os, const BasicBlockEntryInfo &b){
-  os << "BBID: " << b.basic_block_entry_id;
-  return os;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 class ExecutionTrace {
-  typedef std::vector<llvm::BasicBlock *> BasicBlockList;
+  typedef std::vector<const klee::KBasicBlock *> BasicBlockList;
+  typedef std::vector<unsigned> SerializedBasicBlockList;
+
  public:
-  ExecutionTrace();
+  ExecutionTrace() : serialized_basic_blocks_(0) {}
+  ExecutionTrace(const klee::KBasicBlock* bb) 
+    : serialized_basic_blocks_(0) { basic_blocks_.push_back(bb); }
   void append(const ExecutionTrace& etrace);
   void prepend(const ExecutionTrace& etrace);
 
-  llvm::BasicBlock* operator[](unsigned i) { return basic_blocks_[i]; }
-  llvm::BasicBlock* operator[] const (unsigned i) { return basic_blocks_[i]; }
-  llvm::BasicBlock* get_block(unsigned i) { return basic_blocks_[i]; }
+  const klee::KBasicBlock* operator[](unsigned i) const { return basic_blocks_[i]; }
+  const klee::KBasicBlock* get_block(unsigned i) { return basic_blocks_[i]; }
 
-  size_t size() { return basic_blocks_.size(); } 
+  bool operator==(const ExecutionTrace& b) const { return true; }
+  bool operator!=(const ExecutionTrace& b) const { return false; }
+
+  size_t size() const { return basic_blocks_.size(); } 
+
+  void deserialize(klee::KModule* kmodule);
+
+ protected:
+  friend class boost::serialization::access;
+  template<class Archive>
+  void save(Archive & ar, const unsigned int version) const
+  {
+    serialized_basic_blocks_ = new SerializedBasicBlockList();
+    foreach(klee::KBasicBlock* kbb, basic_blocks_)
+      serialized_basic_blocks_->push_back(kbb->id);
+
+    ar & *serialized_basic_blocks_;
+    delete serialized_basic_blocks_;
+    serialized_basic_blocks_ = 0;
+  }
+
+  template<class Archive>
+  void load(Archive & ar, const unsigned int version)
+  {
+    serialized_basic_blocks_ = new SerializedBasicBlockList();
+    ar & *serialized_basic_blocks_;
+  }
 
  private:
   BasicBlockList basic_blocks_;
+  SerializedBasicBlockList* serialized_basic_blocks_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define foreach_child(__type,__tree,__node,__iterator) \
-   for ( __type::children_iterator __iterator = \
-        __tree.begin_children_iterator(__node), __iterator##_END = \
-        __tree.end_children_iterator(__node); \
-        __iterator!=__iterator##_END; ++__iterator )
+#define foreach_child(__node,__iterator) \
+  typename tree<NodeDataType>::pre_order_iterator __node##_BASE(__node); \
+  typename tree<NodeDataType>::children_iterator __iterator, __iterator##_END; \
+  for (__iterator = this->begin_children_iterator(__node##_BASE), \
+       __iterator##_END = this->end_children_iterator(__node##_BASE); \
+       __iterator!=__iterator##_END; ++__iterator )
 
-#define foreach_leaf(__type,__tree,__node,__iterator) \
-   for ( __type::leaf_iterator __iterator = \
-        __tree.begin_leaf_iterator(__node), __iterator##_END = \
-        __tree.end_leaf_iterator(__node); \
-        __iterator!=__iterator##_END; ++__iterator )
+#define foreach_parent(__node,__iterator) \
+  typename tree<NodeDataType>::pre_order_iterator __iterator(__node); \
+   for (; __iterator != this->root(); __iterator = this->parent(__iterator) )
 
-#define foreach_parent(__type,__tree,__node,__iterator) \
-   for ( __type::pre_order_iterator __iterator = \
-        __type::pre_order_iterator(__node.node), \
-        __iterator##_END = __tree.root(); __iterator!=__iterator##_END; \
-        __iterator = tree_.parent(__iterator) )
+#define foreach_leaf(__node,__iterator) \
+  typename tree<NodeDataType>::pre_order_iterator __node##_BASE(__node); \
+  typename tree<NodeDataType>::leaf_iterator __iterator, __iterator##_END; \
+  for (__iterator = this->begin_leaf_iterator(__node##_BASE), \
+       __iterator##_END = this->end_leaf_iterator(__node##_BASE); \
+       __iterator!=__iterator##_END; ++__iterator )
 
-class ExecutionTree : public ExecutionObserver {
+template<class NodeDataType>
+class ExecutionTree : public tree<NodeDataType> {
 
-  typedef tree<BasicBlockEntryInfo*> tree_t;
-  typedef tree_t::pre_order_iterator node_iterator;
-  typedef tree_t::children_iterator child_iterator;
-  typedef tree_t::leaf_iterator leaf_iterator;
-  typedef std::map<CVExecutionState*, node_iterator> state_map_t;
+  typedef tree_node_<NodeDataType> Node;
 
-  typedef std::vector<BasicBlockEntryInfo*>  ExecutionPath;
-  typedef std::set<ExecutionPath*>  ExecutionPathSet;
+  struct NodeRef {
+    NodeRef() : node(NULL), count(1) {}
+    Node* node;
+    int count;
+  };
+
+  typedef std::map<CVExecutionState*, NodeRef*> StateNodeMap;
+  typedef std::map<Node*, NodeRef*> NodeMap;
+
+  NodeRef* increment(NodeRef* ref) {
+    ref->count++;
+    return ref;
+  }
+
+  NodeRef* decrement(NodeRef* ref) {
+    assert(ref->count > 0);
+    ref->count--;
+    if (ref->count == 0) {
+      typename tree<NodeDataType>::pre_order_iterator node_it(ref->node);
+      if (this->number_of_children(node_it) == 0) {
+        node_map_.erase(ref->node);
+        this->erase(node_it);
+        delete ref;
+        return NULL;
+      }
+    }
+    return ref;
+  }
 
  public:
-  ExecutionTree();
-  ~ExecutionTree();
 
-  void notify(ExecutionEvent ev);
+  ExecutionTree() {
+    NodeDataType root_data;
+    set_root(root_data);
+  }
 
-  void get_path_set(ExecutionPathSet &path_set);
+  const NodeDataType& get_state_data(CVExecutionState* state) {}
+
+  void get_path_objects(CVExecutionState* state,
+                        std::list<NodeDataType>& path_objects) {
+    assert(has_state(state));
+    Node* node = state_map_[state]->node;
+    assert(node);
+    foreach_parent (node, parent_it) {
+      path_objects.push_front(*parent_it);
+    }
+  }
+
+  bool has_state(CVExecutionState* state) {
+    return state_map_.count(state) != 0;
+  }
+
+  void remove_state(CVExecutionState* state) {
+    assert(has_state(state));
+    decrement(state_map_[state]);
+    state_map_.erase(state);
+  }
+
+  void add_state(CVExecutionState* state, CVExecutionState* parent) {
+    assert(!has_state(state));
+    if (parent) {
+      assert(has_state(parent));
+      state_map_[state] = increment(state_map_[parent]);
+    } else {
+      state_map_[state] = new NodeRef();
+    }
+  }
+
+  void update_state(CVExecutionState* state, NodeDataType &data) {
+    assert(has_state(state));
+    NodeRef *ref = state_map_[state];
+    if (ref->node == NULL) {
+      assert(ref->count == 1);
+      ref->node = append_child(this->root(), data).node;
+      node_map_[ref->node] = ref;
+    } else {
+      Node *parent_node = ref->node;
+      bool found_child_match = false;
+      foreach_child (parent_node, child_it) {
+        if (*(child_it) == data) {
+          found_child_match = true;
+          assert(node_map_.count(child_it.node));
+          state_map_[state] = increment(node_map_[child_it.node]);
+        }
+      }
+      if (!found_child_match) {
+        NodeRef *new_ref = new NodeRef();
+        new_ref->node = append_child(parent_node, data).node;
+        state_map_[state] = new_ref;
+        node_map_[new_ref->node] = new_ref;
+      }
+      ref = decrement(ref);
+      assert(ref);
+    }
+  }
 
  private:
+  // Map of States to NodeRef objects
+  StateNodeMap state_map_;
+  // Map of Nodes to NodeRef objects
+  NodeMap node_map_;
+};
 
-  void add_child_node(node_iterator &node,
-                      CVExecutionState* state);
+////////////////////////////////////////////////////////////////////////////////
 
-  void get_path_from_leaf(leaf_iterator &leaf,
-                          ExecutionPath &path);
+class ExecutionTreeManager : public ExecutionObserver {
+ public:
+  ExecutionTreeManager();
+  void notify(ExecutionEvent ev);
+ private:
+  std::vector< ExecutionTree<ExecutionTrace>* > trees_;
 
-  tree_t tree_;
-  state_map_t state_map_; 
-  state_map_t pending_cloned_states_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
