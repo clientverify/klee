@@ -67,6 +67,22 @@ inline std::ostream &operator<<(std::ostream &os,
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void ExecutionTrace::push_back(const ExecutionTrace& etrace){
+  basic_blocks_.insert(basic_blocks_.end(), etrace.begin(), etrace.end());
+}
+
+void ExecutionTrace::push_back_bb(const klee::KBasicBlock* kbb){
+  basic_blocks_.push_back(kbb);
+}
+
+void ExecutionTrace::push_front(const ExecutionTrace& etrace){
+  basic_blocks_.insert(basic_blocks_.begin(), etrace.begin(), etrace.end());
+}
+
+void ExecutionTrace::push_front_bb(const klee::KBasicBlock* kbb){
+  basic_blocks_.push_front(kbb);
+}
+
 void ExecutionTrace::deserialize(klee::KModule* km) {
   assert(serialized_basic_blocks_);
   foreach (unsigned bb_id, *serialized_basic_blocks_) {
@@ -77,8 +93,8 @@ void ExecutionTrace::deserialize(klee::KModule* km) {
 }
 
 std::ostream& operator<<(std::ostream& os, const ExecutionTrace &etrace) {
-  for (unsigned i = 0; i < etrace.size(); ++i) {
-    os << etrace[i]->id << ", ";
+  foreach (const klee::KBasicBlock* kbb, etrace) {
+    os << kbb->id << ", ";
   }
   return os;
 }
@@ -143,15 +159,10 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
 
       assert(tree->has_state(state));
 
-      std::list<ExecutionTrace> last_path;
+      ExecutionTrace etrace;
 
-      tree->get_path_objects(state, last_path);
-
-      foreach(ExecutionTrace etrace, last_path) {
-        *cv_debug_stream << etrace;
-      }
-      *cv_debug_stream << "\n";
-
+      tree->get_path(state, etrace);
+      CVMESSAGE("TRACE: " << etrace);
 
       break;
     }
