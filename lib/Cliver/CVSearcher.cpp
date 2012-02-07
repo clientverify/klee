@@ -526,6 +526,10 @@ void VerifySearcher::notify(ExecutionEvent ev) {
 			pending_states_.insert(ev.state);
       break;
     }
+    case CV_SOCKET_SHUTDOWN: {
+      cv_->executor()->setHaltExecution(true);
+      break;
+    }
     default:
       break;
   }
