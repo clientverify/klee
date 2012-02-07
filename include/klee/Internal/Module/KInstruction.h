@@ -25,14 +25,15 @@ namespace llvm {
 namespace klee {
   class Executor;
   struct InstructionInfo;
+  struct KBasicBlock;
   class KModule;
-
 
   /// KInstruction - Intermediate instruction representation used
   /// during execution.
   struct KInstruction {
     llvm::Instruction *inst;    
     const InstructionInfo *info;
+    const KBasicBlock *kbb;
 
     /// Value numbers for each operand. -1 is an invalid value,
     /// otherwise negative numbers are indices (negated and offset by

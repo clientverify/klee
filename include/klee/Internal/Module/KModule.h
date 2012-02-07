@@ -35,6 +35,12 @@ namespace klee {
   class KModule;
   template<class T> class ref;
 
+  struct KBasicBlock {
+    llvm::BasicBlock* basic_block;
+    unsigned id;
+    KBasicBlock(llvm::BasicBlock *bb, unsigned _id) : basic_block(bb), id(_id) {}
+  };
+
   struct KFunction {
     llvm::Function *function;
 
@@ -95,6 +101,7 @@ namespace klee {
 
     InstructionInfoTable *infos;
 		std::map<unsigned, KInstruction*> kinsts;
+		std::map<unsigned, KBasicBlock*> kbasicblocks;
 
     std::vector<llvm::Constant*> constants;
     std::map<llvm::Constant*, KConstant*> constantMap;
