@@ -7,6 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "CVCommon.h"
+
 #include "cliver/ClientVerifier.h"
 #include "cliver/CVSearcher.h"
 #include "cliver/ExecutionStateProperty.h"
