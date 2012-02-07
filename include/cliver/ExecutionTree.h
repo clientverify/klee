@@ -17,6 +17,7 @@
 #include "cliver/tree.h"
 
 #include "klee/Solver.h"
+#include "klee/Internal/Module/KModule.h"
 
 #include "llvm/Analysis/Trace.h"
 
@@ -42,18 +43,26 @@ namespace cliver {
 ////////////////////////////////////////////////////////////////////////////////
 
 class ExecutionTrace {
-  typedef std::vector<const klee::KBasicBlock *> BasicBlockList;
+ public:
+  typedef std::list<const klee::KBasicBlock *> BasicBlockList;
   typedef std::vector<unsigned> SerializedBasicBlockList;
 
- public:
+  typedef BasicBlockList::iterator iterator;
+  typedef BasicBlockList::const_iterator const_iterator;
+
   ExecutionTrace() : serialized_basic_blocks_(0) {}
   ExecutionTrace(const klee::KBasicBlock* bb) 
     : serialized_basic_blocks_(0) { basic_blocks_.push_back(bb); }
-  void append(const ExecutionTrace& etrace);
-  void prepend(const ExecutionTrace& etrace);
 
-  const klee::KBasicBlock* operator[](unsigned i) const { return basic_blocks_[i]; }
-  const klee::KBasicBlock* get_block(unsigned i) { return basic_blocks_[i]; }
+  void push_back(const ExecutionTrace& etrace);
+  void push_back_bb(const klee::KBasicBlock* kbb);
+  void push_front(const ExecutionTrace& etrace);
+  void push_front_bb(const klee::KBasicBlock* kbb);
+
+  iterator begin() { return basic_blocks_.begin(); }
+  iterator end() { return basic_blocks_.end(); }
+  const_iterator begin() const { return basic_blocks_.begin(); }
+  const_iterator end() const { return basic_blocks_.end(); }
 
   bool operator==(const ExecutionTrace& b) const { return true; }
   bool operator!=(const ExecutionTrace& b) const { return false; }
@@ -68,8 +77,9 @@ class ExecutionTrace {
   void save(Archive & ar, const unsigned int version) const
   {
     serialized_basic_blocks_ = new SerializedBasicBlockList();
-    foreach(klee::KBasicBlock* kbb, basic_blocks_)
-      serialized_basic_blocks_->push_back(kbb->id);
+
+    for (iterator it=begin(), ie=end(); it!=ie; ++it)
+      serialized_basic_blocks_->push_back((*it)->id);
 
     ar & *serialized_basic_blocks_;
     delete serialized_basic_blocks_;
@@ -90,28 +100,28 @@ class ExecutionTrace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template<class ListDataType>
+class ExecutionTree : public tree<ListDataType> {
+
 #define foreach_child(__node,__iterator) \
-  typename tree<NodeDataType>::pre_order_iterator __node##_BASE(__node); \
-  typename tree<NodeDataType>::children_iterator __iterator, __iterator##_END; \
+  typename tree<ListDataType>::pre_order_iterator __node##_BASE(__node); \
+  typename tree<ListDataType>::children_iterator __iterator, __iterator##_END; \
   for (__iterator = this->begin_children_iterator(__node##_BASE), \
        __iterator##_END = this->end_children_iterator(__node##_BASE); \
        __iterator!=__iterator##_END; ++__iterator )
 
 #define foreach_parent(__node,__iterator) \
-  typename tree<NodeDataType>::pre_order_iterator __iterator(__node); \
+  typename tree<ListDataType>::pre_order_iterator __iterator(__node); \
    for (; __iterator != this->root(); __iterator = this->parent(__iterator) )
 
 #define foreach_leaf(__node,__iterator) \
-  typename tree<NodeDataType>::pre_order_iterator __node##_BASE(__node); \
-  typename tree<NodeDataType>::leaf_iterator __iterator, __iterator##_END; \
+  typename tree<ListDataType>::pre_order_iterator __node##_BASE(__node); \
+  typename tree<ListDataType>::leaf_iterator __iterator, __iterator##_END; \
   for (__iterator = this->begin_leaf_iterator(__node##_BASE), \
        __iterator##_END = this->end_leaf_iterator(__node##_BASE); \
        __iterator!=__iterator##_END; ++__iterator )
 
-template<class NodeDataType>
-class ExecutionTree : public tree<NodeDataType> {
-
-  typedef tree_node_<NodeDataType> Node;
+  typedef tree_node_<ListDataType> Node;
 
   struct NodeRef {
     NodeRef() : node(NULL), count(1) {}
@@ -131,7 +141,7 @@ class ExecutionTree : public tree<NodeDataType> {
     assert(ref->count > 0);
     ref->count--;
     if (ref->count == 0) {
-      typename tree<NodeDataType>::pre_order_iterator node_it(ref->node);
+      typename tree<ListDataType>::pre_order_iterator node_it(ref->node);
       if (this->number_of_children(node_it) == 0) {
         node_map_.erase(ref->node);
         this->erase(node_it);
@@ -145,19 +155,19 @@ class ExecutionTree : public tree<NodeDataType> {
  public:
 
   ExecutionTree() {
-    NodeDataType root_data;
+    ListDataType root_data;
     set_root(root_data);
   }
 
-  const NodeDataType& get_state_data(CVExecutionState* state) {}
+  const ListDataType& get_state_data(CVExecutionState* state) {}
 
-  void get_path_objects(CVExecutionState* state,
-                        std::list<NodeDataType>& path_objects) {
+  void get_path(CVExecutionState* state,
+                ListDataType& path) {
     assert(has_state(state));
     Node* node = state_map_[state]->node;
     assert(node);
     foreach_parent (node, parent_it) {
-      path_objects.push_front(*parent_it);
+      path.push_front(*parent_it);
     }
   }
 
@@ -181,7 +191,7 @@ class ExecutionTree : public tree<NodeDataType> {
     }
   }
 
-  void update_state(CVExecutionState* state, NodeDataType &data) {
+  void update_state(CVExecutionState* state, ListDataType &data) {
     assert(has_state(state));
     NodeRef *ref = state_map_[state];
     if (ref->node == NULL) {
