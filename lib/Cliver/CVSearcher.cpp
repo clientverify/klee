@@ -559,11 +559,12 @@ klee::ExecutionState &NewTrainingSearcher::selectState() {
 
     foreach (CVExecutionState* state, pending_states_) {
       if (!merged_set.count(state)) {
+        CVDEBUG("Removing duplicate state " << state << ":" << state->id());
         // Remove/delete states that are duplicates 
         cv_->executor()->remove_state_internal(state);
-        pending_states_.erase(state);
         ++stats::merged_states;
       } else {
+        CVDEBUG("New stage from unique state " << state << ":" << state->id());
         // Create new stage and add to pending list
         pending_stages_.push_back(get_new_stage(state));
         ++stats::active_states;
@@ -630,6 +631,7 @@ SearcherStage* NewTrainingSearcher::get_new_stage(CVExecutionState* state) {
 
 void NewTrainingSearcher::add_state(CVExecutionState* state) {
   if (stages_.empty()) {
+    CVDEBUG("New stage from state " << state << ":" << state->id());
     stages_.push_back(get_new_stage(state));
   } else {
     if (!check_pending(state))
@@ -644,6 +646,7 @@ void NewTrainingSearcher::remove_state(CVExecutionState* state) {
 
 bool NewTrainingSearcher::check_pending(CVExecutionState* state) {
   if (pending_states_.count(state)) {
+    CVDEBUG("Removing pending state " << state << ":" << state->id());
 
     // Remove State from current stage
     this->remove_state(state);
@@ -657,6 +660,7 @@ void NewTrainingSearcher::notify(ExecutionEvent ev) {
   switch(ev.event_type) {
     case CV_SOCKET_WRITE:
     case CV_SOCKET_READ: {
+      CVDEBUG("Inserting pending state " << ev.state << ":" << ev.state->id());
 			pending_states_.insert(ev.state);
       break;
     }

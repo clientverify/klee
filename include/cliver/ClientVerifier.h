@@ -37,6 +37,7 @@ enum CliverMode {
 	TetrinetMode, 
 	XpilotMode, 
 	DefaultTrainingMode, 
+	TestTrainingMode, 
 	OutOfOrderTrainingMode, 
 	TetrinetTrainingMode,
 	XpilotTrainingMode,
@@ -139,10 +140,13 @@ class ClientVerifier : public klee::InterpreterHandler {
 
 	// Arrays
 	unsigned next_array_id() { return array_id_++; }
+	unsigned round() { return round_number_; }
  
 	// Training paths
 	int read_training_paths(std::vector<std::string> &filename_list,
 			PathManagerSet *path_manager_set);
+
+  CVStream* cvstream() { return cvstream_; }
 
  private:
 
@@ -167,6 +171,7 @@ class ClientVerifier : public klee::InterpreterHandler {
   std::list<ExecutionObserver*> observers_;
 
 	unsigned array_id_;
+	unsigned round_number_;
 };
 
 
