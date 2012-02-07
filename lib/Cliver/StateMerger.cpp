@@ -7,6 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "CVCommon.h"
+
 #include "cliver/CVSearcher.h"
 #include "cliver/CVExecutionState.h"
 #include "cliver/StateMerger.h"
@@ -16,9 +18,8 @@
 #include "cliver/NetworkManager.h"
 #include "cliver/Socket.h"
 
-#include "../Core/Memory.h"
-
 #include "klee/Internal/Module/KModule.h"
+#include "../Core/Memory.h"
 
 #include "llvm/Function.h"
 
