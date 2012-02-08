@@ -178,8 +178,13 @@ ExecutionTreeManager* ExecutionTreeManagerFactory::create(ClientVerifier* cv) {
 			return new TrainingExecutionTreeManager(cv);
 		case TestTrainingMode:
 			return new TrainingTestExecutionTreeManager(cv);
+    case VerifyWithEditCost: {
+      if (g_searcher_stage_mode != PQSearcherStageMode)
+        g_searcher_stage_mode = PQSearcherStageMode;
+      return new VerifyExecutionTreeManager(cv);
+      break;
+    }
 		case VerifyWithTrainingPaths:
-    case VerifyWithEditCost:
 		case DefaultMode:
     default: {
       return new ExecutionTreeManager(cv);
@@ -219,7 +224,7 @@ ExecutionStateProperty* ExecutionStatePropertyFactory::create() {
 			return new VerifyProperty();
 		case TestTrainingMode: 
     case VerifyWithEditCost:
-			return new EditCostProperty();
+			return new EditDistanceProperty();
     default:
       break;
 	}

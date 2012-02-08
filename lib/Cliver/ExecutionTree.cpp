@@ -14,6 +14,7 @@
 
 #include "CVCommon.h"
 #include "cliver/CVExecutor.h"
+#include "cliver/EditDistance.h"
 #include "cliver/ExecutionTree.h"
 #include "cliver/CVExecutionState.h"
 #include "klee/Internal/Module/KInstruction.h"
@@ -111,12 +112,14 @@ void ExecutionTrace::push_back_bb(const klee::KBasicBlock* kbb){
   basic_blocks_.push_back(kbb);
 }
 
+// XXX Inefficient on a vector!
 void ExecutionTrace::push_front(const ExecutionTrace& etrace){
   basic_blocks_.insert(basic_blocks_.begin(), etrace.begin(), etrace.end());
 }
 
+// XXX Inefficient on a vector!
 void ExecutionTrace::push_front_bb(const klee::KBasicBlock* kbb){
-  basic_blocks_.push_front(kbb);
+  basic_blocks_.insert(basic_blocks_.begin(), kbb);
 }
 
 void ExecutionTrace::deserialize(klee::KModule* km) {
@@ -367,14 +370,47 @@ void TrainingTestExecutionTreeManager::notify(ExecutionEvent ev) {
 
     case CV_SOCKET_WRITE:
     case CV_SOCKET_READ: {
+      static int count = 0;
+      count++;
+      if (count <= 1) break;
       assert(trees_.back()->has_state(state));
       ExecutionTrace etrace;
       trees_.back()->get_path(state, etrace);
 
       if (training_trace_map_.count(etrace)) {
-        CVMESSAGE("Matching Training Trace Found!" << training_trace_map_[etrace]);
+        CVMESSAGE("Matching Training Trace Found! " << training_trace_map_[etrace]);
       } else {
         CVMESSAGE("Matching Training Trace Not Found!");
+      }
+
+      typedef EditDistanceTable<Score<ExecutionTrace,int>,ExecutionTrace,int> ExecutionTraceEDT;
+      typedef EditDistanceRow<Score<ExecutionTrace,int>,ExecutionTrace,int> ExecutionTraceEDR;
+      typedef EditDistanceUkkonen<Score<ExecutionTrace,int>,ExecutionTrace,int> ExecutionTraceEDU;
+      typedef EditDistanceUkkonen<Score<ExecutionTrace,int>,ExecutionTrace,int> ExecutionTraceEDU;
+      typedef EditDistanceDynamicUKK<Score<ExecutionTrace,int>,ExecutionTrace,int> ExecutionTraceEDUD;
+      typedef EditDistanceStaticUKK<Score<ExecutionTrace,int>,ExecutionTrace,int> ExecutionTraceEDUS;
+      typedef EditDistanceFullUKK<Score<ExecutionTrace,int>,ExecutionTrace,int> ExecutionTraceEDUF;
+
+      for (std::map<ExecutionTrace,std::string>::iterator it = training_trace_map_.begin(),
+           ie = training_trace_map_.end(); it!=ie; ++it) {
+    
+        int cost_u, cost_r;
+        if (std::abs((int)etrace.size() - (int)(it->first).size()) > 500) {
+          //ExecutionTraceEDR edr(etrace, it->first);
+          //cost_r = edr.compute_editdistance();
+          //CVMESSAGE("Cost: " << cost_r << " for edit distance row-table of " << it->second);
+        } else {
+          ExecutionTraceEDUF edu(etrace, it->first);
+          cost_u = edu.compute_editdistance();
+          //ExecutionTraceEDR edr(etrace, it->first);
+          //cost_r = edr.compute_editdistance();
+          //if (cost_u != cost_r)
+          //  CVMESSAGE("*** cost_u = " << cost_u << ", cost_r = " << cost_r << " ***\n");
+          //assert(cost_u == cost_r);
+          CVMESSAGE("Cost: " << cost_u << " for edit distance full ukkonen of " << it->second);
+ 
+        }
+ 
       }
 
       break;
@@ -382,6 +418,151 @@ void TrainingTestExecutionTreeManager::notify(ExecutionEvent ev) {
 
     case CV_SOCKET_SHUTDOWN: {
 
+      CVDEBUG("Successful socket shutdown. " << state << ":" << state->id());
+      break;
+    }
+
+    default:
+      break;
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+VerifyExecutionTreeManager::VerifyExecutionTreeManager(ClientVerifier* cv) 
+  : ExecutionTreeManager(cv), last_state_seen_(0) {}
+
+void VerifyExecutionTreeManager::initialize() {
+  trees_.push_back(new ExecutionTraceTree() );
+
+  // Read training paths
+  if (!TrainingPathDir.empty()) {
+    foreach(std::string path, TrainingPathDir) {
+      cv_->cvstream()->getFiles(path, ".tpath", TrainingPathFile);
+    }
+  }
+  if (TrainingPathFile.empty() || read_traces(TrainingPathFile) == 0) {
+    cv_error("Error reading training path files, exiting now.");
+  } 
+}
+
+int VerifyExecutionTreeManager::read_traces(
+    std::vector<std::string> &filename_list) {
+
+  int dup_count = 0;
+	foreach (std::string filename, filename_list) {
+
+		std::ifstream *is = new std::ifstream(filename.c_str(),
+				std::ifstream::in | std::ifstream::binary );
+
+		if (is != NULL && is->good()) {
+      ExecutionTrace etrace;
+      etrace.read(*is, cv_->executor()->get_kmodule());
+
+      if (training_trace_map_.count(etrace) == 0)
+        training_trace_map_[etrace] = filename;
+      else
+        ++dup_count;
+
+			delete is;
+		}
+	}
+  CVMESSAGE("Duplicate traces " << dup_count );
+	return training_trace_map_.size();
+}
+
+typedef EditDistanceRow<Score<ExecutionTrace,int>,ExecutionTrace,int> 
+ExecutionTraceED;
+
+void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
+  CVExecutionState* state = ev.state;
+  CVExecutionState* parent = ev.parent;
+
+  switch (ev.event_type) {
+    case CV_ROUND_START: {
+      trees_.push_back(new ExecutionTraceTree() );
+      break;
+    }
+    case CV_BASICBLOCK_ENTRY: {
+
+      if (!trees_.back()->has_state(state)) {
+        CVDEBUG("Adding parent-less state: " << state << ", " << state->id() );
+        trees_.back()->add_state(state, NULL);
+      }
+
+      ExecutionTrace etrace(state->prevPC->kbb);
+      trees_.back()->update_state(state, etrace);
+
+      EditDistanceProperty *edp 
+        = static_cast<EditDistanceProperty*>(state->property());
+      //if (state != last_state_seen_) {
+      if (edp->recompute) {
+        edp->recompute = false;
+        //last_state_seen_ = state;
+        ExecutionTrace full_etrace;
+        trees_.back()->get_path(state, full_etrace);
+
+        CVDEBUG("Recalculating min edit_distance, trace_size: "
+                << full_etrace.size() << ", prev min edit distance: " 
+                << edp->edit_distance);
+
+        std::map<ExecutionTrace,std::string>::iterator it 
+          = training_trace_map_.begin(), ie = training_trace_map_.end(); 
+
+        int min_edit_distance = INT_MAX;
+        std::string min_edit_distance_str;
+        for (; it!=ie; ++it) {
+          if (it->first.size() > full_etrace.size()) {
+            ExecutionTraceED ed(full_etrace, it->first);
+            int edit_distance = ed.compute_editdistance();
+            if (edit_distance < min_edit_distance) {
+              min_edit_distance = edit_distance;
+              min_edit_distance_str = it->second;
+            }
+            min_edit_distance = std::min(min_edit_distance, ed.compute_editdistance());
+          }
+        }
+        edp->edit_distance = min_edit_distance;
+        CVDEBUG("Min edit-distance: " << min_edit_distance
+                << " " << min_edit_distance_str);
+      }
+      break;
+    }
+
+    case CV_STATE_REMOVED: {
+      CVDEBUG("Removing state: " << state << ", " << state->id() );
+      trees_.back()->remove_state(state);
+      break;
+    }
+
+    case CV_STATE_CLONE: {
+      CVDEBUG("Cloned state: " << state << " : " << state->id() 
+              << ", parent: " << parent << " : " << parent->id());
+      trees_.back()->add_state(state, parent);
+      last_state_seen_ = state;
+      
+      EditDistanceProperty *edp 
+        = static_cast<EditDistanceProperty*>(state->property());
+      EditDistanceProperty *edp_parent
+        = static_cast<EditDistanceProperty*>(parent->property());
+      edp->recompute=true;
+      edp_parent->recompute=true;
+
+      break;
+    }
+
+    case CV_SOCKET_WRITE:
+    case CV_SOCKET_READ: {
+
+      ExecutionTrace full_etrace;
+      trees_.back()->get_path(state, full_etrace);
+
+      CVDEBUG("End of round, path length: " << full_etrace.size());
+
+      break;
+    }
+
+    case CV_SOCKET_SHUTDOWN: {
       CVDEBUG("Successful socket shutdown. " << state << ":" << state->id());
       break;
     }

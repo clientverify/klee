@@ -6,6 +6,7 @@
 //
 // ??? Make CVExecutionState a template parameter to ExecutionTree?
 // TODO Define add/update/remove semantics for ExecutionTree template class
+// TODO optimize get_path
 //
 //===----------------------------------------------------------------------===//
 #ifndef CLIVER_EXECUTION_TREE_H
@@ -44,7 +45,10 @@ namespace cliver {
 
 class ExecutionTrace {
  public:
-  typedef std::list<const klee::KBasicBlock *> BasicBlockList;
+  class Tag {
+
+  };
+  typedef std::vector<const klee::KBasicBlock *> BasicBlockList;
   typedef std::vector<unsigned> SerializedBasicBlockList;
 
   typedef BasicBlockList::iterator iterator;
@@ -63,6 +67,9 @@ class ExecutionTrace {
   iterator end() { return basic_blocks_.end(); }
   const_iterator begin() const { return basic_blocks_.begin(); }
   const_iterator end() const { return basic_blocks_.end(); }
+
+  inline const klee::KBasicBlock* operator[](unsigned i) { return basic_blocks_[i]; }
+  inline const klee::KBasicBlock* operator[](unsigned i) const { return basic_blocks_[i]; }
 
   bool operator==(const ExecutionTrace& b) const;
   bool operator!=(const ExecutionTrace& b) const;
@@ -271,6 +278,18 @@ class TrainingExecutionTreeManager : public ExecutionTreeManager {
   void initialize();
   void notify(ExecutionEvent ev);
  private:
+
+};
+
+class VerifyExecutionTreeManager : public ExecutionTreeManager {
+ public:
+  VerifyExecutionTreeManager(ClientVerifier *cv);
+  void initialize();
+  void notify(ExecutionEvent ev);
+ private:
+  int read_traces(std::vector<std::string> &filename_list);
+  std::map<ExecutionTrace,std::string> training_trace_map_;
+  CVExecutionState* last_state_seen_;
 
 };
 
