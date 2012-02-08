@@ -4,12 +4,12 @@
 //
 //===----------------------------------------------------------------------===//
 //
-//
 //===----------------------------------------------------------------------===//
 #ifndef CLIVER_EDITDISTANCH_H
 #define CLIVER_EDITDISTANCH_H
 
 #include <cmath>
+#include <stack>
 #include <algorithm>
 
 namespace cliver {
@@ -198,7 +198,7 @@ class EditDistanceRow {
   }
 
   ValueType compute_editdistance() {
-    costs_ = new std::vector<ValueType>(m_*2, 0);
+    costs_ = new ValueType[m_*2];
     for (int i=0; i<m_; ++i) {
       set_cost(i, 0, 0, i);
     }
@@ -209,21 +209,21 @@ class EditDistanceRow {
   }
 
   inline void set_cost(unsigned i, unsigned j, unsigned k, ValueType cost) {
-    (*costs_)[i + (j % 2)*m_] = cost;
+    //(*costs_)[i + (j % 2)*m_] = cost;
+    costs_[i + (j % 2)*m_] = cost;
   }
 
   inline ValueType cost(unsigned i, unsigned j) const {
-    return (*costs_)[i + (j % 2)*m_];
+    //return (*costs_)[i + (j % 2)*m_];
+    return costs_[i + (j % 2)*m_];
   }
-
-  const std::vector<ValueType>& costs() const { return *costs_; }
 
  protected:
   EditDistanceRow() {}
   const SequenceType &s_;
   const SequenceType &t_;
   int m_, n_;
-  std::vector<ValueType>* costs_;
+  ValueType* costs_;
   ScoreType score_;
 };
 
@@ -236,7 +236,7 @@ std::ostream& operator<<(std::ostream& os,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define UDIM 10
+#define UDIM 100
 
 template<class ScoreType, class SequenceType, class ValueType>
 class EditDistanceUkkonen {
@@ -245,7 +245,9 @@ class EditDistanceUkkonen {
    : s_(s.size() > t.size() ? s : t), 
      t_(s.size() > t.size() ? t : s), 
      m_(s_.size()+1), 
-     n_(t_.size()+1) {}
+     n_(t_.size()+1) {
+    assert(m_ < UDIM);
+  }
 
   ~EditDistanceUkkonen() {
   }
@@ -259,7 +261,6 @@ class EditDistanceUkkonen {
   }
 
   inline void set_U(int i, int j, ValueType v) {
-    //std::cout << "set_U(" << i << ", " << j << ") = " << v << "\n";
     U_c[i+(UDIM/2)][j] = true;
     U_v[i+(UDIM/2)][j] = v;
   }
@@ -267,7 +268,7 @@ class EditDistanceUkkonen {
   ValueType Ukkonen(int ab, int d) {
     ValueType dist;
     if (std::abs(ab) > d) {
-      return -INT_MAX;
+      return INT_MIN;
     }
 
     if (computed_U(ab,d)) {
@@ -282,8 +283,6 @@ class EditDistanceUkkonen {
 
     while (dist < s_.size() && (dist-ab) < t_.size() &&
            (score_.match(s_, t_, dist, dist-ab) == 0)) {
-      //std::cout << "Incremented distance! " 
-      //   << s_[dist] << ", " << t_[dist-ab] << ", dist: "<< dist+1 << "\n";
       dist++;
     }
 
@@ -293,14 +292,12 @@ class EditDistanceUkkonen {
 
   // As = s, Bs = t
   ValueType compute_editdistance() {
+    //U_ = new ValueType[m_*m_];
 
     for (int i=0; i<UDIM; i++)
       for (int j=0; j<UDIM; j++)
-        U_v[i][j] = -INT_MAX;
- 
-    for (int i=0; i<UDIM; i++)
-      for (int j=0; j<UDIM; j++)
         U_c[i][j] = false;       
+
 
     // U[0,0] = max i s.t. As[1...i] = Bs[1...i]
     int i = 1;
@@ -310,17 +307,11 @@ class EditDistanceUkkonen {
     set_U(0, 0, i-1);
 
     ValueType edit_cost = 0;
-    //std::cout << "\n";
 
     int s_size = s_.size();
-    //std::cout << "Ukkonen(" << s_.size()-t_.size() << ", " << edit_cost << ")\n";
     while (Ukkonen(s_.size()-t_.size(), edit_cost) < s_size) {
-      //debug_print(std::cout);
-      //std::cout << "\n";
       edit_cost++;
-      //std::cout << "Ukkonen(" << s_.size()-t_.size() << ", " << edit_cost << ")\n";
     }
-    //debug_print(std::cout);
 
     return edit_cost;
   }
@@ -330,7 +321,7 @@ class EditDistanceUkkonen {
     for (int i=0; i<UDIM; ++i) {
       for (int j=0; j<UDIM; j++) {
         int fwidth = os.width(4);
-        if (U_v[i][j] == -INT_MAX)
+        if (U_v[i][j] == INT_MIN)
           os << ".";
         else
           os << U_v[i][j];
@@ -342,11 +333,14 @@ class EditDistanceUkkonen {
 
  protected:
   EditDistanceUkkonen() {}
+
   const SequenceType &s_;
   const SequenceType &t_;
   int m_, n_;
   ValueType U_v[UDIM][UDIM];
   ValueType U_c[UDIM][UDIM];
+  //ValueType *U_v;
+  //ValueType *U_c;
   ScoreType score_;
 };
 
@@ -357,6 +351,619 @@ std::ostream& operator<<(std::ostream& os,
   return os;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+// Non-recursive
+template<class ScoreType, class SequenceType, class ValueType>
+class EditDistanceUKK {
+ public:
+  EditDistanceUKK(const SequenceType &s, const SequenceType &t) 
+   : s_(s.size() > t.size() ? s : t), 
+     t_(s.size() > t.size() ? t : s), 
+     m_(s_.size()+1), 
+     n_(t_.size()+1) {}
+
+  ~EditDistanceUKK() {
+  }
+
+  inline ValueType U(int i, int j) const {
+    if (std::abs(i) > j)
+      return INT_MIN;
+    return U_v[i+(UDIM/2)][j];
+  }
+
+  inline bool computed_U(int i, int j) const {
+    if (std::abs(i) > j)
+      return true;
+    return U_c[i+(UDIM/2)][j];
+  }
+
+  inline void set_U(int i, int j, ValueType v) {
+    U_c[i+(UDIM/2)][j] = true;
+    U_v[i+(UDIM/2)][j] = v;
+  }
+
+  inline ValueType compute_U(int ab, int d) {
+
+    ValueType d1, d2, d3, dist;
+    if (computed_U(ab, d)) {
+      dist = U(ab, d);
+    } else {
+
+      assert(computed_U(ab-1, d-1));
+      assert(computed_U(ab, d-1));
+      assert(computed_U(ab+1, d-1));
+
+      d1 = U(ab+1, d-1);
+      d2 = U(ab,   d-1) + 1;
+      d3 = U(ab-1, d-1) + 1;
+      dist = std::max(d1, std::max(d2, d3));
+
+      while (dist < s_.size() && (dist-ab) < t_.size() &&
+            (score_.match(s_, t_, dist, dist-ab) == 0)) {
+        dist++;
+      }
+    }
+    return dist;
+  }
+
+  typedef std::stack<std::pair<int,int> > UStack;
+
+  ValueType UKK(int ab, int d) {
+    ValueType dist;
+    UStack to_compute;
+
+    for (int i=1; i<d; ++i) {
+      bool all_clear = true;
+      for (int j=-i; j<=i; ++j) {
+        if (computed_U(ab+j, d-i) == false) {
+          all_clear = false;
+          to_compute.push(std::make_pair(ab+j, d-i));
+        }
+      }
+      if (all_clear)
+        break;
+    }
+
+    while (!to_compute.empty()) {
+      int i = to_compute.top().first, j = to_compute.top().second;
+      set_U(i, j, compute_U(i, j));
+      to_compute.pop();
+    }
+
+    dist = compute_U(ab, d);
+
+    set_U(ab, d, dist);
+    return dist;
+  }
+
+  ValueType compute_editdistance() {
+
+    for (int i=0; i<UDIM; i++)
+      for (int j=0; j<UDIM; j++)
+        U_v[i][j] = INT_MIN;
+ 
+    for (int i=0; i<UDIM; i++)
+      for (int j=0; j<UDIM; j++)
+        U_c[i][j] = false;       
+
+    // U[0,0] = max i s.t. As(s)[1...i] = Bs(t)[1...i]
+    int i = 1;
+    while (i < t_.size() && score_.match(s_, t_, i-1, i-1) == 0)
+      ++i;
+
+    set_U(0, 0, i-1);
+
+    ValueType edit_cost = 0;
+
+    int s_size = s_.size();
+    while (UKK(s_.size()-t_.size(), edit_cost) < s_size) {
+      edit_cost++;
+    }
+
+    return edit_cost;
+  }
+
+  void debug_print(std::ostream& os) const {
+    int fwidth;
+    for (int i=0; i<UDIM; ++i) {
+      for (int j=0; j<UDIM; j++) {
+        int fwidth = os.width(4);
+        if (U_v[i][j] == INT_MIN)
+          os << ".";
+        else
+          os << U_v[i][j];
+        os.width(fwidth);
+      }
+      os << "\n";
+    }
+  }
+
+ protected:
+  EditDistanceUKK() {}
+  const SequenceType &s_;
+  const SequenceType &t_;
+  int m_, n_;
+  ValueType U_v[UDIM][UDIM];
+  ValueType U_c[UDIM][UDIM];
+  ScoreType score_;
+};
+
+template<class ScoreType, class SequenceType, class ValueType>
+std::ostream& operator<<(std::ostream& os, 
+  const EditDistanceUKK< ScoreType, SequenceType, ValueType > &edt) {
+  edt.debug_print(os);
+  return os;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+template<class ScoreType, class SequenceType, class ValueType>
+class EditDistanceDynamicUKK {
+ public:
+  EditDistanceDynamicUKK(const SequenceType &s, const SequenceType &t) 
+   : s_(s.size() > t.size() ? s : t), 
+     t_(s.size() > t.size() ? t : s), 
+     m_(s_.size()+1), 
+     n_(t_.size()+1) {}
+
+  ~EditDistanceDynamicUKK() {
+    for (int i=0; i< max_edit_distance_; ++i)
+      free(U_[i]);
+    free(U_col_);
+    free(U_);
+  }
+
+  inline ValueType U(int i, int j) const {
+    if (std::abs(i) > j)
+      return INT_MIN;
+    assert(j < max_edit_distance_ && get_row(i) < U_col_[j]);
+    return U_[j][get_row(i)];
+  }
+
+  inline bool computed_U(int i, int j) const {
+    if (std::abs(i) > j)
+      return true;
+    if (j >= max_edit_distance_ || get_row(i) >= U_col_[j])
+      return false;
+    return U_[j][get_row(i)] != -1;
+  }
+
+  inline void set_U(int i, int j, ValueType v) {
+    if (std::abs(i) > j) {
+      assert(v = INT_MIN);
+      return;
+    }
+    if (j >= max_edit_distance_ || get_row(i) >= U_col_[j])
+      alloc_column(i, j);
+
+    U_[j][get_row(i)] = v;
+  }
+
+  inline unsigned get_row(int i) const {
+    if (i < 0)
+      return (i*-2)-1;
+    return i*2;
+  }
+
+  inline ValueType compute_U(int ab, int d) {
+
+    ValueType d1, d2, d3, dist;
+
+    if (computed_U(ab, d)) {
+      dist = U(ab, d);
+      if (ab == 0 && d == 0) {
+        while (dist < s_.size() && (dist-ab) < t_.size() &&
+              (score_.match(s_, t_, dist, dist-ab) == 0)) {
+          dist++;
+        }
+      }
+    } else {
+
+      assert(computed_U(ab-1, d-1));
+      assert(computed_U(ab, d-1));
+      assert(computed_U(ab+1, d-1));
+
+      d1 = U(ab+1, d-1);
+      d2 = U(ab,   d-1) + 1;
+      d3 = U(ab-1, d-1) + 1;
+      dist = std::max(d1, std::max(d2, d3));
+
+      while (dist < s_.size() && (dist-ab) < t_.size() &&
+            (score_.match(s_, t_, dist, dist-ab) == 0)) {
+        dist++;
+      }
+    }
+    return dist;
+  }
+
+  typedef std::stack<std::pair<int,int> > UStack;
+
+  ValueType UKK(int ab, int d) {
+    ValueType dist;
+    UStack to_compute;
+
+    for (int i=1; i<d; ++i) {
+      bool all_clear = true;
+      for (int j=-i; j<=i; ++j) {
+        if (computed_U(ab+j, d-i) == false) {
+          all_clear = false;
+          to_compute.push(std::make_pair(ab+j, d-i));
+        }
+      }
+      if (all_clear)
+        break;
+    }
+
+    while (!to_compute.empty()) {
+      int i = to_compute.top().first, j = to_compute.top().second;
+      set_U(i, j, compute_U(i, j));
+      to_compute.pop();
+    }
+
+    dist = compute_U(ab, d);
+
+    set_U(ab, d, dist);
+    return dist;
+  }
+
+  void alloc_column(int i, int j) {
+    unsigned col_size = 0;
+    if (j == 0) {
+      col_size = 1;
+    } else {
+      assert(U_col_[j-1] > 0);
+      col_size = std::max(U_col_[j-1], get_row(i)) + 1;
+    }
+
+    if (j >= max_edit_distance_) {
+      U_col_[j] = 0;
+      U_[j] = (ValueType*) malloc(col_size * sizeof(ValueType));
+      assert(U_[j]);
+      max_edit_distance_++;
+    } else {
+      //std::cout << "reallocate " << col_size << ", i=" << i << ", j=" << j << "\n";
+      U_[j] = (ValueType*) realloc(U_[j], col_size * sizeof(ValueType));
+      assert(U_[j]);
+    }
+
+    // Initialize values
+    for (ValueType k=U_col_[j]; k<col_size; ++k) {
+      U_[j][k] = -1;
+    }
+    U_col_[j] = col_size;
+  }
+
+  ValueType compute_editdistance() {
+
+    max_edit_distance_ = 0;
+    U_col_ = (unsigned*) malloc(s_.size() * sizeof(unsigned));
+    U_ = (ValueType**) malloc(s_.size() * sizeof(ValueType*));
+
+    alloc_column(0, 0);
+
+    // U[0,0] = max i s.t. As(s)[1...i] = Bs(t)[1...i]
+    int i = 1;
+    while (i < t_.size() && score_.match(s_, t_, i-1, i-1) == 0)
+      ++i;
+
+    set_U(0, 0, i-1);
+
+    ValueType edit_cost = 0;
+
+    int s_size = s_.size();
+    while (UKK(s_.size()-t_.size(), edit_cost) < s_size) {
+      edit_cost++;
+    }
+
+    return edit_cost;
+  }
+
+  void debug_print(std::ostream& os) const {
+    int fwidth;
+    unsigned max_col = 0;
+
+    for (int j=0; j<max_edit_distance_; j++) 
+      max_col = std::max(max_col, U_col_[j]/2);
+
+    for (int j=0; j<max_edit_distance_; j++) {
+
+      for (int i=0; i < max_col - U_col_[j]/2; ++i) {
+        int fwidth = os.width(4);
+        os << ".";
+        os.width(fwidth);
+      }
+
+      int start=-(int)(U_col_[j]/2), end = (U_col_[j])/2;
+      if (start == end) end++;
+      for (int i=start; i < end; ++i) {
+        int fwidth = os.width(4);
+        if (U_[j][get_row(i)] == -1)
+          os << ".";
+        else
+          os << U_[j][get_row(i)];
+        os.width(fwidth);
+      }
+      for (int i=0; i < max_col - U_col_[j]/2; ++i) {
+        int fwidth = os.width(4);
+        os << ".";
+        os.width(fwidth);
+      }
+
+      os << "\n";
+    }
+  }
+
+ protected:
+  EditDistanceDynamicUKK() {}
+  const SequenceType &s_;
+  const SequenceType &t_;
+  int m_, n_;
+
+  ValueType** U_;
+  unsigned* U_col_;
+  unsigned max_edit_distance_;
+
+  ScoreType score_;
+};
+
+template<class ScoreType, class SequenceType, class ValueType>
+std::ostream& operator<<(std::ostream& os, 
+  const EditDistanceDynamicUKK< ScoreType, SequenceType, ValueType > &edt) {
+  edt.debug_print(os);
+  return os;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+template<class ScoreType, class SequenceType, class ValueType>
+class EditDistanceStaticUKK {
+ public:
+  EditDistanceStaticUKK(const SequenceType &s, const SequenceType &t) 
+   : s_(s.size() > t.size() ? s : t), 
+     t_(s.size() > t.size() ? t : s), 
+     m_(s_.size()+1), 
+     n_(t_.size()+1) {}
+
+  ~EditDistanceStaticUKK() {
+  }
+
+  inline ValueType U(int i, int j) {
+    if (std::abs(i) > j)
+      return INT_MIN;
+    return U_[std::make_pair(i,j)];
+  }
+
+  inline bool computed_U(int i, int j) const {
+    if (std::abs(i) > j)
+      return true;
+    return U_.count(std::make_pair(i,j));
+  }
+
+  inline void set_U(int i, int j, ValueType v) {
+    U_[std::make_pair(i,j)] = v;
+  }
+
+  inline ValueType compute_U(int ab, int d) {
+
+    ValueType d1, d2, d3, dist;
+    if (computed_U(ab, d)) {
+      dist = U(ab, d);
+    } else {
+
+      assert(computed_U(ab-1, d-1));
+      assert(computed_U(ab, d-1));
+      assert(computed_U(ab+1, d-1));
+
+      d1 = U(ab+1, d-1);
+      d2 = U(ab,   d-1) + 1;
+      d3 = U(ab-1, d-1) + 1;
+      dist = std::max(d1, std::max(d2, d3));
+
+      while (dist < s_.size() && (dist-ab) < t_.size() &&
+            (score_.match(s_, t_, dist, dist-ab) == 0)) {
+        dist++;
+      }
+    }
+    return dist;
+  }
+
+  typedef std::stack<std::pair<int,int> > UStack;
+
+  ValueType UKK(int ab, int d) {
+    ValueType dist;
+    UStack to_compute;
+
+    for (int i=1; i<d; ++i) {
+      bool all_clear = true;
+      for (int j=-i; j<=i; ++j) {
+        if (computed_U(ab+j, d-i) == false) {
+          all_clear = false;
+          to_compute.push(std::make_pair(ab+j, d-i));
+        }
+      }
+      if (all_clear)
+        break;
+    }
+
+    while (!to_compute.empty()) {
+      int i = to_compute.top().first, j = to_compute.top().second;
+      set_U(i, j, compute_U(i, j));
+      to_compute.pop();
+    }
+
+    dist = compute_U(ab, d);
+
+    set_U(ab, d, dist);
+    return dist;
+  }
+
+  ValueType compute_editdistance() {
+    int i = 1;
+    while (i < t_.size() && score_.match(s_, t_, i-1, i-1) == 0)
+      ++i;
+
+    set_U(0, 0, i-1);
+
+    ValueType edit_cost = 0;
+
+    int s_size = s_.size();
+    while (UKK(s_.size()-t_.size(), edit_cost) < s_size) {
+      edit_cost++;
+    }
+
+    return edit_cost;
+  }
+
+  void debug_print(std::ostream& os) const {
+    os << "debug_print not supported\n";
+  }
+
+ protected:
+  EditDistanceStaticUKK() {}
+  const SequenceType &s_;
+  const SequenceType &t_;
+  int m_, n_;
+
+  std::map<std::pair<int,int>, ValueType> U_;
+
+  ScoreType score_;
+};
+
+template<class ScoreType, class SequenceType, class ValueType>
+std::ostream& operator<<(std::ostream& os, 
+  const EditDistanceStaticUKK< ScoreType, SequenceType, ValueType > &edt) {
+  edt.debug_print(os);
+  return os;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+
+////////////////////////////////////////////////////////////////////////////////
+
+#define ROW_INDEX(x) (x) < 0 ? (((x)*-2)-1) : ((x)*2)
+#define NEG_INF INT_MIN
+
+template<class ScoreType, class SequenceType, class ValueType>
+class EditDistanceFullUKK {
+ public:
+  EditDistanceFullUKK(const SequenceType &s, const SequenceType &t) 
+   : s_(s.size() > t.size() ? s : t), 
+     t_(s.size() > t.size() ? t : s), 
+     m_(s_.size()+1), 
+     n_(t_.size()+1) {}
+
+  ~EditDistanceFullUKK() {
+    delete U_;
+  }
+
+  inline ValueType U(int i, int j) {
+    if (std::abs(i) > j)
+      return NEG_INF;
+    return U_[ROW_INDEX(i) + (j % 2)*(m_*2)];
+  }
+
+  inline void set_U(int i, int j, ValueType v) {
+    U_[ROW_INDEX(i) + (j % 2)*(m_*2)] = v;
+  }
+
+  inline unsigned get_row(int i) const {
+    if (i < 0)
+      return (i*-2)-1;
+    return i*2;
+  }
+
+  inline ValueType compute_U(int ab, int d) {
+
+    ValueType d1, d2, d3, dist;
+
+
+    if (std::abs(ab) > d) {
+      return NEG_INF;
+    } else {
+
+      if (ab == 0 && d == 0) {
+        dist = U(ab, d);
+      } else {
+        d1 = U(ab+1, d-1);
+        d2 = U(ab,   d-1) + 1;
+        d3 = U(ab-1, d-1) + 1;
+        dist = std::max(d1, std::max(d2, d3));
+      }
+
+      while (dist < s_.size() && (dist-ab) < t_.size() &&
+            (score_.match(s_, t_, dist, dist-ab) == 0)) {
+        dist++;
+      }
+    }
+    return dist;
+  }
+
+  typedef std::stack<std::pair<int,int> > UStack;
+
+  ValueType UKK(int ab, int d) {
+    ValueType dist;
+
+    int i = 0;
+    while (std::abs(i) <= d) {
+      dist = compute_U(i, d);
+      set_U(i, d, dist);
+      i--;
+    }
+    i = 1;
+    while (std::abs(i) <= d) {
+      dist = compute_U(i, d);
+      set_U(i, d, dist);
+      i++;
+    }
+
+    if (std::abs(ab) > d)
+      return NEG_INF;
+    return U(ab, d);
+  }
+
+  ValueType compute_editdistance() {
+ 
+    U_ = new ValueType[m_*4];
+
+    int i = 1;
+    while (i < t_.size() && score_.match(s_, t_, i-1, i-1) == 0)
+      ++i;
+
+    set_U(0, 0, i-1);
+
+    ValueType edit_cost = 0;
+
+    int s_size = s_.size();
+    while (UKK(s_.size()-t_.size(), edit_cost) < s_size) {
+      edit_cost++;
+    }
+
+    return edit_cost;
+  }
+
+  void debug_print(std::ostream& os) const {
+    os << "debug_print not supported\n";
+  }
+
+ protected:
+  EditDistanceFullUKK() {}
+  const SequenceType &s_;
+  const SequenceType &t_;
+  int m_, n_;
+  ValueType* U_;
+
+
+  ScoreType score_;
+};
+
+template<class ScoreType, class SequenceType, class ValueType>
+std::ostream& operator<<(std::ostream& os, 
+  const EditDistanceFullUKK< ScoreType, SequenceType, ValueType > &edt) {
+  edt.debug_print(os);
+  return os;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
