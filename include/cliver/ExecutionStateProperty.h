@@ -146,5 +146,21 @@ class EditCostProperty : public ExecutionStateProperty {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class EditDistanceProperty : public ExecutionStateProperty {
+ public: 
+	EditDistanceProperty();
+	EditDistanceProperty* clone();
+  void print(std::ostream &os) const;
+	int compare(const ExecutionStateProperty &b) const;
+
+ public: 
+	// Property values
+	int edit_distance;
+	bool recompute;
+};
+
+
+////////////////////////////////////////////////////////////////////////////////
+
 } // end namespace cliver
 #endif // CLIVER_EXECUTION_STATE_PROPERTY_H

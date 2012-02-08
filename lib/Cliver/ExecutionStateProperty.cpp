@@ -115,6 +115,34 @@ void EditCostProperty::print(std::ostream &os) const {
 		 << "]";
 }
 
+//////////////////////////////////////////////////////////////////////////////
+
+EditDistanceProperty::EditDistanceProperty() 
+	: edit_distance(INT_MAX), recompute(true) {}
+
+EditDistanceProperty* EditDistanceProperty::clone() { 
+  EditDistanceProperty* ecp = new EditDistanceProperty(*this);
+  ecp->edit_distance = edit_distance;
+  ecp->recompute = true;
+  return ecp;
+}
+
+int EditDistanceProperty::compare(const ExecutionStateProperty &b) const {
+	const EditDistanceProperty *_b = static_cast<const EditDistanceProperty*>(&b);
+
+  if (edit_distance > _b->edit_distance)
+    return 1;
+  else if (edit_distance < _b->edit_distance)
+    return -1;
+  return 0;
+}
+
+void EditDistanceProperty::print(std::ostream &os) const {
+	os << "[edit distance: " << edit_distance
+		 << "]";
+}
+
+
 ////////////////////////////////////////////////////////////////////////////////
 
 } // End cliver namespace
