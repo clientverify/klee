@@ -115,7 +115,7 @@ class EditDistanceTable {
     int fwidth;
     os << " ";
     for (int i=0; i<m_; ++i) {
-      fwidth = os.width(4);
+      fwidth = os.width(8);
       if (i == 0)
         os << "#";
       else
@@ -135,7 +135,7 @@ class EditDistanceTable {
 
   void debug_print_cost_row(std::ostream& os, int j) const {
     for (int i=0; i<m_; ++i) {
-      int fwidth = os.width(4);
+      int fwidth = os.width(8);
       os << cost(i,j);
       os.width(fwidth);
     }
