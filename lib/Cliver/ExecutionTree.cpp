@@ -306,6 +306,24 @@ void TrainingTestExecutionTreeManager::initialize() {
   if (TrainingPathFile.empty() || read_traces(TrainingPathFile) == 0) {
     cv_error("Error reading training path files, exiting now.");
   } 
+
+  ed_tree_ = new EDTree();
+
+  for (std::map<ExecutionTrace,std::string>::iterator it = training_trace_map_.begin(),
+       ie = training_trace_map_.end(); it!=ie; ++it) {
+    ed_tree_->insert(it->first, &(it->second));
+  }
+  std::vector<ExecutionTrace> trace_list;
+  std::vector<const std::string*> name_list;
+  ed_tree_->get_all_sequences(trace_list, &name_list);
+  CVMESSAGE("Loaded " << trace_list.size() << " out of " 
+          << training_trace_map_.size() << " training traces into the tree!");
+  for (int i=0; i < trace_list.size(); ++i) {
+    if (training_trace_map_.count(trace_list[i]) == 0) {
+      CVMESSAGE("Trace missing for " << *(name_list[i]));
+      cv_error("Error in EditDistanceTree, exiting.");
+    }
+  }
 }
 
 int TrainingTestExecutionTreeManager::read_traces(
