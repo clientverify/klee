@@ -16,81 +16,67 @@ namespace cliver {
 
 enum { MATCH=0, INSERT, DELETE };
 
-template<class SequenceType, class ElementType, class ValueType>
+template<class SequenceType, class ElementType, class ValueType,
+         int MatchCost=1, int DeleteCost=1, int InsertCost=1>
 class Score {
  public:
-
-  Score()
-    : match_cost_(1), 
-      delete_cost_(1), 
-      insert_cost_(1) {}
-
-  Score(ValueType match_cost, ValueType delete_cost, ValueType insert_cost)
-    : match_cost_(match_cost), 
-      delete_cost_(delete_cost), 
-      insert_cost_(insert_cost) {}
-
-  inline ValueType match(const SequenceType &s1, const SequenceType &s2, 
+  static inline ValueType match(const SequenceType &s1, const SequenceType &s2, 
                          unsigned pos1, unsigned pos2) {
     return match(s1[pos1], s2[pos2]);
   }
 
-  inline ValueType insert(const SequenceType &s1, const SequenceType &s2, 
+  static inline ValueType insert(const SequenceType &s1, const SequenceType &s2, 
                           unsigned pos1, unsigned pos2) {
     return insert(s1[pos1], s2[pos2]);
   }
 
-  inline ValueType del(const SequenceType &s1, const SequenceType &s2, 
+  static inline ValueType del(const SequenceType &s1, const SequenceType &s2, 
                        unsigned pos1, unsigned pos2) {
     return del(s1[pos1], s2[pos2]);
   }
 
-  inline ValueType match(const SequenceType &s1, const ElementType &e2,
+  static inline ValueType match(const SequenceType &s1, const ElementType &e2, 
                          unsigned pos1) {
     return match(s1[pos1], e2);
   }
 
-  inline ValueType insert(const SequenceType &s1, const ElementType &e2,
+  static inline ValueType insert(const SequenceType &s1, const ElementType &e2, 
                           unsigned pos1) {
     return insert(s1[pos1], e2);
   }
 
-  inline ValueType del(const SequenceType &s1, const ElementType &e2,
+  static inline ValueType del(const SequenceType &s1, const ElementType &e2, 
                        unsigned pos1) {
     return del(s1[pos1], e2);
   }
 
-  inline ValueType match(const ElementType &e1, const SequenceType &s2,
+  static inline ValueType match(const ElementType &e1, const SequenceType &s2, 
                          unsigned pos2) {
     return match(e1, s2[pos2]);
   }
 
-  inline ValueType insert(const ElementType &e1, const SequenceType &s2,
+  static inline ValueType insert(const ElementType &e1, const SequenceType &s2, 
                           unsigned pos2) {
     return insert(e1, s2[pos2]);
   }
 
-  inline ValueType del(const ElementType &e1, const SequenceType &s2,
+  static inline ValueType del(const ElementType &e1, const SequenceType &s2, 
                        unsigned pos2) {
     return del(e1, s2[pos2]);
   }
 
-  inline ValueType match(const ElementType &e1, const ElementType &e2) {
+  static inline ValueType match(const ElementType &e1, const ElementType &e2) {
     if (e1 == e2) return 0;
-    return match_cost_;
+    return MatchCost;
   }
 
-  inline ValueType insert(const ElementType &e1, const ElementType &e2) {
-    return insert_cost_;
+  static inline ValueType insert(const ElementType &e1, const ElementType &e2) {
+    return InsertCost;
   }
 
-  inline ValueType del(const ElementType &e1, const ElementType &e2) {
-    return delete_cost_;
+  static inline ValueType del(const ElementType &e1, const ElementType &e2) {
+    return DeleteCost;
   }
-
- private:
-  ValueType match_cost_, delete_cost_, insert_cost_;
-
 };
 
 template<class ScoreType, class SequenceType, class ValueType>
@@ -114,9 +100,9 @@ class EditDistanceTable {
     for (int i=1; i<m_; ++i) {
       int s_pos=i-1, t_pos=j-1;
 
-      opt[MATCH]  = cost(i-1, j-1) + score_.match(s, t, s_pos, t_pos);
-      opt[INSERT] = cost(  i, j-1) + score_.insert(s, t, s_pos, t_pos);
-      opt[DELETE] = cost(i-1,   j) + score_.del(s, t, s_pos, t_pos);
+      opt[MATCH]  = cost(i-1, j-1) + ScoreType::match(s, t, s_pos, t_pos);
+      opt[INSERT] = cost(  i, j-1) + ScoreType::insert(s, t, s_pos, t_pos);
+      opt[DELETE] = cost(i-1,   j) + ScoreType::del(s, t, s_pos, t_pos);
 
       set_cost(i, j, MATCH, opt[MATCH]);
 
@@ -190,7 +176,6 @@ class EditDistanceTable {
   const SequenceType &t_;
   int m_, n_;
   std::vector<ValueType>* costs_;
-  ScoreType score_;
 };
 
 template<class ScoreType, class SequenceType, class ValueType>
@@ -224,9 +209,9 @@ class EditDistanceRow {
     for (int i=1; i<m_; ++i) {
       int s_pos=i-1, t_pos=j-1;
 
-      opt[MATCH]  = cost(i-1, j-1) + score_.match(s, t, s_pos, t_pos);
-      opt[INSERT] = cost(  i, j-1) + score_.insert(s, t, s_pos, t_pos);
-      opt[DELETE] = cost(i-1,   j) + score_.del(s, t, s_pos, t_pos);
+      opt[MATCH]  = cost(i-1, j-1) + ScoreType::match(s, t, s_pos, t_pos);
+      opt[INSERT] = cost(  i, j-1) + ScoreType::insert(s, t, s_pos, t_pos);
+      opt[DELETE] = cost(i-1,   j) + ScoreType::del(s, t, s_pos, t_pos);
 
       set_cost(i, j, MATCH, opt[MATCH]);
 
@@ -265,7 +250,6 @@ class EditDistanceRow {
   const SequenceType &t_;
   int m_, n_;
   ValueType* costs_;
-  ScoreType score_;
 };
 
 template<class ScoreType, class SequenceType, class ValueType>
@@ -323,7 +307,7 @@ class EditDistanceUkkonen {
                     Ukkonen(ab-1, d-1) + 1);
 
     while (dist < s_.size() && (dist-ab) < t_.size() &&
-           (score_.match(s_, t_, dist, dist-ab) == 0)) {
+           (ScoreType::match(s_, t_, dist, dist-ab) == 0)) {
       dist++;
     }
 
@@ -342,7 +326,7 @@ class EditDistanceUkkonen {
 
     // U[0,0] = max i s.t. As[1...i] = Bs[1...i]
     int i = 1;
-    while (i < t_.size() && score_.match(s_, t_, i-1, i-1) == 0)
+    while (i < t_.size() && ScoreType::match(s_, t_, i-1, i-1) == 0)
       ++i;
 
     set_U(0, 0, i-1);
@@ -382,7 +366,6 @@ class EditDistanceUkkonen {
   ValueType U_c[UDIM][UDIM];
   //ValueType *U_v;
   //ValueType *U_c;
-  ScoreType score_;
 };
 
 template<class ScoreType, class SequenceType, class ValueType>
@@ -441,7 +424,7 @@ class EditDistanceUKK {
       dist = std::max(d1, std::max(d2, d3));
 
       while (dist < s_.size() && (dist-ab) < t_.size() &&
-            (score_.match(s_, t_, dist, dist-ab) == 0)) {
+            (ScoreType::match(s_, t_, dist, dist-ab) == 0)) {
         dist++;
       }
     }
@@ -490,7 +473,7 @@ class EditDistanceUKK {
 
     // U[0,0] = max i s.t. As(s)[1...i] = Bs(t)[1...i]
     int i = 1;
-    while (i < t_.size() && score_.match(s_, t_, i-1, i-1) == 0)
+    while (i < t_.size() && ScoreType::match(s_, t_, i-1, i-1) == 0)
       ++i;
 
     set_U(0, 0, i-1);
@@ -527,7 +510,6 @@ class EditDistanceUKK {
   int m_, n_;
   ValueType U_v[UDIM][UDIM];
   ValueType U_c[UDIM][UDIM];
-  ScoreType score_;
 };
 
 template<class ScoreType, class SequenceType, class ValueType>
@@ -595,7 +577,7 @@ class EditDistanceDynamicUKK {
       dist = U(ab, d);
       if (ab == 0 && d == 0) {
         while (dist < s_.size() && (dist-ab) < t_.size() &&
-              (score_.match(s_, t_, dist, dist-ab) == 0)) {
+              (ScoreType::match(s_, t_, dist, dist-ab) == 0)) {
           dist++;
         }
       }
@@ -611,7 +593,7 @@ class EditDistanceDynamicUKK {
       dist = std::max(d1, std::max(d2, d3));
 
       while (dist < s_.size() && (dist-ab) < t_.size() &&
-            (score_.match(s_, t_, dist, dist-ab) == 0)) {
+            (ScoreType::match(s_, t_, dist, dist-ab) == 0)) {
         dist++;
       }
     }
@@ -685,7 +667,7 @@ class EditDistanceDynamicUKK {
 
     // U[0,0] = max i s.t. As(s)[1...i] = Bs(t)[1...i]
     int i = 1;
-    while (i < t_.size() && score_.match(s_, t_, i-1, i-1) == 0)
+    while (i < t_.size() && ScoreType::match(s_, t_, i-1, i-1) == 0)
       ++i;
 
     set_U(0, 0, i-1);
@@ -744,8 +726,6 @@ class EditDistanceDynamicUKK {
   ValueType** U_;
   unsigned* U_col_;
   unsigned max_edit_distance_;
-
-  ScoreType score_;
 };
 
 template<class ScoreType, class SequenceType, class ValueType>
@@ -802,7 +782,7 @@ class EditDistanceStaticUKK {
       dist = std::max(d1, std::max(d2, d3));
 
       while (dist < s_.size() && (dist-ab) < t_.size() &&
-            (score_.match(s_, t_, dist, dist-ab) == 0)) {
+            (ScoreType::match(s_, t_, dist, dist-ab) == 0)) {
         dist++;
       }
     }
@@ -841,7 +821,7 @@ class EditDistanceStaticUKK {
 
   ValueType compute_editdistance() {
     int i = 1;
-    while (i < t_.size() && score_.match(s_, t_, i-1, i-1) == 0)
+    while (i < t_.size() && ScoreType::match(s_, t_, i-1, i-1) == 0)
       ++i;
 
     set_U(0, 0, i-1);
@@ -867,8 +847,6 @@ class EditDistanceStaticUKK {
   int m_, n_;
 
   std::map<std::pair<int,int>, ValueType> U_;
-
-  ScoreType score_;
 };
 
 template<class ScoreType, class SequenceType, class ValueType>
@@ -934,7 +912,7 @@ class EditDistanceFullUKK {
       }
 
       while (dist < s_.size() && (dist-ab) < t_.size() &&
-            (score_.match(s_, t_, dist, dist-ab) == 0)) {
+            (ScoreType::match(s_, t_, dist, dist-ab) == 0)) {
         dist++;
       }
     }
@@ -969,7 +947,7 @@ class EditDistanceFullUKK {
     U_ = new ValueType[m_*4];
 
     int i = 1;
-    while (i < t_.size() && score_.match(s_, t_, i-1, i-1) == 0)
+    while (i < t_.size() && ScoreType::match(s_, t_, i-1, i-1) == 0)
       ++i;
 
     set_U(0, 0, i-1);
@@ -994,9 +972,6 @@ class EditDistanceFullUKK {
   const SequenceType &t_;
   int m_, n_;
   ValueType* U_;
-
-
-  ScoreType score_;
 };
 
 template<class ScoreType, class SequenceType, class ValueType>
