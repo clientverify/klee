@@ -55,11 +55,11 @@ class ExecutionTrace {
   ExecutionTrace() {}
   ExecutionTrace(BasicBlockID bb) { this->push_back(bb); }
 
-  void push_back(BasicBlockID kbb) {
+  void push_back(BasicBlockID kbb) { 
     basic_blocks_.push_back(kbb);
   }
 
-  void push_front(BasicBlockID kbb) {
+  void push_front(BasicBlockID kbb) { 
     basic_blocks_.insert(basic_blocks_.begin(), kbb);
   }
 
@@ -104,23 +104,163 @@ class ExecutionTrace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template<class ScoreType,
+template<class ScoreType, 
          class SequenceType, 
-         class ElementType,
+         class ElementType, 
+         class ValueType>
+class EditDistanceRowColumn {
+
+ public:
+  EditDistanceRowColumn() 
+    : initialized_(false), 
+      prev_(NULL), 
+      depth_(0), 
+      row_(0),
+      children_count_(0),
+      id_(0),
+      child_id_counter_(0),
+      child_costs_(NULL),
+      child_row_(NULL) {}
+
+  EditDistanceRowColumn(const ElementType &s_elem)
+    : 
+      s_elem_(s_elem), 
+      initialized_(false), 
+      prev_(NULL), 
+      depth_(0), 
+      row_(0),
+      children_count_(0),
+      id_(0),
+      child_id_counter_(0),
+      child_costs_(NULL),
+      child_row_(NULL) {}
+
+  EditDistanceRowColumn(const EditDistanceRowColumn &e)
+    : initialized_(false), 
+      prev_(NULL), 
+      s_elem_(e.s_elem_), 
+      depth_(0), 
+      row_(0),
+      children_count_(0),
+      id_(0),
+      child_id_counter_(0),
+      child_costs_(NULL),
+      child_row_(NULL) {}
+
+  ~EditDistanceRowColumn() {
+    if (child_costs_) {
+      for (int i=0; i<children_count_; ++i) {
+        free(child_costs_[i]);
+      }
+      free(child_costs_);
+    }
+    if (child_row_) {
+      free(child_row_);
+    }
+  }
+
+  void initialize(EditDistanceRowColumn* prev,
+                  unsigned children_count) {
+    initialized_ = true;
+    prev_ = prev;
+    children_count_ = children_count;
+
+    if (prev_) {
+      depth_ = prev_->depth_ + 1;
+      id_ = prev_->get_next_id();
+    }
+
+    if (children_count_ > 1) {
+      child_costs_ = (ValueType**)malloc(sizeof(ValueType*)*children_count_);
+      child_row_ = (unsigned*)malloc(sizeof(unsigned)*children_count_);
+      for (int i=0; i<children_count_; ++i) {
+        child_costs_[i] = (ValueType*)malloc(sizeof(ValueType)*4);
+        child_row_[i] = 0;
+      }
+    }
+  }
+
+  void update(const EditDistanceRowColumn* prev, const SequenceType& t) {
+    int start_index = row_;
+    int end_index = ++row_;
+
+    assert(prev == prev_);
+
+    ValueType c1,c2,c3;
+    if (depth_ == 0) {
+      for (int j=start_index; j<end_index; ++j) {
+        int s_pos=0, t_pos=j-1;
+        set_cost(j, (ValueType)j);
+      }
+    } else {
+      for (int j=start_index; j<end_index; ++j) {
+        if (j == 0) {
+          set_cost(j, depth_);
+        } else {
+          int t_pos=j-1;
+          c1 = prev->cost(j-1) + ScoreType::match(s_elem_,  t, t_pos);
+          c2 = this->cost(j-1) + ScoreType::insert(s_elem_, t, t_pos);
+          c3 = prev->cost(j)   + ScoreType::del(s_elem_,    t, t_pos);
+          set_cost(j, std::min(c1, std::min(c2, c3)));
+        }
+      }
+    }
+    //for (int i = 0; i < end_index; ++i)
+    //  std::cout << cost(i) << ",";
+    //std::cout << "\n";
+  }
+
+  inline const ElementType& s() { return s_elem_; }
+
+  //inline ValueType cost_for_child(int j) const {
+  //  return costs_[j % 2];
+  //}
+
+  inline ValueType cost(int j) const {
+    return costs_[j % 2];
+  }
+
+  inline ValueType edit_distance() const {
+    return costs_[row_ % 2];
+  }
+
+  inline void set_cost(int j, ValueType cost) {
+    costs_[j % 2] = cost;
+  }
+
+  std::vector<ValueType>& cost_vector() { assert(0); return costs_; }
+
+ private:
+  uint8_t get_next_id() { return child_id_counter_++; }
+
+  EditDistanceRowColumn* prev_;
+  ElementType s_elem_; // one element of the s sequence
+  bool initialized_;
+  unsigned depth_;
+  unsigned row_;
+  uint8_t children_count_;
+  uint8_t id_;
+  uint8_t child_id_counter_;
+  ValueType** child_costs_;
+  unsigned* child_row_;
+  ValueType costs_[4];
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+template<class ScoreType, 
+         class SequenceType, 
+         class ElementType, 
          class ValueType>
 class EditDistanceColumn {
  public:
   EditDistanceColumn() : prev_(NULL), depth_(0) {}
-  // Supply constructor with prev?
   EditDistanceColumn(const EditDistanceColumn* prev,
                      const ElementType &s_elem)
     : prev_(prev), s_elem_(s_elem) {
     assert(prev_);
     depth_ = prev_->depth_+1;
   }
-
-  //void update_banded(const EditDistanceColumn* prev, const SequenceType& t,
-  //                  int band_width) {}
 
   void update(const EditDistanceColumn* prev, const SequenceType& t) {
     int start_index = costs_.size();
@@ -134,7 +274,6 @@ class EditDistanceColumn {
       costs_.resize(t.size()+1);
     // XXX FIXME TODO TEMP XXX
 
-
     ValueType c1,c2,c3;
     if (depth_ == 0) {
       for (int j=start_index; j<end_index; ++j) {
@@ -147,9 +286,9 @@ class EditDistanceColumn {
           set_cost(j, depth_);
         } else {
           int s_pos=0, t_pos=j-1;
-          c1 = prev->cost(j-1) + score_.match(s_elem_,  t, s_pos, t_pos);
-          c2 = this->cost(j-1) + score_.insert(s_elem_, t, s_pos, t_pos);
-          c3 = prev->cost(j)   + score_.del(s_elem_,    t, s_pos, t_pos);
+          c1 = prev->cost(j-1) + ScoreType::match(s_elem_,  t, t_pos);
+          c2 = this->cost(j-1) + ScoreType::insert(s_elem_, t, t_pos);
+          c3 = prev->cost(j)   + ScoreType::del(s_elem_,    t, t_pos);
           set_cost(j, std::min(c1, std::min(c2, c3)));
         }
       }
@@ -180,9 +319,9 @@ class EditDistanceColumn {
   const EditDistanceColumn* prev_;
   ElementType s_elem_; // one element of the s sequence
   int depth_;
-  ScoreType score_;
   std::vector<ValueType> costs_;
 };
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // TODO BOOST shared pointer
@@ -222,9 +361,28 @@ class EditDistanceTree : public tree<EDNodeTy> {
     EDNodeTy root_data;
     this->set_root(root_data);
   }
+
   ~EditDistanceTree() { this->clear(); }
 
   void append_sequence(const SeqTy& t) {}
+
+  EditDistanceTree* clone() {
+    return new EditDistanceTree(*this);
+  }
+
+  void initialize() {
+    Node* root_node = this->root().node;
+    foreach_pre_order (root_node, it) {
+      Node* node = it.node;
+      EDNodeTy* data = &(node->data);
+      Node* parent = this->parent(it).node;
+      EDNodeTy* parent_data = NULL;
+      if (parent)
+        parent_data = &(parent->data);
+      unsigned children_count = this->number_of_children(it);
+      data->initialize(parent_data, children_count);
+    }
+  }
 
   void insert(const SeqTy& s, const std::string* seq_name=NULL) {
     Node* curr_node = this->root().node;
@@ -232,15 +390,14 @@ class EditDistanceTree : public tree<EDNodeTy> {
     for (; it!=ie; ++it) {
       Node* child_node = NULL;
       foreach_child (curr_node, child_it) {
-        //if ((*child_it).s().size() == 1 && (*child_it).s()[0] == *it) {
         if ((*child_it).s() == *it) {
           child_node = child_it.node;
           break;
         }
       }
       if (child_node == NULL) {
-        //SeqTy tmp_seq(*it);
-       EDNodeTy data(&(curr_node->data), *it);
+        // Neccessary if we are using initialize() now?
+        EDNodeTy data(*it);
         curr_node = this->append_child(curr_node, data).node;
       } else {
         curr_node = child_node;
@@ -251,12 +408,16 @@ class EditDistanceTree : public tree<EDNodeTy> {
   }
 
   void compute_t(const SeqTy& t) {
-    Node* root_node = this->root().node;
-    foreach_pre_order (root_node, it) {
-      Node* parent = this->parent(it).node;
-      EDNodeTy* parent_data = parent ? &(parent->data) : NULL;
-      (*it).update(parent_data, t);
+    for (int i=0; i<t.size()+1; ++i) {
+      std::cout << ".";
+      Node* root_node = this->root().node;
+      foreach_pre_order (root_node, it) {
+        Node* parent = this->parent(it).node;
+        EDNodeTy* parent_data = parent ? &(parent->data) : NULL;
+        (*it).update(parent_data, t);
+      }
     }
+    std::cout << "\n";
   }
 
   void get_all_distances(std::vector<ValTy>& edit_distance_list,
@@ -290,46 +451,46 @@ class EditDistanceTree : public tree<EDNodeTy> {
     }
   }
 
-  void get_cost_matrix(const std::string* name,
-                       std::vector< std::vector<ValTy> > &cost_matrix) {
-    Node* root_node = this->root().node;
-    assert(root_node);
-    foreach_leaf(root_node, leaf_it) {
-      assert(name_map_.count(leaf_it.node) && name_map_[leaf_it.node].size() == 1);
-      if (name == name_map_[leaf_it.node][0]) {
-        cost_matrix.insert(cost_matrix.begin(),(*leaf_it).cost_vector());
-        get_cost_matrix_for_node(leaf_it.node, cost_matrix);
-        return;
-      }
-    }
-  }
+  //void get_cost_matrix(const std::string* name,
+  //                     std::vector< std::vector<ValTy> > &cost_matrix) {
+  //  Node* root_node = this->root().node;
+  //  assert(root_node);
+  //  foreach_leaf(root_node, leaf_it) {
+  //    assert(name_map_.count(leaf_it.node) && name_map_[leaf_it.node].size() == 1);
+  //    if (name == name_map_[leaf_it.node][0]) {
+  //      cost_matrix.insert(cost_matrix.begin(),(*leaf_it).cost_vector());
+  //      get_cost_matrix_for_node(leaf_it.node, cost_matrix);
+  //      return;
+  //    }
+  //  }
+  //}
 
-  void get_node_list(const std::string* name,
-                     std::vector< EDNodeTy > &node_list) {
-    Node* root_node = this->root().node;
-    assert(root_node);
-    foreach_leaf(root_node, leaf_it) {
-      assert(name_map_.count(leaf_it.node) && name_map_[leaf_it.node].size() == 1);
-      if (name == name_map_[leaf_it.node][0]) {
+  //void get_node_list(const std::string* name,
+  //                   std::vector< EDNodeTy > &node_list) {
+  //  Node* root_node = this->root().node;
+  //  assert(root_node);
+  //  foreach_leaf(root_node, leaf_it) {
+  //    assert(name_map_.count(leaf_it.node) && name_map_[leaf_it.node].size() == 1);
+  //    if (name == name_map_[leaf_it.node][0]) {
 
-        foreach_parent (leaf_it.node, parent_it) {
-          node_list.insert(node_list.begin(),(*parent_it));
-        }
-        node_list.insert(node_list.begin(),(*(this->root())));
-        return;
-      }
-    }
-  }
+  //      foreach_parent (leaf_it.node, parent_it) {
+  //        node_list.insert(node_list.begin(),(*parent_it));
+  //      }
+  //      node_list.insert(node_list.begin(),(*(this->root())));
+  //      return;
+  //    }
+  //  }
+  //}
 
  private:
 
-  void get_cost_matrix_for_node(Node* node, 
-                                std::vector< std::vector<ValTy> > &cost_matrix) {
-    foreach_parent (node, parent_it) {
-      cost_matrix.insert(cost_matrix.begin(),(*parent_it).cost_vector());
-    }
-    cost_matrix.insert(cost_matrix.begin(),(*(this->root())).cost_vector());
-  }
+  //void get_cost_matrix_for_node(Node* node, 
+  //                              std::vector< std::vector<ValTy> > &cost_matrix) {
+  //  foreach_parent (node, parent_it) {
+  //    cost_matrix.insert(cost_matrix.begin(),(*parent_it).cost_vector());
+  //  }
+  //  cost_matrix.insert(cost_matrix.begin(),(*(this->root())).cost_vector());
+  //}
 
   void get_path(Node* node, SeqTy& path) {
     foreach_parent (node, parent_it) {
@@ -506,7 +667,7 @@ class ExecutionTree : public tree<DataType> {
 typedef Score< ExecutionTrace, unsigned, int> ETScore;
 
 // EditDistance trees
-typedef EditDistanceColumn< ETScore, ExecutionTrace, unsigned, int > EDColumn;
+typedef EditDistanceRowColumn< ETScore, ExecutionTrace, unsigned, int > EDColumn;
 typedef EditDistanceTree< EDColumn, ExecutionTrace, int > EDTree;
 
 // EditDistance flavors
