@@ -277,6 +277,8 @@ void TrainingTestExecutionTreeManager::initialize() {
 
   for (std::map<ExecutionTrace,std::string>::iterator it = training_trace_map_.begin(),
        ie = training_trace_map_.end(); it!=ie; ++it) {
+    CVMESSAGE("Adding " << it->second << ", size: " << (it->first).size()
+              << " to the tree");
     ed_tree_->insert(it->first, &(it->second));
   }
   std::vector<ExecutionTrace> trace_list;
@@ -286,7 +288,10 @@ void TrainingTestExecutionTreeManager::initialize() {
           << training_trace_map_.size() << " training traces into the tree!");
   for (int i=0; i < trace_list.size(); ++i) {
     if (training_trace_map_.count(trace_list[i]) == 0) {
-      CVMESSAGE("Trace missing for " << *(name_list[i]));
+      CVMESSAGE("Trace missing for " << *(name_list[i])
+                << ", size: " << trace_list[i].size()
+                << " " << trace_list[i][0] << " "
+                << trace_list[i][trace_list[i].size()-1]);
       cv_error("Error in EditDistanceTree, exiting.");
     }
   }
@@ -323,6 +328,7 @@ void TrainingTestExecutionTreeManager::notify(ExecutionEvent ev) {
 
   switch (ev.event_type) {
     case CV_ROUND_START: {
+      delete trees_.back();
       // Delete previous round tree?
       trees_.push_back(new ExecutionTraceTree() );
       break;
@@ -366,13 +372,17 @@ void TrainingTestExecutionTreeManager::notify(ExecutionEvent ev) {
         CVMESSAGE("Matching Training Trace Not Found!");
       }
 
+      // XXX REMOVE ME XXX
       if (cv_->round() == 5)
         cv_->executor()->setHaltExecution(true);
+      // XXX REMOVE ME XXX
+
       ed_tree_->compute_t(etrace);
       std::vector<int> edit_distance_list;
       std::vector<const std::string*> name_list;
       std::map<const std::string*, int> name_map;
       ed_tree_->get_all_distances(edit_distance_list, &name_list);
+
       for (int i=0; i < edit_distance_list.size(); ++i) {
         name_map[name_list[i]] = edit_distance_list[i];
       }
@@ -381,59 +391,61 @@ void TrainingTestExecutionTreeManager::notify(ExecutionEvent ev) {
            ie = training_trace_map_.end(); it!=ie; ++it) {
     
         int cost_tree = name_map[&(it->second)];
-        CVMESSAGE("Cost: " << cost_tree 
-                  << " for edit distance row-table of " << it->second);
         //if ((it->first).size() < 100) {
-        //  int cost_u, cost_r, cost_tree;
+        if (1) {
+          int cost_u, cost_r, cost_tree;
 
-        //  ExecutionTraceEDT edr(etrace, it->first);
-        //  cost_r = edr.compute_editdistance();
-        //  assert(name_map.count(&(it->second)));
-        //  cost_tree = name_map[&(it->second)];
+          ExecutionTraceED edr(etrace, it->first);
+          cost_r = edr.compute_editdistance();
+          assert(name_map.count(&(it->second)));
+          cost_tree = name_map[&(it->second)];
 
-        //  if (cost_tree != cost_r) {
-        //    *cv_message_stream << "________________________\n";
-        //    std::vector<std::vector<int> > cost_matrix;
-        //    std::vector< EDColumn > node_list;
-        //    ed_tree_->get_cost_matrix(&(it->second), cost_matrix);
-        //    ed_tree_->get_node_list(&(it->second), node_list);
-        //    for (int i=0; i<cost_matrix.size(); ++i) {
-        //      *cv_message_stream << cost_matrix[i].size() << ", ";
+          if (cost_tree != cost_r) {
+            //*cv_message_stream << "________________________\n";
+            //std::vector<std::vector<int> > cost_matrix;
+            //std::vector< EDColumn > node_list;
+            //ed_tree_->get_cost_matrix(&(it->second), cost_matrix);
+            //ed_tree_->get_node_list(&(it->second), node_list);
+            //for (int i=0; i<cost_matrix.size(); ++i) {
+            //  *cv_message_stream << cost_matrix[i].size() << ", ";
 
-        //    }
-        //    *cv_message_stream << "\n------------------------\n";
-        //    for (int i=0; i<etrace.size()+1; ++i) {
-        //      //for (int j=0; j<(it->first).size()+1; ++j) {
-        //      for (int j=0; j<cost_matrix.size(); ++j) {
-        //        int fwidth = cv_message_stream->width(4);
-        //        *cv_message_stream << cost_matrix[j][i];
-        //        cv_message_stream->width(fwidth);
-        //      }
-        //      *cv_message_stream << "\n";
-        //    }
-        //    *cv_message_stream << "\n========================\n";
-        //    for (int j=0; j<node_list.size(); ++j) {
-        //      int fwidth = cv_message_stream->width(16);
-        //      *cv_message_stream << node_list[j].s()[0];
-        //      cv_message_stream->width(fwidth);
-        //    }
-        //    *cv_message_stream << "\n========================\n";
+            //}
+            //*cv_message_stream << "\n------------------------\n";
+            //for (int i=0; i<etrace.size()+1; ++i) {
+            //  //for (int j=0; j<(it->first).size()+1; ++j) {
+            //  for (int j=0; j<cost_matrix.size(); ++j) {
+            //    int fwidth = cv_message_stream->width(4);
+            //    *cv_message_stream << cost_matrix[j][i];
+            //    cv_message_stream->width(fwidth);
+            //  }
+            //  *cv_message_stream << "\n";
+            //}
+            //*cv_message_stream << "\n========================\n";
+            //for (int j=0; j<node_list.size(); ++j) {
+            //  int fwidth = cv_message_stream->width(16);
+            //  *cv_message_stream << node_list[j].s()[0];
+            //  cv_message_stream->width(fwidth);
+            //}
+            //*cv_message_stream << "\n========================\n";
 
-        //    //for (int i=0; i<etrace.size()+1; ++i) {
-        //    //  for (int j=0; j<node_list.size(); ++j) {
-        //    //    int fwidth = cv_message_stream->width(4);
-        //    //    *cv_message_stream << cost_matrix[j][i];
-        //    //    cv_message_stream->width(fwidth);
-        //    //  }
-        //    //  *cv_message_stream << "\n";
-        //    //}
+            ////for (int i=0; i<etrace.size()+1; ++i) {
+            ////  for (int j=0; j<node_list.size(); ++j) {
+            ////    int fwidth = cv_message_stream->width(4);
+            ////    *cv_message_stream << cost_matrix[j][i];
+            ////    cv_message_stream->width(fwidth);
+            ////  }
+            ////  *cv_message_stream << "\n";
+            ////}
 
-        //    edr.debug_print(*cv_message_stream);
-        //    CVMESSAGE("*** cost_tree = " << cost_tree << ", cost_r = " 
-        //              << cost_r << " *** for " << it->second);
-        //    cv_error("exiting");
-        //  }
-        //}
+            //edr.debug_print(*cv_message_stream);
+            CVMESSAGE("*** cost_tree = " << cost_tree << ", cost_r = "
+                      << cost_r << " *** for " << it->second);
+            cv_error("exiting");
+          } else {
+            CVMESSAGE("EditDist (row, tree):  " << cost_tree << ", " << cost_r
+                      << " for " << it->second);
+          }
+        }
 
 
 

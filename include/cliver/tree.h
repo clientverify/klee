@@ -41,7 +41,7 @@
 #include <boost/serialization/split_member.hpp>
 
 // HP-style construct/destroy have gone from the standard,
-// so here is a copy.
+// so here is a copy. (usage called 'placement new')
 
 namespace kp {
 
