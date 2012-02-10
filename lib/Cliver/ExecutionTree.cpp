@@ -82,20 +82,8 @@ inline std::ostream &operator<<(std::ostream &os,
 
 bool ExecutionTrace::operator==(const ExecutionTrace& b) const { 
   return basic_blocks_ == b.basic_blocks_;
-  //if (size() != b.size())
-  //  return false;
-
-  //const_iterator it1 = begin(), it2 = b.begin();
-  //const_iterator ie1 = end(), ie2 = b.end();
-
-  //for (; it1!=ie1 && it2!=ie2; ++it1, ++it2) {
-  //  if ((*it1)->id != (*it2)->id) {
-  //    assert(((*it1)->bb != (*it2)->bb));
-  //    return false;
-  //  }
-  //}
-
 }
+
 bool ExecutionTrace::operator!=(const ExecutionTrace& b) const { 
   return basic_blocks_ != b.basic_blocks_;
 }
@@ -108,27 +96,9 @@ void ExecutionTrace::push_back(const ExecutionTrace& etrace){
   basic_blocks_.insert(basic_blocks_.end(), etrace.begin(), etrace.end());
 }
 
-void ExecutionTrace::push_back_bb(const klee::KBasicBlock* kbb){
-  basic_blocks_.push_back(kbb);
-}
-
-// XXX Inefficient on a vector!
+// XXX Inefficient
 void ExecutionTrace::push_front(const ExecutionTrace& etrace){
   basic_blocks_.insert(basic_blocks_.begin(), etrace.begin(), etrace.end());
-}
-
-// XXX Inefficient on a vector!
-void ExecutionTrace::push_front_bb(const klee::KBasicBlock* kbb){
-  basic_blocks_.insert(basic_blocks_.begin(), kbb);
-}
-
-void ExecutionTrace::deserialize(klee::KModule* km) {
-  assert(serialized_basic_blocks_);
-  foreach (unsigned bb_id, *serialized_basic_blocks_) {
-    basic_blocks_.push_back(km->kbasicblocks[bb_id]);
-  }
-  delete serialized_basic_blocks_;
-  serialized_basic_blocks_ = NULL;
 }
 
 void ExecutionTrace::write(std::ostream &os) {
@@ -141,12 +111,11 @@ void ExecutionTrace::read(std::ifstream &is, klee::KModule* kmodule) {
 	//boost::archive::binary_iarchive ia(is);
 	boost::archive::text_iarchive ia(is);
   ia >> *this;
-  deserialize(kmodule);
 }
 
 std::ostream& operator<<(std::ostream& os, const ExecutionTrace &etrace) {
-  foreach (const klee::KBasicBlock* kbb, etrace) {
-    os << kbb->id << ", ";
+  foreach (ExecutionTrace::BasicBlockID kbb, etrace) {
+    os << kbb << ", ";
   }
   return os;
 }
@@ -174,8 +143,7 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
         trees_.back()->add_state(state, NULL);
       }
     
-      ExecutionTrace etrace(state->prevPC->kbb);
-      trees_.back()->update_state(state, etrace);
+      trees_.back()->update_state(state, state->prevPC->kbb->id);
       break;
     }
 
@@ -241,9 +209,7 @@ void TrainingExecutionTreeManager::notify(ExecutionEvent ev) {
         trees_.back()->add_state(state, NULL);
       }
 
-      ExecutionTrace etrace(state->prevPC->kbb);
-      trees_.back()->update_state(state, etrace);
-
+      trees_.back()->update_state(state, state->prevPC->kbb->id);
       break;
     }
 
@@ -357,6 +323,7 @@ void TrainingTestExecutionTreeManager::notify(ExecutionEvent ev) {
 
   switch (ev.event_type) {
     case CV_ROUND_START: {
+      // Delete previous round tree?
       trees_.push_back(new ExecutionTraceTree() );
       break;
     }
@@ -367,9 +334,7 @@ void TrainingTestExecutionTreeManager::notify(ExecutionEvent ev) {
         trees_.back()->add_state(state, NULL);
       }
 
-      ExecutionTrace etrace(state->prevPC->kbb);
-      trees_.back()->update_state(state, etrace);
-
+      trees_.back()->update_state(state, state->prevPC->kbb->id);
       break;
     }
 
@@ -403,15 +368,6 @@ void TrainingTestExecutionTreeManager::notify(ExecutionEvent ev) {
 
       if (cv_->round() == 5)
         cv_->executor()->setHaltExecution(true);
-
-      typedef EditDistanceTable<Score<ExecutionTrace,int>,ExecutionTrace,int> ExecutionTraceEDT;
-      typedef EditDistanceRow<Score<ExecutionTrace,int>,ExecutionTrace,int> ExecutionTraceEDR;
-      typedef EditDistanceUkkonen<Score<ExecutionTrace,int>,ExecutionTrace,int> ExecutionTraceEDU;
-      typedef EditDistanceUkkonen<Score<ExecutionTrace,int>,ExecutionTrace,int> ExecutionTraceEDU;
-      typedef EditDistanceDynamicUKK<Score<ExecutionTrace,int>,ExecutionTrace,int> ExecutionTraceEDUD;
-      typedef EditDistanceStaticUKK<Score<ExecutionTrace,int>,ExecutionTrace,int> ExecutionTraceEDUS;
-      typedef EditDistanceFullUKK<Score<ExecutionTrace,int>,ExecutionTrace,int> ExecutionTraceEDUF;
-
       ed_tree_->compute_t(etrace);
       std::vector<int> edit_distance_list;
       std::vector<const std::string*> name_list;
@@ -557,9 +513,6 @@ int VerifyExecutionTreeManager::read_traces(
 	return training_trace_map_.size();
 }
 
-typedef EditDistanceRow<Score<ExecutionTrace,int>,ExecutionTrace,int> 
-ExecutionTraceED;
-
 void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
   CVExecutionState* state = ev.state;
   CVExecutionState* parent = ev.parent;
@@ -576,8 +529,7 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         trees_.back()->add_state(state, NULL);
       }
 
-      ExecutionTrace etrace(state->prevPC->kbb);
-      trees_.back()->update_state(state, etrace);
+      trees_.back()->update_state(state, state->prevPC->kbb->id);
 
       EditDistanceProperty *edp 
         = static_cast<EditDistanceProperty*>(state->property());

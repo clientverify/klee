@@ -16,7 +16,7 @@ namespace cliver {
 
 enum { MATCH=0, INSERT, DELETE };
 
-template<class SequenceType, class ValueType>
+template<class SequenceType, class ElementType, class ValueType>
 class Score {
  public:
 
@@ -31,19 +31,60 @@ class Score {
       insert_cost_(insert_cost) {}
 
   inline ValueType match(const SequenceType &s1, const SequenceType &s2, 
-                  unsigned pos1, unsigned pos2) {
-    if (s1[pos1] == s2[pos2])
-      return 0;
-    return match_cost_;
+                         unsigned pos1, unsigned pos2) {
+    return match(s1[pos1], s2[pos2]);
   }
 
   inline ValueType insert(const SequenceType &s1, const SequenceType &s2, 
-                  unsigned pos1, unsigned pos2) {
-    return insert_cost_;
+                          unsigned pos1, unsigned pos2) {
+    return insert(s1[pos1], s2[pos2]);
   }
 
   inline ValueType del(const SequenceType &s1, const SequenceType &s2, 
-                  unsigned pos1, unsigned pos2) {
+                       unsigned pos1, unsigned pos2) {
+    return del(s1[pos1], s2[pos2]);
+  }
+
+  inline ValueType match(const SequenceType &s1, const ElementType &e2,
+                         unsigned pos1) {
+    return match(s1[pos1], e2);
+  }
+
+  inline ValueType insert(const SequenceType &s1, const ElementType &e2,
+                          unsigned pos1) {
+    return insert(s1[pos1], e2);
+  }
+
+  inline ValueType del(const SequenceType &s1, const ElementType &e2,
+                       unsigned pos1) {
+    return del(s1[pos1], e2);
+  }
+
+  inline ValueType match(const ElementType &e1, const SequenceType &s2,
+                         unsigned pos2) {
+    return match(e1, s2[pos2]);
+  }
+
+  inline ValueType insert(const ElementType &e1, const SequenceType &s2,
+                          unsigned pos2) {
+    return insert(e1, s2[pos2]);
+  }
+
+  inline ValueType del(const ElementType &e1, const SequenceType &s2,
+                       unsigned pos2) {
+    return del(e1, s2[pos2]);
+  }
+
+  inline ValueType match(const ElementType &e1, const ElementType &e2) {
+    if (e1 == e2) return 0;
+    return match_cost_;
+  }
+
+  inline ValueType insert(const ElementType &e1, const ElementType &e2) {
+    return insert_cost_;
+  }
+
+  inline ValueType del(const ElementType &e1, const ElementType &e2) {
     return delete_cost_;
   }
 

@@ -42,13 +42,14 @@ struct EditDistanceTableData {
   std::vector<ValueType> costs;
 };
 
-typedef EditDistanceTable<Score<string,int>,string,int> StringEDT;
-typedef EditDistanceRow<Score<string,int>,string,int> StringEDR;
-typedef EditDistanceUkkonen<Score<string,int>,string,int> StringEDU;
-typedef EditDistanceUKK<Score<string,int>,string,int> StringEDUKK;
-typedef EditDistanceDynamicUKK<Score<string,int>,string,int> StringEDDynamicUKK;
-typedef EditDistanceStaticUKK<Score<string,int>,string,int> StringEDStaticUKK;
-typedef EditDistanceFullUKK<Score<string,int>,string,int> StringEDFullUKK;
+typedef Score<std::string, char, int> StringScore;
+typedef EditDistanceTable<StringScore,string,int> StringEDT;
+typedef EditDistanceRow<StringScore,string,int> StringEDR;
+typedef EditDistanceUkkonen<StringScore,string,int> StringEDU;
+typedef EditDistanceUKK<StringScore,string,int> StringEDUKK;
+typedef EditDistanceDynamicUKK<StringScore,string,int> StringEDDynamicUKK;
+typedef EditDistanceStaticUKK<StringScore,string,int> StringEDStaticUKK;
+typedef EditDistanceFullUKK<StringScore,string,int> StringEDFullUKK;
 typedef EditDistanceTableData<std::string, int> StringEDTData;
 
 std::ostream& operator<<(std::ostream &os, const std::vector<int> &v) {
