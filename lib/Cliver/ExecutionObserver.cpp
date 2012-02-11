@@ -11,6 +11,7 @@
 #include "CVCommon.h"
 #include "cliver/CVStream.h"
 #include "cliver/CVExecutionState.h"
+#include "cliver/ExecutionStateProperty.h"
 
 namespace cliver {
 
@@ -40,8 +41,13 @@ void ExecutionObserverPrinter::notify(ExecutionEvent ev) {
 
   switch(ev.event_type) {
 #define X(x) case x : { \
-  CVDEBUG( #x << " " << ev.state->id() << " " \
-  << (ev.parent ? ev.parent->id() : 0 ) ); break; }
+  if (ev.state && ev.state->property()) {\
+  CVDEBUG( #x << " " << (ev.state ? ev.state->id() : 0 ) << " " \
+  << (ev.parent ? ev.parent->id() : 0 ) << " " << *(ev.state->property()) ); \
+  }else{ \
+  CVDEBUG( #x << " " << (ev.state ? ev.state->id() : 0 ) << " " \
+  << (ev.parent ? ev.parent->id() : 0 ) );} \
+    break; }
     CV_EXECUTION_EVENT_TYPES
 #undef X
     default:

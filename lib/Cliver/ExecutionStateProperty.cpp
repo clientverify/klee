@@ -118,7 +118,7 @@ void EditCostProperty::print(std::ostream &os) const {
 //////////////////////////////////////////////////////////////////////////////
 
 EditDistanceProperty::EditDistanceProperty() 
-	: edit_distance(INT_MAX), recompute(true) {}
+	: edit_distance(INT_MAX-1), recompute(true) {}
 
 EditDistanceProperty* EditDistanceProperty::clone() { 
   EditDistanceProperty* ecp = new EditDistanceProperty(*this);
@@ -130,11 +130,13 @@ EditDistanceProperty* EditDistanceProperty::clone() {
 int EditDistanceProperty::compare(const ExecutionStateProperty &b) const {
 	const EditDistanceProperty *_b = static_cast<const EditDistanceProperty*>(&b);
 
-  if (edit_distance > _b->edit_distance)
-    return 1;
-  else if (edit_distance < _b->edit_distance)
-    return -1;
-  return 0;
+  // REVERSED FOR PRIORITY QUEUE!!!
+  return _b->edit_distance - edit_distance;
+  //if (edit_distance > _b->edit_distance)
+  //  return 1;
+  //else if (edit_distance < _b->edit_distance)
+  //  return -1;
+  //return 0;
 }
 
 void EditDistanceProperty::print(std::ostream &os) const {

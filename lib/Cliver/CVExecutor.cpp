@@ -343,6 +343,7 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
 		//}
 
     stepInstruction(state);
+    //cv_->notify_all(ExecutionEvent(CV_STEP_INSTRUCTION, &state));
     executeInstruction(state, ki);
     processTimers(&state, klee::MaxInstructionTime);
 
@@ -403,7 +404,7 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
     }
 
     foreach (klee::ExecutionState* astate, addedStates) {
-      cv_->notify_all(ExecutionEvent(CV_STATE_FORK, astate));
+      //cv_->notify_all(ExecutionEvent(CV_STATE_FORK, astate));
       handle_post_execution_events(*astate);
     }
 

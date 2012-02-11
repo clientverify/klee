@@ -95,6 +95,7 @@ CVSearcher* CVSearcherFactory::create(klee::Searcher* base_searcher,
 		//}
 
 		case TestTrainingMode:
+		case VerifyWithTrainingPaths:
     case VerifyWithEditCost: {
 
 			return new VerifySearcher(cv, merger);
@@ -177,7 +178,7 @@ ExecutionTreeManager* ExecutionTreeManagerFactory::create(ClientVerifier* cv) {
 		case DefaultTrainingMode:
 			return new TrainingExecutionTreeManager(cv);
 		case TestTrainingMode:
-			return new TrainingTestExecutionTreeManager(cv);
+			return new TestExecutionTreeManager(cv);
     case VerifyWithEditCost: {
       if (g_searcher_stage_mode != PQSearcherStageMode)
         g_searcher_stage_mode = PQSearcherStageMode;
@@ -195,7 +196,6 @@ ExecutionTreeManager* ExecutionTreeManagerFactory::create(ClientVerifier* cv) {
 	cv_error("cliver mode not supported in ExecutionTreeManager");
 	return NULL;
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 

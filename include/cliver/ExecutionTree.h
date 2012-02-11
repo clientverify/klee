@@ -23,6 +23,7 @@
 #include "llvm/Analysis/Trace.h"
 
 #include <set>
+#include <list>
 #include <map>
 #include <iostream>
 #include <vector>
@@ -44,8 +45,13 @@ namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+
+////////////////////////////////////////////////////////////////////////////////
+
 class ExecutionTrace {
  public:
+  typedef uint16_t ID;
+
   typedef unsigned BasicBlockID;
   typedef std::vector<BasicBlockID> BasicBlockList;
 
@@ -109,397 +115,377 @@ template<class ScoreType,
          class ElementType, 
          class ValueType>
 class EditDistanceRowColumn {
+  //typedef uint8_t ChildIDType;
+  typedef unsigned ChildIDType;
+  typedef boost::shared_ptr<EditDistanceRowColumn> EditDistanceRowColumnPtr;
 
  public:
-  EditDistanceRowColumn() 
-    : initialized_(false), 
-      prev_(NULL), 
+  EditDistanceRowColumn() :
       depth_(0), 
       row_(0),
       children_count_(0),
-      id_(0),
-      child_id_counter_(0),
-      child_costs_(NULL),
-      child_row_(NULL) {}
+      full_costs_(NULL) {costs_[0] = costs_[1] = 0;}
 
-  EditDistanceRowColumn(const ElementType &s_elem)
-    : 
+  EditDistanceRowColumn(const ElementType &s_elem) :
       s_elem_(s_elem), 
-      initialized_(false), 
-      prev_(NULL), 
       depth_(0), 
       row_(0),
       children_count_(0),
-      id_(0),
-      child_id_counter_(0),
-      child_costs_(NULL),
-      child_row_(NULL) {}
+      full_costs_(NULL) {costs_[0] = costs_[1] = 0;}
 
-  EditDistanceRowColumn(const EditDistanceRowColumn &e)
-    : initialized_(false), 
-      prev_(NULL), 
-      s_elem_(e.s_elem_), 
-      depth_(0), 
-      row_(0),
-      children_count_(0),
-      id_(0),
-      child_id_counter_(0),
-      child_costs_(NULL),
-      child_row_(NULL) {}
+  EditDistanceRowColumn(EditDistanceRowColumnPtr e,
+                        EditDistanceRowColumnPtr prev) {
+    copy(e, prev);
+  }
 
   ~EditDistanceRowColumn() {
-    if (child_costs_) {
-      for (int i=0; i<children_count_; ++i) {
-        free(child_costs_[i]);
-      }
-      free(child_costs_);
-    }
-    if (child_row_) {
-      free(child_row_);
+    if (children_count_ > 1 && full_costs_) {
+      delete full_costs_;
     }
   }
 
-  void initialize(EditDistanceRowColumn* prev,
-                  unsigned children_count) {
-    initialized_ = true;
+  void initialize(EditDistanceRowColumnPtr prev,
+                  ChildIDType children_count) {
     prev_ = prev;
     children_count_ = children_count;
+    assert(children_count_ < 100);
 
     if (prev_) {
       depth_ = prev_->depth_ + 1;
-      id_ = prev_->get_next_id();
     }
 
     if (children_count_ > 1) {
-      child_costs_ = (ValueType**)malloc(sizeof(ValueType*)*children_count_);
-      child_row_ = (unsigned*)malloc(sizeof(unsigned)*children_count_);
-      for (int i=0; i<children_count_; ++i) {
-        child_costs_[i] = (ValueType*)malloc(sizeof(ValueType)*4);
-        child_row_[i] = 0;
-      }
+      full_costs_ = new std::vector<ValueType>();
     }
   }
 
-  void update(const EditDistanceRowColumn* prev, const SequenceType& t) {
-    int start_index = row_;
-    int end_index = ++row_;
+  void copy(EditDistanceRowColumnPtr e,
+            EditDistanceRowColumnPtr prev) {
+    s_elem_ = e->s_elem_;
+    prev_ = prev;
+    depth_ = e->depth_;
+    row_ = e->row_;
+    children_count_ = e->children_count_;
+    assert(children_count_ < 100);
 
-    assert(prev == prev_);
+    assert(!prev_ || (prev_->depth_ + 1) == depth_);
 
-    ValueType c1,c2,c3;
-    if (depth_ == 0) {
-      for (int j=start_index; j<end_index; ++j) {
-        int s_pos=0, t_pos=j-1;
-        set_cost(j, (ValueType)j);
-      }
+    if (e->full_costs_ && e->children_count_ > 1) {
+      full_costs_ = new std::vector<ValueType>(*e->full_costs_);
     } else {
-      for (int j=start_index; j<end_index; ++j) {
-        if (j == 0) {
-          set_cost(j, depth_);
-        } else {
-          int t_pos=j-1;
-          c1 = prev->cost(j-1) + ScoreType::match(s_elem_,  t, t_pos);
-          c2 = this->cost(j-1) + ScoreType::insert(s_elem_, t, t_pos);
-          c3 = prev->cost(j)   + ScoreType::del(s_elem_,    t, t_pos);
-          set_cost(j, std::min(c1, std::min(c2, c3)));
-        }
-      }
+      costs_[0] = e->costs_[0];
+      costs_[1] = e->costs_[1];
     }
-    //for (int i = 0; i < end_index; ++i)
-    //  std::cout << cost(i) << ",";
-    //std::cout << "\n";
+  }
+
+  void update(const SequenceType& t) {
+    int start_index = row_;
+    int end_index = t.size()+1;
+
+    std::vector< EditDistanceRowColumnPtr > worklist;
+    EditDistanceRowColumnPtr parent = prev_;
+    while (parent && (parent->depth_ >= 0) 
+            && (parent->row() <= start_index)) {
+      worklist.push_back(parent);
+      parent = parent->prev_;
+    }
+
+    for (int j=start_index; j<end_index; ++j) {
+      typename std::vector<EditDistanceRowColumnPtr>::reverse_iterator 
+        it = worklist.rbegin(), ie = worklist.rend();
+      for (; it!=ie; ++it) {
+        (*it)->compute_cost(t); 
+      }
+      this->compute_cost(t); 
+    }
   }
 
   inline const ElementType& s() { return s_elem_; }
 
-  //inline ValueType cost_for_child(int j) const {
-  //  return costs_[j % 2];
-  //}
+  ValueType edit_distance() const { 
+    assert(children_count_ == 0); 
+    return cost(row_-1); 
+  }
 
-  inline ValueType cost(int j) const {
+  inline unsigned depth() { return depth_; }
+  inline unsigned row() { return row_; }
+
+  inline EditDistanceRowColumn* prev() { return prev_; }
+ 
+  void compute_cost(const SequenceType &t) {
+
+    ValueType c1,c2,c3;
+    int j = row_;
+    if (depth_ == 0) {
+      set_cost(j, (ValueType)j);
+
+    } else {
+      if (j == 0) {
+        set_cost(j, depth_);
+      } else {
+        c1 = prev_->cost(j-1) + ScoreType::match(s_elem_, t, j-1);
+        c2 = this->cost(j-1)  + ScoreType::insert(s_elem_, t, j-1);
+        c3 = prev_->cost(  j) + ScoreType::del(s_elem_, t, j-1);
+
+        set_cost(j, std::min(c1, std::min(c2, c3)));
+      }
+    }
+    row_++;
+  }
+
+ private:
+  explicit EditDistanceRowColumn(const EditDistanceRowColumn& e); 
+
+  inline ValueType cost(unsigned j) const {
+    if (children_count_ > 1)
+      return (*full_costs_)[j];
+
     return costs_[j % 2];
   }
 
-  inline ValueType edit_distance() const {
-    return costs_[row_ % 2];
-  }
-
-  inline void set_cost(int j, ValueType cost) {
-    costs_[j % 2] = cost;
-  }
-
-  std::vector<ValueType>& cost_vector() { assert(0); return costs_; }
-
- private:
-  uint8_t get_next_id() { return child_id_counter_++; }
-
-  EditDistanceRowColumn* prev_;
-  ElementType s_elem_; // one element of the s sequence
-  bool initialized_;
-  unsigned depth_;
-  unsigned row_;
-  uint8_t children_count_;
-  uint8_t id_;
-  uint8_t child_id_counter_;
-  ValueType** child_costs_;
-  unsigned* child_row_;
-  ValueType costs_[4];
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-template<class ScoreType, 
-         class SequenceType, 
-         class ElementType, 
-         class ValueType>
-class EditDistanceColumn {
- public:
-  EditDistanceColumn() : prev_(NULL), depth_(0) {}
-  EditDistanceColumn(const EditDistanceColumn* prev,
-                     const ElementType &s_elem)
-    : prev_(prev), s_elem_(s_elem) {
-    assert(prev_);
-    depth_ = prev_->depth_+1;
-  }
-
-  void update(const EditDistanceColumn* prev, const SequenceType& t) {
-    int start_index = costs_.size();
-    int end_index = t.size() + 1;
-
-    // XXX FIXME TODO TEMP XXX
-    assert(prev == prev_);
-    start_index = 0;
-    costs_.clear();
-    if (costs_.size() <= t.size()+1)
-      costs_.resize(t.size()+1);
-    // XXX FIXME TODO TEMP XXX
-
-    ValueType c1,c2,c3;
-    if (depth_ == 0) {
-      for (int j=start_index; j<end_index; ++j) {
-        int s_pos=0, t_pos=j-1;
-        set_cost(j, (ValueType)j);
+  inline void set_cost(unsigned j, ValueType cost) {
+    if (children_count_ > 1) {
+      if (full_costs_->size() == j) {
+        full_costs_->push_back(cost);
+      } else {
+        assert(full_costs_->size() > j);
+        (*full_costs_)[j] = cost;
       }
     } else {
-      for (int j=start_index; j<end_index; ++j) {
-        if (j == 0) {
-          set_cost(j, depth_);
-        } else {
-          int s_pos=0, t_pos=j-1;
-          c1 = prev->cost(j-1) + ScoreType::match(s_elem_,  t, t_pos);
-          c2 = this->cost(j-1) + ScoreType::insert(s_elem_, t, t_pos);
-          c3 = prev->cost(j)   + ScoreType::del(s_elem_,    t, t_pos);
-          set_cost(j, std::min(c1, std::min(c2, c3)));
-        }
-      }
+      costs_[j % 2] = cost;
     }
-    //for (int i = 0; i < end_index; ++i)
-    //  std::cout << cost(i) << ",";
-    //std::cout << "\n";
+  }
+ 
+  void debug_print(std::ostream& os) {
+    os << "(" << this
+       << ") prev: " << prev_.get()
+       << " s: " << s_elem_
+       << " depth: " << depth_
+       << " row: " << row_
+       << " children: " << children_count_
+       << " full_costs: " << full_costs_
+       << " costs[0]: " << costs_[0]
+       << " costs[1]: " << costs_[1];
   }
 
-  const ElementType& s() { return s_elem_; }
 
-  inline ValueType cost(int j) const {
-    assert(j < costs_.size());
-    return costs_[j];
-  }
-
-  inline ValueType edit_distance() const {
-    return costs_[costs_.size()-1];
-  }
-
-  inline void set_cost(int j, ValueType cost) {
-    costs_[j] = cost;
-  }
-
-  std::vector<ValueType>& cost_vector() { return costs_; }
-
- private:
-  const EditDistanceColumn* prev_;
   ElementType s_elem_; // one element of the s sequence
-  int depth_;
-  std::vector<ValueType> costs_;
+  EditDistanceRowColumnPtr prev_;
+
+  unsigned depth_;
+  unsigned row_;
+
+  ChildIDType children_count_;
+  std::vector<ValueType>* full_costs_;
+  ValueType costs_[2];
 };
 
 
 ////////////////////////////////////////////////////////////////////////////////
 // TODO BOOST shared pointer
 
-template<class EDNodeTy, class SeqTy, class ValTy>
-class EditDistanceTree : public tree<EDNodeTy> {
+template<class DataType, class SeqTy, class ValTy>
+class EditDistanceTree : public tree<boost::shared_ptr<DataType> > {
+
+  typedef tree<boost::shared_ptr<DataType> > Tree;
+  typedef tree_node_<boost::shared_ptr<DataType> > Node;
+  typedef boost::shared_ptr<DataType> DataTypePtr;
+
+  typedef std::map<Node*, std::set<typename SeqTy::ID> > NodeIDMap;
+  typedef std::set<Node*> NodeSet;
 
 #define foreach_child(__node,__iterator) \
-  typename tree<EDNodeTy>::pre_order_iterator __node##_BASE(__node); \
-  typename tree<EDNodeTy>::children_iterator __iterator, __iterator##_END; \
-  for (__iterator = this->begin_children_iterator(__node##_BASE), \
-       __iterator##_END = this->end_children_iterator(__node##_BASE); \
+  typename Tree::pre_order_iterator __iterator##_BASE(__node); \
+  typename Tree::children_iterator __iterator, __iterator##_END; \
+  for (__iterator = this->begin_children_iterator(__iterator##_BASE), \
+       __iterator##_END = this->end_children_iterator(__iterator##_BASE); \
        __iterator!=__iterator##_END; ++__iterator )
 
 #define foreach_pre_order(__node,__iterator) \
-  typename tree<EDNodeTy>::pre_order_iterator __node##_BASE(__node); \
-  typename tree<EDNodeTy>::pre_order_iterator __iterator, __iterator##_END; \
-  for (__iterator = this->begin_pre_order_iterator(__node##_BASE), \
-       __iterator##_END = this->end_pre_order_iterator(__node##_BASE); \
+  typename Tree::pre_order_iterator __iterator##_BASE(__node); \
+  typename Tree::pre_order_iterator __iterator, __iterator##_END; \
+  for (__iterator = this->begin_pre_order_iterator(__iterator##_BASE), \
+       __iterator##_END = this->end_pre_order_iterator(__iterator##_BASE); \
        __iterator!=__iterator##_END; ++__iterator )
 
 #define foreach_leaf(__node,__iterator) \
-  typename tree<EDNodeTy>::pre_order_iterator __node##_BASE(__node); \
-  typename tree<EDNodeTy>::leaf_iterator __iterator, __iterator##_END; \
-  for (__iterator = this->begin_leaf_iterator(__node##_BASE), \
-       __iterator##_END = this->end_leaf_iterator(__node##_BASE); \
+  typename Tree::pre_order_iterator __iterator##_BASE(__node); \
+  typename Tree::leaf_iterator __iterator, __iterator##_END; \
+  for (__iterator = this->begin_leaf_iterator(__iterator##_BASE), \
+       __iterator##_END = this->end_leaf_iterator(__iterator##_BASE); \
+       __iterator!=__iterator##_END; ++__iterator )
+
+#define foreach_leaf_other(__tree,__node,__iterator) \
+  typename Tree::pre_order_iterator __iterator##_BASE(__node); \
+  typename Tree::leaf_iterator __iterator, __iterator##_END; \
+  for (__iterator = __tree->begin_leaf_iterator(__iterator##_BASE), \
+       __iterator##_END = __tree->end_leaf_iterator(__iterator##_BASE); \
        __iterator!=__iterator##_END; ++__iterator )
 
 #define foreach_parent(__node,__iterator) \
-  typename tree<EDNodeTy>::pre_order_iterator __iterator(__node); \
+  typename Tree::pre_order_iterator __iterator(__node); \
    for (; __iterator != this->root(); __iterator = this->parent(__iterator) )
-
-  typedef tree_node_<EDNodeTy> Node;
 
  public:
   EditDistanceTree() {
-    EDNodeTy root_data;
+    DataTypePtr root_data(new DataType());
     this->set_root(root_data);
   }
+
+  // disable!? make private?
 
   ~EditDistanceTree() { this->clear(); }
 
   void append_sequence(const SeqTy& t) {}
 
-  EditDistanceTree* clone() {
-    return new EditDistanceTree(*this);
+  EditDistanceTree* clone(std::set<typename SeqTy::ID>* seq_set=NULL) {
+    EditDistanceTree* edtree = new EditDistanceTree();
+
+    // Copy current tree root to new tree, provide NULL parent
+    (*(edtree->root()))->copy(*(this->root()), DataTypePtr() );
+
+    clone_helper(edtree);
+
+    foreach_leaf_other(edtree, edtree->root().node, leaf_it) {
+      edtree->leaf_nodes_.insert(leaf_it.node);
+    }
+    assert(this->size() == edtree->size());
+
+    return edtree;
   }
 
+  void clone_helper(EditDistanceTree* other) {
+   
+    std::stack<std::pair<Node*,Node*> > worklist;
+    worklist.push(std::make_pair(this->root().node, other->root().node));
+    while (!worklist.empty()) {
+      Node* src = worklist.top().first;
+      Node* dst = worklist.top().second;
+      worklist.pop();
+
+      if (id_map_.count(src)) 
+        other->id_map_[dst].insert(id_map_[src].begin(), 
+                                  id_map_[src].end());
+
+      foreach_child (src, child_it) {
+        DataTypePtr data(new DataType(*child_it, dst->data));
+        Node* new_dst = other->append_child(dst, data).node;
+        Node* new_src = child_it.node;
+
+        // Add to worklist
+        worklist.push(std::make_pair(new_src, new_dst));
+      }
+    }
+  } 
+
   void initialize() {
-    Node* root_node = this->root().node;
-    foreach_pre_order (root_node, it) {
-      Node* node = it.node;
-      EDNodeTy* data = &(node->data);
-      Node* parent = this->parent(it).node;
-      EDNodeTy* parent_data = NULL;
-      if (parent)
-        parent_data = &(parent->data);
-      unsigned children_count = this->number_of_children(it);
-      data->initialize(parent_data, children_count);
+    foreach_pre_order (this->root().node, it) {
+      DataTypePtr parent_data;
+      if (this->parent(it).node)
+        parent_data = *(this->parent(it));
+      it.node->data->initialize(parent_data, 
+                                this->number_of_children(it));
+    }
+
+    foreach_leaf(this->root().node, leaf_it) {
+      leaf_nodes_.insert(leaf_it.node);
     }
   }
 
-  void insert(const SeqTy& s, const std::string* seq_name=NULL) {
+  void insert(const SeqTy& s, typename SeqTy::ID seq_id) {
     Node* curr_node = this->root().node;
     typename SeqTy::const_iterator it = s.begin(), ie = s.end();
     for (; it!=ie; ++it) {
       Node* child_node = NULL;
       foreach_child (curr_node, child_it) {
-        if ((*child_it).s() == *it) {
+        if ((*child_it)->s() == *it) {
           child_node = child_it.node;
           break;
         }
       }
       if (child_node == NULL) {
-        // Neccessary if we are using initialize() now?
-        EDNodeTy data(*it);
+        DataTypePtr data(new DataType(*it));
         curr_node = this->append_child(curr_node, data).node;
       } else {
         curr_node = child_node;
       }
-      if (seq_name)
-        name_map_[curr_node].push_back(seq_name);
+      id_map_[curr_node].insert(seq_id);
     }
   }
 
   void compute_t(const SeqTy& t) {
-    for (int i=0; i<t.size()+1; ++i) {
-      std::cout << ".";
-      Node* root_node = this->root().node;
-      foreach_pre_order (root_node, it) {
-        Node* parent = this->parent(it).node;
-        EDNodeTy* parent_data = parent ? &(parent->data) : NULL;
-        (*it).update(parent_data, t);
+    //for (int i=0; i<t.size()+1; i++) {
+    //  std::cout << ".";
+    //  foreach_pre_order (this->root().node, node_it) {
+    //    (*node_it)->compute_cost(t);
+    //  }
+    //}
+    //std::cout << "\n";
+
+    typename NodeSet::iterator it = leaf_nodes_.begin(), ie = leaf_nodes_.end();
+    for (; it!=ie; ++it) {
+      //std::cout << ".";
+      (*it)->data->update(t);
+    }
+    //std::cout << "\n";
+  }
+
+  void min_edit_distance(ValTy& result, typename SeqTy::ID& id, 
+                         std::vector<typename SeqTy::ID>* id_list=NULL) {
+    result = INT_MAX;
+    typename NodeSet::iterator it = leaf_nodes_.begin(), ie = leaf_nodes_.end();
+    for (; it!=ie; ++it) {
+      ValTy ed = (*it)->data->edit_distance();
+      if (result > ed) {
+        result = ed;
+        id = *(id_map_[*it].begin());
       }
     }
-    std::cout << "\n";
   }
 
   void get_all_distances(std::vector<ValTy>& edit_distance_list,
-                         std::vector<const std::string*>* name_list=NULL) {
+                         std::vector<typename SeqTy::ID>* id_list=NULL) {
     Node* root_node = this->root().node;
     assert(root_node);
     foreach_leaf(root_node, leaf_it) {
-      EDNodeTy* data = &(*(leaf_it));
-      edit_distance_list.push_back(data->edit_distance());
-      if (name_list) {
-        assert(name_map_.count(leaf_it.node) && name_map_[leaf_it.node].size() == 1);
-        const std::string* name = name_map_[leaf_it.node][0];
-        name_list->push_back(name);
+      assert(leaf_nodes_.count(leaf_it.node));
+      if (id_list) {
+        assert(id_map_.count(leaf_it.node) && id_map_[leaf_it.node].size() == 1);
+        typename SeqTy::ID seq_id = *(id_map_[leaf_it.node].begin());
+        id_list->push_back(seq_id);
       }
+      edit_distance_list.push_back((*leaf_it)->edit_distance());
     }
   }
 
   void get_all_sequences(std::vector<SeqTy>& sequence_list,
-                         std::vector<const std::string*>* name_list=NULL) {
+                         std::vector<typename SeqTy::ID>* id_list=NULL) {
     Node* root_node = this->root().node;
     assert(root_node);
     foreach_leaf(root_node, leaf_it) {
       SeqTy seq;
       get_path(leaf_it.node, seq);
       sequence_list.push_back(seq);
-      if (name_list) {
-        assert(name_map_.count(leaf_it.node) && name_map_[leaf_it.node].size() == 1);
-        const std::string* name = name_map_[leaf_it.node][0];
-        name_list->push_back(name);
+      if (id_list) {
+        assert(id_map_.count(leaf_it.node) && id_map_[leaf_it.node].size() == 1);
+        typename SeqTy::ID seq_id = *(id_map_[leaf_it.node].begin());
+        id_list->push_back(seq_id);
       }
     }
   }
 
-  //void get_cost_matrix(const std::string* name,
-  //                     std::vector< std::vector<ValTy> > &cost_matrix) {
-  //  Node* root_node = this->root().node;
-  //  assert(root_node);
-  //  foreach_leaf(root_node, leaf_it) {
-  //    assert(name_map_.count(leaf_it.node) && name_map_[leaf_it.node].size() == 1);
-  //    if (name == name_map_[leaf_it.node][0]) {
-  //      cost_matrix.insert(cost_matrix.begin(),(*leaf_it).cost_vector());
-  //      get_cost_matrix_for_node(leaf_it.node, cost_matrix);
-  //      return;
-  //    }
-  //  }
-  //}
-
-  //void get_node_list(const std::string* name,
-  //                   std::vector< EDNodeTy > &node_list) {
-  //  Node* root_node = this->root().node;
-  //  assert(root_node);
-  //  foreach_leaf(root_node, leaf_it) {
-  //    assert(name_map_.count(leaf_it.node) && name_map_[leaf_it.node].size() == 1);
-  //    if (name == name_map_[leaf_it.node][0]) {
-
-  //      foreach_parent (leaf_it.node, parent_it) {
-  //        node_list.insert(node_list.begin(),(*parent_it));
-  //      }
-  //      node_list.insert(node_list.begin(),(*(this->root())));
-  //      return;
-  //    }
-  //  }
-  //}
-
  private:
-
-  //void get_cost_matrix_for_node(Node* node, 
-  //                              std::vector< std::vector<ValTy> > &cost_matrix) {
-  //  foreach_parent (node, parent_it) {
-  //    cost_matrix.insert(cost_matrix.begin(),(*parent_it).cost_vector());
-  //  }
-  //  cost_matrix.insert(cost_matrix.begin(),(*(this->root())).cost_vector());
-  //}
+  explicit EditDistanceTree(const EditDistanceTree& e);
 
   void get_path(Node* node, SeqTy& path) {
     foreach_parent (node, parent_it) {
-      path.push_front((*parent_it).s());
+      path.push_front((*parent_it)->s());
     }
   }
 
   SeqTy t_;
-  std::map<Node*, std::vector<const std::string*> > name_map_;
+  NodeIDMap id_map_;
+  NodeSet leaf_nodes_;
 
 #undef foreach_child
 #undef foreach_pre_order
@@ -687,6 +673,10 @@ typedef ExecutionTraceEDR ExecutionTraceED;
 // Basic ExecutionTree
 typedef ExecutionTree<unsigned, ExecutionTrace> ExecutionTraceTree;
 
+typedef std::map<ExecutionTrace, ExecutionTrace::ID> ExecutionTraceIDMap;
+typedef std::map<ExecutionTrace::ID, std::string> ExecutionTraceNameMap;
+typedef std::map<CVExecutionState*, EDTree*> ExecutionStateEDTreeMap;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class ExecutionTreeManager : public ExecutionObserver {
@@ -705,31 +695,30 @@ class TrainingExecutionTreeManager : public ExecutionTreeManager {
   TrainingExecutionTreeManager(ClientVerifier *cv);
   void initialize();
   void notify(ExecutionEvent ev);
- private:
+ protected:
 
 };
 
 class VerifyExecutionTreeManager : public ExecutionTreeManager {
  public:
   VerifyExecutionTreeManager(ClientVerifier *cv);
-  void initialize();
-  void notify(ExecutionEvent ev);
- private:
+  virtual void initialize();
+  virtual void notify(ExecutionEvent ev);
+ protected:
   int read_traces(std::vector<std::string> &filename_list);
-  std::map<ExecutionTrace,std::string> training_trace_map_;
-  CVExecutionState* last_state_seen_;
 
+  ExecutionTraceIDMap training_trace_map_;
+  ExecutionTraceNameMap training_name_map_;
+  ExecutionStateEDTreeMap state_tree_map_;
+  EDTree* ed_tree_;
 };
 
-class TrainingTestExecutionTreeManager : public ExecutionTreeManager {
+class TestExecutionTreeManager : public VerifyExecutionTreeManager {
  public:
-  TrainingTestExecutionTreeManager(ClientVerifier *cv);
+  TestExecutionTreeManager(ClientVerifier *cv);
   void initialize();
   void notify(ExecutionEvent ev);
  private:
-  int read_traces(std::vector<std::string> &filename_list);
-  std::map<ExecutionTrace,std::string> training_trace_map_;
-  EDTree* ed_tree_;
 
 };
 

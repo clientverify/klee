@@ -24,7 +24,7 @@ int CVExecutionState::next_id_ = 0;
 
 CVExecutionState::CVExecutionState(klee::KFunction *kF, klee::MemoryManager *mem)
  : klee::ExecutionState(kF, mem),
-	 id_(increment_id()) {}
+	 id_(increment_id()), property_(0) {}
 
 CVExecutionState::CVExecutionState(
     const std::vector< klee::ref<klee::Expr> > &assumptions)

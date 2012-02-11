@@ -257,10 +257,10 @@ void TrainingExecutionTreeManager::notify(ExecutionEvent ev) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TrainingTestExecutionTreeManager::TrainingTestExecutionTreeManager(ClientVerifier* cv) 
-  : ExecutionTreeManager(cv) {}
+TestExecutionTreeManager::TestExecutionTreeManager(ClientVerifier* cv) 
+  : VerifyExecutionTreeManager(cv) {}
 
-void TrainingTestExecutionTreeManager::initialize() {
+void TestExecutionTreeManager::initialize() {
   trees_.push_back(new ExecutionTraceTree() );
 
   // Read training paths
@@ -275,57 +275,32 @@ void TrainingTestExecutionTreeManager::initialize() {
 
   ed_tree_ = new EDTree();
 
-  for (std::map<ExecutionTrace,std::string>::iterator it = training_trace_map_.begin(),
+  for (ExecutionTraceIDMap::iterator it = training_trace_map_.begin(),
        ie = training_trace_map_.end(); it!=ie; ++it) {
-    CVMESSAGE("Adding " << it->second << ", size: " << (it->first).size()
-              << " to the tree");
-    ed_tree_->insert(it->first, &(it->second));
+    CVMESSAGE("Adding " << training_name_map_[it->second] 
+              << ", size: " << (it->first).size() << " to the tree");
+    ed_tree_->insert(it->first, it->second);
   }
 
-  ed_tree_->initialize();
-
   std::vector<ExecutionTrace> trace_list;
-  std::vector<const std::string*> name_list;
-  ed_tree_->get_all_sequences(trace_list, &name_list);
+  std::vector<ExecutionTrace::ID> id_list;
+  ed_tree_->get_all_sequences(trace_list, &id_list);
   CVMESSAGE("Loaded " << trace_list.size() << " out of " 
           << training_trace_map_.size() << " training traces into the tree!");
   for (int i=0; i < trace_list.size(); ++i) {
     if (training_trace_map_.count(trace_list[i]) == 0) {
-      CVMESSAGE("Trace missing for " << *(name_list[i]) 
+      CVMESSAGE("Trace missing for " << training_name_map_[id_list[i]]
                 << ", size: " << trace_list[i].size()
                 << " " << trace_list[i][0] << " "
                 << trace_list[i][trace_list[i].size()-1]);
       cv_error("Error in EditDistanceTree, exiting.");
     }
   }
+
+  ed_tree_->initialize();
 }
 
-int TrainingTestExecutionTreeManager::read_traces(
-    std::vector<std::string> &filename_list) {
-
-  int dup_count = 0;
-	foreach (std::string filename, filename_list) {
-
-		std::ifstream *is = new std::ifstream(filename.c_str(),
-				std::ifstream::in | std::ifstream::binary );
-
-		if (is != NULL && is->good()) {
-      ExecutionTrace etrace;
-      etrace.read(*is, cv_->executor()->get_kmodule());
-
-      if (training_trace_map_.count(etrace) == 0)
-        training_trace_map_[etrace] = filename;
-      else
-        ++dup_count;
-
-			delete is;
-		}
-	}
-  CVMESSAGE("Duplicate traces " << dup_count );
-	return training_trace_map_.size();
-}
-
-void TrainingTestExecutionTreeManager::notify(ExecutionEvent ev) {
+void TestExecutionTreeManager::notify(ExecutionEvent ev) {
   CVExecutionState* state = ev.state;
   CVExecutionState* parent = ev.parent;
 
@@ -375,99 +350,58 @@ void TrainingTestExecutionTreeManager::notify(ExecutionEvent ev) {
         CVMESSAGE("Matching Training Trace Not Found!");
       }
 
-      // XXX REMOVE ME XXX
-      if (cv_->round() == 5)
-        cv_->executor()->setHaltExecution(true);
-      // XXX REMOVE ME XXX
+      //// XXX REMOVE ME XXX
+      //if (cv_->round() == 5)
+      //  cv_->executor()->setHaltExecution(true);
+      //// XXX REMOVE ME XXX
 
-      ed_tree_->compute_t(etrace);
-      std::vector<int> edit_distance_list;
-      std::vector<const std::string*> name_list;
-      std::map<const std::string*, int> name_map;
-      ed_tree_->get_all_distances(edit_distance_list, &name_list);
+      CVMESSAGE("cloning edit distance tree");
+      EDTree* ed_tree = ed_tree_->clone();
+      //EDTree* ed_tree = new EDTree();
+      //int tcount =0;
+      //for (ExecutionTraceIDMap::iterator it = training_trace_map_.begin(),
+      //    ie = training_trace_map_.end(); it!=ie; ++it) {
+      //  ed_tree->insert(it->first, it->second);
+      //  if (++tcount == 1)
+      //    break;
+      //}
+      //ed_tree->initialize();
+      //ed_tree->clone();
+      
+      CVMESSAGE("computing edit distance in tree");
+      ed_tree->compute_t(etrace);
+      //std::vector<int> edit_distance_list;
+      //std::vector<ExecutionTrace::ID> id_list;
+      //std::map<ExecutionTrace::ID, int> id_distance_map;
+      //ed_tree->get_all_distances(edit_distance_list, &id_list);
 
-      for (int i=0; i < edit_distance_list.size(); ++i) {
-        name_map[name_list[i]] = edit_distance_list[i];
-      }
+      //for (int i=0; i < edit_distance_list.size(); ++i) {
+      //  id_distance_map[id_list[i]] = edit_distance_list[i];
+      //}
 
-      for (std::map<ExecutionTrace,std::string>::iterator it = training_trace_map_.begin(),
-           ie = training_trace_map_.end(); it!=ie; ++it) {
+      //for (ExecutionTraceIDMap::iterator it = training_trace_map_.begin(),
+      //     ie = training_trace_map_.end(); it!=ie; ++it) {
     
-        int cost_tree = name_map[&(it->second)];
-        //if ((it->first).size() < 100) {
-        int cost_u, cost_r;
+      //  int cost_u, cost_r=0;
+      //  int cost_tree = id_distance_map[it->second];
 
-        ExecutionTraceED edr(etrace, it->first);
-        cost_r = edr.compute_editdistance();
-        assert(name_map.count(&(it->second)));
-        cost_tree = name_map[&(it->second)];
+      //  ExecutionTraceED edr(etrace, it->first);
+      //  cost_r = edr.compute_editdistance();
+      //  //assert(id_distance_map.count(it->second));
 
-        cost_r = cost_tree;
-        if (cost_tree != cost_r) {
-          //*cv_message_stream << "________________________\n";
-          //std::vector<std::vector<int> > cost_matrix;
-          //std::vector< EDColumn > node_list;
-          //ed_tree_->get_cost_matrix(&(it->second), cost_matrix);
-          //ed_tree_->get_node_list(&(it->second), node_list);
-          //for (int i=0; i<cost_matrix.size(); ++i) {
-          //  *cv_message_stream << cost_matrix[i].size() << ", ";
-
-          //}
-          //*cv_message_stream << "\n------------------------\n";
-          //for (int i=0; i<etrace.size()+1; ++i) {
-          //  //for (int j=0; j<(it->first).size()+1; ++j) {
-          //  for (int j=0; j<cost_matrix.size(); ++j) {
-          //    int fwidth = cv_message_stream->width(4);
-          //    *cv_message_stream << cost_matrix[j][i];
-          //    cv_message_stream->width(fwidth);
-          //  }
-          //  *cv_message_stream << "\n";
-          //}
-          //*cv_message_stream << "\n========================\n";
-          //for (int j=0; j<node_list.size(); ++j) {
-          //  int fwidth = cv_message_stream->width(16);
-          //  *cv_message_stream << node_list[j].s()[0];
-          //  cv_message_stream->width(fwidth);
-          //}
-          //*cv_message_stream << "\n========================\n";
-
-          ////for (int i=0; i<etrace.size()+1; ++i) {
-          ////  for (int j=0; j<node_list.size(); ++j) {
-          ////    int fwidth = cv_message_stream->width(4);
-          ////    *cv_message_stream << cost_matrix[j][i];
-          ////    cv_message_stream->width(fwidth);
-          ////  }
-          ////  *cv_message_stream << "\n";
-          ////}
-
-          //edr.debug_print(*cv_message_stream);
-          CVMESSAGE("*** cost_tree = " << cost_tree << ", cost_r = " 
-                    << cost_r << " *** for " << it->second);
-          cv_error("exiting");
-        } else {
-          CVMESSAGE("EditDist (row, tree):  " << cost_tree << ", " << cost_r
-                    << " for " << it->second);
-        }
-
-
-
-        //if (std::abs((int)etrace.size() - (int)(it->first).size()) > 500) {
-        //  //ExecutionTraceEDR edr(etrace, it->first);
-        //  //cost_r = edr.compute_editdistance();
-        //  //CVMESSAGE("Cost: " << cost_r << " for edit distance row-table of " << it->second);
-        //} else {
-        //  ExecutionTraceEDUF edu(etrace, it->first);
-        //  cost_u = edu.compute_editdistance();
-        //  //ExecutionTraceEDR edr(etrace, it->first);
-        //  //cost_r = edr.compute_editdistance();
-        //  //if (cost_u != cost_r)
-        //  //  CVMESSAGE("*** cost_u = " << cost_u << ", cost_r = " << cost_r << " ***\n");
-        //  //assert(cost_u == cost_r);
-        //  CVMESSAGE("Cost: " << cost_u << " for edit distance full ukkonen of " << it->second);
+      //  //cost_r = cost_tree;
+      //  if (cost_tree != cost_r) {
+      //    CVMESSAGE("*** cost_tree = " << cost_tree << ", cost_r = " 
+      //              << cost_r << " *** for " << training_name_map_[it->second]);
+      //    //cv_error("exiting");
+      //  } else {
+      //    CVMESSAGE("EditDist (row, tree):  " << cost_tree << ", " << cost_r
+      //              << " for " << training_name_map_[it->second]);
+      //  }
  
-        //}
- 
-      }
+      //}
+      delete ed_tree;
+      CVMESSAGE("DONE!");
 
       break;
     }
@@ -486,7 +420,7 @@ void TrainingTestExecutionTreeManager::notify(ExecutionEvent ev) {
 ////////////////////////////////////////////////////////////////////////////////
 
 VerifyExecutionTreeManager::VerifyExecutionTreeManager(ClientVerifier* cv) 
-  : ExecutionTreeManager(cv), last_state_seen_(0) {}
+  : ExecutionTreeManager(cv) {}
 
 void VerifyExecutionTreeManager::initialize() {
   trees_.push_back(new ExecutionTraceTree() );
@@ -500,11 +434,24 @@ void VerifyExecutionTreeManager::initialize() {
   if (TrainingPathFile.empty() || read_traces(TrainingPathFile) == 0) {
     cv_error("Error reading training path files, exiting now.");
   } 
+
+  ed_tree_ = new EDTree();
+
+  CVMESSAGE("Adding training paths..");
+  for (ExecutionTraceIDMap::iterator it = training_trace_map_.begin(),
+       ie = training_trace_map_.end(); it!=ie; ++it) {
+    //CVMESSAGE("Adding " << training_name_map_[it->second] 
+    //          << ", size: " << (it->first).size() << " to the tree");
+    ed_tree_->insert(it->first, it->second);
+  }
+  CVMESSAGE("Done.");
+  ed_tree_->initialize();
 }
 
 int VerifyExecutionTreeManager::read_traces(
     std::vector<std::string> &filename_list) {
 
+  static ExecutionTrace::ID starting_id=0;
   int dup_count = 0;
 	foreach (std::string filename, filename_list) {
 
@@ -515,10 +462,14 @@ int VerifyExecutionTreeManager::read_traces(
       ExecutionTrace etrace;
       etrace.read(*is, cv_->executor()->get_kmodule());
 
-      if (training_trace_map_.count(etrace) == 0)
-        training_trace_map_[etrace] = filename;
-      else
+      if (training_trace_map_.count(etrace) == 0) {
+        ExecutionTrace::ID eid = ++starting_id;
+
+        training_trace_map_[etrace] = eid;
+        training_name_map_[eid] = filename;
+      } else {
         ++dup_count;
+      }
 
 			delete is;
 		}
@@ -533,7 +484,14 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
 
   switch (ev.event_type) {
     case CV_ROUND_START: {
+      delete trees_.back();
       trees_.push_back(new ExecutionTraceTree() );
+      ExecutionStateEDTreeMap::iterator it = state_tree_map_.begin(),
+          ie = state_tree_map_.end();
+      for (; it!=ie; ++it) {
+        delete it->second;
+      }
+      state_tree_map_.clear();
       break;
     }
     case CV_BASICBLOCK_ENTRY: {
@@ -541,16 +499,17 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
       if (!trees_.back()->has_state(state)) {
         CVDEBUG("Adding parent-less state: " << state << ", " << state->id() );
         trees_.back()->add_state(state, NULL);
+        EDTree* ed_tree = ed_tree_->clone();
+        state_tree_map_[state] = ed_tree;
       }
 
       trees_.back()->update_state(state, state->prevPC->kbb->id);
 
       EditDistanceProperty *edp 
         = static_cast<EditDistanceProperty*>(state->property());
-      //if (state != last_state_seen_) {
+      
       if (edp->recompute) {
         edp->recompute = false;
-        //last_state_seen_ = state;
         ExecutionTrace full_etrace;
         trees_.back()->get_path(state, full_etrace);
 
@@ -558,25 +517,67 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
                 << full_etrace.size() << ", prev min edit distance: " 
                 << edp->edit_distance);
 
-        std::map<ExecutionTrace,std::string>::iterator it 
-          = training_trace_map_.begin(), ie = training_trace_map_.end(); 
+        int min_ed = INT_MAX;
+        ExecutionTrace::ID trace_id;
+        state_tree_map_[state]->compute_t(full_etrace);
+        state_tree_map_[state]->min_edit_distance(min_ed, trace_id);
+        
+        ////// Begin Testing 
 
-        int min_edit_distance = INT_MAX;
-        std::string min_edit_distance_str;
-        for (; it!=ie; ++it) {
-          if (it->first.size() > full_etrace.size()) {
-            ExecutionTraceED ed(full_etrace, it->first);
-            int edit_distance = ed.compute_editdistance();
-            if (edit_distance < min_edit_distance) {
-              min_edit_distance = edit_distance;
-              min_edit_distance_str = it->second;
-            }
-            min_edit_distance = std::min(min_edit_distance, ed.compute_editdistance());
-          }
-        }
-        edp->edit_distance = min_edit_distance;
-        CVDEBUG("Min edit-distance: " << min_edit_distance
-                << " " << min_edit_distance_str);
+        //std::vector<int> edit_distance_list;
+        //std::vector<ExecutionTrace::ID> id_list;
+        //// Collect Edit Distances from Tree
+        //state_tree_map_[state]->get_all_distances(edit_distance_list, &id_list);
+
+        //std::map<ExecutionTrace::ID, int> id_distance_map;
+        //for (int i=0; i < edit_distance_list.size(); ++i) {
+        //  id_distance_map[id_list[i]] = edit_distance_list[i];
+        //  if (min_ed > edit_distance_list[i]) {
+        //    min_ed = edit_distance_list[i];
+        //    trace_id = id_list[i];
+        //  }
+        //}
+
+        //for (ExecutionTraceIDMap::iterator it = training_trace_map_.begin(),
+        //    ie = training_trace_map_.end(); it!=ie; ++it) {
+      
+        //  int cost_r;
+        //  int cost_tree = id_distance_map[it->second];
+
+        //  ExecutionTraceED edr(full_etrace, it->first);
+        //  cost_r = edr.compute_editdistance();
+        //  if (cost_tree != cost_r) {
+        //    CVMESSAGE("*** cost_tree = " << cost_tree << ", cost_r = " 
+        //              << cost_r << " *** for " << training_name_map_[it->second]);
+        //    //cv_error("exiting");
+        //  //} else {
+        //  //  CVMESSAGE("EditDist (row, tree):  " << cost_tree << ", " << cost_r
+        //  //            << " for " << training_name_map_[it->second]);
+        //  }
+        //}
+  
+
+        ////ExecutionTrace::ID min_classic_id;
+        ////int min_classic_ed = INT_MAX;
+        ////ExecutionTraceIDMap::iterator it = training_trace_map_.begin(), 
+        ////  ie = training_trace_map_.end(); 
+        ////for (; it!=ie; ++it) {
+        ////  ExecutionTraceED ed(full_etrace, it->first);
+        ////  int edit_distance = ed.compute_editdistance();
+        ////  if (edit_distance < min_classic_ed) {
+        ////    min_classic_ed = edit_distance;
+        ////    min_classic_id= it->second;
+        ////  }
+        ////}
+
+        ////if (min_classic_ed != min_ed || min_classic_id != trace_id)
+        ////  CVMESSAGE("*** cost_tree = " << min_ed << ", cost_r = " 
+        ////            << min_classic_ed << " *** for " << trace_id << " and " << min_classic_id);
+        ////// End Testing
+
+        edp->edit_distance = min_ed;
+        CVDEBUG("Min edit-distance: " << min_ed
+                << " " << training_name_map_[trace_id]);
       }
       break;
     }
@@ -584,6 +585,9 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
     case CV_STATE_REMOVED: {
       CVDEBUG("Removing state: " << state << ", " << state->id() );
       trees_.back()->remove_state(state);
+      assert(state_tree_map_.count(state));
+      delete state_tree_map_[state];
+      state_tree_map_.erase(state);
       break;
     }
 
@@ -591,7 +595,6 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
       CVDEBUG("Cloned state: " << state << " : " << state->id() 
               << ", parent: " << parent << " : " << parent->id());
       trees_.back()->add_state(state, parent);
-      last_state_seen_ = state;
       
       EditDistanceProperty *edp 
         = static_cast<EditDistanceProperty*>(state->property());
@@ -599,6 +602,11 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         = static_cast<EditDistanceProperty*>(parent->property());
       edp->recompute=true;
       edp_parent->recompute=true;
+
+      // copy on write instead?
+      assert(state_tree_map_.count(parent));
+      EDTree* ed_tree = state_tree_map_[parent]->clone();
+      state_tree_map_[state] = ed_tree;
 
       break;
     }
