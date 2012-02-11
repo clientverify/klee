@@ -33,6 +33,7 @@ class CVExecutionState;
   X(CV_STATE_CLONE)              \
   X(CV_STATE_REMOVED)            \
   X(CV_RETURN)                   \
+  X(CV_STEP_INSTRUCTION)         \
   X(CV_CALL)                     \
   X(CV_CALL_EXTERNAL)            \
   X(CV_TRANSFER_TO_BASICBLOCK)   \
