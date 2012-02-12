@@ -33,9 +33,14 @@
 
 #ifdef GOOGLE_PROFILER
 #include <google/profiler.h>
+#include <google/heap-checker.h>
 
 llvm::cl::opt<int>
 ProfilerStartRoundNumber("profiler-start-round",llvm::cl::init(0));
+
+llvm::cl::opt<int>
+HeapCheckRoundNumber("heap-check-round",llvm::cl::init(-1));
+
 #endif
 
 llvm::cl::opt<int>
@@ -328,12 +333,22 @@ void ClientVerifier::print_current_statistics() {
 			&& round_number_ > ProfilerStartRoundNumber) {
 		ProfilerFlush();
 	}
+  static HeapLeakChecker* heap_checker = NULL;
+  if (HeapCheckRoundNumber >= 0
+			&& round_number_ == HeapCheckRoundNumber) {
+    heap_checker = new HeapLeakChecker("heap_check");
+    heap_checker->IgnoreObject(heap_checker);
+  }
+  if (HeapCheckRoundNumber >= 0
+			&& round_number_ == (HeapCheckRoundNumber+1)) {
+    if (!heap_checker->NoLeaks()) assert(NULL == "heap memory leak");
+  }
+
 #endif
 	next_statistics();
 
 	if (MaxRoundNumber && round_number_ > MaxRoundNumber) {
-		// need cleaner exit
-		exit(1);
+    executor_->setHaltExecution(true);
 	}
 
    notify_all(ExecutionEvent(CV_ROUND_START));

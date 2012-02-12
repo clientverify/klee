@@ -16,6 +16,7 @@
 
 #include <list>
 #include <sstream>
+#include <ostream>
 
 namespace klee {
 struct KFunction;
@@ -48,7 +49,7 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
 			llvm::Instruction* inst=NULL);
 
   void initialize(ClientVerifier *cv);
-  int id() { return id_; }
+  int id() const { return id_; }
   const CVContext* context() { return context_; }
 
 	NetworkManager* network_manager() const { return network_manager_; }
@@ -65,6 +66,8 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
 
   void notify(ExecutionEvent ev) {}
 
+  void print(std::ostream &os) const;
+
  private:
   int increment_id() { return next_id_++; }
 
@@ -77,6 +80,9 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
   ClientVerifier *cv_;
 };
 
+std::ostream &operator<<(std::ostream &os, const CVExecutionState &s);
+
 } // End cliver namespace
+
 
 #endif // CLIVER_EXECUTION_STATE_H
