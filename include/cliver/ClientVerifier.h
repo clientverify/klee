@@ -67,6 +67,7 @@ class CVExecutor;
 class CVExecutionState;
 class CVSearcher;
 class ConstraintPruner;
+class InstructionCounter;
 class ExecutionEvent;
 class ExecutionTreeManager;
 class StateMerger;
@@ -160,6 +161,7 @@ class ClientVerifier : public klee::InterpreterHandler {
 	StateMerger* merger_;
 
   ExecutionTreeManager *execution_tree_manager_;
+  InstructionCounter *i_counter_;
 
 	//signal_ty pre_event_callbacks_;
 	//signal_ty post_event_callbacks_;

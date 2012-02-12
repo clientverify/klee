@@ -182,7 +182,7 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
 
       ExecutionTrace etrace;
       tree->get_path(state, etrace);
-      CVMESSAGE("TRACE: " << etrace);
+      CVDEBUG("TRACE: " << etrace);
       break;
     }
 

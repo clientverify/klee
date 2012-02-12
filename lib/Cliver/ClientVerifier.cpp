@@ -43,15 +43,15 @@ HeapCheckRoundNumber("heap-check-round",llvm::cl::init(-1));
 
 #endif
 
-llvm::cl::opt<int>
-MaxRoundNumber("max-round",llvm::cl::init(0));
-
 // needed for boost::signal
 void boost::throw_exception(std::exception const& e) {}
 
 namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+llvm::cl::opt<int>
+MaxRoundNumber("max-round",llvm::cl::init(0));
 
 llvm::cl::list<std::string> SocketLogFile("socket-log",
 	llvm::cl::ZeroOrMore,
@@ -67,6 +67,10 @@ llvm::cl::list<std::string> SocketLogDir("socket-log-dir",
 
 llvm::cl::opt<bool> DebugPrintExecutionEvents("debug-print-execution-events",
   llvm::cl::init(false));
+
+llvm::cl::opt<bool> CountRoundInstructions("count-round-instructions",
+  llvm::cl::init(false));
+
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -105,6 +109,24 @@ ExternalHandlerInfo external_handler_info[] = {
 int CVContext::next_id_ = 0;
 
 CVContext::CVContext() : context_id_(increment_id()) {}
+
+////////////////////////////////////////////////////////////////////////////////
+
+class InstructionCounter : public ExecutionObserver {
+ public:
+  InstructionCounter() : instruction_count(0) {}
+
+  virtual void notify(ExecutionEvent ev) {
+    switch (ev.event_type) {
+      case CV_STEP_INSTRUCTION: 
+        instruction_count++;
+        break;
+      default:
+        break;
+    }
+  }
+  uint64_t instruction_count;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -184,6 +206,11 @@ void ClientVerifier::initialize(CVExecutor *executor) {
 
   hook(searcher_);
   hook(execution_tree_manager_);
+
+  i_counter_ = new InstructionCounter();
+  if (CountRoundInstructions) {
+    hook(i_counter_);
+  }
 
 }
 
@@ -302,7 +329,7 @@ void ClientVerifier::print_current_statistics() {
 	handle_statistics();
 	klee::StatisticRecord *sr = statistics_.back();
 
-  *cv_message_stream << "STATS " << ++round_number_
+  *cv_message_stream << "STATS " << round_number_++
     << " " << sr->getValue(stats::active_states)
     << " " << sr->getValue(stats::merged_states)
     << " " << sr->getValue(stats::pruned_constraints)
@@ -316,6 +343,7 @@ void ClientVerifier::print_current_statistics() {
     << " " << llvm::sys::Process::GetTotalMemoryUsage()
     << " " << sr->getValue(stats::training_paths)
     << " " << sr->getValue(stats::exhaustive_search_level)
+    << " " << i_counter_->instruction_count
     << "\n";
 
   // Rebuild solvers each round to keep caches fresh.
@@ -351,7 +379,14 @@ void ClientVerifier::print_current_statistics() {
     executor_->setHaltExecution(true);
 	}
 
-   notify_all(ExecutionEvent(CV_ROUND_START));
+  if (CountRoundInstructions) {
+    unhook(i_counter_);
+    delete i_counter_;
+    i_counter_ = new InstructionCounter();
+    hook(i_counter_);
+  }
+
+  notify_all(ExecutionEvent(CV_ROUND_START));
 }
 
 void ClientVerifier::next_statistics() {

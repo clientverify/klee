@@ -230,7 +230,6 @@ void NetworkManager::execute_open_socket(CVExecutor* executor,
 		Socket &socket = sockets_[i];
 		if (!socket.is_open()) {
 			socket.open();
-			CVDEBUG("opened socket " << socket.fd());
 			RETURN_SUCCESS("open", socket.fd());
 		}
 	}
