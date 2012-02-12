@@ -165,7 +165,10 @@ inline std::ostream &operator<<(std::ostream &os,
 ////////////////////////////////////////////////////////////////////////////////
 
 CVExecutor::CVExecutor(const InterpreterOptions &opts, klee::InterpreterHandler *ih)
-: klee::Executor(opts, ih), cv_(static_cast<ClientVerifier*>(ih)) {
+: klee::Executor(opts, ih),
+  cv_(static_cast<ClientVerifier*>(ih)),
+  memory_usage_mbs_(0)
+{
 
 	// Check for incompatible or non-supported klee options.
 #define INVALID_CL_OPT(name, val) \
@@ -347,13 +350,19 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
     executeInstruction(state, ki);
     processTimers(&state, klee::MaxInstructionTime);
 
+    if ((klee::stats::instructions & 0xFFFFF) == 0) {
+        update_memory_usage();
+        cv_->print_current_statistics("UPDT");
+    }
+
     if (klee::MaxMemory) {
       if ((klee::stats::instructions & 0xFFFF) == 0) {
         // We need to avoid calling GetMallocUsage() often because it
         // is O(elts on freelist). This is really bad since we start
         // to pummel the freelist once we hit the memory cap.
         //unsigned mbs = llvm::sys::Process::GetTotalMemoryUsage() >> 20;
-        unsigned mbs = check_memory_usage();
+        update_memory_usage();
+        unsigned mbs = memory_usage_mbs_;
         
         if (mbs > klee::MaxMemory) {
 					cv_message("Using %d MB of memory (limit is %d MB). Exiting.", 
@@ -830,14 +839,14 @@ void CVExecutor::rebuild_solvers() {
   solver = new klee::TimingSolver(new_solver, stpSolver);                                                                                                                                                             
 }
 
-uint64_t CVExecutor::check_memory_usage() {
+void CVExecutor::update_memory_usage() {
 	pid_t myPid = getpid();
 	std::stringstream ss;
 	ss << "/proc/" << myPid << "/status";
 
 	FILE *fp = fopen(ss.str().c_str(), "r"); 
 	if (!fp) { 
-		return 0;
+		return;
 	}
 
 	uint64_t peakMem=0;
@@ -851,7 +860,7 @@ uint64_t CVExecutor::check_memory_usage() {
 
 	fclose(fp);
 
-	return peakMem / 1024; 
+	memory_usage_mbs_ = (peakMem / 1024);
 }
 
 klee::KInstruction* CVExecutor::get_instruction(unsigned id) {

@@ -285,12 +285,6 @@ void TestExecutionTreeManager::initialize() {
 
   ed_tree_ = new EDTree();
 
-  //for (ExecutionTraceIDMap::iterator it = training_trace_map_.begin(),
-  //     ie = training_trace_map_.end(); it!=ie; ++it) {
-  //  CVMESSAGE("Adding " << training_name_map_[it->second] 
-  //            << ", size: " << (it->first).size() << " to the tree");
-  //  ed_tree_->insert(it->first, it->second);
-  //}
   foreach(ExecutionTraceInfo* info, execution_traces_) {
     CVMESSAGE("Adding " << *info );
     ed_tree_->insert(*(info->trace), info->id);
@@ -361,33 +355,16 @@ void TestExecutionTreeManager::notify(ExecutionEvent ev) {
 
       if (execution_trace_set_.count(&etrace)) {
         CVMESSAGE("Matching Training Trace Found! ");
+      } else {
+        CVMESSAGE("Matching Training Trace Not Found!");
       }
-      //if (training_trace_map_.count(etrace)) {
-      //  CVMESSAGE("Matching Training Trace Found! " << training_trace_map_[etrace]);
-      //} else {
-      //  CVMESSAGE("Matching Training Trace Not Found!");
-      //}
-
-      //// XXX REMOVE ME XXX
-      //if (cv_->round() == 5)
-      //  cv_->executor()->setHaltExecution(true);
-      //// XXX REMOVE ME XXX
 
       CVMESSAGE("cloning edit distance tree");
       EDTree* ed_tree = ed_tree_->clone();
-      //EDTree* ed_tree = new EDTree();
-      //int tcount =0;
-      //for (ExecutionTraceIDMap::iterator it = training_trace_map_.begin(),
-      //    ie = training_trace_map_.end(); it!=ie; ++it) {
-      //  ed_tree->insert(it->first, it->second);
-      //  if (++tcount == 1)
-      //    break;
-      //}
-      //ed_tree->initialize();
-      //ed_tree->clone();
       
       CVMESSAGE("computing edit distance in tree");
       ed_tree->compute_t(etrace);
+
       //std::vector<int> edit_distance_list;
       //std::vector<ExecutionTrace::ID> id_list;
       //std::map<ExecutionTrace::ID, int> id_distance_map;
@@ -416,8 +393,8 @@ void TestExecutionTreeManager::notify(ExecutionEvent ev) {
       //    CVMESSAGE("EditDist (row, tree):  " << cost_tree << ", " << cost_r
       //              << " for " << training_name_map_[it->second]);
       //  }
- 
       //}
+
       delete ed_tree;
       CVMESSAGE("DONE!");
 
@@ -585,25 +562,10 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         std::vector<ExecutionTrace::ID> search_list;
         int current_min_ed = min_edit_distance();
 
-        // Select any X such that |X| <= max(|s|,|t|) - min(|s|,|t|)
-        //ExecutionTraceInfoList::iterator 
-        //  it = et_by_length_.begin(),ie = et_by_length_.end();
-        //while (it!=ie && 
-        //       (current_min_ed > (std::max(full_etrace.size(), (*it)->trace->size()) 
-        //      - std::min(full_etrace.size(), (*it)->trace->size())))) {
-        //  if (full_etrace[0] == (*((*it)->trace))[0]) {
-        //    search_list.push_back((*it)->id);
-        //    //CVDEBUG("BB match, computing edit distance: "
-        //    //       << (*it)->name);
-        //  } else {
-        //    //CVDEBUG("BB mismatch, not computing edit distance: "
-        //    //        << (*it)->name);
-        //  }
-        //  ++it;
-        //}
 
         int prefix_sz = full_etrace.size();
 
+        // Select any X such that |X| <= max(|s|,|t|) - min(|s|,|t|)
         foreach (ExecutionTraceInfo* info, et_by_length_) {
           int training_sz = info->trace->size();
           if (current_min_ed > std::abs(prefix_sz - training_sz)) {
@@ -637,60 +599,6 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
                                           search_list,
                                           &min_ed,
                                           &trace_id);
-        //state_tree_map_[state]->min_edit_distance(min_ed, trace_id);
-        
-        ////// Begin Testing 
-
-        //std::vector<int> edit_distance_list;
-        //std::vector<ExecutionTrace::ID> id_list;
-        //// Collect Edit Distances from Tree
-        //state_tree_map_[state]->get_all_distances(edit_distance_list, &id_list);
-
-        //std::map<ExecutionTrace::ID, int> id_distance_map;
-        //for (int i=0; i < edit_distance_list.size(); ++i) {
-        //  id_distance_map[id_list[i]] = edit_distance_list[i];
-        //  if (min_ed > edit_distance_list[i]) {
-        //    min_ed = edit_distance_list[i];
-        //    trace_id = id_list[i];
-        //  }
-        //}
-
-        //for (ExecutionTraceIDMap::iterator it = training_trace_map_.begin(),
-        //    ie = training_trace_map_.end(); it!=ie; ++it) {
-      
-        //  int cost_r;
-        //  int cost_tree = id_distance_map[it->second];
-
-        //  ExecutionTraceED edr(full_etrace, it->first);
-        //  cost_r = edr.compute_editdistance();
-        //  if (cost_tree != cost_r) {
-        //    CVMESSAGE("*** cost_tree = " << cost_tree << ", cost_r = " 
-        //              << cost_r << " *** for " << training_name_map_[it->second]);
-        //    //cv_error("exiting");
-        //  //} else {
-        //  //  CVMESSAGE("EditDist (row, tree):  " << cost_tree << ", " << cost_r
-        //  //            << " for " << training_name_map_[it->second]);
-        //  }
-        //}
-  
-
-        ////ExecutionTrace::ID min_classic_id;
-        ////int min_classic_ed = INT_MAX;
-        ////ExecutionTraceIDMap::iterator it = training_trace_map_.begin(), 
-        ////  ie = training_trace_map_.end(); 
-        ////for (; it!=ie; ++it) {
-        ////  ExecutionTraceED ed(full_etrace, it->first);
-        ////  int edit_distance = ed.compute_editdistance();
-        ////  if (edit_distance < min_classic_ed) {
-        ////    min_classic_ed = edit_distance;
-        ////    min_classic_id= it->second;
-        ////  }
-        ////}
-
-        ////if (min_classic_ed != min_ed || min_classic_id != trace_id)
-        ////  CVMESSAGE("*** cost_tree = " << min_ed << ", cost_r = " 
-        ////            << min_classic_ed << " *** for " << trace_id << " and " << min_classic_id);
-        ////// End Testing
 
         edp->edit_distance = min_ed;
         CVDEBUG("Min edit-distance: " << min_ed << " " << *(id_map_[trace_id]));

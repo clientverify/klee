@@ -111,6 +111,31 @@ TEST(CliverTest, ClientVerifierConstructionDestruction) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TEST(CliverTest, EditDistanceAB) {
+  std::string s = "AAAAABBBBB";
+  std::string t = "BBBBBCCCCC";
+  StringEDT edt(s, t);
+  StringEDR edr(s, t);
+  StringEDU edu(s, t);
+  //StringEDUKK edukk(s, t);
+  //StringEDDynamicUKK eddukk(s, t);
+  //StringEDFullUKK edsukk(s, t);
+
+  int cost_t = edt.compute_editdistance();
+  int cost_r = edr.compute_editdistance();
+  int cost_u = edu.compute_editdistance();
+  //int cost_ukk = edukk.compute_editdistance();
+  //int cost_dukk = eddukk.compute_editdistance();
+  //int cost_sukk = edsukk.compute_editdistance();
+
+  ASSERT_EQ(cost_t, cost_r);
+  ASSERT_EQ(cost_t, cost_u);
+  //ASSERT_EQ(cost_t, cost_ukk);
+  //ASSERT_EQ(cost_t, cost_dukk);
+  //ASSERT_EQ(cost_t, cost_sukk);
+}
+
+
 TEST(CliverTest, EditDistance0) {
   std::string s = "ACCGGTCGGC";
   std::string t = "TGGTCGCCC";

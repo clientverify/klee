@@ -32,6 +32,9 @@
 #include <boost/serialization/access.hpp>
 #include <boost/serialization/vector.hpp>
 
+#define MAX(x,y) (((x)<(y))?(y):(x))
+#define MIN(x,y) (!((y)<(x))?(x):(y))
+
 namespace llvm {
 	class BasicBlock;
 }
@@ -200,17 +203,17 @@ class EditDistanceRowColumn {
     int start_index = row_;
     int end_index = t.size()+1;
 
-    // XXX use real pointer here.
-    std::vector< EditDistanceRowColumnPtr > worklist;
-    EditDistanceRowColumnPtr parent = prev_;
+    // Don't use shared pointers for speed.
+    std::vector< EditDistanceRowColumn* > worklist;
+    EditDistanceRowColumn* parent = prev_.get();
     while (parent && (parent->depth_ >= 0) 
             && (parent->row_ <= start_index)) {
       worklist.push_back(parent);
-      parent = parent->prev_;
+      parent = parent->prev_.get();
     }
 
     for (int j=start_index; j<end_index; ++j) {
-      typename std::vector<EditDistanceRowColumnPtr>::reverse_iterator 
+      typename std::vector<EditDistanceRowColumn*>::reverse_iterator 
         it = worklist.rbegin(), ie = worklist.rend();
       for (; it!=ie; ++it) {
         (*it)->compute_cost(t); 
@@ -236,11 +239,11 @@ class EditDistanceRowColumn {
       if (j == 0) {
         set_cost(j, depth_);
       } else {
-        c1 = prev_->cost(j-1) + ScoreType::match(s_elem_, t, j-1);
+        c1 = (prev_.get())->cost(j-1) + ScoreType::match(s_elem_, t, j-1);
         c2 = this->cost(j-1)  + ScoreType::insert(s_elem_, t, j-1);
-        c3 = prev_->cost(  j) + ScoreType::del(s_elem_, t, j-1);
+        c3 = (prev_.get())->cost(  j) + ScoreType::del(s_elem_, t, j-1);
 
-        set_cost(j, std::min(c1, std::min(c2, c3)));
+        set_cost(j, MIN(c1, MIN(c2, c3)));
       }
     }
     row_++;
@@ -289,9 +292,202 @@ class EditDistanceRowColumn {
   ValueType costs_[2];
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+template<class ScoreType, 
+         class SequenceType, 
+         class ElementType, 
+         class ValueType>
+class EditDistancedBandedRow {
+  typedef boost::shared_ptr<EditDistancedBandedRow> EditDistancedBandedRowPtr;
+
+ public:
+  EditDistancedBandedRow() :
+      depth_(0), 
+      row_(0),
+      k_(0),
+      full_costs_(NULL) {costs_[0] = costs_[1] = 0;}
+
+  EditDistancedBandedRow(const ElementType &s_elem) :
+      s_elem_(s_elem), 
+      depth_(0), 
+      row_(0),
+      k_(0),
+      full_costs_(NULL) {costs_[0] = costs_[1] = 0;}
+
+  EditDistancedBandedRow(EditDistancedBandedRowPtr e,
+                        EditDistancedBandedRowPtr prev) :
+      depth_(0), 
+      row_(0),
+      k_(0),
+      full_costs_(NULL) {
+    costs_[0] = costs_[1] = 0;
+    copy(e, prev);
+  }
+
+  ~EditDistancedBandedRow() {
+    if (full_costs_)
+      delete full_costs_;
+  }
+
+  void initialize(EditDistancedBandedRowPtr prev,
+                  unsigned children_count) {
+    prev_ = prev;
+
+    if (prev_) {
+      depth_ = prev_->depth_ + 1;
+    }
+
+    if (children_count > 1) {
+      full_costs_ = new std::vector<ValueType>();
+    }
+  }
+
+  void copy(EditDistancedBandedRowPtr e,
+            EditDistancedBandedRowPtr prev) {
+    s_elem_ = e->s_elem_;
+    prev_ = prev;
+    depth_ = e->depth_;
+    row_ = e->row_;
+
+    assert(!prev_ || (prev_->depth_ + 1) == depth_);
+
+    if (e->full_costs_) {
+      full_costs_ = new std::vector<ValueType>(*e->full_costs_);
+    } else {
+      costs_[0] = e->costs_[0];
+      costs_[1] = e->costs_[1];
+    }
+  }
+
+  void update(const SequenceType& t, unsigned k) {
+    k_ = MAX(k_, k);
+
+    std::vector< EditDistancedBandedRow* > worklist;
+    EditDistancedBandedRow* parent = prev_.get();
+    int prev_d, prev_r, prev_k, prev_end;
+    bool prev_is_full = false;
+    bool finished = false;
+
+    while (parent && !finished) {
+      prev_d = parent->depth_;
+      prev_r = parent->row_;
+      prev_k = parent->k_;
+      prev_is_full = parent->full_costs_ != NULL ? true : false;
+
+      prev_end = (prev_d - prev_k) + 2*prev_k + 1;
+      finished = true;
+      if (prev_k < k_)
+        finished = false;
+      else if (prev_r < MIN(prev_end, t.size()+1))
+        finished = false;
+
+      parent = parent->prev_.get();
+    }
+    int w_first = worklist.size()-1, w_last = 0;
+    int  w_first_depth = worklist[w_first]->depth_;
+
+    //int start_index = row_;
+    //int end_index = t.size()+1;
+    //for (int j=start_index; j<end_index; ++j) {
+
+    //  for (int w=w_first; w>=w_last; w--) {
+
+    //  }
+
+    //}
+
+    //// Don't use shared pointers for speed.
+    //std::vector< EditDistancedBandedRow* > worklist;
+    //EditDistancedBandedRow* parent = prev_.get();
+    //while (parent && (parent->depth_ >= 0) 
+    //        && (parent->row_ <= start_index)) {
+    //  worklist.push_back(parent);
+    //  parent = parent->prev_.get();
+    //}
+
+    //for (int j=start_index; j<end_index; ++j) {
+    //  typename std::vector<EditDistancedBandedRow*>::reverse_iterator 
+    //    it = worklist.rbegin(), ie = worklist.rend();
+    //  for (; it!=ie; ++it) {
+    //    (*it)->compute_cost(t); 
+    //  }
+    //  this->compute_cost(t); 
+    //}
+  }
+
+  inline const ElementType& s() { return s_elem_; }
+
+  ValueType edit_distance() const { 
+    return cost(row_-1); 
+  }
+
+  void compute_cost(const SequenceType &t) {
+
+    ValueType c1,c2,c3;
+    int j = row_;
+    if (depth_ == 0) {
+      set_cost(j, (ValueType)j);
+
+    } else {
+      if (j == 0) {
+        set_cost(j, depth_);
+      } else {
+        c1 = (prev_.get())->cost(j-1) + ScoreType::match(s_elem_, t, j-1);
+        c2 = this->cost(j-1)  + ScoreType::insert(s_elem_, t, j-1);
+        c3 = (prev_.get())->cost(  j) + ScoreType::del(s_elem_, t, j-1);
+
+        set_cost(j, MIN(c1, MIN(c2, c3)));
+      }
+    }
+    row_++;
+  }
+
+ private:
+  explicit EditDistancedBandedRow(const EditDistancedBandedRow& e); 
+
+  inline ValueType cost(unsigned j) const {
+    if (full_costs_)
+      return (*full_costs_)[j];
+
+    return costs_[j % 2];
+  }
+
+  inline void set_cost(unsigned j, ValueType cost) {
+    if (full_costs_) {
+      if (full_costs_->size() == j) {
+        full_costs_->push_back(cost);
+      } else {
+        assert(full_costs_->size() > j);
+        (*full_costs_)[j] = cost;
+      }
+    } else {
+      costs_[j % 2] = cost;
+    }
+  }
+ 
+  void debug_print(std::ostream& os) {
+    os << "(" << this << ") prev: " << prev_.get()
+       << " s: " << s_elem_
+       << " depth: " << depth_
+       << " row: " << row_
+       << " full_costs: " << full_costs_
+       << " costs[0]: " << costs_[0]
+       << " costs[1]: " << costs_[1];
+  }
+
+  ElementType s_elem_; // one element of the s sequence
+  EditDistancedBandedRowPtr prev_;
+
+  unsigned depth_;
+  unsigned row_;
+  unsigned k_;
+
+  std::vector<ValueType>* full_costs_;
+  ValueType costs_[4];
+};
 
 ////////////////////////////////////////////////////////////////////////////////
-// TODO BOOST shared pointer
 
 template<class DataType, class SeqTy, class ValTy>
 class EditDistanceTree : public tree<boost::shared_ptr<DataType> > {
