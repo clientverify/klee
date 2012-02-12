@@ -147,7 +147,7 @@ klee::ExecutionState &LogIndexSearcher::selectState() {
 					stats::active_states += result.size();
 
 					// Print new stats
-					cv_->print_current_statistics();
+					cv_->next_round();
 
 					// swap state sets
 					merge_state_set.swap(result);
@@ -239,7 +239,7 @@ klee::ExecutionState &TrainingSearcher::selectState() {
 
 	if (!phases_[PathProperty::PrepareExecute].empty()) {
 		// Print stats
-		cv_->print_current_statistics();
+		cv_->next_round();
 		CVMESSAGE("Current Paths (" << paths_->size() << ")");
 		if (PrintTrainingPaths) {
 			foreach(PathManager* path, *paths_) {
@@ -424,7 +424,7 @@ klee::ExecutionState &VerifySearcher::selectState() {
   
   if (!pending_stages_.empty()) {
     // Compute and output statistics for the previous round
-    cv_->print_current_statistics();
+    cv_->next_round();
 
     // Add pending stage to active stage list
     stages_.push_back(pending_stages_.back());
@@ -574,7 +574,7 @@ klee::ExecutionState &NewTrainingSearcher::selectState() {
     assert(!pending_stages_.empty()); 
 
     // Compute and output statistics for the previous round
-    cv_->print_current_statistics();
+    cv_->next_round();
 
     // Add all pending stages to active stage list
     stages_.insert(stages_.end(), 

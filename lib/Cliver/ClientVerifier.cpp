@@ -323,13 +323,10 @@ void ClientVerifier::handle_statistics() {
   }
 }
 
-void ClientVerifier::print_current_statistics() {
-  //static llvm::sys::TimeValue lastNowTime(0,0),lastUserTime(0,0);
-
-	handle_statistics();
+void ClientVerifier::print_current_statistics(std::string prefix) {
 	klee::StatisticRecord *sr = statistics_.back();
-
-  *cv_message_stream << "STATS " << round_number_++
+  *cv_message_stream << prefix
+    << " " << round_number_
     << " " << sr->getValue(stats::active_states)
     << " " << sr->getValue(stats::merged_states)
     << " " << sr->getValue(stats::pruned_constraints)
@@ -340,11 +337,21 @@ void ClientVerifier::print_current_statistics() {
     << " " << sr->getValue(stats::searcher_time) / 1000000.
     << " " << sr->getValue(klee::stats::solverTime) / 1000000.
     << " " << sr->getValue(stats::fork_time) / 1000000.
-    << " " << llvm::sys::Process::GetTotalMemoryUsage()
+    << " " << executor()->memory_usage()
     << " " << sr->getValue(stats::training_paths)
     << " " << sr->getValue(stats::exhaustive_search_level)
+    << " " << executor()->states_size()
     << " " << i_counter_->instruction_count
     << "\n";
+}
+
+void ClientVerifier::next_round() {
+  //static llvm::sys::TimeValue lastNowTime(0,0),lastUserTime(0,0);
+
+	handle_statistics();
+  executor()->update_memory_usage();
+  print_current_statistics("STATS");
+  round_number_++;
 
   // Rebuild solvers each round to keep caches fresh.
 	executor_->rebuild_solvers();
@@ -371,7 +378,6 @@ void ClientVerifier::print_current_statistics() {
 			&& round_number_ == (HeapCheckRoundNumber+1)) {
     if (!heap_checker->NoLeaks()) assert(NULL == "heap memory leak");
   }
-
 #endif
 	next_statistics();
 
