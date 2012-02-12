@@ -105,5 +105,14 @@ void CVExecutionState::reset_path_manager(PathManager* path_manager) {
 		path_manager_ = PathManagerFactory::create();
 }
 
+void CVExecutionState::print(std::ostream &os) const {
+  os << "[" << this << "] [id:" << id_ << "] " << *property_;
+}
+
+std::ostream &operator<<(std::ostream &os, const CVExecutionState &s) {
+  s.print(os);
+  return os;
+}
+
 } // End cliver namespace
 

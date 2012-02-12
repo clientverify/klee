@@ -44,10 +44,7 @@ namespace klee {
 namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////
-
-
-////////////////////////////////////////////////////////////////////////////////
-
+ 
 class ExecutionTrace {
  public:
   typedef uint16_t ID;
@@ -84,7 +81,7 @@ class ExecutionTrace {
   bool operator!=(const ExecutionTrace& b) const;
   bool operator<(const ExecutionTrace& b) const;
 
-  size_t size() const { return basic_blocks_.size(); } 
+  inline size_t size() const { return basic_blocks_.size(); } 
 
 	void write(std::ostream &os);
 	void read(std::ifstream &is, klee::KModule* kmodule);
@@ -106,6 +103,32 @@ class ExecutionTrace {
 
  private:
   BasicBlockList basic_blocks_;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct ExecutionTraceInfo {
+  ExecutionTrace::ID id;
+  std::string name;
+  const ExecutionTrace* trace;
+};
+
+struct ExecutionTraceInfoLengthLT{
+	bool operator()(const ExecutionTraceInfo* a, const ExecutionTraceInfo* b) const {
+    return a->trace->size() < b->trace->size();
+  }
+};
+
+struct ExecutionTraceInfoLT{
+	bool operator()(const ExecutionTraceInfo* a, const ExecutionTraceInfo* b) const {
+    return *(a->trace) < *(b->trace);
+  }
+};
+
+struct ExecutionTraceLT{
+	bool operator()(const ExecutionTrace* a, const ExecutionTrace* b) const {
+    return *(a) < *(b);
+  }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -177,6 +200,7 @@ class EditDistanceRowColumn {
     int start_index = row_;
     int end_index = t.size()+1;
 
+    // XXX use real pointer here.
     std::vector< EditDistanceRowColumnPtr > worklist;
     EditDistanceRowColumnPtr parent = prev_;
     while (parent && (parent->depth_ >= 0) 
@@ -277,6 +301,7 @@ class EditDistanceTree : public tree<boost::shared_ptr<DataType> > {
   typedef boost::shared_ptr<DataType> DataTypePtr;
 
   typedef std::map<Node*, std::set<typename SeqTy::ID> > NodeIDMap;
+  typedef std::map<typename SeqTy::ID, Node* > IDNodeMap;
   typedef std::set<Node*> NodeSet;
 
 #define foreach_child(__node,__iterator) \
@@ -333,6 +358,8 @@ class EditDistanceTree : public tree<boost::shared_ptr<DataType> > {
 
     foreach_leaf_other(edtree, edtree->root().node, leaf_it) {
       edtree->leaf_nodes_.insert(leaf_it.node);
+      typename SeqTy::ID seq_id = *(edtree->id_map_[leaf_it.node].begin());
+      edtree->leaf_node_id_map_[seq_id] = leaf_it.node;
     }
     assert(this->size() == edtree->size());
 
@@ -397,6 +424,36 @@ class EditDistanceTree : public tree<boost::shared_ptr<DataType> > {
       }
     }
     id_map_[curr_node].insert(seq_id);
+    leaf_node_id_map_[seq_id] = curr_node;
+  }
+
+  void compute_t(const SeqTy& t, 
+                 ValTy x,
+                 const std::vector<typename SeqTy::ID>& id_list,
+                 ValTy* min_ed,
+                 typename SeqTy::ID* seq_id) {
+    //for (int i=0; i<t.size()+1; i++) {
+    //  std::cout << ".";
+    //  foreach_pre_order (this->root().node, node_it) {
+    //    (*node_it)->compute_cost(t);
+    //  }
+    //}
+    //std::cout << "\n";
+
+    *min_ed = INT_MAX;
+    
+    for (int i=0; i<id_list.size(); ++i) {
+      //std::cout << ".";
+      Node* node = leaf_node_id_map_[id_list[i]];
+      node->data->update(t);
+      ValTy ed = node->data->edit_distance();
+      if (ed < *min_ed) {
+        *min_ed = ed;
+        *seq_id = id_list[i];
+        x = ed;
+      }
+    }
+    //std::cout << "\n";
   }
 
   void compute_t(const SeqTy& t) {
@@ -407,7 +464,6 @@ class EditDistanceTree : public tree<boost::shared_ptr<DataType> > {
     //  }
     //}
     //std::cout << "\n";
-
     typename NodeSet::iterator it = leaf_nodes_.begin(), ie = leaf_nodes_.end();
     for (; it!=ie; ++it) {
       //std::cout << ".";
@@ -415,6 +471,7 @@ class EditDistanceTree : public tree<boost::shared_ptr<DataType> > {
     }
     //std::cout << "\n";
   }
+
 
   void min_edit_distance(ValTy& result, typename SeqTy::ID& id, 
                          std::vector<typename SeqTy::ID>* id_list=NULL) {
@@ -471,6 +528,7 @@ class EditDistanceTree : public tree<boost::shared_ptr<DataType> > {
 
   SeqTy t_;
   NodeIDMap id_map_;
+  IDNodeMap leaf_node_id_map_;
   NodeSet leaf_nodes_;
 
 #undef foreach_child
@@ -659,9 +717,13 @@ typedef ExecutionTraceEDR ExecutionTraceED;
 // Basic ExecutionTree
 typedef ExecutionTree<unsigned, ExecutionTrace> ExecutionTraceTree;
 
-typedef std::map<ExecutionTrace, ExecutionTrace::ID> ExecutionTraceIDMap;
-typedef std::map<ExecutionTrace::ID, std::string> ExecutionTraceNameMap;
+//typedef std::map<ExecutionTrace, ExecutionTrace::ID> ExecutionTraceIDMap;
+//typedef std::map<ExecutionTrace::ID, std::string> ExecutionTraceNameMap;
 typedef std::map<CVExecutionState*, EDTree*> ExecutionStateEDTreeMap;
+
+typedef std::set<ExecutionTrace*, ExecutionTraceLT> ExecutionTraceSet;
+typedef std::vector<ExecutionTraceInfo*> ExecutionTraceInfoList;
+typedef std::map<ExecutionTrace::ID, ExecutionTraceInfo*> ExecutionTraceIDMap;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -685,18 +747,30 @@ class TrainingExecutionTreeManager : public ExecutionTreeManager {
 
 };
 
+// TODO create new TreeManager every round??
 class VerifyExecutionTreeManager : public ExecutionTreeManager {
  public:
   VerifyExecutionTreeManager(ClientVerifier *cv);
   virtual void initialize();
   virtual void notify(ExecutionEvent ev);
+
+  int min_edit_distance();
+  void update_min_edit_distance(CVExecutionState* state, int ed);
+  void reset_min_edit_distance();
+
  protected:
   int read_traces(std::vector<std::string> &filename_list);
 
-  ExecutionTraceIDMap training_trace_map_;
-  ExecutionTraceNameMap training_name_map_;
   ExecutionStateEDTreeMap state_tree_map_;
+
+  ExecutionTraceSet execution_trace_set_;
+  ExecutionTraceIDMap id_map_;
+  ExecutionTraceInfoList execution_traces_;
+  ExecutionTraceInfoList et_by_length_;
   EDTree* ed_tree_;
+
+  std::set<CVExecutionState*> removed_states_;
+  std::stack<std::pair<CVExecutionState*, int> > current_min_;
 };
 
 class TestExecutionTreeManager : public VerifyExecutionTreeManager {
