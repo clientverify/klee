@@ -211,24 +211,34 @@ typedef BasicSearcherStage<ExecutionStateRandomSelector>   RandomSearcherStage;
 class VerifySearcher : public CVSearcher {
  public:
   VerifySearcher(ClientVerifier *cv, StateMerger* merger);
-  klee::ExecutionState &selectState();
-  void update(klee::ExecutionState *current,
-              const std::set<klee::ExecutionState*> &addedStates,
-              const std::set<klee::ExecutionState*> &removedStates);
-  bool empty();
-  void printName(std::ostream &os) { os << "VerifySearcher\n"; }
+  virtual klee::ExecutionState &selectState();
+  virtual void update(klee::ExecutionState *current,
+                      const std::set<klee::ExecutionState*> &addedStates,
+                      const std::set<klee::ExecutionState*> &removedStates);
+  virtual bool empty();
+  virtual void printName(std::ostream &os) { os << "VerifySearcher\n"; }
 
-  void notify(ExecutionEvent ev);
+  virtual void notify(ExecutionEvent ev);
 
- private:
-  SearcherStage* get_new_stage(CVExecutionState* state);
-  void add_state(CVExecutionState* state);
-  void remove_state(CVExecutionState* state);
-  bool check_pending(CVExecutionState* state);
+ protected:
+  virtual SearcherStage* get_new_stage(CVExecutionState* state);
+  virtual void add_state(CVExecutionState* state);
+  virtual void remove_state(CVExecutionState* state);
+  virtual bool check_pending(CVExecutionState* state);
 
   SearcherStageList stages_;
   SearcherStageList pending_stages_;
   ExecutionStateSet pending_states_;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class MergeVerifySearcher : public VerifySearcher {
+ public:
+  MergeVerifySearcher(ClientVerifier *cv, StateMerger* merger);
+  void notify(ExecutionEvent ev);
+  bool check_pending(CVExecutionState* state);
+ private:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
