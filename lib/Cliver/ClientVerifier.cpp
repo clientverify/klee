@@ -101,7 +101,9 @@ ExternalHandlerInfo external_handler_info[] = {
 	{"cliver_socket_shutdown", ExternalHandler_socket_shutdown, true, CV_SOCKET_SHUTDOWN},
 	{"cliver_socket_write", ExternalHandler_socket_write, true, CV_SOCKET_WRITE},
 	{"cliver_socket_read", ExternalHandler_socket_read, true, CV_SOCKET_READ},
-	{"cliver_socket_create", ExternalHandler_socket_create, true, CV_SOCKET_CREATE}
+	{"cliver_socket_create", ExternalHandler_socket_create, true, CV_SOCKET_CREATE},
+	{"nuklear_merge", ExternalHandler_merge, true, CV_MERGE},
+	{"klee_nuklear_XEventsQueued", ExternalHandler_XEventsQueued, true, CV_NULL_EVENT}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -135,6 +137,8 @@ ClientVerifier::ClientVerifier()
 		searcher_(NULL),
 		pruner_(NULL),
 		merger_(NULL),
+		execution_tree_manager_(NULL),
+		i_counter_(NULL),
 		array_id_(0),
 		round_number_(0) {
  
@@ -200,12 +204,13 @@ void ClientVerifier::initialize(CVExecutor *executor) {
   merger_ = new StateMerger(pruner_, this);
 
   searcher_ = CVSearcherFactory::create(NULL, this, merger_);
+  hook(searcher_);
   
   execution_tree_manager_ = ExecutionTreeManagerFactory::create(this);
-  execution_tree_manager_->initialize();
-
-  hook(searcher_);
-  hook(execution_tree_manager_);
+  if (execution_tree_manager_) {
+    execution_tree_manager_->initialize();
+    hook(execution_tree_manager_);
+  }
 
   i_counter_ = new InstructionCounter();
   if (CountRoundInstructions) {
@@ -325,7 +330,7 @@ void ClientVerifier::handle_statistics() {
 
 void ClientVerifier::print_current_statistics(std::string prefix) {
 	klee::StatisticRecord *sr = statistics_.back();
-  *cv_message_stream << prefix
+  *cv_message_stream << prefix 
     << " " << round_number_
     << " " << sr->getValue(stats::active_states)
     << " " << sr->getValue(stats::merged_states)
