@@ -36,6 +36,9 @@ PrintTrainingPaths("print-training-paths",llvm::cl::init(false));
 llvm::cl::opt<int>
 KLookAheadValue("klookahead",llvm::cl::init(16));
 
+llvm::cl::opt<bool>
+DeleteOldStates("delete-old-states",llvm::cl::init(false));
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef NDEBUG
@@ -423,6 +426,11 @@ klee::ExecutionState &VerifySearcher::selectState() {
   //klee::TimerStatIncrementer timer(stats::searcher_time);
   
   if (!pending_stages_.empty()) {
+    // Delete all previous states from this round.
+    if (DeleteOldStates) {
+      CVExecutionStateDeleter cv_deleter;
+      stages_.back()->clear(&cv_deleter);
+    }
     // Compute and output statistics for the previous round
     cv_->next_round();
 
