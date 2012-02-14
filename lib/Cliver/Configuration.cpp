@@ -26,11 +26,13 @@ llvm::cl::opt<CliverMode> g_cliver_mode("cliver-mode",
   llvm::cl::values(
     clEnumValN(DefaultMode, "default", 
       "Default mode"),
-    clEnumValN(TetrinetMode, "tetrinet", 
+    clEnumValN(TetrinetMode, "verify-tetrinet", 
+      "Tetrinet mode"),
+    clEnumValN(XpilotMode, "verify-xpilot", 
       "Tetrinet mode"),
     clEnumValN(DefaultTrainingMode, "training", 
       "Default training mode"),
-    clEnumValN(TestTrainingMode, "testtraining", 
+    clEnumValN(TestTrainingMode, "training-test", 
       "Test training mode"),
     clEnumValN(OutOfOrderTrainingMode, "out-of-order-training", 
       "Default training mode"),
@@ -63,8 +65,6 @@ CVSearcher* CVSearcherFactory::create(klee::Searcher* base_searcher,
                                       ClientVerifier* cv, StateMerger* merger) {
 	switch(g_cliver_mode) {
 		case DefaultMode:
-		case TetrinetMode:
-		case XpilotMode:
 
 			return new LogIndexSearcher(NULL, cv, merger);
 
@@ -94,12 +94,15 @@ CVSearcher* CVSearcherFactory::create(klee::Searcher* base_searcher,
 
 		//}
 
+		case XpilotMode: {
+			return new MergeVerifySearcher(cv, merger);
+      break;
+    }
+		case TetrinetMode:
 		case TestTrainingMode:
 		case VerifyWithTrainingPaths:
     case VerifyWithEditCost: {
-
 			return new VerifySearcher(cv, merger);
-
 			break;
 		}
 
@@ -158,6 +161,13 @@ NetworkManager* NetworkManagerFactory::create(CVExecutionState* state,
 			}
 			return nm;
 	  }
+		case XpilotMode: {
+			NetworkManagerXpilot *nm = new NetworkManagerXpilot(state);
+			foreach( SocketEventList *sel, cv->socket_events()) {
+				nm->add_socket(*sel);
+			}
+			return nm;
+	  }
 		case OutOfOrderTrainingMode: {
 			NetworkManagerTraining *nm 
 				= new NetworkManagerTraining(state);
@@ -185,7 +195,11 @@ ExecutionTreeManager* ExecutionTreeManagerFactory::create(ClientVerifier* cv) {
       return new VerifyExecutionTreeManager(cv);
       break;
     }
+		case XpilotMode: {
+      return NULL;
+    }
 		case VerifyWithTrainingPaths:
+		case TetrinetMode:
 		case DefaultMode:
     default: {
       return new ExecutionTreeManager(cv);
@@ -193,7 +207,7 @@ ExecutionTreeManager* ExecutionTreeManagerFactory::create(ClientVerifier* cv) {
     }
   }
 
-	cv_error("cliver mode not supported in ExecutionTreeManager");
+	cv_message("cliver mode not supported in ExecutionTreeManager");
 	return NULL;
 }
 
@@ -215,6 +229,7 @@ PathTree* PathTreeFactory::create(CVExecutionState* root_state) {
 ExecutionStateProperty* ExecutionStatePropertyFactory::create() {
 	switch (g_cliver_mode) {
 		case DefaultMode:
+		case XpilotMode:
 		case TetrinetMode: 
 			return new LogIndexProperty();
 			break;
