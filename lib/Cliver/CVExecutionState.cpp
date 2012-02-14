@@ -114,5 +114,9 @@ std::ostream &operator<<(std::ostream &os, const CVExecutionState &s) {
   return os;
 }
 
+void CVExecutionStateDeleter::operator()(CVExecutionState* state) {
+  state->cv()->executor()->remove_state_internal(state);
+}
+
 } // End cliver namespace
 

@@ -113,7 +113,7 @@ enum SearcherStageMode {
   DFSSearcherStageMode,
   BFSSearcherStageMode
 };
-
+struct CVExecutionStateDeleter;
 class SearcherStage {
  public:
   SearcherStage() {}
@@ -122,6 +122,7 @@ class SearcherStage {
   virtual void add_state(CVExecutionState *state) = 0;
   virtual void remove_state(CVExecutionState *state) = 0;
   virtual bool empty() = 0;
+  virtual void clear(CVExecutionStateDeleter* cv_deleter) = 0;
 };
 
 typedef std::list<SearcherStage*> SearcherStageList;
@@ -163,6 +164,15 @@ class BasicSearcherStage : public SearcherStage {
     assert(state == live_state_);
     live_state_ = NULL;
     state_set_.erase(state);
+  }
+
+  virtual void clear(CVExecutionStateDeleter* cv_deleter=NULL) {
+    while (!states_.empty()) {
+      if (cv_deleter)
+        (*cv_deleter)(states_.top());
+      states_.pop();
+    }
+    state_set_.clear();
   }
 
  protected:
