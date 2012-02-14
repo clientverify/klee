@@ -39,11 +39,11 @@ void ExternalHandler_socket_shutdown(
 	klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
 
 void ExternalHandler_merge(
-		klee::Executor* executor, klee::ExecutionState *state,
+		klee::Executor* executor, klee::ExecutionState *state, 
 		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
 
 void ExternalHandler_XEventsQueued(
-		klee::Executor* executor, klee::ExecutionState *state,
+		klee::Executor* executor, klee::ExecutionState *state, 
 		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -105,15 +105,15 @@ class NetworkManagerXpilot : public NetworkManager {
 	NetworkManager* clone(CVExecutionState *state);
 
 	void execute_open_socket(CVExecutor* executor,
-		klee::KInstruction *target,
+		klee::KInstruction *target, 
 		int domain, int type, int protocol);
 
 	void execute_write(CVExecutor* executor,
-		klee::KInstruction *target,
+		klee::KInstruction *target, 
 		klee::ObjectState* object, int fd, int len);
 
-	void execute_read(CVExecutor* executor,
-		klee::KInstruction *target,
+	void execute_read(CVExecutor* executor, 
+		klee::KInstruction *target, 
 		klee::ObjectState* object, int fd, int len);
 };
 
