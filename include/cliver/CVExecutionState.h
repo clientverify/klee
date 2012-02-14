@@ -68,6 +68,8 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
 
   void print(std::ostream &os) const;
 
+  ClientVerifier* cv() { return cv_; }
+
  private:
   int increment_id() { return next_id_++; }
 
