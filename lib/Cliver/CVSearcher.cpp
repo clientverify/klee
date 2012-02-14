@@ -537,6 +537,60 @@ void VerifySearcher::notify(ExecutionEvent ev) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+MergeVerifySearcher::MergeVerifySearcher(ClientVerifier* cv, StateMerger* merger)
+  : VerifySearcher(cv, merger) {}
+
+bool MergeVerifySearcher::check_pending(CVExecutionState* state) {
+  if (pending_states_.count(state)) {
+    // Should only be 1 for now.
+    assert(pending_states_.size() == 1);
+
+    // Remove from set
+    pending_states_.erase(state);
+
+    // Remove State from current stage
+    this->remove_state(state);
+
+    if (state->network_manager()->socket()->round() > cv_->round()) {
+
+      // XXX Hack to prune state constraints
+      //ExecutionStateSet state_set, merged_set;
+      //state_set.insert(state);
+      //merger_->merge(state_set, merged_set);
+
+      // Create new stage and add to pending list
+      pending_stages_.push_back(get_new_stage(state));
+    } else {
+      CVDEBUG("Removing state at merge event, wrong round: SocketRN:" <<
+              state->network_manager()->socket()->round() <<
+             " <= StateRN:" << cv_->round());
+      // Remove invalid state with unfinished network processing
+      cv_->executor()->remove_state_internal(state);
+
+    }
+    return true;
+  }
+  return false;
+}
+
+void MergeVerifySearcher::notify(ExecutionEvent ev) {
+  switch(ev.event_type) {
+    case CV_MERGE: {
+      CVDEBUG("MERGE EVENT! " << *ev.state);
+			pending_states_.insert(ev.state);
+      break;
+    }
+    case CV_SOCKET_SHUTDOWN: {
+      cv_->executor()->setHaltExecution(true);
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 NewTrainingSearcher::NewTrainingSearcher(ClientVerifier *cv, 
                                          StateMerger* merger)
   : CVSearcher(NULL, cv, merger) {}

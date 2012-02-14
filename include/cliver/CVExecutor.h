@@ -70,6 +70,9 @@ class CVExecutor : public klee::Executor {
 	bool compute_truth(CVExecutionState* state, 
 			klee::ref<klee::Expr>, bool &result);
 
+	bool compute_false(CVExecutionState* state, 
+			klee::ref<klee::Expr>, bool &result);
+
   void add_constraint(CVExecutionState *state, 
 			klee::ref<klee::Expr> condition);
 

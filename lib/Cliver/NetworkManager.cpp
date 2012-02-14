@@ -12,6 +12,7 @@
 #include "cliver/CVExecutor.h"
 #include "cliver/CVExecutionState.h"
 #include "cliver/ClientVerifier.h"
+#include "cliver/ExecutionObserver.h"
 
 #include "llvm/Support/CommandLine.h"
 
@@ -29,6 +30,14 @@ namespace cliver {
 llvm::cl::opt<bool>
 DebugNetworkManager("debug-network-manager",llvm::cl::init(false));
 
+llvm::cl::opt<bool>
+XEventOptimization("xevent-optimization", llvm::cl::init(false));
+
+llvm::cl::opt<unsigned>
+QUEUE_SIZE("queue-size", llvm::cl::init(3));
+
+extern llvm::cl::opt<bool> DebugSocket;
+
 #ifndef NDEBUG
 
 #define RETURN_FAILURE_NO_SOCKET(action, reason) { \
@@ -45,6 +54,7 @@ DebugNetworkManager("debug-network-manager",llvm::cl::init(false));
 #define RETURN_SUCCESS_NO_SOCKET(action, retval) { \
 	if (DebugNetworkManager) { \
 	CVDEBUG("State: " << std::setw(4) << std::right << state_->id() \
+      << " ret:" << retval \
 			<< " - success - " << std::setw(8) << std::left << action);	} \
 	executor->bind_local(target, state_, retval); \
 	return; }
@@ -52,6 +62,7 @@ DebugNetworkManager("debug-network-manager",llvm::cl::init(false));
 #define RETURN_SUCCESS(action, retval) { \
 	if (DebugNetworkManager) { \
 	CVDEBUG("State: " << std::setw(4) << std::right << state_->id() \
+      << " ret:" << retval \
 			<< " - success - " << std::setw(8) << std::left << action << "   " \
 			<< std::setw(15) << " " << socket);	} \
 	executor->bind_local(target, state_, retval); \
@@ -165,6 +176,30 @@ void ExternalHandler_socket_shutdown(
 	cv_state->network_manager()->execute_shutdown(cv_executor, target, fd, how);
 }
 
+// Put function in a different file? not neccessarily networking related...
+void ExternalHandler_merge(
+		klee::Executor* executor, klee::ExecutionState *state, 
+		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {
+	assert(arguments.size() == 0);
+	CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
+	cv_executor->client_verifier()->notify_all(ExecutionEvent(CV_MERGE, state));
+}
+
+void ExternalHandler_XEventsQueued(
+		klee::Executor* executor, klee::ExecutionState *state, 
+		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {
+	assert(arguments.size() == 0);
+	CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
+	CVExecutionState* cv_state = static_cast<CVExecutionState*>(state);
+
+  if (XEventOptimization
+      && cv_state->network_manager()->socket()->type() != SocketEvent::SEND) {
+      cv_executor->bind_local(target, cv_state, 0);
+  } else {
+    cv_executor->bind_local(target, cv_state, QUEUE_SIZE);
+  }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 NetworkManager::NetworkManager(CVExecutionState* state) 
@@ -177,10 +212,6 @@ void NetworkManager::add_socket(const KTest* ktest) {
 void NetworkManager::add_socket(const SocketEventList &log) {
 	sockets_.push_back(Socket(log));
 }
-
-//void NetworkManager::add_socket(const SocketEvent &se, bool is_open) {
-//	sockets_.push_back(Socket(se,is_open));
-//}
 
 void NetworkManager::clear_sockets() {
 	sockets_.clear();
@@ -237,6 +268,20 @@ void NetworkManager::execute_open_socket(CVExecutor* executor,
 	RETURN_FAILURE_NO_SOCKET("open", "no socket availible");
 }
 
+std::string NetworkManager::get_byte_string(klee::ObjectState *obj, int len) {
+  std::stringstream ss;
+  for (unsigned i=0; i<len; i++) {
+    klee::ref<klee::Expr> e = obj->read8(i);
+    if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(e)) {
+      int c = cast<klee::ConstantExpr>(e)->getZExtValue();
+      ss << std::hex << c << ":";
+    } else {
+      ss << e << ":";
+    }
+  }
+  return ss.str();
+}
+
 /* 
  * Client action for each log type on a Send in the ith round:
  *    LogRecv_i       terminate
@@ -276,11 +321,11 @@ void NetworkManager::execute_write(CVExecutor* executor,
 
 	if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(write_condition)) {
 		if (CE->isFalse())
-			RETURN_FAILURE("send", "not valid (1)");
+			RETURN_FAILURE("send", "not valid (1) ");
 	} else {
 		bool result; 
-		executor->compute_truth(state_, write_condition, result);
-		if (!result)
+		executor->compute_false(state_, write_condition, result);
+		if (result)
 			RETURN_FAILURE("send", "not valid (2) ");
 	}
 
@@ -349,6 +394,120 @@ void NetworkManager::execute_shutdown(CVExecutor* executor,
 
 	RETURN_SUCCESS("shutdown", 0);
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+NetworkManagerXpilot::NetworkManagerXpilot(CVExecutionState* state) 
+	: NetworkManager(state) {
+}
+
+NetworkManager* NetworkManagerXpilot::clone(CVExecutionState *state) {
+	NetworkManagerXpilot* nwm = new NetworkManagerXpilot(*this);
+	nwm->state_ = state;
+	return nwm;
+}
+
+void NetworkManagerXpilot::execute_read(CVExecutor* executor,
+		klee::KInstruction *target, klee::ObjectState* object, int fd, int len) {
+
+	GET_SOCKET_OR_DIE_TRYIN("read", fd);
+
+	int bytes_written = 0;
+	
+  if (socket.type() != SocketEvent::RECV)
+    RETURN_SUCCESS("read-on-send", bytes_written);
+
+	if (socket.round() != state()->cv()->round())
+    RETURN_SUCCESS("read-early", bytes_written);
+
+	while (socket.has_data() && bytes_written < len) {
+		object->write8(bytes_written++, socket.next_byte());
+	}
+
+	if (!socket.has_data()) {
+		socket.advance();
+	}
+
+	RETURN_SUCCESS("read", bytes_written);
+}
+
+void NetworkManagerXpilot::execute_write(CVExecutor* executor,
+		klee::KInstruction *target, klee::ObjectState* object, int fd, int len) {
+
+	GET_SOCKET_OR_DIE_TRYIN("send", fd);
+
+	if (socket.is_open() != true)
+		RETURN_FAILURE("send", "not open");
+
+	if (socket.type() != SocketEvent::SEND)
+		RETURN_FAILURE("send", "wrong type");
+
+	if (socket.state() != Socket::IDLE)
+		RETURN_FAILURE("send", "wrong state");
+
+	if (socket.round() != state()->cv()->round())
+		RETURN_FAILURE("send", "wrong round");
+
+	if ((int)socket.length() != len)
+		RETURN_FAILURE("send", "wrong length" << " " << socket.length() << " != " << len);
+
+	klee::ref<klee::Expr> write_condition 
+		= klee::ConstantExpr::alloc(1, klee::Expr::Bool);
+
+	int bytes_read = 0;
+
+	while (socket.has_data() && bytes_read < len) {
+		klee::ref<klee::Expr> condition
+			= klee::EqExpr::create(
+					object->read8(bytes_read++), 
+					klee::ConstantExpr::alloc(socket.next_byte(), klee::Expr::Int8));
+		write_condition = klee::AndExpr::create(write_condition, condition);
+	}
+
+	if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(write_condition)) {
+		if (CE->isFalse())
+			RETURN_FAILURE("send", "not valid (1) ");
+	} else {
+		bool result; 
+		executor->compute_false(state_, write_condition, result);
+		if (result)
+			RETURN_FAILURE("send", "not valid (2) ");
+	}
+
+	if (!socket.has_data()) {
+		socket.advance();
+	} else {
+		socket.set_state(Socket::WRITING);
+		RETURN_FAILURE("send", "no data left");
+	}
+
+	executor->add_constraint(state_, write_condition);
+	RETURN_SUCCESS("send", bytes_read);
+}
+
+void NetworkManagerXpilot::execute_open_socket(CVExecutor* executor,
+		klee::KInstruction *target, int domain, int type, int protocol) {
+
+  for (unsigned i = 0; i<sockets_.size(); ++i) {
+		Socket &socket = sockets_[i];
+		if (!socket.is_open()) {
+			socket.open();
+			RETURN_SUCCESS("open", socket.fd());
+		}
+	}
+
+  for (unsigned i = 0; i<sockets_.size(); ++i) {
+		Socket &socket = sockets_[i];
+		if (socket.is_open()) {
+			//socket.open();
+			RETURN_SUCCESS("open", socket.fd());
+		}
+	}
+
+	RETURN_FAILURE_NO_SOCKET("open", "no socket availible");
+}
+
+
 ////////////////////////////////////////////////////////////////////////////////
 
 NetworkManagerTetrinet::NetworkManagerTetrinet(CVExecutionState* state) 

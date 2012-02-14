@@ -53,9 +53,18 @@ void SocketEvent::print(std::ostream &os) const {
 #define X(x) #x
 	static std::string socketevent_types[] = { SOCKETEVENT_TYPES };
 #undef X
-	os << "[" << socketevent_types[type] << "][" << length << "] ";
+	os << "[" << socketevent_types[type] << "][LEN:" << length << "]";
+  if (XpilotSocket)
+    os << "[RN:" << round << "] ";
 	for (unsigned i=0; i<length; ++i) {
-		os << std::hex << data[i];
+    if (data[i] > 47 && data[i] < 126) {
+      os << (char)(data[i]) << ":";
+    } else {
+      char buf[8];
+      sprintf(buf,"%X", data[i]);
+      //os << std::hex << data[i];
+      os << buf << ":";
+    }
 	}
 	os << std::dec;
 }
