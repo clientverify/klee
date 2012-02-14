@@ -53,25 +53,30 @@ ssize_t send(int s, const void *buf, size_t len, int flags) {
 
 ssize_t sendto(int s, const void *buf, size_t len, int flags, 
                const struct sockaddr *to, socklen_t tolen) {
-	__emit_error("sendto() not supported");
-	return -1;
+  return cliver_socket_write(s, buf, len, flags);
+	//__emit_error("sendto() not supported");
+	//return -1;
 }
 
 ssize_t recv(int s, void *buf, size_t len, int flags) {
   return cliver_socket_read(s, buf, len, flags);
 }
 
+#define SOCKET_REPLAY_ID  1000
+#define SOCKET_REPLAY_SERVER_PORT 9999
+#define SOCKET_REPLAY_SERVER_NAME "localhost"
+
 ssize_t recvfrom(int s, void *buf, size_t len, int flags,
                  struct sockaddr *from, socklen_t *fromlen) {
-  //struct sockaddr_in *addr = (struct sockaddr_in*)from;
-  //addr->sin_family = AF_INET;
-  //addr->sin_port = SOCKET_REPLAY_SERVER_PORT;
-  //inet_pton(AF_INET, SOCKET_REPLAY_SERVER_NAME, &addr->sin_addr);
-  //*fromlen = sizeof(struct sockaddr_in);
+  struct sockaddr_in *addr = (struct sockaddr_in*)from;
+  addr->sin_family = AF_INET;
+  addr->sin_port = SOCKET_REPLAY_SERVER_PORT;
+  inet_pton(AF_INET, SOCKET_REPLAY_SERVER_NAME, &addr->sin_addr);
+  *fromlen = sizeof(struct sockaddr_in);
 
-	__emit_error("recvfrom() not supported");
-	return -1;
-  //return cliver_socket_read_event(s, buf, len, flags, from, fromlen);
+	//__emit_error("recvfrom() not supported");
+	//return -1;
+  return cliver_socket_read(s, buf, len, flags);
 }
 
 int getsockname(int s, struct sockaddr *name, socklen_t *namelen) {
@@ -81,8 +86,14 @@ int getsockname(int s, struct sockaddr *name, socklen_t *namelen) {
   //  ((struct sockaddr_in*)name)->sin_port = port;
   //  return 0;
   //}
-	__emit_error("getsockname() not supported");
-  return -1;
+	
+  unsigned short port;
+  klee_make_symbolic(&port, sizeof(unsigned short), "getsockname_port");
+  ((struct sockaddr_in*)name)->sin_port = port;
+  return 0;
+
+	//__emit_error("getsockname() not supported");
+  //return -1;
 }
 
 int setsockopt(int s, int level, int optname, 
@@ -90,8 +101,10 @@ int setsockopt(int s, int level, int optname,
   //if (s == SOCKET_REPLAY_ID) {
   //  return 0;
   //}
-	__emit_error("setsockopt() not supported");
-  return -1;
+	//__emit_error("setsockopt() not supported");
+  //return -1;
+	// XXX SHOULD BE IMPLEMENTED IN CLIVER: cliver_setsockopt()
+	return 0;
 }
 
 int gettimeofday(struct timeval *tv, struct timezone *tz) {
