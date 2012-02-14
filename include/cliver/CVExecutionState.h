@@ -84,6 +84,11 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
 
 std::ostream &operator<<(std::ostream &os, const CVExecutionState &s);
 
+// is this crazy?
+struct CVExecutionStateDeleter {
+	void operator()(CVExecutionState* state);
+};
+
 } // End cliver namespace
 
 
