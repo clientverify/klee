@@ -43,7 +43,8 @@ class CVExecutionState;
   X(CV_SOCKET_CREATE)            \
   X(CV_SOCKET_SHUTDOWN)          \
   X(CV_SOCKET_WRITE)             \
-  X(CV_SOCKET_READ)
+  X(CV_SOCKET_READ)              \
+  X(CV_MERGE)
 
 #define X(x) x,
 enum ExecutionEventType {

@@ -249,6 +249,19 @@ namespace klee {
   STPOptimizeDivides("stp-optimize-divides", 
                  cl::desc("Optimize constant divides into add/shift/multiplies before passing to STP"),
                  cl::init(true));
+
+
+  cl::opt<bool> 
+  NoXWindows("no-xwindows", 
+           cl::desc("Do not allow external XWindows function calls"),
+           cl::init(false));
+   
+  cl::opt<bool>
+  PrintFunctionCalls("print-function-calls",
+                cl::init(false));
+ 
+
+
 }
 
 
@@ -1107,6 +1120,25 @@ void Executor::executeCall(ExecutionState &state,
                            KInstruction *ki,
                            Function *f,
                            std::vector< ref<Expr> > &arguments) {
+  if (PrintFunctionCalls) {
+    #define MAX_DEPTH 64
+    int call_depth = 
+      state.stack.size() > MAX_DEPTH ? MAX_DEPTH : state.stack.size();
+    char call_depth_str[MAX_DEPTH+1];
+    memset(call_depth_str, '-', call_depth);
+    call_depth_str[call_depth] = '\0';
+    klee_warning("F%s%s ", call_depth_str, 
+                 f->getNameStr().c_str());
+  }
+
+  std::string widget_str("Widget_");
+  if (NoXWindows 
+      && f->getNameStr().substr(0,widget_str.size()) == widget_str) {
+      klee_warning_once("Ignoring Widget function: %s", 
+                        f->getNameStr().c_str());
+      return;
+  }
+
   Instruction *i = ki->inst;
   if (f && f->isDeclaration()) {
     switch(f->getIntrinsicID()) {
@@ -2638,7 +2670,18 @@ void Executor::callExternalFunction(ExecutionState &state,
   // check if specialFunctionHandler wants it
   if (specialFunctionHandler->handle(state, function, target, arguments))
     return;
-  
+ 
+  if (NoXWindows && function->getName()[0] == 'X') { 
+    std::string n_str = "nuklear_";
+    std::string f_str = state.stack.back().kf->function->getNameStr();
+    // check if we called this X function from within a nuklear_* function.
+    if (f_str.substr(0,n_str.size()) != n_str) {
+      //klee_warning_once("Ignoring X function: %s", 
+      //                  function->getName().str().c_str());
+      return;
+    }
+  }
+ 
   if (NoExternals && !okExternals.count(function->getName())) {
     std::cerr << "KLEE:ERROR: Calling not-OK external function : " 
                << function->getNameStr() << "\n";
