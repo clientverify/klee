@@ -165,7 +165,7 @@ inline std::ostream &operator<<(std::ostream &os,
 ////////////////////////////////////////////////////////////////////////////////
 
 CVExecutor::CVExecutor(const InterpreterOptions &opts, klee::InterpreterHandler *ih)
-: klee::Executor(opts, ih),
+: klee::Executor(opts, ih), 
   cv_(static_cast<ClientVerifier*>(ih)),
   memory_usage_mbs_(0)
 {
@@ -350,13 +350,13 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
     executeInstruction(state, ki);
     processTimers(&state, klee::MaxInstructionTime);
 
-    if ((klee::stats::instructions & 0xFFFFF) == 0) {
+    if ((klee::stats::instructions & 0xFFFFFF) == 0) {
         update_memory_usage();
         cv_->print_current_statistics("UPDT");
     }
 
     if (klee::MaxMemory) {
-      if ((klee::stats::instructions & 0xFFFF) == 0) {
+      if ((klee::stats::instructions & 0xFFFFF) == 0) {
         // We need to avoid calling GetMallocUsage() often because it
         // is O(elts on freelist). This is really bad since we start
         // to pummel the freelist once we hit the memory cap.
@@ -757,6 +757,12 @@ void CVExecutor::bind_local(klee::KInstruction *target,
 bool CVExecutor::compute_truth(CVExecutionState* state, 
 		klee::ref<klee::Expr> query, bool &result) {
 	solver->mustBeTrue(*state, query, result);
+	return result;
+}
+
+bool CVExecutor::compute_false(CVExecutionState* state, 
+		klee::ref<klee::Expr> query, bool &result) {
+	solver->mustBeFalse(*state, query, result);
 	return result;
 }
 
