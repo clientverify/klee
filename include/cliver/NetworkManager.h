@@ -38,6 +38,13 @@ void ExternalHandler_socket_shutdown(
 	klee::Executor* executor, klee::ExecutionState *state, 
 	klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
 
+void ExternalHandler_merge(
+		klee::Executor* executor, klee::ExecutionState *state,
+		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
+
+void ExternalHandler_XEventsQueued(
+		klee::Executor* executor, klee::ExecutionState *state,
+		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
 ////////////////////////////////////////////////////////////////////////////////
 
 class CVExecutor;
@@ -75,18 +82,41 @@ class NetworkManager {
 		int fd, int how);
 
 
+  std::string get_byte_string(klee::ObjectState *obj, int len);
+
 	CVExecutionState* state() { return state_; }
-	unsigned round() { return round_; }
+	//unsigned round() { return round_; }
 	std::vector<Socket>& sockets() { return sockets_; }
 	Socket* socket(int fd=-1);
 
  protected:
-	unsigned round_;
+	//unsigned round_;
 	CVExecutionState *state_;
 	std::vector<Socket> sockets_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+
+class NetworkManagerXpilot : public NetworkManager {
+ public:
+
+  NetworkManagerXpilot(CVExecutionState* state);
+
+	NetworkManager* clone(CVExecutionState *state);
+
+	void execute_open_socket(CVExecutor* executor,
+		klee::KInstruction *target,
+		int domain, int type, int protocol);
+
+	void execute_write(CVExecutor* executor,
+		klee::KInstruction *target,
+		klee::ObjectState* object, int fd, int len);
+
+	void execute_read(CVExecutor* executor,
+		klee::KInstruction *target,
+		klee::ObjectState* object, int fd, int len);
+};
+
 
 class NetworkManagerTetrinet : public NetworkManager {
  public:
