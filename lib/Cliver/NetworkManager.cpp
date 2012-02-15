@@ -203,7 +203,10 @@ void ExternalHandler_XEventsQueued(
 void ExternalHandler_CliverPrint(
 		klee::Executor* executor, klee::ExecutionState *state, 
 		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {
-	assert(arguments.size() == 0);
+	assert(arguments.size() >= 1);
+	if (arguments.size() >= 1) {
+    CVMESSAGE("cliver_print called with more than one arg (not supported)");
+  }
 	CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
 	CVExecutionState* cv_state = static_cast<CVExecutionState*>(state);
   *cv_message_stream 
