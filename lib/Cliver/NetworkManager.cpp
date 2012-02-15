@@ -216,6 +216,22 @@ void ExternalHandler_CliverPrint(
       << "\n";
 }
 
+void ExternalHandler_EnableBasicBlockTracking(
+		klee::Executor* executor, klee::ExecutionState *state, 
+		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {
+	assert(arguments.size() == 0);
+	CVExecutionState* cv_state = static_cast<CVExecutionState*>(state);
+  cv_state->set_basic_block_tracking(true);
+}
+
+void ExternalHandler_DisableBasicBlockTracking(
+		klee::Executor* executor, klee::ExecutionState *state, 
+		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {
+	assert(arguments.size() == 0);
+	CVExecutionState* cv_state = static_cast<CVExecutionState*>(state);
+  cv_state->set_basic_block_tracking(false);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 NetworkManager::NetworkManager(CVExecutionState* state) 

@@ -52,6 +52,14 @@ void ExternalHandler_CliverPrint(
 		klee::Executor* executor, klee::ExecutionState *state, 
 		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
 
+void ExternalHandler_EnableBasicBlockTracking(
+		klee::Executor* executor, klee::ExecutionState *state, 
+		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
+
+void ExternalHandler_DisableBasicBlockTracking(
+		klee::Executor* executor, klee::ExecutionState *state, 
+		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class CVExecutor;

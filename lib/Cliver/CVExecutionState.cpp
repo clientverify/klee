@@ -24,7 +24,7 @@ int CVExecutionState::next_id_ = 0;
 
 CVExecutionState::CVExecutionState(klee::KFunction *kF, klee::MemoryManager *mem)
  : klee::ExecutionState(kF, mem),
-	 id_(increment_id()), property_(0) {}
+	 id_(increment_id()), property_(0), basic_block_tracking_(true) {}
 
 CVExecutionState::CVExecutionState(
     const std::vector< klee::ref<klee::Expr> > &assumptions)
@@ -79,6 +79,7 @@ CVExecutionState* CVExecutionState::clone() {
 	*(cloned_state->debug_log_) << debug_log_->str();
 #endif
   cloned_state->cv_ = cv_;
+  cloned_state->basic_block_tracking_ = basic_block_tracking_;
   cv_->notify_all(ExecutionEvent(CV_STATE_CLONE, cloned_state, this));
   return cloned_state;
 }
