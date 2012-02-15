@@ -141,7 +141,7 @@ class TrainingObject {
  public:
   TrainingObject() {};
   TrainingObject(ExecutionTrace *et, SocketEvent *se, std::string& fn)
-      : trace(*et), filename(fn) { add_socket_event(se); }
+      : trace(*et), name(fn) { add_socket_event(se); }
 
   void add_socket_event(SocketEvent *se) {
     socket_event_set.insert(se);
@@ -153,7 +153,7 @@ class TrainingObject {
  public:
   SocketEventDataSet socket_event_set;
   ExecutionTrace trace;
-  std::string filename;
+  std::string name;
   ExecutionTrace::ID id;
 
  protected:
@@ -162,7 +162,7 @@ class TrainingObject {
   void serialize(Archive & ar, const unsigned int version) {
     ar & socket_event_set;
     ar & trace;
-    ar & filename;
+    ar & name;
   }
 };
 
@@ -171,6 +171,14 @@ struct TrainingObjectTraceLT {
     return (a->trace) < (b->trace);
   }
 };
+
+struct TrainingObjectLengthLT{
+	bool operator()(const TrainingObject* a, const TrainingObject* b) const {
+    return a->trace.size() < b->trace.size();
+  }
+};
+
+std::ostream& operator<<(std::ostream& os, const TrainingObject &tobject);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -957,10 +965,11 @@ typedef ExecutionTree<unsigned, ExecutionTrace> ExecutionTraceTree;
 //typedef std::map<ExecutionTrace::ID, std::string> ExecutionTraceNameMap;
 typedef std::map<CVExecutionState*, EDTree*> ExecutionStateEDTreeMap;
 
-typedef std::set<ExecutionTrace*, ExecutionTraceLT> ExecutionTraceSet;
-typedef std::vector<ExecutionTraceInfo*> ExecutionTraceInfoList;
-typedef std::map<ExecutionTrace::ID, ExecutionTraceInfo*> ExecutionTraceIDMap;
+//typedef std::set<ExecutionTrace*, ExecutionTraceLT> ExecutionTraceSet;
+//typedef std::vector<ExecutionTraceInfo*> ExecutionTraceInfoList;
+//typedef std::map<ExecutionTrace::ID, ExecutionTraceInfo*> ExecutionTraceIDMap;
 
+typedef std::map<ExecutionTrace::ID, TrainingObject*> TrainingObjectIDMap;
 typedef std::set<TrainingObject*, TrainingObjectTraceLT> TrainingObjectSet;
 typedef std::vector<TrainingObject*> TrainingObjectList;
 
@@ -1000,17 +1009,19 @@ class VerifyExecutionTreeManager : public ExecutionTreeManager {
  protected:
   int read_traces(std::vector<std::string> &filename_list);
 
+  // ExecutionTree objects
+  EDTree* ed_tree_;
   ExecutionStateEDTreeMap state_tree_map_;
 
-  ExecutionTraceSet execution_trace_set_;
-  ExecutionTraceIDMap id_map_;
-  ExecutionTraceInfoList execution_traces_;
-  ExecutionTraceInfoList et_by_length_;
-  EDTree* ed_tree_;
-
+  // Training data
   TrainingObjectSet training_set_;
+  TrainingObjectIDMap id_map_;
+  TrainingObjectList training_by_length_;
 
+  // Removed States
   std::set<CVExecutionState*> removed_states_;
+
+  // Edit distance
   std::stack<std::pair<CVExecutionState*, int> > current_min_;
 };
 

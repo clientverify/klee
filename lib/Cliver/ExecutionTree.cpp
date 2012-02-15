@@ -148,6 +148,18 @@ void TrainingObject::read(std::ifstream &is) {
   ia >> *this;
 }
 
+std::ostream& operator<<(std::ostream& os, const TrainingObject &tobject) {
+  os << "(trace id:" << tobject.id << ") "
+     << "(length:" << tobject.trace.size() << ") "
+     << "(" << tobject.name << ") ";
+  os << "[socket_events: ";
+  foreach (const SocketEvent* socket_event, tobject.socket_event_set) {
+    os << *socket_event << ", ";
+  }
+  os << "]";
+  return os;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 ExecutionTreeManager::ExecutionTreeManager(ClientVerifier* cv) : cv_(cv) {}
@@ -306,6 +318,7 @@ TestExecutionTreeManager::TestExecutionTreeManager(ClientVerifier* cv)
   : VerifyExecutionTreeManager(cv) {}
 
 void TestExecutionTreeManager::initialize() {
+#if 0
   trees_.push_back(new ExecutionTraceTree() );
 
   // Read training paths
@@ -342,13 +355,14 @@ void TestExecutionTreeManager::initialize() {
       cv_error("Error in EditDistanceTree, exiting.");
     }
   }
-
+#endif
 }
 
 void TestExecutionTreeManager::notify(ExecutionEvent ev) {
   CVExecutionState* state = ev.state;
   CVExecutionState* parent = ev.parent;
 
+#if 0
   switch (ev.event_type) {
     case CV_ROUND_START: {
       if (DeleteOldTrees) {
@@ -448,6 +462,7 @@ void TestExecutionTreeManager::notify(ExecutionEvent ev) {
     default:
       break;
   }
+#endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -468,20 +483,20 @@ void VerifyExecutionTreeManager::initialize() {
     cv_error("Error reading training path files, exiting now.");
   } 
 
-  et_by_length_ = ExecutionTraceInfoList(execution_traces_.begin(), 
-                                         execution_traces_.end());
-  ExecutionTraceInfoLengthLT length_comp;
-  std::sort(et_by_length_.begin(), 
-            et_by_length_.end(), length_comp);
+  training_by_length_ = TrainingObjectList(training_set_.begin(),
+                                           training_set_.end());
 
+  // Sort the training data by execution trace length
+  TrainingObjectLengthLT length_comp;
+  std::sort(training_by_length_.begin(),
+            training_by_length_.end(), length_comp);
 
   ed_tree_ = new EDTree();
 
   CVMESSAGE("Adding training paths...");
-  //foreach(ExecutionTraceInfo* info, execution_traces_) {
-  foreach(ExecutionTraceInfo* info, et_by_length_) {
-    CVMESSAGE("Adding " << *info);
-    ed_tree_->insert(*(info->trace), info->id);
+  foreach(TrainingObject* tobject, training_by_length_) {
+    CVMESSAGE("Adding " << *tobject);
+    ed_tree_->insert(tobject->trace, tobject->id);
   }
   CVMESSAGE("Done.");
 
@@ -530,62 +545,47 @@ int VerifyExecutionTreeManager::read_traces(
       tobject->read(*is);
       tobject->id = ++starting_id;
 
-      // XXX TODO check for duplicates
       TrainingObjectSet::iterator it = training_set_.find(tobject);
       if (it != training_set_.end()) {
         training_set_.insert(tobject);
       } else {
+        dup_count++;
         (*it)->socket_event_set.insert(tobject->socket_event_set.begin(),
-                                     tobject->socket_event_set.end());
+                                       tobject->socket_event_set.end());
       }
+      id_map_[tobject->id] = tobject;
 
 			delete is;
 		}
-
-		//if (is != NULL && is->good()) {
-    //  ExecutionTrace* etrace = new ExecutionTrace();
-    //  etrace->read(*is, cv_->executor()->get_kmodule());
-
-    //  if (execution_trace_set_.count(etrace) == 0) {
-    //    ExecutionTrace::ID eid = ++starting_id;
-    //    ExecutionTraceInfo* info = new ExecutionTraceInfo();
-    //    info->trace = etrace;
-    //    info->id = eid;
-    //    info->name = filename;
-
-    //    execution_traces_.push_back(info);
-    //    execution_trace_set_.insert(etrace);
-    //    id_map_[eid] = info;
-    //  } else {
-    //    delete etrace;
-    //    ++dup_count;
-    //  }
-
-		//	delete is;
-		//}
 	}
   CVMESSAGE("Duplicate traces " << dup_count );
 	
-  return execution_trace_set_.size();
+  return training_set_.size();
 }
 
 void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
   CVExecutionState* state = ev.state;
   CVExecutionState* parent = ev.parent;
 
+#if 1
   switch (ev.event_type) {
     case CV_ROUND_START: {
+      // Delete old trees if enabled
       if (DeleteOldTrees) {
         delete trees_.back();
         trees_.pop_back();
       }
       trees_.push_back(new ExecutionTraceTree() );
+
+      // Delete old trees associated with states from previous rounds
       ExecutionStateEDTreeMap::iterator it = state_tree_map_.begin(),
           ie = state_tree_map_.end();
       for (; it!=ie; ++it) {
         delete it->second;
       }
       state_tree_map_.clear();
+
+      // Reset the min edit distance to INT_MAX
       reset_min_edit_distance();
       break;
     }
@@ -595,21 +595,36 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         = static_cast<EditDistanceProperty*>(state->property());
 
       if (!trees_.back()->has_state(state)) {
+        // Add this state to the execution tree for this round
         trees_.back()->add_state(state, NULL);
+
+        // TODO XXX build new edit distance tree for paths close to this rounds
+        // socket event XXX TODO
+        // Add new edit distance tree for this state and add to state map
         EDTree* ed_tree = ed_tree_->clone();
+        state_tree_map_[state] = ed_tree;
+
+        // Set initial values for edit distance
         edp->edit_distance = INT_MAX;
         edp->recompute=true;
-        state_tree_map_[state] = ed_tree;
+
         CVDEBUG("Adding parent-less state: " << *state );
       }
 
+      // Exit this event if basic block tracking is disabled...
       if (!state->basic_block_tracking()) {
         break;
       }
+
+      // Add this basicblock event to the tree
       trees_.back()->update_state(state, state->prevPC->kbb->id);
       
+      // Recompute edit distance
       if (edp->recompute) {
+
         edp->recompute = false;
+
+        // Retrieve execution suffix from the execution tree
         ExecutionTrace full_etrace;
         trees_.back()->get_path(state, full_etrace);
 
@@ -624,34 +639,59 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         int prefix_sz = full_etrace.size();
 
         // Select any X such that |X| <= max(|s|,|t|) - min(|s|,|t|)
-        foreach (ExecutionTraceInfo* info, et_by_length_) {
-          int training_sz = info->trace->size();
+        foreach (TrainingObject* tobject, training_by_length_) {
+          int training_sz = tobject->trace.size();
           if (current_min_ed > std::abs(prefix_sz - training_sz)) {
-            if (full_etrace[0] == (*info->trace)[0]) {
-              search_list.push_back(info->id);
+            if (full_etrace[0] == tobject->trace[0]) {
+              search_list.push_back(tobject->id);
             }
           }
         }
 
+        //foreach (ExecutionTraceInfo* info, et_by_length_) {
+        //  int training_sz = info->trace->size();
+        //  if (current_min_ed > std::abs(prefix_sz - training_sz)) {
+        //    if (full_etrace[0] == (*info->trace)[0]) {
+        //      search_list.push_back(info->id);
+        //    }
+        //  }
+        //}
+
         if (search_list.empty()) {
           int min_diff = INT_MAX;
           ExecutionTrace::ID min_id;
-          foreach (ExecutionTraceInfo* info, et_by_length_) {
-            int diff = std::abs(prefix_sz - ((int)info->trace->size()));
+          foreach (TrainingObject* tobject, training_by_length_) {
+            int diff = std::abs(prefix_sz - ((int)tobject->trace.size()));
             if (min_diff > diff) {
-              if (full_etrace[0] == (*info->trace)[0]) {
+              if (full_etrace[0] == tobject->trace[0]) {
                 min_diff = diff;
-                min_id = info->id;
+                min_id = tobject->id;
               }
             }
           }
           search_list.push_back(min_id);
         }
+
+        //if (search_list.empty()) {
+        //  int min_diff = INT_MAX;
+        //  ExecutionTrace::ID min_id;
+        //  foreach (ExecutionTraceInfo* info, et_by_length_) {
+        //    int diff = std::abs(prefix_sz - ((int)info->trace->size()));
+        //    if (min_diff > diff) {
+        //      if (full_etrace[0] == (*info->trace)[0]) {
+        //        min_diff = diff;
+        //        min_id = info->id;
+        //      }
+        //    }
+        //  }
+        //  search_list.push_back(min_id);
+        //}
         assert(!search_list.empty());
 
         CVDEBUG("Computing edit distance for " << search_list.size() 
-                << " of " << et_by_length_.size() << " traces.");
+                << " of " << training_by_length_.size() << " traces.");
 
+        // Compute edit distance
         state_tree_map_[state]->compute_t(full_etrace, 
                                           current_min_ed, 
                                           search_list,
@@ -681,6 +721,7 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         = static_cast<EditDistanceProperty*>(state->property());
       EditDistanceProperty *edp_parent
         = static_cast<EditDistanceProperty*>(parent->property());
+
       edp->recompute=true;
       edp_parent->recompute=true;
 
@@ -714,6 +755,7 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
     default:
       break;
   }
+#endif
 }
 
 
