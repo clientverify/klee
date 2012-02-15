@@ -37,7 +37,7 @@ llvm::cl::opt<int>
 KLookAheadValue("klookahead",llvm::cl::init(16));
 
 llvm::cl::opt<bool>
-DeleteOldStates("delete-old-states",llvm::cl::init(false));
+DeleteOldStates("delete-old-states",llvm::cl::init(true));
 
 llvm::cl::opt<bool>
 BacktrackSearching("backtrack-searching",llvm::cl::init(false));
