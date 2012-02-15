@@ -498,7 +498,6 @@ int VerifyExecutionTreeManager::read_traces(
         execution_traces_.push_back(info);
         execution_trace_set_.insert(etrace);
         id_map_[eid] = info;
-
       } else {
         delete etrace;
         ++dup_count;
@@ -558,8 +557,6 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
 
         std::vector<ExecutionTrace::ID> search_list;
         int current_min_ed = min_edit_distance();
-
-
         int prefix_sz = full_etrace.size();
 
         // Select any X such that |X| <= max(|s|,|t|) - min(|s|,|t|)
@@ -596,7 +593,6 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
                                           search_list,
                                           &min_ed,
                                           &trace_id);
-
         edp->edit_distance = min_ed;
         CVDEBUG("Min edit-distance: " << min_ed << " " << *(id_map_[trace_id]));
         update_min_edit_distance(state, min_ed);

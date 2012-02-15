@@ -641,6 +641,7 @@ class EditDistanceTree : public tree<boost::shared_ptr<DataType> > {
     for (int i=0; i<id_list.size(); ++i) {
       //std::cout << ".";
       Node* node = leaf_node_id_map_[id_list[i]];
+      assert(node);
       node->data->update(t);
       ValTy ed = node->data->edit_distance();
       if (ed < *min_ed) {
