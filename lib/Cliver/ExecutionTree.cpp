@@ -17,6 +17,7 @@
 #include "cliver/EditDistance.h"
 #include "cliver/ExecutionTree.h"
 #include "cliver/CVExecutionState.h"
+#include "cliver/NetworkManager.h"
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/Internal/Module/KModule.h"
 #include "klee/Internal/Module/InstructionInfoTable.h"
@@ -132,6 +133,20 @@ std::ostream& operator<<(std::ostream& os, const ExecutionTraceInfo &info) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TrainingObject::write(std::ostream &os) {
+	boost::archive::binary_oarchive oa(os);
+	//boost::archive::text_oarchive oa(os);
+  oa << *this;
+}
+
+void TrainingObject::read(std::ifstream &is) {
+	boost::archive::binary_iarchive ia(is);
+	//boost::archive::text_iarchive ia(is);
+  ia >> *this;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 ExecutionTreeManager::ExecutionTreeManager(ClientVerifier* cv) : cv_(cv) {}
 
 void ExecutionTreeManager::initialize() {
@@ -238,16 +253,26 @@ void TrainingExecutionTreeManager::notify(ExecutionEvent ev) {
     case CV_SOCKET_WRITE:
     case CV_SOCKET_READ: {
       assert(trees_.back()->has_state(state));
+
+      // Get socket event for this successful path
+      Socket* socket = state->network_manager()->socket();
+      assert(socket);
+      SocketEvent* socket_event 
+          = const_cast<SocketEvent*>(&socket->previous_event());
+
+      // Get path from the execution tree
       ExecutionTrace etrace;
       trees_.back()->get_path(state, etrace);
 
+      TrainingObject training_obj(&etrace, socket_event);
+                                  
       std::stringstream filename;
       filename << "state_" << state->id() 
         << "-round_" << cv_->round()
         << "-length_" << etrace.size()
         << ".tpath";
       std::ostream *file = cv_->openOutputFile(filename.str());
-      etrace.write(*file);
+      training_obj.write(*file);
       static_cast<std::ofstream*>(file)->close();
       
       break;
