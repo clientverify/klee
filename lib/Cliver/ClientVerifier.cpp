@@ -103,7 +103,8 @@ ExternalHandlerInfo external_handler_info[] = {
 	{"cliver_socket_read", ExternalHandler_socket_read, true, CV_SOCKET_READ},
 	{"cliver_socket_create", ExternalHandler_socket_create, true, CV_SOCKET_CREATE},
 	{"nuklear_merge", ExternalHandler_merge, true, CV_MERGE},
-	{"klee_nuklear_XEventsQueued", ExternalHandler_XEventsQueued, true, CV_NULL_EVENT}
+	{"klee_nuklear_XEventsQueued", ExternalHandler_XEventsQueued, true, CV_NULL_EVENT},
+	{"cliver_print", ExternalHandler_CliverPrint, false, CV_NULL_EVENT},
 };
 
 ////////////////////////////////////////////////////////////////////////////////

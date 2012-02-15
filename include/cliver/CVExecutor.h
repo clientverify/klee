@@ -104,6 +104,9 @@ class CVExecutor : public klee::Executor {
 
   size_t states_size() { return states.size(); }
 
+  std::string get_string_at_address(CVExecutionState* state, 
+                                    klee::ref<klee::Expr> address_expr);
+
  private:
   ClientVerifier *cv_;
 	StateMerger *merger_;
