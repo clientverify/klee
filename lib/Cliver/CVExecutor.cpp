@@ -876,5 +876,11 @@ klee::KInstruction* CVExecutor::get_instruction(unsigned id) {
 	return NULL;
 }
 
+std::string CVExecutor::get_string_at_address(CVExecutionState* state, 
+                                               klee::ref<klee::Expr> address_expr) {
+    klee::ExecutionState* kstate = static_cast<klee::ExecutionState*>(state);
+		return specialFunctionHandler->readStringAtAddress(*kstate, address_expr);
+}
+
 } // end namespace cliver
 
