@@ -577,7 +577,7 @@ void CVExecutor::branch(klee::ExecutionState &state,
 		const std::vector< klee::ref<klee::Expr> > &conditions,
     std::vector<klee::ExecutionState*> &result) {
 
-	klee::TimerStatIncrementer timer(stats::fork_time);
+	//klee::TimerStatIncrementer timer(stats::fork_time);
   unsigned N = conditions.size();
   assert(N);
 
@@ -665,7 +665,7 @@ klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current,
 			}
 
 		} else { // res==klee::Solver::Unknown
-			klee::TimerStatIncrementer timer(stats::fork_time);
+			//klee::TimerStatIncrementer timer(stats::fork_time);
 			klee::ExecutionState *falseState = NULL, *trueState = &current;
 
 			++klee::stats::forks;
