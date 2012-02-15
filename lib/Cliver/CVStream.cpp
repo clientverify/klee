@@ -217,10 +217,12 @@ std::ostream *CVStream::openOutputFile(const std::string &filename,
   if (sub_directory) {
     path = getOutputFilename(*sub_directory);
     if (mkdir(path.c_str(), 0775) < 0) {
-      std::cerr << "CV: ERROR: Unable to make directory: \"" 
-        << path
-        << "\", refusing to overwrite.\n";
-      exit(1);
+      if (errno != EEXIST) {
+        std::cerr << "CV: ERROR: Unable to make directory: \"" 
+          << path
+          << "\", refusing to overwrite.\n";
+        exit(1);
+      }
     }
     path = appendComponent(path, filename);
   } else {
