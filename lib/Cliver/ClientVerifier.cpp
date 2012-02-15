@@ -133,7 +133,7 @@ class InstructionCounter : public ExecutionObserver {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ClientVerifier::ClientVerifier() 
+ClientVerifier::ClientVerifier(std::string* input_filename)
   : cvstream_(new CVStream()),
 		searcher_(NULL),
 		pruner_(NULL),
@@ -144,6 +144,8 @@ ClientVerifier::ClientVerifier()
 		round_number_(0) {
  
 	cvstream_->init();
+  if (input_filename)
+    client_name_ = cvstream_->getBasename(*input_filename);
 	handle_statistics();
 	next_statistics();
 }

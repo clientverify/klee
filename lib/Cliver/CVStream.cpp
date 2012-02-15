@@ -182,6 +182,11 @@ CVStream::~CVStream() {
   }
 }
 
+std::string CVStream::getBasename(const std::string &filename) {
+  llvm::sys::Path path(filename);
+  return path.getBasename().str();
+}
+
 std::string CVStream::getOutputFilename(const std::string &filename) {
   llvm::sys::Path filepath(output_directory_);
   filepath.appendComponent(filename);

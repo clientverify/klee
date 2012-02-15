@@ -353,7 +353,8 @@ int main(int argc, char **argv, char **envp) {
 
   parseArguments(argc, argv);
 
-  cliver::ClientVerifier* client_verifier = new cliver::ClientVerifier();
+  cliver::ClientVerifier* client_verifier = 
+      new cliver::ClientVerifier(&InputFile);
 
   atexit(llvm::llvm_shutdown);  // Call llvm_shutdown() on exit.
 
