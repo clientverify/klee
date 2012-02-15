@@ -109,10 +109,15 @@ class CVStream {
   inline std::ostream& warning_stream() { return *warning_stream_; }
 
   std::string getBasename(const std::string &filename);
+  std::string appendComponent(const std::string &filename,
+                              const std::string &append);
   std::string getOutputFilename(const std::string &filename);
-  std::ostream* openOutputFile(const std::string &filename);
+  std::ostream* openOutputFile(const std::string &filename, 
+                               std::string* sub_directory=NULL);
 	void getOutFiles(std::string path, std::vector<std::string> &results);
 	void getFiles(std::string path, std::string suffix,
+			std::vector<std::string> &results);
+	void getFilesRecursive(std::string path, std::string suffix,
 			std::vector<std::string> &results);
 
  private:
