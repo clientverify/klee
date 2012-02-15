@@ -603,118 +603,118 @@ void CVExecutor::branch(klee::ExecutionState &state,
       addConstraint(*result[i], conditions[i]);
 }
 
-klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current, 
-			klee::ref<klee::Expr> condition, bool isInternal) {
-	klee::Solver::Validity res;
-	CVExecutionState* cvcurrent = static_cast<CVExecutionState*>(&current);
-	PathManager *path_manager  
-		= static_cast<CVExecutionState*>(&current)->path_manager();
-
-	double timeout = stpTimeout;
-	solver->setTimeout(timeout);
-	bool success = solver->evaluate(current, condition, res);
-	solver->setTimeout(0);
-	if (!success) {
-		current.pc = current.prevPC;
-		terminateStateEarly(current, "query timed out");
-		return klee::Executor::StatePair(0, 0);
-	}
-
-	if (isInternal) {
-		if (res==klee::Solver::True) {
-      //cv_->notify_all(ExecutionEvent(CV_BRANCH_INTERNAL_TRUE, &current));
-			return klee::Executor::StatePair(&current, 0);
-		} else if (res==klee::Solver::False) {
-      //cv_->notify_all(ExecutionEvent(CV_BRANCH_INTERNAL_FALSE, &current));
-			return klee::Executor::StatePair(0, &current);
-		} else {
-			klee::ExecutionState *falseState = NULL, *trueState = &current;
-			falseState = trueState->branch();
-			addConstraint(*trueState, condition);
-			addConstraint(*falseState, klee::Expr::createIsZero(condition));
-			addedStates.insert(falseState);
-      //cv_->notify_all(ExecutionEvent(CV_BRANCH_INTERNAL_TRUE, &current));
-      //cv_->notify_all(ExecutionEvent(CV_BRANCH_INTERNAL_FALSE, falseState, &current));
-			return klee::Executor::StatePair(trueState, falseState);
-		}
-	} else {
-		if (res==klee::Solver::True) {
-			if (path_manager->try_branch(true, res, current.prevPC, cvcurrent)) {
-				if (pathWriter) {
-					current.pathOS << "1";
-				}
-				path_manager->branch(true, res, current.prevPC, cvcurrent);
-        //cv_->notify_all(ExecutionEvent(CV_BRANCH_TRUE, &current));
-				return klee::Executor::StatePair(&current, 0);
-			} else {
-				terminateState(current);
-				return klee::Executor::StatePair(0, 0);
-			}
-
-		} else if (res==klee::Solver::False) {
-			if (path_manager->try_branch(false, res, current.prevPC, cvcurrent)) {
-				if (pathWriter) {
-					current.pathOS << "0";
-				}
-				path_manager->branch(false, res, current.prevPC, cvcurrent);
-        //cv_->notify_all(ExecutionEvent(CV_BRANCH_FALSE, &current));
-				return klee::Executor::StatePair(0, &current);
-			} else {
-				terminateState(current);
-				return klee::Executor::StatePair(0, 0);
-			}
-
-		} else { // res==klee::Solver::Unknown
-			//klee::TimerStatIncrementer timer(stats::fork_time);
-			klee::ExecutionState *falseState = NULL, *trueState = &current;
-
-			++klee::stats::forks;
-
-			if (path_manager->try_branch(false, res, current.prevPC, cvcurrent)) {
-				falseState = trueState->branch();
-				if (pathWriter) {
-					falseState->pathOS = pathWriter->open(current.pathOS);
-					falseState->pathOS << "0";
-				}   
-				if (symPathWriter) {
-					falseState->symPathOS = symPathWriter->open(current.symPathOS);
-					falseState->symPathOS << "0";
-				}
-
-				addConstraint(*falseState, klee::Expr::createIsZero(condition));
-				addedStates.insert(falseState);
-
-				PathManager *false_path_manager 
-					= static_cast<CVExecutionState*>(falseState)->path_manager();
-
-				false_path_manager->branch(false, res, current.prevPC,
-						static_cast<CVExecutionState*>(falseState));
-
-        //cv_->notify_all(ExecutionEvent(CV_BRANCH_FALSE, falseState, &current));
-			}
-
-			if (path_manager->try_branch(true, res, current.prevPC, cvcurrent)) {
-				if (pathWriter) {
-					trueState->pathOS << "1";
-				}      
-				if (symPathWriter) {
-					trueState->symPathOS << "1";
-				}
-
-				addConstraint(*trueState, condition);
-				path_manager->branch(true, res, current.prevPC, cvcurrent);
-
-        //cv_->notify_all(ExecutionEvent(CV_BRANCH_TRUE, &current));
-
-			} else {
-				terminateState(*trueState);
-				trueState = NULL;
-			}
-
-			return klee::Executor::StatePair(trueState, falseState);
-		}
-	}
-}
+//klee::Executor::StatePair CVExecutor::fork(klee::ExecutionState &current, 
+//			klee::ref<klee::Expr> condition, bool isInternal) {
+//	klee::Solver::Validity res;
+//	CVExecutionState* cvcurrent = static_cast<CVExecutionState*>(&current);
+//	PathManager *path_manager  
+//		= static_cast<CVExecutionState*>(&current)->path_manager();
+//
+//	double timeout = stpTimeout;
+//	solver->setTimeout(timeout);
+//	bool success = solver->evaluate(current, condition, res);
+//	solver->setTimeout(0);
+//	if (!success) {
+//		current.pc = current.prevPC;
+//		terminateStateEarly(current, "query timed out");
+//		return klee::Executor::StatePair(0, 0);
+//	}
+//
+//	if (isInternal) {
+//		if (res==klee::Solver::True) {
+//      //cv_->notify_all(ExecutionEvent(CV_BRANCH_INTERNAL_TRUE, &current));
+//			return klee::Executor::StatePair(&current, 0);
+//		} else if (res==klee::Solver::False) {
+//      //cv_->notify_all(ExecutionEvent(CV_BRANCH_INTERNAL_FALSE, &current));
+//			return klee::Executor::StatePair(0, &current);
+//		} else {
+//			klee::ExecutionState *falseState = NULL, *trueState = &current;
+//			falseState = trueState->branch();
+//			addConstraint(*trueState, condition);
+//			addConstraint(*falseState, klee::Expr::createIsZero(condition));
+//			addedStates.insert(falseState);
+//      //cv_->notify_all(ExecutionEvent(CV_BRANCH_INTERNAL_TRUE, &current));
+//      //cv_->notify_all(ExecutionEvent(CV_BRANCH_INTERNAL_FALSE, falseState, &current));
+//			return klee::Executor::StatePair(trueState, falseState);
+//		}
+//	} else {
+//		if (res==klee::Solver::True) {
+//			if (path_manager->try_branch(true, res, current.prevPC, cvcurrent)) {
+//				if (pathWriter) {
+//					current.pathOS << "1";
+//				}
+//				path_manager->branch(true, res, current.prevPC, cvcurrent);
+//        //cv_->notify_all(ExecutionEvent(CV_BRANCH_TRUE, &current));
+//				return klee::Executor::StatePair(&current, 0);
+//			} else {
+//				terminateState(current);
+//				return klee::Executor::StatePair(0, 0);
+//			}
+//
+//		} else if (res==klee::Solver::False) {
+//			if (path_manager->try_branch(false, res, current.prevPC, cvcurrent)) {
+//				if (pathWriter) {
+//					current.pathOS << "0";
+//				}
+//				path_manager->branch(false, res, current.prevPC, cvcurrent);
+//        //cv_->notify_all(ExecutionEvent(CV_BRANCH_FALSE, &current));
+//				return klee::Executor::StatePair(0, &current);
+//			} else {
+//				terminateState(current);
+//				return klee::Executor::StatePair(0, 0);
+//			}
+//
+//		} else { // res==klee::Solver::Unknown
+//			//klee::TimerStatIncrementer timer(stats::fork_time);
+//			klee::ExecutionState *falseState = NULL, *trueState = &current;
+//
+//			++klee::stats::forks;
+//
+//			if (path_manager->try_branch(false, res, current.prevPC, cvcurrent)) {
+//				falseState = trueState->branch();
+//				if (pathWriter) {
+//					falseState->pathOS = pathWriter->open(current.pathOS);
+//					falseState->pathOS << "0";
+//				}   
+//				if (symPathWriter) {
+//					falseState->symPathOS = symPathWriter->open(current.symPathOS);
+//					falseState->symPathOS << "0";
+//				}
+//
+//				addConstraint(*falseState, klee::Expr::createIsZero(condition));
+//				addedStates.insert(falseState);
+//
+//				PathManager *false_path_manager 
+//					= static_cast<CVExecutionState*>(falseState)->path_manager();
+//
+//				false_path_manager->branch(false, res, current.prevPC,
+//						static_cast<CVExecutionState*>(falseState));
+//
+//        //cv_->notify_all(ExecutionEvent(CV_BRANCH_FALSE, falseState, &current));
+//			}
+//
+//			if (path_manager->try_branch(true, res, current.prevPC, cvcurrent)) {
+//				if (pathWriter) {
+//					trueState->pathOS << "1";
+//				}      
+//				if (symPathWriter) {
+//					trueState->symPathOS << "1";
+//				}
+//
+//				addConstraint(*trueState, condition);
+//				path_manager->branch(true, res, current.prevPC, cvcurrent);
+//
+//        //cv_->notify_all(ExecutionEvent(CV_BRANCH_TRUE, &current));
+//
+//			} else {
+//				terminateState(*trueState);
+//				trueState = NULL;
+//			}
+//
+//			return klee::Executor::StatePair(trueState, falseState);
+//		}
+//	}
+//}
 
 void CVExecutor::add_external_handler(std::string name, 
 		klee::SpecialFunctionHandler::ExternalHandler external_handler,

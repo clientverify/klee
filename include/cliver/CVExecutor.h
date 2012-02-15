@@ -47,11 +47,11 @@ class CVExecutor : public klee::Executor {
               const std::vector< klee::ref<klee::Expr> > &conditions,
               std::vector<klee::ExecutionState*> &result);
 
-  // Fork current and return states in which condition holds / does
-  // not hold, respectively. One of the states is necessarily the
-  // current state, and one of the states may be null.
-  virtual StatePair fork(klee::ExecutionState &current, 
-			klee::ref<klee::Expr> condition, bool isInternal);
+  //// Fork current and return states in which condition holds / does
+  //// not hold, respectively. One of the states is necessarily the
+  //// current state, and one of the states may be null.
+  //virtual StatePair fork(klee::ExecutionState &current, 
+	//		klee::ref<klee::Expr> condition, bool isInternal);
 
 	ClientVerifier* client_verifier() { return cv_; }
 

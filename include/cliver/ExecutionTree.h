@@ -31,6 +31,7 @@
 #include <boost/shared_ptr.hpp>
 #include <boost/serialization/access.hpp>
 #include <boost/serialization/vector.hpp>
+#include <boost/serialization/set.hpp>
 
 #define MAX(x,y) (((x)<(y))?(y):(x))
 #define MIN(x,y) (!((y)<(x))?(x):(y))
@@ -131,6 +132,33 @@ struct ExecutionTraceInfoLT{
 struct ExecutionTraceLT{
 	bool operator()(const ExecutionTrace* a, const ExecutionTrace* b) const {
     return *(a) < *(b);
+  }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TrainingObject {
+ public:
+  TrainingObject(ExecutionTrace *et, SocketEvent *se)
+      : execution_trace(*et) { add_socket_event(se); }
+
+  void add_socket_event(SocketEvent *se) {
+    socket_event_set.insert(se);
+  }
+
+  void read(std::ifstream &is);
+  void write(std::ostream &os);
+
+ public:
+  ExecutionTrace execution_trace;
+  SocketEventDataSet socket_event_set;
+
+ protected:
+  friend class boost::serialization::access;
+  template<class Archive>
+  void serialize(Archive & ar, const unsigned int version) {
+    ar & execution_trace;
+    ar & socket_event_set;
   }
 };
 
@@ -920,6 +948,7 @@ typedef std::map<CVExecutionState*, EDTree*> ExecutionStateEDTreeMap;
 
 typedef std::set<ExecutionTrace*, ExecutionTraceLT> ExecutionTraceSet;
 typedef std::vector<ExecutionTraceInfo*> ExecutionTraceInfoList;
+typedef std::vector<TrainingObject*> TrainingObjectList;
 typedef std::map<ExecutionTrace::ID, ExecutionTraceInfo*> ExecutionTraceIDMap;
 
 ////////////////////////////////////////////////////////////////////////////////
