@@ -149,7 +149,7 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
     }
     case CV_BASICBLOCK_ENTRY: {
       if (!trees_.back()->has_state(state)) {
-        CVDEBUG("Adding parent-less state: " << state << ", " << state->id() );
+        CVDEBUG("Adding parent-less state: " << *state );
         trees_.back()->add_state(state, NULL);
       }
     
@@ -158,21 +158,20 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
     }
 
     case CV_STATE_REMOVED: {
-      CVDEBUG("Removing state: " << state << ", " << state->id() );
+      CVDEBUG("Removing state: " << *state );
       trees_.back()->remove_state(state);
       break;
     }
 
     case CV_STATE_CLONE: {
-      CVDEBUG("Cloned state: " << state << " : " << state->id() 
-              << ", parent: " << parent << " : " << parent->id());
+      //CVDEBUG("Cloned state: " << *state);
 
       trees_.back()->add_state(state, parent);
       break;
     }
 
     case CV_SOCKET_SHUTDOWN: {
-      CVDEBUG("Successful socket shutdown. " << state << ":" << state->id());
+      CVDEBUG("Successful socket shutdown. " << *state);
       ExecutionTraceTree* tree = NULL;
       reverse_foreach (tree, trees_) {
         if (tree->has_state(state))
@@ -215,7 +214,7 @@ void TrainingExecutionTreeManager::notify(ExecutionEvent ev) {
     case CV_BASICBLOCK_ENTRY: {
 
       if (!trees_.back()->has_state(state)) {
-        CVDEBUG("Adding parent-less state: " << state << ", " << state->id() );
+        CVDEBUG("Adding parent-less state: " << *state);
         trees_.back()->add_state(state, NULL);
       }
 
@@ -224,14 +223,13 @@ void TrainingExecutionTreeManager::notify(ExecutionEvent ev) {
     }
 
     case CV_STATE_REMOVED: {
-      CVDEBUG("Removing state: " << state << ", " << state->id() );
+      CVDEBUG("Removing state: " << *state );
       trees_.back()->remove_state(state);
       break;
     }
 
     case CV_STATE_CLONE: {
-      CVDEBUG("Cloned state: " << state << " : " << state->id() 
-              << ", parent: " << parent << " : " << parent->id());
+      CVDEBUG("Cloned state: " << *state);
       trees_.back()->add_state(state, parent);
       break;
     }
@@ -256,7 +254,7 @@ void TrainingExecutionTreeManager::notify(ExecutionEvent ev) {
 
     case CV_SOCKET_SHUTDOWN: {
 
-      CVDEBUG("Successful socket shutdown. " << state << ":" << state->id());
+      CVDEBUG("Successful socket shutdown. " << *state);
       break;
     }
 
@@ -324,7 +322,7 @@ void TestExecutionTreeManager::notify(ExecutionEvent ev) {
     case CV_BASICBLOCK_ENTRY: {
 
       if (!trees_.back()->has_state(state)) {
-        CVDEBUG("Adding parent-less state: " << state << ", " << state->id() );
+        CVDEBUG("Adding parent-less state: " << *state );
         trees_.back()->add_state(state, NULL);
       }
 
@@ -333,14 +331,13 @@ void TestExecutionTreeManager::notify(ExecutionEvent ev) {
     }
 
     case CV_STATE_REMOVED: {
-      CVDEBUG("Removing state: " << state << ", " << state->id() );
+      CVDEBUG("Removing state: " << *state);
       trees_.back()->remove_state(state);
       break;
     }
 
     case CV_STATE_CLONE: {
-      CVDEBUG("Cloned state: " << state << " : " << state->id() 
-              << ", parent: " << parent << " : " << parent->id());
+      //CVDEBUG("Cloned state: " << *state); 
       trees_.back()->add_state(state, parent);
       break;
     }
@@ -403,7 +400,7 @@ void TestExecutionTreeManager::notify(ExecutionEvent ev) {
 
     case CV_SOCKET_SHUTDOWN: {
 
-      CVDEBUG("Successful socket shutdown. " << state << ":" << state->id());
+      CVDEBUG("Successful socket shutdown. " << *state);
       break;
     }
 
@@ -442,7 +439,7 @@ void VerifyExecutionTreeManager::initialize() {
   CVMESSAGE("Adding training paths...");
   //foreach(ExecutionTraceInfo* info, execution_traces_) {
   foreach(ExecutionTraceInfo* info, et_by_length_) {
-    CVMESSAGE("Adding " << *info << " to the tree");
+    CVMESSAGE("Adding " << *info);
     ed_tree_->insert(*(info->trace), info->id);
   }
   CVMESSAGE("Done.");
@@ -501,7 +498,6 @@ int VerifyExecutionTreeManager::read_traces(
         execution_traces_.push_back(info);
         execution_trace_set_.insert(etrace);
         id_map_[eid] = info;
-
       } else {
         delete etrace;
         ++dup_count;
@@ -561,8 +557,6 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
 
         std::vector<ExecutionTrace::ID> search_list;
         int current_min_ed = min_edit_distance();
-
-
         int prefix_sz = full_etrace.size();
 
         // Select any X such that |X| <= max(|s|,|t|) - min(|s|,|t|)
@@ -599,7 +593,6 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
                                           search_list,
                                           &min_ed,
                                           &trace_id);
-
         edp->edit_distance = min_ed;
         CVDEBUG("Min edit-distance: " << min_ed << " " << *(id_map_[trace_id]));
         update_min_edit_distance(state, min_ed);
@@ -608,7 +601,7 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
     }
 
     case CV_STATE_REMOVED: {
-      CVDEBUG("Removing state: " << state << ", " << state->id() );
+      CVDEBUG("Removing state: " << *state );
       trees_.back()->remove_state(state);
       assert(state_tree_map_.count(state));
       delete state_tree_map_[state];
@@ -617,7 +610,7 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
     }
 
     case CV_STATE_CLONE: {
-      CVDEBUG("Cloned state: " << *state << ", parent: " << *parent )
+      //CVDEBUG("Cloned state: " << *state << ", parent: " << *parent )
       trees_.back()->add_state(state, parent);
       
       EditDistanceProperty *edp 
@@ -650,7 +643,7 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
     }
 
     case CV_SOCKET_SHUTDOWN: {
-      CVDEBUG("Successful socket shutdown. " << state << ":" << state->id());
+      CVDEBUG("Successful socket shutdown. " << *state);
       break;
     }
 
