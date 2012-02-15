@@ -187,13 +187,21 @@ std::string CVStream::getBasename(const std::string &filename) {
   return path.getBasename().str();
 }
 
+std::string CVStream::appendComponent(const std::string &filename,
+                                      const std::string &append) {
+  llvm::sys::Path filepath(filename);
+  filepath.appendComponent(append);
+  return filepath.str();
+}
+
 std::string CVStream::getOutputFilename(const std::string &filename) {
   llvm::sys::Path filepath(output_directory_);
   filepath.appendComponent(filename);
   return filepath.str();
 }
 
-std::ostream *CVStream::openOutputFile(const std::string &filename) {
+std::ostream *CVStream::openOutputFile(const std::string &filename,
+                                       std::string* sub_directory) {
   if (NoOutput) {
     teestream* null_teestream = new teestream();
     std::cerr << "output files disabled: \"" << filename 
@@ -204,7 +212,21 @@ std::ostream *CVStream::openOutputFile(const std::string &filename) {
   std::ios::openmode io_mode 
     = std::ios::out | std::ios::trunc | std::ios::binary;
   std::ostream *f;
-  std::string path = getOutputFilename(filename);
+  std::string path;
+
+  if (sub_directory) {
+    path = getOutputFilename(*sub_directory);
+    if (mkdir(path.c_str(), 0775) < 0) {
+      std::cerr << "CV: ERROR: Unable to make directory: \"" 
+        << path
+        << "\", refusing to overwrite.\n";
+      exit(1);
+    }
+    appendComponent(path, filename);
+  } else {
+    path = getOutputFilename(filename);
+  }
+
   f = new std::ofstream(path.c_str(), io_mode);
   if (!f) {
     if (initialized_)
@@ -283,6 +305,30 @@ void CVStream::getFiles(std::string path, std::string suffix,
     std::string f = it->str();
     if (f.substr(f.size()-suffix.size(), f.size()) == suffix) {
       results.push_back(f);
+    }
+  }
+}
+
+void CVStream::getFilesRecursive(std::string path, 
+                                 std::string suffix, 
+                                 std::vector<std::string> &results) {
+  llvm::sys::Path p(path);
+  std::set<llvm::sys::Path> contents;
+  std::string error;
+  if (p.getDirectoryContents(contents, &error)) {
+    std::cerr << "ERROR: unable to read output directory: " << path 
+               << ": " << error << "\n";
+    exit(1);
+  }
+  for (std::set<llvm::sys::Path>::iterator it = contents.begin(),
+         ie = contents.end(); it != ie; ++it) {
+    std::string f = it->str();
+    if (it->isDirectory()) {
+      getFilesRecursive(f, suffix, results);
+    } else {
+      if (f.substr(f.size()-suffix.size(), f.size()) == suffix) {
+        results.push_back(f);
+      }
     }
   }
 }

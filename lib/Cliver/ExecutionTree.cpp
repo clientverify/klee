@@ -286,15 +286,25 @@ void TrainingExecutionTreeManager::notify(ExecutionEvent ev) {
       trees_.back()->get_path(state, etrace);
 
       std::stringstream filename;
-      filename << "state_" << state->id() 
-        << "-round_" << cv_->round()
-        << "-length_" << etrace.size()
-        << ".tpath";
+      filename 
+        << "round_" 
+        << std::setw(4) << std::setfill('0') << cv_->round();
+      filename 
+        << "-length_" 
+        << std::setw(6) << std::setfill('0') << etrace.size();
+      filename 
+        << "state_" <<  state->id() << ".tpath";
+
+      std::stringstream sub_directory;
+      sub_directory << "round_" 
+        << std::setw(4) << std::setfill('0') << cv_->round();
 
       std::string filename_str(filename.str());
-      TrainingObject training_obj(&etrace, socket_event,filename_str);
+      std::string sub_directory_str = sub_directory.str();
 
-      std::ostream *file = cv_->openOutputFile(filename.str());
+      std::ostream *file = cv_->cvstream()->openOutputFile(filename_str, &sub_directory_str);
+
+      TrainingObject training_obj(&etrace, socket_event,filename_str);
       training_obj.write(*file);
       static_cast<std::ofstream*>(file)->close();
       
@@ -476,7 +486,7 @@ void VerifyExecutionTreeManager::initialize() {
   // Read training paths
   if (!TrainingPathDir.empty()) {
     foreach(std::string path, TrainingPathDir) {
-      cv_->cvstream()->getFiles(path, ".tpath", TrainingPathFile);
+      cv_->cvstream()->getFilesRecursive(path, ".tpath", TrainingPathFile);
     }
   }
   if (TrainingPathFile.empty() || read_traces(TrainingPathFile) == 0) {
@@ -648,15 +658,6 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
           }
         }
 
-        //foreach (ExecutionTraceInfo* info, et_by_length_) {
-        //  int training_sz = info->trace->size();
-        //  if (current_min_ed > std::abs(prefix_sz - training_sz)) {
-        //    if (full_etrace[0] == (*info->trace)[0]) {
-        //      search_list.push_back(info->id);
-        //    }
-        //  }
-        //}
-
         if (search_list.empty()) {
           int min_diff = INT_MAX;
           ExecutionTrace::ID min_id;
@@ -672,20 +673,6 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
           search_list.push_back(min_id);
         }
 
-        //if (search_list.empty()) {
-        //  int min_diff = INT_MAX;
-        //  ExecutionTrace::ID min_id;
-        //  foreach (ExecutionTraceInfo* info, et_by_length_) {
-        //    int diff = std::abs(prefix_sz - ((int)info->trace->size()));
-        //    if (min_diff > diff) {
-        //      if (full_etrace[0] == (*info->trace)[0]) {
-        //        min_diff = diff;
-        //        min_id = info->id;
-        //      }
-        //    }
-        //  }
-        //  search_list.push_back(min_id);
-        //}
         assert(!search_list.empty());
 
         CVDEBUG("Computing edit distance for " << search_list.size() 

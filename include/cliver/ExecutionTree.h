@@ -111,6 +111,8 @@ class ExecutionTrace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// TODO REMOVE ME
+
 struct ExecutionTraceInfo {
   ExecutionTrace::ID id;
   std::string name;
@@ -179,6 +181,28 @@ struct TrainingObjectLengthLT{
 };
 
 std::ostream& operator<<(std::ostream& os, const TrainingObject &tobject);
+
+////////////////////////////////////////////////////////////////////////////////
+
+class SocketEventEditDistance {
+ public:
+  SocketEventEditDistance() {}
+  virtual int edit_distance(const SocketEvent* a, const SocketEvent* b);
+};
+
+class SocketEventEditDistanceXpilot : public SocketEventEditDistance {
+ public:
+  SocketEventEditDistanceXpilot() {}
+  int edit_distance(const SocketEvent* a, const SocketEvent* b);
+};
+
+class SocketEventEditDistanceTetrinet: public SocketEventEditDistance {
+ public:
+  SocketEventEditDistanceTetrinet() {}
+  int edit_distance(const SocketEvent* a, const SocketEvent* b);
+};
+
+////////////////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////////////////
 
