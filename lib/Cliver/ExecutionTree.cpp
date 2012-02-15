@@ -36,6 +36,9 @@ namespace cliver {
 llvm::cl::opt<bool>
 DebugExecutionTree("debug-execution-tree",llvm::cl::init(false));
 
+llvm::cl::opt<bool>
+DeleteOldTrees("delete-old-trees",llvm::cl::init(true));
+
 llvm::cl::list<std::string> TrainingPathFile("training-path-file",
 	llvm::cl::ZeroOrMore,
 	llvm::cl::ValueRequired,
@@ -159,6 +162,10 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
 
   switch (ev.event_type) {
     case CV_ROUND_START: {
+      if (DeleteOldTrees) {
+        delete trees_.back();
+        trees_.pop_back();
+      }
       trees_.push_back(new ExecutionTraceTree() );
       break;
     }
@@ -222,8 +229,10 @@ void TrainingExecutionTreeManager::notify(ExecutionEvent ev) {
 
   switch (ev.event_type) {
     case CV_ROUND_START: {
-      delete trees_.back();
-      trees_.pop_back();
+      if (DeleteOldTrees) {
+        delete trees_.back();
+        trees_.pop_back();
+      }
       trees_.push_back(new ExecutionTraceTree() );
       break;
     }
@@ -340,8 +349,10 @@ void TestExecutionTreeManager::notify(ExecutionEvent ev) {
 
   switch (ev.event_type) {
     case CV_ROUND_START: {
-      delete trees_.back();
-      // Delete previous round tree?
+      if (DeleteOldTrees) {
+        delete trees_.back();
+        trees_.pop_back();
+      }
       trees_.push_back(new ExecutionTraceTree() );
       break;
     }
@@ -545,7 +556,10 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
 
   switch (ev.event_type) {
     case CV_ROUND_START: {
-      delete trees_.back();
+      if (DeleteOldTrees) {
+        delete trees_.back();
+        trees_.pop_back();
+      }
       trees_.push_back(new ExecutionTraceTree() );
       ExecutionStateEDTreeMap::iterator it = state_tree_map_.begin(),
           ie = state_tree_map_.end();

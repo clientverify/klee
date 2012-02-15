@@ -892,6 +892,7 @@ class ExecutionTree : public tree<DataType> {
           found_child_match = true;
           assert(node_map_.count(child_it.node));
           state_map_[state] = increment(node_map_[child_it.node]);
+          break;
         }
       }
       if (!found_child_match) {
