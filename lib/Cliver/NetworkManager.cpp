@@ -200,6 +200,18 @@ void ExternalHandler_XEventsQueued(
   }
 }
 
+void ExternalHandler_CliverPrint(
+		klee::Executor* executor, klee::ExecutionState *state, 
+		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {
+	assert(arguments.size() == 0);
+	CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
+	CVExecutionState* cv_state = static_cast<CVExecutionState*>(state);
+  *cv_message_stream 
+      << "[" << cv_state->id() << "] "
+      << cv_executor->get_string_at_address(cv_state, arguments[0])
+      << "\n";
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 NetworkManager::NetworkManager(CVExecutionState* state) 
