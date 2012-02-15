@@ -424,6 +424,9 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
     updateStates(&state);
   }
 
+  if(searcher->empty())
+    CVMESSAGE("No more states to search.");
+
  dump:
   if (klee::DumpStatesOnHalt && !states.empty()) {
     //std::cerr << "KLEE: halting execution, dumping remaining states\n";
