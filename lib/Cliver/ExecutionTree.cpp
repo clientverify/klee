@@ -290,10 +290,10 @@ void TrainingExecutionTreeManager::notify(ExecutionEvent ev) {
         << "round_" 
         << std::setw(4) << std::setfill('0') << cv_->round();
       filename 
-        << "-length_" 
+        << "_length_" 
         << std::setw(6) << std::setfill('0') << etrace.size();
       filename 
-        << "state_" <<  state->id() << ".tpath";
+        << "_state_" <<  state->id() << ".tpath";
 
       std::stringstream sub_directory;
       sub_directory << "round_" 
