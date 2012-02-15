@@ -152,8 +152,9 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
         CVDEBUG("Adding parent-less state: " << *state );
         trees_.back()->add_state(state, NULL);
       }
-    
-      trees_.back()->update_state(state, state->prevPC->kbb->id);
+      if (state->basic_block_tracking()) {
+        trees_.back()->update_state(state, state->prevPC->kbb->id);
+      }
       break;
     }
 
@@ -212,13 +213,13 @@ void TrainingExecutionTreeManager::notify(ExecutionEvent ev) {
       break;
     }
     case CV_BASICBLOCK_ENTRY: {
-
       if (!trees_.back()->has_state(state)) {
         CVDEBUG("Adding parent-less state: " << *state);
         trees_.back()->add_state(state, NULL);
       }
-
-      trees_.back()->update_state(state, state->prevPC->kbb->id);
+      if (state->basic_block_tracking()) {
+        trees_.back()->update_state(state, state->prevPC->kbb->id);
+      }
       break;
     }
 
@@ -326,7 +327,9 @@ void TestExecutionTreeManager::notify(ExecutionEvent ev) {
         trees_.back()->add_state(state, NULL);
       }
 
-      trees_.back()->update_state(state, state->prevPC->kbb->id);
+      if (state->basic_block_tracking()) {
+        trees_.back()->update_state(state, state->prevPC->kbb->id);
+      }
       break;
     }
 
@@ -542,6 +545,9 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         CVDEBUG("Adding parent-less state: " << *state );
       }
 
+      if (!state->basic_block_tracking()) {
+        break;
+      }
       trees_.back()->update_state(state, state->prevPC->kbb->id);
       
       if (edp->recompute) {

@@ -70,6 +70,9 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
 
   ClientVerifier* cv() { return cv_; }
 
+  bool basic_block_tracking() { return basic_block_tracking_; }
+  void set_basic_block_tracking(bool b) { basic_block_tracking_ = b; }
+
  private:
   int increment_id() { return next_id_++; }
 
@@ -80,6 +83,7 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
 	PathManager* path_manager_;
 	ExecutionStateProperty* property_;
   ClientVerifier *cv_;
+  bool basic_block_tracking_;
 };
 
 std::ostream &operator<<(std::ostream &os, const CVExecutionState &s);

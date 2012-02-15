@@ -97,7 +97,6 @@ struct ExternalHandlerInfo {
 };
 
 ExternalHandlerInfo external_handler_info[] = {
-	//{"cliver_test_extract_pointers", ExternalHandler_test_extract_pointers, false, CV_NULL_EVENT},
 	{"cliver_socket_shutdown", ExternalHandler_socket_shutdown, true, CV_SOCKET_SHUTDOWN},
 	{"cliver_socket_write", ExternalHandler_socket_write, true, CV_SOCKET_WRITE},
 	{"cliver_socket_read", ExternalHandler_socket_read, true, CV_SOCKET_READ},
@@ -105,6 +104,8 @@ ExternalHandlerInfo external_handler_info[] = {
 	{"nuklear_merge", ExternalHandler_merge, true, CV_MERGE},
 	{"klee_nuklear_XEventsQueued", ExternalHandler_XEventsQueued, true, CV_NULL_EVENT},
 	{"cliver_print", ExternalHandler_CliverPrint, false, CV_NULL_EVENT},
+	{"cliver_disable_tracking", ExternalHandler_DisableBasicBlockTracking, false, CV_NULL_EVENT},
+	{"cliver_enable_tracking", ExternalHandler_EnableBasicBlockTracking, false, CV_NULL_EVENT},
 };
 
 ////////////////////////////////////////////////////////////////////////////////
