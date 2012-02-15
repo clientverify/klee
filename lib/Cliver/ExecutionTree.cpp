@@ -162,6 +162,64 @@ std::ostream& operator<<(std::ostream& os, const TrainingObject &tobject) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct field_update {
+  int pnum;
+  int x;
+  int y;
+  int r;
+};
+
+int SocketEventEditDistanceTetrinet::edit_distance(const SocketEvent* a, 
+                                                   const SocketEvent* b) {
+  int result = INT_MAX;
+  char* a_buf = new char[a->size()];
+  char* b_buf = new char[b->size()];
+  char* a_type_buf = new char[64];
+  char* b_type_buf = new char[64];
+  std::string a_type, b_type;
+
+  for (int i=0; i<a->size(); ++i)
+    a_buf[i] = a->data[i];
+  for (int i=0; i<b->size(); ++i)
+    b_buf[i] = b->data[i];
+
+  sscanf(a_buf, "%s ", a_type_buf);
+  sscanf(b_buf, "%s ", b_type_buf);
+  a_type = std::string(a_type_buf);
+  b_type = std::string(b_type_buf);
+
+  if (a_type == b_type) {
+    CVDEBUG("Matching types: " << a_type << " for " << *a << " and " << *b);
+    result = 0;
+    if (a->data[0] == b->data[0] && a->data[1] == b->data[1]) {
+      if ((char)(a->data[0]) == 'p' && (char)(a->data[1]) == ' ') {
+        char* a_buf = new char[a->size()];
+        char* b_buf = new char[b->size()];
+        
+
+        field_update a_data, b_data;
+        sscanf(a_buf, "p %d %d %d %d", a_data.pnum, a_data.x, a_data.y, a_data.r);
+        sscanf(b_buf, "p %d %d %d %d", b_data.pnum, b_data.x, b_data.y, b_data.r);
+
+        result = std::abs(a_data.x-b_data.x) +
+                std::abs(a_data.y-b_data.y) +
+                std::abs(a_data.r-b_data.r);
+      }
+    }
+  } else {
+    CVDEBUG("Mismatched types: " << a_type << " and " << b_type 
+            << " for " << *a << " and " << *b);
+  }
+
+  delete a_buf;
+  delete b_buf;
+  delete a_type_buf;
+  delete b_type_buf;
+  return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 ExecutionTreeManager::ExecutionTreeManager(ClientVerifier* cv) : cv_(cv) {}
 
 void ExecutionTreeManager::initialize() {
@@ -619,6 +677,15 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         edp->recompute=true;
 
         CVDEBUG("Adding parent-less state: " << *state );
+        SocketEventEditDistanceTetrinet se_ed;
+        TrainingObject* tobject = NULL;
+        const SocketEvent* socket_event = NULL;
+        const SocketEvent* curr_socket_event = &(state->network_manager()->socket()->event());
+        foreach (tobject, training_set_) {
+          foreach (socket_event , tobject->socket_event_set) {
+            se_ed.edit_distance(socket_event, curr_socket_event);
+          }
+        }
       }
 
       // Exit this event if basic block tracking is disabled...
@@ -626,6 +693,7 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         break;
       }
 
+#if 0
       // Add this basicblock event to the tree
       trees_.back()->update_state(state, state->prevPC->kbb->id);
       
@@ -688,6 +756,7 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         CVDEBUG("Min edit-distance: " << min_ed << " " << *(id_map_[trace_id]));
         update_min_edit_distance(state, min_ed);
       }
+#endif
       break;
     }
 

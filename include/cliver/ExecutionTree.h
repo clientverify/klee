@@ -187,7 +187,9 @@ std::ostream& operator<<(std::ostream& os, const TrainingObject &tobject);
 class SocketEventEditDistance {
  public:
   SocketEventEditDistance() {}
-  virtual int edit_distance(const SocketEvent* a, const SocketEvent* b);
+  virtual int edit_distance(const SocketEvent* a, const SocketEvent* b) {
+    return 0;
+  }
 };
 
 class SocketEventEditDistanceXpilot : public SocketEventEditDistance {

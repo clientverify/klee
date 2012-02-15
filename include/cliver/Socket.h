@@ -39,6 +39,7 @@ class SocketEvent {
 	bool equal(const SocketEvent &se) const;
 	bool less(const SocketEvent &se) const;
 	bool data_less(const SocketEvent &se) const;
+  unsigned size() const { return length; }
 
  private:
 	// Serialization
