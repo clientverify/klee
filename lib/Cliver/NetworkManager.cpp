@@ -210,7 +210,8 @@ void ExternalHandler_CliverPrint(
 	CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
 	CVExecutionState* cv_state = static_cast<CVExecutionState*>(state);
   *cv_message_stream 
-      << "[" << cv_state->id() << "] "
+      << cv_state->cv()->client_name()
+      << " [" << cv_state->id() << "] "
       << cv_executor->get_string_at_address(cv_state, arguments[0])
       << "\n";
 }

@@ -91,7 +91,7 @@ class CVStream;
 
 class ClientVerifier : public klee::InterpreterHandler {
  public:
-  ClientVerifier();
+  ClientVerifier(std::string* input_filename=NULL);
   virtual ~ClientVerifier();
 	
 	// klee::InterpreterHandler
@@ -136,6 +136,8 @@ class ClientVerifier : public klee::InterpreterHandler {
 
   CVStream* cvstream() { return cvstream_; }
 
+  std::string& client_name() { return client_name_; }
+
  private:
 
   CVStream *cvstream_;
@@ -156,6 +158,7 @@ class ClientVerifier : public klee::InterpreterHandler {
 
 	unsigned array_id_;
 	unsigned round_number_;
+  std::string client_name_;
 };
 
 
