@@ -195,16 +195,16 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
 
     case CV_SOCKET_SHUTDOWN: {
       CVDEBUG("Successful socket shutdown. " << *state);
-      ExecutionTraceTree* tree = NULL;
-      reverse_foreach (tree, trees_) {
-        if (tree->has_state(state))
-          break;
-      }
-      assert(tree->has_state(state));
+      //ExecutionTraceTree* tree = NULL;
+      //reverse_foreach (tree, trees_) {
+      //  if (tree->has_state(state))
+      //    break;
+      //}
+      //assert(tree->has_state(state));
 
-      ExecutionTrace etrace;
-      tree->get_path(state, etrace);
-      CVDEBUG("TRACE: " << etrace);
+      //ExecutionTrace etrace;
+      //tree->get_path(state, etrace);
+      //CVDEBUG("TRACE: " << etrace);
       break;
     }
 
@@ -273,13 +273,15 @@ void TrainingExecutionTreeManager::notify(ExecutionEvent ev) {
       ExecutionTrace etrace;
       trees_.back()->get_path(state, etrace);
 
-      TrainingObject training_obj(&etrace, socket_event);
-                                  
       std::stringstream filename;
       filename << "state_" << state->id() 
         << "-round_" << cv_->round()
         << "-length_" << etrace.size()
         << ".tpath";
+
+      std::string filename_str(filename.str());
+      TrainingObject training_obj(&etrace, socket_event,filename_str);
+
       std::ostream *file = cv_->openOutputFile(filename.str());
       training_obj.write(*file);
       static_cast<std::ofstream*>(file)->close();
@@ -524,26 +526,43 @@ int VerifyExecutionTreeManager::read_traces(
 				std::ifstream::in | std::ifstream::binary );
 
 		if (is != NULL && is->good()) {
-      ExecutionTrace* etrace = new ExecutionTrace();
-      etrace->read(*is, cv_->executor()->get_kmodule());
+      TrainingObject* tobject = new TrainingObject();
+      tobject->read(*is);
+      tobject->id = ++starting_id;
 
-      if (execution_trace_set_.count(etrace) == 0) {
-        ExecutionTrace::ID eid = ++starting_id;
-        ExecutionTraceInfo* info = new ExecutionTraceInfo();
-        info->trace = etrace;
-        info->id = eid;
-        info->name = filename;
-
-        execution_traces_.push_back(info);
-        execution_trace_set_.insert(etrace);
-        id_map_[eid] = info;
+      // XXX TODO check for duplicates
+      TrainingObjectSet::iterator it = training_set_.find(tobject);
+      if (it != training_set_.end()) {
+        training_set_.insert(tobject);
       } else {
-        delete etrace;
-        ++dup_count;
+        (*it)->socket_event_set.insert(tobject->socket_event_set.begin(),
+                                     tobject->socket_event_set.end());
       }
 
 			delete is;
 		}
+
+		//if (is != NULL && is->good()) {
+    //  ExecutionTrace* etrace = new ExecutionTrace();
+    //  etrace->read(*is, cv_->executor()->get_kmodule());
+
+    //  if (execution_trace_set_.count(etrace) == 0) {
+    //    ExecutionTrace::ID eid = ++starting_id;
+    //    ExecutionTraceInfo* info = new ExecutionTraceInfo();
+    //    info->trace = etrace;
+    //    info->id = eid;
+    //    info->name = filename;
+
+    //    execution_traces_.push_back(info);
+    //    execution_trace_set_.insert(etrace);
+    //    id_map_[eid] = info;
+    //  } else {
+    //    delete etrace;
+    //    ++dup_count;
+    //  }
+
+		//	delete is;
+		//}
 	}
   CVMESSAGE("Duplicate traces " << dup_count );
 	
