@@ -39,6 +39,9 @@ KLookAheadValue("klookahead",llvm::cl::init(16));
 llvm::cl::opt<bool>
 DeleteOldStates("delete-old-states",llvm::cl::init(false));
 
+llvm::cl::opt<bool>
+BacktrackSearching("backtrack-searching",llvm::cl::init(false));
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef NDEBUG
@@ -439,9 +442,11 @@ klee::ExecutionState &VerifySearcher::selectState() {
     pending_stages_.pop_back();
   }
 
-  while (!stages_.empty() && stages_.back()->empty()) {
-    delete stages_.back();
-    stages_.pop_back();
+  if (BacktrackSearching) {
+    while (!stages_.empty() && stages_.back()->empty()) {
+      delete stages_.back();
+      stages_.pop_back();
+    }
   }
 
   assert(!stages_.empty());
@@ -472,8 +477,13 @@ void VerifySearcher::update(klee::ExecutionState *current,
 }
 
 bool VerifySearcher::empty() {
-  reverse_foreach (SearcherStage* stage, stages_)
-    if (!stage->empty()) return false;
+  if (BacktrackSearching) {
+    reverse_foreach (SearcherStage* stage, stages_)
+      if (!stage->empty()) return false;
+  } else {
+    if (!stages_.back()->empty()) 
+      return false;
+  }
 
   reverse_foreach (SearcherStage* stage, pending_stages_)
     if (!stage->empty()) return false;
