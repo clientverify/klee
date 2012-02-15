@@ -231,14 +231,14 @@ std::ostream *CVStream::openOutputFile(const std::string &filename,
   if (!f) {
     if (initialized_)
       klee::klee_error("error opening file \"%s\" (out of memory)", 
-          filename.c_str());
+          path.c_str());
     else
-      std::cerr << "error opening file \""<<filename<<"\" (out of memory)\n";
+      std::cerr << "error opening file \""<<path<<"\" (out of memory)\n";
   } else if (!f->good()) {
     if (initialized_)
-      klee::klee_error("error opening file \"%s\" ", filename.c_str());
+      klee::klee_error("error opening file \"%s\" ", path.c_str());
     else
-      std::cerr << "error opening file \""<<filename<<"\"\n";
+      std::cerr << "error opening file \""<<path<<"\"\n";
     delete f;
     f = NULL;
   }
