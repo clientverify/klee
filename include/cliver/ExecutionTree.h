@@ -139,8 +139,9 @@ struct ExecutionTraceLT{
 
 class TrainingObject {
  public:
-  TrainingObject(ExecutionTrace *et, SocketEvent *se)
-      : execution_trace(*et) { add_socket_event(se); }
+  TrainingObject() {};
+  TrainingObject(ExecutionTrace *et, SocketEvent *se, std::string& fn)
+      : trace(*et), filename(fn) { add_socket_event(se); }
 
   void add_socket_event(SocketEvent *se) {
     socket_event_set.insert(se);
@@ -150,15 +151,24 @@ class TrainingObject {
   void write(std::ostream &os);
 
  public:
-  ExecutionTrace execution_trace;
   SocketEventDataSet socket_event_set;
+  ExecutionTrace trace;
+  std::string filename;
+  ExecutionTrace::ID id;
 
  protected:
   friend class boost::serialization::access;
   template<class Archive>
   void serialize(Archive & ar, const unsigned int version) {
-    ar & execution_trace;
     ar & socket_event_set;
+    ar & trace;
+    ar & filename;
+  }
+};
+
+struct TrainingObjectTraceLT {
+	bool operator()(const TrainingObject* a, const TrainingObject* b) const {
+    return (a->trace) < (b->trace);
   }
 };
 
@@ -949,8 +959,10 @@ typedef std::map<CVExecutionState*, EDTree*> ExecutionStateEDTreeMap;
 
 typedef std::set<ExecutionTrace*, ExecutionTraceLT> ExecutionTraceSet;
 typedef std::vector<ExecutionTraceInfo*> ExecutionTraceInfoList;
-typedef std::vector<TrainingObject*> TrainingObjectList;
 typedef std::map<ExecutionTrace::ID, ExecutionTraceInfo*> ExecutionTraceIDMap;
+
+typedef std::set<TrainingObject*, TrainingObjectTraceLT> TrainingObjectSet;
+typedef std::vector<TrainingObject*> TrainingObjectList;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -995,6 +1007,8 @@ class VerifyExecutionTreeManager : public ExecutionTreeManager {
   ExecutionTraceInfoList execution_traces_;
   ExecutionTraceInfoList et_by_length_;
   EDTree* ed_tree_;
+
+  TrainingObjectSet training_set_;
 
   std::set<CVExecutionState*> removed_states_;
   std::stack<std::pair<CVExecutionState*, int> > current_min_;

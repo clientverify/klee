@@ -780,7 +780,7 @@ void CVExecutor::register_function_call_event(const char **fname,
   if (f) {
     function_call_events_[f] = event_type;
   } else {
-    cv_warning("Not registering function call event for %s", *fname);
+    cv_message("Not registering function call event for %s", *fname);
   }
 }
 
