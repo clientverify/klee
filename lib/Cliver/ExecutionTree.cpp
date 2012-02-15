@@ -172,8 +172,8 @@ struct field_update {
 int SocketEventEditDistanceTetrinet::edit_distance(const SocketEvent* a, 
                                                    const SocketEvent* b) {
   int result = INT_MAX;
-  char* a_buf = new char[a->size()];
-  char* b_buf = new char[b->size()];
+  char* a_buf = new char[a->size()+1];
+  char* b_buf = new char[b->size()+1];
   char* a_type_buf = new char[64];
   char* b_type_buf = new char[64];
   std::string a_type, b_type;
@@ -182,6 +182,9 @@ int SocketEventEditDistanceTetrinet::edit_distance(const SocketEvent* a,
     a_buf[i] = a->data[i];
   for (int i=0; i<b->size(); ++i)
     b_buf[i] = b->data[i];
+
+	a_buf[a->size()] = '\0';
+	b_buf[b->size()] = '\0';
 
   sscanf(a_buf, "%s ", a_type_buf);
   sscanf(b_buf, "%s ", b_type_buf);
@@ -193,22 +196,20 @@ int SocketEventEditDistanceTetrinet::edit_distance(const SocketEvent* a,
     result = 0;
     if (a->data[0] == b->data[0] && a->data[1] == b->data[1]) {
       if ((char)(a->data[0]) == 'p' && (char)(a->data[1]) == ' ') {
-        char* a_buf = new char[a->size()];
-        char* b_buf = new char[b->size()];
-        
 
         field_update a_data, b_data;
-        sscanf(a_buf, "p %d %d %d %d", a_data.pnum, a_data.x, a_data.y, a_data.r);
-        sscanf(b_buf, "p %d %d %d %d", b_data.pnum, b_data.x, b_data.y, b_data.r);
+        sscanf(a_buf, "p %d %d %d %d", &a_data.pnum, &a_data.x, &a_data.y, &a_data.r);
+        sscanf(b_buf, "p %d %d %d %d", &b_data.pnum, &b_data.x, &b_data.y, &b_data.r);
 
         result = std::abs(a_data.x-b_data.x) +
-                std::abs(a_data.y-b_data.y) +
-                std::abs(a_data.r-b_data.r);
+                 std::abs(a_data.y-b_data.y) +
+                 std::abs(a_data.r-b_data.r);
+				CVDEBUG("Edit distance for matching types: " << result);
       }
     }
-  } else {
-    CVDEBUG("Mismatched types: " << a_type << " and " << b_type 
-            << " for " << *a << " and " << *b);
+  //} else {
+  //  CVDEBUG("Mismatched types: " << a_type << " and " << b_type 
+  //          << " for " << *a << " and " << *b);
   }
 
   delete a_buf;
@@ -604,6 +605,7 @@ int VerifyExecutionTreeManager::read_traces(
   static ExecutionTrace::ID starting_id=0;
   int dup_count = 0;
 	foreach (std::string filename, filename_list) {
+		//CVDEBUG("reading: " << filename);
 
 		std::ifstream *is = new std::ifstream(filename.c_str(),
 				std::ifstream::in | std::ifstream::binary );
@@ -615,11 +617,12 @@ int VerifyExecutionTreeManager::read_traces(
 
       TrainingObjectSet::iterator it = training_set_.find(tobject);
       if (it != training_set_.end()) {
-        training_set_.insert(tobject);
-      } else {
         dup_count++;
         (*it)->socket_event_set.insert(tobject->socket_event_set.begin(),
                                        tobject->socket_event_set.end());
+      } else {
+        training_set_.insert(tobject);
+				//CVDEBUG("Inserted: " << *tobject);
       }
       id_map_[tobject->id] = tobject;
 
@@ -663,6 +666,7 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         = static_cast<EditDistanceProperty*>(state->property());
 
       if (!trees_.back()->has_state(state)) {
+        CVDEBUG("Adding parent-less state: " << *state );
         // Add this state to the execution tree for this round
         trees_.back()->add_state(state, NULL);
 
@@ -676,7 +680,6 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         edp->edit_distance = INT_MAX;
         edp->recompute=true;
 
-        CVDEBUG("Adding parent-less state: " << *state );
         SocketEventEditDistanceTetrinet se_ed;
         TrainingObject* tobject = NULL;
         const SocketEvent* socket_event = NULL;
@@ -693,10 +696,10 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         break;
       }
 
-#if 0
       // Add this basicblock event to the tree
       trees_.back()->update_state(state, state->prevPC->kbb->id);
       
+#if 0
       // Recompute edit distance
       if (edp->recompute) {
 
@@ -791,6 +794,7 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
 
     case CV_SOCKET_WRITE:
     case CV_SOCKET_READ: {
+      CVDEBUG("End state: " << *state);
 
       ExecutionTrace full_etrace;
       trees_.back()->get_path(state, full_etrace);
@@ -798,7 +802,6 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         = static_cast<EditDistanceProperty*>(state->property());
 
       CVDEBUG("End of round, path length: " << full_etrace.size());
-      CVDEBUG("End state: " << *state);
 
       break;
     }
