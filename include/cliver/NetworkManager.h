@@ -22,6 +22,8 @@ namespace klee {
 
 namespace cliver {
 
+////////////////////////////////////////////////////////////////////////////////
+
 void ExternalHandler_socket_create(
 	klee::Executor* executor, klee::ExecutionState *state, 
 	klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
@@ -45,6 +47,11 @@ void ExternalHandler_merge(
 void ExternalHandler_XEventsQueued(
 		klee::Executor* executor, klee::ExecutionState *state, 
 		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
+
+void ExternalHandler_CliverPrint(
+		klee::Executor* executor, klee::ExecutionState *state, 
+		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class CVExecutor;
