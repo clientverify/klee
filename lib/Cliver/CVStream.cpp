@@ -222,7 +222,7 @@ std::ostream *CVStream::openOutputFile(const std::string &filename,
         << "\", refusing to overwrite.\n";
       exit(1);
     }
-    appendComponent(path, filename);
+    path = appendComponent(path, filename);
   } else {
     path = getOutputFilename(filename);
   }
