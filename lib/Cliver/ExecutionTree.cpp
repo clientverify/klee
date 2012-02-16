@@ -560,17 +560,17 @@ void VerifyExecutionTreeManager::initialize() {
   std::sort(training_by_length_.begin(),
             training_by_length_.end(), length_comp);
 
-  ed_tree_ = new EDTree();
+  //ed_tree_ = new EDTree();
 
-  CVMESSAGE("Adding training paths...");
-  foreach(TrainingObject* tobject, training_by_length_) {
-    CVMESSAGE("Adding " << *tobject);
-    ed_tree_->insert(tobject->trace, tobject->id);
-  }
-  CVMESSAGE("Done.");
+  //CVMESSAGE("Adding training paths...");
+  //foreach(TrainingObject* tobject, training_by_length_) {
+  //  CVMESSAGE("Adding " << *tobject);
+  //  ed_tree_->insert(tobject->trace, tobject->id);
+  //}
+  //CVMESSAGE("Done.");
 
-  // Initialize the tree
-  ed_tree_->initialize();
+  //// Initialize the tree
+  //ed_tree_->initialize();
 }
 
 int VerifyExecutionTreeManager::min_edit_distance() {
@@ -645,6 +645,7 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
       if (DeleteOldTrees) {
         delete trees_.back();
         trees_.pop_back();
+        //delete ed_tree_;
       }
       trees_.push_back(new ExecutionTraceTree() );
 
@@ -670,25 +671,67 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         // Add this state to the execution tree for this round
         trees_.back()->add_state(state, NULL);
 
-        // TODO XXX build new edit distance tree for paths close to this rounds
-        // socket event XXX TODO
-        // Add new edit distance tree for this state and add to state map
-        EDTree* ed_tree = ed_tree_->clone();
-        state_tree_map_[state] = ed_tree;
-
-        // Set initial values for edit distance
-        edp->edit_distance = INT_MAX;
-        edp->recompute=true;
-
+        // Build new edit distance tree for paths close to this rounds
         SocketEventEditDistanceTetrinet se_ed;
         TrainingObject* tobject = NULL;
         const SocketEvent* socket_event = NULL;
         const SocketEvent* curr_socket_event = &(state->network_manager()->socket()->event());
+        int max_distance = 0;
+        int min_distance = INT_MAX;
+        TrainingObjectList training_objects;
         foreach (tobject, training_set_) {
+          bool add_tobject = false;
           foreach (socket_event , tobject->socket_event_set) {
-            se_ed.edit_distance(socket_event, curr_socket_event);
+            int ed = se_ed.edit_distance(socket_event, curr_socket_event);
+            if (ed < min_distance)
+              min_distance = ed;
+            if (ed <= max_distance)
+              add_tobject = true;
           }
+          if (add_tobject)
+            training_objects.push_back(tobject);
         }
+
+        // TODO don't repeat edit dist calc effort
+        if (training_objects.empty()) {
+          foreach (tobject, training_set_) {
+            bool add_tobject = false;
+            foreach (socket_event , tobject->socket_event_set) {
+              int ed = se_ed.edit_distance(socket_event, curr_socket_event);
+              if (ed <= min_distance)
+                add_tobject = true;
+            }
+            if (add_tobject)
+              training_objects.push_back(tobject);
+          }
+
+        }
+        assert(!training_objects.empty());
+        CVDEBUG("Round: " << cv_->round() << ": will use " << training_objects.size()
+                << " training paths of " << training_set_.size());
+        training_by_length_.clear();
+        training_by_length_ = TrainingObjectList(training_objects.begin(),
+                                                 training_objects.end());
+        TrainingObjectLengthLT length_comp;
+        std::sort(training_by_length_.begin(),
+                  training_by_length_.end(), length_comp);
+
+        ed_tree_ = new EDTree();
+ 
+        foreach(TrainingObject* tobject, training_by_length_) {
+          CVMESSAGE("Adding " << *tobject);
+          ed_tree_->insert(tobject->trace, tobject->id);
+        }
+
+        // Initialize the tree
+        ed_tree_->initialize();
+
+        // Add new edit distance tree for this state and add to state map
+        state_tree_map_[state] = ed_tree_;
+
+        // Set initial values for edit distance
+        edp->edit_distance = INT_MAX;
+        edp->recompute=true;
       }
 
       // Exit this event if basic block tracking is disabled...
@@ -699,7 +742,7 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
       // Add this basicblock event to the tree
       trees_.back()->update_state(state, state->prevPC->kbb->id);
       
-#if 0
+#if 1
       // Recompute edit distance
       if (edp->recompute) {
 
