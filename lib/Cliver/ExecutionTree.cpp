@@ -641,7 +641,6 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
   CVExecutionState* state = ev.state;
   CVExecutionState* parent = ev.parent;
 
-#if 1
   switch (ev.event_type) {
     case CV_ROUND_START: {
       // Delete old trees if enabled
@@ -857,7 +856,6 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
     default:
       break;
   }
-#endif
 }
 
 

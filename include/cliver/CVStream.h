@@ -120,6 +120,8 @@ class CVStream {
 	void getFilesRecursive(std::string path, std::string suffix,
 			std::vector<std::string> &results);
 
+  void copyFileToOutputDirectory(std::string src_path,
+                                 std::string* rename=NULL);
  private:
   std::string output_directory_;
   bool initialized_;

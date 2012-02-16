@@ -61,6 +61,9 @@ SocketLogDir("socket-log-dir",
   llvm::cl::value_desc("ktest directory"));
 
 llvm::cl::opt<bool> 
+CopyInputFilesToOutputDir("-copy-input-files-to-output-dir", llvm::cl::init(false));
+
+llvm::cl::opt<bool> 
 DebugPrintExecutionEvents("debug-print-execution-events", llvm::cl::init(false));
 
 llvm::cl::opt<bool> 
@@ -150,6 +153,13 @@ ClientVerifier::ClientVerifier(std::string* input_filename)
 	cvstream_->init();
   if (input_filename)
     client_name_ = cvstream_->getBasename(*input_filename);
+
+  // Copy inputfile to output directory
+  if (CopyInputFilesToOutputDir) {
+    std::string rename("input.bc");
+    cvstream_->copyFileToOutputDirectory(*input_filename, &rename);
+  }
+
 	handle_statistics();
 	next_statistics();
 }
@@ -199,6 +209,18 @@ void ClientVerifier::initialize(CVExecutor *executor) {
 			cvstream_->getOutFiles(path, SocketLogFile);
 		}
 	}
+
+  // Copy input files if indicated and rename to prevent duplicates
+  if (CopyInputFilesToOutputDir) {
+    unsigned count=0;
+    foreach (std::string path, SocketLogDir) {
+      std::stringstream rename;
+      rename << "socket_" << std::setw(3) << std::setfill('0') << count;
+      rename << ".ktest";
+      cvstream_->copyFileToOutputDirectory(path, &(rename.str()));
+      count++;
+    }
+  }
 
 	if (SocketLogFile.empty() || read_socket_logs(SocketLogFile) == 0) {
 		cv_error("Error loading socket log files, exiting now.");
