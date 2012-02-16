@@ -39,6 +39,9 @@ DebugExecutionTree("debug-execution-tree",llvm::cl::init(false));
 llvm::cl::opt<bool>
 DeleteOldTrees("delete-old-trees",llvm::cl::init(true));
 
+llvm::cl::opt<bool>
+AltEditDistance("alt-edit-distance",llvm::cl::init(false));
+
 llvm::cl::list<std::string> TrainingPathFile("training-path-file",
 	llvm::cl::ZeroOrMore,
 	llvm::cl::ValueRequired,
@@ -719,7 +722,7 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         ed_tree_ = new EDTree();
  
         foreach(TrainingObject* tobject, training_by_length_) {
-          CVMESSAGE("Adding " << *tobject);
+          CVDEBUG("Adding " << *tobject);
           ed_tree_->insert(tobject->trace, tobject->id);
         }
 
@@ -742,7 +745,6 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
       // Add this basicblock event to the tree
       trees_.back()->update_state(state, state->prevPC->kbb->id);
       
-#if 1
       // Recompute edit distance
       if (edp->recompute) {
 
@@ -802,7 +804,6 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         CVDEBUG("Min edit-distance: " << min_ed << " " << *(id_map_[trace_id]));
         update_min_edit_distance(state, min_ed);
       }
-#endif
       break;
     }
 

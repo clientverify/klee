@@ -742,6 +742,23 @@ class EditDistanceTree : public tree<boost::shared_ptr<DataType> > {
   }
 
 
+  void min_edit_distance(ValTy& result, typename SeqTy::ID& id, int max_depth,
+                         std::vector<typename SeqTy::ID>* id_list=NULL) {
+    result = INT_MAX;
+    // iterate over leafnodes that of length less than depth.
+    typename NodeSet::iterator it = leaf_nodes_.begin(), ie = leaf_nodes_.end();
+    for (; it!=ie; ++it) {
+      if ((*it)->data->depth() < max_depth) {
+        ValTy ed = (*it)->data->edit_distance();
+        if (result > ed) {
+          result = ed;
+          id = *(id_map_[*it].begin());
+        }
+      }
+    }
+
+  }
+
   void min_edit_distance(ValTy& result, typename SeqTy::ID& id, 
                          std::vector<typename SeqTy::ID>* id_list=NULL) {
     result = INT_MAX;
