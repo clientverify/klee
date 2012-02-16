@@ -390,10 +390,6 @@ int main(int argc, char **argv, char **envp) {
       /*Optimize=*/ false, 
       /*CheckDivZero=*/ false);
 
-  //if (WithPOSIXRuntime) {
-	//	cliver::cv_error("posix-runtime is not supported");
-  //}
-
 	cliver::cv_message("Checking for POSIX runtime...");
   if (WithPOSIXRuntime) {
     llvm::sys::Path Path(Opts.LibraryDir);
