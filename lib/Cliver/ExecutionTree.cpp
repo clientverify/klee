@@ -742,7 +742,6 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
       // Add this basicblock event to the tree
       trees_.back()->update_state(state, state->prevPC->kbb->id);
       
-#if 1
       // Recompute edit distance
       if (edp->recompute) {
 
@@ -802,7 +801,6 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         CVDEBUG("Min edit-distance: " << min_ed << " " << *(id_map_[trace_id]));
         update_min_edit_distance(state, min_ed);
       }
-#endif
       break;
     }
 
@@ -827,7 +825,6 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
       edp->recompute=true;
       edp_parent->recompute=true;
 
-      // copy on write instead?
       assert(state_tree_map_.count(parent));
       EDTree* ed_tree = state_tree_map_[parent]->clone();
       state_tree_map_[state] = ed_tree;

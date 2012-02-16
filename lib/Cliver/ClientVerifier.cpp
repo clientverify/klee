@@ -34,13 +34,6 @@
 #ifdef GOOGLE_PROFILER
 #include <google/profiler.h>
 #include <google/heap-checker.h>
-
-llvm::cl::opt<int>
-ProfilerStartRoundNumber("profiler-start-round",llvm::cl::init(0));
-
-llvm::cl::opt<int>
-HeapCheckRoundNumber("heap-check-round",llvm::cl::init(-1));
-
 #endif
 
 // needed for boost::signal
@@ -51,26 +44,35 @@ namespace cliver {
 ////////////////////////////////////////////////////////////////////////////////
 
 llvm::cl::opt<int>
-MaxRoundNumber("max-round",llvm::cl::init(0));
+MaxRoundNumber("max-round", llvm::cl::init(0));
 
-llvm::cl::list<std::string> SocketLogFile("socket-log",
-	llvm::cl::ZeroOrMore,
-	llvm::cl::ValueRequired,
-	llvm::cl::desc("Specify socket log file (.ktest)"),
-	llvm::cl::value_desc("ktest file"));
+llvm::cl::list<std::string> 
+SocketLogFile("socket-log",
+  llvm::cl::ZeroOrMore,
+  llvm::cl::ValueRequired,
+  llvm::cl::desc("Specify socket log file (.ktest)"),
+  llvm::cl::value_desc("ktest file"));
 
-llvm::cl::list<std::string> SocketLogDir("socket-log-dir",
-	llvm::cl::ZeroOrMore,
-	llvm::cl::ValueRequired,
-	llvm::cl::desc("Specify socket log directory"),
-	llvm::cl::value_desc("ktest directory"));
+llvm::cl::list<std::string> 
+SocketLogDir("socket-log-dir",
+  llvm::cl::ZeroOrMore,
+  llvm::cl::ValueRequired,
+  llvm::cl::desc("Specify socket log directory"),
+  llvm::cl::value_desc("ktest directory"));
 
-llvm::cl::opt<bool> DebugPrintExecutionEvents("debug-print-execution-events",
-  llvm::cl::init(false));
+llvm::cl::opt<bool> 
+DebugPrintExecutionEvents("debug-print-execution-events", llvm::cl::init(false));
 
-llvm::cl::opt<bool> CountRoundInstructions("count-round-instructions",
-  llvm::cl::init(false));
+llvm::cl::opt<bool> 
+CountRoundInstructions("count-round-instructions", llvm::cl::init(false));
 
+#ifdef GOOGLE_PROFILER
+llvm::cl::opt<int> 
+ProfilerStartRoundNumber("profiler-start-round", llvm::cl::init(0));
+
+llvm::cl::opt<int> 
+HeapCheckRoundNumber("heap-check-round", llvm::cl::init(-1));
+#endif
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -87,6 +89,7 @@ namespace stats {
 	klee::Statistic training_paths("TrainingPaths", "TPaths");
 	klee::Statistic exhaustive_search_level("ExhaustiveSearchLevel", "ESLevel");
 }
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct ExternalHandlerInfo {
@@ -352,6 +355,12 @@ void ClientVerifier::print_current_statistics(std::string prefix) {
     << " " << executor()->states_size()
     << " " << i_counter_->instruction_count
     << "\n";
+#ifdef GOOGLE_PROFILER
+  if (ProfilerStartRoundNumber > 0 
+			&& round_number_ > ProfilerStartRoundNumber) {
+	  ProfilerFlush();
+  }
+#endif
 }
 
 void ClientVerifier::next_round() {
@@ -369,7 +378,7 @@ void ClientVerifier::next_round() {
   if (ProfilerStartRoundNumber > 0 
 			&& round_number_ == ProfilerStartRoundNumber) {
 		std::string profile_fn = getOutputFilename("cpu_profile.prof");
-		CVDEBUG("Starting CPU Profiler");
+		CVMESSAGE("Starting CPU Profiler");
 		ProfilerStart(profile_fn.c_str());
 	}
 
