@@ -311,9 +311,9 @@ class EditDistanceRowColumn {
       if (j == 0) {
         set_cost(j, depth_);
       } else {
-        c1 = (prev_.get())->cost(j-1) + ScoreType::match(s_elem_, t, j-1);
-        c2 = this->cost(j-1)  + ScoreType::insert(s_elem_, t, j-1);
-        c3 = (prev_.get())->cost(  j) + ScoreType::del(s_elem_, t, j-1);
+        c1 = (prev_.get())->cost(j-1) + (t[j-1] == s_elem_ ? 0 : 1); /*ScoreType::match(s_elem_, t, j-1);*/
+        c2 = this->cost(j-1)  + 1; /*ScoreType::insert(s_elem_, t, j-1);*/
+        c3 = (prev_.get())->cost(  j) + 1; /*ScoreType::del(s_elem_, t, j-1);*/
 
         set_cost(j, MIN(c1, MIN(c2, c3)));
       }
