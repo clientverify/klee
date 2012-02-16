@@ -828,7 +828,6 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
       edp->recompute=true;
       edp_parent->recompute=true;
 
-      // copy on write instead?
       assert(state_tree_map_.count(parent));
       EDTree* ed_tree = state_tree_map_[parent]->clone();
       state_tree_map_[state] = ed_tree;
