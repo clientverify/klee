@@ -66,9 +66,6 @@ CopyInputFilesToOutputDir("-copy-input-files-to-output-dir", llvm::cl::init(fals
 llvm::cl::opt<bool> 
 DebugPrintExecutionEvents("debug-print-execution-events", llvm::cl::init(false));
 
-llvm::cl::opt<bool> 
-CountRoundInstructions("count-round-instructions", llvm::cl::init(false));
-
 #ifdef GOOGLE_PROFILER
 llvm::cl::opt<int> 
 ProfilerStartRoundNumber("profiler-start-round", llvm::cl::init(0));
@@ -89,8 +86,7 @@ namespace stats {
 	klee::Statistic pruned_constraints("PrunedConstraints", "prunes");
 	klee::Statistic searcher_time("SearcherTime", "Stime");
 	klee::Statistic fork_time("ForkTime", "Ftime");
-	klee::Statistic training_paths("TrainingPaths", "TPaths");
-	klee::Statistic exhaustive_search_level("ExhaustiveSearchLevel", "ESLevel");
+	klee::Statistic round_instructions("RoundInsts", "RInsts");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -122,34 +118,16 @@ CVContext::CVContext() : context_id_(increment_id()) {}
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class InstructionCounter : public ExecutionObserver {
- public:
-  InstructionCounter() : instruction_count(0) {}
-
-  virtual void notify(ExecutionEvent ev) {
-    switch (ev.event_type) {
-      case CV_STEP_INSTRUCTION: 
-        instruction_count++;
-        break;
-      default:
-        break;
-    }
-  }
-  uint64_t instruction_count;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 ClientVerifier::ClientVerifier(std::string* input_filename)
   : cvstream_(new CVStream()),
 		searcher_(NULL),
 		pruner_(NULL),
 		merger_(NULL),
 		execution_tree_manager_(NULL),
-		i_counter_(NULL),
 		array_id_(0),
 		round_number_(0) {
  
+  
 	cvstream_->init();
   if (input_filename)
     client_name_ = cvstream_->getBasename(*input_filename);
@@ -240,12 +218,6 @@ void ClientVerifier::initialize(CVExecutor *executor) {
     execution_tree_manager_->initialize();
     hook(execution_tree_manager_);
   }
-
-  i_counter_ = new InstructionCounter();
-  if (CountRoundInstructions) {
-    hook(i_counter_);
-  }
-
 }
 
 void ClientVerifier::initialize_external_handlers(CVExecutor *executor) {
@@ -371,11 +343,9 @@ void ClientVerifier::print_current_statistics(std::string prefix) {
     << " " << sr->getValue(stats::searcher_time) / 1000000.
     << " " << sr->getValue(klee::stats::solverTime) / 1000000.
     << " " << sr->getValue(stats::fork_time) / 1000000.
-    << " " << executor()->memory_usage()
-    << " " << sr->getValue(stats::training_paths)
-    << " " << sr->getValue(stats::exhaustive_search_level)
+    << " " << sr->getValue(stats::round_instructions)
     << " " << executor()->states_size()
-    << " " << i_counter_->instruction_count
+    << " " << executor()->memory_usage()
     << "\n";
 #ifdef GOOGLE_PROFILER
   if (ProfilerStartRoundNumber > 0 
@@ -424,13 +394,6 @@ void ClientVerifier::next_round() {
 	if (MaxRoundNumber && round_number_ > MaxRoundNumber) {
     executor_->setHaltExecution(true);
 	}
-
-  if (CountRoundInstructions) {
-    unhook(i_counter_);
-    delete i_counter_;
-    i_counter_ = new InstructionCounter();
-    hook(i_counter_);
-  }
 
   notify_all(ExecutionEvent(CV_ROUND_START));
 }
