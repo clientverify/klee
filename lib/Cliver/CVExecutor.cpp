@@ -338,18 +338,13 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
 
 		klee::KInstruction *ki = state.pc;
 
-    //CVExecutionState* cv_state = static_cast<CVExecutionState*>(&state);
-		//// Handle pre execution events
-		//if (CliverEventInfo* ei = lookup_event(ki->inst)) {
-		//	//cv_message("Function call pre event for %s",ei->function_name);
-		//	cv_->pre_event(static_cast<CVExecutionState*>(&state), this, ei->type);
-		//}
-
+    //cv_->notify_all(ExecutionEvent(CV_STEP_INSTRUCTION, &state));
     stepInstruction(state);
-    cv_->notify_all(ExecutionEvent(CV_STEP_INSTRUCTION, &state));
     executeInstruction(state, ki);
     processTimers(&state, klee::MaxInstructionTime);
+    ++stats::round_instructions;
 
+    // Print usage stats during especially long rounds :)
     if ((klee::stats::instructions & 0xFFFFFF) == 0) {
         update_memory_usage();
         cv_->print_current_statistics("UPDT");
@@ -530,7 +525,7 @@ void CVExecutor::executeMakeSymbolic(klee::ExecutionState &state,
                                      const klee::MemoryObject *mo) {
   // Create a new object state for the memory object (instead of a copy).
 	unsigned id = cv_->next_array_id();
-  const klee::Array *array 
+  const klee::Array *array
 		= new klee::Array(mo->name + llvm::utostr(id), mo->size);
 
   bindObjectInState(state, mo, false, array);

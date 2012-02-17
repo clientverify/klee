@@ -57,8 +57,7 @@ namespace stats {
 	extern klee::Statistic pruned_constraints;
 	extern klee::Statistic searcher_time;
 	extern klee::Statistic fork_time;
-	extern klee::Statistic training_paths;
-	extern klee::Statistic exhaustive_search_level;
+	extern klee::Statistic round_instructions;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -67,7 +66,6 @@ class CVExecutor;
 class CVExecutionState;
 class CVSearcher;
 class ConstraintPruner;
-class InstructionCounter;
 class ExecutionEvent;
 class ExecutionTreeManager;
 class StateMerger;
@@ -127,19 +125,20 @@ class ClientVerifier : public klee::InterpreterHandler {
 	void next_round();
 
 	// Arrays
-	unsigned next_array_id() { return array_id_++; }
-	unsigned round() { return round_number_; }
+	inline uint64_t next_array_id() { return array_id_++; }
+
+  // Rounds
+	inline unsigned round() { return round_number_; }
  
 	// Training paths
 	int read_training_paths(std::vector<std::string> &filename_list,
-			PathManagerSet *path_manager_set);
+	PathManagerSet *path_manager_set);
 
   CVStream* cvstream() { return cvstream_; }
 
   std::string& client_name() { return client_name_; }
 
  private:
-
   CVStream *cvstream_;
 	int paths_explored_;
 	std::vector<klee::StatisticRecord*> statistics_;
@@ -150,13 +149,12 @@ class ClientVerifier : public klee::InterpreterHandler {
 	StateMerger* merger_;
 
   ExecutionTreeManager *execution_tree_manager_;
-  InstructionCounter *i_counter_;
 
 	std::vector<SocketEventList*> socket_events_;
 
   std::list<ExecutionObserver*> observers_;
 
-	unsigned array_id_;
+	uint64_t array_id_;
 	unsigned round_number_;
   std::string client_name_;
 };
