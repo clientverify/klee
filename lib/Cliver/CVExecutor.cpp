@@ -150,6 +150,10 @@ cliver::CVExecutor *g_executor = 0;
 
 namespace cliver {
 
+/// Give symbolic variables a name equal to the declared name + id
+llvm::cl::opt<bool>
+UseFullVariableNames("use-full-variable-names", llvm::cl::init(false));
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // Helper for debug output
@@ -524,9 +528,13 @@ void CVExecutor::stepInstruction(klee::ExecutionState &state) {
 void CVExecutor::executeMakeSymbolic(klee::ExecutionState &state, 
                                      const klee::MemoryObject *mo) {
   // Create a new object state for the memory object (instead of a copy).
-	unsigned id = cv_->next_array_id();
-  const klee::Array *array
-		= new klee::Array(mo->name + llvm::utostr(id), mo->size);
+	uint64_t id = cv_->next_array_id();
+  const klee::Array *array;
+
+  if (UseFullVariableNames)
+		array = new klee::Array(mo->name + llvm::utostr(id), mo->size);
+  else
+		array = new klee::Array(std::string("mo") + llvm::utostr(id), mo->size);
 
   bindObjectInState(state, mo, false, array);
   state.addSymbolic(mo, array);
