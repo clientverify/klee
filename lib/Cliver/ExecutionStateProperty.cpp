@@ -144,6 +144,28 @@ void EditDistanceProperty::print(std::ostream &os) const {
 		 << "]";
 }
 
+//////////////////////////////////////////////////////////////////////////////
+
+NumSymbolicVarsProperty::NumSymbolicVarsProperty() 
+	: num_symbolic_vars(0) {}
+
+NumSymbolicVarsProperty* NumSymbolicVarsProperty::clone() { 
+  NumSymbolicVarsProperty* cp = new NumSymbolicVarsProperty(*this);
+  cp->num_symbolic_vars = num_symbolic_vars;
+  return cp;
+}
+
+int NumSymbolicVarsProperty::compare(const ExecutionStateProperty &b) const {
+	const NumSymbolicVarsProperty *_b = static_cast<const NumSymbolicVarsProperty*>(&b);
+
+  // REVERSED FOR USE IN PRIORITY QUEUE!!!
+  return _b->num_symbolic_vars - num_symbolic_vars;
+}
+
+void NumSymbolicVarsProperty::print(std::ostream &os) const {
+	os << "[edit distance: " << num_symbolic_vars
+		 << "]";
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
