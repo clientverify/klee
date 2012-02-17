@@ -159,6 +159,18 @@ class EditDistanceProperty : public ExecutionStateProperty {
 	bool recompute;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+class NumSymbolicVarsProperty : public ExecutionStateProperty {
+ public: 
+  NumSymbolicVarsProperty();
+  NumSymbolicVarsProperty* clone();
+  void print(std::ostream &os) const;
+	int compare(const ExecutionStateProperty &b) const;
+
+ public: 
+  int num_symbolic_vars; 
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
