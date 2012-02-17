@@ -61,7 +61,7 @@ SocketLogDir("socket-log-dir",
   llvm::cl::value_desc("ktest directory"));
 
 llvm::cl::opt<bool> 
-CopyInputFilesToOutputDir("-copy-input-files-to-output-dir", llvm::cl::init(false));
+CopyInputFilesToOutputDir("copy-input-files-to-output-dir", llvm::cl::init(false));
 
 llvm::cl::opt<bool> 
 DebugPrintExecutionEvents("debug-print-execution-events", llvm::cl::init(false));
@@ -191,7 +191,7 @@ void ClientVerifier::initialize(CVExecutor *executor) {
   // Copy input files if indicated and rename to prevent duplicates
   if (CopyInputFilesToOutputDir) {
     unsigned count=0;
-    foreach (std::string path, SocketLogDir) {
+    foreach (std::string path, SocketLogFile) {
       std::stringstream rename;
       rename << "socket_" << std::setw(3) << std::setfill('0') << count;
       rename << ".ktest";

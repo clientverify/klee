@@ -345,7 +345,7 @@ out_error:
 
 void CVStream::copyFileToOutputDirectory(std::string src_path,
                                          std::string* rename) {
-  if (!NoOutput)
+  if (NoOutput)
     return;
 
   assert(!output_directory_.empty() && output_directory_ != "");
@@ -359,6 +359,7 @@ void CVStream::copyFileToOutputDirectory(std::string src_path,
     // use previous filename
     dst_path = appendComponent(output_directory_, getBasename(src_path));
   }
+
   if (cp(dst_path.c_str(), src_path.c_str())) {
     std::cerr << "ERROR: unable to copy file " << src_path << "\n";
     exit(1);
