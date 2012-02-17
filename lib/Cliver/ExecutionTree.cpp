@@ -139,18 +139,42 @@ std::ostream& operator<<(std::ostream& os, const ExecutionTraceInfo &info) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TrainingObject::write(std::ostream &os) {
-	boost::archive::binary_oarchive oa(os);
-	//boost::archive::text_oarchive oa(os);
+/// Write Training object to file in cliver's output directory
+void TrainingObject::write(CVExecutionState* state, 
+                           ClientVerifier* cv) {
+
+  // Create an unique identifing name for this path
+  std::stringstream name_ss;
+  name_ss << "round_" << std::setw(4) << std::setfill('0') << cv->round();
+  name_ss << "_length_" << std::setw(6) << std::setfill('0') << trace.size();
+  name_ss << "_state_" <<  state->id() << ".tpath";
+
+  // Set member var
+  name = std::string(name_ss.str());
+
+  // Write object to a sub dir so that # files is not greater than the FS limit
+  std::stringstream subdir_ss;
+  subdir_ss << "round_" << std::setw(4) << std::setfill('0') << cv->round();
+  std::string subdir = subdir_ss.str();
+
+  // Open file ../output_directory/subdir/name
+  std::ostream *file = cv->cvstream()->openOutputFile(name, &subdir);
+
+  // Write to file using boost::serialization
+	boost::archive::binary_oarchive oa(*file);
   oa << *this;
+
+  // Close file
+  static_cast<std::ofstream*>(file)->close();
 }
 
+/// Read file using boost::serialization
 void TrainingObject::read(std::ifstream &is) {
 	boost::archive::binary_iarchive ia(is);
-	//boost::archive::text_iarchive ia(is);
   ia >> *this;
 }
 
+/// Print TrainingObject info
 std::ostream& operator<<(std::ostream& os, const TrainingObject &tobject) {
   os << "(trace id:" << tobject.id << ") "
      << "(length:" << tobject.trace.size() << ") "
@@ -210,9 +234,6 @@ int SocketEventEditDistanceTetrinet::edit_distance(const SocketEvent* a,
 				CVDEBUG("Edit distance for matching types: " << result);
       }
     }
-  //} else {
-  //  CVDEBUG("Mismatched types: " << a_type << " and " << b_type 
-  //          << " for " << *a << " and " << *b);
   }
 
   delete a_buf;
@@ -337,6 +358,9 @@ void TrainingExecutionTreeManager::notify(ExecutionEvent ev) {
     case CV_SOCKET_READ: {
       assert(trees_.back()->has_state(state));
 
+      // On a successful socket read/write event, write this path's state
+      // and associated socket event data to file
+
       // Get socket event for this successful path
       Socket* socket = state->network_manager()->socket();
       assert(socket);
@@ -344,31 +368,16 @@ void TrainingExecutionTreeManager::notify(ExecutionEvent ev) {
           = const_cast<SocketEvent*>(&socket->previous_event());
 
       // Get path from the execution tree
-      ExecutionTrace etrace;
-      trees_.back()->get_path(state, etrace);
+      ExecutionTrace* etrace = new ExecutionTrace();
+      trees_.back()->get_path(state, *etrace);
 
-      std::stringstream filename;
-      filename 
-        << "round_" 
-        << std::setw(4) << std::setfill('0') << cv_->round();
-      filename 
-        << "_length_" 
-        << std::setw(6) << std::setfill('0') << etrace.size();
-      filename 
-        << "_state_" <<  state->id() << ".tpath";
-
-      std::stringstream sub_directory;
-      sub_directory << "round_" 
-        << std::setw(4) << std::setfill('0') << cv_->round();
-
-      std::string filename_str(filename.str());
-      std::string sub_directory_str = sub_directory.str();
-
-      std::ostream *file = cv_->cvstream()->openOutputFile(filename_str, &sub_directory_str);
-
-      TrainingObject training_obj(&etrace, socket_event,filename_str);
-      training_obj.write(*file);
-      static_cast<std::ofstream*>(file)->close();
+      // Create training object and write to file
+      TrainingObject* training_obj = new TrainingObject(etrace, socket_event);
+      training_obj->write(state, cv_);
+      
+      // Delete objects
+      delete etrace;
+      delete training_obj;
       
       break;
     }

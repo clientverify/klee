@@ -139,23 +139,24 @@ struct ExecutionTraceLT{
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/// Holds a single execution trace and the associated message
 class TrainingObject {
  public:
   TrainingObject() {};
-  TrainingObject(ExecutionTrace *et, SocketEvent *se, std::string& fn)
-      : trace(*et), name(fn) { add_socket_event(se); }
+  TrainingObject(ExecutionTrace *et, SocketEvent *se)
+      : trace(*et) { add_socket_event(se); }
 
   void add_socket_event(SocketEvent *se) {
     socket_event_set.insert(se);
   }
 
   void read(std::ifstream &is);
-  void write(std::ostream &os);
+  void write(CVExecutionState* state, ClientVerifier* cv);
 
  public:
-  SocketEventDataSet socket_event_set;
-  ExecutionTrace trace;
-  std::string name;
+  SocketEventDataSet socket_event_set; // std::set of SocketEvent ptrs
+  ExecutionTrace trace; 
+  std::string name; // Name created during seralization
   ExecutionTrace::ID id;
 
  protected:
@@ -168,12 +169,14 @@ class TrainingObject {
   }
 };
 
+// Comparator for ExecutionTrace contents
 struct TrainingObjectTraceLT {
 	bool operator()(const TrainingObject* a, const TrainingObject* b) const {
     return (a->trace) < (b->trace);
   }
 };
 
+// Comparator for ExecutionTrace lengths
 struct TrainingObjectLengthLT{
 	bool operator()(const TrainingObject* a, const TrainingObject* b) const {
     return a->trace.size() < b->trace.size();
