@@ -529,121 +529,12 @@ void NetworkManagerXpilot::execute_open_socket(CVExecutor* executor,
   for (unsigned i = 0; i<sockets_.size(); ++i) {
 		Socket &socket = sockets_[i];
 		if (socket.is_open()) {
-			//socket.open();
 			RETURN_SUCCESS("open", socket.fd());
 		}
 	}
 
 	RETURN_FAILURE_NO_SOCKET("open", "no socket availible");
 }
-
-
-////////////////////////////////////////////////////////////////////////////////
-
-NetworkManagerTetrinet::NetworkManagerTetrinet(CVExecutionState* state) 
-	: NetworkManager(state) {
-}
-
-NetworkManager* NetworkManagerTetrinet::clone(CVExecutionState *state) {
-	NetworkManagerTetrinet* nwm = new NetworkManagerTetrinet(*this);
-	nwm->state_ = state;
-	return nwm;
-}
-
-void NetworkManagerTetrinet::execute_read(CVExecutor* executor,
-		klee::KInstruction *target, klee::ObjectState* object, int fd, int len) {
-
-	GET_SOCKET_OR_DIE_TRYIN("read", fd);
-
-	if (socket.type() != SocketEvent::RECV)
-		RETURN_FAILURE("read", "wrong type");
-
-	int bytes_written = 0;
-
-	while (socket.has_data() && bytes_written < len) {
-		object->write8(bytes_written++, socket.next_byte());
-	}
-
-	if (socket.has_data()) {
-		//RETURN_FAILURE("read", "bytes remain len=" << len);
-	} else {
-		socket.advance();
-	}
-
-	RETURN_SUCCESS("read", bytes_written);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-NetworkManagerTraining::NetworkManagerTraining(
-		CVExecutionState* state) 
-	: NetworkManager(state) {}
-
-void NetworkManagerTraining::add_socket(const KTest* ktest) {
-	cv_error("add_socket() not supported in training mode");
-}
-
-void NetworkManagerTraining::add_socket(const SocketEventList &log) {
-	cv_error("add_socket() not supported in training mode");
-}
-
-NetworkManagerTraining* NetworkManagerTraining::clone(
-		CVExecutionState *state) {
-	NetworkManagerTraining* nwmt = new NetworkManagerTraining(*this);
-	nwmt->state_ = state;
-	return nwmt;
-}
-
-void NetworkManagerTraining::execute_open_socket(CVExecutor* executor,
-		klee::KInstruction *target, int domain, int type, int protocol) {
-
-	// During training, socket open always succeeds?
-	RETURN_SUCCESS_NO_SOCKET("open", Socket::NextFileDescriptor);
-
-}
-
-void NetworkManagerTraining::execute_shutdown(CVExecutor* executor,
-		klee::KInstruction *target, int fd, int how) {
-
-	RETURN_FAILURE_NO_SOCKET("shutdown", "training mode");
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-//NetworkManagerTrainingTetrinet::NetworkManagerTrainingTetrinet(
-//		CVExecutionState* state) 
-//	: NetworkManager(state) {}
-//
-//NetworkManagerTrainingTetrinet* NetworkManagerTrainingTetrinet::clone(
-//		CVExecutionState *state) {
-//	NetworkManagerTrainingTetrinet* nwmt 
-//		= new NetworkManagerTrainingTetrinet(*this);
-//	nwmt->state_ = state;
-//	return nwmt;
-//}
-//
-//void NetworkManagerTetrinet::execute_read(CVExecutor* executor,
-//		klee::KInstruction *target, klee::ObjectState* object, int fd, int len) {
-//
-//	GET_SOCKET_OR_DIE_TRYIN("read", fd);
-//
-//	if (socket.type() != SocketEvent::RECV)
-//		RETURN_FAILURE("read", "wrong type");
-//
-//	unsigned bytes_written = 0;
-//
-//	while (socket.has_data() && bytes_written < len) {
-//		object->write8(bytes_written++, socket.next_byte());
-//	}
-//
-//	if (socket.has_data()) {
-//		//RETURN_FAILURE("read", "bytes remain len=" << len);
-//	} else {
-//		socket.advance();
-//	}
-//
-//	RETURN_SUCCESS("read", bytes_written);
-//}
 
 ////////////////////////////////////////////////////////////////////////////////
 

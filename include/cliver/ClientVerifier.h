@@ -29,21 +29,6 @@ namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum CliverMode {
-  DefaultMode, 
-	TetrinetMode, 
-	XpilotMode, 
-	DefaultTrainingMode, 
-	TestTrainingMode, 
-	OutOfOrderTrainingMode, 
-	TetrinetTrainingMode,
-	XpilotTrainingMode,
-	VerifyWithTrainingPaths,
-	VerifyWithEditCost
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 namespace stats {
 	extern klee::Statistic active_states;
 	extern klee::Statistic merged_states;
