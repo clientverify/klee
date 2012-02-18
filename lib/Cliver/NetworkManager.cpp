@@ -4,6 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
+// TODO: rewrite comments...
+// TODO: make FAILURE/SUCCESS macros more readable
 //
 //===----------------------------------------------------------------------===//
 
@@ -17,24 +19,18 @@
 
 #include "../Core/Memory.h"
 #include "../Core/TimingSolver.h"
-#include "klee/Executor.h"
 #include "klee/Internal/Module/KInstruction.h"
-#include "klee/Interpreter.h"
 
 #include "llvm/Support/CommandLine.h"
 
 namespace cliver {
 
+////////////////////////////////////////////////////////////////////////////////
+
 llvm::cl::opt<bool>
 DebugNetworkManager("debug-network-manager",llvm::cl::init(false));
 
-llvm::cl::opt<bool>
-XEventOptimization("xevent-optimization", llvm::cl::init(false));
-
-llvm::cl::opt<unsigned>
-QUEUE_SIZE("queue-size", llvm::cl::init(3));
-
-extern llvm::cl::opt<bool> DebugSocket;
+////////////////////////////////////////////////////////////////////////////////
 
 #ifndef NDEBUG
 
@@ -107,128 +103,6 @@ extern llvm::cl::opt<bool> DebugSocket;
 	Socket &socket = sockets_[socket_index]; 
 
 #endif
-
-////////////////////////////////////////////////////////////////////////////////
-
-klee::ObjectState* resolve_address(klee::Executor* executor, 
-		klee::ExecutionState* state, klee::ref<klee::Expr> address) {
-	klee::ObjectPair result;
-	static_cast<CVExecutor*>(executor)->resolve_one(state, address, result);
-	return const_cast<klee::ObjectState*>(result.second);
-}
-
-void ExternalHandler_socket_create(
-		klee::Executor* executor, klee::ExecutionState *state, 
-		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {
-
-  int domain 	 = cast<klee::ConstantExpr>(arguments[0])->getZExtValue();
-  int type     = cast<klee::ConstantExpr>(arguments[1])->getZExtValue();
-  int protocol = cast<klee::ConstantExpr>(arguments[2])->getZExtValue();
-
-	CVExecutionState* cv_state = static_cast<CVExecutionState*>(state);
-	CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
-	cv_state->network_manager()->execute_open_socket(cv_executor, target, 
-			domain, type, protocol);
-}
-
-void ExternalHandler_socket_read(
-		klee::Executor* executor, klee::ExecutionState *state, 
-		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {
-	assert(arguments.size() >= 3);
-
-  int fd = cast<klee::ConstantExpr>(arguments[0])->getZExtValue();
-	klee::ref<klee::Expr> address = arguments[1];
-  int len = cast<klee::ConstantExpr>(arguments[2])->getZExtValue();
-	klee::ObjectState *object = resolve_address(executor, state, address);
-
-	CVExecutionState* cv_state = static_cast<CVExecutionState*>(state);
-	CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
-	cv_state->network_manager()->execute_read(cv_executor, target, object, fd, len);
-}
-
-void ExternalHandler_socket_write(
-		klee::Executor* executor, klee::ExecutionState *state, 
-		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {
-	assert(arguments.size() >= 3);
-
-  int fd = cast<klee::ConstantExpr>(arguments[0])->getZExtValue();
-	klee::ref<klee::Expr> address = arguments[1];
-  int len = cast<klee::ConstantExpr>(arguments[2])->getZExtValue();
-	klee::ObjectState *object = resolve_address(executor, state, address);
-
-	CVExecutionState* cv_state = static_cast<CVExecutionState*>(state);
-	CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
-	cv_state->network_manager()->execute_write(cv_executor, target, object, fd, len);
-}
-
-void ExternalHandler_socket_shutdown(
-		klee::Executor* executor, klee::ExecutionState *state, 
-		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {
-	assert(arguments.size() >= 2);
-
-  int fd  = cast<klee::ConstantExpr>(arguments[0])->getZExtValue();
-  int how = cast<klee::ConstantExpr>(arguments[1])->getZExtValue();
-
-	CVExecutionState* cv_state = static_cast<CVExecutionState*>(state);
-	CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
-	cv_state->network_manager()->execute_shutdown(cv_executor, target, fd, how);
-}
-
-// Put function in a different file? not neccessarily networking related...
-void ExternalHandler_merge(
-		klee::Executor* executor, klee::ExecutionState *state, 
-		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {
-	assert(arguments.size() == 0);
-	CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
-	cv_executor->client_verifier()->notify_all(ExecutionEvent(CV_MERGE, state));
-}
-
-void ExternalHandler_XEventsQueued(
-		klee::Executor* executor, klee::ExecutionState *state, 
-		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {
-	assert(arguments.size() == 0);
-	CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
-	CVExecutionState* cv_state = static_cast<CVExecutionState*>(state);
-
-  if (XEventOptimization
-      && cv_state->network_manager()->socket()->type() != SocketEvent::SEND) {
-      cv_executor->bind_local(target, cv_state, 0);
-  } else {
-    cv_executor->bind_local(target, cv_state, QUEUE_SIZE);
-  }
-}
-
-void ExternalHandler_CliverPrint(
-		klee::Executor* executor, klee::ExecutionState *state, 
-		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {
-	assert(arguments.size() >= 1);
-	if (arguments.size() > 1) {
-    CVMESSAGE("cliver_print called with more than one arg (not supported)");
-  }
-	CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
-	CVExecutionState* cv_state = static_cast<CVExecutionState*>(state);
-  *cv_message_stream 
-      << cv_state->cv()->client_name()
-      << " [" << cv_state->id() << "] "
-      << cv_executor->get_string_at_address(cv_state, arguments[0])
-      << "\n";
-}
-
-void ExternalHandler_EnableBasicBlockTracking(
-		klee::Executor* executor, klee::ExecutionState *state, 
-		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {
-	assert(arguments.size() == 0);
-	CVExecutionState* cv_state = static_cast<CVExecutionState*>(state);
-  cv_state->set_basic_block_tracking(true);
-}
-
-void ExternalHandler_DisableBasicBlockTracking(
-		klee::Executor* executor, klee::ExecutionState *state, 
-		klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {
-	assert(arguments.size() == 0);
-	CVExecutionState* cv_state = static_cast<CVExecutionState*>(state);
-  cv_state->set_basic_block_tracking(false);
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 

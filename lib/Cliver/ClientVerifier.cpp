@@ -4,13 +4,9 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Client Verifier Class:
-//
 // TODO CVContext needed?
 //
 //===----------------------------------------------------------------------===//
-
-#include "CVCommon.h"
 
 #include "cliver/ClientVerifier.h"
 #include "cliver/ConstraintPruner.h"
@@ -23,7 +19,8 @@
 #include "cliver/NetworkManager.h"
 #include "cliver/PathManager.h"
 #include "cliver/StateMerger.h"
-#include "cliver/TestHelper.h"
+#include "CVCommon.h"
+#include "ExternalHandlers.h"
 
 #include "klee/SpecialFunctionHandler.h"
 #include "../lib/Core/CoreStats.h"
