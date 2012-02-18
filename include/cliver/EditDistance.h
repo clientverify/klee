@@ -8,9 +8,15 @@
 #ifndef CLIVER_EDITDISTANCH_H
 #define CLIVER_EDITDISTANCH_H
 
-#include <cmath>
-#include <stack>
 #include <algorithm>
+#include <cmath>
+#include <iostream>
+#include <map>
+#include <stack>
+#include <vector>
+
+#include <assert.h>
+#include <limits.h>
 
 namespace cliver {
 

@@ -1,4 +1,4 @@
-//===-- ExecutionTree.cpp -====----------------------------------*- C++ -*-===//
+//===-- ExecutionTree.cpp ---------------------------------------*- C++ -*-===//
 //
 // <insert license>
 //
@@ -12,21 +12,22 @@
 // TODO: Remove static_casts in notify()
 //===----------------------------------------------------------------------===//
 
-#include "CVCommon.h"
-#include "cliver/CVExecutor.h"
-#include "cliver/EditDistance.h"
 #include "cliver/ExecutionTree.h"
+#include "cliver/CVExecutor.h"
+#include "cliver/CVStream.h"
+#include "cliver/EditDistance.h"
+#include "cliver/ExecutionTrace.h"
 #include "cliver/CVExecutionState.h"
 #include "cliver/NetworkManager.h"
+
+#include "Training.h"
+#include "CVCommon.h"
+
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/Internal/Module/KModule.h"
 #include "klee/Internal/Module/InstructionInfoTable.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
-
-#include <boost/archive/binary_oarchive.hpp>
-#include <boost/archive/binary_iarchive.hpp>
-#include <boost/archive/text_oarchive.hpp>
-#include <boost/archive/text_iarchive.hpp>
 
 #include <fstream>
 #include <algorithm>
@@ -85,109 +86,6 @@ inline std::ostream &operator<<(std::ostream &os,
 	//str.erase(std::remove(str.begin(), str.end(), '\n'), str.end());
 	return os << ros.str();
 }
-
-////////////////////////////////////////////////////////////////////////////////
-
-bool ExecutionTrace::operator==(const ExecutionTrace& b) const { 
-  return basic_blocks_ == b.basic_blocks_;
-}
-
-bool ExecutionTrace::operator!=(const ExecutionTrace& b) const { 
-  return basic_blocks_ != b.basic_blocks_;
-}
-
-bool ExecutionTrace::operator<(const ExecutionTrace& b) const { 
-  return basic_blocks_ < b.basic_blocks_;
-}
-
-void ExecutionTrace::push_back(const ExecutionTrace& etrace){
-  basic_blocks_.insert(basic_blocks_.end(), etrace.begin(), etrace.end());
-}
-
-// XXX Inefficient
-void ExecutionTrace::push_front(const ExecutionTrace& etrace){
-  basic_blocks_.insert(basic_blocks_.begin(), etrace.begin(), etrace.end());
-}
-
-void ExecutionTrace::write(std::ostream &os) {
-	//boost::archive::binary_oarchive oa(os);
-	boost::archive::text_oarchive oa(os);
-  oa << *this;
-}
-
-void ExecutionTrace::read(std::ifstream &is, klee::KModule* kmodule) {
-	//boost::archive::binary_iarchive ia(is);
-	boost::archive::text_iarchive ia(is);
-  ia >> *this;
-}
-
-std::ostream& operator<<(std::ostream& os, const ExecutionTrace &etrace) {
-  foreach (ExecutionTrace::BasicBlockID kbb, etrace) {
-    os << kbb << ", ";
-  }
-  return os;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-std::ostream& operator<<(std::ostream& os, const ExecutionTraceInfo &info) {
-  os << "(trace id:" << info.id << ") "
-     << "(length:" << info.trace->size() << ") "
-     << "(" << info.name << ") ";
-  return os;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-/// Write Training object to file in cliver's output directory
-void TrainingObject::write(CVExecutionState* state, 
-                           ClientVerifier* cv) {
-
-  // Create an unique identifing name for this path
-  std::stringstream name_ss;
-  name_ss << "round_" << std::setw(4) << std::setfill('0') << cv->round();
-  name_ss << "_length_" << std::setw(6) << std::setfill('0') << trace.size();
-  name_ss << "_state_" <<  state->id() << ".tpath";
-
-  // Set member var
-  name = std::string(name_ss.str());
-
-  // Write object to a sub dir so that # files is not greater than the FS limit
-  std::stringstream subdir_ss;
-  subdir_ss << "round_" << std::setw(4) << std::setfill('0') << cv->round();
-  std::string subdir = subdir_ss.str();
-
-  // Open file ../output_directory/subdir/name
-  std::ostream *file = cv->cvstream()->openOutputFile(name, &subdir);
-
-  // Write to file using boost::serialization
-	boost::archive::binary_oarchive oa(*file);
-  oa << *this;
-
-  // Close file
-  static_cast<std::ofstream*>(file)->close();
-}
-
-/// Read file using boost::serialization
-void TrainingObject::read(std::ifstream &is) {
-	boost::archive::binary_iarchive ia(is);
-  ia >> *this;
-}
-
-/// Print TrainingObject info
-std::ostream& operator<<(std::ostream& os, const TrainingObject &tobject) {
-  os << "(trace id:" << tobject.id << ") "
-     << "(length:" << tobject.trace.size() << ") "
-     << "(" << tobject.name << ") ";
-  os << "[socket_events: ";
-  foreach (const SocketEvent* socket_event, tobject.socket_event_set) {
-    os << *socket_event << ", ";
-  }
-  os << "]";
-  return os;
-}
-
-////////////////////////////////////////////////////////////////////////////////
 
 struct field_update {
   int pnum;

@@ -8,12 +8,16 @@
 //===----------------------------------------------------------------------===//
 
 #include "cliver/AddressSpaceGraph.h"
+#include "cliver/ClientVerifier.h"
 #include "cliver/ConstraintPruner.h"
 #include "cliver/CVExecutionState.h"
+#include "cliver/CVStream.h"
 #include "CVCommon.h"
+
 #include "klee/IndependentElementSet.h"
 #include "klee/Constraints.h"
-#include "cliver/ClientVerifier.h"
+
+#include "llvm/Support/CommandLine.h"
 
 namespace cliver {
 

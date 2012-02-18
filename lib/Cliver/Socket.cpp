@@ -9,7 +9,10 @@
 
 #include "cliver/Socket.h"
 #include "cliver/ClientVerifier.h"
+#include "cliver/CVStream.h"
 #include "CVCommon.h"
+
+#include "llvm/Support/CommandLine.h"
 
 namespace cliver {
 

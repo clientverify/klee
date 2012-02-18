@@ -8,22 +8,20 @@
 //===----------------------------------------------------------------------===//
 
 #include "cliver/NetworkManager.h"
-#include "CVCommon.h"
 #include "cliver/CVExecutor.h"
 #include "cliver/CVExecutionState.h"
+#include "cliver/CVStream.h"
 #include "cliver/ClientVerifier.h"
 #include "cliver/ExecutionObserver.h"
+#include "CVCommon.h"
 
-#include "llvm/Support/CommandLine.h"
-
+#include "../Core/Memory.h"
+#include "../Core/TimingSolver.h"
 #include "klee/Executor.h"
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/Interpreter.h"
-#include "../Core/Memory.h"
-#include "../Core/TimingSolver.h"
 
-// HACK
-extern klee::Interpreter *g_interpreter;
+#include "llvm/Support/CommandLine.h"
 
 namespace cliver {
 

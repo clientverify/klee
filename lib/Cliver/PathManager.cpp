@@ -8,11 +8,19 @@
 //===----------------------------------------------------------------------===//
 
 #include "cliver/PathManager.h"
-#include "CVCommon.h"
 #include "cliver/CVExecutor.h"
 #include "cliver/CVExecutionState.h"
+#include "cliver/CVStream.h"
 #include "cliver/ExecutionStateProperty.h"
 #include "cliver/PathTree.h"
+#include "CVCommon.h"
+
+#include "klee/Internal/Module/InstructionInfoTable.h"
+#include "klee/Internal/Module/KInstruction.h"
+
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/raw_ostream.h"
+#include "llvm/Function.h"
 
 #include <boost/serialization/set.hpp>
 #include <boost/serialization/vector.hpp>
@@ -20,12 +28,6 @@
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/binary_oarchive.hpp>
 #include <boost/archive/binary_iarchive.hpp>
-
-#include "klee/Internal/Module/InstructionInfoTable.h"
-#include "klee/Internal/Module/KInstruction.h"
-
-#include "llvm/Support/raw_ostream.h"
-#include "llvm/Function.h"
 
 namespace cliver {
 

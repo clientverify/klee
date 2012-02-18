@@ -11,6 +11,7 @@
 #define CV_SEARCHER_H
 
 #include "cliver/ClientVerifier.h" // For CliverEvent::Type
+#include "cliver/CVExecutionState.h"
 #include "cliver/ExecutionStateProperty.h"
 #include "cliver/ExecutionObserver.h"
 
@@ -186,6 +187,7 @@ class ExecutionStateQueue : public std::queue<CVExecutionState*> {
   CVExecutionState* top() { return front(); }
 };
 
+// XXX Shouldn't sub-class vector?
 class ExecutionStateRandomSelector : public std::vector<CVExecutionState*> {
  public:
   ExecutionStateRandomSelector() : size_(0) {}

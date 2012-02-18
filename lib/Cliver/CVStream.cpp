@@ -7,27 +7,25 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "CVCommon.h"
 #include "cliver/CVStream.h"
-#include <signal.h>
-#include <dirent.h>
-#include <sys/stat.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <unistd.h>
-
-#include <iostream>
-#include <sstream>
-#include <fstream>
-#include <list>
-
-#include "llvm/System/Path.h"
-#include "llvm/Support/ErrorHandling.h"
+#include "CVCommon.h"
 
 #include "klee/Interpreter.h"
 
-extern klee::Interpreter *g_interpreter;
+#include "llvm/System/Path.h"
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/ErrorHandling.h"
+
+#include <list>
+#include <sstream>
+
+#include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 namespace {
 llvm::cl::opt<std::string>

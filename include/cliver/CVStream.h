@@ -12,7 +12,10 @@
 #include <stdio.h>
 
 #include <iomanip>
+#include <fstream>
+#include <iostream>
 #include <ostream>
+#include <vector>
 
 #include "../lib/Core/Common.h"
 

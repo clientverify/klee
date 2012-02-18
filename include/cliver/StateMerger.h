@@ -9,6 +9,8 @@
 #ifndef STATE_MERGER_H
 #define STATE_MERGER_H
 
+#include "cliver/CVExecutionState.h"
+
 namespace klee {
 	class ConstraintManager;
 }
@@ -19,7 +21,7 @@ namespace cliver {
 
 class AddressSpaceGraph;
 class ConstraintPruner;
-class CVExecutionState;
+class ClientVerifier;
 
 struct MergeInfo {
 	AddressSpaceGraph *graph;

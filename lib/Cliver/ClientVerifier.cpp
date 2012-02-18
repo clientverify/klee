@@ -6,6 +6,7 @@
 //
 // Client Verifier Class:
 //
+// TODO CVContext needed?
 //
 //===----------------------------------------------------------------------===//
 
@@ -25,18 +26,18 @@
 #include "cliver/TestHelper.h"
 
 #include "klee/SpecialFunctionHandler.h"
+#include "../lib/Core/CoreStats.h"
 
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/System/Process.h"
-
-#include "../lib/Core/CoreStats.h"
 
 #ifdef GOOGLE_PROFILER
 #include <google/profiler.h>
 #include <google/heap-checker.h>
 #endif
 
-// needed for boost::signal
+// Define somewhere else?
 void boost::throw_exception(std::exception const& e) {}
 
 namespace cliver {

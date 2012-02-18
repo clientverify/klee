@@ -8,10 +8,15 @@
 // created with a parent or some other optimization
 //
 //===----------------------------------------------------------------------===//
-
 #include "cliver/Path.h"
-#include "CVCommon.h"
 #include "cliver/CVExecutor.h"
+#include "CVCommon.h"
+
+#include "klee/Internal/Module/InstructionInfoTable.h"
+#include "klee/Internal/Module/KInstruction.h"
+
+#include "llvm/BasicBlock.h"
+#include "llvm/Instructions.h"
 
 #include <boost/serialization/set.hpp>
 #include <boost/serialization/vector.hpp>
@@ -19,12 +24,6 @@
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/binary_oarchive.hpp>
 #include <boost/archive/binary_iarchive.hpp>
-
-#include "klee/Internal/Module/InstructionInfoTable.h"
-#include "klee/Internal/Module/KInstruction.h"
-
-#include "llvm/BasicBlock.h"
-#include "llvm/Instructions.h"
 
 namespace cliver {
 

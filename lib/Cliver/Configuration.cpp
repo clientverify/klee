@@ -7,15 +7,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "CVCommon.h"
-
 #include "cliver/ClientVerifier.h"
 #include "cliver/CVSearcher.h"
+#include "cliver/CVStream.h"
 #include "cliver/ExecutionStateProperty.h"
 #include "cliver/ExecutionTree.h"
 #include "cliver/NetworkManager.h"
 #include "cliver/PathManager.h"
 #include "cliver/PathTree.h"
+#include "CVCommon.h"
+
+#include "llvm/Support/CommandLine.h"
 
 namespace cliver {
 

@@ -9,13 +9,15 @@
 
 #include "cliver/CVExecutionState.h"
 #include "cliver/CVExecutor.h"
-#include "CVCommon.h"
+#include "cliver/CVStream.h"
 #include "cliver/ExecutionStateProperty.h"
 #include "cliver/NetworkManager.h"
 #include "cliver/PathManager.h"
+#include "CVCommon.h"
 
 #include "../Core/Common.h"
 #include "klee/Internal/Module/InstructionInfoTable.h"
+
 #include "llvm/Support/raw_ostream.h"
 
 namespace cliver {
@@ -117,6 +119,11 @@ std::ostream &operator<<(std::ostream &os, const CVExecutionState &s) {
 
 void CVExecutionStateDeleter::operator()(CVExecutionState* state) {
   state->cv()->executor()->remove_state_internal(state);
+}
+
+bool CVExecutionStateLT::operator()(const CVExecutionState* a, 
+		const CVExecutionState* b) const {
+	return a->compare(*b) < 0;
 }
 
 } // End cliver namespace
