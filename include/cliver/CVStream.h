@@ -17,8 +17,6 @@
 #include <ostream>
 #include <vector>
 
-#include "../lib/Core/Common.h"
-
 #define CV_DEBUG_FILE "debug.txt"
 #define CV_WARNING_FILE "warnings.txt"
 #define CV_INFO_FILE "info.txt"
@@ -111,20 +109,28 @@ class CVStream {
   inline std::ostream& message_stream() { return *message_stream_; }
   inline std::ostream& warning_stream() { return *warning_stream_; }
 
+  std::string getOutputFilename(const std::string &filename);
+
+  std::ostream* openOutputFile(const std::string &filename);
+
+  std::ostream* openOutputFileInSubDirectory(const std::string &filename, 
+                                             const std::string &sub_directory);
+
+	void getOutFiles(std::string path, std::vector<std::string> &results);
+
+	void getFiles(std::string path, std::string suffix,
+                std::vector<std::string> &results);
+
+	void getFilesRecursive(std::string path, std::string suffix,
+                         std::vector<std::string> &results);
+
+  void copyFileToOutputDirectory(const std::string &src_path,
+                                 const std::string &dst_name);
+
   std::string getBasename(const std::string &filename);
+
   std::string appendComponent(const std::string &filename,
                               const std::string &append);
-  std::string getOutputFilename(const std::string &filename);
-  std::ostream* openOutputFile(const std::string &filename, 
-                               std::string* sub_directory=NULL);
-	void getOutFiles(std::string path, std::vector<std::string> &results);
-	void getFiles(std::string path, std::string suffix,
-			std::vector<std::string> &results);
-	void getFilesRecursive(std::string path, std::string suffix,
-			std::vector<std::string> &results);
-
-  void copyFileToOutputDirectory(std::string src_path,
-                                 std::string* rename=NULL);
  private:
   std::string output_directory_;
   bool initialized_;

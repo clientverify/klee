@@ -38,7 +38,7 @@ void TrainingObject::write(CVExecutionState* state,
   std::string subdir = subdir_ss.str();
 
   // Open file ../output_directory/subdir/name
-  std::ostream *file = cv->cvstream()->openOutputFile(name, &subdir);
+  std::ostream *file = cv->openOutputFileInSubDirectory(name, subdir);
 
   // Write to file using boost::serialization
 	boost::archive::binary_oarchive oa(*file);
