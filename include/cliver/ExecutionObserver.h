@@ -9,7 +9,7 @@
 #ifndef CLIVER_EXECUTION_OBSERVER_H
 #define CLIVER_EXECUTION_OBSERVER_H
 
-#include <list>
+#include <cstddef>
 
 namespace klee {
 class ExecutionState;

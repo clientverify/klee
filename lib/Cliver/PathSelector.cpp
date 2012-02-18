@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "cliver/PathSelector.h"
+#include "cliver/CVStream.h"
 #include "cliver/Path.h"
 #include "cliver/PathManager.h"
 #include "CVCommon.h"

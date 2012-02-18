@@ -7,6 +7,7 @@
 #include "Training.h"
 #include "cliver/ClientVerifier.h"
 #include "cliver/CVExecutionState.h"
+#include "cliver/CVStream.h"
 #include "cliver/ExecutionTrace.h"
 #include "cliver/Socket.h"
 #include "CVCommon.h"

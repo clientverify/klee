@@ -529,8 +529,8 @@ void ObjectState::write(unsigned offset, ref<Expr> value) {
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(value)) {
     Expr::Width w = CE->getWidth();
     if (CE->isPointer()) {
-      if (w != Context::get().getPointerWidth())
-        klee_warning("Invalid pointer size");
+      //if (w != Context::get().getPointerWidth())
+      //  klee_warning("Invalid pointer size %d ", w);
       for (unsigned i=offset; i<offset+(w/8); i++)
         markBytePointer(i);
     }

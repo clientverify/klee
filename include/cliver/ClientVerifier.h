@@ -10,7 +10,6 @@
 #define CLIVER_H
 
 #include <fstream>
-#include <map>
 #include <string>
 #include <vector>
 #include <list>
@@ -25,8 +24,6 @@
 #include "klee/Internal/ADT/KTest.h"
 
 #include "llvm/Support/CommandLine.h"
-
-#include <boost/signal.hpp>
 
 namespace cliver {
 

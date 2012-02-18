@@ -9,9 +9,10 @@
 #ifndef CLIVER_EXECUTION_STATE_H
 #define CLIVER_EXECUTION_STATE_H
 
-#include "cliver/ClientVerifier.h"
 #include "cliver/ExecutionObserver.h"
+
 #include "klee/ExecutionState.h"
+
 #include "llvm/Instructions.h"
 
 #include <list>
@@ -86,12 +87,26 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
   bool basic_block_tracking_;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
 std::ostream &operator<<(std::ostream &os, const CVExecutionState &s);
 
-// is this crazy?
+////////////////////////////////////////////////////////////////////////////////
+
+// is this crazy? yes i think so
 struct CVExecutionStateDeleter {
 	void operator()(CVExecutionState* state);
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+typedef std::set<CVExecutionState*> ExecutionStateSet;
+
+struct CVExecutionStateLT {
+	bool operator()(const CVExecutionState* a, const CVExecutionState* b) const;
+};
+
+////////////////////////////////////////////////////////////////////////////////
 
 } // End cliver namespace
 

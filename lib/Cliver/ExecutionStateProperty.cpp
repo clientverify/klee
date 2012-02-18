@@ -6,20 +6,15 @@
 //
 //
 //===----------------------------------------------------------------------===//
-#include "CVCommon.h"
-#include "cliver/CVStream.h"
+#include "cliver/ExecutionStateProperty.h"
 #include "cliver/ClientVerifier.h"
 #include "cliver/CVExecutionState.h"
-#include "cliver/ExecutionStateProperty.h"
+#include "cliver/CVStream.h"
+#include "CVCommon.h"
 
 namespace cliver {
 	
 ////////////////////////////////////////////////////////////////////////////////
-
-bool CVExecutionStateLT::operator()(const CVExecutionState* a, 
-		const CVExecutionState* b) const {
-	return a->compare(*b) < 0;
-}
 
 bool ExecutionStatePropertyLT::operator()(const ExecutionStateProperty* a, 
 		const ExecutionStateProperty* b) const {

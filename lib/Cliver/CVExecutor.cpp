@@ -6,15 +6,17 @@
 //
 //
 //===----------------------------------------------------------------------===//
-#include "cliver/CVExecutionState.h"
 #include "cliver/CVExecutor.h"
-#include "CVCommon.h"
+
+#include "cliver/ConstraintPruner.h"
+#include "cliver/CVExecutionState.h"
 #include "cliver/CVSearcher.h"
+#include "cliver/CVStream.h"
 #include "cliver/ExecutionObserver.h"
 #include "cliver/NetworkManager.h"
 #include "cliver/PathManager.h"
 #include "cliver/StateMerger.h"
-#include "cliver/ConstraintPruner.h"
+#include "CVCommon.h"
 
 #include "../Core/Common.h"
 #include "../Core/Context.h"
@@ -28,20 +30,11 @@
 #include "../Core/StatsTracker.h"
 #include "../Core/TimingSolver.h"
 #include "../Core/UserSearcher.h"
-
 #include "../Solver/SolverStats.h"
 
+#include "klee/Config/config.h"
 #include "klee/ExecutionState.h"
 #include "klee/Expr.h"
-#include "klee/Interpreter.h"
-#include "klee/Searcher.h"
-#include "klee/SpecialFunctionHandler.h"
-#include "klee/TimerStatIncrementer.h"
-#include "klee/util/Assignment.h"
-#include "klee/util/ExprPPrinter.h"
-#include "klee/util/ExprUtil.h"
-#include "klee/util/GetElementPtrTypeIterator.h"
-#include "klee/Config/config.h"
 #include "klee/Internal/ADT/KTest.h"
 #include "klee/Internal/ADT/RNG.h"
 #include "klee/Internal/Module/Cell.h"
@@ -50,6 +43,14 @@
 #include "klee/Internal/Module/KModule.h"
 #include "klee/Internal/Support/FloatEvaluation.h"
 #include "klee/Internal/System/Time.h"
+#include "klee/Interpreter.h"
+#include "klee/Searcher.h"
+#include "klee/SpecialFunctionHandler.h"
+#include "klee/TimerStatIncrementer.h"
+#include "klee/util/Assignment.h"
+#include "klee/util/ExprPPrinter.h"
+#include "klee/util/ExprUtil.h"
+#include "klee/util/GetElementPtrTypeIterator.h"
 
 #include "llvm/Attributes.h"
 #include "llvm/BasicBlock.h"
@@ -76,7 +77,6 @@
 #include <string>
 
 #include <sys/mman.h>
-
 #include <errno.h>
 #include <stdio.h>
 #include <inttypes.h>

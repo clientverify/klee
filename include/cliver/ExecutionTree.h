@@ -15,6 +15,9 @@
 #include "cliver/EditDistance.h"
 #include "cliver/ExecutionStateProperty.h"
 #include "cliver/ExecutionObserver.h"
+#include "cliver/ExecutionTrace.h" /* NEEDED? */
+#include "Training.h" /* NEEDED? */
+
 #include "cliver/tree.h"
 
 #include "klee/Solver.h"
@@ -36,156 +39,11 @@
 #define MAX(x,y) (((x)<(y))?(y):(x))
 #define MIN(x,y) (!((y)<(x))?(x):(y))
 
-namespace llvm {
-	class BasicBlock;
-}
-
-namespace klee {
-	class KInstruction;
-	class KModule;
-}
-
 namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////
- 
-class ExecutionTrace {
- public:
-  typedef uint16_t ID;
 
-  typedef unsigned BasicBlockID;
-  typedef std::vector<BasicBlockID> BasicBlockList;
-
-  typedef BasicBlockList::iterator iterator;
-  typedef BasicBlockList::const_iterator const_iterator;
-
-  ExecutionTrace() {}
-  ExecutionTrace(BasicBlockID bb) { this->push_back(bb); }
-
-  void push_back(BasicBlockID kbb) { 
-    basic_blocks_.push_back(kbb);
-  }
-
-  void push_front(BasicBlockID kbb) { 
-    basic_blocks_.insert(basic_blocks_.begin(), kbb);
-  }
-
-  void push_back(const ExecutionTrace& etrace);
-  void push_front(const ExecutionTrace& etrace);
-
-  iterator begin() { return basic_blocks_.begin(); }
-  iterator end() { return basic_blocks_.end(); }
-  const_iterator begin() const { return basic_blocks_.begin(); }
-  const_iterator end() const { return basic_blocks_.end(); }
-
-  inline BasicBlockID operator[](unsigned i) { return basic_blocks_[i]; }
-  inline BasicBlockID operator[](unsigned i) const { return basic_blocks_[i]; }
-
-  bool operator==(const ExecutionTrace& b) const;
-  bool operator!=(const ExecutionTrace& b) const;
-  bool operator<(const ExecutionTrace& b) const;
-
-  inline size_t size() const { return basic_blocks_.size(); } 
-
-	void write(std::ostream &os);
-	void read(std::ifstream &is, klee::KModule* kmodule);
-
- protected:
-  void deserialize(klee::KModule* kmodule);
-  friend class boost::serialization::access;
-  template<class Archive>
-  void save(Archive & ar, const unsigned int version) const {
-    ar & basic_blocks_;
-  }
-
-  template<class Archive>
-  void load(Archive & ar, const unsigned int version) {
-    ar & basic_blocks_;
-  }
-
-  BOOST_SERIALIZATION_SPLIT_MEMBER()
-
- private:
-  BasicBlockList basic_blocks_;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-// TODO REMOVE ME
-
-struct ExecutionTraceInfo {
-  ExecutionTrace::ID id;
-  std::string name;
-  const ExecutionTrace* trace;
-};
-
-struct ExecutionTraceInfoLengthLT{
-	bool operator()(const ExecutionTraceInfo* a, const ExecutionTraceInfo* b) const {
-    return a->trace->size() < b->trace->size();
-  }
-};
-
-struct ExecutionTraceInfoLT{
-	bool operator()(const ExecutionTraceInfo* a, const ExecutionTraceInfo* b) const {
-    return *(a->trace) < *(b->trace);
-  }
-};
-
-struct ExecutionTraceLT{
-	bool operator()(const ExecutionTrace* a, const ExecutionTrace* b) const {
-    return *(a) < *(b);
-  }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-/// Holds a single execution trace and the associated message
-class TrainingObject {
- public:
-  TrainingObject() {};
-  TrainingObject(ExecutionTrace *et, SocketEvent *se)
-      : trace(*et) { add_socket_event(se); }
-
-  void add_socket_event(SocketEvent *se) {
-    socket_event_set.insert(se);
-  }
-
-  void read(std::ifstream &is);
-  void write(CVExecutionState* state, ClientVerifier* cv);
-
- public:
-  SocketEventDataSet socket_event_set; // std::set of SocketEvent ptrs
-  ExecutionTrace trace; 
-  std::string name; // Name created during seralization
-  ExecutionTrace::ID id;
-
- protected:
-  friend class boost::serialization::access;
-  template<class Archive>
-  void serialize(Archive & ar, const unsigned int version) {
-    ar & socket_event_set;
-    ar & trace;
-    ar & name;
-  }
-};
-
-// Comparator for ExecutionTrace contents
-struct TrainingObjectTraceLT {
-	bool operator()(const TrainingObject* a, const TrainingObject* b) const {
-    return (a->trace) < (b->trace);
-  }
-};
-
-// Comparator for ExecutionTrace lengths
-struct TrainingObjectLengthLT{
-	bool operator()(const TrainingObject* a, const TrainingObject* b) const {
-    return a->trace.size() < b->trace.size();
-  }
-};
-
-std::ostream& operator<<(std::ostream& os, const TrainingObject &tobject);
-
-////////////////////////////////////////////////////////////////////////////////
+class SocketEvent;
 
 class SocketEventEditDistance {
  public:
@@ -206,8 +64,6 @@ class SocketEventEditDistanceTetrinet: public SocketEventEditDistance {
   SocketEventEditDistanceTetrinet() {}
   int edit_distance(const SocketEvent* a, const SocketEvent* b);
 };
-
-////////////////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1007,13 +863,7 @@ typedef ExecutionTraceEDR ExecutionTraceED;
 // Basic ExecutionTree
 typedef ExecutionTree<unsigned, ExecutionTrace> ExecutionTraceTree;
 
-//typedef std::map<ExecutionTrace, ExecutionTrace::ID> ExecutionTraceIDMap;
-//typedef std::map<ExecutionTrace::ID, std::string> ExecutionTraceNameMap;
 typedef std::map<CVExecutionState*, EDTree*> ExecutionStateEDTreeMap;
-
-//typedef std::set<ExecutionTrace*, ExecutionTraceLT> ExecutionTraceSet;
-//typedef std::vector<ExecutionTraceInfo*> ExecutionTraceInfoList;
-//typedef std::map<ExecutionTrace::ID, ExecutionTraceInfo*> ExecutionTraceIDMap;
 
 typedef std::map<ExecutionTrace::ID, TrainingObject*> TrainingObjectIDMap;
 typedef std::set<TrainingObject*, TrainingObjectTraceLT> TrainingObjectSet;

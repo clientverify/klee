@@ -8,18 +8,18 @@
 #ifndef CLIVER_EXECUTION_STATE_PROPERTY_H
 #define CLIVER_EXECUTION_STATE_PROPERTY_H
 
+#include "cliver/CVExecutionState.h"
 #include "cliver/PathManager.h"
 
 #include <llvm/ADT/PriorityQueue.h>
+
+#include <boost/ptr_container/ptr_set.hpp>
 
 #include <map>
 #include <set>
 #include <iostream>
 
-#include <boost/ptr_container/ptr_set.hpp>
-
 namespace cliver {
-class CVExecutionState;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -55,17 +55,11 @@ struct ExecutionStatePropertyFactory {
 };
 
 ////////////////////////////////////////////////////////////////////////////////
- 
-struct CVExecutionStateLT {
-	bool operator()(const CVExecutionState* a, const CVExecutionState* b) const;
-};
 
 struct ExecutionStatePropertyLT {
 	bool operator()(const ExecutionStateProperty* a, 
 			const ExecutionStateProperty* b) const;
 };
-
-typedef std::set<CVExecutionState*> ExecutionStateSet;
 
 typedef std::map<ExecutionStateProperty*,
 								 ExecutionStateSet,
