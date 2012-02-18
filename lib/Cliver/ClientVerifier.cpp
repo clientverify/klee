@@ -135,8 +135,8 @@ ClientVerifier::ClientVerifier(std::string* input_filename)
 
   // Copy inputfile to output directory
   if (CopyInputFilesToOutputDir) {
-    std::string rename("input.bc");
-    cvstream_->copyFileToOutputDirectory(*input_filename, &rename);
+    std::string dest_name("input.bc");
+    cvstream_->copyFileToOutputDirectory(*input_filename, dest_name);
   }
 
 	handle_statistics();
@@ -169,6 +169,21 @@ std::ostream *ClientVerifier::openOutputFile(const std::string &filename) {
   return cvstream_->openOutputFile(filename);
 }
 
+std::ostream *ClientVerifier::openOutputFileInSubDirectory(
+    const std::string &filename, const std::string &sub_directory) {
+  return cvstream_->openOutputFileInSubDirectory(filename, sub_directory);
+}
+
+void ClientVerifier::getFiles(std::string path, std::string suffix,
+                              std::vector<std::string> &results) {
+  return cvstream_->getFiles(path, suffix, results);
+}
+
+void ClientVerifier::getFilesRecursive(std::string path, std::string suffix,
+                                       std::vector<std::string> &results) {
+  return cvstream_->getFilesRecursive(path, suffix, results);
+}
+
 void ClientVerifier::incPathsExplored() {
   paths_explored_++;
 }
@@ -193,10 +208,10 @@ void ClientVerifier::initialize(CVExecutor *executor) {
   if (CopyInputFilesToOutputDir) {
     unsigned count=0;
     foreach (std::string path, SocketLogFile) {
-      std::stringstream rename;
-      rename << "socket_" << std::setw(3) << std::setfill('0') << count;
-      rename << ".ktest";
-      cvstream_->copyFileToOutputDirectory(path, &(rename.str()));
+      std::stringstream dest_name;
+      dest_name << "socket_" << std::setw(3) << std::setfill('0') << count;
+      dest_name << ".ktest";
+      cvstream_->copyFileToOutputDirectory(path, dest_name.str());
       count++;
     }
   }

@@ -92,7 +92,14 @@ class ClientVerifier : public klee::InterpreterHandler {
 	// klee::InterpreterHandler
   std::ostream &getInfoStream() const;
   std::string getOutputFilename(const std::string &filename);
-  std::ostream *openOutputFile(const std::string &filename);
+  std::ostream* openOutputFile(const std::string &filename);
+  std::ostream* openOutputFileInSubDirectory(const std::string &filename, 
+                                             const std::string &sub_directory);
+	void getFiles(std::string path, std::string suffix,
+                std::vector<std::string> &results);
+
+	void getFilesRecursive(std::string path, std::string suffix,
+                         std::vector<std::string> &results);
   void incPathsExplored();
   void processTestCase(const klee::ExecutionState &state, 
                        const char *err, const char *suffix);
@@ -131,7 +138,6 @@ class ClientVerifier : public klee::InterpreterHandler {
 	int read_training_paths(std::vector<std::string> &filename_list,
 	PathManagerSet *path_manager_set);
 
-  CVStream* cvstream() { return cvstream_; }
 
   std::string& client_name() { return client_name_; }
 

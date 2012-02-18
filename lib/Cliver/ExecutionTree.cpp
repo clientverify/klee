@@ -455,7 +455,7 @@ void VerifyExecutionTreeManager::initialize() {
   // Read training paths
   if (!TrainingPathDir.empty()) {
     foreach(std::string path, TrainingPathDir) {
-      cv_->cvstream()->getFilesRecursive(path, ".tpath", TrainingPathFile);
+      cv_->getFilesRecursive(path, ".tpath", TrainingPathFile);
     }
   }
   if (TrainingPathFile.empty() || read_traces(TrainingPathFile) == 0) {

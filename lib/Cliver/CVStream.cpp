@@ -10,6 +10,7 @@
 #include "cliver/CVStream.h"
 #include "CVCommon.h"
 
+#include "../lib/Core/Common.h"
 #include "klee/Interpreter.h"
 
 #include "llvm/System/Path.h"
@@ -200,8 +201,13 @@ std::string CVStream::getOutputFilename(const std::string &filename) {
   return filepath.str();
 }
 
-std::ostream *CVStream::openOutputFile(const std::string &filename,
-                                       std::string* sub_directory) {
+std::ostream *CVStream::openOutputFile(const std::string &filename) {
+  std::string sub_dir("");
+  return openOutputFileInSubDirectory(filename, sub_dir);
+}
+
+std::ostream *CVStream::openOutputFileInSubDirectory(
+    const std::string &filename, const std::string &sub_directory) {
   if (NoOutput) {
     teestream* null_teestream = new teestream();
     std::cerr << "output files disabled: \"" << filename 
@@ -214,8 +220,8 @@ std::ostream *CVStream::openOutputFile(const std::string &filename,
   std::ostream *f;
   std::string path;
 
-  if (sub_directory) {
-    path = getOutputFilename(*sub_directory);
+  if (sub_directory != "") {
+    path = getOutputFilename(sub_directory);
     if (mkdir(path.c_str(), 0775) < 0) {
       if (errno != EEXIST) {
         std::cerr << "CV: ERROR: Unable to make directory: \"" 
@@ -244,7 +250,6 @@ std::ostream *CVStream::openOutputFile(const std::string &filename,
     delete f;
     f = NULL;
   }
-
   return f;
 }
 
@@ -341,22 +346,14 @@ out_error:
   return -1;
 }
 
-void CVStream::copyFileToOutputDirectory(std::string src_path,
-                                         std::string* rename) {
+void CVStream::copyFileToOutputDirectory(const std::string &src_path,
+                                         const std::string &dst_name) {
   if (NoOutput)
     return;
 
   assert(!output_directory_.empty() && output_directory_ != "");
 
-  std::string dst_path;
-
-  if (rename != NULL) {
-    // rename copied file 
-    dst_path = appendComponent(output_directory_, *rename);
-  } else {
-    // use previous filename
-    dst_path = appendComponent(output_directory_, getBasename(src_path));
-  }
+  std::string dst_path = appendComponent(output_directory_, dst_name);
 
   if (cp(dst_path.c_str(), src_path.c_str())) {
     std::cerr << "ERROR: unable to copy file " << src_path << "\n";
