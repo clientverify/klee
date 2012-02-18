@@ -16,7 +16,7 @@
 #include "cliver/ExecutionStateProperty.h"
 #include "cliver/ExecutionObserver.h"
 #include "cliver/ExecutionTrace.h" /* NEEDED? */
-#include "Training.h" /* NEEDED? */
+#include "cliver/Training.h"
 
 #include "cliver/tree.h"
 

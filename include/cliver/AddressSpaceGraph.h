@@ -4,6 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
+// TODO: comments!
 //
 //===----------------------------------------------------------------------===//
 #ifndef LIB_CLIVER_ADDRESSSPACEGRAPH_H_
@@ -57,7 +58,6 @@ typedef std::pair< VertexIterator, VertexIterator > VertexPair;
 typedef std::map< klee::ObjectState*, Vertex > ObjectVertexMap;
 typedef std::pair< klee::ObjectState*, Vertex > ObjectVertexPair;
 
-
 struct LocalInfo {
   klee::KFunction* kf;
   bool isArg;
@@ -100,7 +100,6 @@ friend class AddressSpaceGraphVisitor;
   bool unconnected_objects_equal(const AddressSpaceGraph &b) const;
   bool connected_objects_equal(const AddressSpaceGraph &b) const;
   bool graphs_equal(const AddressSpaceGraph &b) const;
-
 
   void add_vertex(klee::ObjectState* object);
   void add_arrays_from_expr(klee::ref<klee::Expr> e);

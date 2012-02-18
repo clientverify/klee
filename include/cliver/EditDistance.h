@@ -312,7 +312,7 @@ class EditDistanceUkkonen {
     dist = std::max(dist,
                     Ukkonen(ab-1, d-1) + 1);
 
-    while (dist < s_.size() && (dist-ab) < t_.size() &&
+    while (dist < (int)s_.size() && (dist-ab) < (int)t_.size() &&
            (ScoreType::match(s_, t_, dist, dist-ab) == 0)) {
       dist++;
     }
@@ -332,7 +332,7 @@ class EditDistanceUkkonen {
 
     // U[0,0] = max i s.t. As[1...i] = Bs[1...i]
     int i = 1;
-    while (i < t_.size() && ScoreType::match(s_, t_, i-1, i-1) == 0)
+    while (i < (int)t_.size() && ScoreType::match(s_, t_, i-1, i-1) == 0)
       ++i;
 
     set_U(0, 0, i-1);
@@ -429,7 +429,7 @@ class EditDistanceUKK {
       d3 = U(ab-1, d-1) + 1;
       dist = std::max(d1, std::max(d2, d3));
 
-      while (dist < s_.size() && (dist-ab) < t_.size() &&
+      while (dist < (int)s_.size() && (dist-ab) < (int)t_.size() &&
             (ScoreType::match(s_, t_, dist, dist-ab) == 0)) {
         dist++;
       }
@@ -479,7 +479,7 @@ class EditDistanceUKK {
 
     // U[0,0] = max i s.t. As(s)[1...i] = Bs(t)[1...i]
     int i = 1;
-    while (i < t_.size() && ScoreType::match(s_, t_, i-1, i-1) == 0)
+    while (i < (int)t_.size() && ScoreType::match(s_, t_, i-1, i-1) == 0)
       ++i;
 
     set_U(0, 0, i-1);
@@ -487,7 +487,7 @@ class EditDistanceUKK {
     ValueType edit_cost = 0;
 
     int s_size = s_.size();
-    while (UKK(s_.size()-t_.size(), edit_cost) < s_size) {
+    while (UKK((int)s_.size()-(int)t_.size(), edit_cost) < s_size) {
       edit_cost++;
     }
 
@@ -582,7 +582,7 @@ class EditDistanceDynamicUKK {
     if (computed_U(ab, d)) {
       dist = U(ab, d);
       if (ab == 0 && d == 0) {
-        while (dist < s_.size() && (dist-ab) < t_.size() &&
+        while (dist < (int)s_.size() && (dist-ab) < (int)t_.size() &&
               (ScoreType::match(s_, t_, dist, dist-ab) == 0)) {
           dist++;
         }
@@ -598,7 +598,7 @@ class EditDistanceDynamicUKK {
       d3 = U(ab-1, d-1) + 1;
       dist = std::max(d1, std::max(d2, d3));
 
-      while (dist < s_.size() && (dist-ab) < t_.size() &&
+      while (dist < (int)s_.size() && (dist-ab) < (int)t_.size() &&
             (ScoreType::match(s_, t_, dist, dist-ab) == 0)) {
         dist++;
       }
@@ -637,7 +637,7 @@ class EditDistanceDynamicUKK {
   }
 
   void alloc_column(int i, int j) {
-    unsigned col_size = 0;
+    int col_size = 0;
     if (j == 0) {
       col_size = 1;
     } else {
@@ -673,7 +673,7 @@ class EditDistanceDynamicUKK {
 
     // U[0,0] = max i s.t. As(s)[1...i] = Bs(t)[1...i]
     int i = 1;
-    while (i < t_.size() && ScoreType::match(s_, t_, i-1, i-1) == 0)
+    while (i < (int)t_.size() && ScoreType::match(s_, t_, i-1, i-1) == 0)
       ++i;
 
     set_U(0, 0, i-1);
@@ -731,7 +731,7 @@ class EditDistanceDynamicUKK {
 
   ValueType** U_;
   unsigned* U_col_;
-  unsigned max_edit_distance_;
+  ValueType max_edit_distance_;
 };
 
 template<class ScoreType, class SequenceType, class ValueType>
@@ -917,7 +917,7 @@ class EditDistanceFullUKK {
         dist = std::max(d1, std::max(d2, d3));
       }
 
-      while (dist < s_.size() && (dist-ab) < t_.size() &&
+      while (dist < (int)s_.size() && (dist-ab) < (int)t_.size() &&
             (ScoreType::match(s_, t_, dist, dist-ab) == 0)) {
         dist++;
       }
@@ -953,7 +953,7 @@ class EditDistanceFullUKK {
     U_ = new ValueType[m_*4];
 
     int i = 1;
-    while (i < t_.size() && ScoreType::match(s_, t_, i-1, i-1) == 0)
+    while (i < (int)t_.size() && ScoreType::match(s_, t_, i-1, i-1) == 0)
       ++i;
 
     set_U(0, 0, i-1);

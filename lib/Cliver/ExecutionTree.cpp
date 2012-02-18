@@ -19,8 +19,7 @@
 #include "cliver/ExecutionTrace.h"
 #include "cliver/CVExecutionState.h"
 #include "cliver/NetworkManager.h"
-
-#include "Training.h"
+#include "cliver/Training.h"
 #include "CVCommon.h"
 
 #include "klee/Internal/Module/KInstruction.h"
