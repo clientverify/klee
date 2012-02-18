@@ -117,7 +117,7 @@ class ClientVerifier : public klee::InterpreterHandler {
 	inline uint64_t next_array_id() { return array_id_++; }
 
   // Rounds
-	inline unsigned round() { return round_number_; }
+	inline int round() { return round_number_; }
  
 	// Training paths
 	int read_training_paths(std::vector<std::string> &filename_list,
@@ -143,7 +143,7 @@ class ClientVerifier : public klee::InterpreterHandler {
   std::list<ExecutionObserver*> observers_;
 
 	uint64_t array_id_;
-	unsigned round_number_;
+	int round_number_;
   std::string client_name_;
 };
 

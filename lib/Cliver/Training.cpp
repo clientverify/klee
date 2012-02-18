@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Training.h"
+#include "cliver/Training.h"
 #include "cliver/ClientVerifier.h"
 #include "cliver/CVExecutionState.h"
 #include "cliver/CVStream.h"

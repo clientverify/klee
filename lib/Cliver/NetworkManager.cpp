@@ -174,10 +174,10 @@ void NetworkManager::execute_open_socket(CVExecutor* executor,
 
 std::string NetworkManager::get_byte_string(klee::ObjectState *obj, int len) {
   std::stringstream ss;
-  for (unsigned i=0; i<len; i++) {
+  for (int i=0; i<len; i++) {
     klee::ref<klee::Expr> e = obj->read8(i);
     if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(e)) {
-      int c = cast<klee::ConstantExpr>(e)->getZExtValue();
+      int c = CE->getZExtValue();
       ss << std::hex << c << ":";
     } else {
       ss << e << ":";
