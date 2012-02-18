@@ -23,244 +23,185 @@ namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-llvm::cl::opt<CliverMode> g_cliver_mode("cliver-mode", 
-  llvm::cl::desc("Choose the mode in which cliver should run."),
-  llvm::cl::values(
-    clEnumValN(DefaultMode, "default", 
-      "Default mode"),
-    clEnumValN(TetrinetMode, "verify-tetrinet", 
-      "Tetrinet mode"),
-    clEnumValN(XpilotMode, "verify-xpilot", 
-      "Tetrinet mode"),
-    clEnumValN(DefaultTrainingMode, "training", 
-      "Default training mode"),
-    clEnumValN(TestTrainingMode, "training-test", 
-      "Test training mode"),
-    clEnumValN(OutOfOrderTrainingMode, "out-of-order-training", 
-      "Default training mode"),
-    clEnumValN(TetrinetTrainingMode, "tetrinet-training", 
-      "Tetrinet training mode"),
-    clEnumValN(VerifyWithTrainingPaths, "verify-with-paths", 
-      "Verify with training paths"),
-    clEnumValN(VerifyWithEditCost, "verify-with-edit-cost", 
-      "Verify using edit costs"),
-  clEnumValEnd),
-  llvm::cl::init(DefaultMode));
+enum RunModeType {
+  Verify,
+  VerifyWithEditCost,
+  Training,
+  TestTraining
+};
 
-llvm::cl::opt<SearcherStageMode> g_searcher_stage_mode("searcher-stage-mode",
-  llvm::cl::desc("Choose the mode in which cliver search each stage."),
+enum ClientModelType {
+  Tetrinet,
+  XPilot,
+};
+
+enum SearchModeType {
+  Random,
+  PriorityQueue,
+  DepthFirst,
+  BreadthFirst
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+llvm::cl::opt<RunModeType> RunMode("cliver-mode", 
+  llvm::cl::ValueRequired,
+  llvm::cl::desc("Mode in which cliver should run"),
   llvm::cl::values(
-    clEnumValN(RandomSearcherStageMode, "random",
-      "Random mode"),
-    clEnumValN(PQSearcherStageMode, "pq",
-      "Priority queue mode"),
-    clEnumValN(BFSSearcherStageMode, "bfs",
-      "Breadth first mode"),
-    clEnumValN(DFSSearcherStageMode, "dfs",
-      "Depth first mode"),
+    clEnumValN(Verify, "verify", "Verify mode"),
+    clEnumValN(VerifyWithEditCost, "verify-with-edit-cost",
+      "Verify using edit cost and training data"),
+    clEnumValN(Training, "training", "Generate training traces"),
+    clEnumValN(TestTraining, "training-test", "Verify using edit costs"),
+  clEnumValEnd));
+
+llvm::cl::opt<ClientModelType> ClientModel("client-model",
+  llvm::cl::ValueRequired,
+  llvm::cl::desc("Model used for client"),
+  llvm::cl::values(
+    clEnumValN(Tetrinet, "tetrinet", "Tetrinet"),
+    clEnumValN(XPilot,   "xpilot",   "XPilot"),
+  clEnumValEnd));
+
+llvm::cl::opt<SearchModeType> SearchMode("search-mode",
+  llvm::cl::desc("Manner in which states are selected for execution"),
+  llvm::cl::values(
+    clEnumValN(Random,        "random", "Random mode"),
+    clEnumValN(PriorityQueue, "pq",     "Priority queue mode"),
+    clEnumValN(BreadthFirst,  "bfs",    "Breadth first mode"),
+    clEnumValN(DepthFirst,    "dfs",    "Depth first mode"),
   clEnumValEnd),
-  llvm::cl::init(BFSSearcherStageMode));
+  llvm::cl::init(DepthFirst));
 
 ////////////////////////////////////////////////////////////////////////////////
 
 CVSearcher* CVSearcherFactory::create(klee::Searcher* base_searcher, 
                                       ClientVerifier* cv, StateMerger* merger) {
-	switch(g_cliver_mode) {
-		case DefaultMode:
-
-			return new LogIndexSearcher(NULL, cv, merger);
-
-		case DefaultTrainingMode:
-
-			return new NewTrainingSearcher(cv, merger);
-			//return new TrainingSearcher(NULL, cv, merger);
-
-		//case VerifyWithTrainingPaths: {
-
-		//	// Read training paths
-		//	PathManagerSet* training_paths = new PathManagerSet();
-		//	if (!TrainingPathDir.empty()) {
-		//		foreach(std::string path, TrainingPathDir) {
-		//			cvstream_->getFiles(path, ".tpath", TrainingPathFile);
-		//		}
-		//	}
-		//	if (TrainingPathFile.empty() || read_training_paths(TrainingPathFile,
-		//				training_paths) == 0) {
-		//		cv_error("Error reading training path files, exiting now.");
-		//	} 
-
-		//	// Construct searcher
-		//	pruner_ = new ConstraintPruner();
-		//	merger_ = new StateMerger(pruner_);
-		//	searcher_ = new VerifySearcher(NULL, merger_, training_paths);
-
-		//}
-
-		case XpilotMode: {
-			return new MergeVerifySearcher(cv, merger);
-      break;
-    }
-		case TetrinetMode:
-		case TestTrainingMode:
-		case VerifyWithTrainingPaths:
+  switch (RunMode) {
+    case Verify:
     case VerifyWithEditCost: {
-			return new VerifySearcher(cv, merger);
-			break;
-		}
-
-		case TetrinetTrainingMode:
-			cv_error("Tetrinet Training mode is unsupported");
-			break;
-
-    default:
-			cv_error("Invalid cliver mode!");
-      break;
-	}
+      switch (ClientModel) {
+        case Tetrinet: {
+          return new VerifySearcher(cv, merger);
+        }
+        case XPilot: {
+          return new MergeVerifySearcher(cv, merger);
+        }
+      }
+    }
+    case TestTraining:
+    case Training: {
+      return new NewTrainingSearcher(cv, merger);
+    }
+  }
+  cv_error("run mode not supported!");
+  return NULL;
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 SearcherStage* SearcherStageFactory::create(StateMerger* merger, 
                                             CVExecutionState* state) {
-	switch (g_searcher_stage_mode) {
-    case RandomSearcherStageMode: {
+  switch (SearchMode) {
+    case Random: {
       return new RandomSearcherStage(state);
     }
-    case PQSearcherStageMode: {
+    case PriorityQueue: {
       return new PQSearcherStage(state);
     }
-    case DFSSearcherStageMode: {
+    case BreadthFirst: {
       return new DFSSearcherStage(state);
     }
-    case BFSSearcherStageMode:
-    default: {
+    case DepthFirst: {
       return new BFSSearcherStage(state);
     }
-	}
-	cv_error("searcher stage mode not supported!");
-	return NULL;
+  }
+  cv_error("search mode not supported!");
+  return NULL;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 NetworkManager* NetworkManagerFactory::create(CVExecutionState* state,
                                               ClientVerifier* cv) {
-	switch (g_cliver_mode) {
-		case DefaultMode:
-		case DefaultTrainingMode: 
-		case TestTrainingMode: 
-    case VerifyWithEditCost: 
-		case VerifyWithTrainingPaths: {
-			NetworkManager *nm = new NetworkManager(state);
-			foreach( SocketEventList *sel, cv->socket_events()) {
-				nm->add_socket(*sel);
-			}
-			return nm;
-			break;
-		}
-		case TetrinetMode: {
-			NetworkManagerTetrinet *nm = new NetworkManagerTetrinet(state);
-			foreach( SocketEventList *sel, cv->socket_events()) {
-				nm->add_socket(*sel);
-			}
-			return nm;
-	  }
-		case XpilotMode: {
-			NetworkManagerXpilot *nm = new NetworkManagerXpilot(state);
-			foreach( SocketEventList *sel, cv->socket_events()) {
-				nm->add_socket(*sel);
-			}
-			return nm;
-	  }
-		case OutOfOrderTrainingMode: {
-			NetworkManagerTraining *nm 
-				= new NetworkManagerTraining(state);
-			return nm;
-		}
-		case TetrinetTrainingMode: 
-    default:
-			break;
-	}
-	cv_error("cliver mode not supported in NetworkManager");
-	return NULL;
+  switch (ClientModel) {
+    case Tetrinet: {
+      NetworkManager *nm = new NetworkManager(state);
+      foreach( SocketEventList *sel, cv->socket_events()) {
+        nm->add_socket(*sel);
+      }
+      return nm;
+    }
+    case XPilot: {
+      NetworkManagerXpilot *nm = new NetworkManagerXpilot(state);
+      foreach( SocketEventList *sel, cv->socket_events()) {
+        nm->add_socket(*sel);
+      }
+      return nm;
+    }
+  }
+  cv_error("network manager mode not supported!");
+  return NULL;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 ExecutionTreeManager* ExecutionTreeManagerFactory::create(ClientVerifier* cv) {
-  switch (g_cliver_mode) {
-		case DefaultTrainingMode:
-			return new TrainingExecutionTreeManager(cv);
-		case TestTrainingMode:
-			return new TestExecutionTreeManager(cv);
-    case VerifyWithEditCost: {
-      if (g_searcher_stage_mode != PQSearcherStageMode)
-        g_searcher_stage_mode = PQSearcherStageMode;
-      return new VerifyExecutionTreeManager(cv);
-      break;
-    }
-		case XpilotMode: {
-      return NULL;
-    }
-		case VerifyWithTrainingPaths:
-		case TetrinetMode:
-		case DefaultMode:
-    default: {
+  switch (RunMode) {
+
+    case Verify: {
       return new ExecutionTreeManager(cv);
       break;
     }
-  }
 
-	cv_message("cliver mode not supported in ExecutionTreeManager");
-	return NULL;
+    case VerifyWithEditCost: {
+      if (SearchMode != PriorityQueue)
+        SearchMode = PriorityQueue;
+      return new VerifyExecutionTreeManager(cv);
+      break;
+    }
+
+    case Training: {
+      return new TrainingExecutionTreeManager(cv);
+    }
+
+    case TestTraining: {
+      return new TestExecutionTreeManager(cv);
+    }
+  }
+  cv_message("cliver mode not supported in ExecutionTreeManager");
+  return NULL;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// XXX Delete me
 PathTree* PathTreeFactory::create(CVExecutionState* root_state) {
-  switch (g_cliver_mode) {
-		case DefaultTrainingMode:
-		case VerifyWithTrainingPaths:
-		case DefaultMode:
-		default:
-			break;
-  }
   return new PathTree(root_state);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 ExecutionStateProperty* ExecutionStatePropertyFactory::create() {
-	switch (g_cliver_mode) {
-		case DefaultMode:
-		case XpilotMode:
-		case TetrinetMode: 
-			return new LogIndexProperty();
-			break;
-		case DefaultTrainingMode: 
-			return new PathProperty();
-		case VerifyWithTrainingPaths: 
-			return new VerifyProperty();
-		case TestTrainingMode: 
+  switch (RunMode) {
+    case Training:
+    case TestTraining:
+      return new PathProperty();
+
+    case Verify:
+      return new VerifyProperty();
+
     case VerifyWithEditCost:
-			return new EditDistanceProperty();
-    default:
-      break;
-	}
-	cv_error("invalid cliver mode");
-	return NULL;
+      return new EditDistanceProperty();
+  }
+  cv_error("invalid run mode");
+  return NULL;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// XXX Delete me
 PathManager* PathManagerFactory::create() {
-  switch (g_cliver_mode) {
-		case DefaultTrainingMode:
-			return new TrainingPathManager();
-		case VerifyWithTrainingPaths:
-    case VerifyWithEditCost:
-		case DefaultMode:
-    default:
-      break;
-  }
   return new PathManager();
 }
 

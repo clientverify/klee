@@ -73,7 +73,6 @@ class NetworkManager {
 
 	virtual void add_socket(const KTest* ktest);
 	virtual void add_socket(const SocketEventList &log);
-	//virtual void add_socket(const SocketEvent &se, bool is_open = true);
 	virtual void clear_sockets();
 
 	virtual NetworkManager* clone(CVExecutionState *state);
@@ -100,12 +99,10 @@ class NetworkManager {
   std::string get_byte_string(klee::ObjectState *obj, int len);
 
 	CVExecutionState* state() { return state_; }
-	//unsigned round() { return round_; }
 	std::vector<Socket>& sockets() { return sockets_; }
 	Socket* socket(int fd=-1);
 
  protected:
-	//unsigned round_;
 	CVExecutionState *state_;
 	std::vector<Socket> sockets_;
 };
@@ -132,76 +129,7 @@ class NetworkManagerXpilot : public NetworkManager {
 		klee::ObjectState* object, int fd, int len);
 };
 
-
-class NetworkManagerTetrinet : public NetworkManager {
- public:
-
-  NetworkManagerTetrinet(CVExecutionState* state);
-
-	virtual NetworkManager* clone(CVExecutionState *state);
-
-	virtual void execute_read(CVExecutor* executor, 
-		klee::KInstruction *target, 
-		klee::ObjectState* object, int fd, int len);
-};
-
 ////////////////////////////////////////////////////////////////////////////////
-
-class NetworkManagerTraining: public NetworkManager {
- public:
-
-  NetworkManagerTraining(CVExecutionState* state);
-	virtual NetworkManagerTraining* clone(CVExecutionState *state);
-
-	virtual void add_socket(const KTest* ktest);
-	virtual void add_socket(const SocketEventList &log);
-
-	//virtual int socket_log_index(int fd=-1);
-
-	virtual void execute_open_socket(CVExecutor* executor,
-		klee::KInstruction *target, 
-		int domain, int type, int protocol);
-
-	//virtual void execute_read(CVExecutor* executor, 
-	//	klee::KInstruction *target, 
-	//	klee::ObjectState* object, int fd, int len);
-
-	//virtual void execute_write(CVExecutor* executor,
-	//	klee::KInstruction *target, 
-	//	klee::ObjectState* object, int fd, int len);
-
-	virtual void execute_shutdown(CVExecutor* executor,
-		klee::KInstruction *target, 
-		int fd, int how);
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-//class NetworkManagerTrainingTetrinet: public NetworkManagerTraining {
-// public:
-//
-//  NetworkManagerTrainingTetrinet(CVExecutionState* state);
-//	virtual NetworkManagerTraining* clone(CVExecutionState *state);
-//
-//	//virtual void execute_open_socket(CVExecutor* executor,
-//	//	klee::KInstruction *target, 
-//	//	int domain, int type, int protocol);
-//
-//	virtual void execute_read(CVExecutor* executor, 
-//		klee::KInstruction *target, 
-//		klee::ObjectState* object, int fd, int len);
-//
-//	//virtual void execute_write(CVExecutor* executor,
-//	//	klee::KInstruction *target, 
-//	//	klee::ObjectState* object, int fd, int len);
-//
-//	//virtual void execute_shutdown(CVExecutor* executor,
-//	//	klee::KInstruction *target, 
-//	//	int fd, int how);
-//};
-
-////////////////////////////////////////////////////////////////////////////////
-
 
 class NetworkManagerFactory {
  public:

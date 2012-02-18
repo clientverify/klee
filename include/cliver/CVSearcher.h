@@ -52,68 +52,11 @@ class CVSearcher : public klee::Searcher, public ExecutionObserver {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class LogIndexSearcher : public CVSearcher { 
- public:
-	LogIndexSearcher(klee::Searcher* base_searcher, ClientVerifier* cv,
-                   StateMerger* merger);
-
-	klee::ExecutionState &selectState();
-
-	void update(klee::ExecutionState *current,
-							const std::set<klee::ExecutionState*> &addedStates,
-							const std::set<klee::ExecutionState*> &removedStates);
-
-	bool empty();
-
-	void printName(std::ostream &os) { os << "LogIndexSearcher\n"; }
-
-  void notify(ExecutionEvent ev);
-
- private:
-	int state_count();
-	ExecutionStatePropertyMap states_;
-	klee::Searcher* base_searcher_;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TrainingSearcher : public CVSearcher {
- public:
-	TrainingSearcher(klee::Searcher* base_searcher, ClientVerifier *cv,
-                   StateMerger* merger);
-
-	klee::ExecutionState &selectState();
-
-	void update(klee::ExecutionState *current,
-							const std::set<klee::ExecutionState*> &addedStates,
-							const std::set<klee::ExecutionState*> &removedStates);
-
-	bool empty();
-
-	void record_path(CVExecutionState *state);
-
-	void printName(std::ostream &os) { os << "TrainingSearcher\n"; }
-
-  void notify(ExecutionEvent ev);
-
- private:
-	ExecutionStateSet phases_[PathProperty::EndPhase];
-	PathManagerSet *paths_;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 /// Each SearcherStage object holds ExecutionStates, where all the states in a
 /// given SearcherStage have processed network events 1 to i, where i is equal
 /// among all the states. Each SearcherStage has a single root state from which
 /// all of the other states began execution.
 
-enum SearcherStageMode {
-  RandomSearcherStageMode,
-  PQSearcherStageMode,
-  DFSSearcherStageMode,
-  BFSSearcherStageMode
-};
 struct CVExecutionStateDeleter;
 class SearcherStage {
  public:
