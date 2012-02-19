@@ -28,15 +28,18 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-namespace {
+
+namespace cliver {
 llvm::cl::opt<std::string>
 OutputDir("output-dir", 
   llvm::cl::desc("Directory to write results in (defaults to cliver-out-N)"),
   llvm::cl::init(""));
 
-llvm::cl::opt<bool>
+bool NoOutputFlag;  
+static llvm::cl::opt<bool, true>
 NoOutput("no-output", 
   llvm::cl::desc("Don't generate output files"),
+  llvm::cl::location(NoOutputFlag),
   llvm::cl::init(false));
 
 llvm::cl::opt<std::string>

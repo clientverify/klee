@@ -14,6 +14,7 @@
 #include "cliver/ClientVerifier.h"
 #include "cliver/ExecutionTree.h"
 #include "cliver/EditDistance.h"
+#include "cliver/CVStream.h"
 
 #include "llvm/Analysis/Trace.h"
 #include "llvm/BasicBlock.h"
@@ -105,8 +106,11 @@ StringEDTData test3("you-should-not", "thou-shalt-not", test3_costs);
 ////////////////////////////////////////////////////////////////////////////////
 
 TEST(CliverTest, ClientVerifierConstructionDestruction) {
-  //ClientVerifier *cv = new ClientVerifier();
-  //delete cv;
+  // Don't create output directory!
+  NoOutputFlag = true;
+  std::string test_filename("test.bc");
+  ClientVerifier *cv = new ClientVerifier(&test_filename);
+  delete cv;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
