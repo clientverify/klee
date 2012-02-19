@@ -375,8 +375,8 @@ void CVStream::getFiles(std::string path, std::string suffix,
   std::set<llvm::sys::Path> contents;
   std::string error;
   if (p.getDirectoryContents(contents, &error)) {
-    std::cerr << "ERROR: unable to read output directory: " << path 
-               << ": " << error << "\n";
+    std::cerr << "ERROR: For getFiles( " 
+			<< path << ", " << suffix << ") : " << error << "\n";
     exit(1);
   }
   for (std::set<llvm::sys::Path>::iterator it = contents.begin(),
@@ -395,8 +395,8 @@ void CVStream::getFilesRecursive(std::string path,
   std::set<llvm::sys::Path> contents;
   std::string error;
   if (p.getDirectoryContents(contents, &error)) {
-    std::cerr << "ERROR: unable to read output directory: " << path 
-               << ": " << error << "\n";
+    std::cerr << "ERROR: For getFilesRecursive( " 
+			<< path << ", " << suffix << ") : " << error << "\n";
     exit(1);
   }
   for (std::set<llvm::sys::Path>::iterator it = contents.begin(),
