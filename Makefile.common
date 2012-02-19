@@ -20,7 +20,7 @@ endif
 
 # Required for Boost 
 REQUIRES_RTTI=1
-LIBS += -lboost_signals -lboost_serialization
+LIBS += -lboost_serialization
 CPPFLAGS += -Wno-deprecated
 
 # TCMalloc enabled by default

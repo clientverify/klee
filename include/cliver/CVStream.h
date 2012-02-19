@@ -9,12 +9,11 @@
 #ifndef CLIVER_STREAM_H
 #define CLIVER_STREAM_H
 
-#include <stdio.h>
-
-#include <iomanip>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <ostream>
+#include <stdio.h>
 #include <vector>
 
 #define CV_DEBUG_FILE "debug.txt"
@@ -22,7 +21,10 @@
 #define CV_INFO_FILE "info.txt"
 #define CV_MESSAGE_FILE "messages.txt"
 
+
 namespace cliver {
+
+extern bool NoOutputFlag;
 
 extern std::ostream* cv_warning_stream;
 extern std::ostream* cv_message_stream;
