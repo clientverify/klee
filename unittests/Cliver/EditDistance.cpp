@@ -121,35 +121,7 @@ StringEDTData test4("TGGTCGCCC","ACCGGTCGGC",test4_costs);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TEST(CliverTest, EditDistanceTest0) {
-  std::string s = "AAAAABBBBB";
-  std::string t = "BBBBBCCCCC";
-  int edit_distance = 10;
-
-  StringEDT edt(s, t);
-  StringEDR edr(s, t);
-  StringEDU edu(s, t);
-  StringEDUKK edukk(s, t);
-  StringEDDynamicUKK eddukk(s, t);
-  //StringEDFullUKK edsukk(s, t);
-
-  int cost_t = edt.compute_editdistance();
-  int cost_r = edr.compute_editdistance();
-  int cost_u = edu.compute_editdistance();
-  int cost_ukk = edukk.compute_editdistance();
-  int cost_dukk = eddukk.compute_editdistance();
-  //int cost_sukk = edsukk.compute_editdistance();
-
-  EXPECT_EQ(edit_distance, cost_t);
-  EXPECT_EQ(edit_distance, cost_r);
-  EXPECT_EQ(edit_distance, cost_u);
-  EXPECT_EQ(edit_distance, cost_ukk);
-  EXPECT_EQ(edit_distance, cost_dukk);
-  //EXPECT_EQ(edit_distance, cost_sukk);
-}
-
-#if 0
-TEST(CliverTest, EditDistanceTest_AA) {
+TEST(EditDistanceTest, A_A) {
   std::string s = "A";
   std::string t = "A";
   int edit_distance = 0;
@@ -159,25 +131,27 @@ TEST(CliverTest, EditDistanceTest_AA) {
   StringEDU edu(s, t);
   StringEDUKK edukk(s, t);
   StringEDDynamicUKK eddukk(s, t);
-  //StringEDFullUKK edsukk(s, t);
+  StringEDStaticUKK edsukk(s, t);
+  StringEDFullUKK edfukk(s, t);
 
   int cost_t = edt.compute_editdistance();
   int cost_r = edr.compute_editdistance();
   int cost_u = edu.compute_editdistance();
   int cost_ukk = edukk.compute_editdistance();
   int cost_dukk = eddukk.compute_editdistance();
-  //int cost_sukk = edsukk.compute_editdistance();
+  int cost_sukk = edsukk.compute_editdistance();
+  int cost_fukk = edfukk.compute_editdistance();
 
   EXPECT_EQ(edit_distance, cost_t);
   EXPECT_EQ(edit_distance, cost_r);
   EXPECT_EQ(edit_distance, cost_u);
   EXPECT_EQ(edit_distance, cost_ukk);
   EXPECT_EQ(edit_distance, cost_dukk);
-  //EXPECT_EQ(edit_distance, cost_sukk);
+  EXPECT_EQ(edit_distance, cost_sukk);
+  EXPECT_EQ(edit_distance, cost_fukk);
 }
-#endif
 
-TEST(CliverTest, EditDistanceTest_AB) {
+TEST(EditDistanceTest, A_B) {
   std::string s = "A";
   std::string t = "B";
   int edit_distance = 1;
@@ -187,31 +161,8 @@ TEST(CliverTest, EditDistanceTest_AB) {
   StringEDU edu(s, t);
   StringEDUKK edukk(s, t);
   StringEDDynamicUKK eddukk(s, t);
-  //StringEDFullUKK edsukk(s, t);
-
-  int cost_t = edt.compute_editdistance();
-  int cost_r = edr.compute_editdistance();
-  int cost_u = edu.compute_editdistance();
-  int cost_ukk = edukk.compute_editdistance();
-  int cost_dukk = eddukk.compute_editdistance();
-  //int cost_sukk = edsukk.compute_editdistance();
-
-  EXPECT_EQ(edit_distance, cost_t);
-  EXPECT_EQ(edit_distance, cost_r);
-  EXPECT_EQ(edit_distance, cost_u);
-  EXPECT_EQ(edit_distance, cost_ukk);
-  EXPECT_EQ(edit_distance, cost_dukk);
-  //EXPECT_EQ(edit_distance, cost_sukk);
-}
-
-
-TEST(CliverTest, EditDistanceTest1) {
-  StringEDT edt(test1.s, test1.t);
-  StringEDR edr(test1.s, test1.t);
-  StringEDU edu(test1.s, test1.t);
-  StringEDUKK edukk(test1.s, test1.t);
-  StringEDDynamicUKK eddukk(test1.s, test1.t);
-  StringEDFullUKK edsukk(test1.s, test1.t);
+  StringEDStaticUKK edsukk(s, t);
+  StringEDFullUKK edfukk(s, t);
 
   int cost_t = edt.compute_editdistance();
   int cost_r = edr.compute_editdistance();
@@ -219,6 +170,94 @@ TEST(CliverTest, EditDistanceTest1) {
   int cost_ukk = edukk.compute_editdistance();
   int cost_dukk = eddukk.compute_editdistance();
   int cost_sukk = edsukk.compute_editdistance();
+  int cost_fukk = edfukk.compute_editdistance();
+
+  EXPECT_EQ(edit_distance, cost_t);
+  EXPECT_EQ(edit_distance, cost_r);
+  EXPECT_EQ(edit_distance, cost_u);
+  EXPECT_EQ(edit_distance, cost_ukk);
+  EXPECT_EQ(edit_distance, cost_dukk);
+  EXPECT_EQ(edit_distance, cost_sukk);
+  EXPECT_EQ(edit_distance, cost_fukk);
+}
+
+
+TEST(EditDistanceTest, AAGT_CGCA) {
+  std::string s = "AAGT";
+  std::string t = "CGCA";
+  int edit_distance = 4;
+
+  StringEDT edt(s, t);
+  StringEDR edr(s, t);
+  StringEDU edu(s, t);
+  StringEDUKK edukk(s, t);
+  StringEDDynamicUKK eddukk(s, t);
+  StringEDStaticUKK edsukk(s, t);
+  StringEDFullUKK edfukk(s, t);
+
+  int cost_t = edt.compute_editdistance();
+  int cost_r = edr.compute_editdistance();
+  int cost_u = edu.compute_editdistance();
+  int cost_ukk = edukk.compute_editdistance();
+  int cost_dukk = eddukk.compute_editdistance();
+  int cost_sukk = edsukk.compute_editdistance();
+  int cost_fukk = edfukk.compute_editdistance();
+
+  EXPECT_EQ(edit_distance, cost_t);
+  EXPECT_EQ(edit_distance, cost_r);
+  EXPECT_EQ(edit_distance, cost_u);
+  EXPECT_EQ(edit_distance, cost_ukk);
+  EXPECT_EQ(edit_distance, cost_dukk);
+  EXPECT_EQ(edit_distance, cost_sukk);
+  EXPECT_EQ(edit_distance, cost_fukk);
+}
+
+
+TEST(EditDistanceTest, AAAAABBBBB_BBBBBCCCCC) {
+  std::string s = "AAAAABBBBB";
+  std::string t = "BBBBBCCCCC";
+  int edit_distance = 10;
+
+  StringEDT edt(s, t);
+  StringEDR edr(s, t);
+  StringEDU edu(s, t);
+  StringEDUKK edukk(s, t);
+  StringEDDynamicUKK eddukk(s, t);
+  StringEDStaticUKK edsukk(s, t);
+  StringEDFullUKK edfukk(s, t);
+
+  int cost_t = edt.compute_editdistance();
+  int cost_r = edr.compute_editdistance();
+  int cost_u = edu.compute_editdistance();
+  int cost_ukk = edukk.compute_editdistance();
+  int cost_dukk = eddukk.compute_editdistance();
+  int cost_sukk = edsukk.compute_editdistance();
+  int cost_fukk = edfukk.compute_editdistance();
+
+  EXPECT_EQ(edit_distance, cost_t);
+  EXPECT_EQ(edit_distance, cost_r);
+  EXPECT_EQ(edit_distance, cost_u);
+  EXPECT_EQ(edit_distance, cost_ukk);
+  EXPECT_EQ(edit_distance, cost_dukk);
+  EXPECT_EQ(edit_distance, cost_sukk);
+  EXPECT_EQ(edit_distance, cost_fukk);
+}
+TEST(EditDistanceTest, kitten_sitting) {
+  StringEDT edt(test1.s, test1.t);
+  StringEDR edr(test1.s, test1.t);
+  StringEDU edu(test1.s, test1.t);
+  StringEDUKK edukk(test1.s, test1.t);
+  StringEDDynamicUKK eddukk(test1.s, test1.t);
+  StringEDStaticUKK edsukk(test1.s, test1.t);
+  StringEDFullUKK edfukk(test1.s, test1.t);
+
+  int cost_t = edt.compute_editdistance();
+  int cost_r = edr.compute_editdistance();
+  int cost_u = edu.compute_editdistance();
+  int cost_ukk = edukk.compute_editdistance();
+  int cost_dukk = eddukk.compute_editdistance();
+  int cost_sukk = edsukk.compute_editdistance();
+  int cost_fukk = edfukk.compute_editdistance();
 
   EXPECT_EQ(test1.edit_distance(), cost_t);
   EXPECT_EQ(test1.edit_distance(), cost_r);
@@ -226,15 +265,17 @@ TEST(CliverTest, EditDistanceTest1) {
   EXPECT_EQ(test1.edit_distance(), cost_ukk);
   EXPECT_EQ(test1.edit_distance(), cost_dukk);
   EXPECT_EQ(test1.edit_distance(), cost_sukk);
+  EXPECT_EQ(test1.edit_distance(), cost_fukk);
 }
 
-TEST(CliverTest, EditDistanceTest2) {
+TEST(EditDistanceTest, Saturday_Sunday) {
   StringEDT edt(test2.s, test2.t);
   StringEDR edr(test2.s, test2.t);
   StringEDU edu(test2.s, test2.t);
   StringEDUKK edukk(test2.s, test2.t);
   StringEDDynamicUKK eddukk(test2.s, test2.t);
-  StringEDFullUKK edsukk(test2.s, test2.t);
+  StringEDStaticUKK edsukk(test2.s, test2.t);
+  StringEDFullUKK edfukk(test2.s, test2.t);
 
   int cost_t = edt.compute_editdistance();
   int cost_r = edr.compute_editdistance();
@@ -242,6 +283,7 @@ TEST(CliverTest, EditDistanceTest2) {
   int cost_ukk = edukk.compute_editdistance();
   int cost_dukk = eddukk.compute_editdistance();
   int cost_sukk = edsukk.compute_editdistance();
+  int cost_fukk = edfukk.compute_editdistance();
 
   EXPECT_EQ(test2.edit_distance(), cost_t);
   EXPECT_EQ(test2.edit_distance(), cost_r);
@@ -249,15 +291,17 @@ TEST(CliverTest, EditDistanceTest2) {
   EXPECT_EQ(test2.edit_distance(), cost_ukk);
   EXPECT_EQ(test2.edit_distance(), cost_dukk);
   EXPECT_EQ(test2.edit_distance(), cost_sukk);
+  EXPECT_EQ(test2.edit_distance(), cost_fukk);
 }
 
-TEST(CliverTest, EditDistanceTest3) {
+TEST(EditDistanceTest, youshouldnot_thoushaltnot) {
   StringEDT edt(test3.s, test3.t);
   StringEDR edr(test3.s, test3.t);
   StringEDU edu(test3.s, test3.t);
   StringEDUKK edukk(test3.s, test3.t);
   StringEDDynamicUKK eddukk(test3.s, test3.t);
-  StringEDFullUKK edsukk(test3.s, test3.t);
+  StringEDStaticUKK edsukk(test3.s, test3.t);
+  StringEDFullUKK edfukk(test3.s, test3.t);
 
   int cost_t = edt.compute_editdistance();
   int cost_r = edr.compute_editdistance();
@@ -265,6 +309,7 @@ TEST(CliverTest, EditDistanceTest3) {
   int cost_ukk = edukk.compute_editdistance();
   int cost_dukk = eddukk.compute_editdistance();
   int cost_sukk = edsukk.compute_editdistance();
+  int cost_fukk = edfukk.compute_editdistance();
 
   EXPECT_EQ(test3.edit_distance(), cost_t);
   EXPECT_EQ(test3.edit_distance(), cost_r);
@@ -272,15 +317,17 @@ TEST(CliverTest, EditDistanceTest3) {
   EXPECT_EQ(test3.edit_distance(), cost_ukk);
   EXPECT_EQ(test3.edit_distance(), cost_dukk);
   EXPECT_EQ(test3.edit_distance(), cost_sukk);
+  EXPECT_EQ(test3.edit_distance(), cost_fukk);
 }
 
-TEST(CliverTest, EditDistanceTest4) {
+TEST(EditDistanceTest, TGGTCGCCC_ACCGGTCGGC) {
   StringEDT edt(test4.s, test4.t);
   StringEDR edr(test4.s, test4.t);
   StringEDU edu(test4.s, test4.t);
   StringEDUKK edukk(test4.s, test4.t);
   StringEDDynamicUKK eddukk(test4.s, test4.t);
-  StringEDFullUKK edsukk(test4.s, test4.t);
+  StringEDStaticUKK edsukk(test4.s, test4.t);
+  StringEDFullUKK edfukk(test4.s, test4.t);
 
   int cost_t = edt.compute_editdistance();
   int cost_r = edr.compute_editdistance();
@@ -288,6 +335,7 @@ TEST(CliverTest, EditDistanceTest4) {
   int cost_ukk = edukk.compute_editdistance();
   int cost_dukk = eddukk.compute_editdistance();
   int cost_sukk = edsukk.compute_editdistance();
+  int cost_fukk = edfukk.compute_editdistance();
 
   EXPECT_EQ(test4.edit_distance(), cost_t);
   EXPECT_EQ(test4.edit_distance(), cost_r);
@@ -295,6 +343,7 @@ TEST(CliverTest, EditDistanceTest4) {
   EXPECT_EQ(test4.edit_distance(), cost_ukk);
   EXPECT_EQ(test4.edit_distance(), cost_dukk);
   EXPECT_EQ(test4.edit_distance(), cost_sukk);
+  EXPECT_EQ(test4.edit_distance(), cost_fukk);
 }
 
 //TEST(CliverTest, EditDistance2) {
