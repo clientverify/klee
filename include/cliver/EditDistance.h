@@ -332,7 +332,7 @@ class EditDistanceUkkonen {
 
     // U[0,0] = max i s.t. As[1...i] = Bs[1...i]
     int i = 1;
-    while (i < (int)t_.size() && ScoreType::match(s_, t_, i-1, i-1) == 0)
+    while (i < ((int)t_.size()+1) && ScoreType::match(s_, t_, i-1, i-1) == 0)
       ++i;
 
     set_U(0, 0, i-1);
@@ -479,7 +479,7 @@ class EditDistanceUKK {
 
     // U[0,0] = max i s.t. As(s)[1...i] = Bs(t)[1...i]
     int i = 1;
-    while (i < (int)t_.size() && ScoreType::match(s_, t_, i-1, i-1) == 0)
+    while (i < ((int)t_.size()+1) && ScoreType::match(s_, t_, i-1, i-1) == 0)
       ++i;
 
     set_U(0, 0, i-1);
@@ -651,7 +651,6 @@ class EditDistanceDynamicUKK {
       assert(U_[j]);
       max_edit_distance_++;
     } else {
-      //std::cout << "reallocate " << col_size << ", i=" << i << ", j=" << j << "\n";
       U_[j] = (ValueType*) realloc(U_[j], col_size * sizeof(ValueType));
       assert(U_[j]);
     }
@@ -660,20 +659,21 @@ class EditDistanceDynamicUKK {
     for (ValueType k=U_col_[j]; k<col_size; ++k) {
       U_[j][k] = -1;
     }
+
     U_col_[j] = col_size;
   }
 
   ValueType compute_editdistance() {
 
     max_edit_distance_ = 0;
-    U_col_ = (unsigned*) malloc(s_.size() * sizeof(unsigned));
-    U_ = (ValueType**) malloc(s_.size() * sizeof(ValueType*));
+    U_col_ = (unsigned*) malloc((s_.size()+1) * sizeof(unsigned));
+    U_ = (ValueType**) malloc((s_.size()+1) * sizeof(ValueType*));
 
     alloc_column(0, 0);
 
     // U[0,0] = max i s.t. As(s)[1...i] = Bs(t)[1...i]
     int i = 1;
-    while (i < (int)t_.size() && ScoreType::match(s_, t_, i-1, i-1) == 0)
+    while (i < ((int)t_.size()+1) && ScoreType::match(s_, t_, i-1, i-1) == 0)
       ++i;
 
     set_U(0, 0, i-1);
@@ -827,7 +827,7 @@ class EditDistanceStaticUKK {
 
   ValueType compute_editdistance() {
     int i = 1;
-    while (i < t_.size() && ScoreType::match(s_, t_, i-1, i-1) == 0)
+    while (i < ((int)t_.size()+1) && ScoreType::match(s_, t_, i-1, i-1) == 0)
       ++i;
 
     set_U(0, 0, i-1);
@@ -867,7 +867,7 @@ std::ostream& operator<<(std::ostream& os,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define ROW_INDEX(x) (x) < 0 ? (((x)*-2)-1) : ((x)*2)
+#define ROW_INDEX(x) ((x) < 0 ? (((x)*-2)-1) : ((x)*2))
 #define NEG_INF INT_MIN
 
 template<class ScoreType, class SequenceType, class ValueType>
@@ -887,11 +887,11 @@ class EditDistanceFullUKK {
   inline ValueType U(int i, int j) {
     if (std::abs(i) > j)
       return NEG_INF;
-    return U_[ROW_INDEX(i) + (j % 2)*(m_*2)];
+    return U_[ROW_INDEX(i) + ((j % 2)*(m_*2))];
   }
 
   inline void set_U(int i, int j, ValueType v) {
-    U_[ROW_INDEX(i) + (j % 2)*(m_*2)] = v;
+    U_[ROW_INDEX(i) + ((j % 2)*(m_*2))] = v;
   }
 
   inline unsigned get_row(int i) const {
@@ -903,7 +903,6 @@ class EditDistanceFullUKK {
   inline ValueType compute_U(int ab, int d) {
 
     ValueType d1, d2, d3, dist;
-
 
     if (std::abs(ab) > d) {
       return NEG_INF;
@@ -917,6 +916,7 @@ class EditDistanceFullUKK {
         d3 = U(ab-1, d-1) + 1;
         dist = std::max(d1, std::max(d2, d3));
       }
+      int checkpoint_dist = dist;
 
       while (dist < (int)s_.size() && (dist-ab) < (int)t_.size() &&
             (ScoreType::match(s_, t_, dist, dist-ab) == 0)) {
@@ -954,7 +954,7 @@ class EditDistanceFullUKK {
     U_ = new ValueType[m_*4];
 
     int i = 1;
-    while (i < (int)t_.size() && ScoreType::match(s_, t_, i-1, i-1) == 0)
+    while (i < ((int)t_.size()+1) && ScoreType::match(s_, t_, i-1, i-1) == 0)
       ++i;
 
     set_U(0, 0, i-1);
