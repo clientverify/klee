@@ -877,10 +877,11 @@ class EditDistanceFullUKK {
    : s_(s.size() > t.size() ? s : t), 
      t_(s.size() > t.size() ? t : s), 
      m_(s_.size()+1), 
-     n_(t_.size()+1) {}
+     n_(t_.size()+1), U_(0) {}
 
   ~EditDistanceFullUKK() {
-    delete U_;
+    if (U_)
+      delete U_;
   }
 
   inline ValueType U(int i, int j) {
