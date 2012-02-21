@@ -27,6 +27,7 @@ namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+extern bool DebugSocketFlag;
 llvm::cl::opt<bool>
 DebugNetworkManager("debug-network-manager",llvm::cl::init(false));
 
@@ -43,7 +44,11 @@ DebugNetworkManager("debug-network-manager",llvm::cl::init(false));
 	return; }
 
 #define RETURN_FAILURE(action, reason) \
-	RETURN_FAILURE_NO_SOCKET(action, reason << " " << socket)
+	RETURN_FAILURE_NO_SOCKET(action, reason << " log:" << socket)
+
+#define RETURN_FAILURE_OBJ(action, reason) \
+	RETURN_FAILURE_NO_SOCKET(action, reason << " log:" << socket \
+    << " sym:" << (DebugSocketFlag ? get_byte_string(object, len):"") )
 
 #define RETURN_SUCCESS_NO_SOCKET(action, retval) { \
 	if (DebugNetworkManager) { \
@@ -178,7 +183,10 @@ std::string NetworkManager::get_byte_string(klee::ObjectState *obj, int len) {
     klee::ref<klee::Expr> e = obj->read8(i);
     if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(e)) {
       int c = CE->getZExtValue();
-      ss << std::hex << c << ":";
+      if (c > 47 && c < 126)
+        ss << (char)c << ":";
+      else
+        ss << std::hex << c << ":";
     } else {
       ss << e << ":";
     }
@@ -199,16 +207,16 @@ void NetworkManager::execute_write(CVExecutor* executor,
 	GET_SOCKET_OR_DIE_TRYIN("send", fd);
 
 	if (socket.is_open() != true)
-		RETURN_FAILURE("send", "not open");
+		RETURN_FAILURE_OBJ("send", "not open");
 
 	if (socket.type() != SocketEvent::SEND)
-		RETURN_FAILURE("send", "wrong type");
+		RETURN_FAILURE_OBJ("send", "wrong type");
 
 	if (socket.state() != Socket::IDLE)
-		RETURN_FAILURE("send", "wrong state");
+		RETURN_FAILURE_OBJ("send", "wrong state");
 
 	if ((int)socket.length() != len)
-		RETURN_FAILURE("send", "wrong length" << " " << socket.length() << " != " << len);
+		RETURN_FAILURE_OBJ("send", "wrong length" << " " << socket.length() << " != " << len);
 
 	klee::ref<klee::Expr> write_condition 
 		= klee::ConstantExpr::alloc(1, klee::Expr::Bool);
@@ -225,19 +233,19 @@ void NetworkManager::execute_write(CVExecutor* executor,
 
 	if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(write_condition)) {
 		if (CE->isFalse())
-			RETURN_FAILURE("send", "not valid (1) ");
+			RETURN_FAILURE_OBJ("send", "not valid (1) ");
 	} else {
 		bool result; 
 		executor->compute_false(state_, write_condition, result);
 		if (result)
-			RETURN_FAILURE("send", "not valid (2) ");
+			RETURN_FAILURE_OBJ("send", "not valid (2) ");
 	}
 
 	if (!socket.has_data()) {
 		socket.advance();
 	} else {
 		socket.set_state(Socket::WRITING);
-		RETURN_FAILURE("send", "no data left");
+		RETURN_FAILURE_OBJ("send", "no data left");
 	}
 
 	executor->add_constraint(state_, write_condition);
@@ -341,19 +349,19 @@ void NetworkManagerXpilot::execute_write(CVExecutor* executor,
 	GET_SOCKET_OR_DIE_TRYIN("send", fd);
 
 	if (socket.is_open() != true)
-		RETURN_FAILURE("send", "not open");
+		RETURN_FAILURE_OBJ("send", "not open");
 
 	if (socket.type() != SocketEvent::SEND)
-		RETURN_FAILURE("send", "wrong type");
+		RETURN_FAILURE_OBJ("send", "wrong type");
 
 	if (socket.state() != Socket::IDLE)
-		RETURN_FAILURE("send", "wrong state");
+		RETURN_FAILURE_OBJ("send", "wrong state");
 
 	if (socket.round() != state()->cv()->round())
-		RETURN_FAILURE("send", "wrong round");
+		RETURN_FAILURE_OBJ("send", "wrong round");
 
 	if ((int)socket.length() != len)
-		RETURN_FAILURE("send", "wrong length" << " " << socket.length() << " != " << len);
+		RETURN_FAILURE_OBJ("send", "wrong length" << " " << socket.length() << " != " << len);
 
 	klee::ref<klee::Expr> write_condition 
 		= klee::ConstantExpr::alloc(1, klee::Expr::Bool);
@@ -370,19 +378,19 @@ void NetworkManagerXpilot::execute_write(CVExecutor* executor,
 
 	if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(write_condition)) {
 		if (CE->isFalse())
-			RETURN_FAILURE("send", "not valid (1) ");
+			RETURN_FAILURE_OBJ("send", "not valid (1) ");
 	} else {
 		bool result; 
 		executor->compute_false(state_, write_condition, result);
 		if (result)
-			RETURN_FAILURE("send", "not valid (2) ");
+			RETURN_FAILURE_OBJ("send", "not valid (2) ");
 	}
 
 	if (!socket.has_data()) {
 		socket.advance();
 	} else {
 		socket.set_state(Socket::WRITING);
-		RETURN_FAILURE("send", "no data left");
+		RETURN_FAILURE_OBJ("send", "no data left");
 	}
 
 	executor->add_constraint(state_, write_condition);

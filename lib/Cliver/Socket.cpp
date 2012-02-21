@@ -16,8 +16,9 @@
 
 namespace cliver {
 
-llvm::cl::opt<bool>
-DebugSocket("debug-socket",llvm::cl::init(false));
+bool DebugSocketFlag;
+llvm::cl::opt<bool, true>
+DebugSocket("debug-socket",llvm::cl::location(DebugSocketFlag),llvm::cl::init(false));
 
 llvm::cl::opt<bool>
 XpilotSocket("xpilot-socket",llvm::cl::init(false));
