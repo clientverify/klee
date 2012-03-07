@@ -346,42 +346,6 @@ TEST(EditDistanceTest, TGGTCGCCC_ACCGGTCGGC) {
   EXPECT_EQ(test4.edit_distance(), cost_fukk);
 }
 
-//TEST(CliverTest, EditDistance2) {
-//  StringEDT edt(test2.s, test2.t);
-//  StringEDR edr(test2.s, test2.t);
-//
-//  ASSERT_EQ(edt.compute_editdistance(), edr.compute_editdistance());
-//  ASSERT_EQ(test2.costs, edt.costs());
-//}
-//
-//TEST(CliverTest, EditDistance3) {
-//  StringEDT edt(test3.s, test3.t);
-//  StringEDR edr(test3.s, test3.t);
-//
-//  ASSERT_EQ(edt.compute_editdistance(), edr.compute_editdistance());
-//  ASSERT_EQ(test3.costs, edt.costs());
-//}
-//
 //////////////////////////////////////////////////////////////////////////////////
-//
-//TEST(CliverTest, ExecutionTree) {
-//  ExecutionTrace::BasicBlockList bb_list;
-//  ExecutionTrace etrace1, etrace2;
-//
-//  etrace2.push_back_bb(
-//      new klee::KBasicBlock(
-//        llvm::BasicBlock::Create(llvm::getGlobalContext()), 5));
-//
-//  for(int i=0;i<10;i++) {
-//    bb_list.push_back(
-//      new klee::KBasicBlock(
-//        llvm::BasicBlock::Create(llvm::getGlobalContext()), i));
-//    etrace1.push_back_bb(bb_list.back());
-//  }
-//
-//  etrace2.push_back(etrace1);
-//  ASSERT_EQ(11, etrace2.size());
-//
-//}
 
 }
