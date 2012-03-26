@@ -27,9 +27,9 @@ namespace cliver {
 /// Stores list of BasicBlocks for a single run of execution
 class ExecutionTrace {
  public:
-  typedef uint16_t ID;
+  typedef uint16_t BasicBlockID;
+  typedef BasicBlockID ID;
 
-  typedef unsigned BasicBlockID;
   typedef std::vector<BasicBlockID> BasicBlockList;
 
   typedef BasicBlockList::iterator iterator;
@@ -80,6 +80,8 @@ class ExecutionTrace {
  private:
   BasicBlockList basic_blocks_;
 };
+
+std::ostream& operator<<(std::ostream& os, const ExecutionTrace &etrace);
 
 ////////////////////////////////////////////////////////////////////////////////
 

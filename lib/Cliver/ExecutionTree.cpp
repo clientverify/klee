@@ -33,6 +33,9 @@
 
 namespace cliver {
 
+llvm::cl::opt<unsigned>
+StateTreesMemoryLimit("state-trees-memory-limit",llvm::cl::init(0));
+
 llvm::cl::opt<bool>
 DebugExecutionTree("debug-execution-tree",llvm::cl::init(false));
 
@@ -553,7 +556,7 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
       if (DeleteOldTrees) {
         delete trees_.back();
         trees_.pop_back();
-        //delete ed_tree_;
+        delete ed_tree_;
       }
       trees_.push_back(new ExecutionTraceTree() );
 
@@ -635,7 +638,7 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         ed_tree_->initialize();
 
         // Add new edit distance tree for this state and add to state map
-        state_tree_map_[state] = ed_tree_;
+        state_tree_map_[state] = ed_tree_->clone();
 
         // Set initial values for edit distance
         edp->edit_distance = INT_MAX;
@@ -699,6 +702,11 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         CVDEBUG("Computing edit distance for " << search_list.size() 
                 << " of " << training_by_length_.size() << " traces.");
 
+
+        if (StateTreesMemoryLimit > 0 && state_tree_map_.count(state) == 0) {
+          state_tree_map_[state] = ed_tree_->clone();
+        }
+
         // Compute edit distance
         state_tree_map_[state]->compute_t(full_etrace, 
                                           current_min_ed, 
@@ -736,6 +744,15 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
       assert(state_tree_map_.count(parent));
       EDTree* ed_tree = state_tree_map_[parent]->clone();
       state_tree_map_[state] = ed_tree;
+      if (StateTreesMemoryLimit > 0 
+          && cv_->executor()->memory_usage() >= StateTreesMemoryLimit) {
+        ExecutionStateEDTreeMap::iterator it = state_tree_map_.begin(),
+            ie = state_tree_map_.end();
+        for (; it!=ie; ++it) {
+          delete it->second;
+        }
+        state_tree_map_.clear();
+      }
 
       break;
     }
@@ -763,7 +780,5 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
       break;
   }
 }
-
-
 
 } // end namespace cliver
