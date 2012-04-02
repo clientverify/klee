@@ -427,6 +427,7 @@ class EditDistanceTree : public tree<boost::shared_ptr<DataType> > {
   typedef tree_node_<boost::shared_ptr<DataType> > Node;
   typedef boost::shared_ptr<DataType> DataTypePtr;
 
+  typedef std::set<typename SeqTy::ID> SeqTyIDSet;
   typedef std::map<Node*, std::set<typename SeqTy::ID> > NodeIDMap;
   typedef std::map<typename SeqTy::ID, Node* > IDNodeMap;
   typedef std::set<Node*> NodeSet;
@@ -506,8 +507,8 @@ class EditDistanceTree : public tree<boost::shared_ptr<DataType> > {
       if (id_map_.count(src)) {
         other->id_map_[dst].insert(id_map_[src].begin(), 
                                    id_map_[src].end());
-        std::set<typename SeqTy::ID> >::iterator seq_it = id_map_[src].begin();
-        std::set<typename SeqTy::ID> >::iterator seq_ie = id_map_[src].end();
+        typename SeqTyIDSet::iterator seq_it = id_map_[src].begin();
+        typename SeqTyIDSet::iterator seq_ie = id_map_[src].end();
         for (; seq_it!=seq_ie; ++seq_it) {
           other->leaf_node_id_map_[*seq_it] = dst;
         }
