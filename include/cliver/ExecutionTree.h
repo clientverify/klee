@@ -485,8 +485,8 @@ class EditDistanceTree : public tree<boost::shared_ptr<DataType> > {
 
     foreach_leaf_other(edtree, edtree->root().node, leaf_it) {
       edtree->leaf_nodes_.insert(leaf_it.node);
-      typename SeqTy::ID seq_id = *(edtree->id_map_[leaf_it.node].begin());
-      edtree->leaf_node_id_map_[seq_id] = leaf_it.node;
+      //typename SeqTy::ID seq_id = *(edtree->id_map_[leaf_it.node].begin());
+      //edtree->leaf_node_id_map_[seq_id] = leaf_it.node;
     }
     assert(this->size() == edtree->size());
 
@@ -503,9 +503,15 @@ class EditDistanceTree : public tree<boost::shared_ptr<DataType> > {
       worklist.pop();
 
       // Only necessary for leaf nodes
-      if (id_map_.count(src)) 
+      if (id_map_.count(src)) {
         other->id_map_[dst].insert(id_map_[src].begin(), 
-                                  id_map_[src].end());
+                                   id_map_[src].end());
+        std::set<typename SeqTy::ID> >::iterator seq_it = id_map_[src].begin();
+        std::set<typename SeqTy::ID> >::iterator seq_ie = id_map_[src].end();
+        for (; seq_it!=seq_ie; ++seq_it) {
+          other->leaf_node_id_map_[*seq_it] = dst;
+        }
+      }
 
       foreach_child (src, child_it) {
         DataTypePtr data(new DataType(*child_it, dst->data));
