@@ -861,8 +861,7 @@ void CVExecutor::update_memory_usage() {
   size_t bytes_used;
   MallocExtension::instance()->GetNumericProperty(
       "generic.current_allocated_bytes", &bytes_used);
-  memory_usage_mbs_ = (bytes_used / 1024);
-
+  memory_usage_mbs_ = (bytes_used / (1024 * 1024) );
 #else
 	pid_t myPid = getpid();
 	std::stringstream ss;
