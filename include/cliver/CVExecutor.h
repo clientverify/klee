@@ -92,7 +92,7 @@ class CVExecutor : public klee::Executor {
 
 	void update_memory_usage();
 
-	uint64_t memory_usage() { return memory_usage_mbs_; }
+	size_t memory_usage() { return memory_usage_mbs_; }
 
 	klee::KInstruction* get_instruction(unsigned id);
 
@@ -112,7 +112,7 @@ class CVExecutor : public klee::Executor {
 	StateMerger *merger_;
 	ConstraintPruner *pruner_;
 	std::map<llvm::Function*, ExecutionEventType> function_call_events_;
-  uint64_t memory_usage_mbs_;
+  size_t memory_usage_mbs_;
 };
 
 } // end cliver namespace

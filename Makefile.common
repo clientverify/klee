@@ -26,7 +26,7 @@ CPPFLAGS += -Wno-deprecated
 # TCMalloc enabled by default
 ifneq ($(DISABLE_TCMALLOC),1)
   LIBS += -ltcmalloc
-  CPPFLAGS += -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
+  CPPFLAGS += -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free -DTCMALLOC
 endif
 
 # Google perftools included by default, no performance hit unless enabled
