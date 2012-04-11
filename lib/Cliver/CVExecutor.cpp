@@ -82,6 +82,10 @@
 #include <inttypes.h>
 #include <cxxabi.h>
 
+#ifdef TCMALLOC
+#include <google/malloc_extension.h>
+#endif
+
 namespace klee {
   // Command line options defined in lib/Core/Executor.cpp
   extern llvm::cl::opt<bool> DumpStatesOnHalt;
@@ -851,7 +855,15 @@ void CVExecutor::rebuild_solvers() {
   solver = new klee::TimingSolver(new_solver, stpSolver);                                                                                                                                                             
 }
 
+// Don't use mallinfo, overflows if usage is > 4GB
 void CVExecutor::update_memory_usage() {
+#ifdef TCMALLOC
+  size_t bytes_used;
+  MallocExtension::instance()->GetNumericProperty(
+      "generic.current_allocated_bytes", &bytes_used);
+  memory_usage_mbs_ = (bytes_used / 1024);
+
+#else
 	pid_t myPid = getpid();
 	std::stringstream ss;
 	ss << "/proc/" << myPid << "/status";
@@ -873,6 +885,7 @@ void CVExecutor::update_memory_usage() {
 	fclose(fp);
 
 	memory_usage_mbs_ = (peakMem / 1024);
+#endif
 }
 
 klee::KInstruction* CVExecutor::get_instruction(unsigned id) {
