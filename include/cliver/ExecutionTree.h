@@ -691,7 +691,7 @@ class EditDistanceTree : public tree<boost::shared_ptr<DataType> > {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template<class DataType, class ListDataType>
+template<class ListDataType, class DataType>
 class ExecutionTree : public tree<DataType> {
 
 #define foreach_child(__node,__iterator) \
@@ -847,10 +847,11 @@ class ExecutionTree : public tree<DataType> {
 ////////////////////////////////////////////////////////////////////////////////
 
 // ExecutionTrace Score
-typedef Score< ExecutionTrace, unsigned, int> ETScore;
+typedef Score< ExecutionTrace, ExecutionTrace::ID, int> ETScore;
 
 // EditDistance trees
-typedef EditDistanceRowColumn< ETScore, ExecutionTrace, unsigned, int > EDColumn;
+typedef EditDistanceRowColumn< ETScore, ExecutionTrace, 
+                               ExecutionTrace::ID, int > EDColumn;
 typedef EditDistanceTree< EDColumn, ExecutionTrace, int > EDTree;
 
 // EditDistance flavors
@@ -868,7 +869,7 @@ typedef ExecutionTraceEDR ExecutionTraceED;
 ////////////////////////////////////////////////////////////////////////////////
 
 // Basic ExecutionTree
-typedef ExecutionTree<unsigned, ExecutionTrace> ExecutionTraceTree;
+typedef ExecutionTree<ExecutionTrace, ExecutionTrace::ID> ExecutionTraceTree;
 
 typedef std::map<CVExecutionState*, EDTree*> ExecutionStateEDTreeMap;
 
