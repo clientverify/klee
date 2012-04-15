@@ -10,6 +10,7 @@
 #include "gtest/gtest.h"
 
 #include "cliver/RadixTree.h"
+#include "cliver/ExecutionTrace.h"
 
 #include <string>
 #include <iostream>
@@ -23,6 +24,7 @@ using namespace cliver;
 
 typedef RadixTree<std::string, char> StringRadixTree;
 typedef RadixTree<std::vector<char>, char> VectorRadixTree;
+typedef RadixTree<ExecutionTrace, ExecutionTrace::ID> TraceRadixTree;
 
 //////////////////////////////////////////////////////////////////////////////////
 
@@ -52,11 +54,33 @@ class RadixTreeTest : public ::testing::Test {
     v8.insert(v8.end(), s8.begin(), s8.end());
   }
 
+  void InsertAll() {
+    srt->insert(s_empty);
+    srt->insert(s1);
+    srt->insert(s2);
+    srt->insert(s3);
+    srt->insert(s4);
+    srt->insert(s5);
+    srt->insert(s6);
+    srt->insert(s7);
+    srt->insert(s8);
+
+    vrt->insert(v_empty);
+    vrt->insert(v1);
+    vrt->insert(v2);
+    vrt->insert(v3);
+    vrt->insert(v4);
+    vrt->insert(v5);
+    vrt->insert(v6);
+    vrt->insert(v7);
+    vrt->insert(v8);
+  }
+
   virtual void TearDown() {
     delete srt;
     delete vrt;
   }
-  
+
   StringRadixTree* srt;
   VectorRadixTree* vrt;
 
@@ -71,30 +95,26 @@ class RadixTreeTest : public ::testing::Test {
 
 namespace {
 
+TEST_F(RadixTreeTest, InitExecutionTrace) {
+  TraceRadixTree *trt = new TraceRadixTree();
+  TraceRadixTree::Node* n = trt->extend(10);
+  n = trt->extend(12, n);
+  n = trt->extend(16, n);
+  n = trt->extend(19, n);
+  n = trt->extend(1, n);
+  ExecutionTrace et;
+  trt->get(n, et);
+  EXPECT_EQ(et.size(), 5);
+  delete trt;
+}
+
 TEST_F(RadixTreeTest, Init) {
   ASSERT_TRUE(srt != NULL);
   ASSERT_TRUE(vrt != NULL);
 }
 
 TEST_F(RadixTreeTest, Insert) {
-  srt->insert(s_empty);
-  srt->insert(s1);
-  srt->insert(s2);
-  srt->insert(s3);
-  srt->insert(s4);
-  srt->insert(s5);
-  srt->insert(s6);
-  srt->insert(s7);
-
-  //srt->print(std::cout);
-
-  vrt->insert(v_empty);
-  vrt->insert(v1);
-  vrt->insert(v2);
-  vrt->insert(v3);
-  vrt->insert(v4);
-  vrt->insert(v5);
-  vrt->insert(v6);
+  InsertAll();
 }
 
 TEST_F(RadixTreeTest, Lookup) {
@@ -108,9 +128,7 @@ TEST_F(RadixTreeTest, Lookup) {
   EXPECT_EQ(srt->lookup(s3), true);
   EXPECT_EQ(srt->lookup(s4), true);
   EXPECT_EQ(srt->lookup(s5), false);
-
   EXPECT_EQ(srt->lookup(s7), false);
-
   EXPECT_EQ(vrt->lookup(v1), false);
   vrt->insert(v1);
   EXPECT_EQ(vrt->lookup(v2), false);
@@ -124,53 +142,24 @@ TEST_F(RadixTreeTest, Lookup) {
 }
 
 TEST_F(RadixTreeTest, Remove) {
+  InsertAll();
 
-  srt->insert(s_empty);
-  srt->insert(s1);
-  srt->insert(s2);
-  srt->insert(s3);
-  srt->insert(s4);
-  srt->insert(s5);
-  srt->insert(s6);
-
-  //srt->print(std::cout);
   EXPECT_EQ(srt->lookup(s1), true);
-  srt->remove(s2);
-  //srt->print(std::cout);
+  EXPECT_EQ(srt->remove(s2), true);
   EXPECT_EQ(srt->lookup(s2), false);
-
   EXPECT_EQ(srt->remove(s8), false);
   EXPECT_EQ(srt->lookup(s8), true);
-
   EXPECT_EQ(srt->lookup(s6), true);
-  srt->remove(s6);
-  //srt->print(std::cout);
+  EXPECT_EQ(srt->remove(s6), true);
   EXPECT_EQ(srt->lookup(s6), false);
-
-  vrt->insert(v_empty);
-  vrt->insert(v1);
-  vrt->insert(v2);
-  vrt->insert(v3);
-  vrt->insert(v4);
-  vrt->insert(v5);
-  vrt->insert(v6);
-  //vrt->print(std::cout);
-
-  //vrt->print(std::cout);
   EXPECT_EQ(vrt->lookup(v1), true);
-  vrt->remove(v2);
-  //vrt->print(std::cout);
+  EXPECT_EQ(vrt->remove(v2), true);
   EXPECT_EQ(vrt->lookup(v2), false);
-
   EXPECT_EQ(vrt->remove(v8), false);
   EXPECT_EQ(vrt->lookup(v8), true);
-
   EXPECT_EQ(vrt->lookup(v6), true);
-  vrt->remove(v6);
-  //vrt->print(std::cout);
+  EXPECT_EQ(vrt->remove(v6), true);
   EXPECT_EQ(vrt->lookup(v6), false);
-
-
 }
 
 //////////////////////////////////////////////////////////////////////////////////

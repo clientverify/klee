@@ -874,6 +874,7 @@ typedef ExecutionTree<ExecutionTrace, ExecutionTrace::ID> ExecutionTraceTree;
 typedef std::map<CVExecutionState*, EDTree*> ExecutionStateEDTreeMap;
 
 typedef std::map<ExecutionTrace::ID, TrainingObject*> TrainingObjectIDMap;
+typedef std::map<ExecutionTrace::ID, TrainingObject*> TrainingObjectIDMap;
 typedef std::set<TrainingObject*, TrainingObjectTraceLT> TrainingObjectSet;
 typedef std::vector<TrainingObject*> TrainingObjectList;
 

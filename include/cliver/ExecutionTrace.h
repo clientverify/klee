@@ -37,6 +37,7 @@ class ExecutionTrace {
 
   ExecutionTrace() {}
   ExecutionTrace(BasicBlockID bb) { this->push_back(bb); }
+  ExecutionTrace(iterator start, iterator end) : basic_blocks_(start, end) {}
 
   void push_back(BasicBlockID kbb) { 
     basic_blocks_.push_back(kbb);
@@ -62,6 +63,18 @@ class ExecutionTrace {
   bool operator<(const ExecutionTrace& b) const;
 
   inline size_t size() const { return basic_blocks_.size(); } 
+
+  void insert(iterator position, iterator first, iterator last) {
+    basic_blocks_.insert(position, first, last);
+  }
+
+  void insert(iterator position, BasicBlockID kbb) { 
+    basic_blocks_.insert(position, kbb);
+  }
+
+  void erase(iterator first, iterator last) {
+    basic_blocks_.erase(first, last);
+  }
 
  protected:
   friend class boost::serialization::access;

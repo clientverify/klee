@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <map>
+#include <stack>
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -65,6 +66,10 @@ class RadixNode {
       seq_.insert(seq_.end(), _begin, _end);
     }
 
+    void extend(ElementType e) {
+      seq_.insert(seq_.end(), e);
+    }
+
     void erase(SequenceContainerIterator _begin, 
                SequenceContainerIterator _end) {
       seq_.erase(_begin, _end);
@@ -73,12 +78,12 @@ class RadixNode {
     inline ElementType operator[](unsigned i) { return seq_[i]; }
     inline ElementType operator[](unsigned i) const { return seq_[i]; }
 
-    SequenceContainerIterator begin() { return seq_.begin(); }
-    SequenceContainerIterator end() { return seq_.end(); }
+    inline SequenceContainerIterator begin() { return seq_.begin(); }
+    inline SequenceContainerIterator end() { return seq_.end(); }
 
-    ElementType key() const { return seq_[0]; }
+    inline ElementType key() const { return seq_[0]; }
 
-    size_t size() { return seq_.size(); }
+    inline size_t size() { return seq_.size(); }
 
    private:
     RadixNode *to_;
@@ -105,7 +110,6 @@ class RadixNode {
     return node;
   }
 
-  // Non-recursive, no copying
   RadixNode* insert(SequenceContainerIterator begin, 
                     SequenceContainerIterator end) {
     RadixNode* curr_node = this;
@@ -114,7 +118,7 @@ class RadixNode {
       // Don't do anything if we insert an empty sequence
       if (begin == end) return curr_node;
 
-      RadixEdge *edge = get_edge(begin);
+      RadixEdge *edge = curr_node->get_edge(begin);
 
       // If no transition on s, add new edge to leaf node
       if (edge == NULL) {
@@ -186,9 +190,47 @@ class RadixNode {
   // Return the incoming edge
   RadixEdge* parent_edge() { return parent_edge_; }
 
+  // Return the parent node
+  RadixNode* parent() { return parent_edge_ ? parent_edge_->from() : NULL; }
+
   // Insert a sequence into the tree rooted at this node
   RadixNode* insert(SequenceContainer &s) {
     return insert(s.begin(), s.end());
+  }
+
+  // Insert a sequence into the tree rooted at this node
+  RadixNode* insert(ElementType e) {
+    SequenceContainer s;
+    s.insert(s.begin(), e);
+    return insert(s.begin(), s.end());
+  }
+
+  // Return length of path to root from the current node
+  size_t depth() {
+    RadixEdge* curr_edge = parent_edge_;
+    size_t edge_size_count = 0;
+    while (curr_edge != NULL) {
+      edge_size_count += curr_edge->size();
+      curr_edge = curr_edge->from()->parent_edge();
+    }
+    return edge_size_count;
+  }
+
+  // Return concatenation of edges from root this node 
+  void get(SequenceContainer &s) {
+    std::stack<RadixEdge*> edges;
+
+    RadixNode* curr_node = this;
+    while (!curr_node->root()) {
+      edges.push(curr_node->parent_edge());
+      curr_node = curr_node->parent();
+    }
+
+    while (!edges.empty()) {
+      RadixEdge* edge = edges.top();
+      s.insert(s.end(), edge->begin(), edge->end());
+      edges.pop();
+    }
   }
 
   /// Lookup the sequence s, starting from the edge at this node, return
@@ -273,9 +315,14 @@ class RadixNode {
     parent_edge_->extend(s.begin(), s.end());
     return this;
   }
+ 
+  RadixNode* extend_parent_edge(ElementType e) {
+    assert(leaf());
+    parent_edge_->extend(e);
+    return this;
+  }
 
   void print(std::ostream& os, int depth = 0) {
-
     int parent_edge_size = 0;
 
     if (parent_edge_) {
@@ -293,7 +340,6 @@ class RadixNode {
       RadixNode* node = (*(it->second)).to();
       node->print(os, depth + parent_edge_size);
     }
-
   }
 
  private:
@@ -303,8 +349,9 @@ class RadixNode {
 
 template <class SequenceContainer, class ElementType>
 class RadixTree {
-  typedef RadixNode<SequenceContainer, ElementType> Node;
  public:
+  typedef RadixNode<SequenceContainer, ElementType> Node;
+
   RadixTree() {
     root_ = new Node();
   }
@@ -313,26 +360,35 @@ class RadixTree {
     delete root_;
   }
 
-  Node* insert(SequenceContainer &v) { 
-    return root_->insert(v);
+  Node* insert(SequenceContainer &s) { 
+    return root_->insert(s);
   }
 
-  Node* extend(Node* node, SequenceContainer &v) { 
+  Node* extend(SequenceContainer &s, Node* node = NULL) { 
     if (node)
-      return node->extend_parent_edge(v);
-    return NULL;
+      return node->extend_parent_edge(s);
+    return root_->insert(s);
   }
 
-  bool remove(SequenceContainer &v) {
-    return root_->remove(v);
+  Node* extend(ElementType e, Node* node = NULL) { 
+    if (node)
+      return node->extend_parent_edge(e);
+    return root_->insert(e);
   }
 
-  bool lookup(SequenceContainer &v) { 
-    Node *res = root_->lookup(v);
-    if (res) {
+
+  bool remove(SequenceContainer &s) {
+    return root_->remove(s);
+  }
+
+  bool lookup(SequenceContainer &s) { 
+    if (Node *res = root_->lookup(s))
       return true;
-    }
     return false;
+  }
+
+  void get(Node* node, SequenceContainer &s) { 
+    node->get(s);
   }
 
   void print(std::ostream& os) {
