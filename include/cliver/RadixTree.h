@@ -43,6 +43,7 @@ template <class SequenceContainer, class ElementType>
 class RadixNode {
   typedef typename SequenceContainer::iterator SequenceContainerIterator;
 
+  // RadixEdge: Represents an edge between two nodes, holds sequence data
   class RadixEdge {
    public:
 
@@ -50,8 +51,8 @@ class RadixNode {
      : from_(from), to_(to), seq_(s) {}
 
     RadixEdge(RadixNode* from, RadixNode* to, 
-              SequenceContainerIterator& begin, 
-              SequenceContainerIterator& end) 
+              SequenceContainerIterator begin, 
+              SequenceContainerIterator end) 
      : from_(from), to_(to), seq_(begin, end) {}
 
     RadixNode* to() { return to_; }
@@ -93,7 +94,6 @@ class RadixNode {
 
   typedef std::map<ElementType, RadixEdge*> TransitionMap;
 
- private:
   RadixEdge* get_edge(SequenceContainerIterator it) {
     if (tmap_.find(*it) != tmap_.end()) {
       return tmap_[*it];
@@ -101,6 +101,8 @@ class RadixNode {
     return NULL;
   }
 
+  // Create and add an edge to this node and return the node that
+  // the new edge points to.
   RadixNode* add_edge(SequenceContainerIterator begin,
                       SequenceContainerIterator end) {
     RadixNode *node = new RadixNode();
@@ -121,9 +123,8 @@ class RadixNode {
       RadixEdge *edge = curr_node->get_edge(begin);
 
       // If no transition on s, add new edge to leaf node
-      if (edge == NULL) {
+      if (edge == NULL)
         return curr_node->add_edge(begin, end);
-      }
 
       // Find position where match ends between edge and s 
       int pos = prefix_match(edge->begin(), edge->end(), begin, end);
@@ -147,7 +148,8 @@ class RadixNode {
 
       } else {
         // Split existing edge
-        RadixNode *split_node = add_edge(edge->begin(), edge->begin() + pos);
+        RadixNode *split_node 
+            = curr_node->add_edge(edge->begin(), edge->begin() + pos);
 
         // Erase top of old edge that was just copied
         edge->erase(edge->begin(), edge->begin() + pos);
@@ -166,13 +168,31 @@ class RadixNode {
     return curr_node;
   }
 
-
  public:
 
   RadixNode() : parent_edge_(NULL) {}
 
   ~RadixNode() { 
     parent_edge_ = NULL;
+  }
+
+  // Static destroy method, 
+  static void destroy(RadixNode* root) { 
+    std::stack<RadixNode*> worklist; 
+    worklist.push(root);
+    while (!worklist.empty()) {
+      RadixNode* node = worklist.top();
+      typename TransitionMap::iterator 
+          it = node->tmap_.begin(), iend = node->tmap_.end();
+      worklist.pop();
+      for (; it != iend; ++it) {
+        RadixEdge* edge = it->second;
+        worklist.push(edge->to());
+        delete edge;
+      }
+      node->tmap_.clear();
+      delete node;
+    }
   }
 
   // Return number of outgoing edges
@@ -198,7 +218,7 @@ class RadixNode {
     return insert(s.begin(), s.end());
   }
 
-  // Insert a sequence into the tree rooted at this node
+  // Insert a one element sequence into the tree rooted at this node
   RadixNode* insert(ElementType e) {
     SequenceContainer s;
     s.insert(s.begin(), e);
@@ -278,8 +298,8 @@ class RadixNode {
     return NULL;
   }
 
-  // Removes a sequence that terminates at a leaf node, returns true if a remove
-  // actually takes place
+  /// Remove sequence that terminates at a leaf node, returns true if remove
+  /// actually takes place
   bool remove(SequenceContainer &s) {
     // Lookup the node matching s
     RadixNode *node = lookup(s, /*exact = */ true);
@@ -287,12 +307,12 @@ class RadixNode {
     // If v is not in tree or is present at an internal node, do nothing
     if (node && node->leaf() && !node->root()) {
 
-      // TODO check length of edge == s
       RadixEdge *edge = node->parent_edge();
       RadixNode *parent = edge->from();
       parent->tmap_.erase(edge->key());
       delete edge;
       delete node; 
+
       // If parent now only has one child, merge child edge with parent edge
       // and delete parent
       if (!parent->root() && parent->degree() == 1) {
@@ -342,10 +362,50 @@ class RadixNode {
     }
   }
 
+  // Clone the radix tree rooted at this node and return
+  RadixNode* clone() {
+    // New root of the cloned radix tree
+    RadixNode* root_node = new RadixNode();
+
+    // Worklist holds a list of RadixNode pairs, clone and original respectively
+    std::stack<std::pair<RadixNode*, RadixNode*> > worklist; 
+    worklist.push(std::make_pair(root_node, this));
+
+    while (!worklist.empty()) {
+      RadixNode* dst_node = worklist.top().first;
+      RadixNode* src_node = worklist.top().second;
+      typename TransitionMap::iterator it = src_node->tmap_.begin();
+      typename TransitionMap::iterator iend = src_node->tmap_.end();
+
+      worklist.pop();
+      for (; it != iend; ++it) {
+        RadixEdge* src_edge = it->second;
+
+        // Child clone node
+        RadixNode* dst_to_node = new RadixNode();
+
+        // Clone edge node
+        RadixEdge* edge = new RadixEdge(dst_node, dst_to_node, 
+                                        src_edge->begin(), src_edge->end());
+        // Set 'parent_edge' (previously null)
+        dst_to_node->set_parent_edge(edge);
+
+        // Assign the edge to its key in the new node's transition map
+        dst_node->tmap_[edge->key()] = edge;
+
+        // Add new node pair to worklist
+        worklist.push(std::make_pair(dst_to_node, (RadixNode*)src_edge->to()));
+      }
+    }
+    return root_node;
+  }
+
  private:
   RadixEdge* parent_edge_;
   TransitionMap tmap_;
 };
+
+////////////////////////////////////////////////////////////////////////////////
 
 template <class SequenceContainer, class ElementType>
 class RadixTree {
@@ -357,7 +417,11 @@ class RadixTree {
   }
 
   ~RadixTree() {
-    delete root_;
+    Node::destroy(root_);
+  }
+
+  RadixTree* clone() {
+    return new RadixTree(root_->clone());
   }
 
   Node* insert(SequenceContainer &s) { 
@@ -397,9 +461,11 @@ class RadixTree {
   }
 
  private:
+  RadixTree(Node* root) : root_(root) {}
+  explicit RadixTree(RadixTree& rt) {}
+
   Node* root_;
 };
-
 
 } // end namespace cliver
 #endif // CLIVER_RADIXTREE_H
