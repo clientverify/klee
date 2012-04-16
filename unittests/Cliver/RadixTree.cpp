@@ -12,6 +12,7 @@
 #include "cliver/RadixTree.h"
 #include "cliver/ExecutionTrace.h"
 
+#include <stdlib.h>
 #include <string>
 #include <iostream>
 
@@ -19,6 +20,12 @@
 using namespace cliver;
 //using namespace std;
 
+#include "RadixTree.inc"
+
+template<typename T, size_t N>
+T * end(T (&ra)[N]) {
+  return ra + N;
+}
 
 //////////////////////////////////////////////////////////////////////////////////
 
@@ -54,6 +61,27 @@ class RadixTreeTest : public ::testing::Test {
     v8.insert(v8.end(), s8.begin(), s8.end());
   }
 
+  void SetUpDictionary() {
+    s_dictionary = std::vector<std::string>(cstr_dictionary, end(cstr_dictionary));
+
+    for (int i=0; i<s_dictionary.size(); ++i) {
+      std::vector<char> v(s_dictionary[i].begin(), s_dictionary[i].end());
+      v_dictionary.push_back(v);
+    }
+  }
+
+  void InsertDictionary() {
+    SetUpDictionary();
+
+    for (int i=0; i<s_dictionary.size(); ++i) {
+      srt->insert(s_dictionary[i]);
+    }
+
+    for (int i=0; i<v_dictionary.size(); ++i) {
+      vrt->insert(v_dictionary[i]);
+    }
+  }
+
   void InsertAll() {
     srt->insert(s_empty);
     srt->insert(s1);
@@ -85,8 +113,10 @@ class RadixTreeTest : public ::testing::Test {
   VectorRadixTree* vrt;
 
   std::string s_empty, s1, s2, s3, s4, s5, s6, s7, s8;
+  std::vector<std::string> s_dictionary;
 
   std::vector<char> v_empty, v1, v2, v3, v4, v5, v6, v7, v8;
+  std::vector<std::vector<char> > v_dictionary;
 
 };
 
@@ -143,7 +173,6 @@ TEST_F(RadixTreeTest, Lookup) {
 
 TEST_F(RadixTreeTest, Remove) {
   InsertAll();
-
   EXPECT_EQ(srt->lookup(s1), true);
   EXPECT_EQ(srt->remove(s2), true);
   EXPECT_EQ(srt->lookup(s2), false);
@@ -161,6 +190,97 @@ TEST_F(RadixTreeTest, Remove) {
   EXPECT_EQ(vrt->remove(v6), true);
   EXPECT_EQ(vrt->lookup(v6), false);
 }
+
+TEST_F(RadixTreeTest, Clone) {
+  InsertAll();
+
+  StringRadixTree *clone_srt = srt->clone();
+  delete srt;
+  EXPECT_EQ(clone_srt->lookup(s1), true);
+  EXPECT_EQ(clone_srt->remove(s2), true);
+  EXPECT_EQ(clone_srt->lookup(s2), false);
+  EXPECT_EQ(clone_srt->remove(s8), false);
+  EXPECT_EQ(clone_srt->lookup(s8), true);
+  EXPECT_EQ(clone_srt->lookup(s6), true);
+  EXPECT_EQ(clone_srt->remove(s6), true);
+  EXPECT_EQ(clone_srt->lookup(s6), false);
+  delete clone_srt;
+  srt = new StringRadixTree();
+
+  VectorRadixTree *clone_vrt = vrt->clone();
+  delete vrt;
+  EXPECT_EQ(clone_vrt->lookup(v1), true);
+  EXPECT_EQ(clone_vrt->remove(v2), true);
+  EXPECT_EQ(clone_vrt->lookup(v2), false);
+  EXPECT_EQ(clone_vrt->remove(v8), false);
+  EXPECT_EQ(clone_vrt->lookup(v8), true);
+  EXPECT_EQ(clone_vrt->lookup(v6), true);
+  EXPECT_EQ(clone_vrt->remove(v6), true);
+  EXPECT_EQ(clone_vrt->lookup(v6), false);
+  delete clone_vrt;
+  vrt = new VectorRadixTree();
+
+}
+
+TEST_F(RadixTreeTest, InsertDictionary) {
+  InsertDictionary();
+}
+
+TEST_F(RadixTreeTest, LookupDictionary) {
+  InsertDictionary();
+  for (int i = 0; i<s_dictionary.size(); ++i) {
+    EXPECT_EQ(srt->lookup(s_dictionary[i]), true);
+  }
+}
+
+TEST_F(RadixTreeTest, RemoveDictionary) {
+  InsertDictionary();
+  
+  int r = 0, freq = 10;
+  while (r < s_dictionary.size()) {
+    bool result = srt->remove(s_dictionary[r]);
+    ASSERT_EQ(srt->lookup(s_dictionary[r]), !result);
+    r += 1 + (rand() % freq);
+  }
+
+  r = 0;
+  while (r < v_dictionary.size()) {
+    bool result = vrt->remove(v_dictionary[r]);
+    ASSERT_EQ(vrt->lookup(v_dictionary[r]), !result);
+    r += 1 + (rand() % freq);
+  }
+}
+
+TEST_F(RadixTreeTest, CloneDictionary) {
+  InsertDictionary();
+
+  StringRadixTree *clone_srt = srt->clone();
+  delete srt;
+  
+  int r = 0, freq = 100;
+  while (r < s_dictionary.size()) {
+    bool result = clone_srt->remove(s_dictionary[r]);
+    ASSERT_EQ(clone_srt->lookup(s_dictionary[r]), !result);
+    r += 1 + (rand() % freq);
+  }
+
+  delete clone_srt;
+  srt = new StringRadixTree();
+
+  VectorRadixTree *clone_vrt = vrt->clone();
+  delete vrt;
+
+  r = 0;
+  while (r < v_dictionary.size()) {
+    bool result = clone_vrt->remove(v_dictionary[r]);
+    ASSERT_EQ(clone_vrt->lookup(v_dictionary[r]), !result);
+    r += 1 + (rand() % freq);
+  }
+
+  delete clone_vrt;
+  vrt = new VectorRadixTree();
+}
+
 
 //////////////////////////////////////////////////////////////////////////////////
 
