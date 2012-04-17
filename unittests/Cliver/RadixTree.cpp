@@ -11,6 +11,7 @@
 
 #include "cliver/RadixTree.h"
 #include "cliver/ExecutionTrace.h"
+#include "cliver/EditDistanceSequence.h"
 
 #include <stdlib.h>
 #include <string>
@@ -32,6 +33,7 @@ T * end(T (&ra)[N]) {
 typedef RadixTree<std::string, char> StringRadixTree;
 typedef RadixTree<std::vector<char>, char> VectorRadixTree;
 typedef RadixTree<ExecutionTrace, ExecutionTrace::ID> TraceRadixTree;
+typedef LevenshteinRadixTree<std::string, char> StringLevenshteinRadixTree;
 
 //////////////////////////////////////////////////////////////////////////////////
 
@@ -62,11 +64,14 @@ class RadixTreeTest : public ::testing::Test {
   }
 
   void SetUpDictionary() {
-    s_dictionary = std::vector<std::string>(cstr_dictionary, end(cstr_dictionary));
+    if (s_dictionary.empty())
+      s_dictionary = std::vector<std::string>(cstr_dictionary, end(cstr_dictionary));
 
-    for (int i=0; i<s_dictionary.size(); ++i) {
-      std::vector<char> v(s_dictionary[i].begin(), s_dictionary[i].end());
-      v_dictionary.push_back(v);
+    if (v_dictionary.empty()) {
+      for (int i=0; i<s_dictionary.size(); ++i) {
+        std::vector<char> v(s_dictionary[i].begin(), s_dictionary[i].end());
+        v_dictionary.push_back(v);
+      }
     }
   }
 
@@ -279,6 +284,47 @@ TEST_F(RadixTreeTest, CloneDictionary) {
 
   delete clone_vrt;
   vrt = new VectorRadixTree();
+}
+
+TEST_F(RadixTreeTest, Levenshtein) {
+  StringLevenshteinRadixTree *slrt = new StringLevenshteinRadixTree();
+  std::string test("test");
+  slrt->min_edit_distance(test);
+}
+
+TEST_F(RadixTreeTest, LevenshteinInsert) {
+  StringLevenshteinRadixTree *slrt = new StringLevenshteinRadixTree();
+  SetUpDictionary();
+
+  for (int i=0; i<s_dictionary.size(); ++i) {
+    slrt->insert(s_dictionary[i]);
+  }
+  for (int i = 0; i<s_dictionary.size(); ++i) {
+    EXPECT_EQ(slrt->lookup(s_dictionary[i]), true);
+  }
+
+}
+
+TEST_F(RadixTreeTest, LevenshteinCloneDictionary) {
+  StringLevenshteinRadixTree *slrt = new StringLevenshteinRadixTree();
+  SetUpDictionary();
+
+  for (int i=0; i<s_dictionary.size(); ++i) {
+    slrt->insert(s_dictionary[i]);
+  }
+
+  StringLevenshteinRadixTree *clone_slrt 
+      = static_cast<StringLevenshteinRadixTree*>(slrt->clone());
+  delete slrt;
+  
+  int r = 0, freq = 100;
+  while (r < s_dictionary.size()) {
+    bool result = clone_slrt->remove(s_dictionary[r]);
+    ASSERT_EQ(clone_slrt->lookup(s_dictionary[r]), !result);
+    r += 1 + (rand() % freq);
+  }
+
+  delete clone_slrt;
 }
 
 
