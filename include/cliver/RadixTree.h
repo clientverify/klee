@@ -19,85 +19,105 @@ namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Helper function for finding size of matching prefix
-template <class InputIterator1, class InputIterator2>
-int prefix_match (InputIterator1 first1, InputIterator1 last1,
-           InputIterator2 first2, InputIterator2 last2) {
-  InputIterator1 it1 = first1;
-  InputIterator2 it2 = first2;
+template <class Sequence> 
+class DefaultSequenceComparator {
+ public:
+  typedef typename Sequence::iterator SequenceIterator;
 
-  int count = 0;
-  while (it1 != last1 && it2 != last2) {
-    if (*it1 != *it2)
-      return count;
-    ++it1;
-    ++it2;
-    ++count;
+  // Find size of matching prefix
+  static int prefix_match(SequenceIterator first1, SequenceIterator last1,
+                          SequenceIterator first2, SequenceIterator last2) {
+    SequenceIterator it1 = first1;
+    SequenceIterator it2 = first2;
+
+    int count = 0;
+    while (it1 != last1 && it2 != last2) {
+      if (*it1 != *it2)
+        return count;
+      ++it1;
+      ++it2;
+      ++count;
+    }
+    return count;
   }
-  return count;
-}
+
+  static bool equal(SequenceIterator first1, SequenceIterator last1,
+                    SequenceIterator first2 ) {
+    return std::equal(first1, last1, first2);
+  }
+};
 
 ////////////////////////////////////////////////////////////////////////////////
             
-template <class SequenceContainer, class ElementType>
+//===----------------------------------------------------------------------===//
+// RadixTree
+//===----------------------------------------------------------------------===//
+template <class Sequence, class Element, 
+          class Compare = DefaultSequenceComparator<Sequence> >
+//template <class Sequence, class Element, 
 class RadixTree {
-  typedef typename SequenceContainer::iterator SequenceContainerIterator;
- public:
+ public: 
   class Node; // Declaration of Node class
+  class Edge; // Declaration of Edge class
 
-  // Edge: Represents an edge between two nodes, holds sequence data
+  typedef typename Sequence::iterator SequenceIterator;
+  typedef std::map<Element, Edge*> EdgeMap;
+  typedef typename EdgeMap::iterator EdgeMapIterator;
+
+  //===-------------------------------------------------------------------===//
+  // Class Edge: Represents an edge between two nodes, holds sequence data
+  //===-------------------------------------------------------------------===//
   class Edge {
-  public:
+   public:
 
-    Edge(Node* from, Node* to, SequenceContainer& s) 
+    Edge(Node* from, Node* to, Sequence& s) 
     : from_(from), to_(to), seq_(s) {}
 
     Edge(Node* from, Node* to, 
-              SequenceContainerIterator begin, 
-              SequenceContainerIterator end) 
+              SequenceIterator begin, 
+              SequenceIterator end) 
     : from_(from), to_(to), seq_(begin, end) {}
 
     Node* to() { return to_; }
-
     Node* from() { return from_; }
 
     void set_from(Node* from) { from_ = from; }
     void set_to(Node* to) { to_ = to; }
 
-    void extend(SequenceContainerIterator _begin, 
-                SequenceContainerIterator _end) {
+    void extend(SequenceIterator _begin, SequenceIterator _end) {
       seq_.insert(seq_.end(), _begin, _end);
     }
 
-    void extend(ElementType e) {
+    void extend(Element e) {
       seq_.insert(seq_.end(), e);
     }
 
-    void erase(SequenceContainerIterator _begin, 
-              SequenceContainerIterator _end) {
+    void erase(SequenceIterator _begin, 
+              SequenceIterator _end) {
       seq_.erase(_begin, _end);
     }
 
-    inline ElementType operator[](unsigned i) { return seq_[i]; }
-    inline ElementType operator[](unsigned i) const { return seq_[i]; }
+    inline Element& operator[](unsigned i) { return seq_[i]; }
+    inline const Element& operator[](unsigned i) const { return seq_[i]; }
 
-    inline SequenceContainerIterator begin() { return seq_.begin(); }
-    inline SequenceContainerIterator end() { return seq_.end(); }
+    inline SequenceIterator begin() { return seq_.begin(); }
+    inline SequenceIterator end() { return seq_.end(); }
 
-    inline ElementType key() const { return seq_[0]; }
+    inline Element key() const { return seq_[0]; }
 
     inline size_t size() { return seq_.size(); }
 
-  private:
+  protected:
     Node *to_;
     Node *from_;
-    SequenceContainer seq_;
+    Sequence seq_;
   };
 
-  typedef std::map<ElementType, Edge*> TransitionMap;
-
+  //===-------------------------------------------------------------------===//
+  // Class Node
+  //===-------------------------------------------------------------------===//
   class Node {
-  public:
+   public:
 
     Node() : parent_edge_(NULL) {}
 
@@ -105,17 +125,23 @@ class RadixTree {
       parent_edge_ = NULL;
     }
 
-    // Return a ref to the transition map
-    TransitionMap& tmap() { return tmap_; }
+    // Return a ref to the edge map
+    EdgeMap& edge_map() { return edge_map_; }
+
+    // Return iterator for the begining of the edge map
+    EdgeMapIterator begin() { return edge_map_.begin(); }
+
+    // Return iterator for the end of the edge map
+    EdgeMapIterator end() { return edge_map_.end(); }
 
     // Return number of outgoing edges
-    int degree() { return tmap_.size(); }
+    int degree() { return edge_map_.size(); }
 
     // Return true if this node has no incoming edge
     bool root() { return NULL == parent_edge_; }
 
     // Return true if this node has no outgoing edges
-    bool leaf() { return 0 == tmap_.size(); }
+    bool leaf() { return 0 == edge_map_.size(); }
 
     // Set the incoming edge
     void set_parent_edge(Edge* e) { parent_edge_ = e; }
@@ -127,19 +153,19 @@ class RadixTree {
     Node* parent() { return parent_edge_ ? parent_edge_->from() : NULL; }
 
     // Insert a sequence into the tree rooted at this node
-    Node* insert(SequenceContainer &s) {
+    Node* insert(Sequence &s) {
       return insert(s.begin(), s.end());
     }
 
     // Insert a one element sequence into the tree rooted at this node
-    Node* insert(ElementType e) {
-      SequenceContainer s;
+    Node* insert(Element e) {
+      Sequence s;
       s.insert(s.begin(), e);
       return insert(s.begin(), s.end());
     }
 
-    Node* insert(SequenceContainerIterator begin, 
-                 SequenceContainerIterator end) {
+    Node* insert(SequenceIterator begin, 
+                 SequenceIterator end) {
       Node* curr_node = this;
 
       while (curr_node != NULL) {
@@ -148,12 +174,12 @@ class RadixTree {
 
         Edge *edge = curr_node->get_edge(begin);
 
-        // If no transition on s, add new edge to leaf node
+        // If no edge on s, add new edge to leaf node
         if (edge == NULL)
           return curr_node->add_edge(begin, end);
 
         // Find position where match ends between edge and s 
-        int pos = prefix_match(edge->begin(), edge->end(), begin, end);
+        int pos = Compare::prefix_match(edge->begin(), edge->end(), begin, end);
 
         // If s is fully matched on this edge, return node it points to
         if ((begin + pos) == end && pos <= edge->size())
@@ -183,8 +209,8 @@ class RadixTree {
           // Update parent to new node
           edge->set_from(split_node);
 
-          // Update transition map for newly created node
-          split_node->tmap_[edge->key()] = edge;
+          // Update edge map for newly created node
+          split_node->edge_map_[edge->key()] = edge;
 
           // Current node is now split_node
           begin += pos;
@@ -206,7 +232,7 @@ class RadixTree {
     }
 
     // Return concatenation of edges from root this node 
-    void get(SequenceContainer &s) {
+    void get(Sequence &s) {
       std::stack<Edge*> edges;
 
       Node* curr_node = this;
@@ -222,31 +248,31 @@ class RadixTree {
       }
     }
 
-    Edge* get_edge(SequenceContainerIterator it) {
-      if (tmap_.find(*it) != tmap_.end()) {
-        return tmap_[*it];
+    Edge* get_edge(SequenceIterator it) {
+      if (edge_map_.find(*it) != edge_map_.end()) {
+        return edge_map_[*it];
       }
       return NULL;
     }
 
     // Create and add an edge to this node and return the node that
     // the new edge points to.
-    Node* add_edge(SequenceContainerIterator begin,
-                   SequenceContainerIterator end) {
+    Node* add_edge(SequenceIterator begin,
+                   SequenceIterator end) {
       Node *node = new Node();
       Edge *edge = new Edge(this, node, begin, end);
       node->set_parent_edge(edge);
-      tmap_[*begin] = edge;
+      edge_map_[*begin] = edge;
       return node;
     }
 
-    Node* extend_parent_edge(SequenceContainer &s) {
+    Node* extend_parent_edge(Sequence &s) {
       assert(leaf());
       parent_edge_->extend(s.begin(), s.end());
       return this;
     }
   
-    Node* extend_parent_edge(ElementType e) {
+    Node* extend_parent_edge(Element e) {
       assert(leaf());
       parent_edge_->extend(e);
       return this;
@@ -266,20 +292,19 @@ class RadixTree {
         parent_edge_size = parent_edge_->size();
       }
 
-      typename TransitionMap::iterator it=tmap_.begin(), iend = tmap_.end();
+      EdgeMapIterator it=edge_map_.begin(), iend = edge_map_.end();
       for (; it != iend; ++it) {
         Node* node = (*(it->second)).to();
         node->print(os, depth + parent_edge_size);
       }
     }
 
-  private:
+  protected:
     Edge* parent_edge_;
-    TransitionMap tmap_;
+    EdgeMap edge_map_;
   };
 
  public:
-
   // Constructor: Create new RadixTree
   RadixTree() { root_ = new Node(); }
 
@@ -289,33 +314,105 @@ class RadixTree {
     worklist.push(root_);
     while (!worklist.empty()) {
       Node* node = worklist.top();
-      typename TransitionMap::iterator 
-          it = node->tmap().begin(), iend = node->tmap().end();
+      EdgeMapIterator 
+          it = node->edge_map().begin(), iend = node->edge_map().end();
       worklist.pop();
       for (; it != iend; ++it) {
         Edge* edge = it->second;
         worklist.push(edge->to());
         delete edge;
       }
-      node->tmap().clear();
+      node->edge_map().clear();
       delete node;
     }
   }
 
   // Return a deep-copy of this RadixTree
-  RadixTree* clone() {
+  virtual RadixTree* clone() {
+    return new RadixTree(clone_node(root_));
+  }
+
+  // Insert new sequence into this radix tree
+  virtual Node* insert(Sequence &s) { 
+    return root_->insert(s);
+  }
+
+  virtual Node* extend(Sequence &s, Node* node = NULL) { 
+    if (node)
+      return node->extend_parent_edge(s);
+    return root_->insert(s);
+  }
+
+  virtual Node* extend(Element e, Node* node = NULL) { 
+    if (node)
+      return node->extend_parent_edge(e);
+    return root_->insert(e);
+  }
+
+  virtual bool lookup(Sequence &s) { 
+    if (Node *res = lookup_private(s))
+      return true;
+    return false;
+  }
+
+  virtual void get(Node* node, Sequence &s) { 
+    node->get(s);
+  }
+
+  virtual void print(std::ostream& os) {
+    root_->print(os);
+    os << std::endl;
+  }
+
+  virtual bool remove(Sequence &s) {
+    // Lookup the node matching s
+    Node *node = lookup_private(s, /*exact = */ true);
+    return remove_node(node);
+  }
+
+ protected: 
+
+  bool remove_node(Node *node) {
+    // If v is not in tree or is present at an internal node, do nothing
+    if (node && node->leaf() && !node->root()) {
+
+      Edge *edge = node->parent_edge();
+      Node *parent = edge->from();
+      parent->edge_map().erase(edge->key());
+      delete edge;
+      delete node; 
+
+      // If parent now only has one child, merge child edge with parent edge
+      // and delete parent
+      if (!parent->root() && parent->degree() == 1) {
+        Edge *merge_edge = parent->edge_map().begin()->second;
+
+        parent->parent_edge()->extend(merge_edge->begin(), merge_edge->end());
+        parent->parent_edge()->set_to(merge_edge->to());
+        parent->parent_edge()->to()->set_parent_edge(parent->parent_edge());
+
+        delete parent;
+        delete merge_edge;
+      }
+      return true;
+    }
+    return false;
+  }
+
+  // Return a deep-copy of this RadixTree
+  Node* clone_node(Node* root_node) {
     // New root of the cloned radix tree
-    Node* clone_root = new Node();
+    Node* clone_node = new Node();
 
     // Worklist holds a list of Node pairs, clone and original respectively
     std::stack<std::pair<Node*, Node*> > worklist; 
-    worklist.push(std::make_pair(clone_root, root_));
+    worklist.push(std::make_pair(clone_node, root_node));
 
     while (!worklist.empty()) {
       Node* dst_node = worklist.top().first;
       Node* src_node = worklist.top().second;
-      typename TransitionMap::iterator it = src_node->tmap().begin();
-      typename TransitionMap::iterator iend = src_node->tmap().end();
+      EdgeMapIterator 
+          it = src_node->edge_map().begin(), iend = src_node->edge_map().end();
 
       worklist.pop();
       for (; it != iend; ++it) {
@@ -330,84 +427,19 @@ class RadixTree {
         // Set 'parent_edge' (previously null)
         dst_to_node->set_parent_edge(edge);
 
-        // Assign the edge to its key in the new node's transition map
-        dst_node->tmap()[edge->key()] = edge;
+        // Assign the edge to its key in the new node's edge map
+        dst_node->edge_map()[edge->key()] = edge;
 
         // Add new node pair to worklist
         worklist.push(std::make_pair(dst_to_node, (Node*)src_edge->to()));
       }
     }
-    return new RadixTree(clone_root);
+    return clone_node;
   }
-
-  // Insert new sequence into this radix tree
-  Node* insert(SequenceContainer &s) { 
-    return root_->insert(s);
-  }
-
-  Node* extend(SequenceContainer &s, Node* node = NULL) { 
-    if (node)
-      return node->extend_parent_edge(s);
-    return root_->insert(s);
-  }
-
-  Node* extend(ElementType e, Node* node = NULL) { 
-    if (node)
-      return node->extend_parent_edge(e);
-    return root_->insert(e);
-  }
-
-  bool remove(SequenceContainer &s) {
-    // Lookup the node matching s
-    Node *node = lookup_private(s, /*exact = */ true);
-
-    // If v is not in tree or is present at an internal node, do nothing
-    if (node && node->leaf() && !node->root()) {
-
-      Edge *edge = node->parent_edge();
-      Node *parent = edge->from();
-      parent->tmap().erase(edge->key());
-      delete edge;
-      delete node; 
-
-      // If parent now only has one child, merge child edge with parent edge
-      // and delete parent
-      if (!parent->root() && parent->degree() == 1) {
-        Edge *merge_edge = parent->tmap().begin()->second;
-
-        parent->parent_edge()->extend(merge_edge->begin(), merge_edge->end());
-        parent->parent_edge()->set_to(merge_edge->to());
-        parent->parent_edge()->to()->set_parent_edge(parent->parent_edge());
-
-        delete parent;
-        delete merge_edge;
-      }
-      return true;
-    }
-    return false;
-  }
-
-  bool lookup(SequenceContainer &s) { 
-    if (Node *res = lookup_private(s))
-      return true;
-    return false;
-  }
-
-
-  void get(Node* node, SequenceContainer &s) { 
-    node->get(s);
-  }
-
-  void print(std::ostream& os) {
-    root_->print(os);
-    os << std::endl;
-  }
-
- private:
 
   /// Lookup the sequence s, starting from the edge at this node, return
   /// the node that the parent of edge containing the suffix of s.
-  Node* lookup_private(SequenceContainer &s, bool exact = false) {
+  Node* lookup_private(Sequence &s, bool exact = false) {
 
     Node* curr_node = root_;
     int pos = 0;
@@ -420,21 +452,21 @@ class RadixTree {
 
         // Edge size is equal to remaining # elements in s
         if (edge->size() == remaining) {
-          if (std::equal(edge->begin(), edge->end(), s.begin() + pos))
+          if (Compare::equal(edge->begin(), edge->end(), s.begin() + pos))
             return edge->to();
           else
             return NULL;
           
         // Edge size is greater than remaining # elements in s
         } else if (edge->size() > remaining) {
-          if (!exact && std::equal(s.begin() + pos, s.end(), edge->begin()))
+          if (!exact && Compare::equal(s.begin() + pos, s.end(), edge->begin()))
             return edge->to();
           else
             return NULL;
 
         // Edge size is less than remaining # elements in s
         } else {
-          if (!std::equal(edge->begin(), edge->end(), s.begin() + pos))
+          if (!Compare::equal(edge->begin(), edge->end(), s.begin() + pos))
             return NULL;
         }
 
@@ -442,7 +474,7 @@ class RadixTree {
         curr_node = edge->to();
 
       } else {
-        // No match in transition map in current node
+        // No match in edge map for current node
         return NULL;
       }
     }
@@ -450,10 +482,13 @@ class RadixTree {
     return NULL;
   }
 
-  RadixTree(Node* root) : root_(root) {}
-  explicit RadixTree(RadixTree& rt) {}
+ public:
 
   Node* root_;
+
+ private:
+  RadixTree(Node* root) : root_(root) {}
+  explicit RadixTree(RadixTree& rt) {}
 };
 
 } // end namespace cliver

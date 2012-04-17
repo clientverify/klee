@@ -55,8 +55,8 @@ class ExecutionTrace {
   const_iterator begin() const { return basic_blocks_.begin(); }
   const_iterator end() const { return basic_blocks_.end(); }
 
-  inline BasicBlockID operator[](unsigned i) { return basic_blocks_[i]; }
-  inline BasicBlockID operator[](unsigned i) const { return basic_blocks_[i]; }
+  inline BasicBlockID& operator[](unsigned i) { return basic_blocks_[i]; }
+  inline const BasicBlockID& operator[](unsigned i) const { return basic_blocks_[i]; }
 
   bool operator==(const ExecutionTrace& b) const;
   bool operator!=(const ExecutionTrace& b) const;
