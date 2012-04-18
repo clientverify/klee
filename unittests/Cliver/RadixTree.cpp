@@ -10,9 +10,10 @@
 #include "gtest/gtest.h"
 
 #include "cliver/RadixTree.h"
-#include "cliver/ExecutionTrace.h"
+//#include "cliver/ExecutionTrace.h"
 #include "cliver/EditDistanceSequence.h"
 #include "cliver/EditDistance.h"
+#include "cliver/ExecutionTraceTree.h"
 
 #include <stdlib.h>
 #include <string>
@@ -31,7 +32,7 @@ T * end(T (&ra)[N]) {
 
 typedef RadixTree<std::string, char> StringRadixTree;
 typedef RadixTree<std::vector<char>, char> VectorRadixTree;
-typedef RadixTree<ExecutionTrace, ExecutionTrace::ID> TraceRadixTree;
+//typedef RadixTree<ExecutionTrace, ExecutionTrace::ID> TraceRadixTree;
 typedef LevenshteinRadixTree<std::string, char> StringLevenshteinRadixTree;
 
 //////////////////////////////////////////////////////////////////////////////////
@@ -139,6 +140,7 @@ namespace {
 
 #if 1
 
+  /*
 TEST_F(RadixTreeTest, InitExecutionTrace) {
   TraceRadixTree *trt = new TraceRadixTree();
   TraceRadixTree::Node* n = trt->extend(10);
@@ -151,6 +153,7 @@ TEST_F(RadixTreeTest, InitExecutionTrace) {
   EXPECT_EQ(et.size(), 5);
   delete trt;
 }
+*/
 
 TEST_F(RadixTreeTest, Init) {
   ASSERT_TRUE(srt != NULL);
@@ -523,6 +526,31 @@ TEST_F(RadixTreeTest, LevenshteinComputeRandomVerifyIncrementSequence) {
   delete slrt;
 }
 #endif
+
+TEST_F(RadixTreeTest, ExecutionTraceTree) {
+  std::vector<ExecutionTrace*> traces;
+  int trace_size = 1000;
+  int trace_count = 100;
+  for (int i=0; i< trace_count; ++i) {
+    traces.push_back(new ExecutionTrace());
+    for (int j=0; j< trace_count; ++j) {
+      traces.back()->push_back(rand() % 65535);
+    }
+  }
+  ExecutionTraceTree trace_tree;
+  for (int i=0; i< trace_count; ++i) {
+    trace_tree.insert(*(traces[i]));
+  }
+
+  ExecutionTraceTree *trace_tree_clone 
+    = static_cast<ExecutionTraceTree*>(trace_tree.clone());
+  for (int i=0; i< trace_count; ++i) {
+    delete traces[i];
+  }
+  delete trace_tree_clone;
+}
+
+
 
 //////////////////////////////////////////////////////////////////////////////////
 

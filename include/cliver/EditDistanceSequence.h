@@ -9,6 +9,11 @@
 #ifndef CLIVER_EDIT_DISTANCE_SEQUENCE_H
 #define CLIVER_EDIT_DISTANCE_SEQUENCE_H
 
+#include "cliver/RadixTree.h"
+#include <limits.h>
+
+#include <vector>
+
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace cliver {
@@ -105,10 +110,10 @@ class LevenshteinRadixTree
   typedef LevenshteinElement<T> LElement;
   typedef std::vector<LevenshteinElement<T> > LSequence;
   typedef LevenshteinSequenceComparator<T> LComparator; 
-  typedef RadixTree<LSequence, LElement, LComparator> LRadixTree;
-  typedef typename LRadixTree::Node Node;
-  typedef typename LRadixTree::Edge Edge;
-  typedef typename LRadixTree::EdgeMapIterator EdgeMapIterator;
+  typedef RadixTree<LSequence, LElement, LComparator> This;
+  typedef typename This::Node Node;
+  typedef typename This::Edge Edge;
+  typedef typename This::EdgeMapIterator EdgeMapIterator;
  
 #define foreach_edge(__node, __iterator) \
   EdgeMapIterator __iterator = __node->begin(); \
@@ -121,7 +126,7 @@ class LevenshteinRadixTree
   }
 
   /// Return a deep-copy of this RadixTree
-  virtual LRadixTree* clone() {
+  virtual This* clone() {
     LevenshteinRadixTree *lrt 
       = new LevenshteinRadixTree(this->clone_node(this->root_));
     lrt->row_ = this->row_;

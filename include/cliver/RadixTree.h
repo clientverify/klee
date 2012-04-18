@@ -339,6 +339,11 @@ class RadixTree {
     return root_->insert(s);
   }
 
+  // Insert new sequence of a single element into this radix tree
+  virtual Node* insert(Element e) { 
+    return root_->insert(e);
+  }
+
   virtual Node* extend(Sequence &s, Node* node = NULL) { 
     if (node)
       return node->extend_parent_edge(s);
