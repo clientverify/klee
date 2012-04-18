@@ -18,9 +18,7 @@
 #include <string>
 #include <iostream>
 
-//using namespace klee;
 using namespace cliver;
-//using namespace std;
 
 #include "RadixTree.inc"
 
@@ -139,7 +137,7 @@ class RadixTreeTest : public ::testing::Test {
 
 namespace {
 
-#if 1 
+#if 1
 
 TEST_F(RadixTreeTest, InitExecutionTrace) {
   TraceRadixTree *trt = new TraceRadixTree();
@@ -343,8 +341,6 @@ TEST_F(RadixTreeTest, LevenshteinCloneDictionary) {
   delete clone_slrt;
 }
 
-#endif
-
 TEST_F(RadixTreeTest, LevenshteinComputeVerify) {
   StringLevenshteinRadixTree *slrt = new StringLevenshteinRadixTree();
 
@@ -352,22 +348,51 @@ TEST_F(RadixTreeTest, LevenshteinComputeVerify) {
   std::string sitting = "sitting";
   std::string Saturday = "Saturday";
   std::string Sunday = "Sunday";
+  std::string Samberg = "Samberg";
+  std::string Saturn = "Saturn";
+  std::string Macho = "Macho";
 
   slrt->insert(Saturday);
   slrt->insert(kitten);
+  slrt->insert(Samberg);
+  slrt->insert(Saturn);
+  slrt->insert(Macho);
 
   StringEDR edr_day(Saturday, Sunday);
   StringEDR edr_cat(kitten, Sunday);
+  StringEDR edr_samberg(Samberg, Sunday);
+  StringEDR edr_macho(Macho, Sunday);
 
   int day_cost_r = edr_day.compute_editdistance();
   int cat_cost_r = edr_cat.compute_editdistance();
+  int macho_cost_r = edr_macho.compute_editdistance();
+  int samberg_cost_r = edr_samberg.compute_editdistance();
   int cost_rt = slrt->min_edit_distance(Sunday);
 
   EXPECT_EQ(day_cost_r, slrt->lookup_cost(Saturday));
   EXPECT_EQ(cat_cost_r, slrt->lookup_cost(kitten));
+  EXPECT_EQ(samberg_cost_r, slrt->lookup_cost(Samberg));
+  EXPECT_EQ(macho_cost_r, slrt->lookup_cost(Macho));
+
+
   delete slrt;
 }
   
+TEST_F(RadixTreeTest, LevenshteinComputeRandomVerifyCheck) {
+  
+  srand(0);
+  int r0, r1, count = 5, check = 5;
+  for (int i=0; i < count;  ++i) {
+    r0 = (rand() % s_dictionary.size());
+    for (int j=0; j < check; ++j) {
+      r1 = (rand() % s_dictionary.size());
+      StringEDR edr(s_dictionary[r1], s_dictionary[r0]);
+      int edr_cost = edr.compute_editdistance();
+    }
+  }
+}
+
+
 TEST_F(RadixTreeTest, LevenshteinComputeRandom) {
   StringLevenshteinRadixTree *slrt = new StringLevenshteinRadixTree();
 
@@ -376,7 +401,7 @@ TEST_F(RadixTreeTest, LevenshteinComputeRandom) {
   }
   
   srand(0);
-  int r0, r1, count = 10, check = 10;
+  int r0, r1, count = 5, check = 5;
   for (int i=0; i < count;  ++i) {
     r0 = (rand() % s_dictionary.size());
     slrt->min_edit_distance(s_dictionary[r0]);
@@ -388,19 +413,6 @@ TEST_F(RadixTreeTest, LevenshteinComputeRandom) {
   delete slrt;
 }
 
-TEST_F(RadixTreeTest, LevenshteinComputeRandomVerifyCheck) {
-  
-  srand(0);
-  int r0, r1, count = 10, check = 10;
-  for (int i=0; i < count;  ++i) {
-    r0 = (rand() % s_dictionary.size());
-    for (int j=0; j < check; ++j) {
-      r1 = (rand() % s_dictionary.size());
-      StringEDR edr(s_dictionary[r1], s_dictionary[r0]);
-      int edr_cost = edr.compute_editdistance();
-    }
-  }
-}
 
 TEST_F(RadixTreeTest, LevenshteinComputeRandomVerify) {
   StringLevenshteinRadixTree *slrt = new StringLevenshteinRadixTree();
@@ -410,7 +422,7 @@ TEST_F(RadixTreeTest, LevenshteinComputeRandomVerify) {
   }
   
   srand(0);
-  int r0, r1, count = 10, check = 10;
+  int r0, r1, count = 5, check = 5;
   for (int i=0; i < count;  ++i) {
     r0 = (rand() % s_dictionary.size());
     slrt->min_edit_distance(s_dictionary[r0]);
@@ -419,8 +431,6 @@ TEST_F(RadixTreeTest, LevenshteinComputeRandomVerify) {
       StringEDR edr(s_dictionary[r1], s_dictionary[r0]);
       int edr_cost = edr.compute_editdistance();
       EXPECT_EQ(edr_cost, slrt->lookup_cost(s_dictionary[r1]));
-      //int slrt_cost = slrt->lookup_cost(s_dictionary[r1]);
-      //if (slrt_cost >= 0) EXPECT_EQ(edr_cost, slrt_cost);
     }
   }
   delete slrt;
@@ -435,7 +445,7 @@ TEST_F(RadixTreeTest, LevenshteinComputeRandomVerifyClone) {
   }
   
   srand(0);
-  int r0, r1, count = 10, check = 10;
+  int r0, r1, count = 5, check = 5;
   for (int i=0; i < count;  ++i) {
     r0 = (rand() % s_dictionary.size());
     slrt->min_edit_distance(s_dictionary[r0]);
@@ -451,6 +461,68 @@ TEST_F(RadixTreeTest, LevenshteinComputeRandomVerifyClone) {
   }
   delete clone_slrt;
 }
+
+TEST_F(RadixTreeTest, LevenshteinComputeRandomVerifyIncrementElement) {
+  StringLevenshteinRadixTree *slrt = new StringLevenshteinRadixTree();
+
+  for (int i=0; i<s_dictionary.size(); ++i) {
+    slrt->insert(s_dictionary[i]);
+  }
+  
+  srand(0);
+  int r0, r1, count = 5, check = 5;
+  for (int i=0; i < count;  ++i) {
+    r0 = (rand() % s_dictionary.size());
+    for (int j=0; j < s_dictionary[r0].size(); j++) {
+      slrt->min_edit_distance_suffix(s_dictionary[r0][j]);
+    }
+    for (int j=0; j < check; ++j) {
+      r1 = (rand() % s_dictionary.size());
+      StringEDR edr(s_dictionary[r1], s_dictionary[r0]);
+      int edr_cost = edr.compute_editdistance();
+      EXPECT_EQ(edr_cost, slrt->lookup_cost(s_dictionary[r1]));
+    }
+    slrt->reset();
+  }
+  delete slrt;
+}
+
+TEST_F(RadixTreeTest, LevenshteinComputeRandomVerifyIncrementSequence) {
+  StringLevenshteinRadixTree *slrt = new StringLevenshteinRadixTree();
+
+  for (int i=0; i<s_dictionary.size(); ++i) {
+    slrt->insert(s_dictionary[i]);
+  }
+  
+  srand(0);
+  int r0, r1, count = 5, check = 5;
+  for (int i=0; i < count;  ++i) {
+    r0 = (rand() % s_dictionary.size());
+
+    int j_start=0, j_end=0;
+    do {
+      j_start = j_end;
+      j_end = std::min((int)(s_dictionary[r0].size()), (1 + j_end + (rand()%4)));
+
+      std::string str(s_dictionary[r0].begin() + j_start,
+                      s_dictionary[r0].begin() + j_end);
+
+      slrt->min_edit_distance_suffix(str);
+
+    } while ((s_dictionary[r0].begin() + j_end) != s_dictionary[r0].end());
+
+    for (int j=0; j < check; ++j) {
+      r1 = (rand() % s_dictionary.size());
+      StringEDR edr(s_dictionary[r1], s_dictionary[r0]);
+      int edr_cost = edr.compute_editdistance();
+      EXPECT_EQ(edr_cost, slrt->lookup_cost(s_dictionary[r1]));
+    }
+    slrt->reset();
+  }
+
+  delete slrt;
+}
+#endif
 
 //////////////////////////////////////////////////////////////////////////////////
 
