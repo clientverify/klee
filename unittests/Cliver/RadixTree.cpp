@@ -12,6 +12,7 @@
 #include "cliver/RadixTree.h"
 #include "cliver/ExecutionTrace.h"
 #include "cliver/EditDistanceSequence.h"
+#include "cliver/EditDistance.h"
 
 #include <stdlib.h>
 #include <string>
@@ -36,6 +37,17 @@ typedef RadixTree<ExecutionTrace, ExecutionTrace::ID> TraceRadixTree;
 typedef LevenshteinRadixTree<std::string, char> StringLevenshteinRadixTree;
 
 //////////////////////////////////////////////////////////////////////////////////
+// EditDistance
+
+
+typedef Score<std::string, char, int> StringScore;
+typedef EditDistanceTable<StringScore,std::string,int> StringEDT;
+typedef EditDistanceRow<StringScore,std::string,int> StringEDR;
+
+//////////////////////////////////////////////////////////////////////////////////
+
+std::vector<std::string> s_dictionary;
+std::vector<std::vector<char> > v_dictionary;
 
 class RadixTreeTest : public ::testing::Test {
  protected:
@@ -63,7 +75,7 @@ class RadixTreeTest : public ::testing::Test {
     v8.insert(v8.end(), s8.begin(), s8.end());
   }
 
-  void SetUpDictionary() {
+  static void SetUpTestCase() {
     if (s_dictionary.empty())
       s_dictionary = std::vector<std::string>(cstr_dictionary, end(cstr_dictionary));
 
@@ -76,7 +88,6 @@ class RadixTreeTest : public ::testing::Test {
   }
 
   void InsertDictionary() {
-    SetUpDictionary();
 
     for (int i=0; i<s_dictionary.size(); ++i) {
       srt->insert(s_dictionary[i]);
@@ -118,10 +129,8 @@ class RadixTreeTest : public ::testing::Test {
   VectorRadixTree* vrt;
 
   std::string s_empty, s1, s2, s3, s4, s5, s6, s7, s8;
-  std::vector<std::string> s_dictionary;
 
   std::vector<char> v_empty, v1, v2, v3, v4, v5, v6, v7, v8;
-  std::vector<std::vector<char> > v_dictionary;
 
 };
 
@@ -129,6 +138,8 @@ class RadixTreeTest : public ::testing::Test {
 //////////////////////////////////////////////////////////////////////////////////
 
 namespace {
+
+#if 1 
 
 TEST_F(RadixTreeTest, InitExecutionTrace) {
   TraceRadixTree *trt = new TraceRadixTree();
@@ -241,6 +252,7 @@ TEST_F(RadixTreeTest, LookupDictionary) {
 TEST_F(RadixTreeTest, RemoveDictionary) {
   InsertDictionary();
   
+  srand(0);
   int r = 0, freq = 10;
   while (r < s_dictionary.size()) {
     bool result = srt->remove(s_dictionary[r]);
@@ -248,6 +260,7 @@ TEST_F(RadixTreeTest, RemoveDictionary) {
     r += 1 + (rand() % freq);
   }
 
+  srand(0);
   r = 0;
   while (r < v_dictionary.size()) {
     bool result = vrt->remove(v_dictionary[r]);
@@ -262,6 +275,7 @@ TEST_F(RadixTreeTest, CloneDictionary) {
   StringRadixTree *clone_srt = srt->clone();
   delete srt;
   
+  srand(0);
   int r = 0, freq = 100;
   while (r < s_dictionary.size()) {
     bool result = clone_srt->remove(s_dictionary[r]);
@@ -275,6 +289,7 @@ TEST_F(RadixTreeTest, CloneDictionary) {
   VectorRadixTree *clone_vrt = vrt->clone();
   delete vrt;
 
+  srand(0);
   r = 0;
   while (r < v_dictionary.size()) {
     bool result = clone_vrt->remove(v_dictionary[r]);
@@ -294,7 +309,6 @@ TEST_F(RadixTreeTest, Levenshtein) {
 
 TEST_F(RadixTreeTest, LevenshteinInsert) {
   StringLevenshteinRadixTree *slrt = new StringLevenshteinRadixTree();
-  SetUpDictionary();
 
   for (int i=0; i<s_dictionary.size(); ++i) {
     slrt->insert(s_dictionary[i]);
@@ -303,11 +317,12 @@ TEST_F(RadixTreeTest, LevenshteinInsert) {
     EXPECT_EQ(slrt->lookup(s_dictionary[i]), true);
   }
 
+  std::string test("test");
+  slrt->min_edit_distance(test);
 }
 
 TEST_F(RadixTreeTest, LevenshteinCloneDictionary) {
   StringLevenshteinRadixTree *slrt = new StringLevenshteinRadixTree();
-  SetUpDictionary();
 
   for (int i=0; i<s_dictionary.size(); ++i) {
     slrt->insert(s_dictionary[i]);
@@ -317,6 +332,7 @@ TEST_F(RadixTreeTest, LevenshteinCloneDictionary) {
       = static_cast<StringLevenshteinRadixTree*>(slrt->clone());
   delete slrt;
   
+  srand(0);
   int r = 0, freq = 100;
   while (r < s_dictionary.size()) {
     bool result = clone_slrt->remove(s_dictionary[r]);
@@ -327,6 +343,114 @@ TEST_F(RadixTreeTest, LevenshteinCloneDictionary) {
   delete clone_slrt;
 }
 
+#endif
+
+TEST_F(RadixTreeTest, LevenshteinComputeVerify) {
+  StringLevenshteinRadixTree *slrt = new StringLevenshteinRadixTree();
+
+  std::string kitten = "kitten";
+  std::string sitting = "sitting";
+  std::string Saturday = "Saturday";
+  std::string Sunday = "Sunday";
+
+  slrt->insert(Saturday);
+  slrt->insert(kitten);
+
+  StringEDR edr_day(Saturday, Sunday);
+  StringEDR edr_cat(kitten, Sunday);
+
+  int day_cost_r = edr_day.compute_editdistance();
+  int cat_cost_r = edr_cat.compute_editdistance();
+  int cost_rt = slrt->min_edit_distance(Sunday);
+
+  EXPECT_EQ(day_cost_r, slrt->lookup_cost(Saturday));
+  EXPECT_EQ(cat_cost_r, slrt->lookup_cost(kitten));
+  delete slrt;
+}
+  
+TEST_F(RadixTreeTest, LevenshteinComputeRandom) {
+  StringLevenshteinRadixTree *slrt = new StringLevenshteinRadixTree();
+
+  for (int i=0; i<s_dictionary.size(); ++i) {
+    slrt->insert(s_dictionary[i]);
+  }
+  
+  srand(0);
+  int r0, r1, count = 10, check = 10;
+  for (int i=0; i < count;  ++i) {
+    r0 = (rand() % s_dictionary.size());
+    slrt->min_edit_distance(s_dictionary[r0]);
+    for (int j=0; j < check; ++j) {
+      r1 = (rand() % s_dictionary.size());
+      EXPECT_GE(slrt->lookup_cost(s_dictionary[r1]), 0);
+    }
+  }
+  delete slrt;
+}
+
+TEST_F(RadixTreeTest, LevenshteinComputeRandomVerifyCheck) {
+  
+  srand(0);
+  int r0, r1, count = 10, check = 10;
+  for (int i=0; i < count;  ++i) {
+    r0 = (rand() % s_dictionary.size());
+    for (int j=0; j < check; ++j) {
+      r1 = (rand() % s_dictionary.size());
+      StringEDR edr(s_dictionary[r1], s_dictionary[r0]);
+      int edr_cost = edr.compute_editdistance();
+    }
+  }
+}
+
+TEST_F(RadixTreeTest, LevenshteinComputeRandomVerify) {
+  StringLevenshteinRadixTree *slrt = new StringLevenshteinRadixTree();
+
+  for (int i=0; i<s_dictionary.size(); ++i) {
+    slrt->insert(s_dictionary[i]);
+  }
+  
+  srand(0);
+  int r0, r1, count = 10, check = 10;
+  for (int i=0; i < count;  ++i) {
+    r0 = (rand() % s_dictionary.size());
+    slrt->min_edit_distance(s_dictionary[r0]);
+    for (int j=0; j < check; ++j) {
+      r1 = (rand() % s_dictionary.size());
+      StringEDR edr(s_dictionary[r1], s_dictionary[r0]);
+      int edr_cost = edr.compute_editdistance();
+      EXPECT_EQ(edr_cost, slrt->lookup_cost(s_dictionary[r1]));
+      //int slrt_cost = slrt->lookup_cost(s_dictionary[r1]);
+      //if (slrt_cost >= 0) EXPECT_EQ(edr_cost, slrt_cost);
+    }
+  }
+  delete slrt;
+}
+
+TEST_F(RadixTreeTest, LevenshteinComputeRandomVerifyClone) {
+  StringLevenshteinRadixTree *slrt = new StringLevenshteinRadixTree();
+  StringLevenshteinRadixTree *clone_slrt = slrt;
+
+  for (int i=0; i<s_dictionary.size(); ++i) {
+    slrt->insert(s_dictionary[i]);
+  }
+  
+  srand(0);
+  int r0, r1, count = 10, check = 10;
+  for (int i=0; i < count;  ++i) {
+    r0 = (rand() % s_dictionary.size());
+    slrt->min_edit_distance(s_dictionary[r0]);
+    clone_slrt = static_cast<StringLevenshteinRadixTree*>(slrt->clone());
+    delete slrt;
+    slrt = clone_slrt;
+    for (int j=0; j < check; ++j) {
+      r1 = (rand() % s_dictionary.size());
+      StringEDR edr(s_dictionary[r1], s_dictionary[r0]);
+      int edr_cost = edr.compute_editdistance();
+      EXPECT_EQ(edr_cost, clone_slrt->lookup_cost(s_dictionary[r1]));
+    }
+  }
+  delete clone_slrt;
+}
 
 //////////////////////////////////////////////////////////////////////////////////
 

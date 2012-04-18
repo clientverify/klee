@@ -103,7 +103,9 @@ class RadixTree {
     inline SequenceIterator begin() { return seq_.begin(); }
     inline SequenceIterator end() { return seq_.end(); }
 
-    inline Element key() const { return seq_[0]; }
+    inline Element& key() { return seq_[0]; }
+    inline Element& first_element() { return seq_[0]; }
+    inline Element& last_element() { return seq_[this->size()-1]; }
 
     inline size_t size() { return seq_.size(); }
 
