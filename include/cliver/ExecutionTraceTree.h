@@ -9,26 +9,34 @@
 #ifndef CLIVER_EXECUTION_TRACE_TREE_H
 #define CLIVER_EXECUTION_TRACE_TREE_H
 
+#if 0
 #include "cliver/RadixTree.h"
-
-////////////////////////////////////////////////////////////////////////////////
+#include <set>
 
 namespace cliver {
 
-class CVExecutionState;
+////////////////////////////////////////////////////////////////////////////////
 
-typedef uint16_t BasicBlockID;
+typedef unsigned int BasicBlockID;
 typedef std::vector<BasicBlockID> ExecutionTrace;
 
-class ExecutionTraceTree 
-: public RadixTree<ExecutionTrace, BasicBlockID> {
+////////////////////////////////////////////////////////////////////////////////
 
-  typedef RadixTree<ExecutionTrace, BasicBlockID> This;
+class CVExecutiontracker;
+
+/// TrackingRadixTree: RadixTree that allows the tracking of nodes with 
+/// pointers to external tracking objects
+
+template <Sequence, Element, TrackingObject> 
+class TrackingRadixTree 
+: public RadixTree<Sequence, Element> {
+
+  typedef RadixTree<Sequence, Element> This;
   typedef This::Node Node;
   typedef This::Edge Edge;
   typedef This::EdgeMapIterator EdgeMapIterator;
 
-  typedef std::map<CVExecutionState*, Node*> StateNodeMap;
+  typedef std::map<TrackingObject*, Node*> TrackingObjectNodeMap;
   
 #define foreach_edge(__node, __iterator) \
   EdgeMapIterator __iterator = __node->begin(); \
@@ -37,37 +45,113 @@ class ExecutionTraceTree
 
  public:
   /// Default Constructor
-  ExecutionTraceTree() { 
+  TrackingRadixTree() { 
     this->root_ = new Node();
   }
 
-  void trace_extend(ExecutionTrace &suffix, CVExecutionState* state = NULL) {
-    if (state_node_map_.count(state)) {
-      state_node_map_[state] = this->extend(suffix, state_node_map_[state]);
+  /// Extend the edge associated with tracker by an Sequence suffix
+  void extend(Sequence &suffix, TrackingObject* tracker) {
+    // Look up node associated with tracker
+    if (node_map_.count(tracker)) {
+      Node *node = node_map_[tracker];
+      // If tracker was recently cloned, we force a node split
+      if (cloned_tracking_objects_.count(tracker)) {
+        cloned_tracking_objects_.erase(tracker);
+        node_map_[tracker] = node->add_edge(suffix);
+      // Otherwise extend parent edge of associated node
+      } else {
+        node->extend_parent_edge(suffix);
+      }
+
+    // If tracker not in map, extend a new edge from the root with suffix
     } else {
-      state_node_map_[state] = this->insert(suffix);
+      node_map_[tracker] = this->insert(suffix);
     }
   }
 
-  void trace_extend(BasicBlockID &id, CVExecutionState* state = NULL) {
-    if (state_node_map_.count(state)) {
-      state_node_map_[state] = this->extend(id, state_node_map_[state]);
+  /// Extend the edge associated with tracker by a single element, id
+  void extend(Element e, TrackingObject* tracker) {
+    // Look up node associated with tracker
+    if (node_map_.count(tracker)) {
+      Node *node = node_map_[tracker];
+      // If tracker was recently cloned, we force a node split
+      if (cloned_tracking_objects_.count(tracker)) {
+        cloned_tracking_objects_.erase(tracker);
+        node_map_[tracker] = node->add_edge(e);
+      // Otherwise extend parent edge of associated node
+      } else {
+        node->extend_parent_edge(e);
+      }
+
+    // If tracker not in map, extend a new edge from the root with suffix
     } else {
-      state_node_map_[state] = this->insert(id);
+      node_map_[tracker] = this->insert(e);
     }
+  }
+
+  /// Get the complete Sequence associated with tracker
+  void get(TrackingObject* tracker, Sequence& s) {
+    // If tracker is in the node map, look up the assocated leaf node
+    if (node_map_.count(tracker)) { 
+      this->get(node_map_[tracker], s);
+      return true;
+    }
+    return false;
+  }
+
+  // When a tracker is cloned, we force the next extension to split the node, but
+  // until then, we maintain a set of trackers that have been cloned in
+  // cloned_tracking_objects_. We also associated the child tracker with the with the same
+  // node as the parent.
+  void tracker_clone(TrackingObject* child, TrackingObject* parent) {
+    assert(node_map_.count(parent));
+    Node* node = node_map_[parent];
+    node_map_[child] = node;
+    cloned_tracking_objects_.insert(parent);
+    cloned_tracking_objects_.insert(child);
+  }
+
+  // Checks that no other tracker is references the node associated with this
+  // tracker, and removes the leaf edge associated with the node if there are no
+  // other references
+  void remove_tracker(TrackingObject* tracker) {
+    assert(node_map_.count(tracker));
+    Node* node = node_map_[tracker];
+
+    int ref_count = 0;
+    if (cloned_tracking_objects_.count(tracker)) {
+      // Iterate over all nodes to see if another tracker is referencing this node
+      TrackingObjectNodeMap::iterator it = node_map_.begin(), 
+          iend = node_map_.end();
+      for (; it != iend && ref_count < 2; ++it) {
+        if (it->second == node) ref_count++;
+      }
+    }
+    // If no other tracker references this node, we can safely remove it
+    if (ref_count < 2) {
+      cloned_tracking_objects_.erase(tracker);
+      this->remove_node(node);
+    }
+
+    // Erase the tracker from the tracker node map
+    node_map_.erase(tracker);
+  }
+
+  /// Query whether this tree has seen tracker
+  bool has_tracker(TrackingObject* tracker) {
+    return node_map_.count(tracker) ? true : false;
   }
 
   /// Return a deep-copy of this RadixTree
   virtual This* clone() {
 
-    // ExecutionTraceTree
-    ExecutionTraceTree *tree = new ExecutionTraceTree();
+    TrackingRadixTree *tree = new TrackingRadixTree();
 
     // Worklist holds a list of Node pairs, clone and original respectively
     std::stack<std::pair<Node*, Node*> > worklist; 
     worklist.push(std::make_pair(tree->root_, this->root_));
 
-    // Node map used to copy state_node_map_
+    // Node map used to copy node_map_
     std::map<Node*, Node*> nodemap;
     nodemap[this->root_] = tree->root_;
 
@@ -101,11 +185,12 @@ class ExecutionTraceTree
       }
     }
 
-    // Create state_node_map_for clone using same states but cloneed Node ptrs
-    StateNodeMap::iterator it=state_node_map_.begin(), iend=state_node_map_.end();
+    // Create node_map_ for clone using same trackers but cloned Node ptrs
+    TrackingObjectNodeMap::iterator it = node_map_.begin(), 
+        iend = node_map_.end();
     for (; it != iend; ++it) {
       assert(0 != nodemap.count(it->second));
-      tree->state_node_map_[it->first] = nodemap[it->second];
+      tree->node_map_[it->first] = nodemap[it->second];
     }
 
     // Return deep-copy clone
@@ -113,11 +198,11 @@ class ExecutionTraceTree
   }
 
  private:
-  StateNodeMap state_node_map_;
+  TrackingObjectNodeMap node_map_;
+  std::set<TrackingObject*> cloned_tracking_objects_;
 };
 
-
-
 } // end namespace cliver
+#endif
 
 #endif // CLIVER_EXECUTION_TRACE_TREE_H

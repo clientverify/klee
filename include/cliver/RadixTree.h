@@ -4,14 +4,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
+// TODO: use boost::unordered_map for transition maps
 //
 //===----------------------------------------------------------------------===//
 #ifndef CLIVER_RADIXTREE_H
 #define CLIVER_RADIXTREE_H
 
+#include <iostream>
 #include <algorithm>
 #include <map>
 #include <stack>
+#include "assert.h"
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -72,6 +75,9 @@ class RadixTree {
 
     Edge(Node* from, Node* to, Sequence& s) 
     : from_(from), to_(to), seq_(s) {}
+
+    Edge(Node* from, Node* to, Element e) 
+    : from_(from), to_(to) { extend(e); }
 
     Edge(Node* from, Node* to, 
               SequenceIterator begin, 
@@ -202,17 +208,20 @@ class RadixTree {
 
         } else {
           // Split existing edge
-          Node *split_node 
-              = curr_node->add_edge(edge->begin(), edge->begin() + pos);
+          Node *split_node = curr_node->split_edge(edge->key(), pos);
+          
+          //// Split existing edge
+          //Node *split_node 
+          //    = curr_node->add_edge(edge->begin(), edge->begin() + pos);
 
-          // Erase top of old edge that was just copied
-          edge->erase(edge->begin(), edge->begin() + pos);
+          //// Erase top of old edge that was just copied
+          //edge->erase(edge->begin(), edge->begin() + pos);
 
-          // Update parent to new node
-          edge->set_from(split_node);
+          //// Update parent to new node
+          //edge->set_from(split_node);
 
-          // Update edge map for newly created node
-          split_node->edge_map_[edge->key()] = edge;
+          //// Update edge map for newly created node
+          //split_node->edge_map_[edge->key()] = edge;
 
           // Current node is now split_node
           begin += pos;
@@ -250,6 +259,7 @@ class RadixTree {
       }
     }
 
+    // Lookup the edge associated the seqeuence element at 'it'
     Edge* get_edge(SequenceIterator it) {
       if (edge_map_.find(*it) != edge_map_.end()) {
         return edge_map_[*it];
@@ -257,14 +267,38 @@ class RadixTree {
       return NULL;
     }
 
-    // Create and add an edge to this node and return the node that
-    // the new edge points to.
+    // Lookup the edge associated the seqeuence element at 'it'
+    Edge* get_edge(Element e) {
+      if (edge_map_.find(e) != edge_map_.end()) {
+        return edge_map_[e];
+      }
+      return NULL;
+    }
+
+    // Create and add an edge with the contents between begin and end to this
+    // node and return the node that the new edge points to
     Node* add_edge(SequenceIterator begin,
                    SequenceIterator end) {
       Node *node = new Node();
       Edge *edge = new Edge(this, node, begin, end);
       node->set_parent_edge(edge);
       edge_map_[*begin] = edge;
+      return node;
+    }
+
+    // Create and add an edge to this node with the contents of s and return the
+    // node that the new edge points to
+    Node* add_edge(Sequence &s) {
+      return add_edge(s.begin(), s.end());
+    }
+
+    // Create and add an edge to this node that contains the element e and
+    // return the node that the new edge points to
+    Node* add_edge(Element e) {
+      Node *node = new Node();
+      Edge *edge = new Edge(this, node, e);
+      node->set_parent_edge(edge);
+      edge_map_[e] = edge;
       return node;
     }
 
@@ -278,6 +312,31 @@ class RadixTree {
       assert(leaf());
       parent_edge_->extend(e);
       return this;
+    }
+
+    // Split an edge keyed on e at pos
+    Node* split_edge(Element e, int pos) {
+
+      // Lookup edge
+      Edge *edge = this->get_edge(e);
+
+      // Return NULL if not found
+      if (edge == NULL)
+        return NULL;
+
+      // Split existing edge
+      Node *split_node = this->add_edge(edge->begin(), edge->begin() + pos);
+
+      // Erase top of old edge that was just copied
+      edge->erase(edge->begin(), edge->begin() + pos);
+
+      // Update parent to new node
+      edge->set_from(split_node);
+
+      // Update edge map for newly created node
+      split_node->edge_map_[edge->key()] = edge;
+
+      return split_node;
     }
 
     // Simple print routine
@@ -344,33 +403,26 @@ class RadixTree {
     return root_->insert(e);
   }
 
-  virtual Node* extend(Sequence &s, Node* node = NULL) { 
-    if (node)
-      return node->extend_parent_edge(s);
-    return root_->insert(s);
-  }
-
-  virtual Node* extend(Element e, Node* node = NULL) { 
-    if (node)
-      return node->extend_parent_edge(e);
-    return root_->insert(e);
-  }
-
+  // Lookup Sequence in the RadixTree
   virtual bool lookup(Sequence &s) { 
     if (Node *res = lookup_private(s))
       return true;
     return false;
   }
 
+  // Return the Sequence stored in the radix tree from root to node
   virtual void get(Node* node, Sequence &s) { 
     node->get(s);
   }
 
+  // Write a text version of the RadixTree to os
   virtual void print(std::ostream& os) {
     root_->print(os);
     os << std::endl;
   }
 
+  // If there is a path from root to leaf node that is equal to s, remove the
+  // leaf node and parent edge
   virtual bool remove(Sequence &s) {
     // Lookup the node matching s
     Node *node = lookup_private(s, /*exact = */ true);
@@ -487,6 +539,50 @@ class RadixTree {
     }
 
     return NULL;
+  }
+
+  // Returns a (Node* n, int i) pair if there is an prefix of s that is an exact
+  // match in the tree, or if there is a prefix of the contents of the tree that
+  // is an exact match of s. If the former, i is positive; if the latter, i is
+  // negative or zero. If n is NULL, there is not a 'prefix' match.
+  std::pair<Node*, int> prefix_lookup(Sequence &s) {
+    std::pair<Node*, int> no_prefix_match(NULL, 0);
+    Node* curr_node = root_;
+    int pos = 0;
+    size_t remaining;
+
+    while (pos < s.size()) {
+      remaining = s.size() - pos;
+
+      // Find matching edge for current element of s
+      if (Edge *edge = curr_node->get_edge(s.begin() + pos)) {
+
+        int match_len = Compare::prefix_match(edge->begin(), edge->end(),
+                                              s.begin() + pos, s.end());
+        int offset = match_len - (int)edge->size();
+
+        // No prefix match
+        if ((int)match_len < remaining && (int)match_len < edge->size())
+          return no_prefix_match;
+        // A prefix of the tree is an exact match to s
+        else if (match_len == remaining) 
+          return std::make_pair(edge->to(), match_len - (int)edge->size());
+        // A prefix of s has an exact match in the tree (s overlaps leaf node)
+        else if (match_len == (int)edge->size() && edge->to()->leaf())
+          return std::make_pair(edge->to(), (int)remaining - match_len);
+
+        // edge is equal to s from (pos) to (pos + |edge|)
+        pos += edge->size();
+        curr_node = edge->to();
+      } else {
+        if (curr_node != this->root_ && curr_node->leaf() && pos > 0)
+          return std::make_pair(curr_node, (int)remaining);
+        else 
+          return no_prefix_match;
+      }
+
+    }
+    return no_prefix_match;
   }
 
  public:

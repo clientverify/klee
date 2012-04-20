@@ -52,7 +52,6 @@ llvm::cl::opt<RunModeType> RunMode("cliver-mode",
     clEnumValN(VerifyWithEditCost, "verify-with-edit-cost",
       "Verify using edit cost and training data"),
     clEnumValN(Training, "training", "Generate training traces"),
-    clEnumValN(TestTraining, "training-test", "Verify using edit costs"),
   clEnumValEnd));
 
 llvm::cl::opt<ClientModelType> ClientModel("client-model",
@@ -89,7 +88,6 @@ CVSearcher* CVSearcherFactory::create(klee::Searcher* base_searcher,
         }
       }
     }
-    case TestTraining:
     case Training: {
       return new NewTrainingSearcher(cv, merger);
     }
@@ -165,9 +163,6 @@ ExecutionTreeManager* ExecutionTreeManagerFactory::create(ClientVerifier* cv) {
       return new TrainingExecutionTreeManager(cv);
     }
 
-    case TestTraining: {
-      return new TestExecutionTreeManager(cv);
-    }
   }
   cv_message("cliver mode not supported in ExecutionTreeManager");
   return NULL;
@@ -185,7 +180,6 @@ PathTree* PathTreeFactory::create(CVExecutionState* root_state) {
 ExecutionStateProperty* ExecutionStatePropertyFactory::create() {
   switch (RunMode) {
     case Training:
-    case TestTraining:
       return new PathProperty();
 
     case Verify:

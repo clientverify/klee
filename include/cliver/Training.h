@@ -9,6 +9,7 @@
 #ifndef CLIVER_TRAINING_H
 #define CLIVER_TRAINING_H
 
+#if 0
 #include "cliver/ExecutionTrace.h"
 
 #include <iostream>
@@ -73,6 +74,7 @@ std::ostream& operator<<(std::ostream& os, const TrainingObject &tobject);
 ////////////////////////////////////////////////////////////////////////////////
 
 } // end namespace cliver
+#endif
 
 #endif // CLIVER_TRAINING_H
 
