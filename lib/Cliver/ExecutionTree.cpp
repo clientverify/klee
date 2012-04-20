@@ -17,7 +17,6 @@
 #include "cliver/CVStream.h"
 #include "cliver/EditDistance.h"
 #include "cliver/ExecutionTrace.h"
-#include "cliver/TrackingRadixTree.h"
 #include "cliver/CVExecutionState.h"
 #include "cliver/NetworkManager.h"
 #include "cliver/Training.h"
@@ -89,15 +88,6 @@ inline std::ostream &operator<<(std::ostream &os,
 	//str.erase(std::remove(str.begin(), str.end(), '\n'), str.end());
 	return os << ros.str();
 }
-
-// Helper for ExecutionTrace debug output
-inline std::ostream &operator<<(std::ostream &os, const ExecutionTrace &t) {
-  foreach (BasicBlockID id, t) {
-    os << id << ",";
-  }
-  return os;
-}
-
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -171,12 +161,9 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
 
   switch (ev.event_type) {
     case CV_ROUND_START: {
-      CVDEBUG("Round Start");
-      if (DeleteOldTrees) {
-        if (!tree_list_.empty()) {
-          delete tree_list_.back();
-          tree_list_.pop_back();
-        }
+      if (DeleteOldTrees && !tree_list_.empty()) {
+        delete tree_list_.back();
+        tree_list_.pop_back();
       }
       tree_list_.push_back(new ExecutionTraceTree() );
       break;
@@ -229,7 +216,7 @@ TrainingExecutionTreeManager::TrainingExecutionTreeManager(ClientVerifier* cv)
   : ExecutionTreeManager(cv) {}
 
 void TrainingExecutionTreeManager::initialize() {
-  //trees_.push_back(new ExecutionTraceTree() );
+  tree_list_.push_back(new ExecutionTraceTree() );
 }
 
 void TrainingExecutionTreeManager::notify(ExecutionEvent ev) {
@@ -238,14 +225,18 @@ void TrainingExecutionTreeManager::notify(ExecutionEvent ev) {
 
   switch (ev.event_type) {
     case CV_ROUND_START: {
-      //if (DeleteOldTrees) {
-      //  delete trees_.back();
-      //  trees_.pop_back();
-      //}
-      //trees_.push_back(new ExecutionTraceTree() );
+      if (DeleteOldTrees && !tree_list_.empty()) {
+        delete tree_list_.back();
+        tree_list_.pop_back();
+      }
+      tree_list_.push_back(new ExecutionTraceTree() );
       break;
     }
     case CV_BASICBLOCK_ENTRY: {
+      if (state->basic_block_tracking()) {
+        tree_list_.back()->extend(state->prevPC->kbb->id, state);
+      }
+
       //if (!trees_.back()->has_state(state)) {
       //  CVDEBUG("Adding parent-less state: " << *state);
       //  trees_.back()->add_state(state, NULL);
@@ -257,19 +248,39 @@ void TrainingExecutionTreeManager::notify(ExecutionEvent ev) {
     }
 
     case CV_STATE_REMOVED: {
-      //CVDEBUG("Removing state: " << *state );
-      //trees_.back()->remove_state(state);
+      CVDEBUG("Removing state: " << *state );
+      tree_list_.back()->remove_tracker(state);
       break;
     }
 
     case CV_STATE_CLONE: {
-      //CVDEBUG("Cloned state: " << *state);
-      //trees_.back()->add_state(state, parent);
+      CVDEBUG("Cloned state: " << *state);
+      tree_list_.back()->clone_tracker(state, parent);
       break;
     }
 
     case CV_SOCKET_WRITE:
     case CV_SOCKET_READ: {
+      assert(tree_list_.back()->tracks(state));
+
+      // On a successful socket read/write event, write this path's state
+      // and associated socket event data to file
+
+      // Get socket event for this successful path
+      Socket* socket = state->network_manager()->socket();
+      assert(socket);
+      SocketEvent* socket_event 
+          = const_cast<SocketEvent*>(&socket->previous_event());
+
+      // Get path from the execution tree
+      ExecutionTrace etrace;
+      tree_list_.back()->tracker_get(state, etrace);
+
+
+      // Create training object and write to file
+      TrainingObject training_obj(&etrace, socket_event);
+      training_obj.write(state, cv_);
+
       //assert(trees_.back()->has_state(state));
 
       //// On a successful socket read/write event, write this path's state

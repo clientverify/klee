@@ -13,7 +13,8 @@
 #include "cliver/EditDistance.h"
 #include "cliver/ExecutionStateProperty.h"
 #include "cliver/ExecutionObserver.h"
-#include "cliver/ExecutionTrace.h" /* NEEDED? */
+#include "cliver/ExecutionTrace.h"
+#include "cliver/TrackingRadixTree.h"
 #include "cliver/Training.h"
 
 
@@ -35,21 +36,15 @@
 #include <boost/serialization/vector.hpp>
 #include <boost/serialization/set.hpp>
 
-// New
-#include "cliver/TrackingRadixTree.h"
-#include "cliver/CVExecutionState.h"
-// New
-
 #define MAX(x,y) (((x)<(y))?(y):(x))
 #define MIN(x,y) (!((y)<(x))?(x):(y))
 
 namespace cliver {
 
-// New
-typedef unsigned short BasicBlockID;
-typedef std::vector<BasicBlockID> ExecutionTrace;
-typedef TrackingRadixTree< ExecutionTrace, BasicBlockID, CVExecutionState > ExecutionTraceTree;
-// New
+////////////////////////////////////////////////////////////////////////////////
+
+typedef TrackingRadixTree< ExecutionTrace, BasicBlockID, CVExecutionState > 
+    ExecutionTraceTree;
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -903,7 +898,6 @@ class ExecutionTreeManager : public ExecutionObserver {
   virtual void initialize();
   virtual void notify(ExecutionEvent ev);
  protected:
-  //std::list< ExecutionTraceTree* > trees_;
   std::vector< ExecutionTraceTree* > tree_list_;
   ClientVerifier *cv_;
 
