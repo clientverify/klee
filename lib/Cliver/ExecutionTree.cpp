@@ -161,7 +161,9 @@ int SocketEventEditDistanceTetrinet::edit_distance(const SocketEvent* a,
 
 ExecutionTreeManager::ExecutionTreeManager(ClientVerifier* cv) : cv_(cv) {}
 
-void ExecutionTreeManager::initialize() {}
+void ExecutionTreeManager::initialize() {
+  tree_list_.push_back(new ExecutionTraceTree() );
+}
 
 void ExecutionTreeManager::notify(ExecutionEvent ev) {
   CVExecutionState* state = ev.state;
@@ -169,6 +171,7 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
 
   switch (ev.event_type) {
     case CV_ROUND_START: {
+      CVDEBUG("Round Start");
       if (DeleteOldTrees) {
         if (!tree_list_.empty()) {
           delete tree_list_.back();
@@ -197,18 +200,21 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
       break;
     }
 
+    case CV_SOCKET_WRITE:
+    case CV_SOCKET_READ:
     case CV_SOCKET_SHUTDOWN: {
-      CVDEBUG("Successful socket shutdown. " << *state);
+      CVDEBUG("Successful socket event: " << *state);
       ExecutionTraceTree* tree = NULL;
       reverse_foreach (tree, tree_list_) {
         if (tree->tracks(state))
           break;
       }
-      assert(tree->tracks(state));
 
-      ExecutionTrace etrace;
-      tree->tracker_get(state, etrace);
-      CVDEBUG("TRACE: " << etrace);
+      if (tree->tracks(state)) {
+        ExecutionTrace etrace;
+        tree->tracker_get(state, etrace);
+        CVDEBUG("TRACE: " << etrace);
+      }
       break;
     }
 

@@ -46,7 +46,7 @@
 namespace cliver {
 
 // New
-typedef unsigned int BasicBlockID;
+typedef unsigned short BasicBlockID;
 typedef std::vector<BasicBlockID> ExecutionTrace;
 typedef TrackingRadixTree< ExecutionTrace, BasicBlockID, CVExecutionState > ExecutionTraceTree;
 // New
