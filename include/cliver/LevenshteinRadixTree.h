@@ -1,4 +1,4 @@
-//===-- EditDistanceSequence.h ----------------------------------*- C++ -*-===//
+//===-- LevenshteinRadixTree.h ----------------------------------*- C++ -*-===//
 //
 // <insert license>
 //
@@ -6,8 +6,8 @@
 //
 //
 //===----------------------------------------------------------------------===//
-#ifndef CLIVER_EDIT_DISTANCE_SEQUENCE_H
-#define CLIVER_EDIT_DISTANCE_SEQUENCE_H
+#ifndef CLIVER_LEVENSHTEIN_RADIX_TREE_H
+#define CLIVER_LEVENSHTEIN_RADIX_TREE_H
 
 #include "cliver/RadixTree.h"
 #include <limits.h>
@@ -326,10 +326,9 @@ class LevenshteinRadixTree
   int row_;
 };
 
-
 } // end namespace cliver
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#endif // CLIVER_EDIT_DISTANCE_SEQUENCE_H
+#endif // CLIVER_LEVENSHTEIN_RADIX_TREE_H
 
