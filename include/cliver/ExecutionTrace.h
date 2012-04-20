@@ -10,7 +10,9 @@
 #define CLIVER_EXECUTION_TRACE_H
 
 #include <vector>
+#include "cliver/ExecutionTraceTree.h"
 
+#if 0
 namespace boost { void throw_exception(std::exception const& e); }
 
 #include <boost/serialization/access.hpp>
@@ -106,7 +108,10 @@ struct ExecutionTraceLT{
 
 ////////////////////////////////////////////////////////////////////////////////
 
+
 } // end namespace cliver
+
+#endif
 
 #endif // CLIVER_EXECUTION_TRACE_H
 

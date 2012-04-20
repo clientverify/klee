@@ -3,7 +3,7 @@
 // <insert license>
 //
 //===----------------------------------------------------------------------===//
-
+#if 0
 #include "cliver/Training.h"
 #include "cliver/ClientVerifier.h"
 #include "cliver/CVExecutionState.h"
@@ -83,6 +83,6 @@ std::ostream& operator<<(std::ostream& os, const TrainingObject &tobject) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
 } // end namespace cliver
+#endif
 

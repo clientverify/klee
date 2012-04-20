@@ -4,9 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// ??? Make CVExecutionState a template parameter to ExecutionTree?
-// TODO Define add/update/remove semantics for ExecutionTree template class
-// TODO optimize get_path
+// TODO Rename this file to ExecutionTraceManager.h
 //
 //===----------------------------------------------------------------------===//
 #ifndef CLIVER_EXECUTION_TREE_H
@@ -17,6 +15,7 @@
 #include "cliver/ExecutionObserver.h"
 #include "cliver/ExecutionTrace.h" /* NEEDED? */
 #include "cliver/Training.h"
+
 
 #include "cliver/tree.h"
 
@@ -36,15 +35,28 @@
 #include <boost/serialization/vector.hpp>
 #include <boost/serialization/set.hpp>
 
+// New
+#include "cliver/TrackingRadixTree.h"
+#include "cliver/CVExecutionState.h"
+// New
+
 #define MAX(x,y) (((x)<(y))?(y):(x))
 #define MIN(x,y) (!((y)<(x))?(x):(y))
 
 namespace cliver {
 
+// New
+typedef unsigned int BasicBlockID;
+typedef std::vector<BasicBlockID> ExecutionTrace;
+typedef TrackingRadixTree< ExecutionTrace, BasicBlockID, CVExecutionState > ExecutionTraceTree;
+// New
+
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class SocketEvent;
 
+#if 0
 class SocketEventEditDistance {
  public:
   SocketEventEditDistance() {}
@@ -64,9 +76,11 @@ class SocketEventEditDistanceTetrinet: public SocketEventEditDistance {
   SocketEventEditDistanceTetrinet() {}
   int edit_distance(const SocketEvent* a, const SocketEvent* b);
 };
+#endif
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#if 0
 template<class ScoreType, 
          class SequenceType, 
          class ElementType, 
@@ -844,49 +858,53 @@ class ExecutionTree : public tree<DataType> {
 #undef foreach_leaf
 };
 
+#endif
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // ExecutionTrace Score
-typedef Score< ExecutionTrace, ExecutionTrace::ID, int> ETScore;
+//typedef Score< ExecutionTrace, ExecutionTrace::ID, int> ETScore;
 
 // EditDistance trees
-typedef EditDistanceRowColumn< ETScore, ExecutionTrace, 
-                               ExecutionTrace::ID, int > EDColumn;
-typedef EditDistanceTree< EDColumn, ExecutionTrace, int > EDTree;
-
-// EditDistance flavors
-typedef EditDistanceTable<ETScore,ExecutionTrace,int> ExecutionTraceEDT;
-typedef EditDistanceRow<ETScore,ExecutionTrace,int>   ExecutionTraceEDR;
-typedef EditDistanceUkkonen<ETScore,ExecutionTrace,int> ExecutionTraceEDU;
-typedef EditDistanceUkkonen<ETScore,ExecutionTrace,int> ExecutionTraceEDU;
-typedef EditDistanceDynamicUKK<ETScore,ExecutionTrace,int> ExecutionTraceEDUD;
-typedef EditDistanceStaticUKK<ETScore,ExecutionTrace,int> ExecutionTraceEDUS;
-typedef EditDistanceFullUKK<ETScore,ExecutionTrace,int> ExecutionTraceEDUF;
+//typedef EditDistanceRowColumn< ETScore, ExecutionTrace, 
+//                               ExecutionTrace::ID, int > EDColumn;
+//typedef EditDistanceTree< EDColumn, ExecutionTrace, int > EDTree;
+//
+//// EditDistance flavors
+//typedef EditDistanceTable<ETScore,ExecutionTrace,int> ExecutionTraceEDT;
+//typedef EditDistanceRow<ETScore,ExecutionTrace,int>   ExecutionTraceEDR;
+//typedef EditDistanceUkkonen<ETScore,ExecutionTrace,int> ExecutionTraceEDU;
+//typedef EditDistanceUkkonen<ETScore,ExecutionTrace,int> ExecutionTraceEDU;
+//typedef EditDistanceDynamicUKK<ETScore,ExecutionTrace,int> ExecutionTraceEDUD;
+//typedef EditDistanceStaticUKK<ETScore,ExecutionTrace,int> ExecutionTraceEDUS;
+//typedef EditDistanceFullUKK<ETScore,ExecutionTrace,int> ExecutionTraceEDUF;
 
 // Default EditDistance
-typedef ExecutionTraceEDR ExecutionTraceED;
+//typedef ExecutionTraceEDR ExecutionTraceED;
 
 ////////////////////////////////////////////////////////////////////////////////
 
 // Basic ExecutionTree
-typedef ExecutionTree<ExecutionTrace, ExecutionTrace::ID> ExecutionTraceTree;
+//typedef ExecutionTree<ExecutionTrace, ExecutionTrace::ID> ExecutionTraceTree;
 
-typedef std::map<CVExecutionState*, EDTree*> ExecutionStateEDTreeMap;
+//typedef std::map<CVExecutionState*, EDTree*> ExecutionStateEDTreeMap;
 
-typedef std::map<ExecutionTrace::ID, TrainingObject*> TrainingObjectIDMap;
-typedef std::map<ExecutionTrace::ID, TrainingObject*> TrainingObjectIDMap;
-typedef std::set<TrainingObject*, TrainingObjectTraceLT> TrainingObjectSet;
-typedef std::vector<TrainingObject*> TrainingObjectList;
+//typedef std::map<ExecutionTrace::ID, TrainingObject*> TrainingObjectIDMap;
+//typedef std::map<ExecutionTrace::ID, TrainingObject*> TrainingObjectIDMap;
+//typedef std::set<TrainingObject*, TrainingObjectTraceLT> TrainingObjectSet;
+//typedef std::vector<TrainingObject*> TrainingObjectList;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/// TODO: Rename this class to ExecutionTraceManager
 class ExecutionTreeManager : public ExecutionObserver {
  public:
   ExecutionTreeManager(ClientVerifier *cv);
   virtual void initialize();
   virtual void notify(ExecutionEvent ev);
  protected:
-  std::list< ExecutionTraceTree* > trees_;
+  //std::list< ExecutionTraceTree* > trees_;
+  std::vector< ExecutionTraceTree* > tree_list_;
   ClientVerifier *cv_;
 
 };
@@ -900,7 +918,6 @@ class TrainingExecutionTreeManager : public ExecutionTreeManager {
 
 };
 
-// TODO create new TreeManager every round??
 class VerifyExecutionTreeManager : public ExecutionTreeManager {
  public:
   VerifyExecutionTreeManager(ClientVerifier *cv);
@@ -914,6 +931,7 @@ class VerifyExecutionTreeManager : public ExecutionTreeManager {
  protected:
   int read_traces(std::vector<std::string> &filename_list);
 
+  /*
   // ExecutionTree objects
   EDTree* ed_tree_;
   ExecutionStateEDTreeMap state_tree_map_;
@@ -928,15 +946,7 @@ class VerifyExecutionTreeManager : public ExecutionTreeManager {
 
   // Edit distance
   std::stack<std::pair<CVExecutionState*, int> > current_min_;
-};
-
-class TestExecutionTreeManager : public VerifyExecutionTreeManager {
- public:
-  TestExecutionTreeManager(ClientVerifier *cv);
-  void initialize();
-  void notify(ExecutionEvent ev);
- private:
-
+  */
 };
 
 ////////////////////////////////////////////////////////////////////////////////
