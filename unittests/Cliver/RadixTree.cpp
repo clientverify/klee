@@ -10,10 +10,9 @@
 #include "gtest/gtest.h"
 
 #include "cliver/RadixTree.h"
-//#include "cliver/ExecutionTrace.h"
-#include "cliver/EditDistanceSequence.h"
+#include "cliver/TrackingRadixTree.h"
+#include "cliver/LevenshteinRadixTree.h"
 #include "cliver/EditDistance.h"
-#include "cliver/ExecutionTraceTree.h"
 
 #include <stdlib.h>
 #include <string>
@@ -29,15 +28,23 @@ T * end(T (&ra)[N]) {
 }
 
 //////////////////////////////////////////////////////////////////////////////////
+// Under test: RadixTree and RadixTree inheriting classes 
+//////////////////////////////////////////////////////////////////////////////////
 
 typedef RadixTree<std::string, char> StringRadixTree;
 typedef RadixTree<std::vector<char>, char> VectorRadixTree;
-//typedef RadixTree<ExecutionTrace, ExecutionTrace::ID> TraceRadixTree;
 typedef LevenshteinRadixTree<std::string, char> StringLevenshteinRadixTree;
 
-//////////////////////////////////////////////////////////////////////////////////
-// EditDistance
+struct TrackingObject {
+  unsigned id;
+  std::string str;
+};
 
+typedef TrackingRadixTree<std::string, char, TrackingObject> StringTrackingRadixTree;
+
+//////////////////////////////////////////////////////////////////////////////////
+// EditDistance typedefs for verifiying LevenshteinRadixTree, this classes are
+// not tested here
 
 typedef Score<std::string, char, int> StringScore;
 typedef EditDistanceTable<StringScore,std::string,int> StringEDT;
@@ -139,21 +146,6 @@ class RadixTreeTest : public ::testing::Test {
 namespace {
 
 #if 1
-
-  /*
-TEST_F(RadixTreeTest, InitExecutionTrace) {
-  TraceRadixTree *trt = new TraceRadixTree();
-  TraceRadixTree::Node* n = trt->extend(10);
-  n = trt->extend(12, n);
-  n = trt->extend(16, n);
-  n = trt->extend(19, n);
-  n = trt->extend(1, n);
-  ExecutionTrace et;
-  trt->get(n, et);
-  EXPECT_EQ(et.size(), 5);
-  delete trt;
-}
-*/
 
 TEST_F(RadixTreeTest, Init) {
   ASSERT_TRUE(srt != NULL);
@@ -377,7 +369,6 @@ TEST_F(RadixTreeTest, LevenshteinComputeVerify) {
   EXPECT_EQ(samberg_cost_r, slrt->lookup_cost(Samberg));
   EXPECT_EQ(macho_cost_r, slrt->lookup_cost(Macho));
 
-
   delete slrt;
 }
   
@@ -527,29 +518,110 @@ TEST_F(RadixTreeTest, LevenshteinComputeRandomVerifyIncrementSequence) {
 }
 #endif
 
-TEST_F(RadixTreeTest, ExecutionTraceTree) {
-  std::vector<ExecutionTrace*> traces;
-  int trace_size = 1000;
-  int trace_count = 100;
-  for (int i=0; i< trace_count; ++i) {
-    traces.push_back(new ExecutionTrace());
-    for (int j=0; j< trace_count; ++j) {
-      traces.back()->push_back(rand() % 65535);
-    }
-  }
-  ExecutionTraceTree trace_tree;
-  for (int i=0; i< trace_count; ++i) {
-    trace_tree.insert(*(traces[i]));
+TEST_F(RadixTreeTest, TrackingRadixTreeExtend) {
+  StringTrackingRadixTree *rt = new StringTrackingRadixTree();
+
+  std::vector<TrackingObject*> tracking_objects;
+
+  for (int i=0; i<s_dictionary.size(); ++i) {
+    tracking_objects.push_back(new TrackingObject);
+    tracking_objects.back()->id = rand();
+    tracking_objects.back()->str = s_dictionary[i];
+    rt->extend(s_dictionary[i], tracking_objects.back());
   }
 
-  ExecutionTraceTree *trace_tree_clone 
-    = static_cast<ExecutionTraceTree*>(trace_tree.clone());
-  for (int i=0; i< trace_count; ++i) {
-    delete traces[i];
+  for (int i=0; i<tracking_objects.size(); ++i) {
+    std::string test_str;
+    EXPECT_EQ(true, rt->tracks(tracking_objects[i]));
+    rt->tracker_get(tracking_objects[i], test_str);
+    EXPECT_EQ(test_str, tracking_objects[i]->str);
   }
-  delete trace_tree_clone;
+
+  for (int i=0; i<s_dictionary.size(); ++i) {
+    delete tracking_objects[i];
+  }
+  delete rt;
 }
 
+// This is a test of a unoptimized pattern of access where each TrackingObject
+// increases in size by one element only each extension and TrackingObjects
+// share prefixes as they increase in size.
+TEST_F(RadixTreeTest, TrackingRadixTreeExtendElement) {
+  StringTrackingRadixTree *rt = new StringTrackingRadixTree();
+
+  std::vector<TrackingObject*> tracking_objects;
+
+  int count = 20000; //s_dictionary.size();
+  for (int i=0; i<count; ++i) {
+    tracking_objects.push_back(new TrackingObject);
+    tracking_objects.back()->id = rand();
+    tracking_objects.back()->str = s_dictionary[i];
+    for (int j=0; j<s_dictionary[i].size(); ++j) {
+      rt->extend(s_dictionary[i][j], tracking_objects.back());
+    }
+  }
+
+  for (int i=0; i<tracking_objects.size(); ++i) {
+    std::string test_str;
+    EXPECT_EQ(true, rt->tracks(tracking_objects[i]));
+    rt->tracker_get(tracking_objects[i], test_str);
+    EXPECT_EQ(test_str, tracking_objects[i]->str);
+  }
+
+  for (int i=0; i<tracking_objects.size(); ++i) {
+    delete tracking_objects[i];
+  }
+  delete rt;
+}
+
+TEST_F(RadixTreeTest, TrackingRadixTreeExtendAndClone) {
+  StringTrackingRadixTree *rt = new StringTrackingRadixTree();
+
+  std::vector<TrackingObject*> tracking_objects;
+
+  for (int i=0; i<s_dictionary.size(); ++i) {
+    tracking_objects.push_back(new TrackingObject);
+    tracking_objects.back()->id = rand();
+    tracking_objects.back()->str = s_dictionary[i];
+    rt->extend(s_dictionary[i], tracking_objects.back());
+  }
+
+  srand(0);
+  int r0, r1, r2, count = 5000;
+  for (int i=0; i < count;  ++i) {
+    r0 = rand() % s_dictionary.size();
+    r1 = rand() % s_dictionary.size();
+    r2 = rand() % s_dictionary.size();
+    TrackingObject* tobj = tracking_objects[r0];
+    TrackingObject* tobj_new = new TrackingObject();
+    tracking_objects.push_back(tobj_new);
+
+    EXPECT_EQ(rt->clone_tracker(tobj_new, tobj), true);
+
+    std::string str_ext_1 = "_" + s_dictionary[r1];
+    std::string str_ext_2 = "_" + s_dictionary[r2];
+    tobj_new->str = tobj->str + str_ext_2;
+    tobj->str += str_ext_1;
+
+    rt->extend(str_ext_1, tobj);
+    rt->extend(str_ext_2, tobj_new);
+  }
+
+  for (int i=0; i<tracking_objects.size(); ++i) {
+    std::string test_str;
+    EXPECT_EQ(true, rt->tracks(tracking_objects[i]));
+    rt->tracker_get(tracking_objects[i], test_str);
+    EXPECT_EQ(test_str, tracking_objects[i]->str);
+  }
+
+  for (int i=0; i<tracking_objects.size(); ++i) {
+    delete tracking_objects[i];
+  }
+  delete rt;
+}
+
+
+//*/
 
 
 //////////////////////////////////////////////////////////////////////////////////
