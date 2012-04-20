@@ -9,7 +9,6 @@
 #ifndef CLIVER_TRAINING_H
 #define CLIVER_TRAINING_H
 
-#if 0
 #include "cliver/ExecutionTrace.h"
 
 #include <iostream>
@@ -47,7 +46,7 @@ class TrainingObject {
   std::set<SocketEvent*> socket_event_set; // std::set of SocketEvent ptrs
   ExecutionTrace trace; 
   std::string name; // Name created during seralization
-  ExecutionTrace::ID id;
+  int id;
 
  protected:
   friend class boost::serialization::access;
@@ -74,7 +73,6 @@ std::ostream& operator<<(std::ostream& os, const TrainingObject &tobject);
 ////////////////////////////////////////////////////////////////////////////////
 
 } // end namespace cliver
-#endif
 
 #endif // CLIVER_TRAINING_H
 

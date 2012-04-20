@@ -3,7 +3,10 @@
 // <insert license>
 //
 //===----------------------------------------------------------------------===//
-#if 0
+//
+//
+//===----------------------------------------------------------------------===//
+
 #include "cliver/Training.h"
 #include "cliver/ClientVerifier.h"
 #include "cliver/CVExecutionState.h"
@@ -41,6 +44,7 @@ void TrainingObject::write(CVExecutionState* state,
   std::ostream *file = cv->openOutputFileInSubDirectory(name, subdir);
 
   // Write to file using boost::serialization
+  CVDEBUG("Writing " << name << " to " << subdir);
 	boost::archive::binary_oarchive oa(*file);
   oa << *this;
 
@@ -84,5 +88,4 @@ std::ostream& operator<<(std::ostream& os, const TrainingObject &tobject) {
 
 ////////////////////////////////////////////////////////////////////////////////
 } // end namespace cliver
-#endif
 
