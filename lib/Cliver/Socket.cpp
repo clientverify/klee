@@ -26,8 +26,19 @@ XpilotSocket("xpilot-socket",llvm::cl::init(false));
 int Socket::NextFileDescriptor = 1000;
 
 SocketEvent::SocketEvent(const KTestObject &object) {
-	unsigned char *buf = object.bytes;
-	length = object.numBytes;
+  init(object.bytes, object.numBytes);
+  set_type(object.name);
+}
+
+SocketEvent::SocketEvent(const unsigned char* buf, unsigned len) {
+  init(buf, len);
+}
+
+// Initialization
+void SocketEvent::init(const unsigned char* buf, unsigned len) {
+
+  // Set length
+	length = len;
 	
 	if (XpilotSocket) {
 		// Extract the round number prefix
@@ -41,15 +52,18 @@ SocketEvent::SocketEvent(const KTestObject &object) {
 		round = -1;
 	}
 
+  // Set socket data bytes
 	data = std::vector<uint8_t>(buf, buf+length);
+}
 
-	// Set the type of the socket by using the Ktest object's name
-	if (std::string(object.name) == "c2s") {
+// Set the type of the socket by using the Ktest object's name
+void SocketEvent::set_type(const char* name) {
+	if (std::string(name) == "c2s") {
 		type = SocketEvent::SEND;
-	} else if (std::string(object.name) == "s2c") {
+	} else if (std::string(name) == "s2c") {
 		type = SocketEvent::RECV;
 	} else {
-		cv_error("Invalid socket event name: \"%s\"", object.name);
+		cv_error("Invalid socket event name: \"%s\"", name);
 	}
 }
 

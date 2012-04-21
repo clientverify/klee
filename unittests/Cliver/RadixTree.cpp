@@ -1,10 +1,5 @@
 //===-- RadixTree.cpp -----------------------------------------------------===//
 //
-//                     The KLEE Symbolic Virtual Machine
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
-//
 //===----------------------------------------------------------------------===//
 
 #include "gtest/gtest.h"
@@ -22,10 +17,8 @@ using namespace cliver;
 
 #include "RadixTree.inc"
 
-template<typename T, size_t N>
-T * end(T (&ra)[N]) {
-  return ra + N;
-}
+// Helper to return end of array
+template<typename T, size_t N> T * end(T (&ra)[N]) { return ra + N; }
 
 //////////////////////////////////////////////////////////////////////////////////
 // Under test: RadixTree and RadixTree inheriting classes 
