@@ -27,6 +27,7 @@ namespace cliver {
 class SocketEvent {
  public:
 	SocketEvent(const KTestObject &object);
+  SocketEvent(const unsigned char* buf, unsigned len);
 
 	typedef enum { SOCKETEVENT_TYPES } Type;
 	Type type;
@@ -42,6 +43,10 @@ class SocketEvent {
   unsigned size() const { return length; }
 
  private:
+  // Initialization
+	void init(const unsigned char* buf, unsigned len);
+	void set_type(const char* name);
+
 	// Serialization
 	SocketEvent() {};
 	friend class boost::serialization::access;

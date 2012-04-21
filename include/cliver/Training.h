@@ -12,6 +12,7 @@
 #include "cliver/ExecutionTrace.h"
 
 #include <iostream>
+#include <fstream>
 #include <set>
 #include <vector>
 
@@ -28,7 +29,9 @@ class CVExecutionState;
 class SocketEvent;
 class ClientVerifier;
 
-/// Holds a single execution trace and the associated message
+////////////////////////////////////////////////////////////////////////////////
+
+/// Holds a single execution trace and the associated socket event data(s)
 class TrainingObject {
  public:
   TrainingObject() {};
@@ -69,6 +72,59 @@ struct TrainingObjectLengthLT {
 };
 
 std::ostream& operator<<(std::ostream& os, const TrainingObject &tobject);
+
+////////////////////////////////////////////////////////////////////////////////
+
+typedef std::set<TrainingObject*, TrainingObjectTraceLT> TrainingObjectSet;
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TrainingManager {
+ public:
+
+  /// Return a set of TrainingObjects from a list of filenames, removing
+  /// TrainingObjects with duplicate ExecutionTraces
+  static void read_files(std::vector<std::string> &filename_list,
+                         TrainingObjectSet &data) {
+    
+    for (int i=0; i<filename_list.size(); ++i) {
+      std::string filename = filename_list[i];
+
+      // Construct input file stream from filename
+      std::ifstream is(filename.c_str(), 
+                       std::ifstream::in | std::ifstream::binary );
+
+      // If opening the file was successful
+      if (is.is_open() && is.good()) {
+        TrainingObject* tobj = new TrainingObject();
+
+        // Read serialized TrainingObject
+        tobj->read(is);
+
+        // Assign TrainingObject a unique id
+        tobj->id = ++current_id;
+
+        // Check for duplicates with other TrainingObjects
+        TrainingObjectSet::iterator it = data.find(tobj);
+        if (data.end() != it) {
+          // If duplicate found, insert associated SocketEvents into previously
+          // create TrainingObject
+          (*it)->socket_event_set.insert(tobj->socket_event_set.begin(),
+                                         tobj->socket_event_set.end());
+
+        // Otherwise add new TrainingObject to the data set
+        } else {
+          data.insert(tobj);
+        }
+      }
+
+      is.close();
+    }
+  }
+
+  // Store next TrainingObject id
+  static int current_id;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 

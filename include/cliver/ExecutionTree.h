@@ -15,6 +15,7 @@
 #include "cliver/ExecutionObserver.h"
 #include "cliver/ExecutionTrace.h"
 #include "cliver/TrackingRadixTree.h"
+#include "cliver/LevenshteinRadixTree.h"
 #include "cliver/Training.h"
 
 
@@ -889,6 +890,9 @@ class ExecutionTree : public tree<DataType> {
 //typedef std::set<TrainingObject*, TrainingObjectTraceLT> TrainingObjectSet;
 //typedef std::vector<TrainingObject*> TrainingObjectList;
 
+typedef LevenshteinRadixTree<ExecutionTrace, BasicBlockID> EditDistanceExecutionTree;
+typedef boost::unordered_map<CVExecutionState*, EditDistanceExecutionTree*> EditDistanceExecutionTreeMap;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 /// TODO: Rename this class to ExecutionTraceManager
@@ -922,8 +926,11 @@ class VerifyExecutionTreeManager : public ExecutionTreeManager {
   void update_min_edit_distance(CVExecutionState* state, int ed);
   void reset_min_edit_distance();
 
- protected:
-  int read_traces(std::vector<std::string> &filename_list);
+ private:
+  void clear_edit_distance_map();
+
+  TrainingObjectSet training_data_;
+  EditDistanceExecutionTreeMap edit_distance_map_;
 
   /*
   // ExecutionTree objects
