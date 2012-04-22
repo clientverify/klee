@@ -10,6 +10,7 @@
 #define CLIVER_TRAINING_H
 
 #include "cliver/ExecutionTrace.h"
+#include "cliver/SocketEventMeasurement.h"
 
 #include <iostream>
 #include <fstream>
@@ -76,11 +77,40 @@ std::ostream& operator<<(std::ostream& os, const TrainingObject &tobject);
 ////////////////////////////////////////////////////////////////////////////////
 
 typedef std::set<TrainingObject*, TrainingObjectTraceLT> TrainingObjectSet;
+typedef std::vector<TrainingObject*> TrainingObjectList;
+typedef std::vector<std::pair<double, TrainingObject*> > TrainingObjectScoreList;
 
 ////////////////////////////////////////////////////////////////////////////////
 
 class TrainingManager {
  public:
+
+  static void init_score_list(TrainingObjectSet &tobjs,
+                              TrainingObjectScoreList &scorelist) {
+    TrainingObjectSet::iterator it=tobjs.begin(), ie=tobjs.end();
+    for (; it!=ie; ++it) {
+      scorelist.push_back(std::make_pair(1.0, *it));
+    }
+  }
+
+  static void sort_by_similarity_score(const SocketEvent *se, 
+                                       TrainingObjectScoreList &scorelist,
+                                       SocketEventSimilarity &measure) {
+    // Iterate over all of the TrainingObjects and compare their similarity
+    // to 
+    for (int i=0; i<scorelist.size(); ++i) {
+      double min = 1.0;
+      std::set<SocketEvent*>::iterator 
+          it = scorelist[i].second->socket_event_set.begin(),
+          ie = scorelist[i].second->socket_event_set.end();
+      for (; it != ie; ++it) {
+        double result = measure.similarity_score(se, *it);
+        if (result < min) min = result;
+      }
+      scorelist[i].first = min;
+    }
+    std::sort(scorelist.begin(), scorelist.end());
+  }
 
   /// Return a set of TrainingObjects from a list of filenames, removing
   /// TrainingObjects with duplicate ExecutionTraces
