@@ -18,6 +18,28 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#include <boost/graph/adjacency_list.hpp>
+#include <boost/graph/graphviz.hpp>
+#include <boost/lexical_cast.hpp>
+
+// For writing RadixTree to dot file
+struct dot_vertex { 
+  dot_vertex() : name("") {}
+  dot_vertex(std::string _name) : name(_name) {}
+  std::string name; 
+};
+struct dot_edge   { 
+  dot_edge() : name("") {}
+  dot_edge(std::string _name) : name(_name) {}
+  std::string name; 
+};
+typedef boost::adjacency_list<
+  boost::listS, boost::vecS, boost::directedS, dot_vertex, dot_edge > dot_graph;
+typedef boost::graph_traits<dot_graph>::vertex_descriptor dot_vertex_desc;
+typedef boost::graph_traits<dot_graph>::edge_descriptor dot_edge_desc;
+
+////////////////////////////////////////////////////////////////////////////////
+
 namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -427,6 +449,49 @@ class RadixTree {
     // Lookup the node matching s
     Node *node = lookup_private(s, /*exact = */ true);
     return remove_node(node);
+  }
+
+  virtual void write_dot(std::ostream &os, 
+                         bool edge_labels = true, std::string edge_delim="") {
+    dot_graph graph;
+
+    std::stack<std::pair<Node*, dot_vertex_desc> > worklist; 
+    worklist.push(std::make_pair(root_, boost::add_vertex(graph)));
+
+    while (!worklist.empty()) {
+
+      Node* node = worklist.top().first;
+      dot_vertex_desc v_desc = worklist.top().second;
+      worklist.pop();
+
+      EdgeMapIterator 
+          it = node->edge_map().begin(), iend = node->edge_map().end();
+
+      for (; it != iend; ++it) {
+        Edge *edge = it->second;
+
+        std::string name;
+        if (edge_labels) {
+          for (int i=0; i<edge->size(); ++i) {
+            name += boost::lexical_cast<std::string>((*edge)[i]) + edge_delim;
+          }
+        }
+        dot_edge e(name);
+
+        dot_vertex v(boost::lexical_cast<std::string>(edge->size()));
+        dot_vertex_desc v_to_desc = boost::add_vertex(v, graph);
+        boost::add_edge(v_desc, v_to_desc, e, graph);
+
+        worklist.push(std::make_pair(edge->to(), v_to_desc));
+      }
+    }
+    if (edge_labels) 
+      boost::write_graphviz(os, graph,
+          boost::make_label_writer(boost::get(&dot_vertex::name, graph)),
+          boost::make_label_writer(boost::get(&dot_edge::name, graph)));
+    else
+      boost::write_graphviz(os, graph,
+          boost::make_label_writer(boost::get(&dot_vertex::name, graph)));
   }
 
  protected: 
