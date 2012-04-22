@@ -32,7 +32,6 @@ class CVExecutor;
 class ClientVerifier;
 class ExecutionStateProperty;
 class NetworkManager;
-class PathManager;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -54,10 +53,7 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
   const CVContext* context() { return context_; }
 
 	NetworkManager* network_manager() const { return network_manager_; }
-	PathManager* path_manager() { return path_manager_; }
 	ExecutionStateProperty* property() { return property_; }
-
-	void reset_path_manager(PathManager* path_manager=NULL);
 
 #ifdef DEBUG_CLIVER_STATE_LOG
 	std::stringstream& debug_log() { return *debug_log_; }
@@ -81,7 +77,6 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
   static int next_id_;
   CVContext* context_;
 	NetworkManager* network_manager_;
-	PathManager* path_manager_;
 	ExecutionStateProperty* property_;
   ClientVerifier *cv_;
   bool basic_block_tracking_;

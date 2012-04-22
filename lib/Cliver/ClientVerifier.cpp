@@ -18,7 +18,6 @@
 #include "cliver/ExecutionObserver.h"
 #include "cliver/ExecutionTree.h"
 #include "cliver/NetworkManager.h"
-#include "cliver/PathManager.h"
 #include "cliver/StateMerger.h"
 #include "CVCommon.h"
 #include "ExternalHandlers.h"
@@ -243,38 +242,6 @@ void ClientVerifier::initialize_external_handlers(CVExecutor *executor) {
       executor->register_function_call_event(&hi.name, hi.event_triggered);
     }
 	}
-}
-
-int ClientVerifier::read_training_paths(std::vector<std::string> &filename_list,
-		PathManagerSet *path_manager_set) {
-  static unsigned duplicate_training_path_count = 0;
-
-	foreach (std::string filename, filename_list) {
-		std::ifstream *is = new std::ifstream(filename.c_str(),
-				std::ifstream::in | std::ifstream::binary );
-		if (is != NULL && is->good()) {
-			TrainingPathManager *pm = new TrainingPathManager();
-			pm->read(*is, executor_);
-			if (!path_manager_set->contains(pm)) {
-				path_manager_set->insert(pm);
-				CVMESSAGE("Path read succuessful: length " 
-						<< pm->length() << ", " << pm->range() 
-						<< ", File: " << filename );
-			} else {
-        duplicate_training_path_count++;
-				TrainingPathManager *merged_pm 
-					= static_cast<TrainingPathManager*>(path_manager_set->merge(pm));
-				if (merged_pm)
-					CVMESSAGE("Path already exists: messages "
-							<< merged_pm->socket_events().size() << ", length " 
-							<< merged_pm->length() << ", " << merged_pm->range() );
-				delete pm;
-			}
-			delete is;
-		}
-	}
-  CVMESSAGE("Duplicate Paths " << duplicate_training_path_count);
-	return path_manager_set->size();
 }
 
 int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
