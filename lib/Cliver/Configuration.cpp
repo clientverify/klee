@@ -13,8 +13,6 @@
 #include "cliver/ExecutionStateProperty.h"
 #include "cliver/ExecutionTree.h"
 #include "cliver/NetworkManager.h"
-#include "cliver/PathManager.h"
-#include "cliver/PathTree.h"
 #include "CVCommon.h"
 
 #include "llvm/Support/CommandLine.h"
@@ -89,7 +87,7 @@ CVSearcher* CVSearcherFactory::create(klee::Searcher* base_searcher,
       }
     }
     case Training: {
-      return new NewTrainingSearcher(cv, merger);
+      return new TrainingSearcher(cv, merger);
     }
   }
   cv_error("run mode not supported!");
@@ -170,13 +168,6 @@ ExecutionTreeManager* ExecutionTreeManagerFactory::create(ClientVerifier* cv) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// XXX Delete me
-PathTree* PathTreeFactory::create(CVExecutionState* root_state) {
-  return new PathTree(root_state);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 ExecutionStateProperty* ExecutionStatePropertyFactory::create() {
   switch (RunMode) {
     case Training:
@@ -193,13 +184,6 @@ ExecutionStateProperty* ExecutionStatePropertyFactory::create() {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
-// XXX Delete me
-PathManager* PathManagerFactory::create() {
-  return new PathManager();
-}
-
-//////////////////////////////////////////////////////////////////////////////
 
 } // end namespace cliver
 

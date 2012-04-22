@@ -49,12 +49,11 @@ int PathProperty::compare(const ExecutionStateProperty &b) const {
 	if (phase != _b->phase)
 		return phase - _b->phase;
 
-	return path_range.compare(_b->path_range);
+	return 0;
 }
 
 void PathProperty::print(std::ostream &os) const {
 	os << "[round: " << round
-	   << ", range: " << path_range
 	   //<< ", trainingstate: " << phase
 		 << "]";
 }
@@ -74,12 +73,11 @@ int VerifyProperty::compare(const ExecutionStateProperty &b) const {
 	if (phase != _b->phase)
 		return phase - _b->phase;
 
-	return path_range.compare(_b->path_range);
+  return 0;
 }
 
 void VerifyProperty::print(std::ostream &os) const {
 	os << "[round: " << round
-	   << ", range: " << path_range
 	   << ", phase: " << phase
 		 << "]";
 }

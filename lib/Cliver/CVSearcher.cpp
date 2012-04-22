@@ -14,18 +14,12 @@
 #include "cliver/StateMerger.h"
 #include "cliver/ClientVerifier.h"
 #include "cliver/NetworkManager.h"
-#include "cliver/PathManager.h"
-#include "cliver/PathSelector.h"
-#include "cliver/PathTree.h"
 #include "CVCommon.h"
 
 #include "klee/Internal/Module/InstructionInfoTable.h"
 
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/CommandLine.h"
-
-#include <boost/archive/text_oarchive.hpp>
-#include <boost/archive/text_iarchive.hpp>
 
 namespace cliver {
 
@@ -284,11 +278,11 @@ void MergeVerifySearcher::notify(ExecutionEvent ev) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NewTrainingSearcher::NewTrainingSearcher(ClientVerifier *cv, 
+TrainingSearcher::TrainingSearcher(ClientVerifier *cv, 
                                          StateMerger* merger)
   : CVSearcher(NULL, cv, merger) {}
 
-klee::ExecutionState &NewTrainingSearcher::selectState() {
+klee::ExecutionState &TrainingSearcher::selectState() {
   //klee::TimerStatIncrementer timer(stats::searcher_time);
  
   while (!stages_.empty() && stages_.back()->empty()) {
@@ -337,7 +331,7 @@ klee::ExecutionState &NewTrainingSearcher::selectState() {
   return *(static_cast<klee::ExecutionState*>(stages_.back()->next_state()));
 }
 
-void NewTrainingSearcher::update(klee::ExecutionState *current,
+void TrainingSearcher::update(klee::ExecutionState *current,
     const std::set<klee::ExecutionState*> &addedStates,
     const std::set<klee::ExecutionState*> &removedStates) {
   //klee::TimerStatIncrementer timer(stats::searcher_time);
@@ -359,7 +353,7 @@ void NewTrainingSearcher::update(klee::ExecutionState *current,
   }
 }
 
-bool NewTrainingSearcher::empty() {
+bool TrainingSearcher::empty() {
   reverse_foreach (SearcherStage* stage, stages_)
     if (!stage->empty()) return false;
 
@@ -372,11 +366,11 @@ bool NewTrainingSearcher::empty() {
   return true;
 }
 
-SearcherStage* NewTrainingSearcher::get_new_stage(CVExecutionState* state) {
+SearcherStage* TrainingSearcher::get_new_stage(CVExecutionState* state) {
   return SearcherStageFactory::create(merger_, state);
 }
 
-void NewTrainingSearcher::add_state(CVExecutionState* state) {
+void TrainingSearcher::add_state(CVExecutionState* state) {
   if (stages_.empty()) {
     CVDEBUG("New stage from state " << state << ":" << state->id());
     stages_.push_back(get_new_stage(state));
@@ -386,12 +380,12 @@ void NewTrainingSearcher::add_state(CVExecutionState* state) {
   }
 }
 
-void NewTrainingSearcher::remove_state(CVExecutionState* state) {
+void TrainingSearcher::remove_state(CVExecutionState* state) {
   assert(!stages_.empty());
   stages_.back()->remove_state(state);
 }
 
-bool NewTrainingSearcher::check_pending(CVExecutionState* state) {
+bool TrainingSearcher::check_pending(CVExecutionState* state) {
   if (pending_states_.count(state)) {
     CVDEBUG("Removing pending state " << state << ":" << state->id());
 
@@ -403,7 +397,7 @@ bool NewTrainingSearcher::check_pending(CVExecutionState* state) {
   return false;
 }
 
-void NewTrainingSearcher::notify(ExecutionEvent ev) {
+void TrainingSearcher::notify(ExecutionEvent ev) {
   switch(ev.event_type) {
     case CV_SOCKET_WRITE:
     case CV_SOCKET_READ: {

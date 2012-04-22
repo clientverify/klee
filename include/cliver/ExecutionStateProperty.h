@@ -9,7 +9,6 @@
 #define CLIVER_EXECUTION_STATE_PROPERTY_H
 
 #include "cliver/CVExecutionState.h"
-#include "cliver/PathManager.h"
 
 #include <llvm/ADT/PriorityQueue.h>
 
@@ -99,7 +98,6 @@ class PathProperty : public ExecutionStateProperty {
 	// Property values
 	int round;
 	PathPropertyPhase phase;
-	PathRange path_range;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -121,7 +119,6 @@ class VerifyProperty : public ExecutionStateProperty {
 	// Property values
 	int round;
 	VerifyPropertyPhase phase;
-	PathRange path_range;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

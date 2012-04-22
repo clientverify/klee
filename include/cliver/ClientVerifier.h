@@ -51,8 +51,6 @@ class ConstraintPruner;
 class ExecutionEvent;
 class ExecutionTreeManager;
 class StateMerger;
-class PathManager;
-class PathManagerSet;
 
 class CVContext {
  public:
@@ -119,11 +117,6 @@ class ClientVerifier : public klee::InterpreterHandler {
   // Rounds
 	inline int round() { return round_number_; }
  
-	// Training paths
-	int read_training_paths(std::vector<std::string> &filename_list,
-	PathManagerSet *path_manager_set);
-
-
   std::string& client_name() { return client_name_; }
 
  private:

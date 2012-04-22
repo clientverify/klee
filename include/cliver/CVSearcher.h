@@ -5,7 +5,6 @@
 //===----------------------------------------------------------------------===//
 //
 // TODO: make CVSearcher Pure virtual
-// TODO: change NewTrainingSearcher to TrainingSearcher
 //
 //===----------------------------------------------------------------------===//
 #ifndef CV_SEARCHER_H
@@ -24,7 +23,6 @@
 namespace cliver {
 class CVExecutionState;
 class StateMerger;
-class PathManagerSet;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -199,15 +197,15 @@ class MergeVerifySearcher : public VerifySearcher {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class NewTrainingSearcher : public CVSearcher {
+class TrainingSearcher : public CVSearcher {
  public:
-  NewTrainingSearcher(ClientVerifier *cv, StateMerger* merger);
+  TrainingSearcher(ClientVerifier *cv, StateMerger* merger);
   klee::ExecutionState &selectState();
   void update(klee::ExecutionState *current,
               const std::set<klee::ExecutionState*> &addedStates,
               const std::set<klee::ExecutionState*> &removedStates);
   bool empty();
-  void printName(std::ostream &os) { os << "NewTrainingSearcher\n"; }
+  void printName(std::ostream &os) { os << "TrainingSearcher\n"; }
 
   void notify(ExecutionEvent ev);
 
