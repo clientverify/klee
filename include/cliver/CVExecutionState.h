@@ -70,6 +70,8 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
   bool basic_block_tracking() { return basic_block_tracking_; }
   void set_basic_block_tracking(bool b) { basic_block_tracking_ = b; }
 
+  static int next_id() { return next_id_; }
+
  private:
   int increment_id() { return next_id_++; }
 
