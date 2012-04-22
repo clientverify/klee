@@ -9,6 +9,7 @@
 #ifndef CLIVER_SOCKET_EVENT_MEASUREMENT_H
 #define CLIVER_SOCKET_EVENT_MEASUREMENT_H
 
+#include "cliver/Socket.h"
 #include <iostream>
 #include <boost/regex.hpp>
 #include <boost/lexical_cast.hpp>
@@ -36,6 +37,7 @@ class SocketEventSimilarityXpilot : public SocketEventSimilarity {
 class SocketEventSimilarityTetrinet: public SocketEventSimilarity {
  public:
 
+  // Constructor
   SocketEventSimilarityTetrinet() {
     packet_type_regex_ 
         = boost::regex("^([a-zA-Z]+) .*$");

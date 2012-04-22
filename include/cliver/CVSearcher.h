@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 //
 // TODO: make CVSearcher Pure virtual
+// TODO: change NewTrainingSearcher to TrainingSearcher
 //
 //===----------------------------------------------------------------------===//
 #ifndef CV_SEARCHER_H
