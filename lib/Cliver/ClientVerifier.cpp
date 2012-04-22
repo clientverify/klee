@@ -326,6 +326,7 @@ void ClientVerifier::print_current_statistics(std::string prefix) {
     << " " << sr->getValue(stats::fork_time) / 1000000.
     << " " << sr->getValue(stats::round_instructions)
     << " " << executor()->states_size()
+    << " " << CVExecutionState::next_id()
     << " " << executor()->memory_usage()
     << "\n";
 #ifdef GOOGLE_PROFILER
