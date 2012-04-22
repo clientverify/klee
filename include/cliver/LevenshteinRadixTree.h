@@ -52,6 +52,7 @@ class LevenshteinElement {
 template< class T > 
 std::ostream& operator<<(std::ostream& os, const LevenshteinElement<T>& le) {
   os << "(" << le.e << "," << le.d[0] << ", " << le.d[1] << ")";
+  return os;
 }
 
 /// LevenshteinSequenceComparator: used by RadixTree to insert/lookup sequences

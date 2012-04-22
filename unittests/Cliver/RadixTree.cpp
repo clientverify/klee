@@ -45,6 +45,8 @@ typedef EditDistanceRow<StringScore,std::string,int> StringEDR;
 
 //////////////////////////////////////////////////////////////////////////////////
 
+//////////////////////////////////////////////////////////////////////////////////
+
 std::vector<std::string> s_dictionary;
 std::vector<std::vector<char> > v_dictionary;
 
@@ -137,8 +139,6 @@ class RadixTreeTest : public ::testing::Test {
 //////////////////////////////////////////////////////////////////////////////////
 
 namespace {
-
-#if 1
 
 TEST_F(RadixTreeTest, Init) {
   ASSERT_TRUE(srt != NULL);
@@ -509,7 +509,6 @@ TEST_F(RadixTreeTest, LevenshteinComputeRandomVerifyIncrementSequence) {
 
   delete slrt;
 }
-#endif
 
 TEST_F(RadixTreeTest, TrackingRadixTreeExtend) {
   StringTrackingRadixTree *rt = new StringTrackingRadixTree();
@@ -612,7 +611,6 @@ TEST_F(RadixTreeTest, TrackingRadixTreeExtendAndClone) {
   }
   delete rt;
 }
-
 
 //*/
 
