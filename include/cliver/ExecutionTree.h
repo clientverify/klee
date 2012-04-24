@@ -43,6 +43,9 @@ namespace cliver {
 typedef TrackingRadixTree< ExecutionTrace, BasicBlockID, CVExecutionState > 
     ExecutionTraceTree;
 
+typedef TrackingRadixTree< std::vector<uint8_t>, uint8_t, CVExecutionState > 
+    ForkTree;
+
 typedef LevenshteinRadixTree< ExecutionTrace, BasicBlockID > 
     EditDistanceExecutionTree;
 
@@ -59,6 +62,7 @@ class ExecutionTreeManager : public ExecutionObserver {
   virtual void notify(ExecutionEvent ev);
  protected:
   std::vector< ExecutionTraceTree* > tree_list_;
+  ForkTree* fork_tree_;
   ClientVerifier *cv_;
 
 };
