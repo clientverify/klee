@@ -170,9 +170,8 @@ ExecutionTreeManager* ExecutionTreeManagerFactory::create(ClientVerifier* cv) {
 
 ExecutionStateProperty* ExecutionStatePropertyFactory::create() {
   switch (RunMode) {
-    case Training:
-      return new PathProperty();
 
+    case Training:
     case Verify:
       return new VerifyProperty();
 
