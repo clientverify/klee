@@ -29,7 +29,8 @@ class CVExecutionState;
   X(CV_BRANCH_INTERNAL_FALSE)    \
   X(CV_BRANCH_TRUE)              \
   X(CV_BRANCH_FALSE)             \
-  X(CV_STATE_FORK)               \
+  X(CV_STATE_FORK_TRUE)          \
+  X(CV_STATE_FORK_FALSE)         \
   X(CV_STATE_CLONE)              \
   X(CV_STATE_REMOVED)            \
   X(CV_RETURN)                   \

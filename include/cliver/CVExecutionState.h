@@ -70,6 +70,12 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
   bool basic_block_tracking() { return basic_block_tracking_; }
   void set_basic_block_tracking(bool b) { basic_block_tracking_ = b; }
 
+  bool next_fork_replay() { 
+    assert(fork_replay_);
+    return (*fork_replay_)[fork_replay_position_++];
+  }
+  bool fork_replay() { return fork_replay_ != NULL; }
+
   static int next_id() { return next_id_; }
 
  private:
@@ -82,6 +88,8 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
 	ExecutionStateProperty* property_;
   ClientVerifier *cv_;
   bool basic_block_tracking_;
+  std::vector<uint8_t>* fork_replay_;
+  size_t fork_replay_position_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

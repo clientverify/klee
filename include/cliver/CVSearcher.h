@@ -57,6 +57,7 @@ class CVSearcher : public klee::Searcher, public ExecutionObserver {
 /// all of the other states began execution.
 
 struct CVExecutionStateDeleter;
+
 class SearcherStage {
  public:
   SearcherStage() {}

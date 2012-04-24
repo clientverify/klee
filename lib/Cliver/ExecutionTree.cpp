@@ -96,6 +96,7 @@ ExecutionTreeManager::ExecutionTreeManager(ClientVerifier* cv) : cv_(cv) {}
 
 void ExecutionTreeManager::initialize() {
   tree_list_.push_back(new ExecutionTraceTree() );
+  fork_tree_ = new ForkTree();
 }
 
 void ExecutionTreeManager::notify(ExecutionEvent ev) {
@@ -109,6 +110,9 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
         tree_list_.pop_back();
       }
       tree_list_.push_back(new ExecutionTraceTree() );
+
+      delete fork_tree_;
+      fork_tree_ = new ForkTree();
       break;
     }
     case CV_BASICBLOCK_ENTRY: {
@@ -126,6 +130,7 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
     case CV_STATE_CLONE: {
       CVDEBUG("Cloned state: " << *state);
       tree_list_.back()->clone_tracker(state, parent);
+      fork_tree_->clone_tracker(state, parent);
       break;
     }
 
@@ -144,6 +149,13 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
         tree->tracker_get(state, etrace);
         CVDEBUG("TRACE: " << etrace);
       }
+      break;
+    }
+
+    case CV_STATE_FORK_TRUE:
+    case CV_STATE_FORK_FALSE: {
+      CVDEBUG("Forked state: " << *state);
+      fork_tree_->extend(CV_STATE_FORK_TRUE ? true : false, state);
       break;
     }
 
