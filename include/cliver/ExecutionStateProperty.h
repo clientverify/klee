@@ -70,55 +70,23 @@ typedef llvm::PriorityQueue< CVExecutionState*,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class LogIndexProperty : public ExecutionStateProperty {
- public: 
-	LogIndexProperty();
-	LogIndexProperty* clone() { return new LogIndexProperty(*this); }
-  void print(std::ostream &os) const;
-	int compare(const ExecutionStateProperty &b) const;
-
-	// Property values
-	int socket_log_index;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class PathProperty : public ExecutionStateProperty {
- public: 
-	enum PathPropertyPhase {
-		PrepareExecute=0, 
-		Execute, 
-		EndPhase
-	};
-	PathProperty();
-	PathProperty* clone() { return new PathProperty(*this); }
-  void print(std::ostream &os) const;
-	int compare(const ExecutionStateProperty &b) const;
-
-	// Property values
-	int round;
-	PathPropertyPhase phase;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 class VerifyProperty : public ExecutionStateProperty {
  public: 
-	enum VerifyPropertyPhase {
-		PrepareExecute=0, 
-		Execute, 
-		Active,
-		Horizon,
-		EndPhase
-	};
+	//enum VerifyPropertyPhase {
+	//	PrepareExecute=0, 
+	//	Execute, 
+	//	Active,
+	//	Horizon,
+	//	EndPhase
+	//};
 	VerifyProperty();
 	VerifyProperty* clone() { return new VerifyProperty(*this); }
   void print(std::ostream &os) const;
 	int compare(const ExecutionStateProperty &b) const;
 
 	// Property values
-	int round;
-	VerifyPropertyPhase phase;
+	//int round;
+	//VerifyPropertyPhase phase;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
