@@ -207,6 +207,8 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
 }
 
 void VerifySearcher::notify(ExecutionEvent ev) {
+  stages_.back()->notify(ev);
+
   switch(ev.event_type) {
     case CV_SOCKET_WRITE:
     case CV_SOCKET_READ: {
@@ -261,6 +263,8 @@ bool MergeVerifySearcher::check_pending(CVExecutionState* state) {
 }
 
 void MergeVerifySearcher::notify(ExecutionEvent ev) {
+  stages_.back()->notify(ev);
+
   switch(ev.event_type) {
     case CV_MERGE: {
       CVDEBUG("MERGE EVENT! " << *ev.state);
@@ -398,6 +402,8 @@ bool TrainingSearcher::check_pending(CVExecutionState* state) {
 }
 
 void TrainingSearcher::notify(ExecutionEvent ev) {
+  stages_.back()->notify(ev);
+
   switch(ev.event_type) {
     case CV_SOCKET_WRITE:
     case CV_SOCKET_READ: {

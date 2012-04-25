@@ -1046,5 +1046,10 @@ std::string CVExecutor::get_string_at_address(CVExecutionState* state,
 		return specialFunctionHandler->readStringAtAddress(*kstate, address_expr);
 }
 
+void CVExecutor::reset_replay_path(std::vector<bool>* replay_path) {
+  this->replayPath = replay_path;
+  this->replayPosition = 0;
+}
+
 } // end namespace cliver
 

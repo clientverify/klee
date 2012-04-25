@@ -107,6 +107,10 @@ class CVExecutor : public klee::Executor {
   std::string get_string_at_address(CVExecutionState* state, 
                                     klee::ref<klee::Expr> address_expr);
 
+  void reset_replay_path(std::vector<bool> *replay_path=NULL);
+
+  unsigned replay_position() { return replayPosition; }
+
  private:
   ClientVerifier *cv_;
 	StateMerger *merger_;

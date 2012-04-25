@@ -61,27 +61,25 @@ void CVExecutionState::initialize(ClientVerifier *cv) {
   coveredLines.clear();
 	network_manager_ = NetworkManagerFactory::create(this,cv);
 	property_ = ExecutionStatePropertyFactory::create();
-  fork_replay_ = NULL;
-#ifdef DEBUG_CLIVER_STATE_LOG
-	debug_log_ = new std::stringstream();
-#endif
 }
 
-CVExecutionState* CVExecutionState::clone() {
+CVExecutionState* CVExecutionState::clone(ExecutionStateProperty* property) {
   CVExecutionState *cloned_state = new CVExecutionState(*this);
   cloned_state->id_ = increment_id();
   cloned_state->network_manager_ 
 		= network_manager_->clone(cloned_state); 
-  cloned_state->property_ = property_->clone();
-#ifdef DEBUG_CLIVER_STATE_LOG
-	cloned_state->debug_log_ = new std::stringstream();
-	*(cloned_state->debug_log_) << debug_log_->str();
-#endif
+
+  if (property != NULL)
+    cloned_state->property_ = property;
+  else
+    cloned_state->property_ = property_->clone();
+
   cloned_state->cv_ = cv_;
   cloned_state->basic_block_tracking_ = basic_block_tracking_;
-  cv_->notify_all(ExecutionEvent(CV_STATE_CLONE, cloned_state, this));
-  assert(fork_replay_ == NULL);
-  cloned_state->fork_replay_ = NULL;
+
+  if (property == NULL)
+    cv_->notify_all(ExecutionEvent(CV_STATE_CLONE, cloned_state, this));
+
   return cloned_state;
 }
 
