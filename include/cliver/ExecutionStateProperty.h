@@ -68,6 +68,11 @@ typedef llvm::PriorityQueue< CVExecutionState*,
 				                     std::vector<CVExecutionState*>,
 														 CVExecutionStateLT > ExecutionStatePriorityQueue;
 
+typedef llvm::PriorityQueue< ExecutionStateProperty*, 
+				                     std::vector<ExecutionStateProperty*>,
+														 ExecutionStatePropertyLT > StatePropertyPriorityQueue;
+
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class VerifyProperty : public ExecutionStateProperty {

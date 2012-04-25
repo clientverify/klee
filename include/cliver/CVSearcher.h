@@ -17,6 +17,7 @@
 
 #include "klee/Searcher.h"
 
+#include <boost/unordered_map.hpp>
 #include <stack>
 #include <queue>
 
@@ -75,91 +76,96 @@ template <class Collection>
 class BasicSearcherStage : public SearcherStage {
  public:
   BasicSearcherStage(CVExecutionState* root_state)
-    : live_state_(NULL) {
+    : live_(NULL) {
     this->add_state(root_state);
   }
 
   virtual ~BasicSearcherStage() {}
 
   virtual bool empty() {
-    return state_set_.empty();
+    return live_ != NULL || cache_.empty();
   }
 
   virtual CVExecutionState* next_state() {
     if (empty()) return NULL;
-    assert(live_state_ == NULL);
-    live_state_ = states_.top();
-    states_.pop();
-    return live_state_;
+    assert(live_ == NULL);
+    live_ = collection_.top();
+    collection_.pop();
+    return cache_[live_];
   }
 
   virtual void add_state(CVExecutionState *state) {
     assert(state);
-    if (state == live_state_) {
-      live_state_ = NULL;
+    if (state->property() == live_) {
+      live_ = NULL;
     } else {
-      assert(!state_set_.count(state));
-      state_set_.insert(state);
+      assert(0 == cache_.count(state->property()));
+      cache_[state->property()] = state;
     }
-    states_.push(state);
+    collection_.push(state->property());
   }
 
   virtual void remove_state(CVExecutionState *state) {
-    assert(state == live_state_);
-    live_state_ = NULL;
-    state_set_.erase(state);
+    assert(state->property() == live_);
+    live_ = NULL;
+    cache_.erase(state->property());
   }
 
   virtual void clear(CVExecutionStateDeleter* cv_deleter=NULL) {
-    while (!states_.empty()) {
+    while (!collection_.empty()) {
       if (cv_deleter)
-        (*cv_deleter)(states_.top());
-      states_.pop();
+        (*cv_deleter)(cache_[collection_.top()]);
+      collection_.pop();
     }
-    state_set_.clear();
+    cache_.clear();
   }
 
  protected:
-  CVExecutionState* live_state_;
-  ExecutionStateSet state_set_;
-  Collection states_;
+  ExecutionStateProperty* live_;
+  boost::unordered_map<ExecutionStateProperty*, CVExecutionState*> cache_;
+  Collection collection_;
 };
 
-class ExecutionStateQueue : public std::queue<CVExecutionState*> {
- public:
-  CVExecutionState* top() { return front(); }
+class StatePropertyStack 
+  : public std::stack<ExecutionStateProperty*> {
 };
 
-// XXX Shouldn't sub-class vector?
-class ExecutionStateRandomSelector : public std::vector<CVExecutionState*> {
+class StatePropertyQueue 
+  : public std::queue<ExecutionStateProperty*> {
  public:
-  ExecutionStateRandomSelector() : size_(0) {}
+  ExecutionStateProperty* top() { return front(); }
+};
 
-  CVExecutionState* top() { return random_swap(); }
+class StatePropertyRandomSelector 
+  : public std::vector<ExecutionStateProperty*> {
+ public:
+  StatePropertyRandomSelector () : size_(0) {}
+
+  ExecutionStateProperty* top() { return random_swap(); }
 
   void pop() { size_ = std::max(0, size_-1); }
 
-  void push(CVExecutionState* state) {
+  void push(ExecutionStateProperty* property) {
     if (size_ == (int)size())
-      push_back(state);
+      push_back(property);
     else
-      at(size_) = state;
+      at(size_) = property;
     size_++;
   }
 
  private:
-  CVExecutionState* random_swap() {
+  ExecutionStateProperty* random_swap() {
     std::swap(at(rand() % size_), at(size_-1));
     return at(size_-1);
   }
-
   int size_;
 };
 
-typedef BasicSearcherStage<std::stack<CVExecutionState*> > DFSSearcherStage;
-typedef BasicSearcherStage<ExecutionStateQueue>            BFSSearcherStage;
-typedef BasicSearcherStage<ExecutionStatePriorityQueue>    PQSearcherStage;
-typedef BasicSearcherStage<ExecutionStateRandomSelector>   RandomSearcherStage;
+
+typedef BasicSearcherStage<StatePropertyStack>          DFSSearcherStage;
+typedef BasicSearcherStage<StatePropertyQueue>          BFSSearcherStage;
+typedef BasicSearcherStage<StatePropertyPriorityQueue>  PQSearcherStage;
+typedef BasicSearcherStage<StatePropertyRandomSelector> RandomSearcherStage;
 
 ////////////////////////////////////////////////////////////////////////////////
 
