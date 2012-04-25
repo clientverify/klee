@@ -40,16 +40,18 @@ namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-typedef TrackingRadixTree< ExecutionTrace, BasicBlockID, CVExecutionState > 
+typedef TrackingRadixTree< ExecutionTrace, BasicBlockID, ExecutionStateProperty> 
     ExecutionTraceTree;
 
-typedef TrackingRadixTree< std::vector<uint8_t>, uint8_t, CVExecutionState > 
+typedef std::vector<uint8_t> ForkList;
+
+typedef TrackingRadixTree< ForkList, uint8_t, ExecutionStateProperty> 
     ForkTree;
 
-typedef LevenshteinRadixTree< ExecutionTrace, BasicBlockID > 
+typedef LevenshteinRadixTree<ExecutionTrace, BasicBlockID> 
     EditDistanceExecutionTree;
 
-typedef boost::unordered_map< CVExecutionState*, EditDistanceExecutionTree* >
+typedef boost::unordered_map<ExecutionStateProperty*,EditDistanceExecutionTree*>
     EditDistanceExecutionTreeMap;
 
 ////////////////////////////////////////////////////////////////////////////////
