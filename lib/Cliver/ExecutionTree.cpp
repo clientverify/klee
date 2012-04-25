@@ -103,6 +103,10 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
   CVExecutionState* state = ev.state;
   CVExecutionState* parent = ev.parent;
 
+  ExecutionStateProperty *property = state->property(), *parent_property = NULL;
+  if (parent) 
+    parent_property = parent->property();
+
   switch (ev.event_type) {
     case CV_ROUND_START: {
       if (DeleteOldTrees && !tree_list_.empty()) {
@@ -117,20 +121,20 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
     }
     case CV_BASICBLOCK_ENTRY: {
       if (state->basic_block_tracking())
-        tree_list_.back()->extend(state->prevPC->kbb->id, state);
+        tree_list_.back()->extend(state->prevPC->kbb->id, property);
       break;
     }
 
     case CV_STATE_REMOVED: {
       CVDEBUG("Removing state: " << *state );
-      tree_list_.back()->remove_tracker(state);
+      tree_list_.back()->remove_tracker(property);
       break;
     }
 
     case CV_STATE_CLONE: {
       CVDEBUG("Cloned state: " << *state);
-      tree_list_.back()->clone_tracker(state, parent);
-      fork_tree_->clone_tracker(state, parent);
+      tree_list_.back()->clone_tracker(property, parent_property);
+      fork_tree_->clone_tracker(property, parent_property);
       break;
     }
 
@@ -140,13 +144,13 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
       CVDEBUG("Successful socket event: " << *state);
       ExecutionTraceTree* tree = NULL;
       reverse_foreach (tree, tree_list_) {
-        if (tree->tracks(state))
+        if (tree->tracks(property))
           break;
       }
 
-      if (tree->tracks(state)) {
+      if (tree->tracks(property)) {
         ExecutionTrace etrace;
-        tree->tracker_get(state, etrace);
+        tree->tracker_get(property, etrace);
         CVDEBUG("TRACE: " << etrace);
       }
       break;
@@ -155,7 +159,7 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
     case CV_STATE_FORK_TRUE:
     case CV_STATE_FORK_FALSE: {
       CVDEBUG("Forked state: " << *state);
-      fork_tree_->extend(CV_STATE_FORK_TRUE ? true : false, state);
+      fork_tree_->extend(CV_STATE_FORK_TRUE ? true : false, property);
       break;
     }
 
@@ -177,6 +181,10 @@ void TrainingExecutionTreeManager::notify(ExecutionEvent ev) {
   CVExecutionState* state = ev.state;
   CVExecutionState* parent = ev.parent;
 
+  ExecutionStateProperty *property = state->property(), *parent_property = NULL;
+  if (parent) 
+    parent_property = parent->property();
+
   switch (ev.event_type) {
     case CV_ROUND_START: {
       if (DeleteOldTrees && !tree_list_.empty()) {
@@ -188,25 +196,25 @@ void TrainingExecutionTreeManager::notify(ExecutionEvent ev) {
     }
     case CV_BASICBLOCK_ENTRY: {
       if (state->basic_block_tracking())
-        tree_list_.back()->extend(state->prevPC->kbb->id, state);
+        tree_list_.back()->extend(state->prevPC->kbb->id, property);
       break;
     }
 
     case CV_STATE_REMOVED: {
       CVDEBUG("Removing state: " << *state );
-      tree_list_.back()->remove_tracker(state);
+      tree_list_.back()->remove_tracker(property);
       break;
     }
 
     case CV_STATE_CLONE: {
       CVDEBUG("Cloned state: " << *state);
-      tree_list_.back()->clone_tracker(state, parent);
+      tree_list_.back()->clone_tracker(property, parent_property);
       break;
     }
 
     case CV_SOCKET_WRITE:
     case CV_SOCKET_READ: {
-      assert(tree_list_.back()->tracks(state));
+      assert(tree_list_.back()->tracks(property));
 
       // On a successful socket read/write event, write this path's state
       // and associated socket event data to file
@@ -219,7 +227,7 @@ void TrainingExecutionTreeManager::notify(ExecutionEvent ev) {
 
       // Get path from the execution tree
       ExecutionTrace etrace;
-      tree_list_.back()->tracker_get(state, etrace);
+      tree_list_.back()->tracker_get(property, etrace);
 
 
       // Create training object and write to file
@@ -266,6 +274,10 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
   CVExecutionState* state = ev.state;
   CVExecutionState* parent = ev.parent;
 
+  ExecutionStateProperty *property = state->property(), *parent_property = NULL;
+  if (parent) 
+    parent_property = parent->property();
+
   switch (ev.event_type) {
     case CV_ROUND_START: {
       // Delete the ExecutionTraceTree from the previous round
@@ -283,9 +295,9 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
     }
     case CV_BASICBLOCK_ENTRY: {
       EditDistanceProperty *edp 
-        = static_cast<EditDistanceProperty*>(state->property());
+        = static_cast<EditDistanceProperty*>(property);
 
-      if (!tree_list_.back()->tracks(state)) {
+      if (!tree_list_.back()->tracks(property)) {
 
         TrainingObjectScoreList score_list;
         TrainingManager::init_score_list(training_data_, score_list);
@@ -310,20 +322,20 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
       }
 
       if (state->basic_block_tracking())
-        tree_list_.back()->extend(state->prevPC->kbb->id, state);
+        tree_list_.back()->extend(state->prevPC->kbb->id, property);
 
-      if (edit_distance_map_.count(state) == 0) {
-        edit_distance_map_[state] = 
+      if (edit_distance_map_.count(property) == 0) {
+        edit_distance_map_[property] = 
             static_cast<EditDistanceExecutionTree*>(root_tree_->clone());
       }
 
       if (edp->recompute) {
         edp->recompute = false;
         ExecutionTrace etrace;
-        tree_list_.back()->tracker_get(state, etrace);
+        tree_list_.back()->tracker_get(property, etrace);
 
         edp->edit_distance 
-          = edit_distance_map_[state]->min_edit_distance_update(etrace);
+          = edit_distance_map_[property]->min_edit_distance_update(etrace);
       }
 
       break;
@@ -331,29 +343,30 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
 
     case CV_STATE_REMOVED: {
       CVDEBUG("Removing state: " << *state );
-      tree_list_.back()->remove_tracker(state);
-      assert(edit_distance_map_.count(state));
-      delete edit_distance_map_[state];
-      edit_distance_map_.erase(state);
+      tree_list_.back()->remove_tracker(property);
+      assert(edit_distance_map_.count(property));
+      delete edit_distance_map_[property];
+      edit_distance_map_.erase(property);
       break;
     }
 
     case CV_STATE_CLONE: {
       CVDEBUG("Cloned state: " << *state << ", parent: " << *parent )
-      tree_list_.back()->clone_tracker(state, parent);
+      tree_list_.back()->clone_tracker(property, parent_property);
       
       EditDistanceProperty *edp 
-        = static_cast<EditDistanceProperty*>(state->property());
+        = static_cast<EditDistanceProperty*>(property);
       EditDistanceProperty *edp_parent
-        = static_cast<EditDistanceProperty*>(parent->property());
+        = static_cast<EditDistanceProperty*>(parent_property);
 
       edp->recompute=true;
       edp_parent->recompute=true;
 
-      assert(edit_distance_map_.count(parent));
+      assert(edit_distance_map_.count(parent_property));
 
-      edit_distance_map_[state] = 
-          static_cast<EditDistanceExecutionTree*>(edit_distance_map_[parent]->clone());
+      edit_distance_map_[property] = 
+          static_cast<EditDistanceExecutionTree*>(
+              edit_distance_map_[parent_property]->clone());
 
       //if (StateTreesMemoryLimit > 0 
       //    && cv_->executor()->memory_usage() >= StateTreesMemoryLimit) {
@@ -373,9 +386,9 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
       CVDEBUG("End state: " << *state);
 
       ExecutionTrace etrace;
-      tree_list_.back()->tracker_get(state, etrace);
-      EditDistanceProperty *edp 
-        = static_cast<EditDistanceProperty*>(state->property());
+      tree_list_.back()->tracker_get(property, etrace);
+      //EditDistanceProperty *edp = 
+      //    static_cast<EditDistanceProperty*>(property);
 
       CVDEBUG("End of round, path length: " << etrace.size());
 
