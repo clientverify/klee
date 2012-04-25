@@ -103,7 +103,9 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
   CVExecutionState* state = ev.state;
   CVExecutionState* parent = ev.parent;
 
-  ExecutionStateProperty *property = state->property(), *parent_property = NULL;
+  ExecutionStateProperty *property, *parent_property;
+  if (state)
+    property = state->property();
   if (parent) 
     parent_property = parent->property();
 
@@ -181,7 +183,9 @@ void TrainingExecutionTreeManager::notify(ExecutionEvent ev) {
   CVExecutionState* state = ev.state;
   CVExecutionState* parent = ev.parent;
 
-  ExecutionStateProperty *property = state->property(), *parent_property = NULL;
+  ExecutionStateProperty *property, *parent_property;
+  if (state)
+    property = state->property();
   if (parent) 
     parent_property = parent->property();
 
@@ -274,7 +278,9 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
   CVExecutionState* state = ev.state;
   CVExecutionState* parent = ev.parent;
 
-  ExecutionStateProperty *property = state->property(), *parent_property = NULL;
+  ExecutionStateProperty *property, *parent_property;
+  if (state)
+    property = state->property();
   if (parent) 
     parent_property = parent->property();
 
