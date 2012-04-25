@@ -41,7 +41,7 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
   CVExecutionState(const std::vector< klee::ref<klee::Expr> > &assumptions);
   ~CVExecutionState();
   virtual CVExecutionState *branch();
-  CVExecutionState *clone();
+  CVExecutionState *clone(ExecutionStateProperty* property = NULL);
 
 	int compare(const CVExecutionState& b) const;
 
@@ -55,12 +55,6 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
 	NetworkManager* network_manager() const { return network_manager_; }
 	ExecutionStateProperty* property() { return property_; }
 
-#ifdef DEBUG_CLIVER_STATE_LOG
-	std::stringstream& debug_log() { return *debug_log_; }
-	void reset_debug_log() { delete debug_log_; debug_log_ = new std::stringstream(); }
-	std::stringstream *debug_log_;
-#endif
-
   void notify(ExecutionEvent ev) {}
 
   void print(std::ostream &os) const;
@@ -69,12 +63,6 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
 
   bool basic_block_tracking() { return basic_block_tracking_; }
   void set_basic_block_tracking(bool b) { basic_block_tracking_ = b; }
-
-  bool next_fork_replay() { 
-    assert(fork_replay_);
-    return (*fork_replay_)[fork_replay_position_++];
-  }
-  bool fork_replay() { return fork_replay_ != NULL; }
 
   static int next_id() { return next_id_; }
 
@@ -88,8 +76,6 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
 	ExecutionStateProperty* property_;
   ClientVerifier *cv_;
   bool basic_block_tracking_;
-  std::vector<uint8_t>* fork_replay_;
-  size_t fork_replay_position_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

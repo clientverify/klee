@@ -130,6 +130,7 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
     case CV_STATE_REMOVED: {
       CVDEBUG("Removing state: " << *state );
       tree_list_.back()->remove_tracker(property);
+      fork_tree_->remove_tracker(property);
       break;
     }
 

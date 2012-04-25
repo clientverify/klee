@@ -12,8 +12,10 @@
 
 #include "cliver/ClientVerifier.h" // For CliverEvent::Type
 #include "cliver/CVExecutionState.h"
+#include "cliver/CVExecutor.h"
 #include "cliver/ExecutionStateProperty.h"
 #include "cliver/ExecutionObserver.h"
+#include "cliver/TrackingRadixTree.h"
 
 #include "klee/Searcher.h"
 
@@ -52,6 +54,98 @@ class CVSearcher : public klee::Searcher, public ExecutionObserver {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class StateRebuilder {
+ public:
+  typedef std::vector<bool> BoolForkList;
+  typedef std::vector<unsigned char> UCharForkList;
+  typedef TrackingRadixTree< UCharForkList, unsigned char, ExecutionStateProperty> 
+      ForkTree;
+
+  StateRebuilder() : active_(false), root_(NULL), rebuild_state_(NULL) {}
+
+  void set_root(CVExecutionState* root) {
+    root_ = root;
+  }
+
+  void notify(ExecutionEvent ev) {
+    CVExecutionState* state = ev.state;
+    CVExecutionState* parent = ev.parent;
+
+    switch (ev.event_type) {
+      case CV_STATE_REMOVED: {
+        fork_tree_.remove_tracker(state->property());
+        break;
+      }
+
+      case CV_STATE_CLONE: {
+        fork_tree_.clone_tracker(state->property(), parent->property());
+        break;
+      }
+
+      case CV_STATE_FORK_TRUE: {
+        fork_tree_.extend(true, state->property());
+        break;
+      }
+
+      case CV_STATE_FORK_FALSE: {
+        fork_tree_.extend(false, state->property());
+        break;
+      }
+    }
+  }
+
+  CVExecutionState* rebuild(ExecutionStateProperty* property) {
+    assert(rebuild_state_ == NULL);
+
+    // Clone root state with the given property
+    rebuild_state_ = root_->clone(property);
+
+    // Get the list of forks from the fork tree (uchar)
+    UCharForkList uchar_fork_list;
+    fork_tree_.tracker_get(property, uchar_fork_list);
+
+    // Prepare the bool fork list
+    fork_list_.reserve(uchar_fork_list.size());
+
+    // Copy the uchar fork list to the bool fork list
+    UCharForkList::iterator it=uchar_fork_list.begin(), 
+        iend=uchar_fork_list.end();
+    for (; it != iend; ++it)
+      fork_list_.push_back(*it);
+
+    // Set the replay path in Executor
+    root_->cv()->executor()->reset_replay_path(&fork_list_);
+
+    // Return the new state
+    return rebuild_state_;
+  }
+
+  CVExecutionState* state() { return rebuild_state_; }
+
+  bool active() { 
+    // If we've executed all of the replay path
+    if (active_ && 
+        root_->cv()->executor()->replay_position() == fork_list_.size()) {
+      // Reset to null
+      root_->cv()->executor()->reset_replay_path();
+
+      active_ = false;
+      rebuild_state_ = NULL;
+      fork_list_.clear();
+    }
+    return active_;
+  }
+
+ private:
+  bool active_;
+  CVExecutionState* root_;
+  CVExecutionState* rebuild_state_;
+  ForkTree fork_tree_;
+  BoolForkList fork_list_;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 /// Each SearcherStage object holds ExecutionStates, where all the states in a
 /// given SearcherStage have processed network events 1 to i, where i is equal
 /// among all the states. Each SearcherStage has a single root state from which
@@ -67,35 +161,57 @@ class SearcherStage {
   virtual void add_state(CVExecutionState *state) = 0;
   virtual void remove_state(CVExecutionState *state) = 0;
   virtual bool empty() = 0;
+  virtual void notify(ExecutionEvent ev) = 0;
   virtual void clear(CVExecutionStateDeleter* cv_deleter) = 0;
 };
 
 typedef std::list<SearcherStage*> SearcherStageList;
 
 template <class Collection>
-class BasicSearcherStage : public SearcherStage {
+class SearcherStageImpl : public SearcherStage {
  public:
-  BasicSearcherStage(CVExecutionState* root_state)
+  SearcherStageImpl(CVExecutionState* root_state)
     : live_(NULL) {
     this->add_state(root_state);
+    rebuilder_.set_root(root_state);
   }
 
-  virtual ~BasicSearcherStage() {}
+  ~SearcherStageImpl() {}
 
-  virtual bool empty() {
-    return live_ != NULL || cache_.empty();
+  bool empty() {
+    return rebuilder_.active() || live_ != NULL || cache_.empty();
   }
 
-  virtual CVExecutionState* next_state() {
-    if (empty()) return NULL;
+  inline void notify(ExecutionEvent ev) {
+    rebuilder_.notify(ev);
+  }
+
+  CVExecutionState* next_state() {
+    if (rebuilder_.active())
+      return rebuilder_.state();
+
+    if (empty()) 
+      return NULL;
+
     assert(live_ == NULL);
+
     live_ = collection_.top();
     collection_.pop();
+
+    if (cache_.count(live_) == 0)
+      return rebuilder_.rebuild(live_);
+
     return cache_[live_];
   }
 
-  virtual void add_state(CVExecutionState *state) {
+  void add_state(CVExecutionState *state) {
     assert(state);
+
+    if (rebuilder_.active()) {
+      assert(rebuilder_.state() == state);
+      return;
+    }
+
     if (state->property() == live_) {
       live_ = NULL;
     } else {
@@ -105,13 +221,15 @@ class BasicSearcherStage : public SearcherStage {
     collection_.push(state->property());
   }
 
-  virtual void remove_state(CVExecutionState *state) {
+  void remove_state(CVExecutionState *state) {
+    assert(!rebuilder_.active());
     assert(state->property() == live_);
     live_ = NULL;
     cache_.erase(state->property());
   }
 
-  virtual void clear(CVExecutionStateDeleter* cv_deleter=NULL) {
+  void clear(CVExecutionStateDeleter* cv_deleter=NULL) {
+    assert(!rebuilder_.active());
     while (!collection_.empty()) {
       if (cv_deleter)
         (*cv_deleter)(cache_[collection_.top()]);
@@ -124,6 +242,7 @@ class BasicSearcherStage : public SearcherStage {
   ExecutionStateProperty* live_;
   boost::unordered_map<ExecutionStateProperty*, CVExecutionState*> cache_;
   Collection collection_;
+  StateRebuilder rebuilder_;
 };
 
 class StatePropertyStack 
@@ -161,11 +280,10 @@ class StatePropertyRandomSelector
   int size_;
 };
 
-
-typedef BasicSearcherStage<StatePropertyStack>          DFSSearcherStage;
-typedef BasicSearcherStage<StatePropertyQueue>          BFSSearcherStage;
-typedef BasicSearcherStage<StatePropertyPriorityQueue>  PQSearcherStage;
-typedef BasicSearcherStage<StatePropertyRandomSelector> RandomSearcherStage;
+typedef SearcherStageImpl< StatePropertyStack >          DFSSearcherStage;
+typedef SearcherStageImpl< StatePropertyQueue >          BFSSearcherStage;
+typedef SearcherStageImpl< StatePropertyPriorityQueue >  PQSearcherStage;
+typedef SearcherStageImpl< StatePropertyRandomSelector > RandomSearcherStage;
 
 ////////////////////////////////////////////////////////////////////////////////
 
