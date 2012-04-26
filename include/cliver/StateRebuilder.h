@@ -23,7 +23,7 @@
  
 namespace cliver {
 
-extern llvm::cl::opt<size_t> StateCacheSize;
+extern llvm::cl::opt<unsigned> StateCacheSize;
 
 ////////////////////////////////////////////////////////////////////////////////
 
