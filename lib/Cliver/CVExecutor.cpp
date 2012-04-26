@@ -585,40 +585,7 @@ CVExecutor::fork(klee::ExecutionState &current,
 
   klee::Solver::Validity res;
 
-  //std::map< ExecutionState*, std::vector<SeedInfo> >::iterator it = 
-  //    seedMap.find(&current);
-  //bool isSeeding = it != seedMap.end();
-
-  //if (!isSeeding && !isa<ConstantExpr>(condition) && 
-  //    (MaxStaticForkPct!=1. || MaxStaticSolvePct != 1. ||
-  //     MaxStaticCPForkPct!=1. || MaxStaticCPSolvePct != 1.) &&
-  //    statsTracker->elapsed() > 60.) {
-  //  StatisticManager &sm = *theStatisticManager;
-  //  CallPathNode *cpn = current.stack.back().callPathNode;
-  //  if ((MaxStaticForkPct<1. &&
-  //       sm.getIndexedValue(stats::forks, sm.getIndex()) > 
-  //       stats::forks*MaxStaticForkPct) ||
-  //      (MaxStaticCPForkPct<1. &&
-  //       cpn && (cpn->statistics.getValue(stats::forks) > 
-  //               stats::forks*MaxStaticCPForkPct)) ||
-  //      (MaxStaticSolvePct<1 &&
-  //       sm.getIndexedValue(stats::solverTime, sm.getIndex()) > 
-  //       stats::solverTime*MaxStaticSolvePct) ||
-  //      (MaxStaticCPForkPct<1. &&
-  //       cpn && (cpn->statistics.getValue(stats::solverTime) > 
-  //               stats::solverTime*MaxStaticCPSolvePct))) {
-  //    ref<ConstantExpr> value; 
-  //    bool success = solver->getValue(current, condition, value);
-  //    assert(success && "FIXME: Unhandled solver failure");
-  //    (void) success;
-  //    addConstraint(current, EqExpr::create(value, condition));
-  //    condition = value;
-  //  }      
-  //}
-
   double timeout = stpTimeout;
-  //if (isSeeding)
-  //  timeout *= it->second.size();
 
   solver->setTimeout(timeout);
 
@@ -631,28 +598,6 @@ CVExecutor::fork(klee::ExecutionState &current,
     return StatePair(0, 0);
   }
 
-  /*
-  CVExecutionState* cvstate = static_cast<CVExecutionState*>(&current);
-  if (cvstate->fork_replay) {
-    bool branch = (*cvstate->fork_replay)[cvstate->fork_replay_position++];
-    if (res==klee::Solver::True) {
-      assert(branch && "hit invalid branch in fork replay mode");
-    } else if (res==klee::Solver::False) {
-      assert(!branch && "hit invalid branch in fork replay mode");
-    } else {
-      // add constraints
-      if(branch) {
-        res = klee::Solver::True;
-        addConstraint(current, condition);
-      } else  {
-        res = klee::Solver::False;
-        addConstraint(current, Expr::createIsZero(condition));
-      }
-    }
-  }
-  */
-
-  //if (replayPath && !isInternal) {
   if (replayPath) {
     assert(replayPosition < replayPath->size() &&
             "ran out of branches in replay path mode");
@@ -674,49 +619,7 @@ CVExecutor::fork(klee::ExecutionState &current,
     }
   } 
  
-  //// Fix branch in only-replay-seed mode, if we don't have both true
-  //// and false seeds.
-  //if (isSeeding && 
-  //    (current.forkDisabled || OnlyReplaySeeds) && 
-  //    res == Solver::Unknown) {
-  //  bool trueSeed=false, falseSeed=false;
-  //  // Is seed extension still ok here?
-  //  for (std::vector<SeedInfo>::iterator siit = it->second.begin(), 
-  //         siie = it->second.end(); siit != siie; ++siit) {
-  //    ref<ConstantExpr> res;
-  //    bool success = 
-  //      solver->getValue(current, siit->assignment.evaluate(condition), res);
-  //    assert(success && "FIXME: Unhandled solver failure");
-  //    (void) success;
-  //    if (res->isTrue()) {
-  //      trueSeed = true;
-  //    } else {
-  //      falseSeed = true;
-  //    }
-  //    if (trueSeed && falseSeed)
-  //      break;
-  //  }
-  //  if (!(trueSeed && falseSeed)) {
-  //    assert(trueSeed || falseSeed);
-  //    
-  //    res = trueSeed ? Solver::True : Solver::False;
-  //    addConstraint(current, trueSeed ? condition : Expr::createIsZero(condition));
-  //  }
-  //}
-
-  // XXX - even if the constraint is provable one way or the other we
-  // can probably benefit by adding this constraint and allowing it to
-  // reduce the other constraints. For example, if we do a binary
-  // search on a particular value, and then see a comparison against
-  // the value it has been fixed at, we should take this as a nice
-  // hint to just use the single constraint instead of all the binary
-  // search ones. If that makes sense.
   if (res == klee::Solver::True) {
-    //if (!isInternal) {
-    //  if (pathWriter) {
-    //    current.pathOS << "1";
-    //  }
-    //}
 
     if (!replayPath)
       cv_->notify_all(ExecutionEvent(CV_STATE_FORK_TRUE, &current));
@@ -724,11 +627,6 @@ CVExecutor::fork(klee::ExecutionState &current,
     return StatePair(&current, 0);
 
   } else if (res == klee::Solver::False) {
-    //if (!isInternal) {
-    //  if (pathWriter) {
-    //    current.pathOS << "0";
-    //  }
-    //}
 
     if (!replayPath)
       cv_->notify_all(ExecutionEvent(CV_STATE_FORK_FALSE, &current));
@@ -744,61 +642,6 @@ CVExecutor::fork(klee::ExecutionState &current,
     falseState = trueState->branch();
     addedStates.insert(falseState);
 
-    //if (klee::RandomizeFork && klee::theRNG.getBool())
-    //    std::swap(trueState, falseState);
-
-    //if (it != seedMap.end()) {
-    //  std::vector<SeedInfo> seeds = it->second;
-    //  it->second.clear();
-    //  std::vector<SeedInfo> &trueSeeds = seedMap[trueState];
-    //  std::vector<SeedInfo> &falseSeeds = seedMap[falseState];
-    //  for (std::vector<SeedInfo>::iterator siit = seeds.begin(), 
-    //         siie = seeds.end(); siit != siie; ++siit) {
-    //    ref<ConstantExpr> res;
-    //    bool success = 
-    //      solver->getValue(current, siit->assignment.evaluate(condition), res);
-    //    assert(success && "FIXME: Unhandled solver failure");
-    //    (void) success;
-    //    if (res->isTrue()) {
-    //      trueSeeds.push_back(*siit);
-    //    } else {
-    //      falseSeeds.push_back(*siit);
-    //    }
-    //  }
-    //  
-    //  bool swapInfo = false;
-    //  if (trueSeeds.empty()) {
-    //    if (&current == trueState) swapInfo = true;
-    //    seedMap.erase(trueState);
-    //  }
-    //  if (falseSeeds.empty()) {
-    //    if (&current == falseState) swapInfo = true;
-    //    seedMap.erase(falseState);
-    //  }
-    //  if (swapInfo) {
-    //    std::swap(trueState->coveredNew, falseState->coveredNew);
-    //    std::swap(trueState->coveredLines, falseState->coveredLines);
-    //  }
-    //}
-
-    //current.ptreeNode->data = 0;
-    //std::pair<PTree::Node*, PTree::Node*> res =
-    //  processTree->split(current.ptreeNode, falseState, trueState);
-    //falseState->ptreeNode = res.first;
-    //trueState->ptreeNode = res.second;
-
-    //if (!isInternal) {
-    //  if (pathWriter) {
-    //    falseState->pathOS = pathWriter->open(current.pathOS);
-    //    trueState->pathOS << "1";
-    //    falseState->pathOS << "0";
-    //  }      
-    //  if (symPathWriter) {
-    //    falseState->symPathOS = symPathWriter->open(current.symPathOS);
-    //    trueState->symPathOS << "1";
-    //    falseState->symPathOS << "0";
-    //  }
-    //}
 
     addConstraint(*trueState, condition);
     addConstraint(*falseState, klee::Expr::createIsZero(condition));
@@ -807,13 +650,6 @@ CVExecutor::fork(klee::ExecutionState &current,
       cv_->notify_all(ExecutionEvent(CV_STATE_FORK_FALSE, falseState));
       cv_->notify_all(ExecutionEvent(CV_STATE_FORK_TRUE, trueState));
     }
-
-    //// Kinda gross, do we even really still want this option?
-    //if (MaxDepth && MaxDepth<=trueState->depth) {
-    //  terminateStateEarly(*trueState, "max-depth exceeded");
-    //  terminateStateEarly(*falseState, "max-depth exceeded");
-    //  return StatePair(0, 0);
-    //}
 
     return StatePair(trueState, falseState);
   }
