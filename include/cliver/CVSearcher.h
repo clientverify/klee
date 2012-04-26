@@ -120,16 +120,16 @@ class StateRebuilder {
     fork_tree_.tracker_get(property, uchar_fork_list);
 
     // Prepare the bool fork list
-    fork_list_.reserve(uchar_fork_list.size());
+    replay_path_.reserve(uchar_fork_list.size());
 
     // Copy the uchar fork list to the bool fork list
     UCharForkList::iterator it=uchar_fork_list.begin(), 
         iend=uchar_fork_list.end();
     for (; it != iend; ++it)
-      fork_list_.push_back(*it);
+      replay_path_.push_back(*it);
 
     // Set the replay path in Executor
-    root_->cv()->executor()->reset_replay_path(&fork_list_);
+    root_->cv()->executor()->reset_replay_path(&replay_path_);
 
     // Add new rebuild state to the executor
     root_->cv()->executor()->add_state_internal(rebuild_state_);
@@ -146,7 +146,7 @@ class StateRebuilder {
   bool active() { 
     // If we've executed all of the replay path
     if (active_ && 
-        root_->cv()->executor()->replay_position() == fork_list_.size()) {
+        root_->cv()->executor()->replay_position() == replay_path_.size()) {
 
       // Deactivate
       active_ = false;
@@ -154,8 +154,8 @@ class StateRebuilder {
       // Reset state to null
       rebuild_state_ = NULL;
 
-      // Clear fork_list
-      fork_list_.clear();
+      // Clear replay path
+      replay_path_.clear();
 
       // Set replay path to null in Executor
       root_->cv()->executor()->reset_replay_path();
@@ -169,8 +169,7 @@ class StateRebuilder {
   CVExecutionState* root_;
   CVExecutionState* rebuild_state_;
   ForkTree fork_tree_;
-  //InstTree inst_tree_;
-  BoolForkList fork_list_;
+  BoolForkList replay_path_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
