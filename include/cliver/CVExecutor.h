@@ -60,7 +60,8 @@ class CVExecutor : public klee::Executor {
 			bool has_return_value=true);
 
 	void resolve_one(klee::ExecutionState *state, 
-			klee::ref<klee::Expr> address_expr, klee::ObjectPair &result);
+			klee::ref<klee::Expr> address_expr, klee::ObjectPair &result,
+      bool writeable);
 
 	void terminate_state(CVExecutionState *state);
 
