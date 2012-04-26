@@ -96,14 +96,16 @@ ExecutionTreeManager::ExecutionTreeManager(ClientVerifier* cv) : cv_(cv) {}
 
 void ExecutionTreeManager::initialize() {
   tree_list_.push_back(new ExecutionTraceTree() );
-  fork_tree_ = new ForkTree();
 }
 
 void ExecutionTreeManager::notify(ExecutionEvent ev) {
+  if (cv_->executor()->replay_path())
+    return;
+
   CVExecutionState* state = ev.state;
   CVExecutionState* parent = ev.parent;
 
-  ExecutionStateProperty *property, *parent_property;
+  ExecutionStateProperty *property = NULL, *parent_property = NULL;
   if (state)
     property = state->property();
   if (parent) 
@@ -116,9 +118,6 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
         tree_list_.pop_back();
       }
       tree_list_.push_back(new ExecutionTraceTree() );
-
-      delete fork_tree_;
-      fork_tree_ = new ForkTree();
       break;
     }
     case CV_BASICBLOCK_ENTRY: {
@@ -130,14 +129,12 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
     case CV_STATE_REMOVED: {
       CVDEBUG("Removing state: " << *state );
       tree_list_.back()->remove_tracker(property);
-      fork_tree_->remove_tracker(property);
       break;
     }
 
     case CV_STATE_CLONE: {
       CVDEBUG("Cloned state: " << *state);
       tree_list_.back()->clone_tracker(property, parent_property);
-      fork_tree_->clone_tracker(property, parent_property);
       break;
     }
 
@@ -154,15 +151,8 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
       if (tree->tracks(property)) {
         ExecutionTrace etrace;
         tree->tracker_get(property, etrace);
-        CVDEBUG("TRACE: " << etrace);
+        CVDEBUG("TRACE: length: " << etrace.size());
       }
-      break;
-    }
-
-    case CV_STATE_FORK_TRUE:
-    case CV_STATE_FORK_FALSE: {
-      CVDEBUG("Forked state: " << *state);
-      fork_tree_->extend(CV_STATE_FORK_TRUE ? true : false, property);
       break;
     }
 
@@ -181,10 +171,13 @@ void TrainingExecutionTreeManager::initialize() {
 }
 
 void TrainingExecutionTreeManager::notify(ExecutionEvent ev) {
+  if (cv_->executor()->replay_path())
+    return;
+
   CVExecutionState* state = ev.state;
   CVExecutionState* parent = ev.parent;
 
-  ExecutionStateProperty *property, *parent_property;
+  ExecutionStateProperty *property = NULL, *parent_property = NULL;
   if (state)
     property = state->property();
   if (parent) 
@@ -276,10 +269,13 @@ void VerifyExecutionTreeManager::initialize() {
 }
 
 void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
+  if (cv_->executor()->replay_path())
+    return;
+
   CVExecutionState* state = ev.state;
   CVExecutionState* parent = ev.parent;
 
-  ExecutionStateProperty *property, *parent_property;
+  ExecutionStateProperty *property = NULL, *parent_property = NULL;
   if (state)
     property = state->property();
   if (parent) 
