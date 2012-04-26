@@ -34,9 +34,14 @@ CVExecutionState::CVExecutionState(
 }
 
 CVExecutionState::~CVExecutionState() {
-  while (!stack.empty()) popFrame();
-	delete network_manager_;
-	delete property_;
+  while (!stack.empty()) 
+    popFrame();
+
+  if (network_manager_)
+    delete network_manager_;
+
+  if (property_)
+    delete property_;
 }
 
 int CVExecutionState::compare(const CVExecutionState& b) const {
@@ -64,6 +69,7 @@ void CVExecutionState::initialize(ClientVerifier *cv) {
 }
 
 CVExecutionState* CVExecutionState::clone(ExecutionStateProperty* property) {
+  assert(cv_->executor()->replay_path() == NULL);
   CVExecutionState *cloned_state = new CVExecutionState(*this);
   cloned_state->id_ = increment_id();
   cloned_state->network_manager_ 
