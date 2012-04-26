@@ -106,10 +106,10 @@ SearcherStage* SearcherStageFactory::create(StateMerger* merger,
       return new PQSearcherStage(state);
     }
     case BreadthFirst: {
-      return new DFSSearcherStage(state);
+      return new BFSSearcherStage(state);
     }
     case DepthFirst: {
-      return new BFSSearcherStage(state);
+      return new DFSSearcherStage(state);
     }
   }
   cv_error("search mode not supported!");
