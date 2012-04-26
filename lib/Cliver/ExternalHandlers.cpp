@@ -38,9 +38,10 @@ QUEUE_SIZE("queue-size", llvm::cl::init(3));
 ////////////////////////////////////////////////////////////////////////////////
 
 klee::ObjectState* resolve_address(klee::Executor* executor, 
-    klee::ExecutionState* state, klee::ref<klee::Expr> address) {
+    klee::ExecutionState* state, klee::ref<klee::Expr> address,
+    bool writeable=false) {
   klee::ObjectPair result;
-  static_cast<CVExecutor*>(executor)->resolve_one(state, address, result);
+  static_cast<CVExecutor*>(executor)->resolve_one(state, address, result, writeable);
   return const_cast<klee::ObjectState*>(result.second);
 }
 
@@ -66,7 +67,8 @@ void ExternalHandler_socket_read(
   int fd = cast<klee::ConstantExpr>(arguments[0])->getZExtValue();
   klee::ref<klee::Expr> address = arguments[1];
   int len = cast<klee::ConstantExpr>(arguments[2])->getZExtValue();
-  klee::ObjectState *object = resolve_address(executor, state, address);
+  klee::ObjectState *object = resolve_address(executor, state, address,
+                                              true);
 
   CVExecutionState* cv_state = static_cast<CVExecutionState*>(state);
   CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);

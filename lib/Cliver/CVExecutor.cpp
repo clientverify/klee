@@ -885,14 +885,23 @@ void CVExecutor::add_external_handler(std::string name,
 }
 
 void CVExecutor::resolve_one(klee::ExecutionState *state, 
-		klee::ref<klee::Expr> address_expr, klee::ObjectPair &result) {
+		klee::ref<klee::Expr> address_expr, klee::ObjectPair &result,
+    bool writeable = false) {
 	
 	klee::Executor::ExactResolutionList rl;
   resolveExact(*state, address_expr, rl, "CVExecutor::resolve_one");
 	assert(rl.size() == 1);
 	//assert(rl[0].second == state);
-	result.first = rl[0].first.first;
-	result.second = rl[0].first.second;
+
+  const klee::MemoryObject *mo = rl[0].first.first;
+  const klee::ObjectState *os = rl[0].first.second;
+
+  result.first = mo;
+
+  if (writeable)
+    result.second = state->addressSpace.getWriteable(mo, os);
+  else
+    result.second = os;
 }
 
 void CVExecutor::terminate_state(CVExecutionState* state) {
