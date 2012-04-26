@@ -337,7 +337,7 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
 
   searcher->update(0, states, std::set<klee::ExecutionState*>());
 
-  while (!states.empty() && !searcher->empty() && !haltExecution) {
+  while (!searcher->empty() && !haltExecution) {
 		klee::ExecutionState &state = searcher->selectState();
     if (haltExecution) goto dump;
 
