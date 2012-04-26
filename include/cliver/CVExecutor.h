@@ -89,6 +89,8 @@ class CVExecutor : public klee::Executor {
 
 	void remove_state_internal(CVExecutionState* state);
 
+  void remove_state_internal_without_notify(CVExecutionState* state);
+
 	void rebuild_solvers();
 
 	void update_memory_usage();
@@ -109,6 +111,8 @@ class CVExecutor : public klee::Executor {
                                     klee::ref<klee::Expr> address_expr);
 
   void reset_replay_path(std::vector<bool> *replay_path=NULL);
+
+  const std::vector<bool>* replay_path() { return replayPath; }
 
   unsigned replay_position() { return replayPosition; }
 

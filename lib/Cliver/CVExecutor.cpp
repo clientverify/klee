@@ -652,55 +652,28 @@ CVExecutor::fork(klee::ExecutionState &current,
   }
   */
 
-  //if (!isSeeding) {
-  //  if (replayPath && !isInternal) {
-  //    assert(replayPosition<replayPath->size() &&
-  //           "ran out of branches in replay path mode");
-  //    bool branch = (*replayPath)[replayPosition++];
-  //    
-  //    if (res==Solver::True) {
-  //      assert(branch && "hit invalid branch in replay path mode");
-  //    } else if (res==Solver::False) {
-  //      assert(!branch && "hit invalid branch in replay path mode");
-  //    } else {
-  //      // add constraints
-  //      if(branch) {
-  //        res = Solver::True;
-  //        addConstraint(current, condition);
-  //      } else  {
-  //        res = Solver::False;
-  //        addConstraint(current, Expr::createIsZero(condition));
-  //      }
-  //    }
-  //  } else if (res==Solver::Unknown) {
-  //    assert(!replayOut && "in replay mode, only one branch can be true.");
-
-  //    if ((MaxMemoryInhibit && atMemoryLimit) || 
-  //        current.forkDisabled ||
-  //        inhibitForking || 
-  //        (MaxForks!=~0u && stats::forks >= MaxForks)) {
-
-  //      if (MaxMemoryInhibit && atMemoryLimit)
-  //        klee_warning_once(0, "skipping fork (memory cap exceeded)");
-  //      else if (current.forkDisabled)
-  //        klee_warning_once(0, "skipping fork (fork disabled on current path)");
-  //      else if (inhibitForking)
-  //        klee_warning_once(0, "skipping fork (fork disabled globally)");
-  //      else 
-  //        klee_warning_once(0, "skipping fork (max-forks reached)");
-
-  //      TimerStatIncrementer timer(stats::forkTime);
-  //      if (theRNG.getBool()) {
-  //        addConstraint(current, condition);
-  //        res = Solver::True;        
-  //      } else {
-  //        addConstraint(current, Expr::createIsZero(condition));
-  //        res = Solver::False;
-  //      }
-  //    }
-  //  }
-  //}
-
+  //if (replayPath && !isInternal) {
+  if (replayPath) {
+    assert(replayPosition < replayPath->size() &&
+            "ran out of branches in replay path mode");
+    bool branch = (*replayPath)[replayPosition++];
+    
+    if (res==klee::Solver::True) {
+      assert(branch && "hit invalid branch in replay path mode");
+    } else if (res==klee::Solver::False) {
+      assert(!branch && "hit invalid branch in replay path mode");
+    } else {
+      // add constraints
+      if(branch) {
+        res = klee::Solver::True;
+        addConstraint(current, condition);
+      } else  {
+        res = klee::Solver::False;
+        addConstraint(current, klee::Expr::createIsZero(condition));
+      }
+    }
+  } 
+ 
   //// Fix branch in only-replay-seed mode, if we don't have both true
   //// and false seeds.
   //if (isSeeding && 
@@ -745,8 +718,11 @@ CVExecutor::fork(klee::ExecutionState &current,
     //  }
     //}
 
-    cv_->notify_all(ExecutionEvent(CV_STATE_FORK_TRUE, &current));
+    if (!replayPath)
+      cv_->notify_all(ExecutionEvent(CV_STATE_FORK_TRUE, &current));
+
     return StatePair(&current, 0);
+
   } else if (res == klee::Solver::False) {
     //if (!isInternal) {
     //  if (pathWriter) {
@@ -754,7 +730,9 @@ CVExecutor::fork(klee::ExecutionState &current,
     //  }
     //}
 
-    cv_->notify_all(ExecutionEvent(CV_STATE_FORK_FALSE, &current));
+    if (!replayPath)
+      cv_->notify_all(ExecutionEvent(CV_STATE_FORK_FALSE, &current));
+
     return StatePair(0, &current);
   } else {
 
@@ -766,8 +744,8 @@ CVExecutor::fork(klee::ExecutionState &current,
     falseState = trueState->branch();
     addedStates.insert(falseState);
 
-    if (klee::RandomizeFork && klee::theRNG.getBool())
-        std::swap(trueState, falseState);
+    //if (klee::RandomizeFork && klee::theRNG.getBool())
+    //    std::swap(trueState, falseState);
 
     //if (it != seedMap.end()) {
     //  std::vector<SeedInfo> seeds = it->second;
@@ -825,8 +803,10 @@ CVExecutor::fork(klee::ExecutionState &current,
     addConstraint(*trueState, condition);
     addConstraint(*falseState, klee::Expr::createIsZero(condition));
 
-    cv_->notify_all(ExecutionEvent(CV_STATE_FORK_FALSE, falseState));
-    cv_->notify_all(ExecutionEvent(CV_STATE_FORK_TRUE, trueState));
+    if (!replayPath) {
+      cv_->notify_all(ExecutionEvent(CV_STATE_FORK_FALSE, falseState));
+      cv_->notify_all(ExecutionEvent(CV_STATE_FORK_TRUE, trueState));
+    }
 
     //// Kinda gross, do we even really still want this option?
     //if (MaxDepth && MaxDepth<=trueState->depth) {
@@ -910,6 +890,11 @@ void CVExecutor::terminate_state(CVExecutionState* state) {
 
 void CVExecutor::remove_state_internal(CVExecutionState* state) {
   cv_->notify_all(ExecutionEvent(CV_STATE_REMOVED, state));
+  states.erase(state);
+  delete state;
+}
+
+void CVExecutor::remove_state_internal_without_notify(CVExecutionState* state) {
   states.erase(state);
   delete state;
 }
