@@ -221,24 +221,31 @@ void Socket::print(std::ostream &os) {
 	static std::string socket_states[] = { SOCKET_STATES };
 #undef X
 		
+  os << "[ ";
+
+  if (XpilotSocket)
+	  os << "Round:" << round() << ", ";
+
 	if (event_) {
-		os << "[ "
-			 //<< "Round:" << round() ", "
-			 << "Event: " << index_ << "/" << 1 << ", "
+
+		os << "Event: " << index_ << "/" << 1 << ", "
+       << "Position: " << offset_ << "/" << event().length << ", "
 			 << socket_states[state()] << ", " << socketevent_types[type()] << " ]";
+
 		if (DebugSocket)
 			 os << " " << event();
+
 	} else if (index_ < log_->size()) {
-		os << "[ "
-			 //<< "Round:" << round() ", "
-			 << "Event: " << index_ << "/" << log_->size() << ", "
+
+		os << "Event: " << index_ << "/" << log_->size() << ", "
+       << "Position: " << offset_ << "/" << event().length << ", "
 			 << socket_states[state()] << ", " << socketevent_types[type()] << " ]";
 		if (DebugSocket)
 			 os << " " << event();
+
 	} else {
-		os << "[ "
-			 //<< "Round:" << round() ", "
-			 << "Event: " << index_ << "/" << log_->size() << ", "
+
+		os << "Event: " << index_ << "/" << log_->size() << ", "
 			 << socket_states[state()] << ", N/A ]";
 	}
 }
