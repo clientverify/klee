@@ -67,6 +67,9 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
 
   static int next_id() { return next_id_; }
 
+  void erase_self();
+  void erase_self_permanent();
+
  private:
   int increment_id() { return next_id_++; }
 
@@ -82,13 +85,6 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
 ////////////////////////////////////////////////////////////////////////////////
 
 std::ostream &operator<<(std::ostream &os, const CVExecutionState &s);
-
-////////////////////////////////////////////////////////////////////////////////
-
-// is this crazy? yes i think so
-struct CVExecutionStateDeleter {
-	void operator()(CVExecutionState* state);
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 
