@@ -54,6 +54,7 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
 
 	NetworkManager* network_manager() const { return network_manager_; }
 	ExecutionStateProperty* property() { return property_; }
+	void set_property(ExecutionStateProperty* property) { property_ = property; }
 
   void notify(ExecutionEvent ev) {}
 
