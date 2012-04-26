@@ -103,8 +103,7 @@ klee::ExecutionState &VerifySearcher::selectState() {
   if (!pending_stages_.empty()) {
     // Delete all previous states from this round.
     if (DeleteOldStates) {
-      CVExecutionStateDeleter cv_deleter;
-      stages_.back()->clear(&cv_deleter);
+      stages_.back()->clear();
     }
     // Compute and output statistics for the previous round
     cv_->next_round();

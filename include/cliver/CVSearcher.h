@@ -61,8 +61,6 @@ class CVSearcher : public klee::Searcher, public ExecutionObserver {
 /// among all the states. Each SearcherStage has a single root state from which
 /// all of the other states began execution.
 
-struct CVExecutionStateDeleter;
-
 class SearcherStage {
  public:
   SearcherStage() {}
@@ -73,7 +71,7 @@ class SearcherStage {
   virtual bool empty() = 0;
   virtual void notify(ExecutionEvent ev) = 0;
   virtual void cache_erase(CVExecutionState *state) = 0; //REMOVE
-  virtual void clear(CVExecutionStateDeleter* cv_deleter) = 0;
+  virtual void clear() = 0;
 };
 
 typedef std::list<SearcherStage*> SearcherStageList;
@@ -142,8 +140,7 @@ class SearcherStageImpl : public SearcherStage {
 
   void cache_erase(CVExecutionState *state) {
     cache_.erase(state->property());
-    state->set_property(NULL);
-    state->cv()->executor()->remove_state_internal_without_notify(state);
+    state->erase_self();
   }
 
   void clear_lru() {
@@ -154,13 +151,13 @@ class SearcherStageImpl : public SearcherStage {
     cache_.clear();
   }
 
-  void clear(CVExecutionStateDeleter* cv_deleter=NULL) {
+  void clear() {
     assert(!rebuilder_.active());
     while (!collection_.empty()) {
       CVExecutionState* state = cache_[collection_.top()];
       cache_.erase(state->property());
-      state->cv()->executor()->remove_state_internal(state);
       collection_.pop();
+      state->erase_self_permanent();
     }
     cache_.clear();
   }

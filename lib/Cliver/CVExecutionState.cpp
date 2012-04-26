@@ -99,6 +99,15 @@ CVExecutionState* CVExecutionState::branch() {
   return branched_state;
 }
 
+void CVExecutionState::erase_self() {
+  set_property(NULL);
+  cv_->executor()->remove_state_internal_without_notify(this);
+}
+
+void CVExecutionState::erase_self_permanent() {
+  cv_->executor()->remove_state_internal(this);
+}
+
 void CVExecutionState::print(std::ostream &os) const {
   os << "[" << this << "] [id:" << id_ << "] " << *property_;
 }
@@ -106,10 +115,6 @@ void CVExecutionState::print(std::ostream &os) const {
 std::ostream &operator<<(std::ostream &os, const CVExecutionState &s) {
   s.print(os);
   return os;
-}
-
-void CVExecutionStateDeleter::operator()(CVExecutionState* state) {
-  state->cv()->executor()->remove_state_internal(state);
 }
 
 bool CVExecutionStateLT::operator()(const CVExecutionState* a, 
