@@ -94,6 +94,9 @@ bool CVSearcher::empty() {
 VerifySearcher::VerifySearcher(ClientVerifier* cv, StateMerger* merger)
   : CVSearcher(NULL, cv, merger) {}
 
+static ExecutionStateProperty *g_property = NULL;
+static CVExecutionState *g_state = NULL;
+
 klee::ExecutionState &VerifySearcher::selectState() {
   //klee::TimerStatIncrementer timer(stats::searcher_time);
   
@@ -119,6 +122,11 @@ klee::ExecutionState &VerifySearcher::selectState() {
   }
 
   assert(!stages_.empty());
+
+  if (g_property != NULL && g_state != NULL) {
+    stages_.back()->cache_erase(g_state);
+    g_state = NULL;
+  }
 
   return *(static_cast<klee::ExecutionState*>(stages_.back()->next_state()));
 }
@@ -212,7 +220,19 @@ void VerifySearcher::notify(ExecutionEvent ev) {
   switch(ev.event_type) {
     case CV_SOCKET_WRITE:
     case CV_SOCKET_READ: {
-			pending_states_.insert(ev.state);
+      if (g_property == NULL) {
+        std::cout << "Setting g_property.\n";
+        g_property = ev.state->property();
+        g_state = ev.state;
+      } else {
+        if (g_property != NULL) {
+          assert(g_property == ev.state->property());
+          g_property = NULL;
+          g_state = NULL;
+        }
+			  pending_states_.insert(ev.state);
+      }
+			//pending_states_.insert(ev.state);
       break;
     }
     case CV_SOCKET_SHUTDOWN: {

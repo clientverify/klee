@@ -16,12 +16,17 @@
 #include "cliver/ExecutionStateProperty.h"
 #include "cliver/ExecutionObserver.h"
 #include "cliver/TrackingRadixTree.h"
+#include "cliver/CVStream.h"
+#include "cliver/NetworkManager.h"
 
 #include "klee/Searcher.h"
+#include "klee/Internal/Module/InstructionInfoTable.h"
 
 #include <boost/unordered_map.hpp>
 #include <stack>
 #include <queue>
+
+#include "llvm/Support/raw_ostream.h"
 
 namespace cliver {
 class CVExecutionState;
@@ -63,33 +68,43 @@ class StateRebuilder {
 
   StateRebuilder() : active_(false), root_(NULL), rebuild_state_(NULL) {}
 
+  ~StateRebuilder() {
+    if (root_)
+      delete root_;
+  }
+
   void set_root(CVExecutionState* root) {
-    root_ = root;
+    root_ = root->clone(root->property()->clone());
   }
 
   void notify(ExecutionEvent ev) {
-    CVExecutionState* state = ev.state;
-    CVExecutionState* parent = ev.parent;
+    if (!active_) {
+      CVExecutionState* state = ev.state;
+      CVExecutionState* parent = ev.parent;
 
-    switch (ev.event_type) {
-      case CV_STATE_REMOVED: {
-        fork_tree_.remove_tracker(state->property());
-        break;
-      }
+      switch (ev.event_type) {
+        case CV_STATE_REMOVED: {
+          fork_tree_.remove_tracker(state->property());
+          break;
+        }
 
-      case CV_STATE_CLONE: {
-        fork_tree_.clone_tracker(state->property(), parent->property());
-        break;
-      }
+        case CV_STATE_CLONE: {
+          fork_tree_.clone_tracker(state->property(), parent->property());
+          break;
+        }
 
-      case CV_STATE_FORK_TRUE: {
-        fork_tree_.extend(true, state->property());
-        break;
-      }
+        case CV_STATE_FORK_TRUE: {
+          fork_tree_.extend(true, state->property());
+          break;
+        }
 
-      case CV_STATE_FORK_FALSE: {
-        fork_tree_.extend(false, state->property());
-        break;
+        case CV_STATE_FORK_FALSE: {
+          fork_tree_.extend(false, state->property());
+          break;
+        }
+
+        default:
+          break;
       }
     }
   }
@@ -116,6 +131,12 @@ class StateRebuilder {
     // Set the replay path in Executor
     root_->cv()->executor()->reset_replay_path(&fork_list_);
 
+    // Add new rebuild state to the executor
+    root_->cv()->executor()->add_state_internal(rebuild_state_);
+
+    // Set Rebuilder to Active
+    active_ = true;
+
     // Return the new state
     return rebuild_state_;
   }
@@ -126,12 +147,19 @@ class StateRebuilder {
     // If we've executed all of the replay path
     if (active_ && 
         root_->cv()->executor()->replay_position() == fork_list_.size()) {
-      // Reset to null
+
+      // Deactivate
+      active_ = false;
+
+      // Reset state to null
+      rebuild_state_ = NULL;
+
+      // Clear fork_list
+      fork_list_.clear();
+
+      // Set replay path to null in Executor
       root_->cv()->executor()->reset_replay_path();
 
-      active_ = false;
-      rebuild_state_ = NULL;
-      fork_list_.clear();
     }
     return active_;
   }
@@ -141,6 +169,7 @@ class StateRebuilder {
   CVExecutionState* root_;
   CVExecutionState* rebuild_state_;
   ForkTree fork_tree_;
+  //InstTree inst_tree_;
   BoolForkList fork_list_;
 };
 
@@ -162,6 +191,7 @@ class SearcherStage {
   virtual void remove_state(CVExecutionState *state) = 0;
   virtual bool empty() = 0;
   virtual void notify(ExecutionEvent ev) = 0;
+  virtual void cache_erase(CVExecutionState *state) = 0; //REMOVE
   virtual void clear(CVExecutionStateDeleter* cv_deleter) = 0;
 };
 
@@ -169,6 +199,7 @@ typedef std::list<SearcherStage*> SearcherStageList;
 
 template <class Collection>
 class SearcherStageImpl : public SearcherStage {
+ typedef boost::unordered_map<ExecutionStateProperty*, CVExecutionState*> Cache;
  public:
   SearcherStageImpl(CVExecutionState* root_state)
     : live_(NULL) {
@@ -179,7 +210,7 @@ class SearcherStageImpl : public SearcherStage {
   ~SearcherStageImpl() {}
 
   bool empty() {
-    return rebuilder_.active() || live_ != NULL || cache_.empty();
+    return !rebuilder_.active() && live_ == NULL && collection_.empty();
   }
 
   inline void notify(ExecutionEvent ev) {
@@ -199,7 +230,7 @@ class SearcherStageImpl : public SearcherStage {
     collection_.pop();
 
     if (cache_.count(live_) == 0)
-      return rebuilder_.rebuild(live_);
+      cache_[live_] = rebuilder_.rebuild(live_);
 
     return cache_[live_];
   }
@@ -228,11 +259,28 @@ class SearcherStageImpl : public SearcherStage {
     cache_.erase(state->property());
   }
 
+  void cache_erase(CVExecutionState *state) {
+    cache_.erase(state->property());
+    state->set_property(NULL);
+    state->cv()->executor()->remove_state_internal_without_notify(state);
+  }
+
+  void clear_lru() {
+    Cache::iterator it=cache_.begin(), ie = cache_.end();
+    for (; it != ie; ++it)
+      cache_erase(it->second);
+
+    cache_.clear();
+  }
+
   void clear(CVExecutionStateDeleter* cv_deleter=NULL) {
     assert(!rebuilder_.active());
     while (!collection_.empty()) {
-      if (cv_deleter)
-        (*cv_deleter)(cache_[collection_.top()]);
+      CVExecutionState* state = cache_[collection_.top()];
+      cache_.erase(state->property());
+      state->cv()->executor()->remove_state_internal(state);
+      //if (cv_deleter)
+      //  (*cv_deleter)(cache_[collection_.top()]);
       collection_.pop();
     }
     cache_.clear();
@@ -240,7 +288,7 @@ class SearcherStageImpl : public SearcherStage {
 
  protected:
   ExecutionStateProperty* live_;
-  boost::unordered_map<ExecutionStateProperty*, CVExecutionState*> cache_;
+  Cache cache_;
   Collection collection_;
   StateRebuilder rebuilder_;
 };
