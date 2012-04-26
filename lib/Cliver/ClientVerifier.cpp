@@ -85,6 +85,7 @@ namespace stats {
 	klee::Statistic searcher_time("SearcherTime", "Stime");
 	klee::Statistic fork_time("ForkTime", "Ftime");
 	klee::Statistic round_instructions("RoundInsts", "RInsts");
+	klee::Statistic rebuild_time("RebuildTime", "RBTime");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -315,15 +316,16 @@ void ClientVerifier::print_current_statistics(std::string prefix) {
   *cv_message_stream << prefix 
     << " " << round_number_
     << " " << sr->getValue(stats::active_states)
-    << " " << sr->getValue(stats::merged_states)
-    << " " << sr->getValue(stats::pruned_constraints)
+    //<< " " << sr->getValue(stats::merged_states)
+    //<< " " << sr->getValue(stats::pruned_constraints)
     << " " << sr->getValue(stats::round_time) / 1000000.
     << " " << sr->getValue(stats::round_real_time) / 1000000.
     << " " << sr->getValue(stats::prune_time) / 1000000.
     << " " << sr->getValue(stats::merge_time) / 1000000.
     << " " << sr->getValue(stats::searcher_time) / 1000000.
-    << " " << sr->getValue(klee::stats::solverTime) / 1000000.
-    << " " << sr->getValue(stats::fork_time) / 1000000.
+    //<< " " << sr->getValue(klee::stats::solverTime) / 1000000.
+    //<< " " << sr->getValue(stats::fork_time) / 1000000.
+    << " " << sr->getValue(stats::rebuild_time) / 1000000.
     << " " << sr->getValue(stats::round_instructions)
     << " " << executor()->states_size()
     << " " << CVExecutionState::next_id()

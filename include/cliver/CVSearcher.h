@@ -23,8 +23,6 @@
 #include <stack>
 #include <queue>
 
-#include "llvm/Support/raw_ostream.h"
-
 namespace cliver {
 class CVExecutionState;
 class StateMerger;
@@ -70,46 +68,48 @@ class SearcherStage {
   virtual void remove_state(CVExecutionState *state) = 0;
   virtual bool empty() = 0;
   virtual void notify(ExecutionEvent ev) = 0;
-  virtual void cache_erase(CVExecutionState *state) = 0; //REMOVE
   virtual void clear() = 0;
+  virtual void set_capacity(size_t c) = 0;
 };
 
 typedef std::list<SearcherStage*> SearcherStageList;
 
-template <class Collection>
+template <class Collection, class StateCache>
 class SearcherStageImpl : public SearcherStage {
- typedef boost::unordered_map<ExecutionStateProperty*, CVExecutionState*> Cache;
+ 
  public:
   SearcherStageImpl(CVExecutionState* root_state)
     : live_(NULL) {
     this->add_state(root_state);
-    rebuilder_.set_root(root_state);
   }
 
   ~SearcherStageImpl() {}
 
-  bool empty() {
-    return !rebuilder_.active() && live_ == NULL && collection_.empty();
+  void set_capacity(size_t c) {
+    cache_.set_capacity(c);
   }
 
-  inline void notify(ExecutionEvent ev) {
-    rebuilder_.notify(ev);
+  bool empty() {
+    return live_ == NULL && collection_.empty() && cache_.rebuild_property() == 0;
+  }
+
+  void notify(ExecutionEvent ev) {
+    cache_.notify(ev);
   }
 
   CVExecutionState* next_state() {
-    if (rebuilder_.active())
-      return rebuilder_.state();
 
     if (empty()) 
       return NULL;
 
     assert(live_ == NULL);
 
-    live_ = collection_.top();
-    collection_.pop();
+    live_ = cache_.rebuild_property();
 
-    if (cache_.count(live_) == 0)
-      cache_[live_] = rebuilder_.rebuild(live_);
+    if (live_ == NULL) {
+      live_ = collection_.top();
+      collection_.pop();
+    }
 
     return cache_[live_];
   }
@@ -117,42 +117,42 @@ class SearcherStageImpl : public SearcherStage {
   void add_state(CVExecutionState *state) {
     assert(state);
 
-    if (rebuilder_.active()) {
-      assert(rebuilder_.state() == state);
-      return;
-    }
-
     if (state->property() == live_) {
       live_ = NULL;
     } else {
       assert(0 == cache_.count(state->property()));
-      cache_[state->property()] = state;
+      assert(NULL == cache_.rebuild_property());
+      cache_.insert(std::make_pair(state->property(),state));
     }
-    collection_.push(state->property());
+
+    if (cache_.rebuild_property() == NULL)
+      collection_.push(state->property());
   }
 
+  // Remove the state from this stage permanently
   void remove_state(CVExecutionState *state) {
-    assert(!rebuilder_.active());
+    // Invariants
+    //assert(!cache_.rebuild_property());
     assert(state->property() == live_);
+
+    // Set live to null
     live_ = NULL;
+
+    // Erase from cache
     cache_.erase(state->property());
   }
 
-  void cache_erase(CVExecutionState *state) {
-    cache_.erase(state->property());
-    state->erase_self();
-  }
-
-  void clear_lru() {
-    Cache::iterator it=cache_.begin(), ie = cache_.end();
-    for (; it != ie; ++it)
-      cache_erase(it->second);
-
-    cache_.clear();
-  }
+  //void clear_lru() {
+  //  Cache::iterator it=cache_.begin(), ie = cache_.end();
+  //  for (; it != ie; ++it) {
+  //    cache_.erase(state->property());
+  //    state->erase_self();
+  //  }
+  //  cache_.clear();
+  //}
 
   void clear() {
-    assert(!rebuilder_.active());
+    assert(!cache_.rebuild_property());
     while (!collection_.empty()) {
       CVExecutionState* state = cache_[collection_.top()];
       cache_.erase(state->property());
@@ -164,9 +164,8 @@ class SearcherStageImpl : public SearcherStage {
 
  protected:
   ExecutionStateProperty* live_;
-  Cache cache_;
+  StateCache cache_;
   Collection collection_;
-  StateRebuilder rebuilder_;
 };
 
 class StatePropertyStack 
@@ -204,10 +203,16 @@ class StatePropertyRandomSelector
   int size_;
 };
 
-typedef SearcherStageImpl< StatePropertyStack >          DFSSearcherStage;
-typedef SearcherStageImpl< StatePropertyQueue >          BFSSearcherStage;
-typedef SearcherStageImpl< StatePropertyPriorityQueue >  PQSearcherStage;
-typedef SearcherStageImpl< StatePropertyRandomSelector > RandomSearcherStage;
+//typedef SearcherStageImpl< StatePropertyStack, BasicStateCache >          DFSSearcherStage;
+//typedef SearcherStageImpl< StatePropertyQueue, BasicStateCache >          BFSSearcherStage;
+//typedef SearcherStageImpl< StatePropertyPriorityQueue, BasicStateCache >  PQSearcherStage;
+//typedef SearcherStageImpl< StatePropertyRandomSelector, BasicStateCache > RandomSearcherStage;
+
+typedef SearcherStageImpl< StatePropertyStack, RebuildingStateCache >          DFSSearcherStage;
+typedef SearcherStageImpl< StatePropertyQueue, RebuildingStateCache >          BFSSearcherStage;
+typedef SearcherStageImpl< StatePropertyPriorityQueue, RebuildingStateCache >  PQSearcherStage;
+typedef SearcherStageImpl< StatePropertyRandomSelector, RebuildingStateCache > RandomSearcherStage;
+
 
 ////////////////////////////////////////////////////////////////////////////////
 

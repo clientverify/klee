@@ -40,6 +40,7 @@ namespace stats {
 	extern klee::Statistic searcher_time;
 	extern klee::Statistic fork_time;
 	extern klee::Statistic round_instructions;
+	extern klee::Statistic rebuild_time;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
