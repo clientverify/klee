@@ -278,8 +278,8 @@ void ClientVerifier::notify_all(ExecutionEvent ev) {
     observer->notify(ev);
   }
 
-  if (ev.state)
-    ev.state->notify(ev);
+  //if (ev.state)
+  //  ev.state->notify(ev);
 }
 
 CVSearcher* ClientVerifier::searcher() {

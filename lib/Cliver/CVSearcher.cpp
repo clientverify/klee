@@ -32,7 +32,7 @@ DeleteOldStates("delete-old-states",llvm::cl::init(true));
 llvm::cl::opt<bool>
 BacktrackSearching("backtrack-searching",llvm::cl::init(false));
 
-llvm::cl::opt<size_t>
+llvm::cl::opt<unsigned>
 StateCacheSize("state-cache-size",llvm::cl::init(100000));
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -404,7 +404,8 @@ bool TrainingSearcher::check_pending(CVExecutionState* state) {
 }
 
 void TrainingSearcher::notify(ExecutionEvent ev) {
-  stages_.back()->notify(ev);
+  if (!stages_.empty())
+    stages_.back()->notify(ev);
 
   switch(ev.event_type) {
     case CV_SOCKET_WRITE:
