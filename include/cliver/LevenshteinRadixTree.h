@@ -62,12 +62,12 @@ class LevenshteinSequenceComparator {
   typedef typename std::vector<LevenshteinElement<T> >::iterator LIterator;
 
   /// Find size of matching prefix, only compares LevenshteinElement::e
-  static int prefix_match(LIterator first1, LIterator last1,
+  static size_t prefix_match(LIterator first1, LIterator last1,
                           LIterator first2, LIterator last2) {
     LIterator it1 = first1;
     LIterator it2 = first2;
 
-    int count = 0;
+    size_t count = 0;
     while (it1 != last1 && it2 != last2) {
       if ((*it1).e != (*it2).e)
         return count;
@@ -84,7 +84,6 @@ class LevenshteinSequenceComparator {
     LIterator it1 = first1;
     LIterator it2 = first2;
 
-    int count = 0;
     while (it1 != last1) {
       if ((*it1).e != (*it2).e)
         return false;
@@ -135,34 +134,38 @@ class LevenshteinRadixTree
   }
 
   /// Return true if tree contains s
+  /// Note this function hides RadixTree::lookup() which takes a
+  /// LevenshteinSequence as a parameter
   virtual bool lookup(Sequence &s) { 
     // Convert Sequence into an LevenshteinSequence
     LSequence ls(s.size() + 1);
-    for (int i=0; i<s.size() + 1; ++i) ls[i].e = (i == 0) ? 0 : s[i - 1];
+    for (unsigned i=0; i<s.size() + 1; ++i) ls[i].e = (i == 0) ? 0 : s[i - 1];
 
     // Lookup the Levenshtein sequence
-    if (Node *res = this->lookup_private(ls))
+    if (this->lookup_private(ls))
       return true;
     return false;
   }
 
-  // Insert new sequence into this radix tree
+  // Insert new sequence into this radix tree. Note this function hides
+  // RadixTree::remove() which takes a LevenshteinSequence as a parameter.
   virtual Node* insert(Sequence &s) { 
     // Convert Sequence into an LevenshteinSequence
     LSequence ls(s.size() + 1);
-    for (int i=0; i<s.size() + 1; ++i)
+    for (unsigned i=0; i<s.size() + 1; ++i)
       ls[i] = (i == 0) ? LElement(0, i): LElement(s[i - 1], i);
 
     // Insert newly created LevenshteinSequence
     return this->root_->insert(ls);
   }
 
-  /// Remove a sequence s from this tree, s will not be removed if it is only
-  /// a prefix match
+  // Remove a sequence s from this tree, s will not be removed if it is only a
+  // prefix match. Note this function hides RadixTree::remove() which takes a
+  // LevenshteinSequence as a parameter.
   virtual bool remove(Sequence &s) {
     // Convert Sequence into an LevenshteinSequence
     LSequence ls(s.size()+1);
-    for (int i=0; i<s.size(); ++i) ls[i].e = (i == 0) ? 0 : s[i - 1];
+    for (unsigned i=0; i<s.size(); ++i) ls[i].e = (i == 0) ? 0 : s[i - 1];
 
     // Lookup the node matching s
     Node *node = this->lookup_private(ls, /*exact = */ true);
@@ -175,7 +178,7 @@ class LevenshteinRadixTree
   int lookup_cost(Sequence &s) { 
     // Convert Sequence into an LevenshteinSequence
     LSequence ls(s.size() + 1);
-    for (int i=0; i<s.size() + 1; ++i) ls[i].e = (i == 0) ? 0 : s[i - 1];
+    for (unsigned i=0; i<s.size() + 1; ++i) ls[i].e = (i == 0) ? 0 : s[i - 1];
 
     // Find an exact match for the Levenshtein sequence ls
     if (Node *res = this->lookup_private(ls, /*exact = */ true)) {
@@ -231,7 +234,7 @@ class LevenshteinRadixTree
 
     // Perform |s| traversals of the RadixTree to compute the updated edit
     // distance
-    for (int j=0; j < s.size(); ++j) {
+    for (unsigned j=0; j < s.size(); ++j) {
       std::stack<Node*> nodes;
       nodes.push(this->root_);
 
@@ -256,7 +259,7 @@ class LevenshteinRadixTree
           LElement *e0, *e1; 
 
           // For each element of the edge
-          for (int i=0; i<edge->size(); ++i) {
+          for (unsigned i=0; i<edge->size(); ++i) {
 
             e1 = &((*edge)[i]);
 
@@ -309,7 +312,7 @@ class LevenshteinRadixTree
       foreach_edge(n, it) {
         Edge *edge = it->second;
         int depth = n->depth();
-        for (int i=0; i<edge->size(); ++i) {
+        for (unsigned i=0; i<edge->size(); ++i) {
           (*edge)[i].d[0] = depth++;
         }
         if (!edge->to()->leaf())

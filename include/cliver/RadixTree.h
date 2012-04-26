@@ -50,12 +50,12 @@ class DefaultSequenceComparator {
   typedef typename Sequence::iterator SequenceIterator;
 
   // Find size of matching prefix
-  static int prefix_match(SequenceIterator first1, SequenceIterator last1,
+  static size_t prefix_match(SequenceIterator first1, SequenceIterator last1,
                           SequenceIterator first2, SequenceIterator last2) {
     SequenceIterator it1 = first1;
     SequenceIterator it2 = first2;
 
-    int count = 0;
+    size_t count = 0;
     while (it1 != last1 && it2 != last2) {
       if (*it1 != *it2)
         return count;
@@ -138,8 +138,8 @@ class RadixTree {
     inline size_t size() { return seq_.size(); }
 
   protected:
-    Node *to_;
     Node *from_;
+    Node *to_;
     Sequence seq_;
   };
 
@@ -209,7 +209,7 @@ class RadixTree {
           return curr_node->add_edge(begin, end);
 
         // Find position where match ends between edge and s 
-        int pos = Compare::prefix_match(edge->begin(), edge->end(), begin, end);
+        size_t pos = Compare::prefix_match(edge->begin(), edge->end(), begin, end);
 
         // If s is fully matched on this edge, return node it points to
         if ((begin + pos) == end && pos <= edge->size())
@@ -330,7 +330,7 @@ class RadixTree {
       return this;
     }
   
-    Node* extend_parent_edge(Element e) {
+    Node* extend_parent_edge_element(Element e) {
       assert(leaf());
       parent_edge_->extend(e);
       return this;
@@ -362,13 +362,13 @@ class RadixTree {
     }
 
     // Simple print routine
-    void print(std::ostream& os, int depth = 0) {
+    void print(std::ostream& os, unsigned depth = 0) {
       int parent_edge_size = 0;
 
       if (parent_edge_) {
-        for (int i = 0; i < depth; ++i)
+        for (unsigned i = 0; i < depth; ++i)
           os << " ";
-        for (int i = 0; i < parent_edge_->size(); ++i)
+        for (unsigned i = 0; i < parent_edge_->size(); ++i)
           os << (*parent_edge_)[i];
         os << std::endl;
 
@@ -392,7 +392,7 @@ class RadixTree {
   RadixTree() { root_ = new Node(); }
 
   // Destructor: Delete RadixTree non-recursively
-  ~RadixTree() {
+  virtual ~RadixTree() {
     std::stack<Node*> worklist; 
     worklist.push(root_);
     while (!worklist.empty()) {
@@ -421,13 +421,13 @@ class RadixTree {
   }
 
   // Insert new sequence of a single element into this radix tree
-  virtual Node* insert(Element e) { 
+  virtual Node* insert_element(Element e) { 
     return root_->insert(e);
   }
 
   // Lookup Sequence in the RadixTree
   virtual bool lookup(Sequence &s) { 
-    if (Node *res = lookup_private(s))
+    if (lookup_private(s))
       return true;
     return false;
   }
@@ -472,7 +472,7 @@ class RadixTree {
 
         std::string name;
         if (edge_labels) {
-          for (int i=0; i<edge->size(); ++i) {
+          for (unsigned i=0; i<edge->size(); ++i) {
             name += boost::lexical_cast<std::string>((*edge)[i]) + edge_delim;
           }
         }
@@ -566,7 +566,7 @@ class RadixTree {
   Node* lookup_private(Sequence &s, bool exact = false) {
 
     Node* curr_node = root_;
-    int pos = 0;
+    size_t pos = 0;
 
     while (pos < s.size()) {
 
@@ -613,7 +613,7 @@ class RadixTree {
   std::pair<Node*, int> prefix_lookup(Sequence &s) {
     std::pair<Node*, int> no_prefix_match(NULL, 0);
     Node* curr_node = root_;
-    int pos = 0;
+    size_t pos = 0;
     size_t remaining;
 
     while (pos < s.size()) {
@@ -622,19 +622,17 @@ class RadixTree {
       // Find matching edge for current element of s
       if (Edge *edge = curr_node->get_edge(s.begin() + pos)) {
 
-        int match_len = Compare::prefix_match(edge->begin(), edge->end(),
+        size_t match_len = Compare::prefix_match(edge->begin(), edge->end(),
                                               s.begin() + pos, s.end());
-        int offset = match_len - (int)edge->size();
-
         // No prefix match
-        if ((int)match_len < remaining && (int)match_len < edge->size())
+        if (match_len < remaining && match_len < edge->size())
           return no_prefix_match;
         // A prefix of the tree is an exact match to s
         else if (match_len == remaining) 
           return std::make_pair(edge->to(), match_len - (int)edge->size());
         // A prefix of s has an exact match in the tree (s overlaps leaf node)
-        else if (match_len == (int)edge->size() && edge->to()->leaf())
-          return std::make_pair(edge->to(), (int)remaining - match_len);
+        else if (match_len == edge->size() && edge->to()->leaf())
+          return std::make_pair(edge->to(), (int)remaining - (int)match_len);
 
         // edge is equal to s from (pos) to (pos + |edge|)
         pos += edge->size();

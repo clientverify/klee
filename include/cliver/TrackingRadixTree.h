@@ -42,7 +42,6 @@ class TrackingRadixTree
     this->root_ = new Node();
   }
 
-
   /// Extend the edge associated with tracker by an Sequence suffix
   void extend(Sequence &suffix, TrackingObject* tracker) {
     // Look up node associated with tracker
@@ -77,7 +76,7 @@ class TrackingRadixTree
       // Otherwise extend parent edge of associated node
       } else {
         assert(node->leaf());
-        node->extend_parent_edge(e);
+        node->extend_parent_edge_element(e);
       }
 
     // If tracker not in map, extend a new edge from the root with suffix

@@ -348,7 +348,6 @@ class EditDistanceUkkonen {
   }
 
   void debug_print(std::ostream& os) const {
-    int fwidth;
     for (int i=0; i<UDIM; ++i) {
       for (int j=0; j<UDIM; j++) {
         int fwidth = os.width(4);
@@ -495,7 +494,6 @@ class EditDistanceUKK {
   }
 
   void debug_print(std::ostream& os) const {
-    int fwidth;
     for (int i=0; i<UDIM; ++i) {
       for (int j=0; j<UDIM; j++) {
         int fwidth = os.width(4);
@@ -689,7 +687,6 @@ class EditDistanceDynamicUKK {
   }
 
   void debug_print(std::ostream& os) const {
-    int fwidth;
     unsigned max_col = 0;
 
     for (int j=0; j<max_edit_distance_; j++) 
@@ -916,7 +913,6 @@ class EditDistanceFullUKK {
         d3 = U(ab-1, d-1) + 1;
         dist = std::max(d1, std::max(d2, d3));
       }
-      int checkpoint_dist = dist;
 
       while (dist < (int)s_.size() && (dist-ab) < (int)t_.size() &&
             (ScoreType::match(s_, t_, dist, dist-ab) == 0)) {
