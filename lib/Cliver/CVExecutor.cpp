@@ -881,5 +881,10 @@ void CVExecutor::reset_replay_path(std::vector<bool>* replay_path) {
   this->replayPosition = 0;
 }
 
+void CVExecutor::add_finished_state(CVExecutionState* state) {
+  assert(finished_states_.count(state->property()) == 0);
+  finished_states_.insert(state->property());
+}
+
 } // end namespace cliver
 

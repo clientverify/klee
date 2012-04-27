@@ -148,6 +148,12 @@ void VerifySearcher::update(klee::ExecutionState *current,
 }
 
 bool VerifySearcher::empty() {
+  if (!cv_->executor()->finished_states().empty()) {
+    CVDEBUG("Exiting. Num finished states: " 
+            << cv_->executor()->finished_states().size());
+    return true;
+  }
+
   if (BacktrackSearching) {
     reverse_foreach (SearcherStage* stage, stages_)
       if (!stage->empty()) return false;
