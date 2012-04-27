@@ -158,6 +158,15 @@ void ExternalHandler_DisableBasicBlockTracking(
   cv_state->set_basic_block_tracking(false);
 }
 
+void ExternalHandler_Finish(
+    klee::Executor* executor, klee::ExecutionState *state, 
+    klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {
+  assert(arguments.size() == 0);
+  CVExecutionState* cv_state = static_cast<CVExecutionState*>(state);
+  CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
+  cv_executor->add_finished_state(cv_state);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 } // end namespace cliver

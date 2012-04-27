@@ -18,6 +18,7 @@
 namespace cliver {
 
 class CVExecutionState;
+class ExecutionStateProperty;
 class StateMerger;
 class ConstraintPruner;
 
@@ -116,12 +117,17 @@ class CVExecutor : public klee::Executor {
 
   unsigned replay_position() { return replayPosition; }
 
+  void add_finished_state(CVExecutionState* state);
+
+  std::set<ExecutionStateProperty*>& finished_states() { return finished_states_; }
+
  private:
   ClientVerifier *cv_;
 	StateMerger *merger_;
 	ConstraintPruner *pruner_;
 	std::map<llvm::Function*, ExecutionEventType> function_call_events_;
   size_t memory_usage_mbs_;
+  std::set<ExecutionStateProperty*> finished_states_;
 };
 
 } // end cliver namespace
