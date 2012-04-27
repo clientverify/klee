@@ -51,7 +51,14 @@ class TrackingRadixTree
       // If tracker was recently cloned, we force a node split
       if (cloned_tracking_objects_.count(tracker)) {
         cloned_tracking_objects_.erase(tracker);
-        node_map_[tracker] = node->add_edge(suffix);
+        if (node->get_edge(suffix.begin())) {
+          Sequence full_s;
+          node->get(full_s);
+          full_s.insert(full_s.end(), suffix.begin(), suffix.end());
+          insert_new_tracker(full_s, tracker);
+        } else {
+          node_map_[tracker] = node->add_edge(suffix);
+        }
       // Otherwise extend parent edge of associated node
       } else {
         assert(node->leaf());
@@ -72,10 +79,18 @@ class TrackingRadixTree
       // If tracker was recently cloned, we force a node split
       if (cloned_tracking_objects_.count(tracker)) {
         cloned_tracking_objects_.erase(tracker);
-        node_map_[tracker] = node->add_edge(e);
+        if (node->get_edge(e)) {
+          Sequence full_s;
+          node->get(full_s);
+          full_s.insert(full_s.end(), e);
+          insert_new_tracker(full_s, tracker);
+        } else {
+          node_map_[tracker] = node->add_edge(e);
+        }
       // Otherwise extend parent edge of associated node
       } else {
         assert(node->leaf());
+        assert(node->root() || node->parent_edge()->from()->edge_map()[node->parent_edge()->key()] == node->parent_edge());
         node->extend_parent_edge_element(e);
       }
 
@@ -132,7 +147,7 @@ class TrackingRadixTree
     // If no other tracker references this node, we can safely remove it
     if (ref_count <= 1) {
       cloned_tracking_objects_.erase(tracker);
-      this->remove_node(node);
+      this->remove_node_check_parent(node);
     }
 
     // Erase the tracker from the tracker node map
@@ -242,6 +257,45 @@ class TrackingRadixTree
       if (it->second == node)
         to_set.insert(it->first);
     }
+  }
+
+  bool remove_node_check_parent(Node *node) {
+    // If v is not in tree or is present at an internal node, do nothing
+    if (node && node->leaf() && !node->root()) {
+
+      Edge *edge = node->parent_edge();
+      Node *parent = edge->from();
+      parent->edge_map().erase(edge->key());
+      delete edge;
+      delete node; 
+
+      // If parent now only has one child, merge child edge with parent edge
+      // and delete parent
+      if (!parent->root() && parent->degree() == 1) {
+
+        bool has_ref = false;
+        // Iterate over all nodes to see if another tracker is referencing the
+        // parent node, if not it is safe to delete
+        typename TrackingObjectNodeMap::iterator it = node_map_.begin(), 
+            iend = node_map_.end();
+        for (; it != iend && !has_ref; ++it) {
+          if (it->second == parent) has_ref = true;
+        }
+
+        if (!has_ref) {
+          Edge *merge_edge = parent->edge_map().begin()->second;
+
+          parent->parent_edge()->extend(merge_edge->begin(), merge_edge->end());
+          parent->parent_edge()->set_to(merge_edge->to());
+          parent->parent_edge()->to()->set_parent_edge(parent->parent_edge());
+
+          delete parent;
+          delete merge_edge;
+        }
+      }
+      return true;
+    }
+    return false;
   }
 
   // Not supported, use extend() 
