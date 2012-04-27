@@ -242,7 +242,7 @@ class RebuildingStateCache : public StateRebuilder {
   }
  
   void erase(const key_type& k) {
-    if (this->rebuilding()) {
+    if (this->rebuild_property_ != NULL) {
       //*cv_debug_stream << "aborting rebuild.\n";
       assert(k == this->rebuild_property_);
       this->finish_rebuild();

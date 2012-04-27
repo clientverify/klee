@@ -131,8 +131,6 @@ class SearcherStageImpl : public SearcherStage {
 
   // Remove the state from this stage permanently
   void remove_state(CVExecutionState *state) {
-    // Invariants
-    //assert(!cache_.rebuild_property());
     assert(state->property() == live_);
 
     // Set live to null
@@ -141,15 +139,6 @@ class SearcherStageImpl : public SearcherStage {
     // Erase from cache
     cache_.erase(state->property());
   }
-
-  //void clear_lru() {
-  //  Cache::iterator it=cache_.begin(), ie = cache_.end();
-  //  for (; it != ie; ++it) {
-  //    cache_.erase(state->property());
-  //    state->erase_self();
-  //  }
-  //  cache_.clear();
-  //}
 
   void clear() {
     assert(!cache_.rebuild_property());
