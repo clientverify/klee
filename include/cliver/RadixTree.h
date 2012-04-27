@@ -232,19 +232,6 @@ class RadixTree {
           // Split existing edge
           Node *split_node = curr_node->split_edge(edge->key(), pos);
           
-          //// Split existing edge
-          //Node *split_node 
-          //    = curr_node->add_edge(edge->begin(), edge->begin() + pos);
-
-          //// Erase top of old edge that was just copied
-          //edge->erase(edge->begin(), edge->begin() + pos);
-
-          //// Update parent to new node
-          //edge->set_from(split_node);
-
-          //// Update edge map for newly created node
-          //split_node->edge_map_[edge->key()] = edge;
-
           // Current node is now split_node
           begin += pos;
           curr_node = split_node;
