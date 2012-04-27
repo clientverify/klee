@@ -34,7 +34,8 @@ class StateRebuilder : public ExecutionObserver {
   typedef TrackingRadixTree< UCharForkList, unsigned char, ExecutionStateProperty> 
       ForkTree;
 
-  StateRebuilder() : root_(NULL), rebuild_state_(NULL) {}
+  StateRebuilder() : 
+      root_(NULL), rebuild_state_(NULL), rebuild_property_(NULL) {}
 
   ~StateRebuilder() {
     if (root_)
