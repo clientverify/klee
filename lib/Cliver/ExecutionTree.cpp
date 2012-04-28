@@ -346,6 +346,15 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
 
       if (edp->recompute) {
         assert(edit_distance_map_.count(property));
+
+        if (edit_distance_map_.count(property) == 0) {
+          klee::TimerStatIncrementer 
+              clonetimer(stats::edit_distance_clone_time);
+          edit_distance_map_[property] = 
+              static_cast<EditDistanceExecutionTree*>(
+                  edit_distance_map_[parent_property]->clone());
+        }
+
         edp->recompute = false;
 
         ExecutionTrace etrace;
