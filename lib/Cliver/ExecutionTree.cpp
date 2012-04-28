@@ -37,9 +37,6 @@ namespace cliver {
 llvm::cl::opt<unsigned>
 StateTreesMemoryLimit("state-trees-memory-limit",llvm::cl::init(0));
 
-llvm::cl::opt<unsigned>
-EditDistanceBasicBlockDelta("edit-distance-bb-delta",llvm::cl::init(100));
-
 llvm::cl::opt<bool>
 DebugExecutionTree("debug-execution-tree",llvm::cl::init(false));
 
@@ -116,6 +113,7 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
 
   switch (ev.event_type) {
     case CV_ROUND_START: {
+      klee::TimerStatIncrementer timer(stats::execution_tree_time);
       if (DeleteOldTrees && !tree_list_.empty()) {
         delete tree_list_.back();
         tree_list_.pop_back();
@@ -124,18 +122,21 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
       break;
     }
     case CV_BASICBLOCK_ENTRY: {
+      klee::TimerStatIncrementer timer(stats::execution_tree_time);
       if (state->basic_block_tracking())
         tree_list_.back()->extend(state->prevPC->kbb->id, property);
       break;
     }
 
     case CV_STATE_REMOVED: {
+      klee::TimerStatIncrementer timer(stats::execution_tree_time);
       CVDEBUG("Removing state: " << *state );
       tree_list_.back()->remove_tracker(property);
       break;
     }
 
     case CV_STATE_CLONE: {
+      klee::TimerStatIncrementer timer(stats::execution_tree_time);
       CVDEBUG("Cloned state: " << *state);
       tree_list_.back()->clone_tracker(property, parent_property);
       break;
@@ -144,6 +145,7 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
     case CV_SOCKET_WRITE:
     case CV_SOCKET_READ:
     case CV_SOCKET_SHUTDOWN: {
+      klee::TimerStatIncrementer timer(stats::execution_tree_time);
       CVDEBUG("Successful socket event: " << *state);
       ExecutionTraceTree* tree = NULL;
       reverse_foreach (tree, tree_list_) {
@@ -286,6 +288,7 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
 
   switch (ev.event_type) {
     case CV_ROUND_START: {
+      klee::TimerStatIncrementer timer(stats::execution_tree_time);
       // Delete the ExecutionTraceTree from the previous round
       if (DeleteOldTrees && !tree_list_.empty()) {
         delete tree_list_.back();
@@ -300,6 +303,7 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
       break;
     }
     case CV_BASICBLOCK_ENTRY: {
+      klee::TimerStatIncrementer timer(stats::execution_tree_time);
       EditDistanceProperty *edp 
         = static_cast<EditDistanceProperty*>(property);
 
@@ -326,28 +330,30 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         // Set initial values for edit distance
         edp->edit_distance = INT_MAX;
         edp->recompute = true;
+
+        // Store size of tree in stats
+        assert(stats::edit_distance_tree_size == 0);
+        stats::edit_distance_tree_size += root_tree_->element_count();
       }
 
       if (state->basic_block_tracking())
         tree_list_.back()->extend(state->prevPC->kbb->id, property);
 
-      if (edit_distance_map_.count(property) == 0) {
-        edit_distance_map_[property] = 
-            static_cast<EditDistanceExecutionTree*>(root_tree_->clone());
-      }
+      //if (edit_distance_map_.count(property) == 0) {
+      //  edit_distance_map_[property] = 
+      //      static_cast<EditDistanceExecutionTree*>(root_tree_->clone());
+      //}
 
       if (edp->recompute) {
+        assert(edit_distance_map_.count(property));
         edp->recompute = false;
 
-        size_t delta = tree_list_.back()->depth(property) 
-            - edit_distance_map_[property]->row();
+        ExecutionTrace etrace;
+        tree_list_.back()->tracker_get(property, etrace);
 
-        if (EditDistanceBasicBlockDelta == 0 ||
-            delta >= EditDistanceBasicBlockDelta) {
-
-          ExecutionTrace etrace;
-          tree_list_.back()->tracker_get(property, etrace);
-
+        {
+          klee::TimerStatIncrementer 
+              computetimer(stats::edit_distance_compute_time);
           edp->edit_distance 
             = edit_distance_map_[property]->min_edit_distance_update(etrace);
         }
@@ -357,6 +363,7 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
     }
 
     case CV_STATE_REMOVED: {
+      klee::TimerStatIncrementer timer(stats::execution_tree_time);
       CVDEBUG("Removing state: " << *state );
       tree_list_.back()->remove_tracker(property);
       assert(edit_distance_map_.count(property));
@@ -366,6 +373,7 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
     }
 
     case CV_STATE_CLONE: {
+      klee::TimerStatIncrementer timer(stats::execution_tree_time);
       CVDEBUG("Cloned state: " << *state << ", parent: " << *parent )
       tree_list_.back()->clone_tracker(property, parent_property);
       
@@ -379,9 +387,13 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
 
       assert(edit_distance_map_.count(parent_property));
 
-      edit_distance_map_[property] = 
-          static_cast<EditDistanceExecutionTree*>(
-              edit_distance_map_[parent_property]->clone());
+      {
+        klee::TimerStatIncrementer 
+            clonetimer(stats::edit_distance_clone_time);
+        edit_distance_map_[property] = 
+            static_cast<EditDistanceExecutionTree*>(
+                edit_distance_map_[parent_property]->clone());
+      }
 
       //if (StateTreesMemoryLimit > 0 
       //    && cv_->executor()->memory_usage() >= StateTreesMemoryLimit) {
@@ -398,6 +410,7 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
 
     case CV_SOCKET_WRITE:
     case CV_SOCKET_READ: {
+      klee::TimerStatIncrementer timer(stats::execution_tree_time);
       CVDEBUG("End state: " << *state);
 
       ExecutionTrace etrace;
