@@ -356,8 +356,7 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
           klee::TimerStatIncrementer 
               clonetimer(stats::edit_distance_clone_time);
           edit_distance_map_[property] = 
-              static_cast<EditDistanceExecutionTree*>(
-                  edit_distance_map_[parent_property]->clone());
+              static_cast<EditDistanceExecutionTree*>(root_tree_->clone());
         }
 
         edp->recompute = false;
