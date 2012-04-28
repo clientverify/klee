@@ -107,7 +107,7 @@ ExternalHandlerInfo external_handler_info[] = {
 	{"cliver_print", ExternalHandler_CliverPrint, false, CV_NULL_EVENT},
 	{"cliver_disable_tracking", ExternalHandler_DisableBasicBlockTracking, false, CV_NULL_EVENT},
 	{"cliver_enable_tracking", ExternalHandler_EnableBasicBlockTracking, false, CV_NULL_EVENT},
-	{"cliver_finish", ExternalHandler_Finish, false, CV_NULL_EVENT},
+	{"cliver_finish", ExternalHandler_Finish, false, CV_FINISH},
 };
 
 ////////////////////////////////////////////////////////////////////////////////

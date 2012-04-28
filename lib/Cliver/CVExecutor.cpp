@@ -330,8 +330,6 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
   initTimers();
 
   states.insert(&initialState);
-  // Necessary?
-  //cv_->notify_all(ExecutionEvent(CV_BASICBLOCK_ENTRY, &initialState));
 
 	searcher = cv_->searcher();
 
