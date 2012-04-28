@@ -148,11 +148,6 @@ void VerifySearcher::update(klee::ExecutionState *current,
 }
 
 bool VerifySearcher::empty() {
-  if (!cv_->executor()->finished_states().empty()) {
-    CVDEBUG("Exiting. Num finished states: " 
-            << cv_->executor()->finished_states().size());
-    return true;
-  }
 
   if (BacktrackSearching) {
     reverse_foreach (SearcherStage* stage, stages_)
@@ -270,13 +265,50 @@ bool MergeVerifySearcher::check_pending(CVExecutionState* state) {
   return false;
 }
 
+bool MergeVerifySearcher::empty() {
+  if (!cv_->executor()->finished_states().empty()) {
+    CVDEBUG("Exiting. Num finished states: "
+            << cv_->executor()->finished_states().size());
+    return true;
+  }
+
+  if (BacktrackSearching) {
+    reverse_foreach (SearcherStage* stage, stages_)
+      if (!stage->empty()) return false;
+  } else {
+    if (!stages_.back()->empty())
+      return false;
+  }
+
+  reverse_foreach (SearcherStage* stage, pending_stages_)
+    if (!stage->empty()) return false;
+
+  if (!pending_states_.empty())
+    return false;
+
+  return true;
+}
+
+
 void MergeVerifySearcher::notify(ExecutionEvent ev) {
   stages_.back()->notify(ev);
 
   switch(ev.event_type) {
     case CV_MERGE: {
-      CVDEBUG("MERGE EVENT! " << *ev.state);
-			pending_states_.insert(ev.state);
+      //if (ev.state->network_manager()->socket()->round() > cv_->round()) {
+        CVDEBUG("MERGE EVENT! " << *ev.state);
+        pending_states_.insert(ev.state);
+      //} else {
+      //  CVDEBUG("MERGE EVENT! Still events to process..." << *ev.state);
+      //}
+      break;
+    }
+    case CV_FINISH: {
+      CVDEBUG("FINISH EVENT! " << *ev.state);
+      if (!ev.state->network_manager()->socket()->is_open()) {
+        CVDEBUG("Adding finished state: " << *ev.state);
+        cv_->executor()->add_finished_state(ev.state);
+      }
       break;
     }
     case CV_SOCKET_SHUTDOWN: {

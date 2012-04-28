@@ -233,8 +233,9 @@ class VerifySearcher : public CVSearcher {
 class MergeVerifySearcher : public VerifySearcher {
  public:
   MergeVerifySearcher(ClientVerifier *cv, StateMerger* merger);
-  void notify(ExecutionEvent ev);
-  bool check_pending(CVExecutionState* state);
+  virtual void notify(ExecutionEvent ev);
+  virtual bool check_pending(CVExecutionState* state);
+  virtual bool empty();
  private:
 };
 
