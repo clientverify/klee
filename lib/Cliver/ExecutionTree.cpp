@@ -345,7 +345,6 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
       //}
 
       if (edp->recompute) {
-        assert(edit_distance_map_.count(property));
 
         if (edit_distance_map_.count(property) == 0) {
           klee::TimerStatIncrementer 
