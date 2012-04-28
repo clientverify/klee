@@ -37,6 +37,9 @@ namespace cliver {
 llvm::cl::opt<unsigned>
 StateTreesMemoryLimit("state-trees-memory-limit",llvm::cl::init(0));
 
+llvm::cl::opt<unsigned>
+EditDistanceBasicBlockDelta("edit-distance-bb-delta",llvm::cl::init(100));
+
 llvm::cl::opt<bool>
 DebugExecutionTree("debug-execution-tree",llvm::cl::init(false));
 
@@ -300,6 +303,7 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
       EditDistanceProperty *edp 
         = static_cast<EditDistanceProperty*>(property);
 
+      // First BasicBlock Entry Event
       if (!tree_list_.back()->tracks(property)) {
 
         TrainingObjectScoreList score_list;
@@ -334,11 +338,19 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
 
       if (edp->recompute) {
         edp->recompute = false;
-        ExecutionTrace etrace;
-        tree_list_.back()->tracker_get(property, etrace);
 
-        edp->edit_distance 
-          = edit_distance_map_[property]->min_edit_distance_update(etrace);
+        size_t delta = tree_list_.back()->depth(property) 
+            - edit_distance_map_[property]->row();
+
+        if (EditDistanceBasicBlockDelta == 0 ||
+            delta >= EditDistanceBasicBlockDelta) {
+
+          ExecutionTrace etrace;
+          tree_list_.back()->tracker_get(property, etrace);
+
+          edp->edit_distance 
+            = edit_distance_map_[property]->min_edit_distance_update(etrace);
+        }
       }
 
       break;
