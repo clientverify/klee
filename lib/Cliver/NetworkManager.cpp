@@ -62,8 +62,7 @@ DebugNetworkManager("debug-network-manager",llvm::cl::init(false));
 	if (DebugNetworkManager) { \
 	CVDEBUG("State: " << std::setw(4) << std::right << state_->id() \
       << " ret:" << retval \
-			<< " - success - " << std::setw(8) << std::left << action << "   " \
-			<< std::setw(15) << " " << socket);	} \
+			<< " - success - " << std::setw(8) << std::left << action);	} \
 	executor->bind_local(target, state_, retval); \
 	return; }
 
@@ -349,7 +348,7 @@ void NetworkManagerXpilot::execute_write(CVExecutor* executor,
 	GET_SOCKET_OR_DIE_TRYIN("send", fd);
 
 	if (socket.is_open() != true)
-		RETURN_FAILURE_OBJ("send", "not open");
+		RETURN_SUCCESS("send - not open", 0);
 
 	if (socket.type() != SocketEvent::SEND)
 		RETURN_FAILURE_OBJ("send", "wrong type");
