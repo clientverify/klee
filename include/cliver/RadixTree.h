@@ -481,6 +481,27 @@ class RadixTree {
           boost::make_label_writer(boost::get(&dot_vertex::name, graph)));
   }
 
+  // Returns the number of elements in the tree, i.e. sum over |edges|
+  size_t element_count() {
+    size_t count = 0; 
+    std::stack<Node*> worklist; 
+    if (root_) {
+      worklist.push(root_);
+      while (!worklist.empty()) {
+        Node* node = worklist.top();
+        EdgeMapIterator 
+            it = node->edge_map().begin(), iend = node->edge_map().end();
+        worklist.pop();
+        for (; it != iend; ++it) {
+          Edge* edge = it->second;
+          count += edge->size();
+          worklist.push(edge->to());
+        }
+      }
+    }
+    return count;
+  }
+
  protected: 
 
   bool remove_node(Node *node) {
