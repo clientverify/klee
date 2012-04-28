@@ -267,10 +267,16 @@ void VerifyExecutionTreeManager::initialize() {
   if (TrainingPathFile.empty())
     cv_error("Error parsing training data file names, exiting now.");
 
+  CVMESSAGE("Loading " 
+            << TrainingPathFile.size() << " training data files.");
+
   // Read training data into memory
   TrainingManager::read_files(TrainingPathFile, training_data_); 
   if (training_data_.empty())
     cv_error("Error reading training data , exiting now.");
+
+  CVMESSAGE("Finished loading " 
+            << training_data_.size() << " unique training objects.");
 }
 
 void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
