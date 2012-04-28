@@ -222,14 +222,13 @@ void Socket::print(std::ostream &os) {
 #undef X
 		
   os << "[ ";
-
-  if (XpilotSocket)
-	  os << "Round:" << round() << ", ";
-
 	if (event_) {
 
+    if (XpilotSocket)
+      os << "Round:" << round() << ", ";
+
 		os << "Event: " << index_ << "/" << 1 << ", "
-       << "Position: " << offset_ << "/" << event().length << ", "
+       //<< "Position: " << offset_ << "/" << event().length << ", "
 			 << socket_states[state()] << ", " << socketevent_types[type()] << " ]";
 
 		if (DebugSocket)
@@ -237,9 +236,13 @@ void Socket::print(std::ostream &os) {
 
 	} else if (index_ < log_->size()) {
 
+    if (XpilotSocket)
+      os << "Round:" << round() << ", ";
+
 		os << "Event: " << index_ << "/" << log_->size() << ", "
-       << "Position: " << offset_ << "/" << event().length << ", "
+       //<< "Position: " << offset_ << "/" << event().length << ", "
 			 << socket_states[state()] << ", " << socketevent_types[type()] << " ]";
+
 		if (DebugSocket)
 			 os << " " << event();
 
