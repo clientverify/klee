@@ -163,6 +163,7 @@ void ExternalHandler_Finish(
   assert(arguments.size() == 0);
   CVExecutionState* cv_state = static_cast<CVExecutionState*>(state);
   CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
