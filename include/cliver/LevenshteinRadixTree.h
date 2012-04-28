@@ -321,6 +321,8 @@ class LevenshteinRadixTree
     }
   }
 
+  int row() { return row_; }
+
  private:
 
   LevenshteinRadixTree(Node *root) : row_(0) {
