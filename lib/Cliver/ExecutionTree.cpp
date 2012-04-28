@@ -316,6 +316,8 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
       // First BasicBlock Entry Event
       if (!tree_list_.back()->tracks(property)) {
 
+        CVMESSAGE("Constructing training object tree for round: "
+                  << cv_->round());
         TrainingObjectScoreList score_list;
         TrainingManager::init_score_list(training_data_, score_list);
 
@@ -327,8 +329,8 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
 
         root_tree_ = new EditDistanceExecutionTree();
 
-        size_t max_count = 5;
-        for (int i=0; i < std::min(max_count,score_list.size()); ++i) {
+        size_t i, max_count = 5;
+        for (i=0; i < std::min(max_count,score_list.size()); ++i) {
           root_tree_->insert(score_list[i].second->trace);
           if (score_list[i].first == 0.0) break;
         }
@@ -338,8 +340,12 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         edp->recompute = true;
 
         // Store size of tree in stats
-        assert(stats::edit_distance_tree_size == 0);
-        stats::edit_distance_tree_size += root_tree_->element_count();
+        size_t element_count = root_tree_->element_count();
+
+        CVMESSAGE("Training object tree for round: "
+            << cv_->round() << " has " << element_count
+            << " elements from " << i+1 << " training objects");
+        stats::edit_distance_tree_size += element_count; 
       }
 
       if (state->basic_block_tracking())
