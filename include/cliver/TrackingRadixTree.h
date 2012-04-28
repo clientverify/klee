@@ -214,6 +214,12 @@ class TrackingRadixTree
     return tree;
   }
 
+  size_t depth(TrackingObject *tracker) {
+    assert(node_map_.count(tracker));
+    Node* node = node_map_[tracker];
+    return node->depth();
+  }
+
  private:
   void insert_new_tracker(Sequence &s, TrackingObject* tracker) {
     // Check for a prefix match of this sequence
