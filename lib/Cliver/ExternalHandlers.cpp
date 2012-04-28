@@ -108,7 +108,6 @@ void ExternalHandler_merge(
     klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {
   assert(arguments.size() == 0);
   CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
-  cv_executor->client_verifier()->notify_all(ExecutionEvent(CV_MERGE, state));
 }
 
 void ExternalHandler_XEventsQueued(
@@ -164,8 +163,6 @@ void ExternalHandler_Finish(
   assert(arguments.size() == 0);
   CVExecutionState* cv_state = static_cast<CVExecutionState*>(state);
   CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
-  cv_executor->add_finished_state(cv_state);
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
