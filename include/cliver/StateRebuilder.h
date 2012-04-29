@@ -65,12 +65,12 @@ class StateRebuilder : public ExecutionObserver {
         }
 
         case CV_STATE_FORK_TRUE: {
-          fork_tree_.extend(true, state->property());
+          fork_tree_.extend_element(true, state->property());
           break;
         }
 
         case CV_STATE_FORK_FALSE: {
-          fork_tree_.extend(false, state->property());
+          fork_tree_.extend_element(false, state->property());
           break;
         }
 
