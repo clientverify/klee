@@ -88,12 +88,8 @@ namespace stats {
 	klee::Statistic rebuild_time("RebuildTime", "RBTime");
 	klee::Statistic execution_tree_time("ExecutionTreeTime", "ETTime");
 	klee::Statistic execution_tree_extend_time("EditDistanceExtendTime","EDExTm");
-	klee::Statistic edit_distance_clone_time("EditDistanceCloneTime","EDClTm");
-	klee::Statistic edit_distance_clone_tracker_time("EditDistanceCloneTime","EDClTkTm");
 	klee::Statistic edit_distance_compute_time("EditDistanceComputeTime","EDCoTm");
 	klee::Statistic edit_distance_build_time("EditDistanceBuildTime","EDBdTm");
-	klee::Statistic edit_distance_get_time("EditDistanceExtendTime","EDGtTm");
-	klee::Statistic edit_distance_remove_time("EditDistanceExtendTime","EDRmTm");
 	klee::Statistic edit_distance_tree_size("EditDistanceTreeSize","EDTSz");
 }
 
@@ -327,29 +323,25 @@ void ClientVerifier::print_stat_labels() {
 *cv_message_stream << "KEY" 
     << " " << "Rnd"
     << " " << stats::active_states.getShortName()
-    << " " << stats::merged_states.getShortName()
-    << " " << stats::pruned_constraints.getShortName()
+    //<< " " << stats::merged_states.getShortName()
+    //<< " " << stats::pruned_constraints.getShortName()
     << " " << stats::round_time.getShortName()
     << " " << stats::round_real_time.getShortName()
     << " " << stats::prune_time.getShortName()
     << " " << stats::merge_time.getShortName()
     << " " << stats::searcher_time.getShortName()
-    << " " << klee::stats::solverTime.getShortName()
-    << " " << stats::fork_time.getShortName()
+    //<< " " << klee::stats::solverTime.getShortName()
+    //<< " " << stats::fork_time.getShortName()
     << " " << stats::rebuild_time.getShortName()
-    << " " << stats::execution_tree_time.getShortName()
-    << " " << stats::execution_tree_extend_time.getShortName()
-    << " " << stats::edit_distance_clone_time.getShortName()
-    << " " << stats::edit_distance_clone_tracker_time.getShortName()
-    << " " << stats::edit_distance_compute_time.getShortName()
-    << " " << stats::edit_distance_build_time.getShortName()
-    << " " << stats::edit_distance_get_time.getShortName()
-    << " " << stats::edit_distance_remove_time.getShortName()
-    << " " << stats::edit_distance_tree_size.getShortName()
     << " " << stats::round_instructions.getShortName()
     << " " << "StSz"
     << " " << "StSzTot"
     << " " << "AllcMm"
+    << " " << stats::execution_tree_time.getShortName()
+    << " " << stats::execution_tree_extend_time.getShortName()
+    << " " << stats::edit_distance_compute_time.getShortName()
+    << " " << stats::edit_distance_build_time.getShortName()
+    << " " << stats::edit_distance_tree_size.getShortName()
     << "\n";
 }
 
@@ -358,29 +350,25 @@ void ClientVerifier::print_current_statistics(std::string prefix) {
   *cv_message_stream << prefix 
     << " " << round_number_
     << " " << sr->getValue(stats::active_states)
-    << " " << sr->getValue(stats::merged_states)
-    << " " << sr->getValue(stats::pruned_constraints)
+    //<< " " << sr->getValue(stats::merged_states)
+    //<< " " << sr->getValue(stats::pruned_constraints)
     << " " << sr->getValue(stats::round_time) / 1000000.
     << " " << sr->getValue(stats::round_real_time) / 1000000.
     << " " << sr->getValue(stats::prune_time) / 1000000.
     << " " << sr->getValue(stats::merge_time) / 1000000.
     << " " << sr->getValue(stats::searcher_time) / 1000000.
-    << " " << sr->getValue(klee::stats::solverTime) / 1000000.
-    << " " << sr->getValue(stats::fork_time) / 1000000.
+    //<< " " << sr->getValue(klee::stats::solverTime) / 1000000.
+    //<< " " << sr->getValue(stats::fork_time) / 1000000.
     << " " << sr->getValue(stats::rebuild_time) / 1000000.
-    << " " << sr->getValue(stats::execution_tree_time) / 1000000.
-    << " " << sr->getValue(stats::execution_tree_extend_time) / 1000000.
-    << " " << sr->getValue(stats::edit_distance_clone_time) / 1000000.
-    << " " << sr->getValue(stats::edit_distance_clone_tracker_time) / 1000000.
-    << " " << sr->getValue(stats::edit_distance_compute_time) / 1000000.
-    << " " << sr->getValue(stats::edit_distance_build_time) / 1000000.
-    << " " << sr->getValue(stats::edit_distance_get_time) / 1000000.
-    << " " << sr->getValue(stats::edit_distance_remove_time) / 1000000.
-    << " " << sr->getValue(stats::edit_distance_tree_size)
     << " " << sr->getValue(stats::round_instructions)
     << " " << executor()->states_size()
     << " " << CVExecutionState::next_id()
     << " " << executor()->memory_usage()
+    << " " << sr->getValue(stats::execution_tree_time) / 1000000.
+    << " " << sr->getValue(stats::execution_tree_extend_time) / 1000000.
+    << " " << sr->getValue(stats::edit_distance_compute_time) / 1000000.
+    << " " << sr->getValue(stats::edit_distance_build_time) / 1000000.
+    << " " << sr->getValue(stats::edit_distance_tree_size)
     << "\n";
 #ifdef GOOGLE_PROFILER
   if (ProfilerStartRoundNumber > 0 
