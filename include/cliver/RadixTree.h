@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <map>
 #include <stack>
+#include <string>
 #include "assert.h"
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -106,8 +107,8 @@ class RadixTree {
               SequenceIterator end) 
     : from_(from), to_(to), seq_(begin, end) {}
 
-    Node* to() { return to_; }
-    Node* from() { return from_; }
+    inline Node* to() { return to_; }
+    inline Node* from() { return from_; }
 
     void set_from(Node* from) { from_ = from; }
     void set_to(Node* to) { to_ = to; }
@@ -125,15 +126,11 @@ class RadixTree {
       seq_.erase(_begin, _end);
     }
 
-    inline Element& operator[](unsigned i) { return seq_[i]; }
-    inline const Element& operator[](unsigned i) const { return seq_[i]; }
-
     inline SequenceIterator begin() { return seq_.begin(); }
     inline SequenceIterator end() { return seq_.end(); }
 
-    inline Element& key() { return seq_[0]; }
-    inline Element& first_element() { return seq_[0]; }
-    inline Element& last_element() { return seq_[this->size()-1]; }
+    inline Element& key() { return *(seq_.begin()); }
+    inline Element& back() { return *(seq_.begin()+(seq_.size()-1)); }
 
     inline size_t size() { return seq_.size(); }
 
@@ -212,7 +209,10 @@ class RadixTree {
         size_t pos = Compare::prefix_match(edge->begin(), edge->end(), begin, end);
 
         // If s is fully matched on this edge, return node it points to
-        if ((begin + pos) == end && pos <= edge->size())
+        SequenceIterator begin_pos(begin);
+        std::advance(begin_pos, pos);
+
+        if (begin_pos == end && pos <= edge->size())
           return edge->to();
 
         // If (begin, end) match this edge completely
@@ -220,12 +220,12 @@ class RadixTree {
 
           // If leaf, just extend edge and return node edge points to
           if (edge->to()->leaf()) {
-            edge->extend(begin + pos, end);
+            edge->extend(begin_pos, end);
             return edge->to();
           }
 
           // Otherwise, add rest of s to node that edge points to
-          begin += pos;
+          begin = begin_pos;
           curr_node = edge->to();
 
         } else {
@@ -233,7 +233,7 @@ class RadixTree {
           Node *split_node = curr_node->split_edge(edge->key(), pos);
           
           // Current node is now split_node
-          begin += pos;
+          begin = begin_pos;
           curr_node = split_node;
         }
       }
@@ -252,7 +252,8 @@ class RadixTree {
     }
 
     // Return concatenation of edges from root this node 
-    void get(Sequence &s) {
+    template<class SequenceType>
+    void get(SequenceType &s) {
       std::stack<Edge*> edges;
 
       Node* curr_node = this;
@@ -297,7 +298,8 @@ class RadixTree {
 
     // Create and add an edge to this node with the contents of s and return the
     // node that the new edge points to
-    Node* add_edge(Sequence &s) {
+    template <class SequenceType> 
+    Node* add_edge(SequenceType &s) {
       return add_edge(s.begin(), s.end());
     }
 
@@ -333,11 +335,14 @@ class RadixTree {
       if (edge == NULL)
         return NULL;
 
+      SequenceIterator edge_begin_pos = edge->begin();
+      std::advance(edge_begin_pos, pos);
+
       // Split existing edge
-      Node *split_node = this->add_edge(edge->begin(), edge->begin() + pos);
+      Node *split_node = this->add_edge(edge->begin(), edge_begin_pos);
 
       // Erase top of old edge that was just copied
-      edge->erase(edge->begin(), edge->begin() + pos);
+      edge->erase(edge->begin(), edge_begin_pos);
 
       // Update parent to new node
       edge->set_from(split_node);
@@ -353,13 +358,12 @@ class RadixTree {
       int parent_edge_size = 0;
 
       if (parent_edge_) {
-        for (unsigned i = 0; i < depth; ++i)
-          os << " ";
-        for (unsigned i = 0; i < parent_edge_->size(); ++i)
-          os << (*parent_edge_)[i];
-        os << std::endl;
-
-        parent_edge_size = parent_edge_->size();
+        for (unsigned i = 0; i < depth; ++i) os << " ";
+        SequenceIterator it = parent_edge_->begin(), ie = parent_edge_->end();
+        std::stringstream ss;
+        for (; it != ie; ++it) ss << *it << ","; 
+        os << ss.str() << std::endl;
+        parent_edge_size = ss.str().size();
       }
 
       EdgeMapIterator it=edge_map_.begin(), iend = edge_map_.end();
@@ -420,7 +424,8 @@ class RadixTree {
   }
 
   // Return the Sequence stored in the radix tree from root to node
-  virtual void get(Node* node, Sequence &s) { 
+  template <class SequenceType>
+  void get(Node* node, SequenceType &s) { 
     node->get(s);
   }
 
@@ -459,8 +464,9 @@ class RadixTree {
 
         std::string name;
         if (edge_labels) {
-          for (unsigned i=0; i<edge->size(); ++i) {
-            name += boost::lexical_cast<std::string>((*edge)[i]) + edge_delim;
+          SequenceIterator sit = edge->begin(), sie = edge->end();
+          for (; sit != sie; ++sit) {
+            name += boost::lexical_cast<std::string>(*sit) + edge_delim;
           }
         }
         dot_edge e(name);
@@ -578,27 +584,30 @@ class RadixTree {
 
     while (pos < s.size()) {
 
+      SequenceIterator s_begin_pos = s.begin();
+      std::advance(s_begin_pos, pos);
+
       // Find matching edge for current element of s
-      if (Edge *edge = curr_node->get_edge(s.begin() + pos)) {
+      if (Edge *edge = curr_node->get_edge(s_begin_pos)) {
         size_t remaining = s.size() - pos;
 
         // Edge size is equal to remaining # elements in s
         if (edge->size() == remaining) {
-          if (Compare::equal(edge->begin(), edge->end(), s.begin() + pos))
+          if (Compare::equal(edge->begin(), edge->end(), s_begin_pos))
             return edge->to();
           else
             return NULL;
           
         // Edge size is greater than remaining # elements in s
         } else if (edge->size() > remaining) {
-          if (!exact && Compare::equal(s.begin() + pos, s.end(), edge->begin()))
+          if (!exact && Compare::equal(s_begin_pos, s.end(), edge->begin()))
             return edge->to();
           else
             return NULL;
 
         // Edge size is less than remaining # elements in s
         } else {
-          if (!Compare::equal(edge->begin(), edge->end(), s.begin() + pos))
+          if (!Compare::equal(edge->begin(), edge->end(), s_begin_pos))
             return NULL;
         }
 
@@ -618,20 +627,27 @@ class RadixTree {
   // match in the tree, or if there is a prefix of the contents of the tree that
   // is an exact match of s. If the former, i is positive; if the latter, i is
   // negative or zero. If n is NULL, there is not a 'prefix' match.
-  std::pair<Node*, int> prefix_lookup(Sequence &s) {
+  std::pair<Node*, int> prefix_lookup(Sequence &s, Node* root = NULL) {
+    if (root == NULL)
+      root = root_;
+
     std::pair<Node*, int> no_prefix_match(NULL, 0);
-    Node* curr_node = root_;
+    Node* curr_node = root;
     size_t pos = 0;
     size_t remaining;
+
 
     while (pos < s.size()) {
       remaining = s.size() - pos;
 
+      SequenceIterator s_begin_pos = s.begin();
+      std::advance(s_begin_pos, pos);
+
       // Find matching edge for current element of s
-      if (Edge *edge = curr_node->get_edge(s.begin() + pos)) {
+      if (Edge *edge = curr_node->get_edge(s_begin_pos)) {
 
         size_t match_len = Compare::prefix_match(edge->begin(), edge->end(),
-                                              s.begin() + pos, s.end());
+                                                 s_begin_pos, s.end());
         // No prefix match
         if (match_len < remaining && match_len < edge->size())
           return no_prefix_match;
@@ -646,7 +662,7 @@ class RadixTree {
         pos += edge->size();
         curr_node = edge->to();
       } else {
-        if (curr_node != this->root_ && curr_node->leaf() && pos > 0)
+        if (curr_node != root && curr_node->leaf() && pos > 0)
           return std::make_pair(curr_node, (int)remaining);
         else 
           return no_prefix_match;
