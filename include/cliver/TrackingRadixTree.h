@@ -12,7 +12,6 @@
 #include "cliver/RadixTree.h"
 #include <boost/unordered_map.hpp>
 #include <boost/unordered_set.hpp>
-#include <set>
 
 namespace cliver {
 
@@ -28,9 +27,10 @@ class TrackingRadixTree
   typedef typename This::Edge Edge;
   typedef typename This::EdgeMapIterator EdgeMapIterator;
 
-  typedef boost::unordered_map<TrackingObject*, Node*> TrackingObjectNodeMap;
   typedef boost::unordered_set<TrackingObject*> TrackingObjectSet;
-  
+  typedef boost::unordered_map<TrackingObject*, Node*> TrackingObjectMap;
+  typedef boost::unordered_map< Node*, TrackingObjectSet > NodeMap;
+
 #define foreach_edge(__node, __iterator) \
   EdgeMapIterator __iterator = __node->begin(); \
   EdgeMapIterator __iterator##_END = __node->end(); \
@@ -43,21 +43,19 @@ class TrackingRadixTree
   }
 
   /// Extend the edge associated with tracker by an Sequence suffix
-  void extend(Sequence &suffix, TrackingObject* tracker) {
+  template<class SequenceType>
+  void extend(SequenceType &suffix, TrackingObject* tracker) {
     // Look up node associated with tracker
-    if (node_map_.count(tracker)) {
-      Node *node = node_map_[tracker];
+    if (tracks(tracker)) {
+      Node *node = get_node(tracker);
 
       // If tracker was recently cloned, we force a node split
       if (cloned_tracking_objects_.count(tracker)) {
         cloned_tracking_objects_.erase(tracker);
         if (node->get_edge(suffix.begin())) {
-          Sequence full_s;
-          node->get(full_s);
-          full_s.insert(full_s.end(), suffix.begin(), suffix.end());
-          insert_new_tracker(full_s, tracker);
+          insert_new_tracker(suffix, tracker, 0, node);
         } else {
-          node_map_[tracker] = node->add_edge(suffix);
+          set_node(tracker, node->add_edge(suffix));
         }
       // Otherwise extend parent edge of associated node
       } else {
@@ -66,46 +64,46 @@ class TrackingRadixTree
       }
     // If tracker not in map, extend a new edge from the root with suffix
     } else {
-      insert_new_tracker(suffix, tracker);
+      insert_new_tracker(suffix, tracker, 1);
     }
   }
 
   /// Extend the edge associated with tracker by a single element, id
-  void extend(Element e, TrackingObject* tracker) {
+  void extend_element(Element e, TrackingObject* tracker) {
     // Look up node associated with tracker
-    if (node_map_.count(tracker)) {
-      Node *node = node_map_[tracker];
+    if (tracks(tracker)) {
+      Node *node = get_node(tracker);
 
       // If tracker was recently cloned, we force a node split
       if (cloned_tracking_objects_.count(tracker)) {
         cloned_tracking_objects_.erase(tracker);
         if (node->get_edge(e)) {
-          Sequence full_s;
-          node->get(full_s);
-          full_s.insert(full_s.end(), e);
-          insert_new_tracker(full_s, tracker);
+          Sequence s(1, e);
+          insert_new_tracker(s, tracker, 2, node);
         } else {
-          node_map_[tracker] = node->add_edge(e);
+          set_node(tracker, node->add_edge(e));
         }
       // Otherwise extend parent edge of associated node
       } else {
         assert(node->leaf());
-        assert(node->root() || node->parent_edge()->from()->edge_map()[node->parent_edge()->key()] == node->parent_edge());
+        assert(node->root() || node->parent_edge() ==
+               node->parent_edge()->from()->edge_map()[node->parent_edge()->key()]);
         node->extend_parent_edge_element(e);
       }
 
     // If tracker not in map, extend a new edge from the root with suffix
     } else {
       Sequence s(1, e);
-      insert_new_tracker(s, tracker);
+      insert_new_tracker(s, tracker, 3);
     }
   }
 
   /// Get the complete Sequence associated with tracker
-  bool tracker_get(TrackingObject* tracker, Sequence& s) {
+  template<class SequenceType>
+  bool tracker_get(TrackingObject* tracker, SequenceType& s) {
     // If tracker is in the node map, look up the assocated leaf node
-    if (node_map_.count(tracker)) { 
-      this->get(node_map_[tracker], s);
+    if (tracks(tracker)) { 
+      this->get(get_node(tracker), s);
       return true;
     }
     return false;
@@ -116,11 +114,9 @@ class TrackingRadixTree
   // cloned_tracking_objects_. We also associated the child tracker with the with the same
   // node as the parent.
   bool clone_tracker(TrackingObject* child, TrackingObject* parent) {
-    if (node_map_.count(parent)) {
-      Node* node = node_map_[parent];
-      //if (!node->leaf())
-      //   return false;
-      node_map_[child] = node;
+    if (tracks(parent)) {
+      Node* node = get_node(parent);
+      set_node(child, node);
       cloned_tracking_objects_.insert(parent);
       cloned_tracking_objects_.insert(child);
       return true;
@@ -132,31 +128,22 @@ class TrackingRadixTree
   // tracker, and removes the leaf edge associated with the node if there are no
   // other references
   void remove_tracker(TrackingObject* tracker) {
-    assert(node_map_.count(tracker));
-    Node* node = node_map_[tracker];
+    assert(tracks(tracker));
+    Node* node = get_node(tracker);
 
     int ref_count = 0;
     if (cloned_tracking_objects_.count(tracker)) {
-      // Iterate over all nodes to see if another tracker is referencing this node
-      typename TrackingObjectNodeMap::iterator it = node_map_.begin(), 
-          iend = node_map_.end();
-      for (; it != iend && ref_count < 2; ++it) {
-        if (it->second == node) ref_count++;
-      }
+      // Check if another tracker is referencing this node
+      ref_count = trackers_for_node_count(node);
     }
     // If no other tracker references this node, we can safely remove it
     if (ref_count <= 1) {
-      cloned_tracking_objects_.erase(tracker);
       this->remove_node_check_parent(node);
     }
 
     // Erase the tracker from the tracker node map
-    node_map_.erase(tracker);
-  }
-
-  /// Query whether this tree has seen tracker
-  bool tracks(TrackingObject* tracker) {
-    return node_map_.count(tracker) ? true : false;
+    erase_node_tracker(tracker);
+    cloned_tracking_objects_.erase(tracker);
   }
 
   /// Return a deep-copy of this RadixTree
@@ -168,7 +155,7 @@ class TrackingRadixTree
     std::stack<std::pair<Node*, Node*> > worklist; 
     worklist.push(std::make_pair(tree->root_, this->root_));
 
-    // Node map used to copy node_map_
+    // Node map used to copy node map
     std::map<Node*, Node*> nodemap;
     nodemap[this->root_] = tree->root_;
 
@@ -203,27 +190,54 @@ class TrackingRadixTree
     }
 
     // Create node_map_ for clone using same trackers but cloned Node ptrs
-    typename TrackingObjectNodeMap::iterator it = node_map_.begin(), 
+    typename TrackingObjectMap::iterator it = node_map_.begin(), 
         iend = node_map_.end();
     for (; it != iend; ++it) {
       assert(0 != nodemap.count(it->second));
-      tree->node_map_[it->first] = nodemap[it->second];
+      tree->set_node(it->first, nodemap[it->second]);
     }
 
     // Return deep-copy clone
     return tree;
   }
 
-  size_t depth(TrackingObject *tracker) {
-    assert(node_map_.count(tracker));
-    Node* node = node_map_[tracker];
-    return node->depth();
+  /// Get the depth of tracker's node
+  size_t tracker_depth(TrackingObject* tracker) {
+    assert(tracks(tracker));
+    return get_node(tracker)->depth();
+  }
+
+  /// Query whether this tree has seen tracker
+  inline bool tracks(TrackingObject* tracker) {
+    return node_map_.count(tracker) ? true : false;
   }
 
  private:
-  void insert_new_tracker(Sequence &s, TrackingObject* tracker) {
+
+  inline Node* get_node(TrackingObject *tracker) {
+    return node_map_[tracker];
+  }
+
+  inline void set_node(TrackingObject *tracker, Node* node) {
+    node_map_[tracker] = node;
+    tracking_objects_[node].insert(tracker);
+  }
+
+  inline void erase_node_tracker(TrackingObject *tracker) {
+    TrackingObjectSet& to_set = tracking_objects_[node_map_[tracker]];
+    to_set.erase(tracker);
+    if (to_set.empty())
+      tracking_objects_.erase(node_map_[tracker]);
+
+    node_map_.erase(tracker);
+  }
+
+  void insert_new_tracker(Sequence &s, TrackingObject* tracker, int type, Node* root = NULL) {
+    if (root == NULL)
+      root = this->root_;
+
     // Check for a prefix match of this sequence
-    std::pair<Node*, int> node_offset = this->prefix_lookup(s);
+    std::pair<Node*, int> node_offset = this->prefix_lookup(s, root);
 
     Node* node = node_offset.first;
     int offset = node_offset.second;
@@ -231,37 +245,29 @@ class TrackingRadixTree
     if (node != NULL) {
       // If there is a prefix of s that is an exact match in the tree
       if (offset > 0) {
-        node_map_[tracker] = node->add_edge(s.begin() + (s.size() - offset), 
-                                            s.end());
+        typename Sequence::iterator s_begin_offset = s.begin();
+        std::advance(s_begin_offset, s.size() - offset);
+        set_node(tracker, node->add_edge(s_begin_offset, s.end()));
+
       // If there is a prefix in the tree that is an exact match for s
       } else {
-
         if (offset < 0) {
           Edge* edge = node->parent_edge();
           Node* parent_node = node->parent_edge()->from();
           int pos = edge->size() + offset;
-          node_map_[tracker] = parent_node->split_edge(edge->key(), pos);
+          set_node(tracker, parent_node->split_edge(edge->key(), pos));
         } else {
           // Find any other trackers that terminate at this node
-          TrackingObjectSet to_set;
-          get_trackers_for_node(node, to_set);
-          cloned_tracking_objects_.insert(to_set.begin(), to_set.end());
-          node_map_[tracker] = node;
+          if (trackers_for_node_count(node)) {
+            TrackingObjectSet& to_set = get_trackers_for_node(node);
+            cloned_tracking_objects_.insert(to_set.begin(), to_set.end());
+          }
+          set_node(tracker, node);
         }
         cloned_tracking_objects_.insert(tracker);
       }
     } else {
-      node_map_[tracker] = this->root_->insert(s);
-    }
-  }
-
-  void get_trackers_for_node(Node* node, TrackingObjectSet &to_set) {
-    // Iterate over all nodes to see if another tracker is referencing this node
-    typename TrackingObjectNodeMap::iterator it = node_map_.begin(), 
-        iend = node_map_.end();
-    for (; it != iend; ++it) {
-      if (it->second == node)
-        to_set.insert(it->first);
+      set_node(tracker, root->insert(s));
     }
   }
 
@@ -275,20 +281,14 @@ class TrackingRadixTree
       delete edge;
       delete node; 
 
-      // If parent now only has one child, merge child edge with parent edge
-      // and delete parent
+      // If parent now only has one child, merge child edge with parent edge and
+      // delete parent
       if (!parent->root() && parent->degree() == 1) {
 
-        bool has_ref = false;
-        // Iterate over all nodes to see if another tracker is referencing the
-        // parent node, if not it is safe to delete
-        typename TrackingObjectNodeMap::iterator it = node_map_.begin(), 
-            iend = node_map_.end();
-        for (; it != iend && !has_ref; ++it) {
-          if (it->second == parent) has_ref = true;
-        }
+        // Check if another tracker is referencing the parent node, if not it is
+        // safe to delete
 
-        if (!has_ref) {
+        if (trackers_for_node_count(parent) == 0) {
           Edge *merge_edge = parent->edge_map().begin()->second;
 
           parent->parent_edge()->extend(merge_edge->begin(), merge_edge->end());
@@ -304,11 +304,23 @@ class TrackingRadixTree
     return false;
   }
 
+  TrackingObjectSet& get_trackers_for_node(Node* node) {
+    assert(tracking_objects_.count(node));
+    return tracking_objects_[node];
+  }
+
+  size_t trackers_for_node_count(Node* node) {
+    if (tracking_objects_.count(node) == 0)
+      return 0;
+    return tracking_objects_[node].size();
+  }
+
   // Not supported, use extend() 
   virtual Node* insert(Sequence &s) { return NULL; }
   virtual Node* insert(Element e) { return NULL; }
 
-  TrackingObjectNodeMap node_map_;
+  TrackingObjectMap node_map_;
+  NodeMap tracking_objects_;
   TrackingObjectSet cloned_tracking_objects_;
 };
 
