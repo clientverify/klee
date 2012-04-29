@@ -415,6 +415,7 @@ void ClientVerifier::next_round() {
 	next_statistics();
 
 	if (MaxRoundNumber && round_number_ > MaxRoundNumber) {
+    CVMESSAGE("Exiting early, max round is " << MaxRoundNumber);
     executor_->setHaltExecution(true);
 	}
 
