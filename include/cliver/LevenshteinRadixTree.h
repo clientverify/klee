@@ -113,6 +113,7 @@ class LevenshteinRadixTree
   typedef RadixTree<LSequence, LElement, LComparator> This;
   typedef typename This::Node Node;
   typedef typename This::Edge Edge;
+  typedef typename This::SequenceIterator EdgeIterator;
   typedef typename This::EdgeMapIterator EdgeMapIterator;
  
 #define foreach_edge(__node, __iterator) \
@@ -182,7 +183,7 @@ class LevenshteinRadixTree
 
     // Find an exact match for the Levenshtein sequence ls
     if (Node *res = this->lookup_private(ls, /*exact = */ true)) {
-      LElement& e = res->parent_edge()->last_element();
+      LElement& e = res->parent_edge()->back();
 
       // Return the most recently computed edit distance
       return e.d[row_ % 2];
@@ -195,10 +196,10 @@ class LevenshteinRadixTree
       size_t diff = res->depth() - ls.size();
 
       // Find the element that corresponds to the last element of s
-      LElement& e = (*edge)[edge->size() - diff - 1];
+      LElement *e = &(*(edge->begin() + (edge->size() - diff - 1)));
 
       // Return the most recently computed edit distance
-      return e.d[row_ % 2];
+      return e->d[row_ % 2];
     }
     return -1 ;
   }
@@ -259,12 +260,14 @@ class LevenshteinRadixTree
           LElement *e0, *e1; 
 
           // For each element of the edge
-          for (unsigned i=0; i<edge->size(); ++i) {
+          EdgeIterator edge_it = edge->begin(), edge_ie = edge->end();
+          for (; edge_it != edge_ie; ++edge_it) {
 
-            e1 = &((*edge)[i]);
+            e0 = e1;
+            e1 = &(*edge_it);
 
             // If this is the first column of the DP matrix, d = row
-            if (i == 0 && n == this->root_) {
+            if (edge_it == edge->begin() && n == this->root_) {
               e1->d[curr] = row_;
 
             // Otherwise compute new d
@@ -272,10 +275,8 @@ class LevenshteinRadixTree
 
               // If this is the first element of the edge, the previous cell
               // e0 is the last element of the parent edge
-              if (i == 0)
-                e0 = &(n->parent_edge()->last_element());
-              else
-                e0 = &((*edge)[i-1]);
+              if (edge_it == edge->begin())
+                e0 = &(n->parent_edge()->back());
 
               // Compute minimum cost of insert or delete
               int ins_or_del 
@@ -312,9 +313,9 @@ class LevenshteinRadixTree
       foreach_edge(n, it) {
         Edge *edge = it->second;
         int depth = n->depth();
-        for (unsigned i=0; i<edge->size(); ++i) {
-          (*edge)[i].d[0] = depth++;
-        }
+        EdgeIterator edge_it = edge->begin(), edge_ie = edge->end(); 
+        for (; edge_it != edge_ie; ++edge_it)
+          edge_it->d[0] = depth++;
         if (!edge->to()->leaf())
           nodes.push(edge->to());
       }
