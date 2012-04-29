@@ -31,6 +31,7 @@ template<typename T, size_t N> T * end(T (&ra)[N]) { return ra + N; }
 
 typedef RadixTree<std::string, char> StringRadixTree;
 typedef RadixTree<std::vector<char>, char> VectorRadixTree;
+typedef RadixTree<std::list<char>, char> ListRadixTree;
 typedef LevenshteinRadixTree<std::string, char> StringLevenshteinRadixTree;
 
 struct TrackingObject {
@@ -54,6 +55,7 @@ typedef EditDistanceRow<StringScore,std::string,int> StringEDR;
 
 std::vector<std::string> s_dictionary;
 std::vector<std::vector<char> > v_dictionary;
+std::vector<std::vector<char> > l_dictionary;
 
 class RadixTreeTest : public ::testing::Test {
  protected:
@@ -61,6 +63,7 @@ class RadixTreeTest : public ::testing::Test {
   virtual void SetUp() {
     srt = new StringRadixTree();
     vrt = new VectorRadixTree();
+    lrt = new ListRadixTree();
 
     s1 = "ATest";
     s2 = "ATestB";
@@ -79,6 +82,16 @@ class RadixTreeTest : public ::testing::Test {
     v6.insert(v6.end(), s6.begin(), s6.end());
     v7.insert(v7.end(), s7.begin(), s7.end());
     v8.insert(v8.end(), s8.begin(), s8.end());
+
+    l1.insert(l1.end(), s1.begin(), s1.end());
+    l2.insert(l2.end(), s2.begin(), s2.end());
+    l3.insert(l3.end(), s3.begin(), s3.end());
+    l4.insert(l4.end(), s4.begin(), s4.end());
+    l5.insert(l5.end(), s5.begin(), s5.end());
+    l6.insert(l6.end(), s6.begin(), s6.end());
+    l7.insert(l7.end(), s7.begin(), s7.end());
+    l8.insert(l8.end(), s8.begin(), s8.end());
+
   }
 
   static void SetUpTestCase() {
@@ -124,19 +137,32 @@ class RadixTreeTest : public ::testing::Test {
     vrt->insert(v6);
     vrt->insert(v7);
     vrt->insert(v8);
+
+    lrt->insert(l_empty);
+    lrt->insert(l1);
+    lrt->insert(l2);
+    lrt->insert(l3);
+    lrt->insert(l4);
+    lrt->insert(l5);
+    lrt->insert(l6);
+    lrt->insert(l7);
+    lrt->insert(l8);
   }
 
   virtual void TearDown() {
     delete srt;
     delete vrt;
+    delete lrt;
   }
 
   StringRadixTree* srt;
   VectorRadixTree* vrt;
+  ListRadixTree* lrt;
 
   std::string s_empty, s1, s2, s3, s4, s5, s6, s7, s8;
 
   std::vector<char> v_empty, v1, v2, v3, v4, v5, v6, v7, v8;
+  std::list<char> l_empty, l1, l2, l3, l4, l5, l6, l7, l8;
 
 };
 
@@ -149,6 +175,7 @@ namespace {
 TEST_F(RadixTreeTest, Init) {
   ASSERT_TRUE(srt != NULL);
   ASSERT_TRUE(vrt != NULL);
+  ASSERT_TRUE(lrt != NULL);
 }
 
 TEST_F(RadixTreeTest, Insert) {
@@ -156,47 +183,47 @@ TEST_F(RadixTreeTest, Insert) {
 }
 
 TEST_F(RadixTreeTest, Lookup) {
-  EXPECT_EQ(srt->lookup(s1), false);
+  ASSERT_EQ(srt->lookup(s1), false);
   srt->insert(s1);
-  EXPECT_EQ(srt->lookup(s2), false);
+  ASSERT_EQ(srt->lookup(s2), false);
   srt->insert(s2);
-  EXPECT_EQ(srt->lookup(s1), true);
-  EXPECT_EQ(srt->lookup(s2), true);
+  ASSERT_EQ(srt->lookup(s1), true);
+  ASSERT_EQ(srt->lookup(s2), true);
   srt->insert(s3);
-  EXPECT_EQ(srt->lookup(s3), true);
-  EXPECT_EQ(srt->lookup(s4), true);
-  EXPECT_EQ(srt->lookup(s5), false);
-  EXPECT_EQ(srt->lookup(s7), false);
-  EXPECT_EQ(vrt->lookup(v1), false);
+  ASSERT_EQ(srt->lookup(s3), true);
+  ASSERT_EQ(srt->lookup(s4), true);
+  ASSERT_EQ(srt->lookup(s5), false);
+  ASSERT_EQ(srt->lookup(s7), false);
+  ASSERT_EQ(vrt->lookup(v1), false);
   vrt->insert(v1);
-  EXPECT_EQ(vrt->lookup(v2), false);
+  ASSERT_EQ(vrt->lookup(v2), false);
   vrt->insert(v2);
-  EXPECT_EQ(vrt->lookup(v1), true);
-  EXPECT_EQ(vrt->lookup(v2), true);
+  ASSERT_EQ(vrt->lookup(v1), true);
+  ASSERT_EQ(vrt->lookup(v2), true);
   vrt->insert(v3);
-  EXPECT_EQ(vrt->lookup(v3), true);
-  EXPECT_EQ(vrt->lookup(v4), true);
-  EXPECT_EQ(vrt->lookup(v5), false);
+  ASSERT_EQ(vrt->lookup(v3), true);
+  ASSERT_EQ(vrt->lookup(v4), true);
+  ASSERT_EQ(vrt->lookup(v5), false);
 }
 
 TEST_F(RadixTreeTest, Remove) {
   InsertAll();
-  EXPECT_EQ(srt->lookup(s1), true);
-  EXPECT_EQ(srt->remove(s2), true);
-  EXPECT_EQ(srt->lookup(s2), false);
-  EXPECT_EQ(srt->remove(s8), false);
-  EXPECT_EQ(srt->lookup(s8), true);
-  EXPECT_EQ(srt->lookup(s6), true);
-  EXPECT_EQ(srt->remove(s6), true);
-  EXPECT_EQ(srt->lookup(s6), false);
-  EXPECT_EQ(vrt->lookup(v1), true);
-  EXPECT_EQ(vrt->remove(v2), true);
-  EXPECT_EQ(vrt->lookup(v2), false);
-  EXPECT_EQ(vrt->remove(v8), false);
-  EXPECT_EQ(vrt->lookup(v8), true);
-  EXPECT_EQ(vrt->lookup(v6), true);
-  EXPECT_EQ(vrt->remove(v6), true);
-  EXPECT_EQ(vrt->lookup(v6), false);
+  ASSERT_EQ(srt->lookup(s1), true);
+  ASSERT_EQ(srt->remove(s2), true);
+  ASSERT_EQ(srt->lookup(s2), false);
+  ASSERT_EQ(srt->remove(s8), false);
+  ASSERT_EQ(srt->lookup(s8), true);
+  ASSERT_EQ(srt->lookup(s6), true);
+  ASSERT_EQ(srt->remove(s6), true);
+  ASSERT_EQ(srt->lookup(s6), false);
+  ASSERT_EQ(vrt->lookup(v1), true);
+  ASSERT_EQ(vrt->remove(v2), true);
+  ASSERT_EQ(vrt->lookup(v2), false);
+  ASSERT_EQ(vrt->remove(v8), false);
+  ASSERT_EQ(vrt->lookup(v8), true);
+  ASSERT_EQ(vrt->lookup(v6), true);
+  ASSERT_EQ(vrt->remove(v6), true);
+  ASSERT_EQ(vrt->lookup(v6), false);
 }
 
 TEST_F(RadixTreeTest, Clone) {
@@ -204,27 +231,27 @@ TEST_F(RadixTreeTest, Clone) {
 
   StringRadixTree *clone_srt = srt->clone();
   delete srt;
-  EXPECT_EQ(clone_srt->lookup(s1), true);
-  EXPECT_EQ(clone_srt->remove(s2), true);
-  EXPECT_EQ(clone_srt->lookup(s2), false);
-  EXPECT_EQ(clone_srt->remove(s8), false);
-  EXPECT_EQ(clone_srt->lookup(s8), true);
-  EXPECT_EQ(clone_srt->lookup(s6), true);
-  EXPECT_EQ(clone_srt->remove(s6), true);
-  EXPECT_EQ(clone_srt->lookup(s6), false);
+  ASSERT_EQ(clone_srt->lookup(s1), true);
+  ASSERT_EQ(clone_srt->remove(s2), true);
+  ASSERT_EQ(clone_srt->lookup(s2), false);
+  ASSERT_EQ(clone_srt->remove(s8), false);
+  ASSERT_EQ(clone_srt->lookup(s8), true);
+  ASSERT_EQ(clone_srt->lookup(s6), true);
+  ASSERT_EQ(clone_srt->remove(s6), true);
+  ASSERT_EQ(clone_srt->lookup(s6), false);
   delete clone_srt;
   srt = new StringRadixTree();
 
   VectorRadixTree *clone_vrt = vrt->clone();
   delete vrt;
-  EXPECT_EQ(clone_vrt->lookup(v1), true);
-  EXPECT_EQ(clone_vrt->remove(v2), true);
-  EXPECT_EQ(clone_vrt->lookup(v2), false);
-  EXPECT_EQ(clone_vrt->remove(v8), false);
-  EXPECT_EQ(clone_vrt->lookup(v8), true);
-  EXPECT_EQ(clone_vrt->lookup(v6), true);
-  EXPECT_EQ(clone_vrt->remove(v6), true);
-  EXPECT_EQ(clone_vrt->lookup(v6), false);
+  ASSERT_EQ(clone_vrt->lookup(v1), true);
+  ASSERT_EQ(clone_vrt->remove(v2), true);
+  ASSERT_EQ(clone_vrt->lookup(v2), false);
+  ASSERT_EQ(clone_vrt->remove(v8), false);
+  ASSERT_EQ(clone_vrt->lookup(v8), true);
+  ASSERT_EQ(clone_vrt->lookup(v6), true);
+  ASSERT_EQ(clone_vrt->remove(v6), true);
+  ASSERT_EQ(clone_vrt->lookup(v6), false);
   delete clone_vrt;
   vrt = new VectorRadixTree();
 
@@ -237,7 +264,7 @@ TEST_F(RadixTreeTest, InsertDictionary) {
 TEST_F(RadixTreeTest, LookupDictionary) {
   InsertDictionary();
   for (unsigned i = 0; i<s_dictionary.size(); ++i) {
-    EXPECT_EQ(srt->lookup(s_dictionary[i]), true);
+    ASSERT_EQ(srt->lookup(s_dictionary[i]), true);
   }
 }
 
@@ -306,7 +333,7 @@ TEST_F(RadixTreeTest, LevenshteinInsert) {
     slrt->insert(s_dictionary[i]);
   }
   for (unsigned i = 0; i<s_dictionary.size(); ++i) {
-    EXPECT_EQ(slrt->lookup(s_dictionary[i]), true);
+    ASSERT_EQ(slrt->lookup(s_dictionary[i]), true);
   }
 
   std::string test("test");
@@ -364,10 +391,10 @@ TEST_F(RadixTreeTest, LevenshteinComputeVerify) {
 
   slrt->min_edit_distance(Sunday);
 
-  EXPECT_EQ(day_cost_r, slrt->lookup_cost(Saturday));
-  EXPECT_EQ(cat_cost_r, slrt->lookup_cost(kitten));
-  EXPECT_EQ(samberg_cost_r, slrt->lookup_cost(Samberg));
-  EXPECT_EQ(macho_cost_r, slrt->lookup_cost(Macho));
+  ASSERT_EQ(day_cost_r, slrt->lookup_cost(Saturday));
+  ASSERT_EQ(cat_cost_r, slrt->lookup_cost(kitten));
+  ASSERT_EQ(samberg_cost_r, slrt->lookup_cost(Samberg));
+  ASSERT_EQ(macho_cost_r, slrt->lookup_cost(Macho));
 
   delete slrt;
 }
@@ -409,7 +436,7 @@ TEST_F(RadixTreeTest, LevenshteinComputeRandomVerify) {
       r1 = (rand() % s_dictionary.size());
       StringEDR edr(s_dictionary[r1], s_dictionary[r0]);
       int edr_cost = edr.compute_editdistance();
-      EXPECT_EQ(edr_cost, slrt->lookup_cost(s_dictionary[r1]));
+      ASSERT_EQ(edr_cost, slrt->lookup_cost(s_dictionary[r1]));
     }
   }
   delete slrt;
@@ -435,7 +462,7 @@ TEST_F(RadixTreeTest, LevenshteinComputeRandomVerifyClone) {
       r1 = (rand() % s_dictionary.size());
       StringEDR edr(s_dictionary[r1], s_dictionary[r0]);
       int edr_cost = edr.compute_editdistance();
-      EXPECT_EQ(edr_cost, clone_slrt->lookup_cost(s_dictionary[r1]));
+      ASSERT_EQ(edr_cost, clone_slrt->lookup_cost(s_dictionary[r1]));
     }
   }
   delete clone_slrt;
@@ -459,7 +486,7 @@ TEST_F(RadixTreeTest, LevenshteinComputeRandomVerifyIncrementElement) {
       r1 = (rand() % s_dictionary.size());
       StringEDR edr(s_dictionary[r1], s_dictionary[r0]);
       int edr_cost = edr.compute_editdistance();
-      EXPECT_EQ(edr_cost, slrt->lookup_cost(s_dictionary[r1]));
+      ASSERT_EQ(edr_cost, slrt->lookup_cost(s_dictionary[r1]));
     }
     slrt->reset();
   }
@@ -494,7 +521,7 @@ TEST_F(RadixTreeTest, LevenshteinComputeRandomVerifyIncrementSequence) {
       r1 = (rand() % s_dictionary.size());
       StringEDR edr(s_dictionary[r1], s_dictionary[r0]);
       int edr_cost = edr.compute_editdistance();
-      EXPECT_EQ(edr_cost, slrt->lookup_cost(s_dictionary[r1]));
+      ASSERT_EQ(edr_cost, slrt->lookup_cost(s_dictionary[r1]));
     }
     slrt->reset();
   }
@@ -517,9 +544,9 @@ TEST_F(RadixTreeTest, TrackingRadixTreeExtend) {
 
   for (unsigned i=0; i<tracking_objects.size(); ++i) {
     std::string test_str;
-    EXPECT_EQ(true, rt->tracks(tracking_objects[i]));
+    ASSERT_EQ(true, rt->tracks(tracking_objects[i]));
     rt->tracker_get(tracking_objects[i], test_str);
-    EXPECT_EQ(test_str, tracking_objects[i]->str);
+    ASSERT_EQ(test_str, tracking_objects[i]->str);
   }
 
   for (unsigned i=0; i<s_dictionary.size(); ++i) {
@@ -542,15 +569,15 @@ TEST_F(RadixTreeTest, TrackingRadixTreeExtendElement) {
     tracking_objects.back()->id = rand();
     tracking_objects.back()->str = s_dictionary[i];
     for (unsigned j=0; j<s_dictionary[i].size(); ++j) {
-      rt->extend(s_dictionary[i][j], tracking_objects.back());
+      rt->extend_element(s_dictionary[i][j], tracking_objects.back());
     }
   }
 
   for (unsigned i=0; i<tracking_objects.size(); ++i) {
     std::string test_str;
-    EXPECT_EQ(true, rt->tracks(tracking_objects[i]));
+    ASSERT_EQ(true, rt->tracks(tracking_objects[i]));
     rt->tracker_get(tracking_objects[i], test_str);
-    EXPECT_EQ(test_str, tracking_objects[i]->str);
+    ASSERT_EQ(test_str, tracking_objects[i]->str);
   }
 
   for (unsigned i=0; i<tracking_objects.size(); ++i) {
@@ -558,6 +585,8 @@ TEST_F(RadixTreeTest, TrackingRadixTreeExtendElement) {
   }
   delete rt;
 }
+
+#endif
 
 TEST_F(RadixTreeTest, TrackingRadixTreeExtendAndClone) {
   StringTrackingRadixTree *rt = new StringTrackingRadixTree();
@@ -581,7 +610,7 @@ TEST_F(RadixTreeTest, TrackingRadixTreeExtendAndClone) {
     TrackingObject* tobj_new = new TrackingObject();
     tracking_objects.push_back(tobj_new);
 
-    EXPECT_EQ(rt->clone_tracker(tobj_new, tobj), true);
+    ASSERT_EQ(rt->clone_tracker(tobj_new, tobj), true);
 
     std::string str_ext_1 = "_" + s_dictionary[r1];
     std::string str_ext_2 = "_" + s_dictionary[r2];
@@ -594,9 +623,9 @@ TEST_F(RadixTreeTest, TrackingRadixTreeExtendAndClone) {
 
   for (unsigned i=0; i<tracking_objects.size(); ++i) {
     std::string test_str;
-    EXPECT_EQ(true, rt->tracks(tracking_objects[i]));
+    ASSERT_EQ(true, rt->tracks(tracking_objects[i]));
     rt->tracker_get(tracking_objects[i], test_str);
-    EXPECT_EQ(test_str, tracking_objects[i]->str);
+    ASSERT_EQ(test_str, tracking_objects[i]->str);
   }
 
   for (unsigned i=0; i<tracking_objects.size(); ++i) {
@@ -605,7 +634,6 @@ TEST_F(RadixTreeTest, TrackingRadixTreeExtendAndClone) {
   delete rt;
 }
 
-#endif
 
 TEST_F(RadixTreeTest, TrackingRadixTreeExtendAndRemove) {
   StringTrackingRadixTree *rt = new StringTrackingRadixTree();
@@ -653,7 +681,104 @@ TEST_F(RadixTreeTest, TrackingRadixTreeExtendAndRemove) {
       TrackingObject* tobj_new = new TrackingObject();
       tracking_objects.push_back(tobj_new);
 
-      EXPECT_EQ(rt->clone_tracker(tobj_new, tobj), true);
+      ASSERT_EQ(rt->clone_tracker(tobj_new, tobj), true);
+
+      std::string str_ext_1 = "_" + s_dictionary[r1];
+      std::string str_ext_2 = "_" + s_dictionary[r2];
+      //std::cout << "extending " << tobj->str << " with " << str_ext_1 << "\n";
+      //std::cout << "extending " << tobj->str << " with " << str_ext_2 << "\n";
+      tobj_new->str = tobj->str + str_ext_2;
+      tobj->str += str_ext_1;
+
+      rt->extend(str_ext_1, tobj);
+      rt->extend(str_ext_2, tobj_new);
+    }
+  }
+  StringTrackingRadixTree *clone_rt = static_cast<StringTrackingRadixTree*>(rt->clone());
+  
+  //std::cout << "Radix Tree after " << count << " new extensions---------\n";
+  //rt->print(std::cout);
+  //std::cout << "-----------\n";
+
+  for (unsigned i=0; i<tracking_objects.size(); ++i) {
+    std::string test_str, clone_test_str;
+    if (tracking_objects[i]) {
+      ASSERT_EQ(true, rt->tracks(tracking_objects[i]));
+      ASSERT_EQ(true, clone_rt->tracks(tracking_objects[i]));
+      rt->tracker_get(tracking_objects[i], test_str);
+      clone_rt->tracker_get(tracking_objects[i], clone_test_str);
+      ASSERT_EQ(test_str, tracking_objects[i]->str);
+      ASSERT_EQ(clone_test_str, tracking_objects[i]->str);
+    }
+  }
+
+  for (int i=0; i < count;  ++i) {
+    r0 = rand() % dict_size;
+    TrackingObject* tobj = tracking_objects[r0];
+    if (tobj) {
+      rt->remove_tracker(tobj);
+      tracking_objects[r0] = NULL;
+      delete tracking_objects[r0];
+    }
+  }
+
+  for (unsigned i=0; i<tracking_objects.size(); ++i) {
+    if (tracking_objects[i])
+      delete tracking_objects[i];
+  }
+  delete rt;
+  delete clone_rt;
+}
+
+TEST_F(RadixTreeTest, TrackingRadixTreeExtendAndRemoveWithClone) {
+  StringTrackingRadixTree *rt = new StringTrackingRadixTree();
+
+  std::vector<TrackingObject*> tracking_objects;
+
+  srand(0);
+  int r0, r1, r2;
+  size_t dict_size = s_dictionary.size();
+  int count = 5000;
+  //size_t dict_size = 20;
+  //int count = 2;
+  for (unsigned i=0; i<dict_size; ++i) {
+    
+    tracking_objects.push_back(new TrackingObject);
+    tracking_objects.back()->id = rand();
+    tracking_objects.back()->str = s_dictionary[i];
+    rt->extend(s_dictionary[i], tracking_objects.back());
+    //std::cout << "inserting: " << tracking_objects.back()->str << "\n";
+  }
+  //std::cout << "Radix Tree with " << dict_size << " extensions ---------\n";
+  //rt->print(std::cout);
+  //std::cout << "-----------\n";
+
+  for (int i=0; i < count;  ++i) {
+    r0 = rand() % dict_size;
+    TrackingObject* tobj = tracking_objects[r0];
+    if (tobj) {
+      //std::cout << "removing " << tobj->str << "\n";
+      rt->remove_tracker(tobj);
+      tracking_objects[r0] = NULL;
+      delete tracking_objects[r0];
+    }
+  }
+  //std::cout << "Radix Tree after " << count << " removals ---------\n";
+  //rt->print(std::cout);
+  //std::cout << "-----------\n";
+  StringTrackingRadixTree *old_rt = rt;
+  rt = static_cast<StringTrackingRadixTree*>(rt->clone());
+
+  for (int i=0; i < count;  ++i) {
+    r0 = rand() % dict_size;
+    r1 = rand() % dict_size;
+    r2 = rand() % dict_size;
+    TrackingObject* tobj = tracking_objects[r0];
+    if (tobj) {
+      TrackingObject* tobj_new = new TrackingObject();
+      tracking_objects.push_back(tobj_new);
+
+      ASSERT_EQ(rt->clone_tracker(tobj_new, tobj), true);
 
       std::string str_ext_1 = "_" + s_dictionary[r1];
       std::string str_ext_2 = "_" + s_dictionary[r2];
@@ -674,9 +799,9 @@ TEST_F(RadixTreeTest, TrackingRadixTreeExtendAndRemove) {
   for (unsigned i=0; i<tracking_objects.size(); ++i) {
     std::string test_str;
     if (tracking_objects[i]) {
-      EXPECT_EQ(true, rt->tracks(tracking_objects[i]));
+      ASSERT_EQ(true, rt->tracks(tracking_objects[i]));
       rt->tracker_get(tracking_objects[i], test_str);
-      EXPECT_EQ(test_str, tracking_objects[i]->str);
+      ASSERT_EQ(test_str, tracking_objects[i]->str);
     }
   }
 
@@ -695,7 +820,9 @@ TEST_F(RadixTreeTest, TrackingRadixTreeExtendAndRemove) {
       delete tracking_objects[i];
   }
   delete rt;
+  delete old_rt;
 }
+
 
 //*/
 
