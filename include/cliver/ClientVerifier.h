@@ -43,12 +43,8 @@ namespace stats {
 	extern klee::Statistic rebuild_time;
 	extern klee::Statistic execution_tree_time;
 	extern klee::Statistic execution_tree_extend_time;
-	extern klee::Statistic edit_distance_clone_time;
-	extern klee::Statistic edit_distance_clone_tracker_time;
 	extern klee::Statistic edit_distance_compute_time;
 	extern klee::Statistic edit_distance_build_time;
-	extern klee::Statistic edit_distance_get_time;
-	extern klee::Statistic edit_distance_remove_time;
 	extern klee::Statistic edit_distance_tree_size;
 }
 
