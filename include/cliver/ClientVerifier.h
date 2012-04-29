@@ -42,8 +42,13 @@ namespace stats {
 	extern klee::Statistic round_instructions;
 	extern klee::Statistic rebuild_time;
 	extern klee::Statistic execution_tree_time;
+	extern klee::Statistic execution_tree_extend_time;
 	extern klee::Statistic edit_distance_clone_time;
+	extern klee::Statistic edit_distance_clone_tracker_time;
 	extern klee::Statistic edit_distance_compute_time;
+	extern klee::Statistic edit_distance_build_time;
+	extern klee::Statistic edit_distance_get_time;
+	extern klee::Statistic edit_distance_remove_time;
 	extern klee::Statistic edit_distance_tree_size;
 }
 
@@ -114,6 +119,7 @@ class ClientVerifier : public klee::InterpreterHandler {
 	void handle_statistics();
 	void next_statistics();
 	void print_current_statistics(std::string prefix);
+	void print_stat_labels();
 	void next_round();
 
 	// Arrays
