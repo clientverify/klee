@@ -119,28 +119,31 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
         tree_list_.pop_back();
       }
       tree_list_.push_back(new ExecutionTraceTree() );
-      break;
     }
+    break;
+
     case CV_BASICBLOCK_ENTRY: {
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
-      if (state->basic_block_tracking())
-        tree_list_.back()->extend(state->prevPC->kbb->id, property);
-      break;
+      if (state->basic_block_tracking()) {
+        klee::TimerStatIncrementer extend_timer(stats::execution_tree_extend_time);
+        tree_list_.back()->extend_element(state->prevPC->kbb->id, property);
+      }
     }
+    break;
 
     case CV_STATE_REMOVED: {
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
       CVDEBUG("Removing state: " << *state );
       tree_list_.back()->remove_tracker(property);
-      break;
     }
+    break;
 
     case CV_STATE_CLONE: {
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
       CVDEBUG("Cloned state: " << *state);
       tree_list_.back()->clone_tracker(property, parent_property);
-      break;
     }
+    break;
 
     case CV_SOCKET_WRITE:
     case CV_SOCKET_READ:
@@ -158,8 +161,8 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
         tree->tracker_get(property, etrace);
         CVDEBUG("TRACE: length: " << etrace.size());
       }
-      break;
     }
+    break;
 
     default:
       break;
@@ -199,7 +202,8 @@ void TrainingExecutionTreeManager::notify(ExecutionEvent ev) {
     }
     case CV_BASICBLOCK_ENTRY: {
       if (state->basic_block_tracking())
-        tree_list_.back()->extend(state->prevPC->kbb->id, property);
+        klee::TimerStatIncrementer extend_timer(stats::execution_tree_extend_time);
+        tree_list_.back()->extend_element(state->prevPC->kbb->id, property);
       break;
     }
 
@@ -294,7 +298,7 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
 
   switch (ev.event_type) {
     case CV_ROUND_START: {
-      klee::TimerStatIncrementer timer(stats::execution_tree_time);
+      //klee::TimerStatIncrementer timer(stats::execution_tree_time);
       // Delete the ExecutionTraceTree from the previous round
       if (DeleteOldTrees && !tree_list_.empty()) {
         delete tree_list_.back();
@@ -306,8 +310,9 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
 
       // Initialize a new ExecutionTraceTree
       tree_list_.push_back(new ExecutionTraceTree() );
-      break;
     }
+    break;
+
     case CV_BASICBLOCK_ENTRY: {
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
       EditDistanceProperty *edp 
@@ -315,6 +320,7 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
 
       // First BasicBlock Entry Event
       if (!tree_list_.back()->tracks(property)) {
+        klee::TimerStatIncrementer build_timer(stats::edit_distance_build_time);
 
         CVMESSAGE("Constructing training object tree for round: "
                   << cv_->round());
@@ -348,8 +354,10 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         stats::edit_distance_tree_size += element_count; 
       }
 
-      if (state->basic_block_tracking())
-        tree_list_.back()->extend(state->prevPC->kbb->id, property);
+      if (state->basic_block_tracking()) {
+        klee::TimerStatIncrementer extend_timer(stats::execution_tree_extend_time);
+        tree_list_.back()->extend_element(state->prevPC->kbb->id, property);
+      }
 
       //if (edit_distance_map_.count(property) == 0) {
       //  edit_distance_map_[property] = 
@@ -368,7 +376,11 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         edp->recompute = false;
 
         ExecutionTrace etrace;
-        tree_list_.back()->tracker_get(property, etrace);
+        {
+          klee::TimerStatIncrementer get_timer(stats::edit_distance_get_time);
+          etrace.reserve(tree_list_.back()->tracker_depth(property));
+          tree_list_.back()->tracker_get(property, etrace);
+        }
 
         {
           klee::TimerStatIncrementer 
@@ -378,23 +390,29 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         }
       }
 
-      break;
     }
+    break;
 
     case CV_STATE_REMOVED: {
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
+      klee::TimerStatIncrementer remove_timer(stats::edit_distance_remove_time);
       CVDEBUG("Removing state: " << *state );
       tree_list_.back()->remove_tracker(property);
       assert(edit_distance_map_.count(property));
       delete edit_distance_map_[property];
       edit_distance_map_.erase(property);
-      break;
     }
+    break;
 
     case CV_STATE_CLONE: {
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
       CVDEBUG("Cloned state: " << *state << ", parent: " << *parent )
-      tree_list_.back()->clone_tracker(property, parent_property);
+
+      {
+        klee::TimerStatIncrementer 
+            clone_tracker_timer(stats::edit_distance_clone_tracker_time);
+        tree_list_.back()->clone_tracker(property, parent_property);
+      }
       
       EditDistanceProperty *edp 
         = static_cast<EditDistanceProperty*>(property);
@@ -423,9 +441,8 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
       //  }
       //  state_tree_map_.clear();
       //}
-
-      break;
     }
+    break;
 
     case CV_SOCKET_WRITE:
     case CV_SOCKET_READ: {
@@ -439,16 +456,17 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
 
       CVDEBUG("End of round, path length: " << etrace.size());
 
-      break;
     }
+    break;
 
     case CV_SOCKET_SHUTDOWN: {
       CVDEBUG("Successful socket shutdown. " << *state);
-      break;
     }
+    break;
 
-    default:
-      break;
+    default: {
+    }
+    break;
   }
 }
 
