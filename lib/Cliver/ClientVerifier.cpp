@@ -75,20 +75,25 @@ HeapCheckRoundNumber("heap-check-round", llvm::cl::init(-1));
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace stats {
-	klee::Statistic active_states("ActiveStates", "AStates");
-	klee::Statistic merged_states("MergedStates", "MStates");
-	klee::Statistic round_time("RoundTime", "RTime");
-	klee::Statistic round_real_time("RoundRealTime", "RRTime");
-	klee::Statistic merge_time("MergingTime", "MTime");
-	klee::Statistic prune_time("PruningTime", "PTime");
-	klee::Statistic pruned_constraints("PrunedConstraints", "prunes");
-	klee::Statistic searcher_time("SearcherTime", "Stime");
-	klee::Statistic fork_time("ForkTime", "Ftime");
+	klee::Statistic active_states("ActiveStates", "ASts");
+	klee::Statistic merged_states("MergedStates", "MSts");
+	klee::Statistic round_time("RoundTime", "RTm");
+	klee::Statistic round_real_time("RoundRealTime", "RRTm");
+	klee::Statistic merge_time("MergingTime", "MTm");
+	klee::Statistic prune_time("PruningTime", "PTm");
+	klee::Statistic pruned_constraints("PrunedConstraints", "Prn");
+	klee::Statistic searcher_time("SearcherTime", "STm");
+	klee::Statistic fork_time("ForkTime", "FTm");
 	klee::Statistic round_instructions("RoundInsts", "RInsts");
 	klee::Statistic rebuild_time("RebuildTime", "RBTime");
 	klee::Statistic execution_tree_time("ExecutionTreeTime", "ETTime");
-	klee::Statistic edit_distance_clone_time("EditDistanceCloneTime","EDClTime");
-	klee::Statistic edit_distance_compute_time("EditDistanceComputeTime","EDCoTime");
+	klee::Statistic execution_tree_extend_time("EditDistanceExtendTime","EDExTm");
+	klee::Statistic edit_distance_clone_time("EditDistanceCloneTime","EDClTm");
+	klee::Statistic edit_distance_clone_tracker_time("EditDistanceCloneTime","EDClTkTm");
+	klee::Statistic edit_distance_compute_time("EditDistanceComputeTime","EDCoTm");
+	klee::Statistic edit_distance_build_time("EditDistanceBuildTime","EDBdTm");
+	klee::Statistic edit_distance_get_time("EditDistanceExtendTime","EDGtTm");
+	klee::Statistic edit_distance_remove_time("EditDistanceExtendTime","EDRmTm");
 	klee::Statistic edit_distance_tree_size("EditDistanceTreeSize","EDTSz");
 }
 
@@ -237,6 +242,8 @@ void ClientVerifier::initialize(CVExecutor *executor) {
     execution_tree_manager_->initialize();
     hook(execution_tree_manager_);
   }
+
+  print_stat_labels();
 }
 
 void ClientVerifier::initialize_external_handlers(CVExecutor *executor) {
@@ -316,6 +323,36 @@ void ClientVerifier::handle_statistics() {
   }
 }
 
+void ClientVerifier::print_stat_labels() {
+*cv_message_stream << "KEY" 
+    << " " << "Rnd"
+    << " " << stats::active_states.getShortName()
+    << " " << stats::merged_states.getShortName()
+    << " " << stats::pruned_constraints.getShortName()
+    << " " << stats::round_time.getShortName()
+    << " " << stats::round_real_time.getShortName()
+    << " " << stats::prune_time.getShortName()
+    << " " << stats::merge_time.getShortName()
+    << " " << stats::searcher_time.getShortName()
+    << " " << klee::stats::solverTime.getShortName()
+    << " " << stats::fork_time.getShortName()
+    << " " << stats::rebuild_time.getShortName()
+    << " " << stats::execution_tree_time.getShortName()
+    << " " << stats::execution_tree_extend_time.getShortName()
+    << " " << stats::edit_distance_clone_time.getShortName()
+    << " " << stats::edit_distance_clone_tracker_time.getShortName()
+    << " " << stats::edit_distance_compute_time.getShortName()
+    << " " << stats::edit_distance_build_time.getShortName()
+    << " " << stats::edit_distance_get_time.getShortName()
+    << " " << stats::edit_distance_remove_time.getShortName()
+    << " " << stats::edit_distance_tree_size.getShortName()
+    << " " << stats::round_instructions.getShortName()
+    << " " << "StSz"
+    << " " << "StSzTot"
+    << " " << "AllcMm"
+    << "\n";
+}
+
 void ClientVerifier::print_current_statistics(std::string prefix) {
 	klee::StatisticRecord *sr = statistics_.back();
   *cv_message_stream << prefix 
@@ -332,8 +369,13 @@ void ClientVerifier::print_current_statistics(std::string prefix) {
     << " " << sr->getValue(stats::fork_time) / 1000000.
     << " " << sr->getValue(stats::rebuild_time) / 1000000.
     << " " << sr->getValue(stats::execution_tree_time) / 1000000.
+    << " " << sr->getValue(stats::execution_tree_extend_time) / 1000000.
     << " " << sr->getValue(stats::edit_distance_clone_time) / 1000000.
+    << " " << sr->getValue(stats::edit_distance_clone_tracker_time) / 1000000.
     << " " << sr->getValue(stats::edit_distance_compute_time) / 1000000.
+    << " " << sr->getValue(stats::edit_distance_build_time) / 1000000.
+    << " " << sr->getValue(stats::edit_distance_get_time) / 1000000.
+    << " " << sr->getValue(stats::edit_distance_remove_time) / 1000000.
     << " " << sr->getValue(stats::edit_distance_tree_size)
     << " " << sr->getValue(stats::round_instructions)
     << " " << executor()->states_size()
