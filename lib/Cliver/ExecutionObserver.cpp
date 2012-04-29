@@ -41,14 +41,16 @@ void ExecutionObserverPrinter::notify(ExecutionEvent ev) {
 
   switch(ev.event_type) {
 #define X(x) case x : { \
-  if (ev.state && ev.state->property()) {\
-  CVDEBUG( #x << " " << (ev.state ? ev.state->id() : 0 ) << " " \
-  << (ev.parent ? ev.parent->id() : 0 ) << " " << *(ev.state->property()) ); \
-  }else{ \
-  CVDEBUG( #x << " " << (ev.state ? ev.state->id() : 0 ) << " " \
-  << (ev.parent ? ev.parent->id() : 0 ) );} \
-    break; }
+  if (ev.state && ev.parent) {\
+    CVDEBUG( #x << " " << *ev.state << " parent: " << *ev.parent );\
+  } else if (ev.state) {\
+    CVDEBUG( #x << " " << *ev.state );\
+  } else {\
+    CVDEBUG( #x );\
+  } break; }
+
     CV_EXECUTION_EVENT_TYPES
+
 #undef X
     default:
       break;
