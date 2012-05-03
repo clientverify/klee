@@ -75,14 +75,18 @@ void SocketEvent::print(std::ostream &os) const {
   if (XpilotSocket)
     os << "[RN:" << round << "] ";
 	for (unsigned i=0; i<length; ++i) {
-    if (data[i] > 47 && data[i] < 126) {
-      os << (char)(data[i]) << ":";
-    } else {
-      char buf[8];
-      sprintf(buf,"%X", data[i]);
-      //os << std::hex << data[i];
-      os << buf << ":";
-    }
+    char buf[8];
+    sprintf(buf,"%.2X ", data[i]);
+    os << buf;
+    //if (data[i] > 47 && data[i] < 126) {
+    //  os << (char)(data[i]) << ":";
+    //} else {
+    //  char buf[8];
+    //  sprintf(buf,"%.2X ", data[i]);
+    //  //os << std::hex << data[i];
+    //  //os << buf << ":";
+    //  os << buf;
+    //}
 	}
 	os << std::dec;
 }

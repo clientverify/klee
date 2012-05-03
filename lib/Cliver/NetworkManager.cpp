@@ -181,13 +181,15 @@ std::string NetworkManager::get_byte_string(klee::ObjectState *obj, int len) {
   for (int i=0; i<len; i++) {
     klee::ref<klee::Expr> e = obj->read8(i);
     if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(e)) {
+      //int c = CE->getZExtValue();
+      //if (c > 47 && c < 126)
+      //  ss << (char)c << ":";
+      //else
+      //  ss << std::hex << c << ":";
       int c = CE->getZExtValue();
-      if (c > 47 && c < 126)
-        ss << (char)c << ":";
-      else
-        ss << std::hex << c << ":";
+      ss << std::hex << std::setw(2) << std::setfill('0') << unsigned(c) << " ";
     } else {
-      ss << e << ":";
+      ss << e << " ";
     }
   }
   return ss.str();
@@ -356,6 +358,7 @@ void NetworkManagerXpilot::execute_write(CVExecutor* executor,
 	if (socket.state() != Socket::IDLE)
 		RETURN_FAILURE_OBJ("send", "wrong state");
 
+	//if (socket.round() != state()->cv()->round() || socket.round() != state()->cv()->round())
 	if (socket.round() != state()->cv()->round())
 		RETURN_FAILURE_OBJ("send", "wrong round");
 
