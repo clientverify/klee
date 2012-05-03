@@ -101,7 +101,7 @@ namespace klee {
 
     InstructionInfoTable *infos;
 		std::map<unsigned, KInstruction*> kinsts;
-		std::map<unsigned, KBasicBlock*> kbasicblocks;
+		std::map<llvm::BasicBlock*, KBasicBlock*> llvm_kbasicblocks;
 
     std::vector<llvm::Constant*> constants;
     std::map<llvm::Constant*, KConstant*> constantMap;
