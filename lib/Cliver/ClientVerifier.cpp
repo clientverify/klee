@@ -22,9 +22,11 @@
 #include "CVCommon.h"
 #include "ExternalHandlers.h"
 
+#include "klee/Internal/Module/KModule.h"
 #include "klee/SpecialFunctionHandler.h"
 #include "../lib/Core/CoreStats.h"
 
+#include "llvm/Module.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/System/Process.h"
@@ -224,6 +226,8 @@ void ClientVerifier::initialize(CVExecutor *executor) {
 		cv_error("Error loading socket log files, exiting now.");
 	}
 
+  assign_basic_block_ids();
+
   if (DebugPrintExecutionEvents)
     hook(new ExecutionObserverPrinter());
 
@@ -251,6 +255,36 @@ void ClientVerifier::initialize_external_handlers(CVExecutor *executor) {
       executor->register_function_call_event(&hi.name, hi.event_triggered);
     }
 	}
+}
+
+void ClientVerifier::assign_basic_block_ids() {
+  klee::KModule *kmodule = executor_->get_kmodule();
+  llvm::Module *module = kmodule->module;
+
+  typedef std::pair<std::string, llvm::BasicBlock*> BBNamePair;
+  std::vector< BBNamePair > basicblock_names;
+
+  for (llvm::Module::iterator it = module->begin(), ie = module->end();
+      it != ie; ++it) {
+
+    if (!it->isDeclaration()) {
+      std::string function_name(it->getNameStr());
+      function_name += "_";
+      for (llvm::Function::iterator fit = it->begin(), fie = it->end();
+           fit != fie; ++fit) {
+        std::string bb_name(function_name + fit->getNameStr());
+        basicblock_names.push_back(BBNamePair(bb_name, &(*fit)));
+      }
+    }
+  }
+
+  int count = 0;
+  std::sort(basicblock_names.begin(), basicblock_names.end());
+  foreach (BBNamePair &bb, basicblock_names) {
+    //CVMESSAGE(bb.first);
+    klee::KBasicBlock *kbb = kmodule->llvm_kbasicblocks[bb.second];
+    kbb->id = ++count;
+  }
 }
 
 int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
@@ -298,6 +332,11 @@ CVSearcher* ClientVerifier::searcher() {
 CVExecutor* ClientVerifier::executor() {
 	assert(executor_ != NULL && "not initialized");
 	return executor_;
+}
+
+ExecutionTreeManager* ClientVerifier::execution_tree_manager() {
+	assert(execution_tree_manager_ != NULL && "not initialized");
+	return execution_tree_manager_;
 }
 
 void ClientVerifier::handle_statistics() {

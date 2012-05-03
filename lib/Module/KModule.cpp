@@ -453,7 +453,7 @@ void KModule::prepare(const Interpreter::ModuleOptions &opts,
 
 			for (Function::iterator fit = it->begin(), fie = it->end();
 					fit != fie; ++fit) {
-				*ros << fit->getNameStr() << ":\n";
+				*ros << fit->getNameStr() << " : " << llvm_kbasicblocks[&(*fit)]->id << ":\n";
 				for (BasicBlock::iterator bit = fit->begin(), bie = fit->end();
 						bit != bie; ++bit) {
 					*ros << "  " << infos->getInfo(&(*bit)).id << ": " << *bit << "\n";
@@ -563,9 +563,8 @@ KFunction::KFunction(llvm::Function *_function,
   unsigned i = 0;
   for (llvm::Function::iterator bbit = function->begin(), 
          bbie = function->end(); bbit != bbie; ++bbit) {
-    unsigned bb_id = km->kbasicblocks.size();
-    KBasicBlock* kbb = new KBasicBlock(&(*bbit), bb_id);
-    km->kbasicblocks[bb_id] = kbb;
+    KBasicBlock* kbb = new KBasicBlock(&(*bbit), 0);
+    km->llvm_kbasicblocks[&(*bbit)] = kbb;
     for (llvm::BasicBlock::iterator it = bbit->begin(), ie = bbit->end();
          it != ie; ++it) {
       KInstruction *ki;

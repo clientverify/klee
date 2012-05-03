@@ -94,6 +94,7 @@ class ClientVerifier : public klee::InterpreterHandler {
                        const char *err, const char *suffix);
 	// Initialization
 	void initialize(CVExecutor *executor);
+  void assign_basic_block_ids();
 	
 	// ExternalHandlers
 	void initialize_external_handlers(CVExecutor *executor);
@@ -110,6 +111,7 @@ class ClientVerifier : public klee::InterpreterHandler {
 	// Accessors (ugly)
 	CVSearcher* searcher();
 	CVExecutor* executor();
+  ExecutionTreeManager* execution_tree_manager();
 
 	// Stats
 	void handle_statistics();
@@ -141,6 +143,7 @@ class ClientVerifier : public klee::InterpreterHandler {
 	std::vector<SocketEventList*> socket_events_;
 
   std::list<ExecutionObserver*> observers_;
+
 
 	uint64_t array_id_;
 	int round_number_;
