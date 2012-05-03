@@ -192,6 +192,10 @@ class RebuildingStateCache : public StateRebuilder {
 
   void set_capacity(size_t c) { capacity_ = c; }
 
+  size_t size() { 
+    return cache_.size();
+  }
+
   ExecutionStateProperty* rebuild_property() {
     if (this->rebuilding())
       return this->rebuild_property_;
