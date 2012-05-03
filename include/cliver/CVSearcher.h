@@ -66,9 +66,13 @@ class SearcherStage {
   virtual CVExecutionState* next_state() = 0;
   virtual void add_state(CVExecutionState *state) = 0;
   virtual void remove_state(CVExecutionState *state) = 0;
-  virtual bool empty() = 0;
   virtual void notify(ExecutionEvent ev) = 0;
+  virtual bool empty() = 0;
+  virtual size_t size() = 0;
   virtual void clear() = 0;
+  virtual bool rebuilding() = 0;
+  virtual void get_states(std::vector<ExecutionStateProperty*> &states) = 0;
+  virtual void set_states(std::vector<ExecutionStateProperty*> &states) = 0;
   virtual void set_capacity(size_t c) = 0;
 };
 
@@ -93,8 +97,16 @@ class SearcherStageImpl : public SearcherStage {
     return live_ == NULL && collection_.empty() && cache_.rebuild_property() == 0;
   }
 
+  size_t size() {
+    return cache_.size();
+  }
+
   void notify(ExecutionEvent ev) {
     cache_.notify(ev);
+  }
+
+  bool rebuilding() {
+    return cache_.rebuild_property() != NULL;
   }
 
   CVExecutionState* next_state() {
@@ -149,6 +161,21 @@ class SearcherStageImpl : public SearcherStage {
       state->erase_self_permanent();
     }
     cache_.clear();
+  }
+
+  void get_states(std::vector<ExecutionStateProperty*> &states) {
+    assert(!cache_.rebuild_property());
+    while (!collection_.empty()) {
+      states.push_back(collection_.top());
+      collection_.pop();
+    }
+    assert(collection_.empty());
+  }
+
+  void set_states(std::vector<ExecutionStateProperty*> &states) {
+    for (unsigned i=0; i<states.size(); ++i) {
+      collection_.push(states[i]);
+    }
   }
 
  protected:
@@ -226,6 +253,15 @@ class VerifySearcher : public CVSearcher {
   SearcherStageList stages_;
   SearcherStageList pending_stages_;
   ExecutionStateSet pending_states_;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class KExtensionVerifySearcher : public VerifySearcher {
+ public:
+  KExtensionVerifySearcher(ClientVerifier *cv, StateMerger* merger);
+  virtual klee::ExecutionState &selectState();
+ private:
 };
 
 ////////////////////////////////////////////////////////////////////////////////

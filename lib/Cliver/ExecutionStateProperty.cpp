@@ -73,7 +73,7 @@ void EditCostProperty::print(std::ostream &os) const {
 //////////////////////////////////////////////////////////////////////////////
 
 EditDistanceProperty::EditDistanceProperty() 
-	: edit_distance(INT_MAX-1), recompute(true) {}
+	: edit_distance(0), recompute(true) {}
 
 EditDistanceProperty* EditDistanceProperty::clone() { 
   EditDistanceProperty* ecp = new EditDistanceProperty(*this);

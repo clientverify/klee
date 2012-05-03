@@ -24,6 +24,7 @@ namespace cliver {
 enum RunModeType {
   Verify,
   VerifyWithEditCost,
+  VerifyWithEditCostPrefix,
   Training,
   TestTraining
 };
@@ -48,7 +49,9 @@ llvm::cl::opt<RunModeType> RunMode("cliver-mode",
   llvm::cl::values(
     clEnumValN(Verify, "verify", "Verify mode"),
     clEnumValN(VerifyWithEditCost, "verify-with-edit-cost",
-      "Verify using edit cost and training data"),
+      "Verify using min edit cost and training data"),
+    clEnumValN(VerifyWithEditCostPrefix, "verify-with-edit-cost-prefix",
+      "Verify using min edit cost prefix and training data"),
     clEnumValN(Training, "training", "Generate training traces"),
   clEnumValEnd));
 
@@ -75,6 +78,18 @@ llvm::cl::opt<SearchModeType> SearchMode("search-mode",
 CVSearcher* CVSearcherFactory::create(klee::Searcher* base_searcher, 
                                       ClientVerifier* cv, StateMerger* merger) {
   switch (RunMode) {
+    case VerifyWithEditCostPrefix: {
+       switch (ClientModel) {
+        case Tetrinet: {
+          return new KExtensionVerifySearcher(cv, merger);
+        }
+        case XPilot: {
+          assert("Need to implmenent KExtensionMergeSearcher");
+          return new MergeVerifySearcher(cv, merger);
+
+        }
+       }
+    }
     case Verify:
     case VerifyWithEditCost: {
       switch (ClientModel) {
@@ -157,6 +172,13 @@ ExecutionTreeManager* ExecutionTreeManagerFactory::create(ClientVerifier* cv) {
       break;
     }
 
+    case VerifyWithEditCostPrefix: {
+      if (SearchMode != PriorityQueue)
+        SearchMode = PriorityQueue;
+      return new KExtensionVerifyExecutionTreeManager(cv);
+      break;
+    }
+
     case Training: {
       return new TrainingExecutionTreeManager(cv);
     }
@@ -176,6 +198,7 @@ ExecutionStateProperty* ExecutionStatePropertyFactory::create() {
       return new VerifyProperty();
 
     case VerifyWithEditCost:
+    case VerifyWithEditCostPrefix:
       return new EditDistanceProperty();
   }
   cv_error("invalid run mode");
