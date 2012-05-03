@@ -16,6 +16,7 @@
 #include "cliver/ExecutionTrace.h"
 #include "cliver/TrackingRadixTree.h"
 #include "cliver/LevenshteinRadixTree.h"
+#include "cliver/KExtensionTree.h"
 #include "cliver/Training.h"
 
 #include "cliver/tree.h"
@@ -46,8 +47,14 @@ typedef TrackingRadixTree< ExecutionTrace, BasicBlockID, ExecutionStateProperty>
 typedef LevenshteinRadixTree<ExecutionTrace, BasicBlockID> 
     EditDistanceExecutionTree;
 
+typedef KExtensionTree<ExecutionTrace, BasicBlockID> 
+    KEditDistanceExecutionTree;
+
 typedef boost::unordered_map<ExecutionStateProperty*,EditDistanceExecutionTree*>
     EditDistanceExecutionTreeMap;
+
+typedef boost::unordered_map<ExecutionStateProperty*,KEditDistanceExecutionTree*>
+    KEditDistanceExecutionTreeMap;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -57,6 +64,8 @@ class ExecutionTreeManager : public ExecutionObserver {
   ExecutionTreeManager(ClientVerifier *cv);
   virtual void initialize();
   virtual void notify(ExecutionEvent ev);
+  virtual void process_all_states(std::vector<ExecutionStateProperty*> &states) {}
+  virtual bool ready_process_all_states() { return false; }
  protected:
   std::vector< ExecutionTraceTree* > tree_list_;
   ClientVerifier *cv_;
@@ -84,7 +93,25 @@ class VerifyExecutionTreeManager : public ExecutionTreeManager {
   TrainingObjectSet training_data_;
   EditDistanceExecutionTreeMap edit_distance_map_;
   EditDistanceExecutionTree *root_tree_;
+};
 
+class KExtensionVerifyExecutionTreeManager : public ExecutionTreeManager {
+ public:
+  KExtensionVerifyExecutionTreeManager(ClientVerifier *cv);
+  virtual void initialize();
+  virtual void notify(ExecutionEvent ev);
+  virtual void process_all_states(std::vector<ExecutionStateProperty*> &states);
+  virtual bool ready_process_all_states();
+
+ private:
+  void recompute_property(ExecutionStateProperty *property);
+  void clear_edit_distance_map();
+
+  TrainingObjectSet training_data_;
+  TrainingObjectList current_training_list_;
+  KEditDistanceExecutionTreeMap edit_distance_map_;
+  KEditDistanceExecutionTree *root_tree_;
+  int current_k_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

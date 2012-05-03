@@ -11,6 +11,7 @@
 #include "cliver/CVExecutionState.h"
 #include "cliver/CVExecutor.h"
 #include "cliver/CVStream.h"
+#include "cliver/ExecutionTree.h"
 #include "cliver/StateMerger.h"
 #include "cliver/ClientVerifier.h"
 #include "cliver/NetworkManager.h"
@@ -226,6 +227,62 @@ void VerifySearcher::notify(ExecutionEvent ev) {
       break;
   }
 }
+////////////////////////////////////////////////////////////////////////////////
+
+KExtensionVerifySearcher::KExtensionVerifySearcher(ClientVerifier* cv, 
+                                                   StateMerger* merger)
+  : VerifySearcher(cv, merger) {}
+
+
+klee::ExecutionState &KExtensionVerifySearcher::selectState() {
+  //klee::TimerStatIncrementer timer(stats::searcher_time);
+  
+  if (!pending_stages_.empty()) {
+    // Delete all previous states from this round.
+    if (DeleteOldStates) {
+      stages_.back()->clear();
+    }
+    // Compute and output statistics for the previous round
+    cv_->next_round();
+
+    // Add pending stage to active stage list
+    stages_.push_back(pending_stages_.back());
+    pending_stages_.pop_back();
+  }
+
+  if (BacktrackSearching) {
+    while (!stages_.empty() && stages_.back()->empty()) {
+      delete stages_.back();
+      stages_.pop_back();
+    }
+  }
+
+  assert(!stages_.empty());
+
+  // Check if we should increase k
+  CVExecutionState *state = stages_.back()->next_state();
+  EditDistanceProperty *edp 
+    = static_cast<EditDistanceProperty*>(state->property());
+
+  if (edp->edit_distance == INT_MAX 
+      && stages_.back()->size() > 1
+      && cv_->execution_tree_manager()->ready_process_all_states()
+      && !stages_.back()->rebuilding()) {
+    //CVMESSAGE("Next state is INT_MAX");
+
+    stages_.back()->add_state(state);
+    std::vector<ExecutionStateProperty*> states;
+    stages_.back()->get_states(states);
+    cv_->execution_tree_manager()->process_all_states(states);
+    // recompute edit distance
+    stages_.back()->set_states(states);
+    state = stages_.back()->next_state();
+  }
+
+  return *(static_cast<klee::ExecutionState*>(state));
+  //return *(static_cast<klee::ExecutionState*>(stages_.back()->next_state()));
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -243,19 +300,25 @@ bool MergeVerifySearcher::check_pending(CVExecutionState* state) {
     // Remove State from current stage
     this->remove_state(state);
 
-    if (state->network_manager()->socket()->round() > cv_->round()) {
+    Socket* socket = state->network_manager()->socket();
+    if (socket->round() > cv_->round()) {
+        // && (socket->type() == SocketEvent::RECV || socket->round() < 4 || ((socket->round() + 1) == cv_->round() && socket->type() == SocketEvent::SEND))) {
+    //if (state->network_manager()->socket()->round() > cv_->round()) {
 
       // XXX Hack to prune state constraints
       //ExecutionStateSet state_set, merged_set;
       //state_set.insert(state);
       //merger_->merge(state_set, merged_set);
 
+      CVDEBUG("New pending stage: with socket round: " 
+              << state->network_manager()->socket()->round() 
+              << " and state round: " << cv_->round() << " socket: " << *socket);
       // Create new stage and add to pending list
       pending_stages_.push_back(get_new_stage(state));
     } else {
       CVDEBUG("Removing state at merge event, wrong round: SocketRN:" <<
               state->network_manager()->socket()->round() <<
-             " <= StateRN:" << cv_->round());
+             " <= StateRN:" << cv_->round() << " socket: " << *socket);
       // Remove invalid state with unfinished network processing
       cv_->executor()->remove_state_internal(state);
 
@@ -267,7 +330,7 @@ bool MergeVerifySearcher::check_pending(CVExecutionState* state) {
 
 bool MergeVerifySearcher::empty() {
   if (!cv_->executor()->finished_states().empty()) {
-    CVDEBUG("Exiting. Num finished states: "
+    CVDEBUG("Exiting. Num finished states: " 
             << cv_->executor()->finished_states().size());
     return true;
   }
@@ -276,7 +339,7 @@ bool MergeVerifySearcher::empty() {
     reverse_foreach (SearcherStage* stage, stages_)
       if (!stage->empty()) return false;
   } else {
-    if (!stages_.back()->empty())
+    if (!stages_.back()->empty()) 
       return false;
   }
 
@@ -295,18 +358,14 @@ void MergeVerifySearcher::notify(ExecutionEvent ev) {
 
   switch(ev.event_type) {
     case CV_MERGE: {
-      //if (ev.state->network_manager()->socket()->round() > cv_->round()) {
-        CVDEBUG("MERGE EVENT! " << *ev.state);
-        pending_states_.insert(ev.state);
-      //} else {
-      //  CVDEBUG("MERGE EVENT! Still events to process..." << *ev.state);
-      //}
+      CVDEBUG("MERGE EVENT! " << *ev.state);
+      pending_states_.insert(ev.state);
       break;
     }
     case CV_FINISH: {
       CVDEBUG("FINISH EVENT! " << *ev.state);
       if (!ev.state->network_manager()->socket()->is_open()) {
-        CVDEBUG("Adding finished state: " << *ev.state);
+        CVMESSAGE("Adding finished state: " << *ev.state);
         cv_->executor()->add_finished_state(ev.state);
       }
       break;

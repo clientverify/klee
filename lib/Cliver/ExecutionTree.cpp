@@ -37,6 +37,12 @@ namespace cliver {
 llvm::cl::opt<unsigned>
 StateTreesMemoryLimit("state-trees-memory-limit",llvm::cl::init(0));
 
+llvm::cl::opt<unsigned>
+MaxKExtension("max-k-extension",llvm::cl::init(16));
+
+llvm::cl::opt<bool>
+BasicBlockDisabling("basicblock-disabling",llvm::cl::init(true));
+
 llvm::cl::opt<bool>
 DebugExecutionTree("debug-execution-tree",llvm::cl::init(false));
 
@@ -123,7 +129,7 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
 
     case CV_BASICBLOCK_ENTRY: {
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
-      if (state->basic_block_tracking()) {
+      if (state->basic_block_tracking() || !BasicBlockDisabling) {
         klee::TimerStatIncrementer extend_timer(stats::execution_tree_extend_time);
         tree_list_.back()->extend_element(state->prevPC->kbb->id, property);
       }
@@ -200,7 +206,7 @@ void TrainingExecutionTreeManager::notify(ExecutionEvent ev) {
       break;
     }
     case CV_BASICBLOCK_ENTRY: {
-      if (state->basic_block_tracking())
+      if (state->basic_block_tracking() || !BasicBlockDisabling)
         tree_list_.back()->extend_element(state->prevPC->kbb->id, property);
       break;
     }
@@ -319,8 +325,6 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
       if (!tree_list_.back()->tracks(property)) {
         klee::TimerStatIncrementer build_timer(stats::edit_distance_build_time);
 
-        CVMESSAGE("Constructing training object tree for round: "
-                  << cv_->round());
         TrainingObjectScoreList score_list;
         TrainingManager::init_score_list(training_data_, score_list);
 
@@ -333,9 +337,11 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         root_tree_ = new EditDistanceExecutionTree();
 
         size_t i, max_count = 5;
-        for (i=0; i < std::min(max_count,score_list.size()); ++i) {
+        bool zero_match = true;
+        for (i=0; i < score_list.size() && (zero_match|| i < max_count); ++i) {
           root_tree_->insert(score_list[i].second->trace);
-          if (score_list[i].first == 0.0) break;
+          double score = score_list[i].first;
+          if (score > 0.0) zero_match = false;
         }
 
         // Set initial values for edit distance
@@ -345,21 +351,16 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         // Store size of tree in stats
         size_t element_count = root_tree_->element_count();
 
-        CVMESSAGE("Training object tree for round: "
+        CVDEBUG("Training object tree for round: "
             << cv_->round() << " has " << element_count
             << " elements from " << i+1 << " training objects");
         stats::edit_distance_tree_size += element_count; 
       }
 
-      if (state->basic_block_tracking()) {
+      if (state->basic_block_tracking() || !BasicBlockDisabling) {
         klee::TimerStatIncrementer extend_timer(stats::execution_tree_extend_time);
         tree_list_.back()->extend_element(state->prevPC->kbb->id, property);
       }
-
-      //if (edit_distance_map_.count(property) == 0) {
-      //  edit_distance_map_[property] = 
-      //      static_cast<EditDistanceExecutionTree*>(root_tree_->clone());
-      //}
 
       if (edp->recompute) {
 
@@ -379,8 +380,9 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         {
           klee::TimerStatIncrementer 
               compute_timer(stats::edit_distance_compute_time);
-          edp->edit_distance 
-            = edit_distance_map_[property]->min_edit_distance_update(etrace);
+
+          edit_distance_map_[property]->update(etrace);
+          edp->edit_distance = edit_distance_map_[property]->min_distance();
         }
       }
 
@@ -466,6 +468,263 @@ void VerifyExecutionTreeManager::clear_edit_distance_map() {
   edit_distance_map_.clear();
   if (root_tree_ != NULL)
     delete root_tree_;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+KExtensionVerifyExecutionTreeManager::KExtensionVerifyExecutionTreeManager(ClientVerifier* cv) 
+  : ExecutionTreeManager(cv), root_tree_(NULL), current_k_(2) {}
+
+void KExtensionVerifyExecutionTreeManager::initialize() {
+  // Initialize a new ExecutionTraceTree
+  tree_list_.push_back(new ExecutionTraceTree());
+
+  // Parse the training data filenames
+  if (!TrainingPathDir.empty())
+    foreach (std::string path, TrainingPathDir)
+      cv_->getFilesRecursive(path, ".tpath", TrainingPathFile);
+
+  // Report error if no filenames found
+  if (TrainingPathFile.empty())
+    cv_error("Error parsing training data file names, exiting now.");
+
+  CVMESSAGE("Loading " 
+            << TrainingPathFile.size() << " training data files.");
+
+  // Read training data into memory
+  TrainingManager::read_files(TrainingPathFile, training_data_); 
+  if (training_data_.empty())
+    cv_error("Error reading training data , exiting now.");
+
+  CVMESSAGE("Finished loading " 
+            << training_data_.size() << " unique training objects.");
+}
+
+void KExtensionVerifyExecutionTreeManager::notify(ExecutionEvent ev) {
+  if (cv_->executor()->replay_path())
+    return;
+
+  CVExecutionState* state = ev.state;
+  CVExecutionState* parent = ev.parent;
+
+  ExecutionStateProperty *property = NULL, *parent_property = NULL;
+  if (state)
+    property = state->property();
+  if (parent) 
+    parent_property = parent->property();
+
+  if (state && !state->network_manager()->socket()->is_open()) {
+    return;
+  }
+
+  switch (ev.event_type) {
+    case CV_ROUND_START: {
+      // Reset K
+      current_k_ = 2;
+
+      CVDEBUG("CV_ROUND_START");
+      // Delete the ExecutionTraceTree from the previous round
+      if (DeleteOldTrees && !tree_list_.empty()) {
+
+        //tree_list_.back()->print(*cv_debug_stream);
+        delete tree_list_.back();
+        tree_list_.pop_back();
+      }
+
+      // Reset training data list
+      current_training_list_.clear();
+
+      // Delete old trees associated with states from previous rounds
+      clear_edit_distance_map();
+
+      // Initialize a new ExecutionTraceTree
+      tree_list_.push_back(new ExecutionTraceTree() );
+    }
+    break;
+
+    case CV_BASICBLOCK_ENTRY: {
+      //CVDEBUG("CV_BASIC_BLOCK_ENTRY");
+      klee::TimerStatIncrementer timer(stats::execution_tree_time);
+      EditDistanceProperty *edp 
+        = static_cast<EditDistanceProperty*>(property);
+
+      // First BasicBlock Entry Event
+      if (!tree_list_.back()->tracks(property)) {
+        klee::TimerStatIncrementer build_timer(stats::edit_distance_build_time);
+
+        TrainingObjectScoreList score_list;
+        TrainingManager::init_score_list(training_data_, score_list);
+
+        const SocketEvent* socket_event 
+            = &(state->network_manager()->socket()->event());
+
+        SocketEventSimilarityTetrinet measure;
+        TrainingManager::sort_by_similarity_score(socket_event, score_list, measure);
+
+        root_tree_ = new KEditDistanceExecutionTree();
+
+        size_t i, max_count = 5;
+        bool zero_match = true;
+        for (i=0; i < score_list.size() && (zero_match|| i < max_count); ++i) {
+          root_tree_->insert(score_list[i].second->trace);
+          current_training_list_.push_back(score_list[i].second);
+          double score = score_list[i].first;
+          if (score > 0.0) zero_match = false;
+        }
+
+        root_tree_->init(current_k_);
+
+        // Set initial values for edit distance
+        edp->edit_distance = 0;
+        edp->recompute = true;
+
+        // Store size of tree in stats
+        size_t element_count = root_tree_->element_count();
+
+        CVDEBUG("Training object tree for round: "
+            << cv_->round() << " has " << element_count
+            << " elements from " << i+1 << " training objects");
+        stats::edit_distance_tree_size += element_count; 
+
+        edit_distance_map_[property] = 
+            static_cast<KEditDistanceExecutionTree*>(root_tree_->clone());
+      }
+
+      if (state->basic_block_tracking() || !BasicBlockDisabling) {
+        //if (edp->edit_distance > current_k_) {
+        //  CVDEBUG("edit distance > current_k_: " << *state);
+        //}
+
+        {
+          klee::TimerStatIncrementer extend_timer(stats::execution_tree_extend_time);
+          tree_list_.back()->extend_element(state->prevPC->kbb->id, property);
+        }
+
+        if (edp->recompute) {
+          //edp->recompute = false;
+
+          {
+            klee::TimerStatIncrementer compute_timer(stats::edit_distance_compute_time);
+            edit_distance_map_[property]->update_element(state->prevPC->kbb->id);
+            edp->edit_distance = edit_distance_map_[property]->min_prefix_distance();
+          }
+        }
+      }
+
+    }
+    break;
+
+    case CV_STATE_REMOVED: {
+      klee::TimerStatIncrementer timer(stats::execution_tree_time);
+      CVDEBUG("Removing state: " << *state );
+      tree_list_.back()->remove_tracker(property);
+      if (edit_distance_map_.count(property)) {
+        delete edit_distance_map_[property];
+        edit_distance_map_.erase(property);
+      }
+    }
+    break;
+
+    case CV_STATE_CLONE: {
+      klee::TimerStatIncrementer timer(stats::execution_tree_time);
+
+      tree_list_.back()->clone_tracker(property, parent_property);
+      
+      EditDistanceProperty *edp 
+        = static_cast<EditDistanceProperty*>(property);
+      EditDistanceProperty *edp_parent
+        = static_cast<EditDistanceProperty*>(parent_property);
+
+      edp->recompute=true;
+      edp_parent->recompute=true;
+
+      edit_distance_map_[property] = 
+          static_cast<KEditDistanceExecutionTree*>(edit_distance_map_[parent_property]->clone());
+
+      edp->edit_distance = edit_distance_map_[property]->min_prefix_distance();
+      CVDEBUG("Cloned state: " << *state << ", parent: " << *parent )
+    }
+    break;
+
+    case CV_SOCKET_WRITE:
+    case CV_SOCKET_READ: {
+      klee::TimerStatIncrementer timer(stats::execution_tree_time);
+
+      EditDistanceProperty *edp = static_cast<EditDistanceProperty*>(property);
+
+      //current_k_ = 2;
+      //while (edp->edit_distance == INT_MAX) {
+      //  recompute_property(property);
+      //  current_k_ *= 2;
+      //}
+
+      CVDEBUG("End of round, path length: " << tree_list_.back()->tracker_depth(property));
+      CVMESSAGE("End state: " << *state);
+      //CVDEBUG("FINAL [ ][" << etrace.size() << "] " << etrace);
+    }
+    break;
+
+    case CV_SOCKET_SHUTDOWN: {
+      CVDEBUG("Successful socket shutdown. " << *state);
+    }
+    break;
+
+    default: {
+    }
+    break;
+  }
+}
+
+bool KExtensionVerifyExecutionTreeManager::ready_process_all_states() {
+  return current_k_ < MaxKExtension;
+}
+
+void KExtensionVerifyExecutionTreeManager::recompute_property(
+    ExecutionStateProperty *property) {
+  klee::TimerStatIncrementer compute_timer(stats::edit_distance_compute_time);
+
+  assert(edit_distance_map_.count(property));
+  edit_distance_map_[property]->init(current_k_);
+
+  EditDistanceProperty *edp = static_cast<EditDistanceProperty*>(property);
+
+  ExecutionTrace etrace;
+  etrace.reserve(tree_list_.back()->tracker_depth(property));
+  tree_list_.back()->tracker_get(property, etrace); 
+
+  edit_distance_map_[property]->update(etrace);
+  edp->edit_distance = edit_distance_map_[property]->min_prefix_distance();
+}
+
+
+void KExtensionVerifyExecutionTreeManager::process_all_states(
+    std::vector<ExecutionStateProperty*> &states) {
+  CVMESSAGE("Doubling K from: " << current_k_ << " to " << current_k_*2);
+  current_k_ = current_k_ * 2;
+  for (unsigned i=0; i<states.size(); ++i) {
+    EditDistanceProperty *edp = static_cast<EditDistanceProperty*>(states[i]);
+    assert(edp->edit_distance == INT_MAX);
+
+    int old_ed = edp->edit_distance;
+    recompute_property(states[i]);
+    //CVMESSAGE("Edit distance computed from: " << old_ed << " to " << edp->edit_distance);
+  }
+}
+
+// Delete the trees associated with each state in the edit distance map
+// and clear the map itself
+void KExtensionVerifyExecutionTreeManager::clear_edit_distance_map() {
+  KEditDistanceExecutionTreeMap::iterator it = edit_distance_map_.begin();
+  KEditDistanceExecutionTreeMap::iterator ie = edit_distance_map_.end();
+  for (; it!=ie; ++it) {
+    delete it->second;
+  }
+  edit_distance_map_.clear();
+  if (root_tree_ != NULL) {
+    root_tree_->destroy_root();
+    delete root_tree_;
+    root_tree_ = NULL;
+  }
 }
 
 } // end namespace cliver
