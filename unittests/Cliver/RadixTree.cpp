@@ -13,6 +13,7 @@
 #include "cliver/TrackingRadixTree.h"
 #include "cliver/LevenshteinRadixTree.h"
 #include "cliver/EditDistance.h"
+#include "cliver/KExtensionTree.h"
 #include "RadixTree.inc"
 
 #include <stdlib.h>
@@ -33,6 +34,10 @@ typedef RadixTree<std::string, char> StringRadixTree;
 typedef RadixTree<std::vector<char>, char> VectorRadixTree;
 typedef RadixTree<std::list<char>, char> ListRadixTree;
 typedef LevenshteinRadixTree<std::string, char> StringLevenshteinRadixTree;
+typedef KLevenshteinRadixTree<std::string, char> StringKLevenshteinRadixTree;
+typedef KExtensionOptTree<std::string, char> StringKLevRT;
+//typedef KExtensionTree<std::string, char> StringKLevRT;
+//typedef KExtensionOptTree<std::string, char> StringKLevRTOpt;
 
 struct TrackingObject {
   unsigned id;
@@ -323,7 +328,7 @@ TEST_F(RadixTreeTest, CloneDictionary) {
 TEST_F(RadixTreeTest, Levenshtein) {
   StringLevenshteinRadixTree *slrt = new StringLevenshteinRadixTree();
   std::string test("test");
-  slrt->min_edit_distance(test);
+  slrt->update_suffix(test);
 }
 
 TEST_F(RadixTreeTest, LevenshteinInsert) {
@@ -337,7 +342,7 @@ TEST_F(RadixTreeTest, LevenshteinInsert) {
   }
 
   std::string test("test");
-  slrt->min_edit_distance(test);
+  slrt->update_suffix(test);
 }
 
 TEST_F(RadixTreeTest, LevenshteinCloneDictionary) {
@@ -389,12 +394,12 @@ TEST_F(RadixTreeTest, LevenshteinComputeVerify) {
   int macho_cost_r = edr_macho.compute_editdistance();
   int samberg_cost_r = edr_samberg.compute_editdistance();
 
-  slrt->min_edit_distance(Sunday);
+  slrt->update_suffix(Sunday);
 
-  ASSERT_EQ(day_cost_r, slrt->lookup_cost(Saturday));
-  ASSERT_EQ(cat_cost_r, slrt->lookup_cost(kitten));
-  ASSERT_EQ(samberg_cost_r, slrt->lookup_cost(Samberg));
-  ASSERT_EQ(macho_cost_r, slrt->lookup_cost(Macho));
+  ASSERT_EQ(day_cost_r, slrt->lookup_edit_distance(Saturday));
+  ASSERT_EQ(cat_cost_r, slrt->lookup_edit_distance(kitten));
+  ASSERT_EQ(samberg_cost_r, slrt->lookup_edit_distance(Samberg));
+  ASSERT_EQ(macho_cost_r, slrt->lookup_edit_distance(Macho));
 
   delete slrt;
 }
@@ -410,10 +415,10 @@ TEST_F(RadixTreeTest, LevenshteinComputeRandom) {
   unsigned r0, r1, count = 5, check = 5;
   for (unsigned i=0; i < count;  ++i) {
     r0 = (rand() % s_dictionary.size());
-    slrt->min_edit_distance(s_dictionary[r0]);
+    slrt->update_suffix(s_dictionary[r0]);
     for (unsigned j=0; j < check; ++j) {
       r1 = (rand() % s_dictionary.size());
-      EXPECT_GE(slrt->lookup_cost(s_dictionary[r1]), 0);
+      EXPECT_GE(slrt->lookup_edit_distance(s_dictionary[r1]), 0);
     }
   }
   delete slrt;
@@ -431,12 +436,13 @@ TEST_F(RadixTreeTest, LevenshteinComputeRandomVerify) {
   unsigned r0, r1, count = 5, check = 5;
   for (unsigned i=0; i < count;  ++i) {
     r0 = (rand() % s_dictionary.size());
-    slrt->min_edit_distance(s_dictionary[r0]);
+    slrt->reset();
+    slrt->update_suffix(s_dictionary[r0]);
     for (unsigned j=0; j < check; ++j) {
       r1 = (rand() % s_dictionary.size());
       StringEDR edr(s_dictionary[r1], s_dictionary[r0]);
       int edr_cost = edr.compute_editdistance();
-      ASSERT_EQ(edr_cost, slrt->lookup_cost(s_dictionary[r1]));
+      ASSERT_EQ(edr_cost, slrt->lookup_edit_distance(s_dictionary[r1]));
     }
   }
   delete slrt;
@@ -454,7 +460,8 @@ TEST_F(RadixTreeTest, LevenshteinComputeRandomVerifyClone) {
   unsigned r0, r1, count = 5, check = 5;
   for (unsigned i=0; i < count;  ++i) {
     r0 = (rand() % s_dictionary.size());
-    slrt->min_edit_distance(s_dictionary[r0]);
+    slrt->reset();
+    slrt->update_suffix(s_dictionary[r0]);
     clone_slrt = static_cast<StringLevenshteinRadixTree*>(slrt->clone());
     delete slrt;
     slrt = clone_slrt;
@@ -462,10 +469,10 @@ TEST_F(RadixTreeTest, LevenshteinComputeRandomVerifyClone) {
       r1 = (rand() % s_dictionary.size());
       StringEDR edr(s_dictionary[r1], s_dictionary[r0]);
       int edr_cost = edr.compute_editdistance();
-      ASSERT_EQ(edr_cost, clone_slrt->lookup_cost(s_dictionary[r1]));
+      ASSERT_EQ(edr_cost, clone_slrt->lookup_edit_distance(s_dictionary[r1]));
     }
   }
-  delete clone_slrt;
+  //delete clone_slrt;
 }
 
 TEST_F(RadixTreeTest, LevenshteinComputeRandomVerifyIncrementElement) {
@@ -480,13 +487,13 @@ TEST_F(RadixTreeTest, LevenshteinComputeRandomVerifyIncrementElement) {
   for (unsigned i=0; i < count;  ++i) {
     r0 = (rand() % s_dictionary.size());
     for (unsigned j=0; j < s_dictionary[r0].size(); j++) {
-      slrt->min_edit_distance_suffix(s_dictionary[r0][j]);
+      slrt->update_element(s_dictionary[r0][j]);
     }
     for (unsigned j=0; j < check; ++j) {
       r1 = (rand() % s_dictionary.size());
       StringEDR edr(s_dictionary[r1], s_dictionary[r0]);
       int edr_cost = edr.compute_editdistance();
-      ASSERT_EQ(edr_cost, slrt->lookup_cost(s_dictionary[r1]));
+      ASSERT_EQ(edr_cost, slrt->lookup_edit_distance(s_dictionary[r1]));
     }
     slrt->reset();
   }
@@ -513,7 +520,7 @@ TEST_F(RadixTreeTest, LevenshteinComputeRandomVerifyIncrementSequence) {
       std::string str(s_dictionary[r0].begin() + j_start,
                       s_dictionary[r0].begin() + j_end);
 
-      slrt->min_edit_distance_suffix(str);
+      slrt->update_suffix(str);
 
     } while ((s_dictionary[r0].begin() + j_end) != s_dictionary[r0].end());
 
@@ -521,7 +528,7 @@ TEST_F(RadixTreeTest, LevenshteinComputeRandomVerifyIncrementSequence) {
       r1 = (rand() % s_dictionary.size());
       StringEDR edr(s_dictionary[r1], s_dictionary[r0]);
       int edr_cost = edr.compute_editdistance();
-      ASSERT_EQ(edr_cost, slrt->lookup_cost(s_dictionary[r1]));
+      ASSERT_EQ(edr_cost, slrt->lookup_edit_distance(s_dictionary[r1]));
     }
     slrt->reset();
   }
@@ -585,8 +592,6 @@ TEST_F(RadixTreeTest, TrackingRadixTreeExtendElement) {
   }
   delete rt;
 }
-
-#endif
 
 TEST_F(RadixTreeTest, TrackingRadixTreeExtendAndClone) {
   StringTrackingRadixTree *rt = new StringTrackingRadixTree();
@@ -823,8 +828,274 @@ TEST_F(RadixTreeTest, TrackingRadixTreeExtendAndRemoveWithClone) {
   delete old_rt;
 }
 
+TEST_F(RadixTreeTest, KExtensionTreeInit) { 
+  StringKLevRT *rt = new StringKLevRT();
+  typedef std::pair<std::string, int> StringDist;
+  std::vector<StringDist> string_dists;
+  //std::string compute_str = "AndersonCooper";
+  std::string compute_str = "gash";
+
+  //unsigned r0, r1, count = 10000, check = 5;
+  unsigned r0, r1, count = s_dictionary.size(), check = 5;
+  
+  srand(3290482);
+  for (unsigned i=0; i < count;  ++i) {
+    r0 = (rand() % s_dictionary.size());
+    r0 = i;
+    rt->insert(s_dictionary[r0]);
+    string_dists.push_back(StringDist(s_dictionary[r0], INT_MAX));
+  }
+
+  int min_index = 0;
+  int max_index = 0;
+  for (unsigned i=0; i < count;  ++i) {
+    StringEDR edr(string_dists[i].first, compute_str);
+    string_dists[i].second = edr.compute_editdistance();
+    //std::cout << "EDR: " << string_dists[i].second
+    //  << ", " << string_dists[i].first << std::endl;
+
+
+    if (string_dists[i].second < string_dists[min_index].second)
+      min_index = i;
+
+    if (string_dists[i].second > string_dists[max_index].second)
+      max_index = i;
+  }
+
+  //rt->print(std::cout);
+  rt->init(string_dists[max_index].second + 1);
+  rt->update_suffix(compute_str);
+
+  for (unsigned i=0; i < count;  ++i) {
+
+    //std::cout << "EDR: " << string_dists[i].second
+    //  << ", " << string_dists[i].first << std::endl;
+    EXPECT_EQ(rt->lookup_edit_distance(string_dists[i].first),
+              string_dists[i].second);
+  }
+
+  //std::cout << "EDR: min distance: " << string_dists[min_index].second
+  //    << ", " << string_dists[min_index].first << std::endl;
+  //EXPECT_EQ(rt->min_distance(), string_dists[min_index].second);
+}
 
 //*/
+
+//TEST_F(RadixTreeTest, LevenshteinComputeTime) {
+//  StringLevenshteinRadixTree *slrt = new StringLevenshteinRadixTree();
+//
+//  for (unsigned i=0; i<s_dictionary.size(); ++i) {
+//    slrt->insert(s_dictionary[i]);
+//  }
+//  
+//  srand(0);
+//  unsigned r0, r1, count = 1, check = 5;
+//  for (unsigned i=0; i < count;  ++i) {
+//    r0 = (rand() % s_dictionary.size());
+//    slrt->update_suffix(s_dictionary[r0]);
+//    //for (unsigned j=0; j < check; ++j) {
+//    //  r1 = (rand() % s_dictionary.size());
+//    //  EXPECT_GE(slrt->lookup_edit_distance(s_dictionary[r1]), 0);
+//    //}
+//  }
+//  delete slrt;
+//}
+#endif
+
+#if 0
+TEST_F(RadixTreeTest, KPrefixComputeTime) {
+  StringKLevRT *rt = new StringKLevRT();
+
+  for (unsigned i=0; i<s_dictionary.size(); ++i) {
+    rt->insert(s_dictionary[i]);
+  }
+  
+  srand(0);
+  unsigned r0, r1, count = 5, check = 5;
+  for (unsigned i=0; i < count;  ++i) {
+    r0 = (rand() % s_dictionary.size());
+    //rt->update_suffix(s_dictionary[r0]);
+    
+    rt->init(32);
+    rt->update_suffix(s_dictionary[r0]);
+    //for (unsigned j=0; j < check; ++j) {
+    //  r1 = (rand() % s_dictionary.size());
+    //  EXPECT_GE(slrt->lookup_edit_distance(s_dictionary[r1]), 0);
+    //}
+  }
+  delete rt;
+}
+#endif
+
+#if 0
+TEST_F(RadixTreeTest, KLevenshteinComputeTime) {
+  StringKLevenshteinRadixTree *slrt = new StringKLevenshteinRadixTree();
+
+  for (unsigned i=0; i<s_dictionary.size(); ++i) {
+    slrt->insert(s_dictionary[i]);
+  }
+  
+  srand(0);
+  unsigned r0, r1, count = 5, check = 5;
+  for (unsigned i=0; i < count;  ++i) {
+    r0 = (rand() % s_dictionary.size());
+    slrt->update_suffix(s_dictionary[r0]);
+    //for (unsigned j=0; j < check; ++j) {
+    //  r1 = (rand() % s_dictionary.size());
+    //  EXPECT_GE(slrt->lookup_edit_distance(s_dictionary[r1]), 0);
+    //}
+  }
+  delete slrt;
+}
+
+TEST_F(RadixTreeTest, LevenshteinComputeCompare) {
+  StringKLevenshteinRadixTree *slrt = new StringKLevenshteinRadixTree();
+  StringKLevRT *rt = new StringKLevRT(); //KExten
+
+  unsigned r0, r1, count = 1000, check = 5;
+  ////unsigned r0, r1, count = s_dictionary.size(), check = 5;
+  
+  srand(0);
+  for (unsigned i=0; i<s_dictionary.size(); ++i) {
+  //for (unsigned i=0; i < count;  ++i) {
+    //r0 = (rand() % s_dictionary.size());
+    r0 = i;
+    slrt->insert(s_dictionary[r0]);
+    rt->insert(s_dictionary[r0]);
+  }
+  
+  srand(0);
+  for (unsigned i=0; i < count;  ++i) {
+    r0 = (rand() % s_dictionary.size());
+    //std::cout << "looking up: " << s_dictionary[r0] << "\n";
+    rt->init(5);
+    rt->update_suffix(s_dictionary[r0]);
+    slrt->init(5);
+    slrt->update_suffix(s_dictionary[r0]);
+
+    EXPECT_EQ(slrt->min_distance(), rt->min_distance());
+    EXPECT_EQ(slrt->min_prefix_distance(), rt->min_prefix_distance());
+  }
+  delete slrt;
+}
+#endif
+
+TEST_F(RadixTreeTest, LevenshteinComputeCompareKLevenshteinTreeTime) {
+  StringKLevenshteinRadixTree *rt = new StringKLevenshteinRadixTree();
+
+  unsigned r0, r1, count = 10, check = 5;
+  //count = s_dictionary.size();
+  
+  srand(0);
+  //for (unsigned i=0; i<count; ++i) {
+  for (unsigned i=0; i<s_dictionary.size(); ++i) {
+    r0 = i;
+    rt->insert(s_dictionary[r0]);
+  }
+  
+  srand(0);
+  for (unsigned i=0; i < count;  ++i) {
+    r0 = (rand() % s_dictionary.size());
+    //std::cout << "looking up: " << s_dictionary[r0] << "\n";
+    rt->init(2);
+    rt->update_suffix(s_dictionary[r0]);
+  }
+  delete rt;
+}
+
+TEST_F(RadixTreeTest, LevenshteinComputeKExtensionTime) {
+  StringKLevRT *rt = new StringKLevRT(); //KExten
+
+  unsigned r0, r1, count = 10, check = 5;
+  //count = s_dictionary.size();
+  
+  srand(0);
+  //for (unsigned i=0; i<count; ++i) {
+  for (unsigned i=0; i<s_dictionary.size(); ++i) {
+    r0 = i;
+    rt->insert(s_dictionary[r0]);
+  }
+  
+  srand(0);
+  for (unsigned i=0; i < count;  ++i) {
+    r0 = (rand() % s_dictionary.size());
+    //std::cout << "looking up: " << s_dictionary[r0] << "\n";
+    rt->init(2);
+    rt->update_suffix(s_dictionary[r0]);
+  }
+  delete rt;
+}
+
+#if 1
+TEST_F(RadixTreeTest, KExtensionTreePrefixTest) { 
+  StringKLevenshteinRadixTree *klrt = new StringKLevenshteinRadixTree();
+  StringKLevRT *rt = new StringKLevRT();
+  typedef std::pair<std::string, int> StringDist;
+  std::vector<StringDist> string_dists;
+  std::string compute_str = "gash";
+  std::map<std::string, int> prefix_dists;
+
+  unsigned r0, r1, count = 1000, check = 5;
+  //unsigned r0, r1, count = s_dictionary.size(), check = 5;
+  
+  srand(3290482);
+  for (unsigned i=0; i < count;  ++i) {
+    //r0 = i;
+    r0 = (rand() % s_dictionary.size());
+    rt->insert(s_dictionary[r0]);
+    klrt->insert(s_dictionary[r0]);
+    string_dists.push_back(StringDist(s_dictionary[r0], INT_MAX));
+  }
+
+  int min_index = 0;
+  int max_index = 0;
+  
+  std::string min_prefix, max_prefix;
+
+  for (unsigned i=0; i < count;  ++i) {
+    std::string &str = string_dists[i].first;
+    for (unsigned j=1; j<=str.size(); ++j) {
+      std::string prefix(str.begin(), str.begin()+j);
+      StringEDR edr(prefix, compute_str);
+      int edit_distance = edr.compute_editdistance();
+      prefix_dists[prefix] = edit_distance;
+      //std::cout << "EDR: " << prefix
+      //  << ", " << edit_distance << std::endl;
+
+      if (min_prefix.empty() || edit_distance < prefix_dists[min_prefix])
+        min_prefix = prefix;
+
+      if (max_prefix.empty() || edit_distance > prefix_dists[max_prefix])
+        max_prefix = prefix;
+    }
+  }
+
+  rt->init(prefix_dists[max_prefix] + 1);
+  rt->update_suffix(compute_str);
+
+  klrt->init(prefix_dists[max_prefix] + 1);
+  klrt->update_suffix(compute_str);
+
+  ////rt->print(std::cout);
+
+  std::map<std::string, int>::iterator it=prefix_dists.begin(),
+      ie = prefix_dists.end();
+  for (;it != ie; ++it) {
+
+    std::string prefix = it->first;
+    //std::cout << "EDR: " << prefix
+    //  << ", " << it->second << std::endl;
+    EXPECT_EQ(rt->lookup_edit_distance(prefix),
+              prefix_dists[prefix]);
+    EXPECT_EQ(klrt->lookup_edit_distance(prefix),
+              prefix_dists[prefix]);
+  }
+
+  ////std::cout << "EDR: min distance: " << string_dists[min_index].second
+  ////    << ", " << string_dists[min_index].first << std::endl;
+  ////EXPECT_EQ(rt->min_distance(), string_dists[min_index].second);
+}
+#endif
 
 
 //////////////////////////////////////////////////////////////////////////////////
