@@ -126,6 +126,11 @@ class LevenshteinRadixTree
     this->root_ = new Node();
   }
 
+  void init(int k) {
+    row_ = 0;
+    reset();
+  }
+
   /// Return a deep-copy of this RadixTree
   virtual This* clone() {
     LevenshteinRadixTree *lrt 
@@ -176,7 +181,7 @@ class LevenshteinRadixTree
   }
 
   /// Lookup the cost associated with edit distance to s
-  int lookup_cost(Sequence &s) { 
+  int lookup_edit_distance(Sequence &s) { 
     // Convert Sequence into an LevenshteinSequence
     LSequence ls(s.size() + 1);
     for (unsigned i=0; i<s.size() + 1; ++i) ls[i].e = (i == 0) ? 0 : s[i - 1];
@@ -204,34 +209,25 @@ class LevenshteinRadixTree
     return -1 ;
   }
 
-  /// Compute the minimum edit distance from s to all sequences in the tree
-  int min_edit_distance(Sequence &s) {
-    // If row is not zero, we reset any previous distance values to be the
-    // first row in the DP matrix
-    if (row_ != 0)
-      reset();
-    return min_edit_distance_suffix(s);
+  int min_distance() {
+    return min_distance_;
   }
 
-  /// Compute the minimum edit distance from s_update to all sequences in the tree
-  /// where s_update is equal to the previously computed sequence + suffix
-  int min_edit_distance_update(Sequence &s_update) {
+  void update(Sequence &s_update) {
     Sequence suffix(s_update.begin() + row_, s_update.end());
-    return min_edit_distance_suffix(suffix);
+    update_suffix(suffix);
   }
 
-  /// Compute the minimum edit distance from s' to all sequences in the tree
-  /// where s' is equal to the previously computed sequence + t
-  int min_edit_distance_suffix(T t) {
+  void update_element(T t) {
     Sequence suffix;
     suffix.insert(suffix.end(), t);
-    return min_edit_distance_suffix(suffix);
+    update_suffix(suffix);
   }
 
   /// Compute the minimum edit distance from s' to all sequences in the tree
   /// where s' is equal to the previously computed sequence + s
-  int min_edit_distance_suffix(Sequence &s) {
-    int min_cost = INT_MAX;
+  void update_suffix(Sequence &s) {
+    min_distance_ = INT_MAX;
 
     // Perform |s| traversals of the RadixTree to compute the updated edit
     // distance
@@ -292,14 +288,13 @@ class LevenshteinRadixTree
 
           // Update the minimum cost if we have reached a leaf node and are at
           // the end of s, otherwise push the next node onto the stack
-          if (j == (s.size()-1) && edge->to()->leaf() && (e1->d[curr] < min_cost) )
-            min_cost = e1->d[curr];
+          if (j == (s.size()-1) && edge->to()->leaf() && (e1->d[curr] < min_distance_) )
+            min_distance_ = e1->d[curr];
           else
             nodes.push(edge->to());
         }
       }
     }
-    return min_cost;
   }
 
   // Reset the distance values, i.e. fill out the top row in the DP matrix
@@ -330,8 +325,345 @@ class LevenshteinRadixTree
     this->root_ = root;
   }
 
+  int min_distance_;
   int row_;
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <class Sequence, class T> 
+class KLevenshteinRadixTree 
+: public RadixTree<std::vector<LevenshteinElement<T> >, 
+                   LevenshteinElement<T>,
+                   LevenshteinSequenceComparator<T> > {
+
+ public:
+  typedef LevenshteinElement<T> LElement;
+  typedef std::vector<LevenshteinElement<T> > LSequence;
+  typedef LevenshteinSequenceComparator<T> LComparator; 
+  typedef RadixTree<LSequence, LElement, LComparator> This;
+  typedef typename This::Node Node;
+  typedef typename This::Edge Edge;
+  typedef typename This::SequenceIterator EdgeIterator;
+  typedef typename This::EdgeMapIterator EdgeMapIterator;
+  typedef std::pair<Edge*, size_t> EdgeOffset;
+ 
+#define foreach_edge(__node, __iterator) \
+  EdgeMapIterator __iterator = __node->begin(); \
+  EdgeMapIterator __iterator##_END = __node->end(); \
+  for (; __iterator != __iterator##_END; ++__iterator)
+
+  /// Default Constructor
+  KLevenshteinRadixTree() : row_(0), k_(INT_MAX) { 
+    this->root_ = new Node();
+  }
+
+  void init(int k) {
+    k_ = k;
+    row_ = 0;
+    reset();
+  }
+
+  /// Return a deep-copy of this RadixTree
+  virtual This* clone() {
+    KLevenshteinRadixTree *lrt 
+      = new KLevenshteinRadixTree(this->clone_node(this->root_));
+    lrt->row_ = this->row_;
+    lrt->min_prefix_distance_ = min_prefix_distance_;
+    lrt->min_distance_ = this->min_distance_;
+    lrt->k_ = this->k_;
+    return lrt;
+  }
+
+  /// Return true if tree contains s
+  /// Note this function hides RadixTree::lookup() which takes a
+  /// LevenshteinSequence as a parameter
+  virtual bool lookup(Sequence &s) { 
+    // Convert Sequence into an LevenshteinSequence
+    LSequence ls(s.size() + 1);
+    for (unsigned i=0; i<s.size() + 1; ++i) ls[i].e = (i == 0) ? 0 : s[i - 1];
+
+    // Lookup the Levenshtein sequence
+    if (this->lookup_private(ls))
+      return true;
+    return false;
+  }
+
+  // Insert new sequence into this radix tree. Note this function hides
+  // RadixTree::remove() which takes a LevenshteinSequence as a parameter.
+  virtual Node* insert(Sequence &s) { 
+    // Convert Sequence into an LevenshteinSequence
+    LSequence ls(s.size() + 1);
+    for (unsigned i=0; i<s.size() + 1; ++i)
+      ls[i] = (i == 0) ? LElement(0, i): LElement(s[i - 1], i);
+
+    // Insert newly created LevenshteinSequence
+    return this->root_->insert(ls);
+  }
+
+  // Remove a sequence s from this tree, s will not be removed if it is only a
+  // prefix match. Note this function hides RadixTree::remove() which takes a
+  // LevenshteinSequence as a parameter.
+  virtual bool remove(Sequence &s) {
+    // Convert Sequence into an LevenshteinSequence
+    LSequence ls(s.size()+1);
+    for (unsigned i=0; i<s.size(); ++i) ls[i].e = (i == 0) ? 0 : s[i - 1];
+
+    // Lookup the node matching s
+    Node *node = this->lookup_private(ls, /*exact = */ true);
+
+    // Remove this node
+    return this->remove_node(node);
+  }
+
+  /// Lookup the edit distance associated with edit distance to s
+  int lookup_edit_distance(Sequence &s) { 
+    // Convert Sequence into an LevenshteinSequence
+    LSequence ls(s.size() + 1);
+    for (unsigned i=0; i<s.size() + 1; ++i) ls[i].e = (i == 0) ? 0 : s[i - 1];
+
+    // Find an exact match for the Levenshtein sequence ls
+    if (Node *res = this->lookup_private(ls, /*exact = */ true)) {
+      LElement& e = res->parent_edge()->back();
+
+      // Return the most recently computed edit distance
+      return e.d[row_ % 2];
+
+    // If an exact match is not found, find a prefix match
+    } else if (Node *res = this->lookup_private(ls)) {
+      Edge *edge = res->parent_edge();
+
+      // Compute the size of the mismatch suffix stored in the tree
+      size_t diff = res->depth() - ls.size();
+
+      // Find the element that corresponds to the last element of s
+      LElement *e = &(*(edge->begin() + (edge->size() - diff - 1)));
+
+      // Return the most recently computed edit distance
+      return e->d[row_ % 2];
+    }
+    return -1 ;
+  }
+
+  int min_distance() {
+    return min_distance_;
+  }
+
+  int min_prefix_distance() {
+    return min_prefix_distance_;
+  }
+
+  void update(Sequence &s_update) {
+    Sequence suffix(s_update.begin() + row_, s_update.end());
+    update_suffix(suffix);
+  }
+
+  /// Compute the minimum edit distance from s' to all sequences in the tree
+  /// where s' is equal to the previously computed sequence + s
+  void update_suffix(Sequence &s) {
+
+    // Perform |s| traversals of the RadixTree to compute the updated edit
+    // distance
+    for (unsigned j=0; j < s.size(); ++j) {
+      update_element(s[j]);
+    }
+  }
+
+  void update_element(T t) {
+    // Increment member variable row_ 
+    row_++;
+
+    // The current element of sequence s
+
+    int col_start = std::max(row_ - k_, 0);
+
+    std::vector<EdgeOffset> edge_offsets;
+    get_at_depth(this->root_, col_start, edge_offsets);
+
+    min_distance_ = min_prefix_distance_ = INT_MAX;
+
+    for (unsigned i=0; i<edge_offsets.size(); ++i) {
+      update_edge_element(t, edge_offsets[i]);
+    }
+  }
+
+  /// Compute the minimum edit distance from s' to all sequences in the tree
+  /// where s' is equal to the previously computed sequence + s
+  void update_edge_element(T t, EdgeOffset &root_edge) {
+
+    std::stack<EdgeOffset> edges;
+    edges.push(root_edge);
+
+    // curr is always 0 or 1
+    int curr = row_ % 2;
+    int prev = curr ^ 1;
+
+    int max_depth = max_column();
+
+    while (!edges.empty()) {
+      Edge* edge = edges.top().first;
+      int offset = edges.top().second;
+      int depth = edge->from()->depth() + edges.top().second;
+      edges.pop();
+      assert(edge);
+
+      // e0 is the previous cell, e1 is the current cell
+      LElement *e0 = NULL, *e1 = NULL; 
+
+      // For each element of the edge
+      EdgeIterator edge_it = edge->begin(), edge_ie = edge->end();
+
+      if (offset > 0) {
+        std::advance(edge_it, offset-1);
+        e1 = &(*edge_it);
+        std::advance(edge_it, 1);
+      } else {
+        std::advance(edge_it, offset);
+      }
+
+      for (; edge_it != edge_ie && depth < max_depth; ++edge_it, ++depth) {
+
+        e0 = e1;
+        e1 = &(*edge_it);
+
+        // If this is the first column of the DP matrix, d = row
+        if (edge_it == edge->begin() && edge->from() == this->root_) {
+          e1->d[curr] = row_;
+
+        // Otherwise compute new d
+        } else {
+
+          // If this is the first element of the edge, the previous cell
+          // e0 is the last element of the parent edge
+          if (edge_it == edge->begin())
+            e0 = &(edge->from()->parent_edge()->back());
+
+          int e1_d_prev;
+          int e0_d_curr;
+          int e0_d_prev = e0->d[prev];
+
+          if (depth == max_column())
+            e0_d_curr = INT_MAX - 1;
+          else
+            e0_d_curr = e0->d[curr];
+
+          if (depth == min_column())
+            e1_d_prev = INT_MAX - 1;
+          else
+            e1_d_prev = e1->d[prev];
+
+          if (depth == min_column())
+            e1_d_prev = INT_MAX - 1;
+
+          // Compute minimum cost of insert or delete
+          int ins_or_del 
+            = std::min(e0_d_curr + 1, e1_d_prev + 1);
+
+          // Compute minimum cost of replace or match if equal
+          int match_or_replace = (t == e1->e) ? e0_d_prev : e0_d_prev + 1;
+
+          // Store the minimum cost operation
+          e1->d[curr] = std::min(ins_or_del, match_or_replace);
+
+        }
+      }
+
+      if (depth < max_depth) {
+        foreach_edge(edge->to(), it) {
+          Edge *child_edge = it->second;
+          edges.push(EdgeOffset(child_edge, 0));
+        }
+      }
+
+      if (edge->to()->leaf() && edge_it == edge->end()) {
+        if (e1->d[curr] < min_distance_) {
+          min_distance_ = e1->d[curr];
+        }
+        //LSequence min_s;
+        //edge->to()->get(min_s);
+        //std::cout << "KL: min distance: " << min_distance_ << ": ";
+        //for (int x=0; x<min_s.size(); x++) {
+        //  std::cout << min_s[x];
+        //}
+        //std::cout << std::endl;
+      }
+
+      min_prefix_distance_ = std::min(min_prefix_distance_, e1->d[curr]);
+    }
+
+    return;
+  }
+
+  // Reset the distance values, i.e. fill out the top row in the DP matrix
+  void reset() {
+    row_ = 0;
+    std::stack<Node*> nodes;
+    nodes.push(this->root_);
+    while (!nodes.empty()) {
+      Node* n = nodes.top();
+      nodes.pop();
+      foreach_edge(n, it) {
+        Edge *edge = it->second;
+        int depth = n->depth();
+        EdgeIterator edge_it = edge->begin(), edge_ie = edge->end(); 
+        for (; edge_it != edge_ie; ++edge_it)
+          edge_it->d[0] = depth++;
+        if (!edge->to()->leaf())
+          nodes.push(edge->to());
+      }
+    }
+  }
+
+  int row() { return row_; }
+
+ private:
+
+  KLevenshteinRadixTree(Node *root) : row_(0) {
+    this->root_ = root;
+  }
+
+  inline int max_column() {
+    if (k_ == INT_MAX) return INT_MAX;
+    return row_ + k_;
+  }
+
+  inline int min_column() {
+    return std::max(row_ - k_, 0);
+  }
+
+  void get_at_depth(Node* root, int depth, 
+                    std::vector<EdgeOffset>& edge_offsets) {
+    typedef std::pair<Node*, int> NodeDepthPair;
+
+    std::stack<NodeDepthPair> nodes;
+    nodes.push(NodeDepthPair(root, root->depth()));
+
+    while (!nodes.empty()) {
+      NodeDepthPair ndp = nodes.top();
+      nodes.pop();
+      foreach_edge(ndp.first, it) {
+        Edge *edge = it->second;
+        if ((ndp.second + edge->size()) > depth) {
+          size_t offset = depth - ndp.second;
+          edge_offsets.push_back(EdgeOffset(edge, offset));
+        } else {
+          // For each element of the edge
+          EdgeIterator edge_it = edge->begin(), edge_ie = edge->end();
+          for (; edge_it != edge_ie; ++edge_it) {
+            nodes.push(NodeDepthPair(edge->to(), ndp.second + edge->size()));
+          }
+        }
+      }
+    }
+  }
+
+  int min_prefix_distance_;
+  int min_distance_;
+  int row_;
+  int k_;
+};
+
+////////////////////////////////////////////////////////////////////////////////
 
 } // end namespace cliver
 
