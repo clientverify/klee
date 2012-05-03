@@ -96,6 +96,8 @@ class RadixTree {
   class Edge {
    public:
 
+    //Edge() : from_(NULL), to_(NULL) {}
+
     Edge(Node* from, Node* to, Sequence& s) 
     : from_(from), to_(to), seq_(s) {}
 
@@ -133,6 +135,8 @@ class RadixTree {
     inline Element& back() { return *(seq_.begin()+(seq_.size()-1)); }
 
     inline size_t size() { return seq_.size(); }
+
+    Sequence& seq() { return seq_; }
 
   protected:
     Node *from_;
@@ -385,19 +389,21 @@ class RadixTree {
   // Destructor: Delete RadixTree non-recursively
   virtual ~RadixTree() {
     std::stack<Node*> worklist; 
-    worklist.push(root_);
-    while (!worklist.empty()) {
-      Node* node = worklist.top();
-      EdgeMapIterator 
-          it = node->edge_map().begin(), iend = node->edge_map().end();
-      worklist.pop();
-      for (; it != iend; ++it) {
-        Edge* edge = it->second;
-        worklist.push(edge->to());
-        delete edge;
+    if (this->root_) {
+      worklist.push(this->root_);
+      while (!worklist.empty()) {
+        Node* node = worklist.top();
+        EdgeMapIterator 
+            it = node->edge_map().begin(), iend = node->edge_map().end();
+        worklist.pop();
+        for (; it != iend; ++it) {
+          Edge* edge = it->second;
+          worklist.push(edge->to());
+          delete edge;
+        }
+        node->edge_map().clear();
+        delete node;
       }
-      node->edge_map().clear();
-      delete node;
     }
   }
 
