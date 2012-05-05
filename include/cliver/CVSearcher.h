@@ -84,6 +84,8 @@ class SearcherStageImpl : public SearcherStage {
  public:
   SearcherStageImpl(CVExecutionState* root_state)
     : live_(NULL) {
+    // Increment Round #
+    root_state->property()->round++;
     this->add_state(root_state);
   }
 
@@ -229,7 +231,6 @@ typedef SearcherStageImpl< StatePropertyQueue, RebuildingStateCache >          B
 typedef SearcherStageImpl< StatePropertyPriorityQueue, RebuildingStateCache >  PQSearcherStage;
 typedef SearcherStageImpl< StatePropertyRandomSelector, RebuildingStateCache > RandomSearcherStage;
 
-
 ////////////////////////////////////////////////////////////////////////////////
 
 class VerifySearcher : public CVSearcher {
@@ -266,24 +267,10 @@ class KExtensionVerifySearcher : public VerifySearcher {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class MergeVerifySearcher : public VerifySearcher {
- public:
-  MergeVerifySearcher(ClientVerifier *cv, StateMerger* merger);
-  virtual void notify(ExecutionEvent ev);
-  virtual bool check_pending(CVExecutionState* state);
-  virtual bool empty();
- private:
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TrainingSearcher : public CVSearcher {
+class TrainingSearcher : public VerifySearcher {
  public:
   TrainingSearcher(ClientVerifier *cv, StateMerger* merger);
   klee::ExecutionState &selectState();
-  void update(klee::ExecutionState *current,
-              const std::set<klee::ExecutionState*> &addedStates,
-              const std::set<klee::ExecutionState*> &removedStates);
   bool empty();
   void printName(std::ostream &os) { os << "TrainingSearcher\n"; }
 
@@ -295,9 +282,9 @@ class TrainingSearcher : public CVSearcher {
   void remove_state(CVExecutionState* state);
   bool check_pending(CVExecutionState* state);
 
-  SearcherStageList stages_;
-  SearcherStageList pending_stages_;
-  ExecutionStateSet pending_states_;
+  //SearcherStageList stages_;
+  //SearcherStageList pending_stages_;
+  //ExecutionStateSet pending_states_;
   ExecutionStateSet pruned_states_;
 };
 
