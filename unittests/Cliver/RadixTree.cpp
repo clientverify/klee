@@ -23,28 +23,77 @@
 
 using namespace cliver;
 
+//////////////////////////////////////////////////////////////////////////////////
+
 // Helper to return end of array
 template<typename T, size_t N> T * end(T (&ra)[N]) { return ra + N; }
+
+template<typename T>
+std::ostream& operator<<(std::ostream &os, const std::vector<T>& v) {
+  for (typename std::vector<T>::const_iterator it=v.begin(), ie=v.end(); it!=ie; ++it)
+    os << *it;
+  return os;
+}
+
+template<typename T>
+std::ostream& operator<<(std::ostream &os, const std::list<T>& v) {
+  for(typename std::list<T>::const_iterator it=v.begin(), ie=v.end(); it!=ie; ++it)
+    os << *it;
+  return os;
+}
+//////////////////////////////////////////////////////////////////////////////////
+
+// Static vars
+std::vector<std::string> dictionary;
 
 //////////////////////////////////////////////////////////////////////////////////
 // Under test: RadixTree and RadixTree inheriting classes 
 //////////////////////////////////////////////////////////////////////////////////
 
-typedef RadixTree<std::string, char> StringRadixTree;
-typedef RadixTree<std::vector<char>, char> VectorRadixTree;
-typedef RadixTree<std::list<char>, char> ListRadixTree;
-typedef LevenshteinRadixTree<std::string, char> StringLevenshteinRadixTree;
+// Tested in RadixTreeTest
+typedef RadixTree<std::string, char>             StringRadixTree;
+typedef RadixTree<std::vector<char>, char>       VectorRadixTree;
+typedef RadixTree<std::list<char>, char>         ListRadixTree;
+
+// Tested in TrackingRadixTreeTest
+struct TrackingObject { unsigned id; };
+
+typedef TrackingRadixTree<std::string, char, TrackingObject>       StringTrackingRadixTree;
+typedef TrackingRadixTree<std::vector<char>, char, TrackingObject> VectorTrackingRadixTree;
+typedef TrackingRadixTree<std::list<char>, char, TrackingObject>   ListTrackingRadixTree;
+
+// Tested in EditDistanceTreeTest
+typedef LevenshteinRadixTree<std::string, char>  StringLevenshteinRadixTree;
 typedef KLevenshteinRadixTree<std::string, char> StringKLevenshteinRadixTree;
-typedef KExtensionOptTree<std::string, char> StringKLevRT;
-//typedef KExtensionTree<std::string, char> StringKLevRT;
-//typedef KExtensionOptTree<std::string, char> StringKLevRTOpt;
+typedef KExtensionOptTree<std::string, char>     StringKExtensionOptTree;
+typedef KExtensionTree<std::string, char>        StringKExtensionTree;
 
-struct TrackingObject {
-  unsigned id;
-  std::string str;
-};
+//////////////////////////////////////////////////////////////////////////////////
 
-typedef TrackingRadixTree<std::string, char, TrackingObject> StringTrackingRadixTree;
+using ::testing::Types;
+
+//typedef Types<> Implementations;
+typedef Types<
+  StringRadixTree, 
+  VectorRadixTree, 
+  ListRadixTree
+> Implementations;
+
+
+//typedef Types<> TrackingImplementations;
+typedef Types<
+  StringTrackingRadixTree, 
+  StringTrackingRadixTree, 
+  ListTrackingRadixTree
+> TrackingImplementations;
+
+//typedef Types<> EditDistanceImplementations;
+typedef Types<
+  StringLevenshteinRadixTree,
+  StringKLevenshteinRadixTree,
+  StringKExtensionOptTree,
+  StringKExtensionTree
+> EditDistanceImplementations;
 
 //////////////////////////////////////////////////////////////////////////////////
 // EditDistance typedefs for verifiying LevenshteinRadixTree, this classes are
@@ -56,19 +105,14 @@ typedef EditDistanceRow<StringScore,std::string,int> StringEDR;
 
 //////////////////////////////////////////////////////////////////////////////////
 
-//////////////////////////////////////////////////////////////////////////////////
-
-std::vector<std::string> s_dictionary;
-std::vector<std::vector<char> > v_dictionary;
-std::vector<std::vector<char> > l_dictionary;
-
+template<class RadixTreeType>
 class RadixTreeTest : public ::testing::Test {
  protected:
 
   virtual void SetUp() {
-    srt = new StringRadixTree();
-    vrt = new VectorRadixTree();
-    lrt = new ListRadixTree();
+    rt_ = new RadixTreeType();
+
+    std::string s1, s2, s3, s4, s5, s6, s7, s8;
 
     s1 = "ATest";
     s2 = "ATestB";
@@ -87,1016 +131,433 @@ class RadixTreeTest : public ::testing::Test {
     v6.insert(v6.end(), s6.begin(), s6.end());
     v7.insert(v7.end(), s7.begin(), s7.end());
     v8.insert(v8.end(), s8.begin(), s8.end());
-
-    l1.insert(l1.end(), s1.begin(), s1.end());
-    l2.insert(l2.end(), s2.begin(), s2.end());
-    l3.insert(l3.end(), s3.begin(), s3.end());
-    l4.insert(l4.end(), s4.begin(), s4.end());
-    l5.insert(l5.end(), s5.begin(), s5.end());
-    l6.insert(l6.end(), s6.begin(), s6.end());
-    l7.insert(l7.end(), s7.begin(), s7.end());
-    l8.insert(l8.end(), s8.begin(), s8.end());
-
   }
 
-  static void SetUpTestCase() {
-    if (s_dictionary.empty())
-      s_dictionary = std::vector<std::string>(cstr_dictionary, end(cstr_dictionary));
-
-    if (v_dictionary.empty()) {
-      for (unsigned i=0; i<s_dictionary.size(); ++i) {
-        std::vector<char> v(s_dictionary[i].begin(), s_dictionary[i].end());
-        v_dictionary.push_back(v);
-      }
+  void SetupDictionary() {
+    if (dictionary.empty())
+      dictionary = std::vector<std::string>(cstr_dictionary, end(cstr_dictionary));
+    for (unsigned i=0; i<dictionary.size(); ++i) {
+      typename RadixTreeType::sequence_type 
+          v(dictionary[i].begin(), dictionary[i].end());
+      v_dictionary.push_back(v);
     }
   }
 
   void InsertDictionary() {
-
-    for (unsigned i=0; i<s_dictionary.size(); ++i) {
-      srt->insert(s_dictionary[i]);
-    }
-
+    this->SetupDictionary();
     for (unsigned i=0; i<v_dictionary.size(); ++i) {
-      vrt->insert(v_dictionary[i]);
+      rt_->insert(v_dictionary[i]);
     }
   }
 
-  void InsertAll() {
-    srt->insert(s_empty);
-    srt->insert(s1);
-    srt->insert(s2);
-    srt->insert(s3);
-    srt->insert(s4);
-    srt->insert(s5);
-    srt->insert(s6);
-    srt->insert(s7);
-    srt->insert(s8);
-
-    vrt->insert(v_empty);
-    vrt->insert(v1);
-    vrt->insert(v2);
-    vrt->insert(v3);
-    vrt->insert(v4);
-    vrt->insert(v5);
-    vrt->insert(v6);
-    vrt->insert(v7);
-    vrt->insert(v8);
-
-    lrt->insert(l_empty);
-    lrt->insert(l1);
-    lrt->insert(l2);
-    lrt->insert(l3);
-    lrt->insert(l4);
-    lrt->insert(l5);
-    lrt->insert(l6);
-    lrt->insert(l7);
-    lrt->insert(l8);
+  void InsertSmallWords() {
+    rt_->insert(v_empty);
+    rt_->insert(v1);
+    rt_->insert(v2);
+    rt_->insert(v3);
+    rt_->insert(v4);
+    rt_->insert(v5);
+    rt_->insert(v6);
+    rt_->insert(v7);
+    rt_->insert(v8);
   }
 
   virtual void TearDown() {
-    delete srt;
-    delete vrt;
-    delete lrt;
+    delete rt_;
   }
 
-  StringRadixTree* srt;
-  VectorRadixTree* vrt;
-  ListRadixTree* lrt;
-
-  std::string s_empty, s1, s2, s3, s4, s5, s6, s7, s8;
-
-  std::vector<char> v_empty, v1, v2, v3, v4, v5, v6, v7, v8;
-  std::list<char> l_empty, l1, l2, l3, l4, l5, l6, l7, l8;
-
+  RadixTreeType* rt_;
+  std::vector<typename RadixTreeType::sequence_type> v_dictionary;
+  typename RadixTreeType::sequence_type v_empty, v1, v2, v3, v4, v5, v6, v7, v8;
 };
 
+//////////////////////////////////////////////////////////////////////////////////
+
+template<class RadixTreeType>
+class TrackingRadixTreeTest : public ::testing::Test {
+ protected:
+
+  typedef typename RadixTreeType::sequence_type SequenceType;
+  typedef std::vector<SequenceType> SequenceList;
+  typedef std::vector<TrackingObject*> TrackingObjectList;
+  typedef std::map<TrackingObject*, SequenceType> TrackingObjectMap;
+
+  virtual void SetUp() {
+    rt_ = new RadixTreeType();
+
+    if (dictionary.empty())
+      dictionary = std::vector<std::string>(cstr_dictionary, end(cstr_dictionary));
+
+    for (unsigned i=0; i<dictionary.size(); ++i) {
+      typename RadixTreeType::sequence_type 
+          v(dictionary[i].begin(), dictionary[i].end());
+      v_dictionary.push_back(v);
+    }
+
+    srand(0);
+    for (unsigned i=0; i<v_dictionary.size(); ++i) {
+      TrackingObject* tobj = new TrackingObject();
+      tobj->id = i;
+      list_.push_back(tobj);
+    }
+  }
+
+  void ExtendDictionary() {
+    for (unsigned i=0; i<v_dictionary.size(); ++i) {
+      rt_->extend(v_dictionary[i], list_[i]);
+    }
+  }
+
+  void RandomExtend(RadixTreeType* rt, int count) {
+  
+    int r0, r1, r2;
+    for (int i=0; i < count;  ++i) {
+      r0 = rand() % this->v_dictionary.size();
+      r1 = rand() % this->v_dictionary.size();
+      r2 = rand() % this->v_dictionary.size();
+      if (this->list_[r0] != NULL) {
+        TrackingObject* tobj     = this->list_[r0];
+        TrackingObject* tobj_new = new TrackingObject();
+        this->list_.push_back(tobj_new);
+        tobj_new->id = this->list_.size();
+
+        EXPECT_EQ(rt->clone_tracker(tobj_new, tobj), true);
+
+        SequenceType seq_ext_1, seq_ext_2;
+        seq_ext_1.insert(seq_ext_1.end(), 
+                        this->v_dictionary[r1].begin(),
+                        this->v_dictionary[r1].end());
+        seq_ext_1.insert(seq_ext_1.end(), '_');
+
+        rt->extend(seq_ext_1, tobj);
+
+        seq_ext_1.insert(seq_ext_1.begin(), 
+                        this->v_dictionary[r0].begin(),
+                        this->v_dictionary[r0].end());
+
+        seq_ext_2.insert(seq_ext_2.begin(), 
+                        this->v_dictionary[r2].begin(),
+                        this->v_dictionary[r2].end());
+
+        seq_ext_2.insert(seq_ext_2.end(), '_');
+
+        rt->extend(seq_ext_2, tobj_new);
+
+        seq_ext_2.insert(seq_ext_2.begin(), 
+                        this->v_dictionary[r0].begin(),
+                        this->v_dictionary[r0].end());
+
+        this->v_dictionary[r0] = seq_ext_1;
+        this->v_dictionary.push_back(seq_ext_2);
+      }
+    }
+  }
+
+  virtual void TearDown() {
+    delete rt_;
+
+    for (unsigned i=0; i<list_.size(); ++i) {
+      if (list_[i])
+        delete list_[i];
+    }
+  }
+
+  RadixTreeType* rt_;
+  SequenceList v_dictionary;
+  TrackingObjectList list_;
+};
+
+//////////////////////////////////////////////////////////////////////////////////
+
+typedef KLevenshteinRadixTree<std::string, char> StringKLevRadixTree;
+
+template<class EditDistanceTreeType>
+class EditDistanceTreeTest : public ::testing::Test {
+ protected:
+
+  virtual void SetUp() {
+    rt_ = new EditDistanceTreeType();
+  }
+
+  void SetupDictionary() {
+    if (dictionary.empty())
+      dictionary = std::vector<std::string>(cstr_dictionary, end(cstr_dictionary));
+    for (unsigned i=0; i<dictionary.size(); ++i) {
+      typename EditDistanceTreeType::sequence_type 
+          v(dictionary[i].begin(), dictionary[i].end());
+      v_dictionary.push_back(v);
+    }
+  }
+
+  void InsertDictionary() {
+    this->SetupDictionary();
+    for (unsigned i=0; i<v_dictionary.size(); ++i) {
+      rt_->insert(v_dictionary[i]);
+    }
+  }
+
+  virtual void TearDown() {
+    delete rt_;
+  }
+
+  EditDistanceTreeType* rt_;
+  std::vector<typename EditDistanceTreeType::sequence_type> v_dictionary;
+};
+
+//////////////////////////////////////////////////////////////////////////////////
+
+TYPED_TEST_CASE(RadixTreeTest, Implementations);
+TYPED_TEST_CASE(TrackingRadixTreeTest, TrackingImplementations);
+TYPED_TEST_CASE(EditDistanceTreeTest, EditDistanceImplementations);
 
 //////////////////////////////////////////////////////////////////////////////////
 
 namespace {
 
-#if 1
-TEST_F(RadixTreeTest, Init) {
-  ASSERT_TRUE(srt != NULL);
-  ASSERT_TRUE(vrt != NULL);
-  ASSERT_TRUE(lrt != NULL);
+//////////////////////////////////////////////////////////////////////////////////
+
+TYPED_TEST(EditDistanceTreeTest, Init) {
+  ASSERT_TRUE(this->rt_ != NULL);
 }
 
-TEST_F(RadixTreeTest, Insert) {
-  InsertAll();
-}
+TYPED_TEST(EditDistanceTreeTest, Insert) {
+  ASSERT_TRUE(this->rt_ != NULL);
+  this->InsertDictionary();
 
-TEST_F(RadixTreeTest, Lookup) {
-  ASSERT_EQ(srt->lookup(s1), false);
-  srt->insert(s1);
-  ASSERT_EQ(srt->lookup(s2), false);
-  srt->insert(s2);
-  ASSERT_EQ(srt->lookup(s1), true);
-  ASSERT_EQ(srt->lookup(s2), true);
-  srt->insert(s3);
-  ASSERT_EQ(srt->lookup(s3), true);
-  ASSERT_EQ(srt->lookup(s4), true);
-  ASSERT_EQ(srt->lookup(s5), false);
-  ASSERT_EQ(srt->lookup(s7), false);
-  ASSERT_EQ(vrt->lookup(v1), false);
-  vrt->insert(v1);
-  ASSERT_EQ(vrt->lookup(v2), false);
-  vrt->insert(v2);
-  ASSERT_EQ(vrt->lookup(v1), true);
-  ASSERT_EQ(vrt->lookup(v2), true);
-  vrt->insert(v3);
-  ASSERT_EQ(vrt->lookup(v3), true);
-  ASSERT_EQ(vrt->lookup(v4), true);
-  ASSERT_EQ(vrt->lookup(v5), false);
-}
-
-TEST_F(RadixTreeTest, Remove) {
-  InsertAll();
-  ASSERT_EQ(srt->lookup(s1), true);
-  ASSERT_EQ(srt->remove(s2), true);
-  ASSERT_EQ(srt->lookup(s2), false);
-  ASSERT_EQ(srt->remove(s8), false);
-  ASSERT_EQ(srt->lookup(s8), true);
-  ASSERT_EQ(srt->lookup(s6), true);
-  ASSERT_EQ(srt->remove(s6), true);
-  ASSERT_EQ(srt->lookup(s6), false);
-  ASSERT_EQ(vrt->lookup(v1), true);
-  ASSERT_EQ(vrt->remove(v2), true);
-  ASSERT_EQ(vrt->lookup(v2), false);
-  ASSERT_EQ(vrt->remove(v8), false);
-  ASSERT_EQ(vrt->lookup(v8), true);
-  ASSERT_EQ(vrt->lookup(v6), true);
-  ASSERT_EQ(vrt->remove(v6), true);
-  ASSERT_EQ(vrt->lookup(v6), false);
-}
-
-TEST_F(RadixTreeTest, Clone) {
-  InsertAll();
-
-  StringRadixTree *clone_srt = srt->clone();
-  delete srt;
-  ASSERT_EQ(clone_srt->lookup(s1), true);
-  ASSERT_EQ(clone_srt->remove(s2), true);
-  ASSERT_EQ(clone_srt->lookup(s2), false);
-  ASSERT_EQ(clone_srt->remove(s8), false);
-  ASSERT_EQ(clone_srt->lookup(s8), true);
-  ASSERT_EQ(clone_srt->lookup(s6), true);
-  ASSERT_EQ(clone_srt->remove(s6), true);
-  ASSERT_EQ(clone_srt->lookup(s6), false);
-  delete clone_srt;
-  srt = new StringRadixTree();
-
-  VectorRadixTree *clone_vrt = vrt->clone();
-  delete vrt;
-  ASSERT_EQ(clone_vrt->lookup(v1), true);
-  ASSERT_EQ(clone_vrt->remove(v2), true);
-  ASSERT_EQ(clone_vrt->lookup(v2), false);
-  ASSERT_EQ(clone_vrt->remove(v8), false);
-  ASSERT_EQ(clone_vrt->lookup(v8), true);
-  ASSERT_EQ(clone_vrt->lookup(v6), true);
-  ASSERT_EQ(clone_vrt->remove(v6), true);
-  ASSERT_EQ(clone_vrt->lookup(v6), false);
-  delete clone_vrt;
-  vrt = new VectorRadixTree();
-
-}
-
-TEST_F(RadixTreeTest, InsertDictionary) {
-  InsertDictionary();
-}
-
-TEST_F(RadixTreeTest, LookupDictionary) {
-  InsertDictionary();
-  for (unsigned i = 0; i<s_dictionary.size(); ++i) {
-    ASSERT_EQ(srt->lookup(s_dictionary[i]), true);
+  for (unsigned i = 0; i<this->v_dictionary.size(); ++i) {
+    EXPECT_EQ(this->rt_->lookup(this->v_dictionary[i]), true);
   }
 }
 
-TEST_F(RadixTreeTest, RemoveDictionary) {
-  InsertDictionary();
+TYPED_TEST(EditDistanceTreeTest, Clone) {
+  ASSERT_TRUE(this->rt_ != NULL);
+  this->InsertDictionary();
+
+  TypeParam* clone_rt = static_cast<TypeParam*>(this->rt_->clone());
+  delete this->rt_;
+  this->rt_ = clone_rt;
+
+  for (unsigned i = 0; i<this->v_dictionary.size(); ++i) {
+    EXPECT_EQ(clone_rt->lookup(this->v_dictionary[i]), true);
+  }
+}
+
+//////////////////////////////////////////////////////////////////////////////////
+
+TYPED_TEST(RadixTreeTest, Init) {
+  ASSERT_TRUE(this->rt_ != NULL);
+}
+
+TYPED_TEST(RadixTreeTest, Insert) {
+  this->InsertSmallWords();
+  ASSERT_TRUE(this->rt_->element_count() == 22);
+}
+
+TYPED_TEST(RadixTreeTest, Lookup) {
+  EXPECT_EQ(this->rt_->lookup(this->v1), false);
+
+  this->rt_->insert(this->v1);
+  EXPECT_EQ(this->rt_->lookup(this->v2), false);
+
+  this->rt_->insert(this->v2);
+  EXPECT_EQ(this->rt_->lookup(this->v1), true);
+  EXPECT_EQ(this->rt_->lookup(this->v2), true);
+
+  this->rt_->insert(this->v3);
+  EXPECT_EQ(this->rt_->lookup(this->v3), true);
+  EXPECT_EQ(this->rt_->lookup(this->v4), true);
+  EXPECT_EQ(this->rt_->lookup(this->v5), false);
+  EXPECT_EQ(this->rt_->lookup(this->v7), false);
+}
+
+TYPED_TEST(RadixTreeTest, Remove) {
+  this->InsertSmallWords();
+  EXPECT_EQ(this->rt_->lookup(this->v1), true);
+  EXPECT_EQ(this->rt_->remove(this->v2), true);
+  EXPECT_EQ(this->rt_->lookup(this->v2), false);
+  EXPECT_EQ(this->rt_->remove(this->v8), false);
+  EXPECT_EQ(this->rt_->lookup(this->v8), true);
+  EXPECT_EQ(this->rt_->lookup(this->v6), true);
+  EXPECT_EQ(this->rt_->remove(this->v6), true);
+  EXPECT_EQ(this->rt_->lookup(this->v6), false);
+}
+
+TYPED_TEST(RadixTreeTest, Clone) {
+  this->InsertSmallWords();
+
+  TypeParam *clone_rt = this->rt_->clone();
+  delete this->rt_;
+  EXPECT_EQ(clone_rt->lookup(this->v1), true);
+  EXPECT_EQ(clone_rt->remove(this->v2), true);
+  EXPECT_EQ(clone_rt->lookup(this->v2), false);
+  EXPECT_EQ(clone_rt->remove(this->v8), false);
+  EXPECT_EQ(clone_rt->lookup(this->v8), true);
+  EXPECT_EQ(clone_rt->lookup(this->v6), true);
+  EXPECT_EQ(clone_rt->remove(this->v6), true);
+  EXPECT_EQ(clone_rt->lookup(this->v6), false);
+  this->rt_ = clone_rt;
+}
+
+TYPED_TEST(RadixTreeTest, InsertDictionary) {
+  this->InsertDictionary();
+  ASSERT_TRUE(this->rt_->element_count() == 389308);
+}
+
+TYPED_TEST(RadixTreeTest, LookupDictionary) {
+  this->InsertDictionary();
+  for (unsigned i = 0; i<this->v_dictionary.size(); ++i) {
+    EXPECT_EQ(this->rt_->lookup(this->v_dictionary[i]), true);
+  }
+}
+
+TYPED_TEST(RadixTreeTest, RemoveDictionary) {
+  this->InsertDictionary();
   
   srand(0);
   unsigned r = 0, freq = 10;
-  while (r < s_dictionary.size()) {
-    bool result = srt->remove(s_dictionary[r]);
-    ASSERT_EQ(srt->lookup(s_dictionary[r]), !result);
-    r += 1 + (rand() % freq);
-  }
-
-  srand(0);
-  r = 0;
-  while (r < v_dictionary.size()) {
-    bool result = vrt->remove(v_dictionary[r]);
-    ASSERT_EQ(vrt->lookup(v_dictionary[r]), !result);
+  while (r < this->v_dictionary.size()) {
+    bool result = this->rt_->remove(this->v_dictionary[r]);
+    EXPECT_EQ(this->rt_->lookup(this->v_dictionary[r]), !result);
     r += 1 + (rand() % freq);
   }
 }
 
-TEST_F(RadixTreeTest, CloneDictionary) {
-  InsertDictionary();
+TYPED_TEST(RadixTreeTest, CloneDictionary) {
+  this->InsertDictionary();
 
-  StringRadixTree *clone_srt = srt->clone();
-  delete srt;
-  
+  TypeParam* clone_rt = this->rt_->clone();
+  delete this->rt_;
+
   srand(0);
-  unsigned r = 0, freq = 100;
-  while (r < s_dictionary.size()) {
-    bool result = clone_srt->remove(s_dictionary[r]);
-    ASSERT_EQ(clone_srt->lookup(s_dictionary[r]), !result);
+  unsigned r = 0, freq = 10;
+  while (r < this->v_dictionary.size()) {
+    bool result = clone_rt->remove(this->v_dictionary[r]);
+    EXPECT_EQ(clone_rt->lookup(this->v_dictionary[r]), !result);
     r += 1 + (rand() % freq);
   }
-
-  delete clone_srt;
-  srt = new StringRadixTree();
-
-  VectorRadixTree *clone_vrt = vrt->clone();
-  delete vrt;
-
-  srand(0);
-  r = 0;
-  while (r < v_dictionary.size()) {
-    bool result = clone_vrt->remove(v_dictionary[r]);
-    ASSERT_EQ(clone_vrt->lookup(v_dictionary[r]), !result);
-    r += 1 + (rand() % freq);
-  }
-
-  delete clone_vrt;
-  vrt = new VectorRadixTree();
+  this->rt_ = clone_rt;
 }
 
-TEST_F(RadixTreeTest, Levenshtein) {
-  StringLevenshteinRadixTree *slrt = new StringLevenshteinRadixTree();
-  std::string test("test");
-  slrt->update_suffix(test);
+//////////////////////////////////////////////////////////////////////////////////
+
+TYPED_TEST(TrackingRadixTreeTest, Init) {
+  ASSERT_TRUE(this->rt_ != NULL);
 }
 
-TEST_F(RadixTreeTest, LevenshteinInsert) {
-  StringLevenshteinRadixTree *slrt = new StringLevenshteinRadixTree();
+TYPED_TEST(TrackingRadixTreeTest, Extend) {
+  TypeParam *rt = this->rt_;
+  this->ExtendDictionary();
 
-  for (unsigned i=0; i<s_dictionary.size(); ++i) {
-    slrt->insert(s_dictionary[i]);
+  for (unsigned i=0; i<this->list_.size(); ++i) {
+    typename TypeParam::sequence_type seq;
+    EXPECT_EQ(true, rt->tracks(this->list_[i]));
+    rt->tracker_get(this->list_[i], seq);
+    EXPECT_EQ(seq, this->v_dictionary[i]);
   }
-  for (unsigned i = 0; i<s_dictionary.size(); ++i) {
-    ASSERT_EQ(slrt->lookup(s_dictionary[i]), true);
-  }
-
-  std::string test("test");
-  slrt->update_suffix(test);
-}
-
-TEST_F(RadixTreeTest, LevenshteinCloneDictionary) {
-  StringLevenshteinRadixTree *slrt = new StringLevenshteinRadixTree();
-
-  for (unsigned i=0; i<s_dictionary.size(); ++i) {
-    slrt->insert(s_dictionary[i]);
-  }
-
-  StringLevenshteinRadixTree *clone_slrt 
-      = static_cast<StringLevenshteinRadixTree*>(slrt->clone());
-  delete slrt;
-  
-  srand(0);
-  unsigned r = 0, freq = 100;
-  while (r < s_dictionary.size()) {
-    bool result = clone_slrt->remove(s_dictionary[r]);
-    ASSERT_EQ(clone_slrt->lookup(s_dictionary[r]), !result);
-    r += 1 + (rand() % freq);
-  }
-
-  delete clone_slrt;
-}
-
-TEST_F(RadixTreeTest, LevenshteinComputeVerify) {
-  StringLevenshteinRadixTree *slrt = new StringLevenshteinRadixTree();
-
-  std::string kitten = "kitten";
-  std::string sitting = "sitting";
-  std::string Saturday = "Saturday";
-  std::string Sunday = "Sunday";
-  std::string Samberg = "Samberg";
-  std::string Saturn = "Saturn";
-  std::string Macho = "Macho";
-
-  slrt->insert(Saturday);
-  slrt->insert(kitten);
-  slrt->insert(Samberg);
-  slrt->insert(Saturn);
-  slrt->insert(Macho);
-
-  StringEDR edr_day(Saturday, Sunday);
-  StringEDR edr_cat(kitten, Sunday);
-  StringEDR edr_samberg(Samberg, Sunday);
-  StringEDR edr_macho(Macho, Sunday);
-
-  int day_cost_r = edr_day.compute_editdistance();
-  int cat_cost_r = edr_cat.compute_editdistance();
-  int macho_cost_r = edr_macho.compute_editdistance();
-  int samberg_cost_r = edr_samberg.compute_editdistance();
-
-  slrt->update_suffix(Sunday);
-
-  ASSERT_EQ(day_cost_r, slrt->lookup_edit_distance(Saturday));
-  ASSERT_EQ(cat_cost_r, slrt->lookup_edit_distance(kitten));
-  ASSERT_EQ(samberg_cost_r, slrt->lookup_edit_distance(Samberg));
-  ASSERT_EQ(macho_cost_r, slrt->lookup_edit_distance(Macho));
-
-  delete slrt;
-}
-
-TEST_F(RadixTreeTest, LevenshteinComputeRandom) {
-  StringLevenshteinRadixTree *slrt = new StringLevenshteinRadixTree();
-
-  for (unsigned i=0; i<s_dictionary.size(); ++i) {
-    slrt->insert(s_dictionary[i]);
-  }
-  
-  srand(0);
-  unsigned r0, r1, count = 5, check = 5;
-  for (unsigned i=0; i < count;  ++i) {
-    r0 = (rand() % s_dictionary.size());
-    slrt->update_suffix(s_dictionary[r0]);
-    for (unsigned j=0; j < check; ++j) {
-      r1 = (rand() % s_dictionary.size());
-      EXPECT_GE(slrt->lookup_edit_distance(s_dictionary[r1]), 0);
-    }
-  }
-  delete slrt;
-}
-
-
-TEST_F(RadixTreeTest, LevenshteinComputeRandomVerify) {
-  StringLevenshteinRadixTree *slrt = new StringLevenshteinRadixTree();
-
-  for (unsigned i=0; i<s_dictionary.size(); ++i) {
-    slrt->insert(s_dictionary[i]);
-  }
-  
-  srand(0);
-  unsigned r0, r1, count = 5, check = 5;
-  for (unsigned i=0; i < count;  ++i) {
-    r0 = (rand() % s_dictionary.size());
-    slrt->reset();
-    slrt->update_suffix(s_dictionary[r0]);
-    for (unsigned j=0; j < check; ++j) {
-      r1 = (rand() % s_dictionary.size());
-      StringEDR edr(s_dictionary[r1], s_dictionary[r0]);
-      int edr_cost = edr.compute_editdistance();
-      ASSERT_EQ(edr_cost, slrt->lookup_edit_distance(s_dictionary[r1]));
-    }
-  }
-  delete slrt;
-}
-
-TEST_F(RadixTreeTest, LevenshteinComputeRandomVerifyClone) {
-  StringLevenshteinRadixTree *slrt = new StringLevenshteinRadixTree();
-  StringLevenshteinRadixTree *clone_slrt = slrt;
-
-  for (unsigned i=0; i<s_dictionary.size(); ++i) {
-    slrt->insert(s_dictionary[i]);
-  }
-  
-  srand(0);
-  unsigned r0, r1, count = 5, check = 5;
-  for (unsigned i=0; i < count;  ++i) {
-    r0 = (rand() % s_dictionary.size());
-    slrt->reset();
-    slrt->update_suffix(s_dictionary[r0]);
-    clone_slrt = static_cast<StringLevenshteinRadixTree*>(slrt->clone());
-    delete slrt;
-    slrt = clone_slrt;
-    for (unsigned j=0; j < check; ++j) {
-      r1 = (rand() % s_dictionary.size());
-      StringEDR edr(s_dictionary[r1], s_dictionary[r0]);
-      int edr_cost = edr.compute_editdistance();
-      ASSERT_EQ(edr_cost, clone_slrt->lookup_edit_distance(s_dictionary[r1]));
-    }
-  }
-  //delete clone_slrt;
-}
-
-TEST_F(RadixTreeTest, LevenshteinComputeRandomVerifyIncrementElement) {
-  StringLevenshteinRadixTree *slrt = new StringLevenshteinRadixTree();
-
-  for (unsigned i=0; i<s_dictionary.size(); ++i) {
-    slrt->insert(s_dictionary[i]);
-  }
-  
-  srand(0);
-  unsigned r0, r1, count = 5, check = 5;
-  for (unsigned i=0; i < count;  ++i) {
-    r0 = (rand() % s_dictionary.size());
-    for (unsigned j=0; j < s_dictionary[r0].size(); j++) {
-      slrt->update_element(s_dictionary[r0][j]);
-    }
-    for (unsigned j=0; j < check; ++j) {
-      r1 = (rand() % s_dictionary.size());
-      StringEDR edr(s_dictionary[r1], s_dictionary[r0]);
-      int edr_cost = edr.compute_editdistance();
-      ASSERT_EQ(edr_cost, slrt->lookup_edit_distance(s_dictionary[r1]));
-    }
-    slrt->reset();
-  }
-  delete slrt;
-}
-
-TEST_F(RadixTreeTest, LevenshteinComputeRandomVerifyIncrementSequence) {
-  StringLevenshteinRadixTree *slrt = new StringLevenshteinRadixTree();
-
-  for (unsigned i=0; i<s_dictionary.size(); ++i) {
-    slrt->insert(s_dictionary[i]);
-  }
-  
-  srand(0);
-  int r0, r1, count = 5, check = 5;
-  for (int i=0; i < count;  ++i) {
-    r0 = (rand() % s_dictionary.size());
-
-    int j_start=0, j_end=0;
-    do {
-      j_start = j_end;
-      j_end = std::min((int)(s_dictionary[r0].size()), (1 + j_end + (rand()%4)));
-
-      std::string str(s_dictionary[r0].begin() + j_start,
-                      s_dictionary[r0].begin() + j_end);
-
-      slrt->update_suffix(str);
-
-    } while ((s_dictionary[r0].begin() + j_end) != s_dictionary[r0].end());
-
-    for (int j=0; j < check; ++j) {
-      r1 = (rand() % s_dictionary.size());
-      StringEDR edr(s_dictionary[r1], s_dictionary[r0]);
-      int edr_cost = edr.compute_editdistance();
-      ASSERT_EQ(edr_cost, slrt->lookup_edit_distance(s_dictionary[r1]));
-    }
-    slrt->reset();
-  }
-
-  delete slrt;
-}
-
-
-TEST_F(RadixTreeTest, TrackingRadixTreeExtend) {
-  StringTrackingRadixTree *rt = new StringTrackingRadixTree();
-
-  std::vector<TrackingObject*> tracking_objects;
-
-  for (unsigned i=0; i<s_dictionary.size(); ++i) {
-    tracking_objects.push_back(new TrackingObject);
-    tracking_objects.back()->id = rand();
-    tracking_objects.back()->str = s_dictionary[i];
-    rt->extend(s_dictionary[i], tracking_objects.back());
-  }
-
-  for (unsigned i=0; i<tracking_objects.size(); ++i) {
-    std::string test_str;
-    ASSERT_EQ(true, rt->tracks(tracking_objects[i]));
-    rt->tracker_get(tracking_objects[i], test_str);
-    ASSERT_EQ(test_str, tracking_objects[i]->str);
-  }
-
-  for (unsigned i=0; i<s_dictionary.size(); ++i) {
-    delete tracking_objects[i];
-  }
-  delete rt;
 }
 
 // This is a test of a unoptimized pattern of access where each TrackingObject
 // increases in size by one element only each extension and TrackingObjects
 // share prefixes as they increase in size.
-TEST_F(RadixTreeTest, TrackingRadixTreeExtendElement) {
-  StringTrackingRadixTree *rt = new StringTrackingRadixTree();
+TYPED_TEST(TrackingRadixTreeTest, ExtendElement) {
+  TypeParam *rt = this->rt_;
 
-  std::vector<TrackingObject*> tracking_objects;
-
-  int count = 20000; //s_dictionary.size();
+  int count = 2000; //s_dictionary.size();
   for (int i=0; i<count; ++i) {
-    tracking_objects.push_back(new TrackingObject);
-    tracking_objects.back()->id = rand();
-    tracking_objects.back()->str = s_dictionary[i];
-    for (unsigned j=0; j<s_dictionary[i].size(); ++j) {
-      rt->extend_element(s_dictionary[i][j], tracking_objects.back());
+    typename TypeParam::sequence_type::iterator it = this->v_dictionary[i].begin();
+    typename TypeParam::sequence_type::iterator ie = this->v_dictionary[i].end();
+    for (; it != ie; ++it) {
+      rt->extend_element(*it, this->list_[i]);
     }
   }
 
-  for (unsigned i=0; i<tracking_objects.size(); ++i) {
-    std::string test_str;
-    ASSERT_EQ(true, rt->tracks(tracking_objects[i]));
-    rt->tracker_get(tracking_objects[i], test_str);
-    ASSERT_EQ(test_str, tracking_objects[i]->str);
+  for (unsigned i=0; i<count; ++i) {
+    typename TypeParam::sequence_type seq;
+    EXPECT_EQ(true, rt->tracks(this->list_[i]));
+    rt->tracker_get(this->list_[i], seq);
+    EXPECT_EQ(seq, this->v_dictionary[i]);
   }
-
-  for (unsigned i=0; i<tracking_objects.size(); ++i) {
-    delete tracking_objects[i];
-  }
-  delete rt;
 }
 
-TEST_F(RadixTreeTest, TrackingRadixTreeExtendAndClone) {
-  StringTrackingRadixTree *rt = new StringTrackingRadixTree();
+TYPED_TEST(TrackingRadixTreeTest, ExtendAndClone) {
+  TypeParam *rt = this->rt_;
 
-  std::vector<TrackingObject*> tracking_objects;
-
-  for (unsigned i=0; i<s_dictionary.size(); ++i) {
-    tracking_objects.push_back(new TrackingObject);
-    tracking_objects.back()->id = rand();
-    tracking_objects.back()->str = s_dictionary[i];
-    rt->extend(s_dictionary[i], tracking_objects.back());
-  }
+  this->ExtendDictionary();
 
   srand(0);
-  int r0, r1, r2, count = 5000;
-  for (int i=0; i < count;  ++i) {
-    r0 = rand() % s_dictionary.size();
-    r1 = rand() % s_dictionary.size();
-    r2 = rand() % s_dictionary.size();
-    TrackingObject* tobj = tracking_objects[r0];
-    TrackingObject* tobj_new = new TrackingObject();
-    tracking_objects.push_back(tobj_new);
+  int count = 5;
 
-    ASSERT_EQ(rt->clone_tracker(tobj_new, tobj), true);
+  this->RandomExtend(rt, count);
 
-    std::string str_ext_1 = "_" + s_dictionary[r1];
-    std::string str_ext_2 = "_" + s_dictionary[r2];
-    tobj_new->str = tobj->str + str_ext_2;
-    tobj->str += str_ext_1;
-
-    rt->extend(str_ext_1, tobj);
-    rt->extend(str_ext_2, tobj_new);
+  for (unsigned i=0; i<this->list_.size(); ++i) {
+    typename TypeParam::sequence_type seq;
+    EXPECT_EQ(true, rt->tracks(this->list_[i]));
+    rt->tracker_get(this->list_[i], seq);
+    EXPECT_EQ(seq, this->v_dictionary[i]);
   }
-
-  for (unsigned i=0; i<tracking_objects.size(); ++i) {
-    std::string test_str;
-    ASSERT_EQ(true, rt->tracks(tracking_objects[i]));
-    rt->tracker_get(tracking_objects[i], test_str);
-    ASSERT_EQ(test_str, tracking_objects[i]->str);
-  }
-
-  for (unsigned i=0; i<tracking_objects.size(); ++i) {
-    delete tracking_objects[i];
-  }
-  delete rt;
 }
 
+TYPED_TEST(TrackingRadixTreeTest, ExtendAndRemove) {
+  TypeParam *rt = this->rt_;
 
-TEST_F(RadixTreeTest, TrackingRadixTreeExtendAndRemove) {
-  StringTrackingRadixTree *rt = new StringTrackingRadixTree();
-
-  std::vector<TrackingObject*> tracking_objects;
+  this->ExtendDictionary();
 
   srand(0);
-  int r0, r1, r2;
-  size_t dict_size = s_dictionary.size();
-  int count = 5000;
-  //size_t dict_size = 20;
-  //int count = 2;
-  for (unsigned i=0; i<dict_size; ++i) {
-    
-    tracking_objects.push_back(new TrackingObject);
-    tracking_objects.back()->id = rand();
-    tracking_objects.back()->str = s_dictionary[i];
-    rt->extend(s_dictionary[i], tracking_objects.back());
-    //std::cout << "inserting: " << tracking_objects.back()->str << "\n";
-  }
-  //std::cout << "Radix Tree with " << dict_size << " extensions ---------\n";
-  //rt->print(std::cout);
-  //std::cout << "-----------\n";
+  int r0, count = 5;
 
   for (int i=0; i < count;  ++i) {
-    r0 = rand() % dict_size;
-    TrackingObject* tobj = tracking_objects[r0];
-    if (tobj) {
-      //std::cout << "removing " << tobj->str << "\n";
-      rt->remove_tracker(tobj);
-      tracking_objects[r0] = NULL;
-      delete tracking_objects[r0];
+    r0 = rand() % this->v_dictionary.size();
+    if (this->list_[i] != NULL) {
+      rt->remove_tracker(this->list_[i]);
+      delete this->list_[i];
+      this->list_[i] = NULL;
     }
   }
-  //std::cout << "Radix Tree after " << count << " removals ---------\n";
-  //rt->print(std::cout);
-  //std::cout << "-----------\n";
+ 
+  this->RandomExtend(rt, count);
+
+  for (unsigned i=0; i<this->list_.size(); ++i) {
+    if (this->list_[i] != NULL) {
+      typename TypeParam::sequence_type seq;
+      EXPECT_EQ(true, rt->tracks(this->list_[i]));
+      rt->tracker_get(this->list_[i], seq);
+      EXPECT_EQ(seq, this->v_dictionary[i]);
+    }
+  }
+}
+
+TYPED_TEST(TrackingRadixTreeTest, ExtendAndRemoveWithClone) {
+  TypeParam *rt = this->rt_;
+
+  this->ExtendDictionary();
+
+  srand(0);
+  int r0, count = 5;
 
   for (int i=0; i < count;  ++i) {
-    r0 = rand() % dict_size;
-    r1 = rand() % dict_size;
-    r2 = rand() % dict_size;
-    TrackingObject* tobj = tracking_objects[r0];
-    if (tobj) {
-      TrackingObject* tobj_new = new TrackingObject();
-      tracking_objects.push_back(tobj_new);
-
-      ASSERT_EQ(rt->clone_tracker(tobj_new, tobj), true);
-
-      std::string str_ext_1 = "_" + s_dictionary[r1];
-      std::string str_ext_2 = "_" + s_dictionary[r2];
-      //std::cout << "extending " << tobj->str << " with " << str_ext_1 << "\n";
-      //std::cout << "extending " << tobj->str << " with " << str_ext_2 << "\n";
-      tobj_new->str = tobj->str + str_ext_2;
-      tobj->str += str_ext_1;
-
-      rt->extend(str_ext_1, tobj);
-      rt->extend(str_ext_2, tobj_new);
-    }
-  }
-  StringTrackingRadixTree *clone_rt = static_cast<StringTrackingRadixTree*>(rt->clone());
-  
-  //std::cout << "Radix Tree after " << count << " new extensions---------\n";
-  //rt->print(std::cout);
-  //std::cout << "-----------\n";
-
-  for (unsigned i=0; i<tracking_objects.size(); ++i) {
-    std::string test_str, clone_test_str;
-    if (tracking_objects[i]) {
-      ASSERT_EQ(true, rt->tracks(tracking_objects[i]));
-      ASSERT_EQ(true, clone_rt->tracks(tracking_objects[i]));
-      rt->tracker_get(tracking_objects[i], test_str);
-      clone_rt->tracker_get(tracking_objects[i], clone_test_str);
-      ASSERT_EQ(test_str, tracking_objects[i]->str);
-      ASSERT_EQ(clone_test_str, tracking_objects[i]->str);
+    r0 = rand() % this->v_dictionary.size();
+    if (this->list_[i] != NULL) {
+      rt->remove_tracker(this->list_[i]);
+      delete this->list_[i];
+      this->list_[i] = NULL;
     }
   }
 
-  for (int i=0; i < count;  ++i) {
-    r0 = rand() % dict_size;
-    TrackingObject* tobj = tracking_objects[r0];
-    if (tobj) {
-      rt->remove_tracker(tobj);
-      tracking_objects[r0] = NULL;
-      delete tracking_objects[r0];
+  rt = static_cast<TypeParam*>(rt->clone());
+  delete this->rt_;
+  this->rt_ = rt;
+
+  this->RandomExtend(rt, count);
+
+  for (unsigned i=0; i<this->list_.size(); ++i) {
+    if (this->list_[i] != NULL) {
+      typename TypeParam::sequence_type seq;
+      EXPECT_EQ(true, rt->tracks(this->list_[i]));
+      rt->tracker_get(this->list_[i], seq);
+      EXPECT_EQ(seq, this->v_dictionary[i]);
     }
   }
-
-  for (unsigned i=0; i<tracking_objects.size(); ++i) {
-    if (tracking_objects[i])
-      delete tracking_objects[i];
-  }
-  delete rt;
-  delete clone_rt;
 }
-
-TEST_F(RadixTreeTest, TrackingRadixTreeExtendAndRemoveWithClone) {
-  StringTrackingRadixTree *rt = new StringTrackingRadixTree();
-
-  std::vector<TrackingObject*> tracking_objects;
-
-  srand(0);
-  int r0, r1, r2;
-  size_t dict_size = s_dictionary.size();
-  int count = 5000;
-  //size_t dict_size = 20;
-  //int count = 2;
-  for (unsigned i=0; i<dict_size; ++i) {
-    
-    tracking_objects.push_back(new TrackingObject);
-    tracking_objects.back()->id = rand();
-    tracking_objects.back()->str = s_dictionary[i];
-    rt->extend(s_dictionary[i], tracking_objects.back());
-    //std::cout << "inserting: " << tracking_objects.back()->str << "\n";
-  }
-  //std::cout << "Radix Tree with " << dict_size << " extensions ---------\n";
-  //rt->print(std::cout);
-  //std::cout << "-----------\n";
-
-  for (int i=0; i < count;  ++i) {
-    r0 = rand() % dict_size;
-    TrackingObject* tobj = tracking_objects[r0];
-    if (tobj) {
-      //std::cout << "removing " << tobj->str << "\n";
-      rt->remove_tracker(tobj);
-      tracking_objects[r0] = NULL;
-      delete tracking_objects[r0];
-    }
-  }
-  //std::cout << "Radix Tree after " << count << " removals ---------\n";
-  //rt->print(std::cout);
-  //std::cout << "-----------\n";
-  StringTrackingRadixTree *old_rt = rt;
-  rt = static_cast<StringTrackingRadixTree*>(rt->clone());
-
-  for (int i=0; i < count;  ++i) {
-    r0 = rand() % dict_size;
-    r1 = rand() % dict_size;
-    r2 = rand() % dict_size;
-    TrackingObject* tobj = tracking_objects[r0];
-    if (tobj) {
-      TrackingObject* tobj_new = new TrackingObject();
-      tracking_objects.push_back(tobj_new);
-
-      ASSERT_EQ(rt->clone_tracker(tobj_new, tobj), true);
-
-      std::string str_ext_1 = "_" + s_dictionary[r1];
-      std::string str_ext_2 = "_" + s_dictionary[r2];
-      //std::cout << "extending " << tobj->str << " with " << str_ext_1 << "\n";
-      //std::cout << "extending " << tobj->str << " with " << str_ext_2 << "\n";
-      tobj_new->str = tobj->str + str_ext_2;
-      tobj->str += str_ext_1;
-
-      rt->extend(str_ext_1, tobj);
-      rt->extend(str_ext_2, tobj_new);
-    }
-  }
-  
-  //std::cout << "Radix Tree after " << count << " new extensions---------\n";
-  //rt->print(std::cout);
-  //std::cout << "-----------\n";
-
-  for (unsigned i=0; i<tracking_objects.size(); ++i) {
-    std::string test_str;
-    if (tracking_objects[i]) {
-      ASSERT_EQ(true, rt->tracks(tracking_objects[i]));
-      rt->tracker_get(tracking_objects[i], test_str);
-      ASSERT_EQ(test_str, tracking_objects[i]->str);
-    }
-  }
-
-  for (int i=0; i < count;  ++i) {
-    r0 = rand() % dict_size;
-    TrackingObject* tobj = tracking_objects[r0];
-    if (tobj) {
-      rt->remove_tracker(tobj);
-      tracking_objects[r0] = NULL;
-      delete tracking_objects[r0];
-    }
-  }
-
-  for (unsigned i=0; i<tracking_objects.size(); ++i) {
-    if (tracking_objects[i])
-      delete tracking_objects[i];
-  }
-  delete rt;
-  delete old_rt;
-}
-
-TEST_F(RadixTreeTest, KExtensionTreeInit) { 
-  StringKLevRT *rt = new StringKLevRT();
-  typedef std::pair<std::string, int> StringDist;
-  std::vector<StringDist> string_dists;
-  //std::string compute_str = "AndersonCooper";
-  std::string compute_str = "gash";
-
-  //unsigned r0, r1, count = 10000, check = 5;
-  unsigned r0, r1, count = s_dictionary.size(), check = 5;
-  
-  srand(3290482);
-  for (unsigned i=0; i < count;  ++i) {
-    r0 = (rand() % s_dictionary.size());
-    r0 = i;
-    rt->insert(s_dictionary[r0]);
-    string_dists.push_back(StringDist(s_dictionary[r0], INT_MAX));
-  }
-
-  int min_index = 0;
-  int max_index = 0;
-  for (unsigned i=0; i < count;  ++i) {
-    StringEDR edr(string_dists[i].first, compute_str);
-    string_dists[i].second = edr.compute_editdistance();
-    //std::cout << "EDR: " << string_dists[i].second
-    //  << ", " << string_dists[i].first << std::endl;
-
-
-    if (string_dists[i].second < string_dists[min_index].second)
-      min_index = i;
-
-    if (string_dists[i].second > string_dists[max_index].second)
-      max_index = i;
-  }
-
-  //rt->print(std::cout);
-  rt->init(string_dists[max_index].second + 1);
-  rt->update_suffix(compute_str);
-
-  for (unsigned i=0; i < count;  ++i) {
-
-    //std::cout << "EDR: " << string_dists[i].second
-    //  << ", " << string_dists[i].first << std::endl;
-    EXPECT_EQ(rt->lookup_edit_distance(string_dists[i].first),
-              string_dists[i].second);
-  }
-
-  //std::cout << "EDR: min distance: " << string_dists[min_index].second
-  //    << ", " << string_dists[min_index].first << std::endl;
-  //EXPECT_EQ(rt->min_distance(), string_dists[min_index].second);
-}
-
-//*/
-
-//TEST_F(RadixTreeTest, LevenshteinComputeTime) {
-//  StringLevenshteinRadixTree *slrt = new StringLevenshteinRadixTree();
-//
-//  for (unsigned i=0; i<s_dictionary.size(); ++i) {
-//    slrt->insert(s_dictionary[i]);
-//  }
-//  
-//  srand(0);
-//  unsigned r0, r1, count = 1, check = 5;
-//  for (unsigned i=0; i < count;  ++i) {
-//    r0 = (rand() % s_dictionary.size());
-//    slrt->update_suffix(s_dictionary[r0]);
-//    //for (unsigned j=0; j < check; ++j) {
-//    //  r1 = (rand() % s_dictionary.size());
-//    //  EXPECT_GE(slrt->lookup_edit_distance(s_dictionary[r1]), 0);
-//    //}
-//  }
-//  delete slrt;
-//}
-#endif
-
-#if 0
-TEST_F(RadixTreeTest, KPrefixComputeTime) {
-  StringKLevRT *rt = new StringKLevRT();
-
-  for (unsigned i=0; i<s_dictionary.size(); ++i) {
-    rt->insert(s_dictionary[i]);
-  }
-  
-  srand(0);
-  unsigned r0, r1, count = 5, check = 5;
-  for (unsigned i=0; i < count;  ++i) {
-    r0 = (rand() % s_dictionary.size());
-    //rt->update_suffix(s_dictionary[r0]);
-    
-    rt->init(32);
-    rt->update_suffix(s_dictionary[r0]);
-    //for (unsigned j=0; j < check; ++j) {
-    //  r1 = (rand() % s_dictionary.size());
-    //  EXPECT_GE(slrt->lookup_edit_distance(s_dictionary[r1]), 0);
-    //}
-  }
-  delete rt;
-}
-#endif
-
-#if 0
-TEST_F(RadixTreeTest, KLevenshteinComputeTime) {
-  StringKLevenshteinRadixTree *slrt = new StringKLevenshteinRadixTree();
-
-  for (unsigned i=0; i<s_dictionary.size(); ++i) {
-    slrt->insert(s_dictionary[i]);
-  }
-  
-  srand(0);
-  unsigned r0, r1, count = 5, check = 5;
-  for (unsigned i=0; i < count;  ++i) {
-    r0 = (rand() % s_dictionary.size());
-    slrt->update_suffix(s_dictionary[r0]);
-    //for (unsigned j=0; j < check; ++j) {
-    //  r1 = (rand() % s_dictionary.size());
-    //  EXPECT_GE(slrt->lookup_edit_distance(s_dictionary[r1]), 0);
-    //}
-  }
-  delete slrt;
-}
-
-TEST_F(RadixTreeTest, LevenshteinComputeCompare) {
-  StringKLevenshteinRadixTree *slrt = new StringKLevenshteinRadixTree();
-  StringKLevRT *rt = new StringKLevRT(); //KExten
-
-  unsigned r0, r1, count = 1000, check = 5;
-  ////unsigned r0, r1, count = s_dictionary.size(), check = 5;
-  
-  srand(0);
-  for (unsigned i=0; i<s_dictionary.size(); ++i) {
-  //for (unsigned i=0; i < count;  ++i) {
-    //r0 = (rand() % s_dictionary.size());
-    r0 = i;
-    slrt->insert(s_dictionary[r0]);
-    rt->insert(s_dictionary[r0]);
-  }
-  
-  srand(0);
-  for (unsigned i=0; i < count;  ++i) {
-    r0 = (rand() % s_dictionary.size());
-    //std::cout << "looking up: " << s_dictionary[r0] << "\n";
-    rt->init(5);
-    rt->update_suffix(s_dictionary[r0]);
-    slrt->init(5);
-    slrt->update_suffix(s_dictionary[r0]);
-
-    EXPECT_EQ(slrt->min_distance(), rt->min_distance());
-    EXPECT_EQ(slrt->min_prefix_distance(), rt->min_prefix_distance());
-  }
-  delete slrt;
-}
-#endif
-
-TEST_F(RadixTreeTest, LevenshteinComputeCompareKLevenshteinTreeTime) {
-  StringKLevenshteinRadixTree *rt = new StringKLevenshteinRadixTree();
-
-  unsigned r0, r1, count = 10, check = 5;
-  //count = s_dictionary.size();
-  
-  srand(0);
-  //for (unsigned i=0; i<count; ++i) {
-  for (unsigned i=0; i<s_dictionary.size(); ++i) {
-    r0 = i;
-    rt->insert(s_dictionary[r0]);
-  }
-  
-  srand(0);
-  for (unsigned i=0; i < count;  ++i) {
-    r0 = (rand() % s_dictionary.size());
-    //std::cout << "looking up: " << s_dictionary[r0] << "\n";
-    rt->init(2);
-    rt->update_suffix(s_dictionary[r0]);
-  }
-  delete rt;
-}
-
-TEST_F(RadixTreeTest, LevenshteinComputeKExtensionTime) {
-  StringKLevRT *rt = new StringKLevRT(); //KExten
-
-  unsigned r0, r1, count = 10, check = 5;
-  //count = s_dictionary.size();
-  
-  srand(0);
-  //for (unsigned i=0; i<count; ++i) {
-  for (unsigned i=0; i<s_dictionary.size(); ++i) {
-    r0 = i;
-    rt->insert(s_dictionary[r0]);
-  }
-  
-  srand(0);
-  for (unsigned i=0; i < count;  ++i) {
-    r0 = (rand() % s_dictionary.size());
-    //std::cout << "looking up: " << s_dictionary[r0] << "\n";
-    rt->init(2);
-    rt->update_suffix(s_dictionary[r0]);
-  }
-  delete rt;
-}
-
-#if 1
-TEST_F(RadixTreeTest, KExtensionTreePrefixTest) { 
-  StringKLevenshteinRadixTree *klrt = new StringKLevenshteinRadixTree();
-  StringKLevRT *rt = new StringKLevRT();
-  typedef std::pair<std::string, int> StringDist;
-  std::vector<StringDist> string_dists;
-  std::string compute_str = "gash";
-  std::map<std::string, int> prefix_dists;
-
-  unsigned r0, r1, count = 1000, check = 5;
-  //unsigned r0, r1, count = s_dictionary.size(), check = 5;
-  
-  srand(3290482);
-  for (unsigned i=0; i < count;  ++i) {
-    //r0 = i;
-    r0 = (rand() % s_dictionary.size());
-    rt->insert(s_dictionary[r0]);
-    klrt->insert(s_dictionary[r0]);
-    string_dists.push_back(StringDist(s_dictionary[r0], INT_MAX));
-  }
-
-  int min_index = 0;
-  int max_index = 0;
-  
-  std::string min_prefix, max_prefix;
-
-  for (unsigned i=0; i < count;  ++i) {
-    std::string &str = string_dists[i].first;
-    for (unsigned j=1; j<=str.size(); ++j) {
-      std::string prefix(str.begin(), str.begin()+j);
-      StringEDR edr(prefix, compute_str);
-      int edit_distance = edr.compute_editdistance();
-      prefix_dists[prefix] = edit_distance;
-      //std::cout << "EDR: " << prefix
-      //  << ", " << edit_distance << std::endl;
-
-      if (min_prefix.empty() || edit_distance < prefix_dists[min_prefix])
-        min_prefix = prefix;
-
-      if (max_prefix.empty() || edit_distance > prefix_dists[max_prefix])
-        max_prefix = prefix;
-    }
-  }
-
-  rt->init(prefix_dists[max_prefix] + 1);
-  rt->update_suffix(compute_str);
-
-  klrt->init(prefix_dists[max_prefix] + 1);
-  klrt->update_suffix(compute_str);
-
-  ////rt->print(std::cout);
-
-  std::map<std::string, int>::iterator it=prefix_dists.begin(),
-      ie = prefix_dists.end();
-  for (;it != ie; ++it) {
-
-    std::string prefix = it->first;
-    //std::cout << "EDR: " << prefix
-    //  << ", " << it->second << std::endl;
-    EXPECT_EQ(rt->lookup_edit_distance(prefix),
-              prefix_dists[prefix]);
-    EXPECT_EQ(klrt->lookup_edit_distance(prefix),
-              prefix_dists[prefix]);
-  }
-
-  ////std::cout << "EDR: min distance: " << string_dists[min_index].second
-  ////    << ", " << string_dists[min_index].first << std::endl;
-  ////EXPECT_EQ(rt->min_distance(), string_dists[min_index].second);
-}
-#endif
-
 
 //////////////////////////////////////////////////////////////////////////////////
 
