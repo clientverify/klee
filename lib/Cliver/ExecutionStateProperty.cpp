@@ -23,103 +23,32 @@ bool ExecutionStatePropertyLT::operator()(const ExecutionStateProperty* a,
 
 //////////////////////////////////////////////////////////////////////////////
 
-VerifyProperty::VerifyProperty() {}
-//	: round(0), phase(VerifyProperty::Execute) {}
+ExecutionStateProperty::ExecutionStateProperty()
+	: round(0), edit_distance(0), recompute(true) {}
 
-int VerifyProperty::compare(const ExecutionStateProperty &b) const {
-	const VerifyProperty *_b = static_cast<const VerifyProperty*>(&b);
-
-	//if (round != _b->round)
-	//	return round - _b->round;
-
-	//if (phase != _b->phase)
-	//	return phase - _b->phase;
-
-  return 0;
+ExecutionStateProperty* ExecutionStateProperty::clone() { 
+  ExecutionStateProperty* esp = new ExecutionStateProperty(*this);
+  esp->round = round;
+  esp->edit_distance = edit_distance;
+  esp->recompute = true;
+  return esp;
 }
 
-void VerifyProperty::print(std::ostream &os) const {
-	//os << "[round: " << round
-	//   << ", phase: " << phase
-	//	 << "]";
-}
+int ExecutionStateProperty::compare(const ExecutionStateProperty &b) const {
+	const ExecutionStateProperty *_b = static_cast<const ExecutionStateProperty*>(&b);
 
-//////////////////////////////////////////////////////////////////////////////
-
-EditCostProperty::EditCostProperty() 
-	: edit_cost(rand()/(double)RAND_MAX) {}
-
-EditCostProperty* EditCostProperty::clone() { 
-  EditCostProperty* ecp = new EditCostProperty(*this);
-  ecp->edit_cost = rand()/(double)RAND_MAX;
-  return ecp;
-}
-
-int EditCostProperty::compare(const ExecutionStateProperty &b) const {
-	const EditCostProperty *_b = static_cast<const EditCostProperty*>(&b);
-
-  if (edit_cost > _b->edit_cost)
-    return 1;
-  else if (edit_cost < _b->edit_cost)
-    return -1;
-  return 0;
-}
-
-void EditCostProperty::print(std::ostream &os) const {
-	os << "[edit cost: " << edit_cost
-		 << "]";
-}
-
-//////////////////////////////////////////////////////////////////////////////
-
-EditDistanceProperty::EditDistanceProperty() 
-	: edit_distance(0), recompute(true) {}
-
-EditDistanceProperty* EditDistanceProperty::clone() { 
-  EditDistanceProperty* ecp = new EditDistanceProperty(*this);
-  ecp->edit_distance = edit_distance;
-  ecp->recompute = true;
-  return ecp;
-}
-
-int EditDistanceProperty::compare(const ExecutionStateProperty &b) const {
-	const EditDistanceProperty *_b = static_cast<const EditDistanceProperty*>(&b);
+	if (round != _b->round)
+		return round - _b->round;
 
   // REVERSED FOR PRIORITY QUEUE!!!
   return _b->edit_distance - edit_distance;
-  //if (edit_distance > _b->edit_distance)
-  //  return 1;
-  //else if (edit_distance < _b->edit_distance)
-  //  return -1;
-  //return 0;
+
+  return 0;
 }
 
-void EditDistanceProperty::print(std::ostream &os) const {
-	os << "[edit distance: " << edit_distance
-		 << "]";
-}
-
-//////////////////////////////////////////////////////////////////////////////
-
-NumSymbolicVarsProperty::NumSymbolicVarsProperty() 
-	: num_symbolic_vars(0) {}
-
-NumSymbolicVarsProperty* NumSymbolicVarsProperty::clone() { 
-  NumSymbolicVarsProperty* cp = new NumSymbolicVarsProperty(*this);
-  cp->num_symbolic_vars = num_symbolic_vars;
-  return cp;
-}
-
-int NumSymbolicVarsProperty::compare(const ExecutionStateProperty &b) const {
-	const NumSymbolicVarsProperty *_b = static_cast<const NumSymbolicVarsProperty*>(&b);
-
-  // REVERSED FOR USE IN PRIORITY QUEUE!!!
-  return _b->num_symbolic_vars - num_symbolic_vars;
-}
-
-void NumSymbolicVarsProperty::print(std::ostream &os) const {
-	os << "[edit distance: " << num_symbolic_vars
-		 << "]";
+void ExecutionStateProperty::print(std::ostream &os) const {
+	os << "[rd: " << round << "]"
+	   << "[edit distance: " << edit_distance << "]";
 }
 
 ////////////////////////////////////////////////////////////////////////////////
