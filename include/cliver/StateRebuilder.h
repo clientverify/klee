@@ -190,7 +190,15 @@ class RebuildingStateCache : public StateRebuilder {
  public:
   RebuildingStateCache() : capacity_(StateCacheSize) {}
 
-  void set_capacity(size_t c) { capacity_ = c; }
+  void set_capacity(size_t c) { 
+    capacity_ = c;
+ 
+    // If necessary, make space 
+    while (cache_.size() > capacity_) { 
+      purge_lru();
+    } 
+
+  }
 
   size_t size() { 
     return cache_.size();
@@ -264,6 +272,14 @@ class RebuildingStateCache : public StateRebuilder {
   }
 
  private:
+
+  // purge the least-recently-used element 
+  inline void purge_lru() {
+    if (cache_.size() > 1) {
+      cache_.right.begin()->first->erase_self();
+      cache_.right.erase(cache_.right.begin()); 
+    }
+  }
  
   void insert(const key_type& k,const value_type& v) {
 
@@ -271,16 +287,11 @@ class RebuildingStateCache : public StateRebuilder {
       this->set_root(v);
     }
  
-    //assert(cache_.size() <= capacity_); 
- 
     // If necessary, make space 
     while (cache_.size() > capacity_) { 
       //*cv_debug_stream << "reached capacity, removing state from cache, id: "
       //    << cache_.right.begin()->first->id() << "\n";
-      
-      // by purging the least-recently-used element 
-      cache_.right.begin()->first->erase_self();
-      cache_.right.erase(cache_.right.begin()); 
+      purge_lru();
     } 
  
     // Create a new record from the key and the value 

@@ -22,6 +22,10 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/CommandLine.h"
 
+namespace klee {
+extern llvm::cl::opt<unsigned> MaxMemory;
+}
+
 namespace cliver {
 
 llvm::cl::opt<bool>
@@ -35,6 +39,7 @@ BacktrackSearching("backtrack-searching",llvm::cl::init(false));
 
 llvm::cl::opt<unsigned>
 StateCacheSize("state-cache-size",llvm::cl::init(100000));
+
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -98,9 +103,26 @@ bool CVSearcher::empty() {
 VerifySearcher::VerifySearcher(ClientVerifier* cv, StateMerger* merger)
   : CVSearcher(NULL, cv, merger) {}
 
+void VerifySearcher::check_searcher_stage_memory() {
+  if (cv_->executor()->memory_usage() > (klee::MaxMemory - 1024)) {
+    CVMESSAGE("Freeing memory from caches, current usage (MB) " << cv_->executor()->memory_usage());
+    foreach (SearcherStage* stage, stages_) {
+      size_t cache_size = stage->cache_size();
+      if (cache_size > 1) {
+        stage->set_capacity(cache_size / 2);
+        CVDEBUG("Cache capacity reduced from " << cache_size << " to " << cache_size / 2);
+        stage->set_capacity(StateCacheSize);
+      }
+    }
+    cv_->executor()->update_memory_usage();
+    CVMESSAGE("Updated usage after freeing caches (MB) " << cv_->executor()->memory_usage());
+  }
+}
+
 klee::ExecutionState &VerifySearcher::selectState() {
   //klee::TimerStatIncrementer timer(stats::searcher_time);
   
+
   if (!pending_stages_.empty()) {
     // Delete all previous states from this round.
     if (DeleteOldStates) {
@@ -120,6 +142,8 @@ klee::ExecutionState &VerifySearcher::selectState() {
       stages_.pop_back();
     }
   }
+
+  check_searcher_stage_memory();
 
   assert(!stages_.empty());
 
@@ -338,7 +362,7 @@ klee::ExecutionState &TrainingSearcher::selectState() {
     delete stages_.back();
     stages_.pop_back();
   }
- 
+
   if (stages_.empty()) {
     assert(!pending_states_.empty());
 
@@ -381,6 +405,8 @@ klee::ExecutionState &TrainingSearcher::selectState() {
 
   assert(!stages_.empty());
   assert(!stages_.back()->empty());
+
+  check_searcher_stage_memory();
 
   return *(static_cast<klee::ExecutionState*>(stages_.back()->next_state()));
 }

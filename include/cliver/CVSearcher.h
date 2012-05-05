@@ -68,6 +68,7 @@ class SearcherStage {
   virtual void remove_state(CVExecutionState *state) = 0;
   virtual void notify(ExecutionEvent ev) = 0;
   virtual bool empty() = 0;
+  virtual size_t cache_size() = 0;
   virtual size_t size() = 0;
   virtual void clear() = 0;
   virtual bool rebuilding() = 0;
@@ -100,6 +101,10 @@ class SearcherStageImpl : public SearcherStage {
   }
 
   size_t size() {
+    return collection_.size();
+  }
+
+  size_t cache_size() {
     return cache_.size();
   }
 
@@ -250,7 +255,9 @@ class VerifySearcher : public CVSearcher {
   virtual void add_state(CVExecutionState* state);
   virtual void remove_state(CVExecutionState* state);
   virtual bool check_pending(CVExecutionState* state);
+  virtual void check_searcher_stage_memory();
 
+  unsigned current_stage_;
   SearcherStageList stages_;
   SearcherStageList pending_stages_;
   ExecutionStateSet pending_states_;

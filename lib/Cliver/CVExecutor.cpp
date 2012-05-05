@@ -369,28 +369,28 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
 							mbs, (unsigned)klee::MaxMemory);
 					goto dump;
 					
-          if (mbs > klee::MaxMemory + 100) {
-            // just guess at how many to kill
-            unsigned numStates = states.size();
-            unsigned toKill = std::max(1U, numStates - numStates*klee::MaxMemory/mbs);
+          //if (mbs > klee::MaxMemory + 100) {
+          //  // just guess at how many to kill
+          //  unsigned numStates = states.size();
+          //  unsigned toKill = std::max(1U, numStates - numStates*klee::MaxMemory/mbs);
 
-            if (klee::MaxMemoryInhibit)
-              cv_warning("killing %d states (over memory cap)",
-                           toKill);
+          //  if (klee::MaxMemoryInhibit)
+          //    cv_warning("killing %d states (over memory cap)",
+          //                 toKill);
 
-            std::vector<klee::ExecutionState*> arr(states.begin(), states.end());
-            for (unsigned i=0,N=arr.size(); N && i<toKill; ++i,--N) {
-              unsigned idx = rand() % N;
+          //  std::vector<klee::ExecutionState*> arr(states.begin(), states.end());
+          //  for (unsigned i=0,N=arr.size(); N && i<toKill; ++i,--N) {
+          //    unsigned idx = rand() % N;
 
-              // Make two pulls to try and not hit a state that
-              // covered new code.
-              if (arr[idx]->coveredNew)
-                idx = rand() % N;
+          //    // Make two pulls to try and not hit a state that
+          //    // covered new code.
+          //    if (arr[idx]->coveredNew)
+          //      idx = rand() % N;
 
-              std::swap(arr[idx], arr[N-1]);
-              terminateStateEarly(*arr[N-1], "memory limit");
-            }
-          }
+          //    std::swap(arr[idx], arr[N-1]);
+          //    terminateStateEarly(*arr[N-1], "memory limit");
+          //  }
+          //}
           atMemoryLimit = true;
         } else {
           atMemoryLimit = false;
