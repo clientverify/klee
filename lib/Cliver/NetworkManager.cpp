@@ -358,7 +358,6 @@ void NetworkManagerXpilot::execute_write(CVExecutor* executor,
 	if (socket.state() != Socket::IDLE)
 		RETURN_FAILURE_OBJ("send", "wrong state");
 
-	//if (socket.round() != state()->cv()->round() || socket.round() != state()->cv()->round())
 	if (socket.round() != state()->cv()->round())
 		RETURN_FAILURE_OBJ("send", "wrong round");
 

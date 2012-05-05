@@ -18,10 +18,9 @@ namespace cliver {
 
 bool DebugSocketFlag;
 llvm::cl::opt<bool, true>
-DebugSocket("debug-socket",llvm::cl::location(DebugSocketFlag),llvm::cl::init(false));
-
-llvm::cl::opt<bool>
-XpilotSocket("xpilot-socket",llvm::cl::init(false));
+DebugSocket("debug-socket",
+  llvm::cl::location(DebugSocketFlag),
+  llvm::cl::init(false));
 
 int Socket::NextFileDescriptor = 1000;
 
@@ -40,7 +39,7 @@ void SocketEvent::init(const unsigned char* buf, unsigned len) {
   // Set length
 	length = len;
 	
-	if (XpilotSocket) {
+  if (ClientModelFlag == XPilot) {
 		// Extract the round number prefix
 		round = (int)(((unsigned)buf[0] << 24) 
 								| ((unsigned)buf[1] << 16) 
@@ -72,7 +71,7 @@ void SocketEvent::print(std::ostream &os) const {
 	static std::string socketevent_types[] = { SOCKETEVENT_TYPES };
 #undef X
 	os << "[" << socketevent_types[type] << "][LEN:" << length << "]";
-  if (XpilotSocket)
+  if (ClientModelFlag == XPilot)
     os << "[RN:" << round << "] ";
 	for (unsigned i=0; i<length; ++i) {
     char buf[8];
@@ -203,6 +202,8 @@ void  Socket::set_state(State s) {
 }
 
 void  Socket::advance(){ 
+  if (DebugSocket) 
+    print(*cv_debug_stream);
 	index_++; state_ = IDLE; offset_ = 0;
 }
 
@@ -228,7 +229,7 @@ void Socket::print(std::ostream &os) {
   os << "[ ";
 	if (event_) {
 
-    if (XpilotSocket)
+    if (ClientModelFlag == XPilot)
       os << "Round:" << round() << ", ";
 
 		os << "Event: " << index_ << "/" << 1 << ", "
@@ -240,7 +241,7 @@ void Socket::print(std::ostream &os) {
 
 	} else if (index_ < log_->size()) {
 
-    if (XpilotSocket)
+    if (ClientModelFlag == XPilot)
       os << "Round:" << round() << ", ";
 
 		os << "Event: " << index_ << "/" << log_->size() << ", "
