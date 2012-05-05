@@ -41,6 +41,9 @@ llvm::cl::opt<unsigned>
 MaxKExtension("max-k-extension",llvm::cl::init(16));
 
 llvm::cl::opt<bool>
+EditDistanceAtCloneOnly("edit-distance-at-clone-only",llvm::cl::init(true));
+
+llvm::cl::opt<bool>
 BasicBlockDisabling("basicblock-disabling",llvm::cl::init(true));
 
 llvm::cl::opt<bool>
@@ -178,7 +181,7 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
 // Round Robin Training ExecutionTree Manager
 ////////////////////////////////////////////////////////////////////////////////
 
-RoundRobinTrainingExecutionTreeManager::RoundRobinTrainingExecutionTreeManager(ClientVerifier* cv)
+RoundRobinTrainingExecutionTreeManager::RoundRobinTrainingExecutionTreeManager(ClientVerifier* cv) 
   : ExecutionTreeManager(cv) {}
 
 void RoundRobinTrainingExecutionTreeManager::initialize() {
@@ -245,7 +248,7 @@ void RoundRobinTrainingExecutionTreeManager::notify(ExecutionEvent ev) {
       // Get socket event for this successful path
       Socket* socket = state->network_manager()->socket();
       assert(socket);
-      SocketEvent* socket_event
+      SocketEvent* socket_event 
           = const_cast<SocketEvent*>(&socket->previous_event());
 
       // Get path from the execution tree
@@ -413,8 +416,6 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
 
     case CV_BASICBLOCK_ENTRY: {
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
-      EditDistanceProperty *edp 
-        = static_cast<EditDistanceProperty*>(property);
 
       // First BasicBlock Entry Event
       if (!tree_list_.back()->tracks(property)) {
@@ -440,8 +441,8 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         }
 
         // Set initial values for edit distance
-        edp->edit_distance = INT_MAX;
-        edp->recompute = true;
+        property->edit_distance = INT_MAX;
+        property->recompute = true;
 
         // Store size of tree in stats
         size_t element_count = root_tree_->element_count();
@@ -450,6 +451,9 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
             << cv_->round() << " has " << element_count
             << " elements from " << i+1 << " training objects");
         stats::edit_distance_tree_size += element_count; 
+
+        edit_distance_map_[property] = 
+            static_cast<EditDistanceExecutionTree*>(root_tree_->clone());
       }
 
       if (state->basic_block_tracking() || !BasicBlockDisabling) {
@@ -457,27 +461,25 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         tree_list_.back()->extend_element(state->prevPC->kbb->id, property);
       }
 
-      if (edp->recompute) {
+      if (property->recompute) {
 
-        if (edit_distance_map_.count(property) == 0) {
-          edit_distance_map_[property] = 
-              static_cast<EditDistanceExecutionTree*>(root_tree_->clone());
-        }
+        assert(edit_distance_map_.count(property));
 
-        edp->recompute = false;
-
-        ExecutionTrace etrace;
-        {
+        if (EditDistanceAtCloneOnly) {
+          property->recompute = false;
+          ExecutionTrace etrace;
           etrace.reserve(tree_list_.back()->tracker_depth(property));
           tree_list_.back()->tracker_get(property, etrace);
-        }
+          {
+            klee::TimerStatIncrementer edct(stats::edit_distance_compute_time);
+            edit_distance_map_[property]->update(etrace);
+            property->edit_distance = edit_distance_map_[property]->min_distance();
+          }
 
-        {
-          klee::TimerStatIncrementer 
-              compute_timer(stats::edit_distance_compute_time);
-
-          edit_distance_map_[property]->update(etrace);
-          edp->edit_distance = edit_distance_map_[property]->min_distance();
+        } else {
+          klee::TimerStatIncrementer compute_timer(stats::edit_distance_compute_time);
+          edit_distance_map_[property]->update_element(state->prevPC->kbb->id);
+          property->edit_distance = edit_distance_map_[property]->min_distance();
         }
       }
 
@@ -500,13 +502,8 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
 
       tree_list_.back()->clone_tracker(property, parent_property);
       
-      EditDistanceProperty *edp 
-        = static_cast<EditDistanceProperty*>(property);
-      EditDistanceProperty *edp_parent
-        = static_cast<EditDistanceProperty*>(parent_property);
-
-      edp->recompute=true;
-      edp_parent->recompute=true;
+      property->recompute=true;
+      parent_property->recompute=true;
 
       assert(edit_distance_map_.count(parent_property));
 
@@ -533,8 +530,6 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
 
       ExecutionTrace etrace;
       tree_list_.back()->tracker_get(property, etrace);
-      //EditDistanceProperty *edp = 
-      //    static_cast<EditDistanceProperty*>(property);
 
       CVDEBUG("End of round, path length: " << etrace.size());
 
@@ -640,8 +635,6 @@ void KExtensionVerifyExecutionTreeManager::notify(ExecutionEvent ev) {
     case CV_BASICBLOCK_ENTRY: {
       //CVDEBUG("CV_BASIC_BLOCK_ENTRY");
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
-      EditDistanceProperty *edp 
-        = static_cast<EditDistanceProperty*>(property);
 
       // First BasicBlock Entry Event
       if (!tree_list_.back()->tracks(property)) {
@@ -670,8 +663,8 @@ void KExtensionVerifyExecutionTreeManager::notify(ExecutionEvent ev) {
         root_tree_->init(current_k_);
 
         // Set initial values for edit distance
-        edp->edit_distance = 0;
-        edp->recompute = true;
+        property->edit_distance = 0;
+        property->recompute = true;
 
         // Store size of tree in stats
         size_t element_count = root_tree_->element_count();
@@ -686,7 +679,7 @@ void KExtensionVerifyExecutionTreeManager::notify(ExecutionEvent ev) {
       }
 
       if (state->basic_block_tracking() || !BasicBlockDisabling) {
-        //if (edp->edit_distance > current_k_) {
+        //if (property->edit_distance > current_k_) {
         //  CVDEBUG("edit distance > current_k_: " << *state);
         //}
 
@@ -695,13 +688,23 @@ void KExtensionVerifyExecutionTreeManager::notify(ExecutionEvent ev) {
           tree_list_.back()->extend_element(state->prevPC->kbb->id, property);
         }
 
-        if (edp->recompute) {
-          //edp->recompute = false;
-
-          {
+        if (property->recompute) {
+          if (EditDistanceAtCloneOnly) {
+            CVDEBUG("CV_BASIC_BLOCK_ENTRY: Recompute start: " << *state);
+            property->recompute = false;
+            ExecutionTrace etrace;
+            etrace.reserve(tree_list_.back()->tracker_depth(property));
+            tree_list_.back()->tracker_get(property, etrace);
+            {
+              klee::TimerStatIncrementer edct(stats::edit_distance_compute_time);
+              edit_distance_map_[property]->update(etrace);
+              property->edit_distance = edit_distance_map_[property]->min_prefix_distance();
+            }
+            CVDEBUG("CV_BASIC_BLOCK_ENTRY: Recompute finish: " << *state);
+          } else {
             klee::TimerStatIncrementer compute_timer(stats::edit_distance_compute_time);
             edit_distance_map_[property]->update_element(state->prevPC->kbb->id);
-            edp->edit_distance = edit_distance_map_[property]->min_prefix_distance();
+            property->edit_distance = edit_distance_map_[property]->min_prefix_distance();
           }
         }
       }
@@ -724,19 +727,14 @@ void KExtensionVerifyExecutionTreeManager::notify(ExecutionEvent ev) {
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
 
       tree_list_.back()->clone_tracker(property, parent_property);
-      
-      EditDistanceProperty *edp 
-        = static_cast<EditDistanceProperty*>(property);
-      EditDistanceProperty *edp_parent
-        = static_cast<EditDistanceProperty*>(parent_property);
 
-      edp->recompute=true;
-      edp_parent->recompute=true;
+      property->recompute=true;
+      parent_property->recompute=true;
 
       edit_distance_map_[property] = 
           static_cast<KEditDistanceExecutionTree*>(edit_distance_map_[parent_property]->clone());
 
-      edp->edit_distance = edit_distance_map_[property]->min_prefix_distance();
+      property->edit_distance = edit_distance_map_[property]->min_prefix_distance();
       CVDEBUG("Cloned state: " << *state << ", parent: " << *parent )
     }
     break;
@@ -745,10 +743,8 @@ void KExtensionVerifyExecutionTreeManager::notify(ExecutionEvent ev) {
     case CV_SOCKET_READ: {
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
 
-      EditDistanceProperty *edp = static_cast<EditDistanceProperty*>(property);
-
       //current_k_ = 2;
-      //while (edp->edit_distance == INT_MAX) {
+      //while (property->edit_distance == INT_MAX) {
       //  recompute_property(property);
       //  current_k_ *= 2;
       //}
@@ -781,28 +777,27 @@ void KExtensionVerifyExecutionTreeManager::recompute_property(
   assert(edit_distance_map_.count(property));
   edit_distance_map_[property]->init(current_k_);
 
-  EditDistanceProperty *edp = static_cast<EditDistanceProperty*>(property);
-
   ExecutionTrace etrace;
   etrace.reserve(tree_list_.back()->tracker_depth(property));
   tree_list_.back()->tracker_get(property, etrace); 
 
   edit_distance_map_[property]->update(etrace);
-  edp->edit_distance = edit_distance_map_[property]->min_prefix_distance();
+  property->edit_distance = edit_distance_map_[property]->min_prefix_distance();
 }
 
 
 void KExtensionVerifyExecutionTreeManager::process_all_states(
     std::vector<ExecutionStateProperty*> &states) {
+
   CVMESSAGE("Doubling K from: " << current_k_ << " to " << current_k_*2);
   current_k_ = current_k_ * 2;
-  for (unsigned i=0; i<states.size(); ++i) {
-    EditDistanceProperty *edp = static_cast<EditDistanceProperty*>(states[i]);
-    assert(edp->edit_distance == INT_MAX);
 
-    int old_ed = edp->edit_distance;
+  for (unsigned i=0; i<states.size(); ++i) {
+    assert(states[i]->edit_distance == INT_MAX);
+    int old_ed = states[i]->edit_distance;
     recompute_property(states[i]);
-    //CVMESSAGE("Edit distance computed from: " << old_ed << " to " << edp->edit_distance);
+    CVMESSAGE("Edit distance computed from: " << old_ed 
+              << " to " << states[i]->edit_distance);
   }
 }
 
@@ -816,7 +811,7 @@ void KExtensionVerifyExecutionTreeManager::clear_edit_distance_map() {
   }
   edit_distance_map_.clear();
   if (root_tree_ != NULL) {
-    root_tree_->destroy_root();
+    //root_tree_->destroy_root();
     delete root_tree_;
     root_tree_ = NULL;
   }
