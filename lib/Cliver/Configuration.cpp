@@ -21,28 +21,6 @@ namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum RunModeType {
-  Verify,
-  VerifyWithEditCost,
-  VerifyWithEditCostPrefix,
-  Training,
-  TestTraining
-};
-
-enum ClientModelType {
-  Tetrinet,
-  XPilot,
-};
-
-enum SearchModeType {
-  Random,
-  PriorityQueue,
-  DepthFirst,
-  BreadthFirst
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 llvm::cl::opt<RunModeType> RunMode("cliver-mode", 
   llvm::cl::ValueRequired,
   llvm::cl::desc("Mode in which cliver should run"),
@@ -55,7 +33,9 @@ llvm::cl::opt<RunModeType> RunMode("cliver-mode",
     clEnumValN(Training, "training", "Generate training traces"),
   clEnumValEnd));
 
-llvm::cl::opt<ClientModelType> ClientModel("client-model",
+ClientModelType ClientModelFlag;
+llvm::cl::opt<ClientModelType,true> ClientModel("client-model",
+  llvm::cl::location(ClientModelFlag),
   llvm::cl::ValueRequired,
   llvm::cl::desc("Model used for client"),
   llvm::cl::values(
