@@ -71,6 +71,29 @@ class CVContext {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum RunModeType {
+  Verify,
+  VerifyWithEditCost,
+  VerifyWithEditCostPrefix,
+  Training,
+  TestTraining
+};
+
+enum ClientModelType {
+  Tetrinet,
+  XPilot,
+};
+extern ClientModelType ClientModelFlag; /* stored in Configuration.cpp */
+
+enum SearchModeType {
+  Random,
+  PriorityQueue,
+  DepthFirst,
+  BreadthFirst
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class CVStream;
 
 class ClientVerifier : public klee::InterpreterHandler {
