@@ -149,6 +149,13 @@ void VerifySearcher::update(klee::ExecutionState *current,
 }
 
 bool VerifySearcher::empty() {
+  
+  if (ClientModelFlag == XPilot &&
+      !cv_->executor()->finished_states().empty()) {
+    CVDEBUG("Exiting. Num finished states: " 
+            << cv_->executor()->finished_states().size());
+    return true;
+  }
 
   if (BacktrackSearching) {
     reverse_foreach (SearcherStage* stage, stages_)
@@ -197,14 +204,31 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
     // Remove State from current stage
     this->remove_state(state);
 
-    // XXX Hack to prune state constraints
-    ExecutionStateSet state_set, merged_set;
-    state_set.insert(state);
-    merger_->merge(state_set, merged_set);
+    if (ClientModelFlag == XPilot && 
+        state->network_manager()->socket()->round() <= cv_->round()) {
+      CVDEBUG("Removing state at merge event, wront round "
+              << *(state->network_manager()->socket()) << ", State" << *state);
 
-    // Create new stage and add to pending list
-    pending_stages_.push_back(get_new_stage(*(merged_set.begin())));
+      // Remove invalid state with unfinished network processing
+      cv_->executor()->remove_state_internal(state);
 
+    } else {
+      CVDEBUG("New pending stage. Socket: "
+              << *(state->network_manager()->socket()) << ", State" << *state);
+
+      // Create new stage and add to pending list
+      if (ClientModelFlag != XPilot) {
+        // XXX Hack to prune state constraints
+        ExecutionStateSet state_set, merged_set;
+        state_set.insert(state);
+        merger_->merge(state_set, merged_set);
+
+        pending_stages_.push_back(get_new_stage(*(merged_set.begin())));
+      } else {
+        pending_stages_.push_back(get_new_stage(state));
+      }
+
+    }
     return true;
   }
   return false;
@@ -214,9 +238,23 @@ void VerifySearcher::notify(ExecutionEvent ev) {
   stages_.back()->notify(ev);
 
   switch(ev.event_type) {
+    case CV_MERGE: {
+      CVDEBUG("Merge event " << *ev.state);
+      pending_states_.insert(ev.state);
+      break;
+    }
+    case CV_FINISH: {
+      CVDEBUG("Finish event " << *ev.state);
+      if (!ev.state->network_manager()->socket()->is_open()) {
+        CVMESSAGE("Finished state: " << *ev.state);
+        cv_->executor()->add_finished_state(ev.state);
+      }
+      break;
+    }
     case CV_SOCKET_WRITE:
     case CV_SOCKET_READ: {
-			pending_states_.insert(ev.state);
+      if (ClientModelFlag != XPilot)
+        pending_states_.insert(ev.state);
       break;
     }
     case CV_SOCKET_SHUTDOWN: {
@@ -261,10 +299,8 @@ klee::ExecutionState &KExtensionVerifySearcher::selectState() {
 
   // Check if we should increase k
   CVExecutionState *state = stages_.back()->next_state();
-  EditDistanceProperty *edp 
-    = static_cast<EditDistanceProperty*>(state->property());
 
-  if (edp->edit_distance == INT_MAX 
+  if (state->property()->edit_distance == INT_MAX 
       && stages_.back()->size() > 1
       && cv_->execution_tree_manager()->ready_process_all_states()
       && !stages_.back()->rebuilding()) {
@@ -280,110 +316,20 @@ klee::ExecutionState &KExtensionVerifySearcher::selectState() {
   }
 
   return *(static_cast<klee::ExecutionState*>(state));
-  //return *(static_cast<klee::ExecutionState*>(stages_.back()->next_state()));
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 
-MergeVerifySearcher::MergeVerifySearcher(ClientVerifier* cv, StateMerger* merger)
-  : VerifySearcher(cv, merger) {}
-
-bool MergeVerifySearcher::check_pending(CVExecutionState* state) {
-  if (pending_states_.count(state)) {
-    // Should only be 1 for now.
-    assert(pending_states_.size() == 1);
-
-    // Remove from set
-    pending_states_.erase(state);
-
-    // Remove State from current stage
-    this->remove_state(state);
-
-    Socket* socket = state->network_manager()->socket();
-    if (socket->round() > cv_->round()) {
-        // && (socket->type() == SocketEvent::RECV || socket->round() < 4 || ((socket->round() + 1) == cv_->round() && socket->type() == SocketEvent::SEND))) {
-    //if (state->network_manager()->socket()->round() > cv_->round()) {
-
-      // XXX Hack to prune state constraints
-      //ExecutionStateSet state_set, merged_set;
-      //state_set.insert(state);
-      //merger_->merge(state_set, merged_set);
-
-      CVDEBUG("New pending stage: with socket round: " 
-              << state->network_manager()->socket()->round() 
-              << " and state round: " << cv_->round() << " socket: " << *socket);
-      // Create new stage and add to pending list
-      pending_stages_.push_back(get_new_stage(state));
-    } else {
-      CVDEBUG("Removing state at merge event, wrong round: SocketRN:" <<
-              state->network_manager()->socket()->round() <<
-             " <= StateRN:" << cv_->round() << " socket: " << *socket);
-      // Remove invalid state with unfinished network processing
-      cv_->executor()->remove_state_internal(state);
-
-    }
-    return true;
-  }
-  return false;
-}
-
-bool MergeVerifySearcher::empty() {
-  if (!cv_->executor()->finished_states().empty()) {
-    CVDEBUG("Exiting. Num finished states: " 
-            << cv_->executor()->finished_states().size());
-    return true;
-  }
-
-  if (BacktrackSearching) {
-    reverse_foreach (SearcherStage* stage, stages_)
-      if (!stage->empty()) return false;
-  } else {
-    if (!stages_.back()->empty()) 
-      return false;
-  }
-
-  reverse_foreach (SearcherStage* stage, pending_stages_)
-    if (!stage->empty()) return false;
-
-  if (!pending_states_.empty())
-    return false;
-
-  return true;
-}
-
-
-void MergeVerifySearcher::notify(ExecutionEvent ev) {
-  stages_.back()->notify(ev);
-
-  switch(ev.event_type) {
-    case CV_MERGE: {
-      CVDEBUG("MERGE EVENT! " << *ev.state);
-      pending_states_.insert(ev.state);
-      break;
-    }
-    case CV_FINISH: {
-      CVDEBUG("FINISH EVENT! " << *ev.state);
-      if (!ev.state->network_manager()->socket()->is_open()) {
-        CVMESSAGE("Adding finished state: " << *ev.state);
-        cv_->executor()->add_finished_state(ev.state);
-      }
-      break;
-    }
-    case CV_SOCKET_SHUTDOWN: {
-      cv_->executor()->setHaltExecution(true);
-      break;
-    }
-    default:
-      break;
-  }
-}
+// TODO: Round Robin Training Searcher
+// 
+// Use state->property()->round instead of cv_->round() when comparing socket
+// rounds for xpilot
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TrainingSearcher::TrainingSearcher(ClientVerifier *cv, 
                                          StateMerger* merger)
-  : CVSearcher(NULL, cv, merger) {}
+  : VerifySearcher(cv, merger) {}
 
 klee::ExecutionState &TrainingSearcher::selectState() {
   //klee::TimerStatIncrementer timer(stats::searcher_time);
@@ -396,13 +342,18 @@ klee::ExecutionState &TrainingSearcher::selectState() {
   if (stages_.empty()) {
     assert(!pending_states_.empty());
 
-    // Prune state constraints and merge states
-    ExecutionStateSet state_set, merged_set;
-    state_set.insert(pending_states_.begin(), pending_states_.end());
-    merger_->merge(state_set, merged_set);
+    ExecutionStateSet merging_set, state_set;
+    if (ClientModelFlag != XPilot) {
+      ExecutionStateSet merging_set, state_set;
+      // Prune state constraints and merge states
+      merging_set.insert(pending_states_.begin(), pending_states_.end());
+      merger_->merge(merging_set, state_set);
+    } else {
+      state_set.insert(pending_states_.begin(), pending_states_.end());
+    }
 
     foreach (CVExecutionState* state, pending_states_) {
-      if (!merged_set.count(state)) {
+      if (!state_set.count(state)) {
         CVDEBUG("Removing duplicate state " << state << ":" << state->id());
         // Remove/delete states that are duplicates 
         cv_->executor()->remove_state_internal(state);
@@ -434,28 +385,6 @@ klee::ExecutionState &TrainingSearcher::selectState() {
   return *(static_cast<klee::ExecutionState*>(stages_.back()->next_state()));
 }
 
-void TrainingSearcher::update(klee::ExecutionState *current,
-    const std::set<klee::ExecutionState*> &addedStates,
-    const std::set<klee::ExecutionState*> &removedStates) {
-  //klee::TimerStatIncrementer timer(stats::searcher_time);
-
-  if (current != NULL && removedStates.count(current) == 0) {
-    this->add_state(static_cast<CVExecutionState*>(current));
-  }
-
-  if (addedStates.size()) {
-    foreach (klee::ExecutionState* klee_state, addedStates) {
-     this->add_state(static_cast<CVExecutionState*>(klee_state));
-    }
-  }
-
-  if (removedStates.size()) {
-    foreach (klee::ExecutionState* klee_state, removedStates) {
-     this->remove_state(static_cast<CVExecutionState*>(klee_state));
-    }
-  }
-}
-
 bool TrainingSearcher::empty() {
   reverse_foreach (SearcherStage* stage, stages_)
     if (!stage->empty()) return false;
@@ -475,7 +404,6 @@ SearcherStage* TrainingSearcher::get_new_stage(CVExecutionState* state) {
 
 void TrainingSearcher::add_state(CVExecutionState* state) {
   if (stages_.empty()) {
-    CVDEBUG("New stage from state " << state << ":" << state->id());
     stages_.push_back(get_new_stage(state));
   } else {
     if (!check_pending(state))
@@ -491,9 +419,21 @@ void TrainingSearcher::remove_state(CVExecutionState* state) {
 bool TrainingSearcher::check_pending(CVExecutionState* state) {
   if (pending_states_.count(state)) {
     CVDEBUG("Removing pending state " << state << ":" << state->id());
-
     // Remove State from current stage
     this->remove_state(state);
+
+    if (ClientModelFlag == XPilot) {
+      if (state->network_manager()->socket()->round() <= cv_->round()) {
+        CVDEBUG("Removing state at merge event, wront round "
+                << *(state->network_manager()->socket()) 
+                << ", State" << *state);
+        // Remove invalid state with unfinished network processing
+        cv_->executor()->remove_state_internal(state);
+        pending_states_.erase(state);
+      } else {
+        pending_states_.insert(state);
+      }
+    }
 
     return true;
   }
@@ -505,10 +445,27 @@ void TrainingSearcher::notify(ExecutionEvent ev) {
     stages_.back()->notify(ev);
 
   switch(ev.event_type) {
+    case CV_MERGE: {
+      CVDEBUG("Merge event " << *ev.state);
+      pending_states_.insert(ev.state);
+      break;
+    }
+    case CV_FINISH: {
+      CVDEBUG("Finish event " << *ev.state);
+      if (!ev.state->network_manager()->socket()->is_open()) {
+        CVMESSAGE("Finished state: " << *ev.state);
+        cv_->executor()->add_finished_state(ev.state);
+      }
+      break;
+    }
     case CV_SOCKET_WRITE:
     case CV_SOCKET_READ: {
-      CVDEBUG("Inserting pending state " << ev.state << ":" << ev.state->id());
-			pending_states_.insert(ev.state);
+      if (ClientModelFlag != XPilot)
+        pending_states_.insert(ev.state);
+      break;
+    }
+    case CV_SOCKET_SHUTDOWN: {
+      cv_->executor()->setHaltExecution(true);
       break;
     }
     default:
