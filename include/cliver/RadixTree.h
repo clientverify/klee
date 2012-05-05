@@ -83,9 +83,12 @@ template <class Sequence, class Element,
 //template <class Sequence, class Element, 
 class RadixTree {
  public: 
+  typedef Sequence sequence_type;
+  typedef Element element_type;
+
+ protected:
   class Node; // Declaration of Node class
   class Edge; // Declaration of Edge class
-
   typedef typename Sequence::iterator SequenceIterator;
   typedef std::map<Element, Edge*> EdgeMap;
   typedef typename EdgeMap::iterator EdgeMapIterator;
