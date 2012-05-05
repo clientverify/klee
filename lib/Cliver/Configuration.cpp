@@ -64,8 +64,7 @@ CVSearcher* CVSearcherFactory::create(klee::Searcher* base_searcher,
           return new KExtensionVerifySearcher(cv, merger);
         }
         case XPilot: {
-          assert("Need to implmenent KExtensionMergeSearcher");
-          return new MergeVerifySearcher(cv, merger);
+          return new KExtensionVerifySearcher(cv, merger);
 
         }
        }
@@ -77,7 +76,8 @@ CVSearcher* CVSearcherFactory::create(klee::Searcher* base_searcher,
           return new VerifySearcher(cv, merger);
         }
         case XPilot: {
-          return new MergeVerifySearcher(cv, merger);
+          return new VerifySearcher(cv, merger);
+          //return new MergeVerifySearcher(cv, merger);
         }
       }
     }
@@ -175,11 +175,9 @@ ExecutionStateProperty* ExecutionStatePropertyFactory::create() {
 
     case Training:
     case Verify:
-      return new VerifyProperty();
-
     case VerifyWithEditCost:
     case VerifyWithEditCostPrefix:
-      return new EditDistanceProperty();
+      return new ExecutionStateProperty();
   }
   cv_error("invalid run mode");
   return NULL;
