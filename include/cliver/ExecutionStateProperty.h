@@ -38,9 +38,17 @@ namespace cliver {
 ///
 class ExecutionStateProperty {
  public:
-  virtual void print(std::ostream &os) const {};
-	virtual int compare(const ExecutionStateProperty &p) const { assert(0); return 0; }
-	virtual ExecutionStateProperty* clone() { assert(0); return NULL; }
+  ExecutionStateProperty();
+  virtual void print(std::ostream &os) const;
+	virtual int compare(const ExecutionStateProperty &p) const;
+	virtual ExecutionStateProperty* clone();
+
+	int round;
+  int edit_distance;
+	bool recompute;
+
+  // Not currently used
+  //int num_symbolic_vars; 
 };
 
 inline std::ostream &operator<<(std::ostream &os, 
@@ -71,70 +79,6 @@ typedef llvm::PriorityQueue< CVExecutionState*,
 typedef llvm::PriorityQueue< ExecutionStateProperty*, 
 				                     std::vector<ExecutionStateProperty*>,
 														 ExecutionStatePropertyLT > StatePropertyPriorityQueue;
-
-
-////////////////////////////////////////////////////////////////////////////////
-
-class VerifyProperty : public ExecutionStateProperty {
- public: 
-	//enum VerifyPropertyPhase {
-	//	PrepareExecute=0, 
-	//	Execute, 
-	//	Active,
-	//	Horizon,
-	//	EndPhase
-	//};
-	VerifyProperty();
-	VerifyProperty* clone() { return new VerifyProperty(*this); }
-  void print(std::ostream &os) const;
-	int compare(const ExecutionStateProperty &b) const;
-
-	// Property values
-	//int round;
-	//VerifyPropertyPhase phase;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class EditCostProperty : public ExecutionStateProperty {
- public: 
-	EditCostProperty();
-	EditCostProperty* clone();
-  void print(std::ostream &os) const;
-	int compare(const ExecutionStateProperty &b) const;
-
- public: 
-	// Property values
-	double edit_cost;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class EditDistanceProperty : public ExecutionStateProperty {
- public: 
-	EditDistanceProperty();
-	EditDistanceProperty* clone();
-  void print(std::ostream &os) const;
-	int compare(const ExecutionStateProperty &b) const;
-
- public: 
-	// Property values
-	int edit_distance;
-	bool recompute;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class NumSymbolicVarsProperty : public ExecutionStateProperty {
- public: 
-  NumSymbolicVarsProperty();
-  NumSymbolicVarsProperty* clone();
-  void print(std::ostream &os) const;
-	int compare(const ExecutionStateProperty &b) const;
-
- public: 
-  int num_symbolic_vars; 
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 
