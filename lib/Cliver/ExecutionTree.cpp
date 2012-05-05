@@ -175,6 +175,101 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Round Robin Training ExecutionTree Manager
+////////////////////////////////////////////////////////////////////////////////
+
+RoundRobinTrainingExecutionTreeManager::RoundRobinTrainingExecutionTreeManager(ClientVerifier* cv)
+  : ExecutionTreeManager(cv) {}
+
+void RoundRobinTrainingExecutionTreeManager::initialize() {
+  tree_list_.push_back(new ExecutionTraceTree() );
+}
+
+ExecutionTraceTree* get_etrace_tree(CVExecutionState* state) {
+  // Extract state round number
+}
+
+void RoundRobinTrainingExecutionTreeManager::notify(ExecutionEvent ev) {
+  if (cv_->executor()->replay_path())
+    return;
+
+  CVExecutionState* state = ev.state;
+  CVExecutionState* parent = ev.parent;
+  int round;
+
+  ExecutionStateProperty *property = NULL, *parent_property = NULL;
+  if (state) {
+    property = state->property();
+    round = state->property()->round;
+  }
+
+  if (parent) {
+    parent_property = parent->property();
+  }
+
+  switch (ev.event_type) {
+    case CV_ROUND_START: {
+      if (DeleteOldTrees && !tree_list_.empty()) {
+        delete tree_list_.back();
+        tree_list_.pop_back();
+      }
+      tree_list_.push_back(new ExecutionTraceTree() );
+      break;
+    }
+    case CV_BASICBLOCK_ENTRY: {
+      if (state->basic_block_tracking() || !BasicBlockDisabling) {
+        tree_list_[round]->extend_element(state->prevPC->kbb->id, property);
+      }
+      break;
+    }
+
+    case CV_STATE_REMOVED: {
+      CVDEBUG("Removing state: " << *state );
+      tree_list_[round]->remove_tracker(property);
+      break;
+    }
+
+    case CV_STATE_CLONE: {
+      CVDEBUG("Cloned state: " << *state);
+      tree_list_[round]->clone_tracker(property, parent_property);
+      break;
+    }
+
+    case CV_SOCKET_WRITE:
+    case CV_SOCKET_READ: {
+      assert(tree_list_[round]->tracks(property));
+
+      // On a successful socket read/write event, write this path's state
+      // and associated socket event data to file
+
+      // Get socket event for this successful path
+      Socket* socket = state->network_manager()->socket();
+      assert(socket);
+      SocketEvent* socket_event
+          = const_cast<SocketEvent*>(&socket->previous_event());
+
+      // Get path from the execution tree
+      ExecutionTrace etrace;
+      tree_list_[round]->tracker_get(property, etrace);
+
+
+      // Create training object and write to file
+      TrainingObject training_obj(&etrace, socket_event);
+      training_obj.write(state, cv_);
+      break;
+    }
+
+    case CV_SOCKET_SHUTDOWN: {
+      CVDEBUG("Successful socket shutdown");
+      break;
+    }
+
+    default:
+      break;
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 TrainingExecutionTreeManager::TrainingExecutionTreeManager(ClientVerifier* cv) 
   : ExecutionTreeManager(cv) {}

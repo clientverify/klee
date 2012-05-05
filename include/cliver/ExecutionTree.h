@@ -78,7 +78,14 @@ class TrainingExecutionTreeManager : public ExecutionTreeManager {
   void initialize();
   void notify(ExecutionEvent ev);
  protected:
+};
 
+class RoundRobinTrainingExecutionTreeManager : public ExecutionTreeManager {
+ public:
+  RoundRobinTrainingExecutionTreeManager(ClientVerifier *cv);
+  void initialize();
+  void notify(ExecutionEvent ev);
+ protected:
 };
 
 class VerifyExecutionTreeManager : public ExecutionTreeManager {
