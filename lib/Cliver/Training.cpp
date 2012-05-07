@@ -12,6 +12,7 @@
 #include "cliver/CVExecutionState.h"
 #include "cliver/CVStream.h"
 #include "cliver/ExecutionTrace.h"
+#include "cliver/ExecutionStateProperty.h"
 #include "cliver/Socket.h"
 #include "CVCommon.h"
 
@@ -28,7 +29,7 @@ void TrainingObject::write(CVExecutionState* state,
 
   // Create an unique identifing name for this path
   std::stringstream name_ss;
-  name_ss << "round_" << std::setw(4) << std::setfill('0') << cv->round();
+  name_ss << "round_" << std::setw(4) << std::setfill('0') << state->property()->round;
   name_ss << "_length_" << std::setw(6) << std::setfill('0') << trace.size();
   name_ss << "_state_" <<  state->id() << ".tpath";
 
@@ -37,7 +38,7 @@ void TrainingObject::write(CVExecutionState* state,
 
   // Write object to a sub dir so that # files is not greater than the FS limit
   std::stringstream subdir_ss;
-  subdir_ss << "round_" << std::setw(4) << std::setfill('0') << cv->round();
+  subdir_ss << "round_" << std::setw(4) << std::setfill('0') << state->property()->round;
   std::string subdir = subdir_ss.str();
 
   // Open file ../output_directory/subdir/name
