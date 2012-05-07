@@ -173,6 +173,7 @@ class BasicStateCache
   void notify(ExecutionEvent ev) {}
   ExecutionStateProperty* rebuild_property() { return NULL; }
   void set_capacity(size_t c) {}
+  CVExecutionState* root_state() { return NULL; }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -208,6 +209,10 @@ class RebuildingStateCache : public StateRebuilder {
     if (this->rebuilding())
       return this->rebuild_property_;
     return NULL;
+  }
+
+  CVExecutionState* root_state() {
+    return this->root_;
   }
 
   //bool empty() {

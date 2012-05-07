@@ -64,6 +64,7 @@ class SearcherStage {
   SearcherStage() {}
   virtual ~SearcherStage() {}
   virtual CVExecutionState* next_state() = 0;
+  virtual CVExecutionState* root_state() = 0;
   virtual void add_state(CVExecutionState *state) = 0;
   virtual void remove_state(CVExecutionState *state) = 0;
   virtual void notify(ExecutionEvent ev) = 0;
@@ -114,6 +115,10 @@ class SearcherStageImpl : public SearcherStage {
 
   bool rebuilding() {
     return cache_.rebuild_property() != NULL;
+  }
+
+  CVExecutionState* root_state() {
+    return cache_.root_state();
   }
 
   CVExecutionState* next_state() {
@@ -281,6 +286,25 @@ class TrainingSearcher : public VerifySearcher {
   bool empty();
   void printName(std::ostream &os) { os << "TrainingSearcher\n"; }
 
+  void notify(ExecutionEvent ev); 
+
+ private:
+  SearcherStage* get_new_stage(CVExecutionState* state);
+  void add_state(CVExecutionState* state); // has stages
+  void remove_state(CVExecutionState* state);// has stages
+  bool check_pending(CVExecutionState* state); // has pending_stages
+};
+
+
+////////////////////////////////////////////////////////////////////////////////
+
+class RoundRobinTrainingSearcher : public VerifySearcher {
+ public:
+  RoundRobinTrainingSearcher(ClientVerifier *cv, StateMerger* merger);
+  klee::ExecutionState &selectState();
+  bool empty();
+  void printName(std::ostream &os) { os << "RoundRobinTrainingSearcher\n"; }
+
   void notify(ExecutionEvent ev);
 
  private:
@@ -289,11 +313,11 @@ class TrainingSearcher : public VerifySearcher {
   void remove_state(CVExecutionState* state);
   bool check_pending(CVExecutionState* state);
 
-  //SearcherStageList stages_;
-  //SearcherStageList pending_stages_;
-  //ExecutionStateSet pending_states_;
-  ExecutionStateSet pruned_states_;
+  std::map<unsigned, SearcherStageList> stage_map_;
+  unsigned current_stage_round_;
 };
+
+////////////////////////////////////////////////////////////////////////////////
 
 class SearcherStageFactory {
  public:

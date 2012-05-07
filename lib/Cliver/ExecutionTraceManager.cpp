@@ -445,7 +445,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
         size_t element_count = root_tree_->element_count();
 
         CVDEBUG("Training object tree for round: "
-            << cv_->round() << " has " << element_count
+            << state->property()->round << " has " << element_count
             << " elements from " << i+1 << " training objects");
         stats::edit_distance_tree_size += element_count; 
 
@@ -667,7 +667,7 @@ void KExtensionVerifyExecutionTraceManager::notify(ExecutionEvent ev) {
         size_t element_count = root_tree_->element_count();
 
         CVDEBUG("Training object tree for round: "
-            << cv_->round() << " has " << element_count
+            << state->property()->round << " has " << element_count
             << " elements from " << i+1 << " training objects");
         stats::edit_distance_tree_size += element_count; 
 
