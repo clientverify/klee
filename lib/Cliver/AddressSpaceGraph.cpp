@@ -696,7 +696,8 @@ void AddressSpaceGraph::process() {
           if (klee::ConstantExpr *CE
               = dyn_cast<klee::ConstantExpr>(sf.locals[i].value)) {
             klee::ObjectPair object_pair;
-            if (state_->addressSpace.resolveOne(CE, object_pair)) {
+            if (CE->getWidth() == klee::Context::get().getPointerWidth()
+                && state_->addressSpace.resolveOne(CE, object_pair)) {
               os = const_cast<klee::ObjectState*>(object_pair.second);
               if (root_objects_.find(os) == root_objects_.end()) {
                 assert(object_vertex_map_.find(os) != object_vertex_map_.end());
