@@ -40,6 +40,8 @@ BacktrackSearching("backtrack-searching",llvm::cl::init(false));
 llvm::cl::opt<unsigned>
 StateCacheSize("state-cache-size",llvm::cl::init(100000));
 
+llvm::cl::opt<unsigned>
+TrainingMaxPending("training-max-pending",llvm::cl::init(100));
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -349,6 +351,84 @@ klee::ExecutionState &KExtensionVerifySearcher::selectState() {
 // Use state->property()->round instead of cv_->round() when comparing socket
 // rounds for xpilot
 
+//RoundRobinTrainingSearcher::RoundRobinTrainingSearcher(ClientVerifier *cv, 
+//                                         StateMerger* merger)
+//  : VerifySearcher(cv, merger) {}
+//
+//
+//SearcherStage* RoundRobinTrainingSearcher::current_stage() {
+//  if (!stage_map_[current_stage_round_].empty()) {
+//    foreach_reverse (SearcherStage *s, stage_map_[current_stage_round_]) {
+//      if (!s->empty()) {
+//        return s;
+//      }
+//    }
+//  }
+//  return NULL;
+//}
+//
+//klee::ExecutionState &RoundRobinTrainingSearcher::selectState() {
+//  //klee::TimerStatIncrementer timer(stats::searcher_time);
+//
+//  //while (!stages_.empty() && stages_.back()->empty()) {
+//  //  delete stages_.back();
+//  //  stages_.pop_back();
+//  //}
+//
+//  if (stage_time_expired() || current_stage() == NULL) {
+//    assert(!pending_states_.empty());
+//
+//    ExecutionStateSet merging_set, state_set;
+//    if (ClientModelFlag != XPilot) {
+//      ExecutionStateSet merging_set, state_set;
+//      // Prune state constraints and merge states
+//      merging_set.insert(pending_states_.begin(), pending_states_.end());
+//      merger_->merge(merging_set, state_set);
+//    } else {
+//      state_set.insert(pending_states_.begin(), pending_states_.end());
+//    }
+//
+//    foreach (CVExecutionState* state, pending_states_) {
+//      if (!state_set.count(state)) {
+//        CVDEBUG("Removing duplicate state " << state << ":" << state->id());
+//        // Remove/delete states that are duplicates 
+//        cv_->executor()->remove_state_internal(state);
+//        ++stats::merged_states;
+//      } else {
+//        CVDEBUG("New stage from unique state " << state << ":" << state->id());
+//        // Create new stage and add to pending list
+//
+//        pending_stages_.push_back(get_new_stage(state));
+//
+//        ++stats::active_states;
+//      }
+//    }
+//
+//    assert(!pending_stages_.empty()); 
+//
+//    // Compute and output statistics for the previous round
+//    //cv_->next_round();
+//    CVMESSAGE("Advancing to next training round");
+//
+//    foreach (SearcherStage* stage, pending_stages_) {
+//      stage_map_[stage->root_state()->property()->round].push_back(stage);
+//    }
+//    //// Add all pending stages to active stage list
+//    //stages_.insert(stages_.end(), 
+//    //               pending_stages_.begin(), pending_stages_.end());
+//
+//    pending_stages_.clear();
+//    pending_states_.clear();
+//  }
+//
+//  assert(!stages_.empty());
+//  assert(!stages_.back()->empty());
+//
+//  check_searcher_stage_memory();
+//
+//  return *(static_cast<klee::ExecutionState*>(stages_.back()->next_state()));
+//}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TrainingSearcher::TrainingSearcher(ClientVerifier *cv, 
@@ -363,18 +443,13 @@ klee::ExecutionState &TrainingSearcher::selectState() {
     stages_.pop_back();
   }
 
-  if (stages_.empty()) {
+  if (stages_.empty() || pending_states_.size() >= TrainingMaxPending) {
     assert(!pending_states_.empty());
 
+    // Prune state constraints and merge states
     ExecutionStateSet merging_set, state_set;
-    if (ClientModelFlag != XPilot) {
-      ExecutionStateSet merging_set, state_set;
-      // Prune state constraints and merge states
-      merging_set.insert(pending_states_.begin(), pending_states_.end());
-      merger_->merge(merging_set, state_set);
-    } else {
-      state_set.insert(pending_states_.begin(), pending_states_.end());
-    }
+    merging_set.insert(pending_states_.begin(), pending_states_.end());
+    merger_->merge(merging_set, state_set);
 
     foreach (CVExecutionState* state, pending_states_) {
       if (!state_set.count(state)) {
