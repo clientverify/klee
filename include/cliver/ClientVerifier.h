@@ -55,7 +55,7 @@ class CVExecutionState;
 class CVSearcher;
 class ConstraintPruner;
 class ExecutionEvent;
-class ExecutionTreeManager;
+class ExecutionTraceManager;
 class StateMerger;
 
 class CVContext {
@@ -134,7 +134,7 @@ class ClientVerifier : public klee::InterpreterHandler {
 	// Accessors (ugly)
 	CVSearcher* searcher();
 	CVExecutor* executor();
-  ExecutionTreeManager* execution_tree_manager();
+  ExecutionTraceManager* execution_trace_manager();
 
 	// Stats
 	void handle_statistics();
@@ -161,7 +161,7 @@ class ClientVerifier : public klee::InterpreterHandler {
   ConstraintPruner* pruner_;
 	StateMerger* merger_;
 
-  ExecutionTreeManager *execution_tree_manager_;
+  ExecutionTraceManager *execution_trace_manager_;
 
 	std::vector<SocketEventList*> socket_events_;
 

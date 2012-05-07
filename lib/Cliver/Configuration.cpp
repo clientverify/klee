@@ -11,7 +11,7 @@
 #include "cliver/CVSearcher.h"
 #include "cliver/CVStream.h"
 #include "cliver/ExecutionStateProperty.h"
-#include "cliver/ExecutionTree.h"
+#include "cliver/ExecutionTraceManager.h"
 #include "cliver/NetworkManager.h"
 #include "CVCommon.h"
 
@@ -137,34 +137,34 @@ NetworkManager* NetworkManagerFactory::create(CVExecutionState* state,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ExecutionTreeManager* ExecutionTreeManagerFactory::create(ClientVerifier* cv) {
+ExecutionTraceManager* ExecutionTraceManagerFactory::create(ClientVerifier* cv) {
   switch (RunMode) {
 
     case Verify: {
-      return new ExecutionTreeManager(cv);
+      return new ExecutionTraceManager(cv);
       break;
     }
 
     case VerifyWithEditCost: {
       if (SearchMode != PriorityQueue)
         SearchMode = PriorityQueue;
-      return new VerifyExecutionTreeManager(cv);
+      return new VerifyExecutionTraceManager(cv);
       break;
     }
 
     case VerifyWithEditCostPrefix: {
       if (SearchMode != PriorityQueue)
         SearchMode = PriorityQueue;
-      return new KExtensionVerifyExecutionTreeManager(cv);
+      return new KExtensionVerifyExecutionTraceManager(cv);
       break;
     }
 
     case Training: {
-      return new TrainingExecutionTreeManager(cv);
+      return new TrainingExecutionTraceManager(cv);
     }
 
   }
-  cv_message("cliver mode not supported in ExecutionTreeManager");
+  cv_message("cliver mode not supported in ExecutionTraceManager");
   return NULL;
 }
 
