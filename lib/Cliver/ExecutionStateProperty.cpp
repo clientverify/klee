@@ -24,7 +24,7 @@ bool ExecutionStatePropertyLT::operator()(const ExecutionStateProperty* a,
 //////////////////////////////////////////////////////////////////////////////
 
 ExecutionStateProperty::ExecutionStateProperty()
-	: round(0), edit_distance(0), recompute(true) {}
+	: round(-1), edit_distance(0), recompute(true) {}
 
 ExecutionStateProperty* ExecutionStateProperty::clone() { 
   ExecutionStateProperty* esp = new ExecutionStateProperty(*this);

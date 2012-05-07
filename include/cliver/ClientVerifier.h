@@ -146,9 +146,6 @@ class ClientVerifier : public klee::InterpreterHandler {
 	// Arrays
 	inline uint64_t next_array_id() { return array_id_++; }
 
-  // Rounds
-	inline int round() { return round_number_; }
- 
   std::string& client_name() { return client_name_; }
 
  private:

@@ -229,7 +229,7 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
     this->remove_state(state);
 
     if (ClientModelFlag == XPilot && 
-        state->network_manager()->socket()->round() <= cv_->round()) {
+        state->network_manager()->socket()->round() <= state->property()->round) {
       CVDEBUG("Removing state at merge event, wront round "
               << *(state->network_manager()->socket()) << ", State" << *state);
 
@@ -449,7 +449,7 @@ bool TrainingSearcher::check_pending(CVExecutionState* state) {
     this->remove_state(state);
 
     if (ClientModelFlag == XPilot) {
-      if (state->network_manager()->socket()->round() <= cv_->round()) {
+      if (state->network_manager()->socket()->round() <= state->property()->round) {
         CVDEBUG("Removing state at merge event, wront round "
                 << *(state->network_manager()->socket()) 
                 << ", State" << *state);
