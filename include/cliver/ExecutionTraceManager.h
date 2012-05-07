@@ -1,14 +1,12 @@
-//===-- ExecutionTree.h -----------------------------------------*- C++ -*-===//
+//===-- ExecutionTraceManager.h ---------------------------------*- C++ -*-===//
 //
 // <insert license>
 //
 //===----------------------------------------------------------------------===//
 //
-// TODO Rename this file to ExecutionTraceManager.h
-//
 //===----------------------------------------------------------------------===//
-#ifndef CLIVER_EXECUTION_TREE_H
-#define CLIVER_EXECUTION_TREE_H
+#ifndef CLIVER_EXECUTION_TRACE_MANAGER_H
+#define CLIVER_EXECUTION_TRACE_MANAGER_H
 
 #include "cliver/EditDistance.h"
 #include "cliver/ExecutionStateProperty.h"
@@ -18,8 +16,6 @@
 #include "cliver/LevenshteinRadixTree.h"
 #include "cliver/KExtensionTree.h"
 #include "cliver/Training.h"
-
-#include "cliver/tree.h"
 
 #include "klee/Solver.h"
 #include "klee/Internal/Module/KModule.h"
@@ -47,7 +43,8 @@ typedef TrackingRadixTree< ExecutionTrace, BasicBlockID, ExecutionStateProperty>
 typedef LevenshteinRadixTree<ExecutionTrace, BasicBlockID> 
     EditDistanceExecutionTree;
 
-typedef KExtensionTree<ExecutionTrace, BasicBlockID> 
+//typedef KLevenshteinRadixTree<ExecutionTrace, BasicBlockID> 
+typedef KExtensionOptTree<ExecutionTrace, BasicBlockID> 
     KEditDistanceExecutionTree;
 
 typedef boost::unordered_map<ExecutionStateProperty*,EditDistanceExecutionTree*>
@@ -59,9 +56,9 @@ typedef boost::unordered_map<ExecutionStateProperty*,KEditDistanceExecutionTree*
 ////////////////////////////////////////////////////////////////////////////////
 
 /// TODO: Rename this class to ExecutionTraceManager
-class ExecutionTreeManager : public ExecutionObserver {
+class ExecutionTraceManager : public ExecutionObserver {
  public:
-  ExecutionTreeManager(ClientVerifier *cv);
+  ExecutionTraceManager(ClientVerifier *cv);
   virtual void initialize();
   virtual void notify(ExecutionEvent ev);
   virtual void process_all_states(std::vector<ExecutionStateProperty*> &states) {}
@@ -72,25 +69,25 @@ class ExecutionTreeManager : public ExecutionObserver {
 
 };
 
-class TrainingExecutionTreeManager : public ExecutionTreeManager {
+class TrainingExecutionTraceManager : public ExecutionTraceManager {
  public:
-  TrainingExecutionTreeManager(ClientVerifier *cv);
+  TrainingExecutionTraceManager(ClientVerifier *cv);
   void initialize();
   void notify(ExecutionEvent ev);
  protected:
 };
 
-class RoundRobinTrainingExecutionTreeManager : public ExecutionTreeManager {
+class RoundRobinTrainingExecutionTraceManager : public ExecutionTraceManager {
  public:
-  RoundRobinTrainingExecutionTreeManager(ClientVerifier *cv);
+  RoundRobinTrainingExecutionTraceManager(ClientVerifier *cv);
   void initialize();
   void notify(ExecutionEvent ev);
  protected:
 };
 
-class VerifyExecutionTreeManager : public ExecutionTreeManager {
+class VerifyExecutionTraceManager : public ExecutionTraceManager {
  public:
-  VerifyExecutionTreeManager(ClientVerifier *cv);
+  VerifyExecutionTraceManager(ClientVerifier *cv);
   virtual void initialize();
   virtual void notify(ExecutionEvent ev);
 
@@ -102,9 +99,9 @@ class VerifyExecutionTreeManager : public ExecutionTreeManager {
   EditDistanceExecutionTree *root_tree_;
 };
 
-class KExtensionVerifyExecutionTreeManager : public ExecutionTreeManager {
+class KExtensionVerifyExecutionTraceManager : public ExecutionTraceManager {
  public:
-  KExtensionVerifyExecutionTreeManager(ClientVerifier *cv);
+  KExtensionVerifyExecutionTraceManager(ClientVerifier *cv);
   virtual void initialize();
   virtual void notify(ExecutionEvent ev);
   virtual void process_all_states(std::vector<ExecutionStateProperty*> &states);
@@ -123,13 +120,13 @@ class KExtensionVerifyExecutionTreeManager : public ExecutionTreeManager {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class ExecutionTreeManagerFactory {
+class ExecutionTraceManagerFactory {
  public:
-  static ExecutionTreeManager* create(ClientVerifier *cv);
+  static ExecutionTraceManager* create(ClientVerifier *cv);
 };
 
 
 } // end namespace cliver
 
-#endif // CLIVER_EXECUTION_TREE_H
+#endif // CLIVER_EXECUTION_TRACE_MANAGER_H
 

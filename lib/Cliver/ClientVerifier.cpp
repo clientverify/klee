@@ -16,7 +16,7 @@
 #include "cliver/CVSearcher.h"
 #include "cliver/CVStream.h"
 #include "cliver/ExecutionObserver.h"
-#include "cliver/ExecutionTree.h"
+#include "cliver/ExecutionTraceManager.h"
 #include "cliver/NetworkManager.h"
 #include "cliver/StateMerger.h"
 #include "CVCommon.h"
@@ -130,7 +130,7 @@ ClientVerifier::ClientVerifier(std::string* input_filename)
 		searcher_(NULL),
 		pruner_(NULL),
 		merger_(NULL),
-		execution_tree_manager_(NULL),
+		execution_trace_manager_(NULL),
 		array_id_(0),
 		round_number_(0) {
  
@@ -237,10 +237,10 @@ void ClientVerifier::initialize(CVExecutor *executor) {
   searcher_ = CVSearcherFactory::create(NULL, this, merger_);
   hook(searcher_);
   
-  execution_tree_manager_ = ExecutionTreeManagerFactory::create(this);
-  if (execution_tree_manager_) {
-    execution_tree_manager_->initialize();
-    hook(execution_tree_manager_);
+  execution_trace_manager_ = ExecutionTraceManagerFactory::create(this);
+  if (execution_trace_manager_) {
+    execution_trace_manager_->initialize();
+    hook(execution_trace_manager_);
   }
 
   print_stat_labels();
@@ -334,9 +334,9 @@ CVExecutor* ClientVerifier::executor() {
 	return executor_;
 }
 
-ExecutionTreeManager* ClientVerifier::execution_tree_manager() {
-	assert(execution_tree_manager_ != NULL && "not initialized");
-	return execution_tree_manager_;
+ExecutionTraceManager* ClientVerifier::execution_trace_manager() {
+	assert(execution_trace_manager_ != NULL && "not initialized");
+	return execution_trace_manager_;
 }
 
 void ClientVerifier::handle_statistics() {

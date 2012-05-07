@@ -1,18 +1,15 @@
-//===-- ExecutionTree.cpp ---------------------------------------*- C++ -*-===//
+//===-- ExecutionTraceManager.cpp -------------------------------*- C++ -*-===//
 //
 // <insert license>
 //
 //===----------------------------------------------------------------------===//
 // TODO: Method to merge ExecutionTrees
 // TODO: Method to modify pre-existing ExecutionTree
-// TODO: Method to split an ExecutionTree given a list of Leaf nodes
-// TODO: Optimization: store BasicBlock entry id's in a vector rather than a 
-//       path of nodes
-// TODO: Unit tests for execution trees
-// TODO: Remove static_casts in notify()
+//
+// TODO: Combine KEditDistance and EditDistance trees
 //===----------------------------------------------------------------------===//
 
-#include "cliver/ExecutionTree.h"
+#include "cliver/ExecutionTraceManager.h"
 #include "cliver/CVExecutor.h"
 #include "cliver/CVStream.h"
 #include "cliver/EditDistance.h"
@@ -101,13 +98,13 @@ inline std::ostream &operator<<(std::ostream &os,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ExecutionTreeManager::ExecutionTreeManager(ClientVerifier* cv) : cv_(cv) {}
+ExecutionTraceManager::ExecutionTraceManager(ClientVerifier* cv) : cv_(cv) {}
 
-void ExecutionTreeManager::initialize() {
+void ExecutionTraceManager::initialize() {
   tree_list_.push_back(new ExecutionTraceTree() );
 }
 
-void ExecutionTreeManager::notify(ExecutionEvent ev) {
+void ExecutionTraceManager::notify(ExecutionEvent ev) {
   if (cv_->executor()->replay_path())
     return;
 
@@ -181,10 +178,10 @@ void ExecutionTreeManager::notify(ExecutionEvent ev) {
 // Round Robin Training ExecutionTree Manager
 ////////////////////////////////////////////////////////////////////////////////
 
-RoundRobinTrainingExecutionTreeManager::RoundRobinTrainingExecutionTreeManager(ClientVerifier* cv) 
-  : ExecutionTreeManager(cv) {}
+RoundRobinTrainingExecutionTraceManager::RoundRobinTrainingExecutionTraceManager(ClientVerifier* cv) 
+  : ExecutionTraceManager(cv) {}
 
-void RoundRobinTrainingExecutionTreeManager::initialize() {
+void RoundRobinTrainingExecutionTraceManager::initialize() {
   tree_list_.push_back(new ExecutionTraceTree() );
 }
 
@@ -192,7 +189,7 @@ ExecutionTraceTree* get_etrace_tree(CVExecutionState* state) {
   // Extract state round number
 }
 
-void RoundRobinTrainingExecutionTreeManager::notify(ExecutionEvent ev) {
+void RoundRobinTrainingExecutionTraceManager::notify(ExecutionEvent ev) {
   if (cv_->executor()->replay_path())
     return;
 
@@ -274,14 +271,14 @@ void RoundRobinTrainingExecutionTreeManager::notify(ExecutionEvent ev) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TrainingExecutionTreeManager::TrainingExecutionTreeManager(ClientVerifier* cv) 
-  : ExecutionTreeManager(cv) {}
+TrainingExecutionTraceManager::TrainingExecutionTraceManager(ClientVerifier* cv) 
+  : ExecutionTraceManager(cv) {}
 
-void TrainingExecutionTreeManager::initialize() {
+void TrainingExecutionTraceManager::initialize() {
   tree_list_.push_back(new ExecutionTraceTree() );
 }
 
-void TrainingExecutionTreeManager::notify(ExecutionEvent ev) {
+void TrainingExecutionTraceManager::notify(ExecutionEvent ev) {
   if (cv_->executor()->replay_path())
     return;
 
@@ -357,10 +354,10 @@ void TrainingExecutionTreeManager::notify(ExecutionEvent ev) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-VerifyExecutionTreeManager::VerifyExecutionTreeManager(ClientVerifier* cv) 
-  : ExecutionTreeManager(cv), root_tree_(NULL) {}
+VerifyExecutionTraceManager::VerifyExecutionTraceManager(ClientVerifier* cv) 
+  : ExecutionTraceManager(cv), root_tree_(NULL) {}
 
-void VerifyExecutionTreeManager::initialize() {
+void VerifyExecutionTraceManager::initialize() {
   // Initialize a new ExecutionTraceTree
   tree_list_.push_back(new ExecutionTraceTree());
 
@@ -385,7 +382,7 @@ void VerifyExecutionTreeManager::initialize() {
             << training_data_.size() << " unique training objects.");
 }
 
-void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
+void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
   if (cv_->executor()->replay_path())
     return;
 
@@ -549,7 +546,7 @@ void VerifyExecutionTreeManager::notify(ExecutionEvent ev) {
 
 // Delete the trees associated with each state in the edit distance map
 // and clear the map itself
-void VerifyExecutionTreeManager::clear_edit_distance_map() {
+void VerifyExecutionTraceManager::clear_edit_distance_map() {
   EditDistanceExecutionTreeMap::iterator it = edit_distance_map_.begin();
   EditDistanceExecutionTreeMap::iterator ie = edit_distance_map_.end();
   for (; it!=ie; ++it) {
@@ -562,10 +559,10 @@ void VerifyExecutionTreeManager::clear_edit_distance_map() {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-KExtensionVerifyExecutionTreeManager::KExtensionVerifyExecutionTreeManager(ClientVerifier* cv) 
-  : ExecutionTreeManager(cv), root_tree_(NULL), current_k_(2) {}
+KExtensionVerifyExecutionTraceManager::KExtensionVerifyExecutionTraceManager(ClientVerifier* cv) 
+  : ExecutionTraceManager(cv), root_tree_(NULL), current_k_(2) {}
 
-void KExtensionVerifyExecutionTreeManager::initialize() {
+void KExtensionVerifyExecutionTraceManager::initialize() {
   // Initialize a new ExecutionTraceTree
   tree_list_.push_back(new ExecutionTraceTree());
 
@@ -590,7 +587,7 @@ void KExtensionVerifyExecutionTreeManager::initialize() {
             << training_data_.size() << " unique training objects.");
 }
 
-void KExtensionVerifyExecutionTreeManager::notify(ExecutionEvent ev) {
+void KExtensionVerifyExecutionTraceManager::notify(ExecutionEvent ev) {
   if (cv_->executor()->replay_path())
     return;
 
@@ -766,11 +763,11 @@ void KExtensionVerifyExecutionTreeManager::notify(ExecutionEvent ev) {
   }
 }
 
-bool KExtensionVerifyExecutionTreeManager::ready_process_all_states() {
+bool KExtensionVerifyExecutionTraceManager::ready_process_all_states() {
   return current_k_ < MaxKExtension;
 }
 
-void KExtensionVerifyExecutionTreeManager::recompute_property(
+void KExtensionVerifyExecutionTraceManager::recompute_property(
     ExecutionStateProperty *property) {
   klee::TimerStatIncrementer compute_timer(stats::edit_distance_compute_time);
 
@@ -786,7 +783,7 @@ void KExtensionVerifyExecutionTreeManager::recompute_property(
 }
 
 
-void KExtensionVerifyExecutionTreeManager::process_all_states(
+void KExtensionVerifyExecutionTraceManager::process_all_states(
     std::vector<ExecutionStateProperty*> &states) {
 
   CVMESSAGE("Doubling K from: " << current_k_ << " to " << current_k_*2);
@@ -803,7 +800,7 @@ void KExtensionVerifyExecutionTreeManager::process_all_states(
 
 // Delete the trees associated with each state in the edit distance map
 // and clear the map itself
-void KExtensionVerifyExecutionTreeManager::clear_edit_distance_map() {
+void KExtensionVerifyExecutionTraceManager::clear_edit_distance_map() {
   KEditDistanceExecutionTreeMap::iterator it = edit_distance_map_.begin();
   KEditDistanceExecutionTreeMap::iterator ie = edit_distance_map_.end();
   for (; it!=ie; ++it) {

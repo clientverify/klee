@@ -11,7 +11,7 @@
 #include "cliver/CVExecutionState.h"
 #include "cliver/CVExecutor.h"
 #include "cliver/CVStream.h"
-#include "cliver/ExecutionTree.h"
+#include "cliver/ExecutionTraceManager.h"
 #include "cliver/StateMerger.h"
 #include "cliver/ClientVerifier.h"
 #include "cliver/NetworkManager.h"
@@ -326,14 +326,14 @@ klee::ExecutionState &KExtensionVerifySearcher::selectState() {
 
   if (state->property()->edit_distance == INT_MAX 
       && stages_.back()->size() > 1
-      && cv_->execution_tree_manager()->ready_process_all_states()
+      && cv_->execution_trace_manager()->ready_process_all_states()
       && !stages_.back()->rebuilding()) {
     //CVMESSAGE("Next state is INT_MAX");
 
     stages_.back()->add_state(state);
     std::vector<ExecutionStateProperty*> states;
     stages_.back()->get_states(states);
-    cv_->execution_tree_manager()->process_all_states(states);
+    cv_->execution_trace_manager()->process_all_states(states);
     // recompute edit distance
     stages_.back()->set_states(states);
     state = stages_.back()->next_state();
