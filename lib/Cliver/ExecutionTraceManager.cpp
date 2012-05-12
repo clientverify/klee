@@ -41,7 +41,7 @@ llvm::cl::opt<bool>
 EditDistanceAtCloneOnly("edit-distance-at-clone-only",llvm::cl::init(true));
 
 llvm::cl::opt<bool>
-BasicBlockDisabling("basicblock-disabling",llvm::cl::init(true));
+BasicBlockDisabling("basicblock-disabling",llvm::cl::init(false));
 
 llvm::cl::opt<bool>
 DebugExecutionTree("debug-execution-tree",llvm::cl::init(false));

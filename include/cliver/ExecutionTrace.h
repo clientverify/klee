@@ -10,6 +10,7 @@
 #define CLIVER_EXECUTION_TRACE_H
 
 #include <vector>
+#include <list>
 #include <iostream>
 
 namespace cliver {
@@ -19,6 +20,7 @@ namespace cliver {
 // ExecutionTrace: List of BasicBlock ids
 typedef unsigned short BasicBlockID;
 typedef std::vector<BasicBlockID> ExecutionTrace;
+typedef std::list<BasicBlockID> ExecutionTraceList;
 
 ////////////////////////////////////////////////////////////////////////////////
 

@@ -62,6 +62,11 @@ typedef TrackingRadixTree<std::string, char, TrackingObject>       StringTrackin
 typedef TrackingRadixTree<std::vector<char>, char, TrackingObject> VectorTrackingRadixTree;
 typedef TrackingRadixTree<std::list<char>, char, TrackingObject>   ListTrackingRadixTree;
 
+//typedef EdgeTrackingRadixTree<std::string, char, TrackingObject>       StringEdgeTrackingRadixTree;
+//typedef EdgeTrackingRadixTree<std::vector<char>, char, TrackingObject> VectorEdgeTrackingRadixTree;
+//typedef EdgeTrackingRadixTree<std::list<char>, char, TrackingObject>   ListEdgeTrackingRadixTree;
+
+
 // Tested in EditDistanceTreeTest
 typedef LevenshteinRadixTree<std::string, char>  StringLevenshteinRadixTree;
 typedef KLevenshteinRadixTree<std::string, char> StringKLevenshteinRadixTree;
@@ -83,7 +88,7 @@ typedef Types<
 //typedef Types<> TrackingImplementations;
 typedef Types<
   StringTrackingRadixTree, 
-  StringTrackingRadixTree, 
+  VectorTrackingRadixTree, 
   ListTrackingRadixTree
 > TrackingImplementations;
 
@@ -308,7 +313,7 @@ class EditDistanceTreeTest : public ::testing::Test {
 
 TYPED_TEST_CASE(RadixTreeTest, Implementations);
 TYPED_TEST_CASE(TrackingRadixTreeTest, TrackingImplementations);
-TYPED_TEST_CASE(EditDistanceTreeTest, EditDistanceImplementations);
+//TYPED_TEST_CASE(EditDistanceTreeTest, EditDistanceImplementations);
 
 //////////////////////////////////////////////////////////////////////////////////
 
@@ -316,31 +321,31 @@ namespace {
 
 //////////////////////////////////////////////////////////////////////////////////
 
-TYPED_TEST(EditDistanceTreeTest, Init) {
-  ASSERT_TRUE(this->rt_ != NULL);
-}
-
-TYPED_TEST(EditDistanceTreeTest, Insert) {
-  ASSERT_TRUE(this->rt_ != NULL);
-  this->InsertDictionary();
-
-  for (unsigned i = 0; i<this->v_dictionary.size(); ++i) {
-    EXPECT_EQ(this->rt_->lookup(this->v_dictionary[i]), true);
-  }
-}
-
-TYPED_TEST(EditDistanceTreeTest, Clone) {
-  ASSERT_TRUE(this->rt_ != NULL);
-  this->InsertDictionary();
-
-  TypeParam* clone_rt = static_cast<TypeParam*>(this->rt_->clone());
-  delete this->rt_;
-  this->rt_ = clone_rt;
-
-  for (unsigned i = 0; i<this->v_dictionary.size(); ++i) {
-    EXPECT_EQ(clone_rt->lookup(this->v_dictionary[i]), true);
-  }
-}
+//TYPED_TEST(EditDistanceTreeTest, Init) {
+//  ASSERT_TRUE(this->rt_ != NULL);
+//}
+//
+//TYPED_TEST(EditDistanceTreeTest, Insert) {
+//  ASSERT_TRUE(this->rt_ != NULL);
+//  this->InsertDictionary();
+//
+//  for (unsigned i = 0; i<this->v_dictionary.size(); ++i) {
+//    EXPECT_EQ(this->rt_->lookup(this->v_dictionary[i]), true);
+//  }
+//}
+//
+//TYPED_TEST(EditDistanceTreeTest, Clone) {
+//  ASSERT_TRUE(this->rt_ != NULL);
+//  this->InsertDictionary();
+//
+//  TypeParam* clone_rt = static_cast<TypeParam*>(this->rt_->clone());
+//  delete this->rt_;
+//  this->rt_ = clone_rt;
+//
+//  for (unsigned i = 0; i<this->v_dictionary.size(); ++i) {
+//    EXPECT_EQ(clone_rt->lookup(this->v_dictionary[i]), true);
+//  }
+//}
 
 //////////////////////////////////////////////////////////////////////////////////
 
