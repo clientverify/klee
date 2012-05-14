@@ -7,6 +7,8 @@
 #include "cliver/Socket.h"
 #include "cliver/SocketEventMeasurement.h"
 
+#include "klee/Internal/ADT/KTest.h"
+
 #include <vector>
 
 //////////////////////////////////////////////////////////////////////////////////
@@ -52,6 +54,11 @@ class SocketEventMeasurementTest : public ::testing::Test {
 //////////////////////////////////////////////////////////////////////////////////
 
 namespace {
+TEST_F(SocketEventMeasurementTest, Ktest) {
+  KTest *ktest = kTest_fromFile("tetrinet.ktest");
+  ASSERT_NEQ(ktest, NULL);
+  ASSERT_EQ(ktest->numObjects, 13);
+}
 
 TEST_F(SocketEventMeasurementTest, Init) {
   SocketEventSimilarityTetrinet measure;

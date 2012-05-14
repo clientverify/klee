@@ -12,7 +12,6 @@
 
 #include "klee/Expr.h"
 #include "cliver/ClientVerifier.h"
-#include "cliver/ExecutionTree.h"
 #include "cliver/EditDistance.h"
 #include "cliver/CVStream.h"
 
