@@ -79,25 +79,25 @@ using ::testing::Types;
 
 //typedef Types<> Implementations;
 typedef Types<
-  StringRadixTree, 
-  VectorRadixTree, 
-  ListRadixTree
+//  StringRadixTree, 
+//  VectorRadixTree, 
+//  ListRadixTree
 > Implementations;
 
 
 //typedef Types<> TrackingImplementations;
 typedef Types<
-  StringTrackingRadixTree, 
-  VectorTrackingRadixTree, 
-  ListTrackingRadixTree
+//  StringTrackingRadixTree, 
+//  VectorTrackingRadixTree, 
+//  ListTrackingRadixTree
 > TrackingImplementations;
 
 //typedef Types<> EditDistanceImplementations;
 typedef Types<
-  StringLevenshteinRadixTree,
-  StringKLevenshteinRadixTree,
-  StringKExtensionOptTree,
-  StringKExtensionTree
+//  StringLevenshteinRadixTree,
+//  StringKLevenshteinRadixTree,
+//  StringKExtensionOptTree,
+//  StringKExtensionTree
 > EditDistanceImplementations;
 
 //////////////////////////////////////////////////////////////////////////////////
