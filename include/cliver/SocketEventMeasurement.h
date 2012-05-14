@@ -30,7 +30,16 @@ class SocketEventSimilarity {
 class SocketEventSimilarityXpilot : public SocketEventSimilarity {
  public:
   double similarity_score(const SocketEvent* a, const SocketEvent* b) {
-    return 0;
+    double result = 0.0f;
+    if (a->type != b->type) {
+      return result;
+    }
+
+    //if (a->type == SocketEvent::SEND) {
+    //} else if (a->type == SocketEvent::RECV) {
+    //}
+
+    return result;
   }
 };
 

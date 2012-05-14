@@ -36,10 +36,20 @@ class SocketEventMeasurementTest : public ::testing::Test {
         new SocketEvent(tetrinet_ktest_->objects[i]));
     }
 
+    xpilot_ktest_ = kTest_fromFile("xpilot.ktest");
+    ASSERT_TRUE(xpilot_ktest_ != NULL);
+    ASSERT_EQ(xpilot_ktest_->numObjects, 266);
+
+    xpilot_socket_events_ = new SocketEventList();
+    for (unsigned i=0; i<xpilot_ktest_->numObjects; ++i) {
+      xpilot_socket_events_->push_back(
+        new SocketEvent(xpilot_ktest_->objects[i]));
+    }
   }
 
   virtual void TearDown() {
     delete tetrinet_ktest_;
+    delete xpilot_ktest_;
   }
 
   //static void SetUpTestCase() {}
@@ -47,6 +57,10 @@ class SocketEventMeasurementTest : public ::testing::Test {
   // Tetrinet test data
   KTest *tetrinet_ktest_;
   SocketEventList *tetrinet_socket_events_;
+
+  // XPilot test data
+  KTest *xpilot_ktest_;
+  SocketEventList *xpilot_socket_events_;
 };
 
 //////////////////////////////////////////////////////////////////////////////////
@@ -59,6 +73,28 @@ TEST_F(SocketEventMeasurementTest, Ktest) {
   ASSERT_EQ(ktest->numObjects, 13);
   delete ktest;
 }
+
+TEST_F(SocketEventMeasurementTest, XPilot) {
+  SocketEventSimilarityXpilot measure;
+  for (unsigned i=0; i<xpilot_socket_events_->size(); ++i) {
+    std::cout << *((*xpilot_socket_events_)[i]) << std::endl;
+    for (unsigned j=0; j<xpilot_socket_events_->size(); ++j) {
+      //std::cout << *((*xpilot_socket_events_)[i]) << std::endl;
+      //std::cout << *((*xpilot_socket_events_)[j]) << std::endl;
+      //double score = measure.similarity_score(
+      //    (*xpilot_socket_events_)[i],
+      //    (*xpilot_socket_events_)[j]);
+      //if (i == j) {
+      //  EXPECT_EQ(score, 0.0f);
+      //} else {
+      //  EXPECT_LE(score, 1.0f);
+      //  EXPECT_GT(score, 0.0f);
+      //}
+      ////std::cout << "score: " << score << std::endl;
+    }
+  }
+}
+
 
 TEST_F(SocketEventMeasurementTest, Tetrinet) {
   SocketEventSimilarityTetrinet measure;
