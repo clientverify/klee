@@ -26,50 +26,70 @@ class SocketEventMeasurementTest : public ::testing::Test {
  protected:
 
   virtual void SetUp() {
-    char *se_data[] = {
-      "p 1 4 4 0", 
-      "p 3 2 9 1", 
-      "newgame apple 2240352930", 
-      "newgame orange", 
+    tetrinet_ktest_ = kTest_fromFile("tetrinet.ktest");
+    ASSERT_TRUE(tetrinet_ktest_ != NULL);
+    ASSERT_EQ(tetrinet_ktest_->numObjects, 13);
 
-      "endgame "
-    };
-
-    str_data_ = std::vector<std::string>(se_data, end(se_data));
-
-    for (int i=0; i < str_data_.size(); ++i) {
-      const char* str = str_data_[i].c_str();
-      socket_events_.push_back(new SocketEvent((const unsigned char*)str,
-                                               str_data_[i].size()));
+    tetrinet_socket_events_ = new SocketEventList();
+    for (unsigned i=0; i<tetrinet_ktest_->numObjects; ++i) {
+      tetrinet_socket_events_->push_back(
+        new SocketEvent(tetrinet_ktest_->objects[i]));
     }
+
   }
 
-  virtual void TearDown() {}
+  virtual void TearDown() {
+    delete tetrinet_ktest_;
+  }
 
   //static void SetUpTestCase() {}
-  std::vector<SocketEvent*> socket_events_;
-  std::vector<std::string> str_data_;
+  
+  // Tetrinet test data
+  KTest *tetrinet_ktest_;
+  SocketEventList *tetrinet_socket_events_;
 };
 
 //////////////////////////////////////////////////////////////////////////////////
 
 namespace {
+
 TEST_F(SocketEventMeasurementTest, Ktest) {
   KTest *ktest = kTest_fromFile("tetrinet.ktest");
-  ASSERT_NEQ(ktest, NULL);
+  ASSERT_TRUE(ktest != NULL);
   ASSERT_EQ(ktest->numObjects, 13);
+  delete ktest;
 }
 
-TEST_F(SocketEventMeasurementTest, Init) {
+TEST_F(SocketEventMeasurementTest, Tetrinet) {
   SocketEventSimilarityTetrinet measure;
-  EXPECT_LT(0.0f, measure.similarity_score(socket_events_[0],socket_events_[1]));
-  EXPECT_LT(0.0f, measure.similarity_score(socket_events_[1],socket_events_[0]));
-  EXPECT_EQ(1.0f, measure.similarity_score(socket_events_[0],socket_events_[2]));
-  EXPECT_EQ(0.0f, measure.similarity_score(socket_events_[2],socket_events_[3]));
-  for (int i=0; i<socket_events_.size(); i++) {
-    EXPECT_EQ(0.0f, measure.similarity_score(socket_events_[i],socket_events_[i]));
+  for (unsigned i=0; i<tetrinet_socket_events_->size(); ++i) {
+    for (unsigned j=0; j<tetrinet_socket_events_->size(); ++j) {
+      //std::cout << *((*tetrinet_socket_events_)[i]) << std::endl;
+      //std::cout << *((*tetrinet_socket_events_)[j]) << std::endl;
+      double score = measure.similarity_score(
+          (*tetrinet_socket_events_)[i],
+          (*tetrinet_socket_events_)[j]);
+      if (i == j) {
+        EXPECT_EQ(score, 0.0f);
+      } else {
+        EXPECT_LE(score, 1.0f);
+        EXPECT_GT(score, 0.0f);
+      }
+      //std::cout << "score: " << score << std::endl;
+    }
   }
 }
+
+//TEST_F(SocketEventMeasurementTest, Init) {
+//  SocketEventSimilarityTetrinet measure;
+//  EXPECT_LT(0.0f, measure.similarity_score(socket_events_[0],socket_events_[1]));
+//  EXPECT_LT(0.0f, measure.similarity_score(socket_events_[1],socket_events_[0]));
+//  EXPECT_EQ(1.0f, measure.similarity_score(socket_events_[0],socket_events_[2]));
+//  EXPECT_EQ(0.0f, measure.similarity_score(socket_events_[2],socket_events_[3]));
+//  for (int i=0; i<socket_events_.size(); i++) {
+//    EXPECT_EQ(0.0f, measure.similarity_score(socket_events_[i],socket_events_[i]));
+//  }
+//}
 
 //////////////////////////////////////////////////////////////////////////////////
 }

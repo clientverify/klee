@@ -40,7 +40,7 @@ class SocketEventSimilarityTetrinet: public SocketEventSimilarity {
   // Constructor
   SocketEventSimilarityTetrinet() {
     packet_type_regex_ 
-        = boost::regex("^([a-zA-Z]+) .*$");
+        = boost::regex("^([a-zA-Z0-9]+).*$");
     player_move_regex_ 
         = boost::regex("^p ([0-9]+) ([0-9]+) ([0-9]+) ([0-9]+)$");
   }
@@ -50,9 +50,13 @@ class SocketEventSimilarityTetrinet: public SocketEventSimilarity {
   double similarity_score(const SocketEvent* a, const SocketEvent* b) {
     double result = 0.0f;
 
-    // Initialize strings
-    std::string str_a(a->data.begin(), a->data.end());
-    std::string str_b(b->data.begin(), b->data.end());
+    assert(a->data[a->data.size()-1] == 0xFF);
+    assert(b->data[b->data.size()-1] == 0xFF);
+
+    // Initialize strings, skip last element (non-ascii 0xFF)
+    std::string str_a(a->data.begin(), a->data.begin()+a->data.size()-1);
+    std::string str_b(b->data.begin(), b->data.begin()+b->data.size()-1);
+    //std::cout << "comparing: " << str_a << " with " << str_b << std::endl;
 
     // Check if the packet types are equal
     result += check_packet_type(str_a, str_b);
@@ -70,8 +74,11 @@ class SocketEventSimilarityTetrinet: public SocketEventSimilarity {
     boost::smatch what_a, what_b;
     if (regex_match(a, what_a, packet_type_regex_) && 
         regex_match(b, what_b, packet_type_regex_) &&
-        what_a[1].str() == what_b[1].str())
+        what_a[1].str() == what_b[1].str()) {
+      //std::cout << "ptypes: " 
+      //    << what_a[1].str() << " and " << what_b[1].str() << std::endl;
       return 0.0f;
+    }
     return 1.0f;
   }
 
@@ -92,7 +99,7 @@ class SocketEventSimilarityTetrinet: public SocketEventSimilarity {
       double max_difference = 12 + 20 + 3; // TODO correct ?
       assert(sum_of_differences < max_difference);
       if (sum_of_differences > 0)
-        return max_difference / (double)sum_of_differences;
+        return (double)sum_of_differences / max_difference;
     }
     return 0.0;
   }
