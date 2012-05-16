@@ -16,6 +16,10 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#define UBATOINT_I(_b,_i) \
+    (((_b)[_i]<<24) + ((_b)[_i+1]<<16) + ((_b)[_i+2]<<8) + ((_b)[_i+3]))
+
+#define UBATOINT(_b) UBATOINT_I(_b, 0)
 namespace cliver {
 
 class SocketEvent;
@@ -34,11 +38,27 @@ class SocketEventSimilarityXpilot : public SocketEventSimilarity {
     if (a->type != b->type) {
       return result;
     }
+    if (a->type == SocketEvent::SEND) {
+      std::cout << "a & b are SEND events\n";
+    } else if (a->type == SocketEvent::RECV) {
+      // data is 8 bytes in
+      int32_t smseq_a, smseq_b, kbseq_a, kbseq_b;
+      //for (unsigned i=0; i<8; ++i)
+      //  std::cout << (int)( a->data[i]) << ", ";
+      //std::cout << std::endl;
+      //for (unsigned i=0; i<8; ++i)
+      //  std::cout << (int)(b->data[i]) << ", ";
+      //std::cout << std::endl;
 
-    //if (a->type == SocketEvent::SEND) {
-    //} else if (a->type == SocketEvent::RECV) {
-    //}
+      smseq_a = UBATOINT_I(a->data, 0);
+      smseq_b = UBATOINT_I(b->data, 0);
+      kbseq_a = UBATOINT_I(a->data, 4);
+      kbseq_b = UBATOINT_I(b->data, 4);
+      //std::cout << "a & b are RECV events: "
+      //    << smseq_a << ", " << smseq_b << ", "
+      //    << kbseq_a << ", " << kbseq_b << std::endl;
 
+    }
     return result;
   }
 };
