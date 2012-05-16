@@ -97,6 +97,7 @@ class VerifyExecutionTraceManager : public ExecutionTraceManager {
   TrainingObjectSet training_data_;
   EditDistanceExecutionTreeMap edit_distance_map_;
   EditDistanceExecutionTree *root_tree_;
+  SocketEventSimilarity *similarity_measure_;
 };
 
 class KExtensionVerifyExecutionTraceManager : public ExecutionTraceManager {
@@ -115,6 +116,7 @@ class KExtensionVerifyExecutionTraceManager : public ExecutionTraceManager {
   TrainingObjectList current_training_list_;
   KEditDistanceExecutionTreeMap edit_distance_map_;
   KEditDistanceExecutionTree *root_tree_;
+  SocketEventSimilarity *similarity_measure_;
   int current_k_;
 };
 

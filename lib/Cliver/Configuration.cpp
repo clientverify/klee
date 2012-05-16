@@ -13,6 +13,7 @@
 #include "cliver/ExecutionStateProperty.h"
 #include "cliver/ExecutionTraceManager.h"
 #include "cliver/NetworkManager.h"
+#include "cliver/SocketEventMeasurement.h"
 #include "CVCommon.h"
 
 #include "llvm/Support/CommandLine.h"
@@ -181,6 +182,22 @@ ExecutionStateProperty* ExecutionStatePropertyFactory::create() {
   }
   cv_error("invalid run mode");
   return NULL;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+SocketEventSimilarity* SocketEventSimilarityFactory::create(ClientVerifier *cv) {
+  switch (ClientModel) {
+    case Tetrinet: {
+      return new SocketEventSimilarityTetrinet();
+    }
+    case XPilot: {
+      return new SocketEventSimilarityXpilot();
+    }
+    default: {
+      return new SocketEventSimilarity();
+    }
+  }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

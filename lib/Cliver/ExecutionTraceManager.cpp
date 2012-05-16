@@ -361,6 +361,9 @@ void VerifyExecutionTraceManager::initialize() {
   // Initialize a new ExecutionTraceTree
   tree_list_.push_back(new ExecutionTraceTree());
 
+  // Create similarity measure
+  similarity_measure_ = SocketEventSimilarityFactory::create(cv_);
+
   // Parse the training data filenames
   if (!TrainingPathDir.empty())
     foreach (std::string path, TrainingPathDir)
@@ -424,8 +427,8 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
         const SocketEvent* socket_event 
             = &(state->network_manager()->socket()->event());
 
-        SocketEventSimilarityTetrinet measure;
-        TrainingManager::sort_by_similarity_score(socket_event, score_list, measure);
+        TrainingManager::sort_by_similarity_score(socket_event, score_list, 
+                                                  *similarity_measure_);
 
         root_tree_ = new EditDistanceExecutionTree();
 
@@ -565,6 +568,9 @@ KExtensionVerifyExecutionTraceManager::KExtensionVerifyExecutionTraceManager(Cli
 void KExtensionVerifyExecutionTraceManager::initialize() {
   // Initialize a new ExecutionTraceTree
   tree_list_.push_back(new ExecutionTraceTree());
+  
+  // Create similarity measure
+  similarity_measure_ = SocketEventSimilarityFactory::create(cv_);
 
   // Parse the training data filenames
   if (!TrainingPathDir.empty())
@@ -643,8 +649,8 @@ void KExtensionVerifyExecutionTraceManager::notify(ExecutionEvent ev) {
         const SocketEvent* socket_event 
             = &(state->network_manager()->socket()->event());
 
-        SocketEventSimilarityTetrinet measure;
-        TrainingManager::sort_by_similarity_score(socket_event, score_list, measure);
+        TrainingManager::sort_by_similarity_score(socket_event, score_list,
+                                                  *similarity_measure_);
 
         root_tree_ = new KEditDistanceExecutionTree();
 
