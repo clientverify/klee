@@ -77,13 +77,13 @@ TEST_F(SocketEventMeasurementTest, Ktest) {
 TEST_F(SocketEventMeasurementTest, XPilot) {
   SocketEventSimilarityXpilot measure;
   for (unsigned i=0; i<xpilot_socket_events_->size(); ++i) {
-    std::cout << *((*xpilot_socket_events_)[i]) << std::endl;
+    //std::cout << *((*xpilot_socket_events_)[i]) << std::endl;
     for (unsigned j=0; j<xpilot_socket_events_->size(); ++j) {
       //std::cout << *((*xpilot_socket_events_)[i]) << std::endl;
       //std::cout << *((*xpilot_socket_events_)[j]) << std::endl;
-      //double score = measure.similarity_score(
-      //    (*xpilot_socket_events_)[i],
-      //    (*xpilot_socket_events_)[j]);
+      double score = measure.similarity_score(
+          (*xpilot_socket_events_)[i],
+          (*xpilot_socket_events_)[j]);
       //if (i == j) {
       //  EXPECT_EQ(score, 0.0f);
       //} else {
