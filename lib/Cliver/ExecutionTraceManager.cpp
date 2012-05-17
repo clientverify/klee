@@ -668,12 +668,13 @@ void KExtensionVerifyExecutionTraceManager::notify(ExecutionEvent ev) {
         root_tree_ = new KEditDistanceExecutionTree();
 
         size_t i, max_count = 5;
-        bool zero_match = true;
-        for (i=0; i < score_list.size() && (zero_match|| i < max_count); ++i) {
-          root_tree_->insert(score_list[i].second->trace);
-          current_training_list_.push_back(score_list[i].second);
+        bool zero_match = false;
+        for (i=0; (i < score_list.size()) && (i < max_count); ++i) {
           double score = score_list[i].first;
-          if (score > 0.0) zero_match = false;
+					if (zero_match && score > 0.0f) break;
+					root_tree_->insert(score_list[i].second->trace);
+					current_training_list_.push_back(score_list[i].second);
+          if (score == 0.0f) zero_match = true;
         }
 
         root_tree_->init(current_k_);
@@ -687,7 +688,7 @@ void KExtensionVerifyExecutionTraceManager::notify(ExecutionEvent ev) {
 
         CVDEBUG("Training object tree for round: "
             << state->property()->round << " has " << element_count
-            << " elements from " << i+1 << " training objects");
+            << " elements from " << current_training_list_.size() << " training objects");
         stats::edit_distance_tree_size += element_count; 
 
         edit_distance_map_[property] = 
