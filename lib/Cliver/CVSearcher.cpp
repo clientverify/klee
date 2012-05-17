@@ -43,7 +43,7 @@ llvm::cl::opt<unsigned>
 StateCacheSize("state-cache-size",llvm::cl::init(100000));
 
 llvm::cl::opt<unsigned>
-TrainingMaxPending("training-max-pending",llvm::cl::init(100));
+TrainingMaxPending("training-max-pending",llvm::cl::init(1));
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -454,6 +454,7 @@ klee::ExecutionState &TrainingSearcher::selectState() {
     merger_->merge(merging_set, state_set);
 
     foreach (CVExecutionState* state, pending_states_) {
+      cv_->notify_all(ExecutionEvent(CV_SEARCHER_NEW_STAGE, state));
       if (!state_set.count(state)) {
         CVDEBUG("Removing duplicate state " << state << ":" << state->id());
         // Remove/delete states that are duplicates 

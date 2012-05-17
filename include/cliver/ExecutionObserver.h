@@ -45,6 +45,7 @@ class CVExecutionState;
   X(CV_SOCKET_SHUTDOWN)          \
   X(CV_SOCKET_WRITE)             \
   X(CV_SOCKET_READ)              \
+  X(CV_SEARCHER_NEW_STAGE)       \
   X(CV_MERGE)                    \
   X(CV_FINISH)
 
