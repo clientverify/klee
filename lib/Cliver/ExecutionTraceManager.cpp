@@ -660,7 +660,7 @@ void KExtensionVerifyExecutionTraceManager::notify(ExecutionEvent ev) {
         TrainingManager::init_score_list(training_data_, score_list);
 
         const SocketEvent* socket_event 
-            = &(state->network_manager()->socket()->event());
+            = &(state->network_manager()->socket()->last_event());
 
         TrainingManager::sort_by_similarity_score(socket_event, score_list,
                                                   *similarity_measure_);

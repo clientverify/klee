@@ -106,6 +106,7 @@ class Socket {
   void print(std::ostream &os);
 
 	const SocketEvent& event();
+	const SocketEvent& last_event();
 	const SocketEvent& previous_event();
 
 	static int NextFileDescriptor;

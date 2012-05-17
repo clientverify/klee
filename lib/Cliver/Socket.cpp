@@ -213,6 +213,20 @@ const SocketEvent& Socket::event() {
 	return *((*log_)[index_]);
 }
 
+const SocketEvent& Socket::last_event() {
+	if (event_) return *event_;
+	//assert (log_ && index_ < log_->size());
+  if (ClientModelFlag == XPilot) {
+    unsigned i = index_;
+    int round = (*log_)[i]->round;
+    while (i+1 < log_->size() && (*log_)[i+1]->round == round)
+      i++;
+    return *((*log_)[i]);
+  }
+
+	return *((*log_)[index_]);
+}
+
 const SocketEvent& Socket::previous_event(){ 
 	// ::previous_event() not supported when using single event Socket
 	if (event_) cv_error("previous_event not supported");
