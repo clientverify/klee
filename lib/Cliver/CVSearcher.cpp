@@ -8,13 +8,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "cliver/CVSearcher.h"
+
+#include "cliver/ClientVerifier.h"
 #include "cliver/CVExecutionState.h"
 #include "cliver/CVExecutor.h"
 #include "cliver/CVStream.h"
 #include "cliver/ExecutionTraceManager.h"
-#include "cliver/StateMerger.h"
-#include "cliver/ClientVerifier.h"
 #include "cliver/NetworkManager.h"
+#include "cliver/StateMerger.h"
+
 #include "CVCommon.h"
 
 #include "klee/Internal/Module/InstructionInfoTable.h"

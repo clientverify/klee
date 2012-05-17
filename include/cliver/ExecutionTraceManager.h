@@ -44,7 +44,7 @@ typedef LevenshteinRadixTree<ExecutionTrace, BasicBlockID>
     EditDistanceExecutionTree;
 
 //typedef KLevenshteinRadixTree<ExecutionTrace, BasicBlockID> 
-typedef KExtensionOptTree<ExecutionTrace, BasicBlockID> 
+typedef KExtensionTree<ExecutionTrace, BasicBlockID> 
     KEditDistanceExecutionTree;
 
 typedef boost::unordered_map<ExecutionStateProperty*,EditDistanceExecutionTree*>
@@ -75,6 +75,7 @@ class TrainingExecutionTraceManager : public ExecutionTraceManager {
   void initialize();
   void notify(ExecutionEvent ev);
  protected:
+  void write_training_object(CVExecutionState* state);
 };
 
 class RoundRobinTrainingExecutionTraceManager : public ExecutionTraceManager {
