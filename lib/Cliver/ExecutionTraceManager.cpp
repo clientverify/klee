@@ -344,8 +344,9 @@ void TrainingExecutionTraceManager::notify(ExecutionEvent ev) {
       break;
     }
 
-    case CV_MERGE: {
-      write_training_object(state);
+    case CV_SEARCHER_NEW_STAGE: {
+      if (ClientModelFlag == XPilot) 
+        write_training_object(state);
       break;
     }
 
