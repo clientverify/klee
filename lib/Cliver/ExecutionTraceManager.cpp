@@ -10,14 +10,17 @@
 //===----------------------------------------------------------------------===//
 
 #include "cliver/ExecutionTraceManager.h"
+
+#include "cliver/ClientVerifier.h"
+#include "cliver/CVExecutionState.h"
 #include "cliver/CVExecutor.h"
 #include "cliver/CVStream.h"
 #include "cliver/EditDistance.h"
 #include "cliver/ExecutionTrace.h"
-#include "cliver/CVExecutionState.h"
 #include "cliver/NetworkManager.h"
-#include "cliver/Training.h"
 #include "cliver/SocketEventMeasurement.h"
+#include "cliver/Training.h"
+
 #include "CVCommon.h"
 
 #include "klee/Internal/Module/KInstruction.h"
@@ -38,7 +41,7 @@ llvm::cl::opt<unsigned>
 MaxKExtension("max-k-extension",llvm::cl::init(16));
 
 llvm::cl::opt<bool>
-EditDistanceAtCloneOnly("edit-distance-at-clone-only",llvm::cl::init(true));
+EditDistanceAtCloneOnly("edit-distance-at-clone-only",llvm::cl::init(false));
 
 llvm::cl::opt<bool>
 BasicBlockDisabling("basicblock-disabling",llvm::cl::init(false));
@@ -278,6 +281,29 @@ void TrainingExecutionTraceManager::initialize() {
   tree_list_.push_back(new ExecutionTraceTree() );
 }
 
+// Write this state's path and associated socket event data to file
+void TrainingExecutionTraceManager::write_training_object(
+    CVExecutionState* state) {
+
+  ExecutionStateProperty *property = state->property();
+
+  assert(tree_list_.back()->tracks(property));
+
+  // Get socket event for this successful path
+  Socket* socket = state->network_manager()->socket();
+  assert(socket);
+  SocketEvent* socket_event 
+      = const_cast<SocketEvent*>(&socket->previous_event());
+
+  // Get path from the execution tree
+  ExecutionTrace etrace;
+  tree_list_.back()->tracker_get(property, etrace);
+
+  // Create training object and write to file
+  TrainingObject training_obj(&etrace, socket_event);
+  training_obj.write(state, cv_);
+}
+
 void TrainingExecutionTraceManager::notify(ExecutionEvent ev) {
   if (cv_->executor()->replay_path())
     return;
@@ -318,27 +344,15 @@ void TrainingExecutionTraceManager::notify(ExecutionEvent ev) {
       break;
     }
 
+    case CV_MERGE: {
+      write_training_object(state);
+      break;
+    }
+
     case CV_SOCKET_WRITE:
     case CV_SOCKET_READ: {
-      assert(tree_list_.back()->tracks(property));
-
-      // On a successful socket read/write event, write this path's state
-      // and associated socket event data to file
-
-      // Get socket event for this successful path
-      Socket* socket = state->network_manager()->socket();
-      assert(socket);
-      SocketEvent* socket_event 
-          = const_cast<SocketEvent*>(&socket->previous_event());
-
-      // Get path from the execution tree
-      ExecutionTrace etrace;
-      tree_list_.back()->tracker_get(property, etrace);
-
-
-      // Create training object and write to file
-      TrainingObject training_obj(&etrace, socket_event);
-      training_obj.write(state, cv_);
+      if (ClientModelFlag != XPilot) 
+        write_training_object(state);
       break;
     }
 
