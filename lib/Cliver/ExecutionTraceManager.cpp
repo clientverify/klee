@@ -538,16 +538,14 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
     }
     break;
 
-    case CV_SOCKET_WRITE:
-    case CV_SOCKET_READ: {
-      klee::TimerStatIncrementer timer(stats::execution_tree_time);
-      CVDEBUG("End state: " << *state);
+    case CV_SEARCHER_NEW_STAGE: {
+      //klee::TimerStatIncrementer timer(stats::execution_tree_time);
 
       ExecutionTrace etrace;
       tree_list_.back()->tracker_get(property, etrace);
 
+      CVMESSAGE("End state: " << *state);
       CVDEBUG("End of round, path length: " << etrace.size());
-
     }
     break;
 
@@ -757,17 +755,15 @@ void KExtensionVerifyExecutionTraceManager::notify(ExecutionEvent ev) {
     }
     break;
 
-    case CV_SOCKET_WRITE:
-    case CV_SOCKET_READ: {
-      klee::TimerStatIncrementer timer(stats::execution_tree_time);
-
+    case CV_SEARCHER_NEW_STAGE: {
+      //klee::TimerStatIncrementer timer(stats::execution_tree_time);
       //current_k_ = 2;
       //while (property->edit_distance == INT_MAX) {
       //  recompute_property(property);
       //  current_k_ *= 2;
       //}
 
-      CVDEBUG("End of round, path length: " << tree_list_.back()->tracker_depth(property));
+      //CVDEBUG("End of round, path length: " << tree_list_.back()->tracker_depth(property));
       CVMESSAGE("End state: " << *state);
       //CVDEBUG("FINAL [ ][" << etrace.size() << "] " << etrace);
     }

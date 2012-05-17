@@ -243,6 +243,7 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
     } else {
       CVDEBUG("New pending stage. Socket: "
               << *(state->network_manager()->socket()) << ", State" << *state);
+      cv_->notify_all(ExecutionEvent(CV_SEARCHER_NEW_STAGE, state));
 
       // Create new stage and add to pending list
       if (ClientModelFlag != XPilot) {
