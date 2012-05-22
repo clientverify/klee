@@ -619,6 +619,7 @@ void KExtensionVerifyExecutionTraceManager::notify(ExecutionEvent ev) {
   if (parent) 
     parent_property = parent->property();
 
+  // XXX WHY? IS? THIS? HERE?! XXX
   if (state && !state->network_manager()->socket()->is_open()) {
     return;
   }
