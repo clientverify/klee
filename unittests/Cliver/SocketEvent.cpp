@@ -2,9 +2,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+//#include "packet.h"
+
 #include "gtest/gtest.h"
 
 #include "cliver/Socket.h"
+#include "cliver/ClientVerifier.h" /* for ClientModelFlag */
 #include "cliver/SocketEventMeasurement.h"
 
 #include "klee/Internal/ADT/KTest.h"
@@ -26,6 +29,7 @@ class SocketEventMeasurementTest : public ::testing::Test {
  protected:
 
   virtual void SetUp() {
+    ClientModelFlag = Tetrinet;
     tetrinet_ktest_ = kTest_fromFile("tetrinet.ktest");
     ASSERT_TRUE(tetrinet_ktest_ != NULL);
     ASSERT_EQ(tetrinet_ktest_->numObjects, 13);
@@ -36,9 +40,10 @@ class SocketEventMeasurementTest : public ::testing::Test {
         new SocketEvent(tetrinet_ktest_->objects[i]));
     }
 
-    xpilot_ktest_ = kTest_fromFile("xpilot.ktest");
+    ClientModelFlag = XPilot;
+    xpilot_ktest_ = kTest_fromFile("xpilot1.ktest");
     ASSERT_TRUE(xpilot_ktest_ != NULL);
-    ASSERT_EQ(xpilot_ktest_->numObjects, 266);
+    //ASSERT_EQ(xpilot_ktest_->numObjects, 266);
 
     xpilot_socket_events_ = new SocketEventList();
     for (unsigned i=0; i<xpilot_ktest_->numObjects; ++i) {
@@ -84,12 +89,12 @@ TEST_F(SocketEventMeasurementTest, XPilot) {
       double score = measure.similarity_score(
           (*xpilot_socket_events_)[i],
           (*xpilot_socket_events_)[j]);
-      //if (i == j) {
-      //  EXPECT_EQ(score, 0.0f);
-      //} else {
-      //  EXPECT_LE(score, 1.0f);
-      //  EXPECT_GT(score, 0.0f);
-      //}
+      if (i == j) {
+        EXPECT_EQ(score, 0.0f);
+      } else {
+        EXPECT_LE(score, 1.0f);
+        EXPECT_GT(score, 0.0f);
+      }
       ////std::cout << "score: " << score << std::endl;
     }
   }
