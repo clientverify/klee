@@ -32,6 +32,9 @@ ExecutionEvent::ExecutionEvent(ExecutionEventType t,
 ExecutionEvent::ExecutionEvent(ExecutionEventType t)
   : event_type(t), state(NULL), parent(NULL) {}
 
+ExecutionEvent::ExecutionEvent()
+  : event_type(CV_NULL_EVENT), state(NULL), parent(NULL) {}
+
 ///////////////////////////////////////////////////////////////////////////////
 
 void ExecutionObserverPrinter::notify(ExecutionEvent ev) {

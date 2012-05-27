@@ -34,6 +34,17 @@ llvm::cl::opt<RunModeType> RunMode("cliver-mode",
     clEnumValN(Training, "training", "Generate training traces"),
   clEnumValEnd));
 
+ClientModelType EditDistanceFlag;
+llvm::cl::opt<ClientModelType,true> ClientModel("edit-distance",
+  llvm::cl::location(EditDistanceFlag),
+  llvm::cl::ValueRequired,
+  llvm::cl::desc("Method used to compute edit-distance"),
+  llvm::cl::values(
+    clEnumValN(Tetrinet, "tetrinet", "Tetrinet"),
+    clEnumValN(XPilot,   "xpilot",   "XPilot"),
+  clEnumValEnd));
+
+
 ClientModelType ClientModelFlag;
 llvm::cl::opt<ClientModelType,true> ClientModel("client-model",
   llvm::cl::location(ClientModelFlag),
@@ -156,7 +167,7 @@ ExecutionTraceManager* ExecutionTraceManagerFactory::create(ClientVerifier* cv) 
     case VerifyWithEditCostPrefix: {
       if (SearchMode != PriorityQueue)
         SearchMode = PriorityQueue;
-      return new KExtensionVerifyExecutionTraceManager(cv);
+      return new VerifyExecutionTraceManager(cv);
       break;
     }
 
@@ -170,6 +181,40 @@ ExecutionTraceManager* ExecutionTraceManagerFactory::create(ClientVerifier* cv) 
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+EditDistanceTree* EditDistanceTreeFactory::create(ClientVerifier* cv) {
+  switch (RunMode) {
+
+    case Verify: {
+      return new ExecutionTraceManager(cv);
+      break;
+    }
+
+    case VerifyWithEditCost: {
+      if (SearchMode != PriorityQueue)
+        SearchMode = PriorityQueue;
+      return new VerifyExecutionTraceManager(cv);
+      break;
+    }
+
+    case VerifyWithEditCostPrefix: {
+      if (SearchMode != PriorityQueue)
+        SearchMode = PriorityQueue;
+      return new VerifyExecutionTraceManager(cv);
+      break;
+    }
+
+    case Training: {
+      return new TrainingExecutionTraceManager(cv);
+    }
+
+  }
+  cv_message("cliver mode not supported in ExecutionTraceManager");
+  return NULL;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 
 ExecutionStateProperty* ExecutionStatePropertyFactory::create() {
   switch (RunMode) {

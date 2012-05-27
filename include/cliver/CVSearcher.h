@@ -264,8 +264,8 @@ class VerifySearcher : public CVSearcher {
 
   unsigned current_stage_;
   SearcherStageList stages_;
-  SearcherStageList pending_stages_;
-  ExecutionStateSet pending_states_;
+  std::vector<CVExecutionState*> pending_states_;
+  std::map<CVExecutionState*, ExecutionEvent> pending_events_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -283,16 +283,16 @@ class TrainingSearcher : public VerifySearcher {
  public:
   TrainingSearcher(ClientVerifier *cv, StateMerger* merger);
   klee::ExecutionState &selectState();
-  bool empty();
+  //bool empty();
   void printName(std::ostream &os) { os << "TrainingSearcher\n"; }
 
-  void notify(ExecutionEvent ev); 
+  //void notify(ExecutionEvent ev); 
 
  private:
-  SearcherStage* get_new_stage(CVExecutionState* state);
-  void add_state(CVExecutionState* state); // has stages
-  void remove_state(CVExecutionState* state);// has stages
-  bool check_pending(CVExecutionState* state); // has pending_stages
+  //SearcherStage* get_new_stage(CVExecutionState* state);
+  //void add_state(CVExecutionState* state); // has stages
+  //void remove_state(CVExecutionState* state);// has stages
+  //bool check_pending(CVExecutionState* state); // has pending_stages
 };
 
 
