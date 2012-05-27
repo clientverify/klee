@@ -40,15 +40,15 @@ void SocketEvent::init(const unsigned char* buf, unsigned len) {
 	length = len;
 	
   if (ClientModelFlag == XPilot) {
-		// Extract the round number prefix
-		round = (int)(((unsigned)buf[0] << 24) 
+		// Extract the client round number prefix
+		client_round = (int)(((unsigned)buf[0] << 24) 
 								| ((unsigned)buf[1] << 16) 
 								| ((unsigned)buf[2] << 8) 
 								| ((unsigned)buf[3]));
 		buf += 4;
 		length -= 4;
 	} else {
-		round = -1;
+		client_round = -1;
 	}
 
   // Set socket data bytes
@@ -72,7 +72,7 @@ void SocketEvent::print(std::ostream &os) const {
 #undef X
 	os << "[" << socketevent_types[type] << "][LEN:" << length << "]";
   if (ClientModelFlag == XPilot)
-    os << "[RN:" << round << "] ";
+    os << "[CLRN:" << client_round << "] ";
 	for (unsigned i=0; i<length; ++i) {
     char buf[8];
     sprintf(buf,"%.2X ", data[i]);
@@ -103,7 +103,7 @@ bool SocketEvent::less(const SocketEvent &se) const {
 	if (delta < se.delta)
 		return true;
 
-	if (round < se.round)
+	if (client_round < se.client_round)
 		return true;
 
 	if (length < se.length)
@@ -218,8 +218,8 @@ const SocketEvent& Socket::last_event() {
 	//assert (log_ && index_ < log_->size());
   if (ClientModelFlag == XPilot) {
     unsigned i = index_;
-    int round = (*log_)[i]->round;
-    while (i+1 < log_->size() && (*log_)[i+1]->round == round)
+    int client_round = (*log_)[i]->client_round;
+    while (i+1 < log_->size() && (*log_)[i+1]->client_round == client_round)
       i++;
     return *((*log_)[i]);
   }
@@ -244,7 +244,7 @@ void Socket::print(std::ostream &os) {
 	if (event_) {
 
     if (ClientModelFlag == XPilot)
-      os << "Round:" << round() << ", ";
+      os << "Client Round:" << client_round() << ", ";
 
 		os << "Event: " << index_ << "/" << 1 << ", "
        //<< "Position: " << offset_ << "/" << event().length << ", "
@@ -256,7 +256,7 @@ void Socket::print(std::ostream &os) {
 	} else if (index_ < log_->size()) {
 
     if (ClientModelFlag == XPilot)
-      os << "Round:" << round() << ", ";
+      os << "Client Round:" << client_round() << ", ";
 
 		os << "Event: " << index_ << "/" << log_->size() << ", "
        //<< "Position: " << offset_ << "/" << event().length << ", "

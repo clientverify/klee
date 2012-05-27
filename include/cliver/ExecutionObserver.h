@@ -68,6 +68,7 @@ class ExecutionEvent {
                  klee::ExecutionState* s, klee::ExecutionState* p = NULL);
 
   ExecutionEvent(ExecutionEventType t);
+  ExecutionEvent();
 };
 
 ////////////////////////////////////////////////////////////////////////////////

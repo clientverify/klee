@@ -32,7 +32,7 @@ class SocketEvent {
 	typedef enum { SOCKETEVENT_TYPES } Type;
 	Type type;
 	unsigned delta;
-	int round;
+	int client_round;
 	unsigned length;
 	std::vector<uint8_t> data;
 
@@ -54,7 +54,7 @@ class SocketEvent {
 	void serialize(archive & ar, const unsigned version) {
 		ar & type;
 		ar & delta;
-		ar & round;
+		ar & client_round;
 		ar & length;
 		ar & data;
 	}
@@ -92,7 +92,7 @@ class Socket {
 	SocketEvent::Type type() { return event().type; }
 	State state() 					 { return state_; }
 	unsigned length()				 { return event().length; }
-	unsigned round()				 { return event().round; }
+	unsigned client_round()	 { return event().client_round; }
 	int fd() 								 { return file_descriptor_; }
 	unsigned index()				 { return index_; }
 

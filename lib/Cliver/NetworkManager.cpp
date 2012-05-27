@@ -331,7 +331,7 @@ void NetworkManagerXpilot::execute_read(CVExecutor* executor,
   if (socket.type() != SocketEvent::RECV)
     RETURN_SUCCESS("read-on-send", bytes_written);
 
-	if (socket.round() != state()->property()->round)
+	if (socket.client_round() != state()->property()->client_round)
     RETURN_SUCCESS("read-early", bytes_written);
 
 	while (socket.has_data() && bytes_written < len) {
@@ -359,7 +359,7 @@ void NetworkManagerXpilot::execute_write(CVExecutor* executor,
 	if (socket.state() != Socket::IDLE)
 		RETURN_FAILURE_OBJ("send", "wrong state");
 
-	if (socket.round() != state()->property()->round)
+	if (socket.client_round() != state()->property()->client_round)
 		RETURN_FAILURE_OBJ("send", "wrong round");
 
 	if ((int)socket.length() != len)

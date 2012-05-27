@@ -548,7 +548,7 @@ class KExtensionTree
     return min_prefix_distance_;
   }
 
-  void prepare_delete() {
+  virtual void prepare_delete() {
     std::stack<Node*> worklist; 
     if (this->root_) {
       worklist.push(this->root_);

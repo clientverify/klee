@@ -79,6 +79,13 @@ enum RunModeType {
   TestTraining
 };
 
+enum EditDistanceType {
+  LevenshteinRow,
+  KPrefix,
+  KPrefixOpt,
+};
+extern EditDistanceType EditDistanceTypeFlag; /* stored in Configuration.cpp */
+
 enum ClientModelType {
   Tetrinet,
   XPilot,

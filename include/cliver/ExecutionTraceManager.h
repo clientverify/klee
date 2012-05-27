@@ -55,7 +55,6 @@ typedef boost::unordered_map<ExecutionStateProperty*,KEditDistanceExecutionTree*
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/// TODO: Rename this class to ExecutionTraceManager
 class ExecutionTraceManager : public ExecutionObserver {
  public:
   ExecutionTraceManager(ClientVerifier *cv);
@@ -78,27 +77,26 @@ class TrainingExecutionTraceManager : public ExecutionTraceManager {
   void write_training_object(CVExecutionState* state);
 };
 
-class RoundRobinTrainingExecutionTraceManager : public ExecutionTraceManager {
- public:
-  RoundRobinTrainingExecutionTraceManager(ClientVerifier *cv);
-  void initialize();
-  void notify(ExecutionEvent ev);
- protected:
-};
-
 class VerifyExecutionTraceManager : public ExecutionTraceManager {
  public:
   VerifyExecutionTraceManager(ClientVerifier *cv);
   virtual void initialize();
   virtual void notify(ExecutionEvent ev);
+  virtual void process_all_states(std::vector<ExecutionStateProperty*> &states);
+  virtual bool ready_process_all_states();
 
  private:
   void clear_edit_distance_map();
+  void recompute_property(ExecutionStateProperty *property);
 
+  // XXX rename?
   TrainingObjectSet training_data_;
+  TrainingObjectList current_training_list_;
+
   EditDistanceExecutionTreeMap edit_distance_map_;
   EditDistanceExecutionTree *root_tree_;
   SocketEventSimilarity *similarity_measure_;
+  int current_k_;
 };
 
 class KExtensionVerifyExecutionTraceManager : public ExecutionTraceManager {

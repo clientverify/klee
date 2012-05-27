@@ -103,10 +103,11 @@ class LevenshteinSequenceComparator {
 
 template <class Sequence, class T> 
 class LevenshteinRadixTree 
-: public RadixTree<std::vector<LevenshteinElement<T> >, 
+:
+  public EditDistanceTree<Sequence,T>,
+  public RadixTree<std::vector<LevenshteinElement<T> >, 
                    LevenshteinElement<T>,
-                   LevenshteinSequenceComparator<T> >,
-  public EditDistanceTree<Sequence,T> {
+                   LevenshteinSequenceComparator<T> > {
 
   typedef LevenshteinElement<T> LElement;
   typedef std::vector<LevenshteinElement<T> > LSequence;
@@ -221,7 +222,7 @@ class LevenshteinRadixTree
     }
   }
 
-  void update_element(T t) {
+  virtual void update_element(T t) {
     Sequence suffix;
     suffix.insert(suffix.end(), t);
     update_suffix(suffix);
@@ -277,6 +278,11 @@ class LevenshteinRadixTree
 
     // Remove this node
     return this->remove_node(node);
+  }
+
+  /// Return a deep-copy of this /* only used for testing */
+  virtual This* clone() {
+    return this->clone_internal();
   }
 
   //===-------------------------------------------------------------------===//
@@ -497,6 +503,11 @@ class KLevenshteinRadixTree
     return this->remove_node(node);
   }
 
+  /// Return a deep-copy of this RadixTree /* only used for testing */
+  virtual This* clone() {
+    return this->clone_internal();
+  }
+
   //===-------------------------------------------------------------------===//
   // Extra methods, testing, utility
   //===-------------------------------------------------------------------===//
@@ -534,11 +545,6 @@ class KLevenshteinRadixTree
       return e->d[row_ % 2];
     }
     return -1 ;
-  }
-
-  /// Return a deep-copy of this RadixTree /* only used for testing */
-  virtual This* clone() {
-    return this->clone_internal();
   }
 
  private:
