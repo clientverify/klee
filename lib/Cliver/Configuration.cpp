@@ -10,7 +10,9 @@
 #include "cliver/ClientVerifier.h"
 #include "cliver/CVSearcher.h"
 #include "cliver/CVStream.h"
+#include "cliver/EditDistanceTree.h"
 #include "cliver/ExecutionStateProperty.h"
+#include "cliver/ExecutionTrace.h"
 #include "cliver/ExecutionTraceManager.h"
 #include "cliver/NetworkManager.h"
 #include "cliver/SocketEventMeasurement.h"
@@ -26,24 +28,17 @@ llvm::cl::opt<RunModeType> RunMode("cliver-mode",
   llvm::cl::ValueRequired,
   llvm::cl::desc("Mode in which cliver should run"),
   llvm::cl::values(
-    clEnumValN(Verify, "verify", "Verify mode"),
-    clEnumValN(VerifyWithEditCost, "verify-with-edit-cost",
-      "Verify using min edit cost and training data"),
-    clEnumValN(VerifyWithEditCostPrefix, "verify-with-edit-cost-prefix",
-      "Verify using min edit cost prefix and training data"),
     clEnumValN(Training, "training", "Generate training traces"),
+    clEnumValN(VerifyNaive, "naive", "Verify mode"),
+    clEnumValN(VerifyEditDistanceRow, "edit-dist-row",
+      "Verify using edit distance and training data with Lev. matrix row alg."),
+    clEnumValN(VerifyEditDistanceKPrefixRow, "edit-dist-kprefix-row",
+      "Verify using edit distance and training data with k-Prefix matrix row alg."),
+    clEnumValN(VerifyEditDistanceKPrefixHash, "edit-dist-kprefix-hash",
+      "Verify using edit distance and training data with k-Prefix hash table alg."),
+    clEnumValN(VerifyEditDistanceKPrefixHashPointer, "edit-dist-kprefix-hashptr",
+      "Verify using edit distance and training data with k-Prefix ptr hash table alg."),
   clEnumValEnd));
-
-ClientModelType EditDistanceFlag;
-llvm::cl::opt<ClientModelType,true> ClientModel("edit-distance",
-  llvm::cl::location(EditDistanceFlag),
-  llvm::cl::ValueRequired,
-  llvm::cl::desc("Method used to compute edit-distance"),
-  llvm::cl::values(
-    clEnumValN(Tetrinet, "tetrinet", "Tetrinet"),
-    clEnumValN(XPilot,   "xpilot",   "XPilot"),
-  clEnumValEnd));
-
 
 ClientModelType ClientModelFlag;
 llvm::cl::opt<ClientModelType,true> ClientModel("client-model",
@@ -70,28 +65,12 @@ llvm::cl::opt<SearchModeType> SearchMode("search-mode",
 CVSearcher* CVSearcherFactory::create(klee::Searcher* base_searcher, 
                                       ClientVerifier* cv, StateMerger* merger) {
   switch (RunMode) {
-    case VerifyWithEditCostPrefix: {
-       switch (ClientModel) {
-        case Tetrinet: {
-          return new KExtensionVerifySearcher(cv, merger);
-        }
-        case XPilot: {
-          return new KExtensionVerifySearcher(cv, merger);
-
-        }
-       }
-    }
-    case Verify:
-    case VerifyWithEditCost: {
-      switch (ClientModel) {
-        case Tetrinet: {
-          return new VerifySearcher(cv, merger);
-        }
-        case XPilot: {
-          return new VerifySearcher(cv, merger);
-          //return new MergeVerifySearcher(cv, merger);
-        }
-      }
+    case VerifyNaive:
+    case VerifyEditDistanceRow:
+    case VerifyEditDistanceKPrefixRow:
+    case VerifyEditDistanceKPrefixHash:
+    case VerifyEditDistanceKPrefixHashPointer: {
+      return new VerifySearcher(cv, merger);
     }
     case Training: {
       return new TrainingSearcher(cv, merger);
@@ -105,6 +84,17 @@ CVSearcher* CVSearcherFactory::create(klee::Searcher* base_searcher,
 
 SearcherStage* SearcherStageFactory::create(StateMerger* merger, 
                                             CVExecutionState* state) {
+  switch (RunMode) {
+    case VerifyEditDistanceRow:
+    case VerifyEditDistanceKPrefixRow:
+    case VerifyEditDistanceKPrefixHash:
+    case VerifyEditDistanceKPrefixHashPointer: {
+      return new PQSearcherStage(state);
+    }
+    default:
+      break;
+  }
+
   switch (SearchMode) {
     case Random: {
       return new RandomSearcherStage(state);
@@ -151,30 +141,20 @@ NetworkManager* NetworkManagerFactory::create(CVExecutionState* state,
 
 ExecutionTraceManager* ExecutionTraceManagerFactory::create(ClientVerifier* cv) {
   switch (RunMode) {
-
-    case Verify: {
+    case VerifyNaive: {
       return new ExecutionTraceManager(cv);
       break;
     }
-
-    case VerifyWithEditCost: {
-      if (SearchMode != PriorityQueue)
-        SearchMode = PriorityQueue;
+    case VerifyEditDistanceRow:
+    case VerifyEditDistanceKPrefixRow:
+    case VerifyEditDistanceKPrefixHash:
+    case VerifyEditDistanceKPrefixHashPointer: {
       return new VerifyExecutionTraceManager(cv);
-      break;
-    }
-
-    case VerifyWithEditCostPrefix: {
-      if (SearchMode != PriorityQueue)
-        SearchMode = PriorityQueue;
-      return new VerifyExecutionTraceManager(cv);
-      break;
     }
 
     case Training: {
       return new TrainingExecutionTraceManager(cv);
     }
-
   }
   cv_message("cliver mode not supported in ExecutionTraceManager");
   return NULL;
@@ -182,51 +162,42 @@ ExecutionTraceManager* ExecutionTraceManagerFactory::create(ClientVerifier* cv) 
 
 ////////////////////////////////////////////////////////////////////////////////
 
-EditDistanceTree* EditDistanceTreeFactory::create(ClientVerifier* cv) {
+ExecutionTraceEditDistanceTree* EditDistanceTreeFactory::create() {
   switch (RunMode) {
 
-    case Verify: {
-      return new ExecutionTraceManager(cv);
+    case VerifyEditDistanceRow: {
+      return new LevenshteinRadixTree<ExecutionTrace, BasicBlockID>();
       break;
     }
 
-    case VerifyWithEditCost: {
-      if (SearchMode != PriorityQueue)
-        SearchMode = PriorityQueue;
-      return new VerifyExecutionTraceManager(cv);
+    case VerifyEditDistanceKPrefixRow: {
+      return new KLevenshteinRadixTree<ExecutionTrace, BasicBlockID>();
       break;
     }
 
-    case VerifyWithEditCostPrefix: {
-      if (SearchMode != PriorityQueue)
-        SearchMode = PriorityQueue;
-      return new VerifyExecutionTraceManager(cv);
+    case VerifyEditDistanceKPrefixHash: {
+      return new KExtensionTree<ExecutionTrace, BasicBlockID>();
       break;
     }
 
-    case Training: {
-      return new TrainingExecutionTraceManager(cv);
+    case VerifyEditDistanceKPrefixHashPointer: {
+      return new KExtensionOptTree<ExecutionTrace, BasicBlockID>();
+      break;
+    }
+
+    default: {
+      cv_error("EditDistanceFactory called in non-editdistance mode");
     }
 
   }
-  cv_message("cliver mode not supported in ExecutionTraceManager");
+  cv_error("invalid edit distance algorithm");
   return NULL;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
 
 ExecutionStateProperty* ExecutionStatePropertyFactory::create() {
-  switch (RunMode) {
-
-    case Training:
-    case Verify:
-    case VerifyWithEditCost:
-    case VerifyWithEditCostPrefix:
-      return new ExecutionStateProperty();
-  }
-  cv_error("invalid run mode");
-  return NULL;
+  return new ExecutionStateProperty();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

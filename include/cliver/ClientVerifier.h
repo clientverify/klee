@@ -72,25 +72,20 @@ class CVContext {
 ////////////////////////////////////////////////////////////////////////////////
 
 enum RunModeType {
-  Verify,
-  VerifyWithEditCost,
-  VerifyWithEditCostPrefix,
   Training,
-  TestTraining
+  VerifyNaive,
+  VerifyEditDistanceRow,
+  VerifyEditDistanceKPrefixRow,
+  VerifyEditDistanceKPrefixHash,
+  VerifyEditDistanceKPrefixHashPointer
 };
-
-enum EditDistanceType {
-  LevenshteinRow,
-  KPrefix,
-  KPrefixOpt,
-};
-extern EditDistanceType EditDistanceTypeFlag; /* stored in Configuration.cpp */
 
 enum ClientModelType {
   Tetrinet,
   XPilot,
 };
-extern ClientModelType ClientModelFlag; /* stored in Configuration.cpp */
+// stored in Configuration.cpp
+extern ClientModelType ClientModelFlag; 
 
 enum SearchModeType {
   Random,

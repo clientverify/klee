@@ -317,7 +317,8 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
                                                   *similarity_measure_);
 
         // XXX FIXME use factory method
-        root_tree_ = new EditDistanceExecutionTree();
+        //root_tree_ = new EditDistanceExecutionTree();
+        root_tree_ = EditDistanceTreeFactory::create();
 
         // If exact match exists, only add exact match, otherwise
         // add 5 closest matches 
@@ -329,7 +330,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
             break;
           if (score == 0.0f)
             zero_match = true;
-					root_tree_->insert(score_list[i].second->trace);
+					root_tree_->add_data(score_list[i].second->trace);
 					current_training_list_.push_back(score_list[i].second);
         }
 
@@ -341,15 +342,12 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
         property->recompute = true;
 
         // Store size of tree in stats
-        size_t element_count = root_tree_->element_count();
 
         CVDEBUG("Training object tree for round: "
-            << state->property()->round << " has " << element_count
-            << " elements from " << i+1 << " training objects");
-        stats::edit_distance_tree_size += element_count; 
+            << state->property()->round << " used " << i+1 << " training objects");
+        stats::edit_distance_tree_size += (i+1); 
 
-        edit_distance_map_[property] = 
-            static_cast<EditDistanceExecutionTree*>(root_tree_->clone());
+        edit_distance_map_[property] = root_tree_->clone_edit_distance_tree();
       }
 
       if (state->basic_block_tracking() || !BasicBlockDisabling) {
@@ -403,8 +401,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       assert(edit_distance_map_.count(parent_property));
 
       edit_distance_map_[property] = 
-          static_cast<EditDistanceExecutionTree*>(
-              edit_distance_map_[parent_property]->clone());
+          edit_distance_map_[parent_property]->clone_edit_distance_tree();
 
       property->edit_distance = edit_distance_map_[property]->min_distance();
       CVDEBUG("Cloned state: " << *state << ", parent: " << *parent )
@@ -497,8 +494,8 @@ void VerifyExecutionTraceManager::process_all_states(
 // Delete the trees associated with each state in the edit distance map
 // and clear the map itself
 void VerifyExecutionTraceManager::clear_edit_distance_map() {
-  EditDistanceExecutionTreeMap::iterator it = edit_distance_map_.begin();
-  EditDistanceExecutionTreeMap::iterator ie = edit_distance_map_.end();
+  StatePropertyEditDistanceTreeMap::iterator it = edit_distance_map_.begin();
+  StatePropertyEditDistanceTreeMap::iterator ie = edit_distance_map_.end();
   for (; it!=ie; ++it) {
     delete it->second;
   }
@@ -516,7 +513,7 @@ void VerifyExecutionTraceManager::clear_edit_distance_map() {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
+#if 0
 KExtensionVerifyExecutionTraceManager::KExtensionVerifyExecutionTraceManager(ClientVerifier* cv) 
   : ExecutionTraceManager(cv), root_tree_(NULL), current_k_(2) {}
 
@@ -768,11 +765,13 @@ void KExtensionVerifyExecutionTraceManager::clear_edit_distance_map() {
     delete it->second;
   }
   edit_distance_map_.clear();
+
   if (root_tree_ != NULL) {
-    //root_tree_->destroy_root();
+    root_tree_->delete_shared_data();
     delete root_tree_;
     root_tree_ = NULL;
   }
 }
+#endif
 
 } // end namespace cliver
