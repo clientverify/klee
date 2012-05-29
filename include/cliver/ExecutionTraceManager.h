@@ -39,19 +39,6 @@ namespace cliver {
 
 typedef TrackingRadixTree< ExecutionTrace, BasicBlockID, ExecutionStateProperty> 
     ExecutionTraceTree;
-//
-//typedef LevenshteinRadixTree<ExecutionTrace, BasicBlockID> 
-//    EditDistanceExecutionTree;
-//
-////typedef KLevenshteinRadixTree<ExecutionTrace, BasicBlockID> 
-//typedef KExtensionTree<ExecutionTrace, BasicBlockID> 
-//    KEditDistanceExecutionTree;
-//
-//typedef boost::unordered_map<ExecutionStateProperty*,EditDistanceExecutionTree*>
-//    EditDistanceExecutionTreeMap;
-//
-//typedef boost::unordered_map<ExecutionStateProperty*,KEditDistanceExecutionTree*>
-//    KEditDistanceExecutionTreeMap;
 
 typedef EditDistanceTree<ExecutionTrace, BasicBlockID> 
     ExecutionTraceEditDistanceTree;
@@ -106,28 +93,6 @@ class VerifyExecutionTraceManager : public ExecutionTraceManager {
   int current_k_;
 };
 
-#if 0
-class KExtensionVerifyExecutionTraceManager : public ExecutionTraceManager {
- public:
-  KExtensionVerifyExecutionTraceManager(ClientVerifier *cv);
-  virtual void initialize();
-  virtual void notify(ExecutionEvent ev);
-  virtual void process_all_states(std::vector<ExecutionStateProperty*> &states);
-  virtual bool ready_process_all_states();
-
- private:
-  void recompute_property(ExecutionStateProperty *property);
-  void clear_edit_distance_map();
-
-  TrainingObjectSet training_data_;
-  TrainingObjectList current_training_list_;
-  KEditDistanceExecutionTreeMap edit_distance_map_;
-  KEditDistanceExecutionTree *root_tree_;
-  SocketEventSimilarity *similarity_measure_;
-  int current_k_;
-};
-#endif
-
 ////////////////////////////////////////////////////////////////////////////////
 
 class ExecutionTraceManagerFactory {
@@ -135,10 +100,14 @@ class ExecutionTraceManagerFactory {
   static ExecutionTraceManager* create(ClientVerifier *cv);
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
 class EditDistanceTreeFactory {
  public:
   static ExecutionTraceEditDistanceTree* create();
 };
+
+////////////////////////////////////////////////////////////////////////////////
 
 } // end namespace cliver
 
