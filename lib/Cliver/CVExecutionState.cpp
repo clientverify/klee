@@ -110,9 +110,9 @@ void CVExecutionState::erase_self_permanent() {
 
 void CVExecutionState::print(std::ostream &os) const {
   if (property_)
-    os << "[" << this << "] [id:" << id_ << "] " << "[" << property_ << "] " << *property_;
+    os << "[" << this << "][id:" << id_ << "]" << "[" << property_ << "] " << *property_;
   else 
-    os << "[" << this << "] [id:" << id_ << "] ";
+    os << "[" << this << "][id:" << id_ << "]";
 }
 
 std::ostream &operator<<(std::ostream &os, const CVExecutionState &s) {
