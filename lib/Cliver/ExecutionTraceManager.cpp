@@ -52,9 +52,6 @@ DebugExecutionTree("debug-execution-tree",llvm::cl::init(false));
 llvm::cl::opt<bool>
 DeleteOldTrees("delete-old-trees",llvm::cl::init(true));
 
-llvm::cl::opt<bool>
-AltEditDistance("alt-edit-distance",llvm::cl::init(false));
-
 llvm::cl::list<std::string> TrainingPathFile("training-path-file",
 	llvm::cl::ZeroOrMore,
 	llvm::cl::ValueRequired,
@@ -310,14 +307,18 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
         TrainingObjectScoreList score_list;
         TrainingManager::init_score_list(training_data_, score_list);
 
-        const SocketEvent* socket_event 
-            = &(state->network_manager()->socket()->event());
+        const SocketEvent* socket_event = NULL;
+
+        // XXX TEMP HACK
+        if (ClientModelFlag == XPilot)
+          socket_event = &(state->network_manager()->socket()->last_event());
+        else
+          socket_event = &(state->network_manager()->socket()->event());
+
 
         TrainingManager::sort_by_similarity_score(socket_event, score_list, 
                                                   *similarity_measure_);
 
-        // XXX FIXME use factory method
-        //root_tree_ = new EditDistanceExecutionTree();
         root_tree_ = EditDistanceTreeFactory::create();
 
         // If exact match exists, only add exact match, otherwise
@@ -326,15 +327,17 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
         bool zero_match = false;
         for (i=0; (i < score_list.size()) && (i < max_count); ++i) {
           double score = score_list[i].first;
-					if (zero_match && score > 0.0f)
+					if (zero_match && score > 0.0f) {
+            i--;
             break;
+          }
+          CVDEBUG("Score: " << score);
           if (score == 0.0f)
             zero_match = true;
 					root_tree_->add_data(score_list[i].second->trace);
 					current_training_list_.push_back(score_list[i].second);
         }
 
-        // XXX not all use k?
         root_tree_->init(current_k_);
 
         // Set initial values for edit distance
@@ -342,7 +345,6 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
         property->recompute = true;
 
         // Store size of tree in stats
-
         CVDEBUG("Training object tree for round: "
             << state->property()->round << " used " << i+1 << " training objects");
         stats::edit_distance_tree_size += (i+1); 
@@ -430,10 +432,10 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       }
 
       // Delete the ExecutionTraceTree from the previous round
-      //if (DeleteOldTrees && !tree_list_.empty()) {
-      //  delete tree_list_.back();
-      //  tree_list_.pop_back();
-      //}
+      if (DeleteOldTrees && !tree_list_.empty()) {
+        delete tree_list_.back();
+        tree_list_.pop_back();
+      }
 
       // Reset training data list
       current_training_list_.clear();
@@ -501,277 +503,10 @@ void VerifyExecutionTraceManager::clear_edit_distance_map() {
   }
   edit_distance_map_.clear();
 
-  if (root_tree_ != NULL)
-    delete root_tree_;
-
-  /// XXXX FIX ME: Need to handle prepare_delete
-  //if (root_tree_ != NULL) {
-  //  //root_tree_->destroy_root();
-  //  delete root_tree_;
-  //  root_tree_ = NULL;
-  //}
-}
-
-////////////////////////////////////////////////////////////////////////////////
-#if 0
-KExtensionVerifyExecutionTraceManager::KExtensionVerifyExecutionTraceManager(ClientVerifier* cv) 
-  : ExecutionTraceManager(cv), root_tree_(NULL), current_k_(2) {}
-
-void KExtensionVerifyExecutionTraceManager::initialize() {
-  // Initialize a new ExecutionTraceTree
-  tree_list_.push_back(new ExecutionTraceTree());
-  
-  // Create similarity measure
-  similarity_measure_ = SocketEventSimilarityFactory::create(cv_);
-
-  // Parse the training data filenames
-  if (!TrainingPathDir.empty())
-    foreach (std::string path, TrainingPathDir)
-      cv_->getFilesRecursive(path, ".tpath", TrainingPathFile);
-
-  // Report error if no filenames found
-  if (TrainingPathFile.empty())
-    cv_error("Error parsing training data file names, exiting now.");
-
-  CVMESSAGE("Loading " 
-            << TrainingPathFile.size() << " training data files.");
-
-  // Read training data into memory
-  TrainingManager::read_files(TrainingPathFile, training_data_); 
-  if (training_data_.empty())
-    cv_error("Error reading training data , exiting now.");
-
-  CVMESSAGE("Finished loading " 
-            << training_data_.size() << " unique training objects.");
-}
-
-void KExtensionVerifyExecutionTraceManager::notify(ExecutionEvent ev) {
-  if (cv_->executor()->replay_path())
-    return;
-
-  CVExecutionState* state = ev.state;
-  CVExecutionState* parent = ev.parent;
-
-  ExecutionStateProperty *property = NULL, *parent_property = NULL;
-  if (state)
-    property = state->property();
-  if (parent) 
-    parent_property = parent->property();
-
-  // XXX WHY? IS? THIS? HERE?! XXX
-  if (state && !state->network_manager()->socket()->is_open()) {
-    return;
-  }
-
-  switch (ev.event_type) {
-    case CV_ROUND_START: {
-      // Reset K
-      current_k_ = 2;
-
-      CVDEBUG("CV_ROUND_START");
-      // Delete the ExecutionTraceTree from the previous round
-      if (DeleteOldTrees && !tree_list_.empty()) {
-
-        //tree_list_.back()->print(*cv_debug_stream);
-        delete tree_list_.back();
-        tree_list_.pop_back();
-      }
-
-      // Reset training data list
-      current_training_list_.clear();
-
-      // Delete old trees associated with states from previous rounds
-      clear_edit_distance_map();
-
-      // Initialize a new ExecutionTraceTree
-      tree_list_.push_back(new ExecutionTraceTree() );
-    }
-    break;
-
-    case CV_BASICBLOCK_ENTRY: {
-      //CVDEBUG("CV_BASIC_BLOCK_ENTRY");
-      klee::TimerStatIncrementer timer(stats::execution_tree_time);
-
-      // First BasicBlock Entry Event
-      if (!tree_list_.back()->tracks(property)) {
-        klee::TimerStatIncrementer build_timer(stats::edit_distance_build_time);
-
-        TrainingObjectScoreList score_list;
-        TrainingManager::init_score_list(training_data_, score_list);
-
-        const SocketEvent* socket_event 
-            = &(state->network_manager()->socket()->last_event());
-
-        TrainingManager::sort_by_similarity_score(socket_event, score_list,
-                                                  *similarity_measure_);
-
-        root_tree_ = new KEditDistanceExecutionTree();
-
-        size_t i, max_count = 5;
-        bool zero_match = false;
-        for (i=0; (i < score_list.size()) && (i < max_count); ++i) {
-          double score = score_list[i].first;
-					if (zero_match && score > 0.0f) break;
-					root_tree_->insert(score_list[i].second->trace);
-					current_training_list_.push_back(score_list[i].second);
-          if (score == 0.0f) zero_match = true;
-        }
-
-        root_tree_->init(current_k_);
-
-        // Set initial values for edit distance
-        property->edit_distance = 0;
-        property->recompute = true;
-
-        // Store size of tree in stats
-        size_t element_count = root_tree_->element_count();
-
-        CVDEBUG("Training object tree for round: "
-            << state->property()->round << " has " << element_count
-            << " elements from " << current_training_list_.size() << " training objects");
-        stats::edit_distance_tree_size += element_count; 
-
-        edit_distance_map_[property] = 
-            static_cast<KEditDistanceExecutionTree*>(root_tree_->clone());
-      }
-
-      if (state->basic_block_tracking() || !BasicBlockDisabling) {
-        //if (property->edit_distance > current_k_) {
-        //  CVDEBUG("edit distance > current_k_: " << *state);
-        //}
-
-        {
-          klee::TimerStatIncrementer extend_timer(stats::execution_tree_extend_time);
-          tree_list_.back()->extend_element(state->prevPC->kbb->id, property);
-        }
-
-        if (property->recompute) {
-          if (EditDistanceAtCloneOnly) {
-            CVDEBUG("CV_BASIC_BLOCK_ENTRY: Recompute start: " << *state);
-            property->recompute = false;
-            ExecutionTrace etrace;
-            etrace.reserve(tree_list_.back()->tracker_depth(property));
-            tree_list_.back()->tracker_get(property, etrace);
-            {
-              klee::TimerStatIncrementer edct(stats::edit_distance_compute_time);
-              edit_distance_map_[property]->update(etrace);
-              property->edit_distance = edit_distance_map_[property]->min_prefix_distance();
-            }
-            CVDEBUG("CV_BASIC_BLOCK_ENTRY: Recompute finish: " << *state);
-          } else {
-            klee::TimerStatIncrementer compute_timer(stats::edit_distance_compute_time);
-            edit_distance_map_[property]->update_element(state->prevPC->kbb->id);
-            property->edit_distance = edit_distance_map_[property]->min_prefix_distance();
-          }
-        }
-      }
-
-    }
-    break;
-
-    case CV_STATE_REMOVED: {
-      klee::TimerStatIncrementer timer(stats::execution_tree_time);
-      CVDEBUG("Removing state: " << *state );
-      tree_list_.back()->remove_tracker(property);
-      if (edit_distance_map_.count(property)) {
-        delete edit_distance_map_[property];
-        edit_distance_map_.erase(property);
-      }
-    }
-    break;
-
-    case CV_STATE_CLONE: {
-      klee::TimerStatIncrementer timer(stats::execution_tree_time);
-
-      tree_list_.back()->clone_tracker(property, parent_property);
-
-      property->recompute=true;
-      parent_property->recompute=true;
-
-      edit_distance_map_[property] = 
-          static_cast<KEditDistanceExecutionTree*>(edit_distance_map_[parent_property]->clone());
-
-      property->edit_distance = edit_distance_map_[property]->min_prefix_distance();
-      CVDEBUG("Cloned state: " << *state << ", parent: " << *parent )
-    }
-    break;
-
-    case CV_SEARCHER_NEW_STAGE: {
-      //klee::TimerStatIncrementer timer(stats::execution_tree_time);
-      //current_k_ = 2;
-      //while (property->edit_distance == INT_MAX) {
-      //  recompute_property(property);
-      //  current_k_ *= 2;
-      //}
-
-      //CVDEBUG("End of round, path length: " << tree_list_.back()->tracker_depth(property));
-      CVMESSAGE("End state: " << *state);
-      //CVDEBUG("FINAL [ ][" << etrace.size() << "] " << etrace);
-    }
-    break;
-
-    case CV_SOCKET_SHUTDOWN: {
-      CVDEBUG("Successful socket shutdown. " << *state);
-    }
-    break;
-
-    default: {
-    }
-    break;
-  }
-}
-
-bool KExtensionVerifyExecutionTraceManager::ready_process_all_states() {
-  return current_k_ < MaxKExtension;
-}
-
-void KExtensionVerifyExecutionTraceManager::recompute_property(
-    ExecutionStateProperty *property) {
-  klee::TimerStatIncrementer compute_timer(stats::edit_distance_compute_time);
-
-  assert(edit_distance_map_.count(property));
-  edit_distance_map_[property]->init(current_k_);
-
-  ExecutionTrace etrace;
-  etrace.reserve(tree_list_.back()->tracker_depth(property));
-  tree_list_.back()->tracker_get(property, etrace); 
-
-  edit_distance_map_[property]->update(etrace);
-  property->edit_distance = edit_distance_map_[property]->min_prefix_distance();
-}
-
-
-void KExtensionVerifyExecutionTraceManager::process_all_states(
-    std::vector<ExecutionStateProperty*> &states) {
-
-  CVMESSAGE("Doubling K from: " << current_k_ << " to " << current_k_*2);
-  current_k_ = current_k_ * 2;
-
-  for (unsigned i=0; i<states.size(); ++i) {
-    assert(states[i]->edit_distance == INT_MAX);
-    int old_ed = states[i]->edit_distance;
-    recompute_property(states[i]);
-    CVMESSAGE("Edit distance computed from: " << old_ed 
-              << " to " << states[i]->edit_distance);
-  }
-}
-
-// Delete the trees associated with each state in the edit distance map
-// and clear the map itself
-void KExtensionVerifyExecutionTraceManager::clear_edit_distance_map() {
-  KEditDistanceExecutionTreeMap::iterator it = edit_distance_map_.begin();
-  KEditDistanceExecutionTreeMap::iterator ie = edit_distance_map_.end();
-  for (; it!=ie; ++it) {
-    delete it->second;
-  }
-  edit_distance_map_.clear();
-
   if (root_tree_ != NULL) {
     root_tree_->delete_shared_data();
     delete root_tree_;
-    root_tree_ = NULL;
   }
 }
-#endif
 
 } // end namespace cliver
