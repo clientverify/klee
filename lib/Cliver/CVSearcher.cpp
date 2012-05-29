@@ -112,6 +112,8 @@ void VerifySearcher::check_searcher_stage_memory() {
 
   if (cv_->executor()->memory_usage() > (klee::MaxMemory - (klee::MaxMemory/8))) {
 
+    cv_->executor()->update_memory_usage();
+    size_t current_usage = cv_->executor()->memory_usage();
     CVMESSAGE("Freeing memory from caches, current usage (MB) " 
               << cv_->executor()->memory_usage());
 
@@ -126,9 +128,13 @@ void VerifySearcher::check_searcher_stage_memory() {
     }
 
     cv_->executor()->update_memory_usage();
-
     CVMESSAGE("Updated usage after freeing caches (MB) "
               << cv_->executor()->memory_usage());
+
+    if (current_usage == cv_->executor()->memory_usage()) {
+      cv_error("Freeing caches was not sucessful");
+    }
+
   }
 }
 
