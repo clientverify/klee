@@ -86,7 +86,7 @@ class SearcherStageImpl : public SearcherStage {
  public:
   SearcherStageImpl(CVExecutionState* root_state)
     : live_(NULL) {
-    // Increment Round #
+    // Increment round number
     root_state->property()->round++;
     this->add_state(root_state);
   }
@@ -231,15 +231,14 @@ class StatePropertyRandomSelector
   int size_;
 };
 
-//typedef SearcherStageImpl< StatePropertyStack, BasicStateCache >          DFSSearcherStage;
-//typedef SearcherStageImpl< StatePropertyQueue, BasicStateCache >          BFSSearcherStage;
-//typedef SearcherStageImpl< StatePropertyPriorityQueue, BasicStateCache >  PQSearcherStage;
-//typedef SearcherStageImpl< StatePropertyRandomSelector, BasicStateCache > RandomSearcherStage;
-
-typedef SearcherStageImpl< StatePropertyStack, RebuildingStateCache >          DFSSearcherStage;
-typedef SearcherStageImpl< StatePropertyQueue, RebuildingStateCache >          BFSSearcherStage;
-typedef SearcherStageImpl< StatePropertyPriorityQueue, RebuildingStateCache >  PQSearcherStage;
-typedef SearcherStageImpl< StatePropertyRandomSelector, RebuildingStateCache > RandomSearcherStage;
+typedef SearcherStageImpl< 
+  StatePropertyStack, RebuildingStateCache >          DFSSearcherStage;
+typedef SearcherStageImpl< 
+  StatePropertyQueue, RebuildingStateCache >          BFSSearcherStage;
+typedef SearcherStageImpl< 
+  StatePropertyPriorityQueue, RebuildingStateCache >  PQSearcherStage;
+typedef SearcherStageImpl< 
+  StatePropertyRandomSelector, RebuildingStateCache > RandomSearcherStage;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -283,38 +282,7 @@ class TrainingSearcher : public VerifySearcher {
  public:
   TrainingSearcher(ClientVerifier *cv, StateMerger* merger);
   klee::ExecutionState &selectState();
-  //bool empty();
   void printName(std::ostream &os) { os << "TrainingSearcher\n"; }
-
-  //void notify(ExecutionEvent ev); 
-
- private:
-  //SearcherStage* get_new_stage(CVExecutionState* state);
-  //void add_state(CVExecutionState* state); // has stages
-  //void remove_state(CVExecutionState* state);// has stages
-  //bool check_pending(CVExecutionState* state); // has pending_stages
-};
-
-
-////////////////////////////////////////////////////////////////////////////////
-
-class RoundRobinTrainingSearcher : public VerifySearcher {
- public:
-  RoundRobinTrainingSearcher(ClientVerifier *cv, StateMerger* merger);
-  klee::ExecutionState &selectState();
-  bool empty();
-  void printName(std::ostream &os) { os << "RoundRobinTrainingSearcher\n"; }
-
-  void notify(ExecutionEvent ev);
-
- private:
-  SearcherStage* get_new_stage(CVExecutionState* state);
-  void add_state(CVExecutionState* state);
-  void remove_state(CVExecutionState* state);
-  bool check_pending(CVExecutionState* state);
-
-  std::map<unsigned, SearcherStageList> stage_map_;
-  unsigned current_stage_round_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -324,11 +292,15 @@ class SearcherStageFactory {
   static SearcherStage* create(StateMerger* merger, CVExecutionState* state);
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
 class CVSearcherFactory {
  public:
   static CVSearcher* create(klee::Searcher* base_searcher, 
                             ClientVerifier* cv, StateMerger* merger);
 };
+
+////////////////////////////////////////////////////////////////////////////////
 
 } // end namespace cliver
 #endif // CV_SEARCHER_H

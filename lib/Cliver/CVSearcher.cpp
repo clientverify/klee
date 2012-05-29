@@ -109,18 +109,26 @@ VerifySearcher::VerifySearcher(ClientVerifier* cv, StateMerger* merger)
 
 // XXX
 void VerifySearcher::check_searcher_stage_memory() {
-  if (cv_->executor()->memory_usage() > (klee::MaxMemory - 1024)) {
-    CVMESSAGE("Freeing memory from caches, current usage (MB) " << cv_->executor()->memory_usage());
+
+  if (cv_->executor()->memory_usage() > (klee::MaxMemory - (klee::MaxMemory/8))) {
+
+    CVMESSAGE("Freeing memory from caches, current usage (MB) " 
+              << cv_->executor()->memory_usage());
+
     foreach (SearcherStage* stage, stages_) {
       size_t cache_size = stage->cache_size();
       if (cache_size > 1) {
         stage->set_capacity(cache_size / 2);
-        CVDEBUG("Cache capacity reduced from " << cache_size << " to " << cache_size / 2);
+        CVDEBUG("Cache capacity reduced from " 
+                << cache_size << " to " << cache_size / 2);
         stage->set_capacity(StateCacheSize);
       }
     }
+
     cv_->executor()->update_memory_usage();
-    CVMESSAGE("Updated usage after freeing caches (MB) " << cv_->executor()->memory_usage());
+
+    CVMESSAGE("Updated usage after freeing caches (MB) "
+              << cv_->executor()->memory_usage());
   }
 }
 
