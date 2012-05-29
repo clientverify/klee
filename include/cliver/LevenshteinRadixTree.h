@@ -104,10 +104,10 @@ class LevenshteinSequenceComparator {
 template <class Sequence, class T> 
 class LevenshteinRadixTree 
 :
-  public EditDistanceTree<Sequence,T>,
   public RadixTree<std::vector<LevenshteinElement<T> >, 
                    LevenshteinElement<T>,
-                   LevenshteinSequenceComparator<T> > {
+                   LevenshteinSequenceComparator<T> >,
+  public EditDistanceTree<Sequence,T> {
 
   typedef LevenshteinElement<T> LElement;
   typedef std::vector<LevenshteinElement<T> > LSequence;
@@ -144,14 +144,14 @@ class LevenshteinRadixTree
     this->insert(s);
   }
 
-  void update(Sequence &s_update) {
+  virtual void update(Sequence &s_update) {
     Sequence suffix(s_update.begin() + row_, s_update.end());
     update_suffix(suffix);
   }
 
   /// Compute the minimum edit distance from s' to all sequences in the tree
   /// where s' is equal to the previously computed sequence + s
-  void update_suffix(Sequence &s) {
+  virtual void update_suffix(Sequence &s) {
     min_distance_ = INT_MAX;
 
     // Perform |s| traversals of the RadixTree to compute the updated edit
@@ -228,9 +228,9 @@ class LevenshteinRadixTree
     update_suffix(suffix);
   }
 
-  int min_distance() { return min_distance_; }
+  virtual int min_distance() { return min_distance_; }
 
-  virtual void prepare_delete() {}
+  virtual void delete_shared_data() {}
 
   virtual EditDistanceTree<Sequence,T>* clone_edit_distance_tree() {
     return this->clone_internal();
@@ -419,20 +419,20 @@ class KLevenshteinRadixTree
 
   // Compute the minimum edit distance from s' to all prefix in the tree where
   // s' is equal to the previously computed sequence + s
-  void update(Sequence &s_update) {
+  virtual void update(Sequence &s_update) {
     Sequence suffix(s_update.begin() + row_, s_update.end());
     update_suffix(suffix);
   }
 
   // Compute the minimum edit distance from s' to all prefix sequences in the
   // tree where s' is equal to the previously computed sequence + s
-  void update_suffix(Sequence &s) {
+  virtual void update_suffix(Sequence &s) {
     for (unsigned j=0; j < s.size(); ++j) {
       update_element(s[j]);
     }
   }
 
-  void update_element(T t) {
+  virtual void update_element(T t) {
     row_++;
 
     int col_start = std::max(row_ - k_, 0);
@@ -449,9 +449,9 @@ class KLevenshteinRadixTree
     }
   }
 
-  int min_distance() { return min_prefix_distance_; }
+  virtual int min_distance() { return min_prefix_distance_; }
 
-  virtual void prepare_delete() {}
+  virtual void delete_shared_data() {}
 
   virtual EditDistanceTree<Sequence,T>* clone_edit_distance_tree() {
     return this->clone_internal();

@@ -39,19 +39,25 @@ namespace cliver {
 
 typedef TrackingRadixTree< ExecutionTrace, BasicBlockID, ExecutionStateProperty> 
     ExecutionTraceTree;
+//
+//typedef LevenshteinRadixTree<ExecutionTrace, BasicBlockID> 
+//    EditDistanceExecutionTree;
+//
+////typedef KLevenshteinRadixTree<ExecutionTrace, BasicBlockID> 
+//typedef KExtensionTree<ExecutionTrace, BasicBlockID> 
+//    KEditDistanceExecutionTree;
+//
+//typedef boost::unordered_map<ExecutionStateProperty*,EditDistanceExecutionTree*>
+//    EditDistanceExecutionTreeMap;
+//
+//typedef boost::unordered_map<ExecutionStateProperty*,KEditDistanceExecutionTree*>
+//    KEditDistanceExecutionTreeMap;
 
-typedef LevenshteinRadixTree<ExecutionTrace, BasicBlockID> 
-    EditDistanceExecutionTree;
+typedef EditDistanceTree<ExecutionTrace, BasicBlockID> 
+    ExecutionTraceEditDistanceTree;
 
-//typedef KLevenshteinRadixTree<ExecutionTrace, BasicBlockID> 
-typedef KExtensionTree<ExecutionTrace, BasicBlockID> 
-    KEditDistanceExecutionTree;
-
-typedef boost::unordered_map<ExecutionStateProperty*,EditDistanceExecutionTree*>
-    EditDistanceExecutionTreeMap;
-
-typedef boost::unordered_map<ExecutionStateProperty*,KEditDistanceExecutionTree*>
-    KEditDistanceExecutionTreeMap;
+typedef boost::unordered_map<ExecutionStateProperty*,ExecutionTraceEditDistanceTree*>
+    StatePropertyEditDistanceTreeMap;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -93,12 +99,14 @@ class VerifyExecutionTraceManager : public ExecutionTraceManager {
   TrainingObjectSet training_data_;
   TrainingObjectList current_training_list_;
 
-  EditDistanceExecutionTreeMap edit_distance_map_;
-  EditDistanceExecutionTree *root_tree_;
+  StatePropertyEditDistanceTreeMap edit_distance_map_;
+  ExecutionTraceEditDistanceTree *root_tree_;
+
   SocketEventSimilarity *similarity_measure_;
   int current_k_;
 };
 
+#if 0
 class KExtensionVerifyExecutionTraceManager : public ExecutionTraceManager {
  public:
   KExtensionVerifyExecutionTraceManager(ClientVerifier *cv);
@@ -118,6 +126,7 @@ class KExtensionVerifyExecutionTraceManager : public ExecutionTraceManager {
   SocketEventSimilarity *similarity_measure_;
   int current_k_;
 };
+#endif
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -126,6 +135,10 @@ class ExecutionTraceManagerFactory {
   static ExecutionTraceManager* create(ClientVerifier *cv);
 };
 
+class EditDistanceTreeFactory {
+ public:
+  static ExecutionTraceEditDistanceTree* create();
+};
 
 } // end namespace cliver
 

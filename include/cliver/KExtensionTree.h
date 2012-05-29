@@ -166,11 +166,11 @@ class KExtensionOptTree
     std::swap(min_prefix_distance_, new_min_prefix_distance_);
   }
 
-  int min_distance() {
+  virtual int min_distance() {
     return min_prefix_distance_;
   }
 
-  virtual void prepare_delete() {
+  virtual void delete_shared_data() {
     std::stack<Node*> worklist; 
     if (this->root_) {
       worklist.push(this->root_);
@@ -544,11 +544,11 @@ class KExtensionTree
     std::swap(min_prefix_distance_, new_min_prefix_distance_);
   }
 
-  int min_distance() {
+  virtual int min_distance() {
     return min_prefix_distance_;
   }
 
-  virtual void prepare_delete() {
+  virtual void delete_shared_data() {
     std::stack<Node*> worklist; 
     if (this->root_) {
       worklist.push(this->root_);
