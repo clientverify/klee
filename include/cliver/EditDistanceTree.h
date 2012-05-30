@@ -25,6 +25,7 @@ class EditDistanceTree {
   virtual void update_suffix(Sequence &s) = 0;
   virtual void update_element(Element e) = 0;
   virtual int  min_distance() = 0;
+  virtual int  row() = 0;
   virtual void delete_shared_data() = 0;
   virtual EditDistanceTree* clone_edit_distance_tree() = 0;
 };

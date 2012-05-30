@@ -230,6 +230,8 @@ class LevenshteinRadixTree
 
   virtual int min_distance() { return min_distance_; }
 
+  virtual int row() { return row_; }
+
   virtual void delete_shared_data() {}
 
   virtual EditDistanceTree<Sequence,T>* clone_edit_distance_tree() {
@@ -288,8 +290,6 @@ class LevenshteinRadixTree
   //===-------------------------------------------------------------------===//
   // Extra methods, testing, utility
   //===-------------------------------------------------------------------===//
-
-  int row() { return row_; }
 
   /// Lookup the cost associated with edit distance to s
   int lookup_edit_distance(Sequence &s) { 
@@ -451,6 +451,8 @@ class KLevenshteinRadixTree
 
   virtual int min_distance() { return min_prefix_distance_; }
 
+  virtual int row() { return row_; }
+
   virtual void delete_shared_data() {}
 
   virtual EditDistanceTree<Sequence,T>* clone_edit_distance_tree() {
@@ -512,8 +514,6 @@ class KLevenshteinRadixTree
   // Extra methods, testing, utility
   //===-------------------------------------------------------------------===//
   
-  int row() { return row_; }
-
   int min_edit_distance() { return min_distance_; }
 
   int min_prefix_distance() { return min_prefix_distance_; }
