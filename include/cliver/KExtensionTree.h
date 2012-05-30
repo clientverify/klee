@@ -170,6 +170,8 @@ class KExtensionOptTree
     return min_prefix_distance_;
   }
 
+  virtual int row() { return row_; }
+
   virtual void delete_shared_data() {
     std::stack<Node*> worklist; 
     if (this->root_) {
@@ -209,8 +211,6 @@ class KExtensionOptTree
   // Extra methods, testing, utility
   //===-------------------------------------------------------------------===//
   
-  int row() { return row_; }
-
   int lookup_edit_distance(Sequence &s) {
     Node* node = this->lookup_private(s, true);
 
@@ -548,6 +548,8 @@ class KExtensionTree
     return min_prefix_distance_;
   }
 
+  virtual int row() { return row_; }
+
   virtual void delete_shared_data() {
     std::stack<Node*> worklist; 
     if (this->root_) {
@@ -586,8 +588,6 @@ class KExtensionTree
   //===-------------------------------------------------------------------===//
   // Extra methods, testing, utility
   //===-------------------------------------------------------------------===//
-
-  int row() { return row_; }
 
   int lookup_edit_distance(Sequence &s) {
     Node* node = this->lookup_private(s, true);
