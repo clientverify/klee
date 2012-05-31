@@ -79,25 +79,25 @@ using ::testing::Types;
 
 //typedef Types<> Implementations;
 typedef Types<
-  StringRadixTree, 
-  VectorRadixTree, 
-  ListRadixTree
+//  StringRadixTree, 
+//  VectorRadixTree, 
+//  ListRadixTree
 > Implementations;
 
 
 //typedef Types<> TrackingImplementations;
 typedef Types<
-  StringTrackingRadixTree, 
-  VectorTrackingRadixTree, 
-  ListTrackingRadixTree
+//  StringTrackingRadixTree, 
+//  VectorTrackingRadixTree, 
+//  ListTrackingRadixTree
 > TrackingImplementations;
 
 //typedef Types<> EditDistanceImplementations;
 typedef Types<
-//  StringLevenshteinRadixTree,
-//  StringKLevenshteinRadixTree,
-//  StringKExtensionOptTree,
-//  StringKExtensionTree
+  StringLevenshteinRadixTree,
+  StringKLevenshteinRadixTree,
+  StringKExtensionOptTree,
+  StringKExtensionTree
 > EditDistanceImplementations;
 
 //////////////////////////////////////////////////////////////////////////////////
@@ -274,8 +274,6 @@ class TrackingRadixTreeTest : public ::testing::Test {
 
 //////////////////////////////////////////////////////////////////////////////////
 
-typedef KLevenshteinRadixTree<std::string, char> StringKLevRadixTree;
-
 template<class EditDistanceTreeType>
 class EditDistanceTreeTest : public ::testing::Test {
  protected:
@@ -313,7 +311,7 @@ class EditDistanceTreeTest : public ::testing::Test {
 
 TYPED_TEST_CASE(RadixTreeTest, Implementations);
 TYPED_TEST_CASE(TrackingRadixTreeTest, TrackingImplementations);
-//TYPED_TEST_CASE(EditDistanceTreeTest, EditDistanceImplementations);
+TYPED_TEST_CASE(EditDistanceTreeTest, EditDistanceImplementations);
 
 //////////////////////////////////////////////////////////////////////////////////
 
@@ -321,31 +319,43 @@ namespace {
 
 //////////////////////////////////////////////////////////////////////////////////
 
-//TYPED_TEST(EditDistanceTreeTest, Init) {
-//  ASSERT_TRUE(this->rt_ != NULL);
-//}
-//
-//TYPED_TEST(EditDistanceTreeTest, Insert) {
-//  ASSERT_TRUE(this->rt_ != NULL);
-//  this->InsertDictionary();
-//
-//  for (unsigned i = 0; i<this->v_dictionary.size(); ++i) {
-//    EXPECT_EQ(this->rt_->lookup(this->v_dictionary[i]), true);
-//  }
-//}
-//
-//TYPED_TEST(EditDistanceTreeTest, Clone) {
-//  ASSERT_TRUE(this->rt_ != NULL);
-//  this->InsertDictionary();
-//
-//  TypeParam* clone_rt = static_cast<TypeParam*>(this->rt_->clone());
-//  delete this->rt_;
-//  this->rt_ = clone_rt;
-//
-//  for (unsigned i = 0; i<this->v_dictionary.size(); ++i) {
-//    EXPECT_EQ(clone_rt->lookup(this->v_dictionary[i]), true);
-//  }
-//}
+TYPED_TEST(EditDistanceTreeTest, Init) {
+  ASSERT_TRUE(this->rt_ != NULL);
+}
+
+TYPED_TEST(EditDistanceTreeTest, Insert) {
+  ASSERT_TRUE(this->rt_ != NULL);
+  this->InsertDictionary();
+
+  for (unsigned i = 0; i<this->v_dictionary.size(); ++i) {
+    EXPECT_EQ(this->rt_->lookup(this->v_dictionary[i]), true);
+  }
+}
+
+TYPED_TEST(EditDistanceTreeTest, Clone) {
+  ASSERT_TRUE(this->rt_ != NULL);
+  this->InsertDictionary();
+
+  TypeParam* clone_rt = static_cast<TypeParam*>(this->rt_->clone());
+  delete this->rt_;
+  this->rt_ = clone_rt;
+
+  for (unsigned i = 0; i<this->v_dictionary.size(); ++i) {
+    EXPECT_EQ(clone_rt->lookup(this->v_dictionary[i]), true);
+  }
+}
+
+TYPED_TEST(EditDistanceTreeTest, Compute) {
+  this->InsertDictionary();
+  unsigned r0, r1, count = 100;
+  srand(0);
+  for (unsigned i=0; i < count;  ++i) {
+    r0 = (rand() % this->v_dictionary.size());
+    //std::cout << "looking up: " << s_dictionary[r0] << "\n";
+    this->rt_->init(2);
+    this->rt_->update_suffix(this->v_dictionary[r0]);
+  }
+}
 
 //////////////////////////////////////////////////////////////////////////////////
 

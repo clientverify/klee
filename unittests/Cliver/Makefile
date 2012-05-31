@@ -12,4 +12,6 @@ LINK_COMPONENTS = jit bitreader bitwriter ipo linker engine support
 include $(LEVEL)/Makefile.config
 include $(LLVM_SRC_ROOT)/unittests/Makefile.unittest
 
+CPP.Flags += -DGTEST_HAS_RTTI=1                                                                                                                                                                                                                                                   
+CPP.Flags += -DGTEST_PRINT_TIME=1
 
