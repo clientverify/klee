@@ -81,6 +81,7 @@ class VerifyExecutionTraceManager : public ExecutionTraceManager {
  private:
   void clear_edit_distance_map();
   void recompute_property(ExecutionStateProperty *property);
+  void update_edit_distance(ExecutionStateProperty *property);
 
   // XXX rename?
   TrainingObjectSet training_data_;

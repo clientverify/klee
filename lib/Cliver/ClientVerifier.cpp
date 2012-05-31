@@ -68,7 +68,7 @@ DebugPrintExecutionEvents("debug-print-execution-events", llvm::cl::init(false))
 
 #ifdef GOOGLE_PROFILER
 llvm::cl::opt<int> 
-ProfilerStartRoundNumber("profiler-start-round", llvm::cl::init(0));
+ProfilerStartRoundNumber("profiler-start-round", llvm::cl::init(-1));
 
 llvm::cl::opt<int> 
 HeapCheckRoundNumber("heap-check-round", llvm::cl::init(-1));
@@ -410,7 +410,7 @@ void ClientVerifier::print_current_statistics(std::string prefix) {
     << " " << sr->getValue(stats::edit_distance_tree_size)
     << "\n";
 #ifdef GOOGLE_PROFILER
-  if (ProfilerStartRoundNumber > 0 
+  if (ProfilerStartRoundNumber >= 0 
 			&& round_number_ > ProfilerStartRoundNumber) {
 	  ProfilerFlush();
   }
@@ -429,14 +429,14 @@ void ClientVerifier::next_round() {
 	executor_->rebuild_solvers();
 
 #ifdef GOOGLE_PROFILER
-  if (ProfilerStartRoundNumber > 0 
+  if (ProfilerStartRoundNumber >= 0 
 			&& round_number_ == ProfilerStartRoundNumber) {
 		std::string profile_fn = getOutputFilename("cpu_profile.prof");
 		CVMESSAGE("Starting CPU Profiler");
 		ProfilerStart(profile_fn.c_str());
 	}
 
-  if (ProfilerStartRoundNumber > 0 
+  if (ProfilerStartRoundNumber >= 0 
 			&& round_number_ > ProfilerStartRoundNumber) {
 		ProfilerFlush();
 	}
