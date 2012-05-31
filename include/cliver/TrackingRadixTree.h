@@ -207,6 +207,14 @@ class TrackingRadixTree
     return get_node(tracker)->depth();
   }
 
+  /// Get the leaf element of tracker's node
+  Element leaf_element(TrackingObject* tracker) {
+    assert(tracks(tracker));
+    Node* node = get_node(tracker);
+    assert(node->leaf());
+    return node->parent_edge()->back();
+  }
+
   /// Query whether this tree has seen tracker
   inline bool tracks(TrackingObject* tracker) {
     return node_map_.count(tracker) ? true : false;

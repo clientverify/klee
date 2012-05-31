@@ -283,6 +283,26 @@ void VerifyExecutionTraceManager::initialize() {
             << training_data_.size() << " unique training objects.");
 }
 
+void VerifyExecutionTraceManager::update_edit_distance(
+    ExecutionStateProperty* property) {
+
+  klee::TimerStatIncrementer edct(stats::edit_distance_compute_time);
+
+  int row = edit_distance_map_[property]->row();
+  int trace_depth = tree_list_.back()->tracker_depth(property);
+
+  if (trace_depth - row == 1) {
+    edit_distance_map_[property]->update_element(
+        tree_list_.back()->leaf_element(property));
+  } else {
+    ExecutionTrace etrace;
+    etrace.reserve(trace_depth);
+    tree_list_.back()->tracker_get(property, etrace);
+    edit_distance_map_[property]->update(etrace);
+  }
+  property->edit_distance = edit_distance_map_[property]->min_distance();
+}
+
 void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
   if (cv_->executor()->replay_path())
     return;
@@ -359,23 +379,10 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
         }
 
         if (property->recompute) {
-          if (EditDistanceAtCloneOnly) {
-            CVDEBUG("CV_BASIC_BLOCK_ENTRY: Recompute start: " << *state);
+          if (EditDistanceAtCloneOnly)
             property->recompute = false;
-            ExecutionTrace etrace;
-            etrace.reserve(tree_list_.back()->tracker_depth(property));
-            tree_list_.back()->tracker_get(property, etrace);
-            {
-              klee::TimerStatIncrementer edct(stats::edit_distance_compute_time);
-              edit_distance_map_[property]->update(etrace);
-              property->edit_distance = edit_distance_map_[property]->min_distance();
-            }
-            CVDEBUG("CV_BASIC_BLOCK_ENTRY: Recompute finish: " << *state);
-          } else {
-            klee::TimerStatIncrementer compute_timer(stats::edit_distance_compute_time);
-            edit_distance_map_[property]->update_element(state->prevPC->kbb->id);
-            property->edit_distance = edit_distance_map_[property]->min_distance();
-          }
+
+          update_edit_distance(property);
         }
       }
     }
@@ -393,7 +400,9 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
 
     case CV_STATE_CLONE: {
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
-      CVDEBUG("Cloned state: " << *state << ", parent: " << *parent )
+
+      if (EditDistanceAtCloneOnly)
+        update_edit_distance(parent_property);
 
       tree_list_.back()->clone_tracker(property, parent_property);
       
@@ -405,6 +414,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       edit_distance_map_[property] = 
           edit_distance_map_[parent_property]->clone_edit_distance_tree();
 
+      /// XXX not necessesary?
       property->edit_distance = edit_distance_map_[property]->min_distance();
       CVDEBUG("Cloned state: " << *state << ", parent: " << *parent )
 
@@ -424,11 +434,11 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       //klee::TimerStatIncrementer timer(stats::execution_tree_time);
 
       if (!tree_list_.empty() && tree_list_.back()->tracks(property)) {
-        ExecutionTrace etrace;
-        tree_list_.back()->tracker_get(property, etrace);
-
+        //update_edit_distance(property);
         CVMESSAGE("End state: " << *state);
-        CVDEBUG("End of round, path length: " << etrace.size());
+        //ExecutionTrace etrace;
+        //tree_list_.back()->tracker_get(property, etrace);
+        //CVDEBUG("End of round, path length: " << etrace.size());
       }
 
       // Delete the ExecutionTraceTree from the previous round
