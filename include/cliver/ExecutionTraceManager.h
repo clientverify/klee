@@ -48,6 +48,12 @@ typedef boost::unordered_map<ExecutionStateProperty*,ExecutionTraceEditDistanceT
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct ExecutionStage {
+
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class ExecutionTraceManager : public ExecutionObserver {
  public:
   ExecutionTraceManager(ClientVerifier *cv);
@@ -83,9 +89,20 @@ class VerifyExecutionTraceManager : public ExecutionTraceManager {
   void recompute_property(ExecutionStateProperty *property);
   void update_edit_distance(ExecutionStateProperty *property);
 
-  // XXX rename?
+  ExecutionTraceEditDistanceTree* get_ed_tree(ExecutionStateProperty *property);
+  ExecutionTraceEditDistanceTree* clone_ed_tree(ExecutionStateProperty *property);
+
+  struct ExecutionStage {
+    ExecutionStage() : current_k(2), root_ed_tree(NULL), root_state(NULL) {}
+    int current_k;
+    ExecutionTraceEditDistanceTree*    root_ed_tree;
+    CVExecutionState*                  root_state;
+    std::vector< ExecutionTraceTree* > tree_list;
+    StatePropertyEditDistanceTreeMap   ed_tree_map;
+  };
+
   TrainingObjectSet training_data_;
-  TrainingObjectList current_training_list_;
+  boost::unordered_map<ExecutionStateProperty*, ExecutionStage*> stages_;
 
   StatePropertyEditDistanceTreeMap edit_distance_map_;
   ExecutionTraceEditDistanceTree *root_tree_;

@@ -256,9 +256,6 @@ VerifyExecutionTraceManager::VerifyExecutionTraceManager(ClientVerifier* cv)
   : ExecutionTraceManager(cv), root_tree_(NULL) {}
 
 void VerifyExecutionTraceManager::initialize() {
-  // Initialize a new ExecutionTraceTree
-  tree_list_.push_back(new ExecutionTraceTree());
-
   // Create similarity measure
   similarity_measure_ = SocketEventSimilarityFactory::create(cv_);
 
@@ -339,6 +336,8 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
         TrainingManager::sort_by_similarity_score(socket_event, score_list, 
                                                   *similarity_measure_);
 
+        // Create a new root edit distance
+        //ExecutionTraceEditDistanceTree *root_ed_tree = EditDistanceTreeFactory::create();
         root_tree_ = EditDistanceTreeFactory::create();
 
         // If exact match exists, only add exact match, otherwise
@@ -355,7 +354,6 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
           if (score == 0.0f)
             zero_match = true;
 					root_tree_->add_data(score_list[i].second->trace);
-					current_training_list_.push_back(score_list[i].second);
         }
 
         root_tree_->init(current_k_);
@@ -446,9 +444,6 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
         delete tree_list_.back();
         tree_list_.pop_back();
       }
-
-      // Reset training data list
-      current_training_list_.clear();
 
       // Delete old trees associated with states from previous rounds
       clear_edit_distance_map();
