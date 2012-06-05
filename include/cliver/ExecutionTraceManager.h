@@ -93,12 +93,13 @@ class VerifyExecutionTraceManager : public ExecutionTraceManager {
   ExecutionTraceEditDistanceTree* clone_ed_tree(ExecutionStateProperty *property);
 
   struct ExecutionStage {
-    ExecutionStage() : current_k(2), root_ed_tree(NULL), root_state(NULL) {}
+    ExecutionStage() 
+        : current_k(2), root_state(NULL), etrace_tree(NULL), root_ed_tree(NULL) {}
     int current_k;
-    ExecutionTraceEditDistanceTree*    root_ed_tree;
-    CVExecutionState*                  root_state;
-    std::vector< ExecutionTraceTree* > tree_list;
-    StatePropertyEditDistanceTreeMap   ed_tree_map;
+    CVExecutionState*                root_state;
+    ExecutionTraceTree*              etrace_tree;
+    StatePropertyEditDistanceTreeMap ed_tree_map;
+    ExecutionTraceEditDistanceTree*  root_ed_tree;
   };
 
   TrainingObjectSet training_data_;
