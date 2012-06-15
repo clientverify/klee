@@ -193,6 +193,15 @@ bool  Socket::is_open() {
 	return open_ && (index_ < log_->size());
 }
 
+bool  Socket::end_of_log() {
+	if (event_) {
+		if (index_ != 0) cv_error (" index is not zero %d", index_);
+		assert(index_ == 0);
+    return false;
+	}
+	return index_ < log_->size();
+}
+
 void  Socket::open() {
 	open_ = true;
 }

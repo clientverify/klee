@@ -99,6 +99,7 @@ class Socket {
 	uint8_t next_byte();
 	bool has_data();
 	bool is_open();
+	bool end_of_log();
 	void open();
 	void set_state(State s);
 	void advance();
