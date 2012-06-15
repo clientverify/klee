@@ -333,7 +333,10 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
 
 	searcher = cv_->searcher();
 
-  searcher->update(0, states, std::set<klee::ExecutionState*>());
+  std::set<klee::ExecutionState*> initial_state_set;
+  initial_state_set.insert(&initialState);
+
+  searcher->update(0, initial_state_set, std::set<klee::ExecutionState*>());
 
   while (!searcher->empty() && !haltExecution) {
 		klee::ExecutionState &state = searcher->selectState();
