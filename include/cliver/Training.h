@@ -27,6 +27,7 @@ namespace boost {void throw_exception(std::exception const& e);}
 namespace cliver {
 
 class CVExecutionState;
+class ExecutionStateProperty;
 class SocketEvent;
 class ClientVerifier;
 
@@ -44,7 +45,7 @@ class TrainingObject {
   }
 
   void read(std::ifstream &is);
-  void write(CVExecutionState* state, ClientVerifier* cv);
+  void write(ExecutionStateProperty* property, ClientVerifier* cv);
 
  public:
   std::set<SocketEvent*> socket_event_set; // std::set of SocketEvent ptrs
