@@ -30,6 +30,7 @@ namespace cliver {
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace stats {
+	extern klee::Statistic round_number;
 	extern klee::Statistic active_states;
 	extern klee::Statistic merged_states;
 	extern klee::Statistic round_time;
@@ -139,11 +140,13 @@ class ClientVerifier : public klee::InterpreterHandler {
   ExecutionTraceManager* execution_trace_manager();
 
 	// Stats
-	void handle_statistics();
-	void next_statistics();
+	void update_time_statistics();
 	void print_current_statistics(std::string prefix);
+  void print_statistic_record(klee::StatisticRecord* sr,
+                              std::string &prefix);
 	void print_stat_labels();
-	void next_round();
+	void print_all_stats();
+	void set_round(int round);
 
 	// Arrays
 	inline uint64_t next_array_id() { return array_id_++; }

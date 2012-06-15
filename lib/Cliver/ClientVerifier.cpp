@@ -77,6 +77,7 @@ HeapCheckRoundNumber("heap-check-round", llvm::cl::init(-1));
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace stats {
+	klee::Statistic round_number("RoundNumber", "Rn");
 	klee::Statistic active_states("ActiveStates", "ASts");
 	klee::Statistic merged_states("MergedStates", "MSts");
 	klee::Statistic round_time("RoundTime", "RTm");
@@ -133,9 +134,9 @@ ClientVerifier::ClientVerifier(std::string* input_filename)
 		execution_trace_manager_(NULL),
 		array_id_(0),
 		round_number_(0) {
- 
-  
+
 	cvstream_->init();
+
   if (input_filename)
     client_name_ = cvstream_->getBasename(*input_filename);
 
@@ -145,8 +146,12 @@ ClientVerifier::ClientVerifier(std::string* input_filename)
     cvstream_->copyFileToOutputDirectory(*input_filename, dest_name);
   }
 
-	handle_statistics();
-	next_statistics();
+  // Initialize time stats
+	update_time_statistics();
+
+  // Create and enable new StatisticRecord
+	statistics_.push_back(new klee::StatisticRecord());
+  klee::theStatisticManager->setCliverContext(statistics_[round_number_]);
 }
 
 ClientVerifier::~ClientVerifier() {
@@ -319,7 +324,6 @@ void ClientVerifier::notify_all(ExecutionEvent ev) {
   foreach (ExecutionObserver* observer, observers_) {
     observer->notify(ev);
   }
-
   //if (ev.state)
   //  ev.state->notify(ev);
 }
@@ -339,8 +343,7 @@ ExecutionTraceManager* ClientVerifier::execution_trace_manager() {
 	return execution_trace_manager_;
 }
 
-void ClientVerifier::handle_statistics() {
-
+void ClientVerifier::update_time_statistics() {
   static llvm::sys::TimeValue lastNowTime(0,0),lastUserTime(0,0);
 
   if (lastUserTime.seconds()==0 && lastUserTime.nanoseconds()==0) {
@@ -385,9 +388,14 @@ void ClientVerifier::print_stat_labels() {
 }
 
 void ClientVerifier::print_current_statistics(std::string prefix) {
-	klee::StatisticRecord *sr = statistics_.back();
+	klee::StatisticRecord *sr = statistics_[round_number_];
+  this->print_statistic_record(sr, prefix);
+}
+
+void ClientVerifier::print_statistic_record(klee::StatisticRecord* sr,
+                                            std::string &prefix) {
   *cv_message_stream << prefix 
-    << " " << round_number_
+    << " " << sr->getValue(stats::round_number)
     << " " << sr->getValue(stats::active_states)
     //<< " " << sr->getValue(stats::merged_states)
     //<< " " << sr->getValue(stats::pruned_constraints)
@@ -409,61 +417,82 @@ void ClientVerifier::print_current_statistics(std::string prefix) {
     << " " << sr->getValue(stats::edit_distance_build_time) / 1000000.
     << " " << sr->getValue(stats::edit_distance_tree_size)
     << "\n";
+
 #ifdef GOOGLE_PROFILER
   if (ProfilerStartRoundNumber >= 0 
 			&& round_number_ > ProfilerStartRoundNumber) {
+    // XXX TBD: reimplement for set_round
+    cv_error("profiler-start-round not implemented");
 	  ProfilerFlush();
   }
 #endif
 }
 
-void ClientVerifier::next_round() {
-  //static llvm::sys::TimeValue lastNowTime(0,0),lastUserTime(0,0);
+void ClientVerifier::print_all_stats() {
+  std::string prefix("STATS");
 
-	handle_statistics();
+  foreach (klee::StatisticRecord* sr, statistics_) {
+    print_statistic_record(sr, prefix);
+  }
+}
+
+void ClientVerifier::set_round(int round) {
+  // Update clocks with time spent in most recent round
+	update_time_statistics();
+
+  // Recalculate memory usage
   executor()->update_memory_usage();
-  print_current_statistics("STATS");
-  round_number_++;
 
-  // Rebuild solvers each round to keep caches fresh.
+  // Set new round number
+  round_number_ = round;
+
+  // Rebuild solvers each round change to keep caches fresh.
 	executor_->rebuild_solvers();
 
 #ifdef GOOGLE_PROFILER
-  if (ProfilerStartRoundNumber >= 0 
-			&& round_number_ == ProfilerStartRoundNumber) {
-		std::string profile_fn = getOutputFilename("cpu_profile.prof");
-		CVMESSAGE("Starting CPU Profiler");
-		ProfilerStart(profile_fn.c_str());
-	}
-
-  if (ProfilerStartRoundNumber >= 0 
-			&& round_number_ > ProfilerStartRoundNumber) {
-		ProfilerFlush();
-	}
-  static HeapLeakChecker* heap_checker = NULL;
-  if (HeapCheckRoundNumber >= 0
-			&& round_number_ == HeapCheckRoundNumber) {
-    heap_checker = new HeapLeakChecker("heap_check");
-    heap_checker->IgnoreObject(heap_checker);
+  if (ProfilerStartRoundNumber >= 0) {
+    // XXX TBD: reimplement for set_round
+    cv_error("profiler-start-round not implemented");
+		if (round_number_ == ProfilerStartRoundNumber) {
+      std::string profile_fn = getOutputFilename("cpu_profile.prof");
+      CVMESSAGE("Starting CPU Profiler");
+      ProfilerStart(profile_fn.c_str());
+    }
+		if (round_number_ > ProfilerStartRoundNumber) {
+      ProfilerFlush();
+    }
   }
-  if (HeapCheckRoundNumber >= 0
-			&& round_number_ == (HeapCheckRoundNumber+1)) {
-    if (!heap_checker->NoLeaks()) assert(NULL == "heap memory leak");
+
+  static HeapLeakChecker* heap_checker = NULL;
+  if (HeapCheckRoundNumber >= 0) {
+    // XXX TBD: reimplement for set_round
+    cv_error("heap-check-round not implemented");
+	  if (round_number_ == HeapCheckRoundNumber) {
+      heap_checker = new HeapLeakChecker("heap_check");
+      heap_checker->IgnoreObject(heap_checker);
+    }
+		if (round_number_ == (HeapCheckRoundNumber+1)) {
+      if (!heap_checker->NoLeaks()) 
+        assert(NULL == "heap memory leak");
+    }
   }
 #endif
-	next_statistics();
+
+  assert(round_number_ <= statistics_.size());
+
+  if (round_number_ == statistics_.size()) {
+    statistics_.push_back(new klee::StatisticRecord());
+    stats::round_number += round_number_;
+  }
+
+  klee::theStatisticManager->setCliverContext(statistics_[round_number_]);
 
 	if (MaxRoundNumber && round_number_ > MaxRoundNumber) {
+    // XXX TBD: reimplement for set_round
+    cv_error("max-round not implemented");
     CVMESSAGE("Exiting early, max round is " << MaxRoundNumber);
     executor_->setHaltExecution(true);
 	}
-
-  notify_all(ExecutionEvent(CV_ROUND_START));
-}
-
-void ClientVerifier::next_statistics() {
-	statistics_.push_back(new klee::StatisticRecord());
-	klee::theStatisticManager->setCliverContext(statistics_.back());
 }
 
 //////////////////////////////////////////////////////////////////////////////
