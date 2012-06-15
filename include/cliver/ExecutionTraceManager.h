@@ -49,8 +49,27 @@ typedef boost::unordered_map<ExecutionStateProperty*,ExecutionTraceEditDistanceT
 ////////////////////////////////////////////////////////////////////////////////
 
 struct ExecutionStage {
+  ExecutionStage() 
+      : root_property(NULL), 
+        parent_stage(NULL),
+        etrace_tree(NULL), 
+        socket_event(NULL),
+        root_ed_tree(NULL),
+        current_k(2) {}
 
+  ExecutionStateProperty*          root_property;
+  ExecutionStage*                  parent_stage;
+  ExecutionTraceTree*              etrace_tree;
+
+  // Used for training
+  SocketEvent*            socket_event;              
+
+  // Used for edit distance verification
+  ExecutionTraceEditDistanceTree*  root_ed_tree;
+  int                              current_k;
+  StatePropertyEditDistanceTreeMap ed_tree_map;
 };
+
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -60,11 +79,12 @@ class ExecutionTraceManager : public ExecutionObserver {
   virtual void initialize();
   virtual void notify(ExecutionEvent ev);
   virtual void process_all_states(std::vector<ExecutionStateProperty*> &states) {}
-  virtual bool ready_process_all_states() { return false; }
+  virtual bool ready_process_all_states(ExecutionStateProperty* property) { return false; }
+
  protected:
   std::vector< ExecutionTraceTree* > tree_list_;
   ClientVerifier *cv_;
-
+  boost::unordered_map<ExecutionStateProperty*, ExecutionStage*> stages_;
 };
 
 class TrainingExecutionTraceManager : public ExecutionTraceManager {
@@ -72,8 +92,10 @@ class TrainingExecutionTraceManager : public ExecutionTraceManager {
   TrainingExecutionTraceManager(ClientVerifier *cv);
   void initialize();
   void notify(ExecutionEvent ev);
+
  protected:
-  void write_training_object(CVExecutionState* state);
+  void write_training_object(ExecutionStage* stage,
+                             ExecutionStateProperty* property);
 };
 
 class VerifyExecutionTraceManager : public ExecutionTraceManager {
@@ -82,34 +104,19 @@ class VerifyExecutionTraceManager : public ExecutionTraceManager {
   virtual void initialize();
   virtual void notify(ExecutionEvent ev);
   virtual void process_all_states(std::vector<ExecutionStateProperty*> &states);
-  virtual bool ready_process_all_states();
+  virtual bool ready_process_all_states(ExecutionStateProperty* property);
 
  private:
   void clear_edit_distance_map();
+  void clear_execution_stage(ExecutionStateProperty *property);
   void recompute_property(ExecutionStateProperty *property);
   void update_edit_distance(ExecutionStateProperty *property);
 
   ExecutionTraceEditDistanceTree* get_ed_tree(ExecutionStateProperty *property);
   ExecutionTraceEditDistanceTree* clone_ed_tree(ExecutionStateProperty *property);
 
-  struct ExecutionStage {
-    ExecutionStage() 
-        : current_k(2), root_state(NULL), etrace_tree(NULL), root_ed_tree(NULL) {}
-    int current_k;
-    CVExecutionState*                root_state;
-    ExecutionTraceTree*              etrace_tree;
-    StatePropertyEditDistanceTreeMap ed_tree_map;
-    ExecutionTraceEditDistanceTree*  root_ed_tree;
-  };
-
   TrainingObjectSet training_data_;
-  boost::unordered_map<ExecutionStateProperty*, ExecutionStage*> stages_;
-
-  StatePropertyEditDistanceTreeMap edit_distance_map_;
-  ExecutionTraceEditDistanceTree *root_tree_;
-
   SocketEventSimilarity *similarity_measure_;
-  int current_k_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
