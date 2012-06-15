@@ -84,11 +84,25 @@ template <class Collection, class StateCache>
 class SearcherStageImpl : public SearcherStage {
  
  public:
-  SearcherStageImpl(CVExecutionState* root_state)
+  SearcherStageImpl(CVExecutionState* root)
     : live_(NULL) {
-    // Increment round number
-    root_state->property()->round++;
-    this->add_state(root_state);
+
+    // Increment round number (do this elsewhere?)
+    root->property()->round++;
+
+    // Set new root state
+    cache_.set_root(root);
+
+    // Clone root state
+    ExecutionStateProperty* property_clone = root->property()->clone();
+    assert(property_clone != root->property());
+    CVExecutionState* root_clone = root->clone(property_clone);
+
+    // Hack: add cloned state to the internal states set in Executor
+    root->cv()->executor()->add_state_internal(root_clone);
+
+    // Insert Root state
+    this->add_state(root_clone);
   }
 
   ~SearcherStageImpl() {}
@@ -265,15 +279,6 @@ class VerifySearcher : public CVSearcher {
   SearcherStageList stages_;
   std::vector<CVExecutionState*> pending_states_;
   std::map<CVExecutionState*, ExecutionEvent> pending_events_;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class KExtensionVerifySearcher : public VerifySearcher {
- public:
-  KExtensionVerifySearcher(ClientVerifier *cv, StateMerger* merger);
-  virtual klee::ExecutionState &selectState();
- private:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
