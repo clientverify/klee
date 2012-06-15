@@ -45,7 +45,7 @@ class StateRebuilder : public ExecutionObserver {
   void set_root(CVExecutionState* root) {
     // root_ is never added to the CVExecutor state tracker because it is never
     // actually executed, only its clones in a rebuild
-    root_ = root->clone(root->property()->clone());
+    root_ = root;
   }
 
   void notify(ExecutionEvent ev) {
@@ -74,14 +74,6 @@ class StateRebuilder : public ExecutionObserver {
           break;
         }
 
-        //case CV_SOCKET_WRITE:
-        //case CV_SOCKET_READ:
-        //case CV_SOCKET_SHUTDOWN: {
-        //  UCharForkList uchar_fork_list;
-        //  fork_tree_.tracker_get(state->property(), uchar_fork_list);
-        //  *cv_debug_stream << "FORKS: " << uchar_fork_list.size() << "\n";
-        //  break;
-        //}
         default:
           break;
       }
@@ -174,6 +166,7 @@ class BasicStateCache
   ExecutionStateProperty* rebuild_property() { return NULL; }
   void set_capacity(size_t c) {}
   CVExecutionState* root_state() { return NULL; }
+  void set_root(CVExecutionState* root) {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -288,10 +281,6 @@ class RebuildingStateCache : public StateRebuilder {
  
   void insert(const key_type& k,const value_type& v) {
 
-    if (this->root_ == NULL) {
-      this->set_root(v);
-    }
- 
     // If necessary, make space 
     while (cache_.size() > capacity_) { 
       //*cv_debug_stream << "reached capacity, removing state from cache, id: "
