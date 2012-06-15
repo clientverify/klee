@@ -655,6 +655,7 @@ class KLevenshteinRadixTree
           e1->d[curr] = std::min(ins_or_del, match_or_replace);
 
         }
+        min_prefix_distance_ = std::min(min_prefix_distance_, e1->d[curr]);
       }
 
       if (depth < max_depth) {
@@ -676,7 +677,7 @@ class KLevenshteinRadixTree
         //std::cout << std::endl;
       }
 
-      min_prefix_distance_ = std::min(min_prefix_distance_, e1->d[curr]);
+      //min_prefix_distance_ = std::min(min_prefix_distance_, e1->d[curr]);
     }
     return;
   }
