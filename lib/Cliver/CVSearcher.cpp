@@ -33,12 +33,6 @@ namespace cliver {
 llvm::cl::opt<bool>
 DebugSearcher("debug-searcher",llvm::cl::init(false));
 
-//llvm::cl::opt<bool>
-//DeleteOldStates("delete-old-states",llvm::cl::init(true));
-
-llvm::cl::opt<bool>
-BacktrackSearching("backtrack-searching",llvm::cl::init(false));
-
 llvm::cl::opt<unsigned>
 StateCacheSize("state-cache-size",llvm::cl::init(100000));
 
@@ -107,7 +101,7 @@ bool CVSearcher::empty() {
 VerifySearcher::VerifySearcher(ClientVerifier* cv, StateMerger* merger)
   : CVSearcher(NULL, cv, merger) {}
 
-// XXX
+// XXX TBD rework this code
 void VerifySearcher::check_searcher_stage_memory() {
 
   if (cv_->executor()->memory_usage() > (klee::MaxMemory - (klee::MaxMemory/8))) {
@@ -134,38 +128,28 @@ void VerifySearcher::check_searcher_stage_memory() {
     if (current_usage == cv_->executor()->memory_usage()) {
       cv_error("Freeing caches was not sucessful");
     }
-
   }
 }
 
 klee::ExecutionState &VerifySearcher::selectState() {
   //klee::TimerStatIncrementer timer(stats::searcher_time);
   
-
   if (!pending_states_.empty()) {
-    //// Delete all previous states from this round.
-    //if (DeleteOldStates) {
-    //  stages_.back()->clear();
-    //}
-
-    // Compute and output statistics for the previous round
-    cv_->next_round();
-
-    //cv_->notify_all(ExecutionEvent(CV_SEARCHER_NEW_STAGE, 
-    //                               pending_states_.back()));
-
     // Add pending stage to active stage list
     stages_.push_back(get_new_stage(pending_states_.back()));
     pending_states_.pop_back();
-  }
 
-  if (BacktrackSearching) {
+    // Compute and update statistics for the previous round
+    cv_->set_round(stages_.back()->root_state()->property()->round);
+
+  } else {
     while (!stages_.empty() && stages_.back()->empty()) {
       delete stages_.back();
       stages_.pop_back();
     }
   }
 
+  // Check memory usage
   check_searcher_stage_memory();
 
   assert(!stages_.empty());
@@ -197,20 +181,15 @@ void VerifySearcher::update(klee::ExecutionState *current,
 
 bool VerifySearcher::empty() {
   
-  if (ClientModelFlag == XPilot &&
-      !cv_->executor()->finished_states().empty()) {
-    CVDEBUG("Exiting. Num finished states: " 
-            << cv_->executor()->finished_states().size());
-    return true;
-  }
+  //if (ClientModelFlag == XPilot &&
+  //    !cv_->executor()->finished_states().empty()) {
+  //  CVDEBUG("Exiting. Num finished states: " 
+  //          << cv_->executor()->finished_states().size());
+  //  return true;
+  //}
 
-  if (BacktrackSearching) {
-    reverse_foreach (SearcherStage* stage, stages_) {
-      if (!stage->empty()) return false;
-    }
-  } else {
-    if (!stages_.back()->empty()) 
-      return false;
+  reverse_foreach (SearcherStage* stage, stages_) {
+    if (!stage->empty()) return false;
   }
 
   if (!pending_states_.empty())
@@ -220,8 +199,11 @@ bool VerifySearcher::empty() {
 }
 
 SearcherStage* VerifySearcher::get_new_stage(CVExecutionState* state) {
-  cv_->notify_all(ExecutionEvent(CV_SEARCHER_NEW_STAGE, state));
-  return SearcherStageFactory::create(merger_, state);
+  SearcherStage* stage = SearcherStageFactory::create(merger_, state);
+  CVExecutionState* next_state = stage->next_state();
+  stage->add_state(next_state);
+  cv_->notify_all(ExecutionEvent(CV_SEARCHER_NEW_STAGE, next_state, state));
+  return stage;
 }
 
 void VerifySearcher::add_state(CVExecutionState* state) {
@@ -249,54 +231,59 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
       case CV_FINISH: {
         if (!state->network_manager()->socket()->is_open()) {
           CVMESSAGE("Finish Event: " << *state);
-          cv_->notify_all(ExecutionEvent(CV_SEARCHER_NEW_STAGE, state));
           cv_->executor()->add_finished_state(state);
-          //pending_states_.push_back(state);
+          pending_states_.push_back(state);
+          result = true;
         } else {
           CVDEBUG("Finish Event (invalid): " << *state);
           cv_->executor()->remove_state_internal(state);
         }
-
         break;
       }
 
       case CV_SOCKET_WRITE:
-      case CV_SOCKET_READ:
+      case CV_SOCKET_READ: {
+
+        Socket* socket = state->network_manager()->socket();
+        ExecutionStateProperty* property = state->property();
+
+        CVDEBUG("New pending stage. Socket: "
+                << *socket << ", State" << *state);
+
+        // Create new stage and add to pending list
+        if (ClientModelFlag != XPilot) {
+          // XXX Hack to prune state constraints
+          ExecutionStateSet state_set, merged_set;
+          state_set.insert(state);
+          merger_->merge(state_set, merged_set);
+
+          pending_states_.push_back(*(merged_set.begin()));
+        } else {
+          pending_states_.push_back(state);
+        }
+
+        result = true;
+        break;
+      }
       case CV_MERGE: {
 
         Socket* socket = state->network_manager()->socket();
         ExecutionStateProperty* property = state->property();
 
-        if (ClientModelFlag == XPilot && 
-            socket->client_round() <= property->client_round) {
-          CVDEBUG("Removing state at merge event, wrong round "
-                  << *socket << ", State" << *state);
+        if (ClientModelFlag == XPilot) {
+          if (socket->client_round() <= property->client_round) {
+            CVDEBUG("Removing state at xpilot merge event, wrong round "
+                    << *socket << ", State" << *state);
 
-          // Remove invalid state with unfinished network processing
-          cv_->executor()->remove_state_internal(state);
+            // Remove invalid state with unfinished network processing
+            cv_->executor()->remove_state_internal(state);
 
-        } else {
-          CVDEBUG("New pending stage. Socket: "
-                  << *socket << ", State" << *state);
-
-          if (ClientModelFlag == XPilot)
-            property->client_round++;
-
-          // Create new stage and add to pending list
-          if (ClientModelFlag != XPilot) {
-            // XXX Hack to prune state constraints
-            ExecutionStateSet state_set, merged_set;
-            state_set.insert(state);
-            merger_->merge(state_set, merged_set);
-
-            pending_states_.push_back(*(merged_set.begin()));
+            result = true;
           } else {
-            pending_states_.push_back(state);
+            CVDEBUG("Incrementing xpilot client round ");
+            property->client_round++;
           }
-
         }
-        result = true;
-
         break;
       }
       default:
@@ -325,77 +312,16 @@ void VerifySearcher::notify(ExecutionEvent ev) {
     //  break;
     //}
     // These events will be processed later
-        //CVMESSAGE("Finish Event: " << *ev.state);
     case CV_FINISH:
-    case CV_MERGE: {
-      pending_events_[ev.state] = ev;
-      break;
-    }
+    case CV_MERGE:
     case CV_SOCKET_WRITE:
     case CV_SOCKET_READ: {
-      if (ClientModelFlag == Tetrinet) {
-        pending_events_[ev.state] = ev;
-      }
+      pending_events_[ev.state] = ev;
       break;
     }
     default:
       break;
   }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-KExtensionVerifySearcher::KExtensionVerifySearcher(ClientVerifier* cv, 
-                                                   StateMerger* merger)
-  : VerifySearcher(cv, merger) {}
-
-klee::ExecutionState &KExtensionVerifySearcher::selectState() {
-  //klee::TimerStatIncrementer timer(stats::searcher_time);
-  
-  if (!pending_states_.empty()) {
-    // Delete all previous states from this round.
-    //if (DeleteOldStates) {
-    //  stages_.back()->clear();
-    //}
-    // Compute and output statistics for the previous round
-    cv_->next_round();
-
-    // Add pending stage to active stage list
-    stages_.push_back(get_new_stage(pending_states_.back()));
-    pending_states_.pop_back();
-  }
-
-  if (BacktrackSearching) {
-    while (!stages_.empty() && stages_.back()->empty()) {
-      delete stages_.back();
-      stages_.pop_back();
-    }
-  }
-
-  check_searcher_stage_memory();
-
-  assert(!stages_.empty());
-
-  // Check if we should increase k
-  CVExecutionState *state = stages_.back()->next_state();
-
-  if (state->property()->edit_distance == INT_MAX 
-      && stages_.back()->size() > 1
-      && cv_->execution_trace_manager()->ready_process_all_states()
-      && !stages_.back()->rebuilding()) {
-    //CVMESSAGE("Next state is INT_MAX");
-
-    stages_.back()->add_state(state);
-    std::vector<ExecutionStateProperty*> states;
-    stages_.back()->get_states(states);
-    cv_->execution_trace_manager()->process_all_states(states);
-
-    // recompute edit distance
-    stages_.back()->set_states(states);
-    state = stages_.back()->next_state();
-  }
-
-  return *(static_cast<klee::ExecutionState*>(state));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -407,12 +333,8 @@ TrainingSearcher::TrainingSearcher(ClientVerifier *cv,
 klee::ExecutionState &TrainingSearcher::selectState() {
   //klee::TimerStatIncrementer timer(stats::searcher_time);
  
-  //while (!stages_.empty() && stages_.back()->empty()) {
-  //  delete stages_.back();
-  //  stages_.pop_back();
-  //}
-
-  if (stages_.back()->empty() || pending_states_.size() >= TrainingMaxPending) {
+  if (pending_states_.size() > 0 && 
+      (stages_.back()->empty() || pending_states_.size() >= TrainingMaxPending)) {
     assert(!pending_states_.empty());
 
     // Prune state constraints and merge states
@@ -430,9 +352,6 @@ klee::ExecutionState &TrainingSearcher::selectState() {
         ++stats::merged_states;
       } else {
         CVDEBUG("New stage from unique state " << state << ":" << state->id());
-
-        //cv_->notify_all(ExecutionEvent(CV_SEARCHER_NEW_STAGE, state));
-
         // Create new stage and add to pending list
         new_stages.push_back(get_new_stage(state));
         ++stats::active_states;
@@ -441,14 +360,19 @@ klee::ExecutionState &TrainingSearcher::selectState() {
 
     assert(!new_stages.empty()); 
 
-    // Compute and output statistics for the previous round
-    cv_->next_round();
-
     // Add all pending stages to active stage list
     stages_.insert(stages_.end(), new_stages.begin(), new_stages.end());
 
+    // Compute and update statistics for the previous round
+    cv_->set_round(stages_.back()->root_state()->property()->round);
+
     pending_states_.clear();
-  } 
+  } else {
+    while (!stages_.empty() && stages_.back()->empty()) {
+      delete stages_.back();
+      stages_.pop_back();
+    }
+  }
 
   assert(!stages_.empty());
   assert(!stages_.back()->empty());
