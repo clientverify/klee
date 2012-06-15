@@ -54,7 +54,7 @@ int ExecutionStateProperty::compare(const ExecutionStateProperty &b) const {
 void ExecutionStateProperty::print(std::ostream &os) const {
 	os << "[rd: " << round << "]";
   if (client_round >= 0)
-    os << "[clrd: " << round << "]";
+    os << "[clrd: " << client_round << "]";
   if (edit_distance >= 0)
 	  os << "[ed: " << edit_distance << "]";
   if (!recompute)
