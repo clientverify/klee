@@ -575,8 +575,9 @@ void VerifyExecutionTraceManager::process_all_states(
     stage->current_k = stage->current_k * 2;
   }
 
+  CVMESSAGE("All states should have INT_MAX=" << INT_MAX << " edit distance.");
   for (unsigned i=0; i<states.size(); ++i) {
-    assert(states[i]->edit_distance == INT_MAX);
+    //assert(states[i]->edit_distance == INT_MAX);
     int old_ed = states[i]->edit_distance;
     recompute_property(states[i]);
     CVMESSAGE("Edit distance computed from: " << old_ed 
