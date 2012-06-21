@@ -154,7 +154,29 @@ klee::ExecutionState &VerifySearcher::selectState() {
 
   assert(!stages_.empty());
 
-  return *(static_cast<klee::ExecutionState*>(stages_.back()->next_state()));
+  //return *(static_cast<klee::ExecutionState*>(stages_.back()->next_state()));
+
+  // Check if we should increase k
+  CVExecutionState *state = stages_.back()->next_state();
+
+  // Check the edit distance
+  if (state->property()->edit_distance == INT_MAX 
+      && stages_.back()->size() > 1
+      && cv_->execution_trace_manager()->ready_process_all_states(state->property())
+      && !stages_.back()->rebuilding()) {
+    //CVMESSAGE("Next state is INT_MAX");
+
+    stages_.back()->add_state(state);
+    std::vector<ExecutionStateProperty*> states;
+    stages_.back()->get_states(states);
+    cv_->execution_trace_manager()->process_all_states(states);
+
+    // recompute edit distance
+    stages_.back()->set_states(states);
+    state = stages_.back()->next_state();
+  }
+
+  return *(static_cast<klee::ExecutionState*>(state));
 }
 
 void VerifySearcher::update(klee::ExecutionState *current,
@@ -383,5 +405,7 @@ klee::ExecutionState &TrainingSearcher::selectState() {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+
 
 } // end namespace cliver
