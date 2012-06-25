@@ -100,6 +100,12 @@ typedef Types<
   StringKExtensionTree
 > EditDistanceImplementations;
 
+typedef Types<
+  StringKLevenshteinRadixTree,
+  StringKExtensionOptTree,
+  StringKExtensionTree
+> KPrefixEditDistanceImplementations;
+
 //////////////////////////////////////////////////////////////////////////////////
 // EditDistance typedefs for verifiying LevenshteinRadixTree, this classes are
 // not tested here
@@ -309,6 +315,55 @@ class EditDistanceTreeTest : public ::testing::Test {
 
 //////////////////////////////////////////////////////////////////////////////////
 
+typedef EditDistanceTree<std::string, char> StringEditDistanceTree;
+
+// Used to test equivalence of KPrefix Implementations
+class KPrefixEditDistanceTreeEquivalenceTest : public ::testing::TestWithParam<int> {
+ protected:
+
+  virtual void SetUp() {
+    this->AddTree(new StringKExtensionTree());
+    this->AddTree(new StringKLevenshteinRadixTree());
+  }
+
+  virtual void TearDown() {
+    for (unsigned i=0; i<trees.size(); ++i) {
+      delete trees[i];
+    }
+  }
+
+  void AddTree(StringEditDistanceTree* tree) {
+    trees.push_back(tree);
+  }
+
+  void SetupDictionary() {
+    if (dictionary.empty())
+      dictionary = std::vector<std::string>(cstr_dictionary, end(cstr_dictionary));
+    for (unsigned i=0; i<dictionary.size(); ++i) {
+      std::string v(dictionary[i].begin(), dictionary[i].end());
+      v_dictionary.push_back(v);
+    }
+  }
+
+  void InsertForAll(std::string& s) {
+    for (unsigned j=0; j<trees.size(); ++j) {
+      trees[j]->add_data(s);
+    }
+  }
+
+  void InsertDictionaryForAll() {
+    this->SetupDictionary();
+    for (unsigned i=0; i<v_dictionary.size(); ++i) {
+      InsertForAll(v_dictionary[i]);
+    }
+  }
+
+  std::vector<StringEditDistanceTree*> trees;
+  std::vector<std::string> v_dictionary;
+};
+
+//////////////////////////////////////////////////////////////////////////////////
+
 TYPED_TEST_CASE(RadixTreeTest, Implementations);
 TYPED_TEST_CASE(TrackingRadixTreeTest, TrackingImplementations);
 TYPED_TEST_CASE(EditDistanceTreeTest, EditDistanceImplementations);
@@ -316,6 +371,214 @@ TYPED_TEST_CASE(EditDistanceTreeTest, EditDistanceImplementations);
 //////////////////////////////////////////////////////////////////////////////////
 
 namespace {
+
+//////////////////////////////////////////////////////////////////////////////////
+
+TEST_P(KPrefixEditDistanceTreeEquivalenceTest, UpdateWithExactMatches) {
+  this->InsertDictionaryForAll();
+
+  srand(0);
+  int r0, count = 5;
+
+  for (int i=0; i < count;  ++i) {
+    r0 = rand() % this->v_dictionary.size();
+    std::string s = this->v_dictionary[r0];
+    int dist = 0;
+
+    for (unsigned j=0; j<this->trees.size(); ++j) {
+      this->trees[j]->init(GetParam());
+      this->trees[j]->update(s);
+      if (j > 0) {
+        ASSERT_EQ(this->trees[j]->min_distance(), dist);
+      } else {
+        dist = this->trees[j]->min_distance();
+      }
+      std::cout << s << ", dist = " << dist << "\n";
+    }
+  }
+}
+
+TEST_P(KPrefixEditDistanceTreeEquivalenceTest, UpdateElementWithExactMatches) {
+  this->InsertDictionaryForAll();
+
+  srand(1);
+  int r0, count = 5;
+
+  for (int i=0; i < count;  ++i) {
+    r0 = rand() % this->v_dictionary.size();
+    std::string s = this->v_dictionary[r0];
+
+    int dist = 0;
+
+    for (unsigned k=0; k < s.size(); ++k) {
+      for (unsigned j=0; j<this->trees.size(); ++j) {
+
+        if (k == 0)
+          this->trees[j]->init(GetParam());
+
+        this->trees[j]->update_element(s[k]);
+
+        if (j > 0) {
+          ASSERT_EQ(this->trees[j]->min_distance(), dist);
+        } else {
+          dist = this->trees[j]->min_distance();
+        }
+        std::cout << s[k] << ", dist = " << dist << "\n";
+      }
+    }
+  }
+}
+
+TEST_P(KPrefixEditDistanceTreeEquivalenceTest, UpdateSuffixWithExactMatches) {
+  this->InsertDictionaryForAll();
+
+  srand(1);
+  int r0, count = 5;
+  int stride = 3;
+
+  for (int i=0; i < count;  ++i) {
+    r0 = rand() % this->v_dictionary.size();
+    std::string s = this->v_dictionary[r0];
+
+    int dist = 0;
+
+    int substr_count = (s.size() / stride) + 
+                       ((s.size() % stride) != 0); 
+    std::cout << "substr_count: " << substr_count << "\n";
+
+    for (unsigned k = 0; k < substr_count; ++k) {
+      for (unsigned j=0; j<this->trees.size(); ++j) {
+
+        if (k == 0)
+          this->trees[j]->init(GetParam());
+
+        std::string next_suffix = s.substr(k*stride, stride);
+        this->trees[j]->update_suffix(next_suffix);
+
+        if (j > 0) {
+          ASSERT_EQ(this->trees[j]->min_distance(), dist);
+        } else {
+          dist = this->trees[j]->min_distance();
+        }
+        std::cout << s.substr(k*stride, stride) 
+            << ", dist = " << dist << "\n";
+      }
+    }
+  }
+}
+
+TEST_P(KPrefixEditDistanceTreeEquivalenceTest, UpdateWithInExactMatches) {
+  this->InsertDictionaryForAll();
+
+  srand(0);
+  int r0, count = 5;
+
+  for (int i=0; i < count;  ++i) {
+    r0 = rand() % this->v_dictionary.size();
+    std::string s = this->v_dictionary[r0];
+    std::reverse(s.begin(), s.end());
+    int dist = 0;
+
+    for (unsigned j=0; j<this->trees.size(); ++j) {
+      this->trees[j]->init(GetParam());
+      this->trees[j]->update(s);
+      if (j > 0) {
+        ASSERT_EQ(this->trees[j]->min_distance(), dist);
+      } else {
+        dist = this->trees[j]->min_distance();
+      }
+      std::cout << s << ", dist = " << dist << "\n";
+    }
+  }
+}
+
+TEST_P(KPrefixEditDistanceTreeEquivalenceTest, UpdateElementWithInExactMatches) {
+  this->InsertDictionaryForAll();
+
+  srand(1);
+  int r0, count = 5;
+
+  for (int i=0; i < count;  ++i) {
+    r0 = rand() % this->v_dictionary.size();
+    std::string s = this->v_dictionary[r0];
+    std::reverse(s.begin(), s.end());
+
+    int dist = 0;
+
+    for (unsigned k=0; k < s.size(); ++k) {
+      for (unsigned j=0; j<this->trees.size(); ++j) {
+
+        if (k == 0)
+          this->trees[j]->init(GetParam());
+
+        this->trees[j]->update_element(s[k]);
+
+        if (j > 0) {
+          ASSERT_EQ(this->trees[j]->min_distance(), dist);
+        } else {
+          dist = this->trees[j]->min_distance();
+        }
+        std::cout << s[k] << ", dist = " << dist << "\n";
+      }
+    }
+  }
+}
+
+TEST_P(KPrefixEditDistanceTreeEquivalenceTest, UpdateSuffixWithInExactMatches) {
+
+  this->InsertDictionaryForAll();
+  
+  //this->SetupDictionary();
+  //std::string a("samsung"), b("christmas"), c("Johnny");
+  //this->InsertForAll(a);
+  //this->InsertForAll(b);
+  //this->InsertForAll(c);
+
+  srand(1);
+  int r0, count = 5;
+  int stride = 1;
+
+  //std::cout << "k = " << GetParam() << "\n";
+  for (int i=0; i < count;  ++i) {
+    r0 = rand() % this->v_dictionary.size();
+    std::string s = this->v_dictionary[r0];
+    std::reverse(s.begin(), s.end());
+    //std::string s = "son";/*this->v_dictionary[r0];*/
+    //std::string s = "stek";/*this->v_dictionary[r0];*/
+
+    int dist = 0;
+
+    int substr_count = (s.size() / stride) + 
+                       ((s.size() % stride) != 0); 
+    //std::cout << s << " substr_count: " << substr_count << "\n";
+
+    for (unsigned k = 0; k < substr_count; ++k) {
+      for (unsigned j=0; j<this->trees.size(); ++j) {
+
+        if (k == 0)
+          this->trees[j]->init(GetParam());
+
+        std::string next_suffix = s.substr(k*stride, stride);
+        this->trees[j]->update_suffix(next_suffix);
+
+        if (j > 0) {
+          ASSERT_EQ(this->trees[j]->min_distance(), dist);
+        } else {
+          dist = this->trees[j]->min_distance();
+        }
+        //std::cout << s.substr(k*stride, stride) 
+        //    << ", dist = " << dist << "\n";
+      }
+    }
+  }
+}
+
+INSTANTIATE_TEST_CASE_P(KPrefixValues, KPrefixEditDistanceTreeEquivalenceTest,
+                        ::testing::Values(128,32,16,8,4,2));
+
+//TEST_F(KPrefixEditDistanceTreeEquivalenceTest, Init) {
+//  this->InsertDictionaryForAll();
+//}
 
 //////////////////////////////////////////////////////////////////////////////////
 
@@ -356,6 +619,7 @@ TYPED_TEST(EditDistanceTreeTest, Compute) {
     this->rt_->update_suffix(this->v_dictionary[r0]);
   }
 }
+
 
 //////////////////////////////////////////////////////////////////////////////////
 
