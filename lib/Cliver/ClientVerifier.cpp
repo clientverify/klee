@@ -96,6 +96,7 @@ namespace stats {
 	klee::Statistic edit_distance_tree_size("EditDistanceTreeSize","EDTSz");
 	klee::Statistic edit_distance_final_k("EditDistanceFinalK","EDFK");
 	klee::Statistic edit_distance_min_score("EditDistanceMinScore","EDMS");
+	klee::Statistic stage_count("StageCount","StgCnt");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -388,6 +389,7 @@ void ClientVerifier::print_stat_labels() {
     << " " << stats::edit_distance_tree_size.getShortName()
     << " " << stats::edit_distance_final_k.getShortName()
     << " " << stats::edit_distance_min_score.getShortName()
+    << " " << stats::stage_count.getShortName()
     << "\n";
 }
 
@@ -422,6 +424,7 @@ void ClientVerifier::print_statistic_record(klee::StatisticRecord* sr,
     << " " << sr->getValue(stats::edit_distance_tree_size)
     << " " << sr->getValue(stats::edit_distance_final_k)
     << " " << sr->getValue(stats::edit_distance_min_score)
+    << " " << sr->getValue(stats::stage_count)
     << "\n";
 
 #ifdef GOOGLE_PROFILER
