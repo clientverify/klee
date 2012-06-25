@@ -505,6 +505,9 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
     case CV_SEARCHER_NEW_STAGE: {
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
 
+      // Increment stat counter
+      stats::stage_count += 1;
+
       // Initialize a new ExecutionTraceTree
       ExecutionStage *new_stage = new ExecutionStage();
       new_stage->etrace_tree = new ExecutionTraceTree();
