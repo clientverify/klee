@@ -286,8 +286,9 @@ class KExtensionOptTree
   
   inline int add_new_valid(EdgeOffset &eo, int distance) {
     int res = add_valid_internal(new_valid_, new_valid_list_, eo, distance);
-    if (new_min_prefix_distance_ >  distance)
+    if (new_min_prefix_distance_ >  distance) {
       new_min_prefix_distance_ = distance;
+    }
     return res;
   }
 
@@ -662,8 +663,18 @@ class KExtensionTree
   
   inline int add_new_valid(EdgeOffset &eo, int distance) {
     int res = add_valid_internal(new_valid_, new_valid_list_, eo, distance);
-    if (new_min_prefix_distance_ >  distance)
+    if (new_min_prefix_distance_ >  distance) {
+      //// DEBUG
+      //Sequence min_s;
+      //eo.first->to()->get(min_s);
+      //std::cout << "KE: New min_pfx_dist: " << new_min_prefix_distance_ 
+      //    << " to " << distance << ": ";
+      //for (int x=0; x<min_s.size(); x++)
+      //  std::cout << min_s[x];
+      //std::cout << std::endl;
+
       new_min_prefix_distance_ = distance;
+    }
     return res;
   }
 
