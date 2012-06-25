@@ -570,7 +570,7 @@ class KLevenshteinRadixTree
 
   inline int max_column() {
     if (k_ == INT_MAX) return INT_MAX;
-    return row_ + k_;
+    return row_ + k_ + 1;
   }
 
   inline int min_column() {
@@ -642,7 +642,15 @@ class KLevenshteinRadixTree
             e1_d_prev = e1->d[prev];
 
           if (depth == min_column())
-            e1_d_prev = INT_MAX - 1;
+            e0_d_curr = INT_MAX - 1;
+
+          if (depth - 1 == min_column())
+            e0_d_curr = INT_MAX - 1;
+
+          if (depth == 1) {
+            e0_d_curr = row_;
+            e0_d_prev = row_ - 1;
+          }
 
           // Compute minimum cost of insert or delete
           int ins_or_del 
@@ -651,11 +659,30 @@ class KLevenshteinRadixTree
           // Compute minimum cost of replace or match if equal
           int match_or_replace = (t == e1->e) ? e0_d_prev : e0_d_prev + 1;
 
+          int res = std::min(ins_or_del, match_or_replace);
+
+          if (res > k_)
+            res = INT_MAX - 1;
+
           // Store the minimum cost operation
-          e1->d[curr] = std::min(ins_or_del, match_or_replace);
+          e1->d[curr] = res;
+
+          //std::cout << "row: " << row_ << ", depth: " << depth 
+          //    << ", t: " << t << ", e1->e: " << e1->e
+          //    << ", e0_d_curr = " << e0_d_curr 
+          //    << ", e0->d[curr] = " << e0->d[curr]
+          //    << ", e0_d_prev = " << e0_d_prev
+          //    << ", e0->d[prev] = " << e0->d[prev]
+          //    << ", ins: " << e0_d_curr + 1 
+          //    << ", del: " << e1_d_prev + 1 
+          //    << ", mat: " << e0_d_prev 
+          //    << ", rep: " << e0_d_prev + 1 << "\n";
 
         }
         min_prefix_distance_ = std::min(min_prefix_distance_, e1->d[curr]);
+
+        //std::cout << "row: " << row_ << ", depth: " << depth 
+        //    << ", val: " << e1->d[curr] << "\n";
       }
 
       if (depth < max_depth) {
@@ -679,6 +706,10 @@ class KLevenshteinRadixTree
 
       //min_prefix_distance_ = std::min(min_prefix_distance_, e1->d[curr]);
     }
+    
+    if (min_prefix_distance_ == (INT_MAX - 1))
+      min_prefix_distance_ = INT_MAX;
+
     return;
   }
 
