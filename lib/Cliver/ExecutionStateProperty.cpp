@@ -39,16 +39,16 @@ ExecutionStateProperty* ExecutionStateProperty::clone() {
 int ExecutionStateProperty::compare(const ExecutionStateProperty &b) const {
 	const ExecutionStateProperty *_b = static_cast<const ExecutionStateProperty*>(&b);
 
-	if (round != _b->round)
-		return round - _b->round;
+	//if (round != _b->round)
+	//	return round - _b->round;
 
-	if (client_round != _b->client_round)
-		return client_round - _b->client_round;
+	//if (client_round != _b->client_round)
+	//	return client_round - _b->client_round;
 
   // Reversed for priority queue!
   return _b->edit_distance - edit_distance;
 
-  return 0;
+  //return 0;
 }
 
 void ExecutionStateProperty::print(std::ostream &os) const {
