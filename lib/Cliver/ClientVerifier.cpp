@@ -94,6 +94,8 @@ namespace stats {
 	klee::Statistic edit_distance_compute_time("EditDistanceComputeTime","EDCoTm");
 	klee::Statistic edit_distance_build_time("EditDistanceBuildTime","EDBdTm");
 	klee::Statistic edit_distance_tree_size("EditDistanceTreeSize","EDTSz");
+	klee::Statistic edit_distance_final_k("EditDistanceFinalK","EDFK");
+	klee::Statistic edit_distance_min_score("EditDistanceMinScore","EDMS");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -384,6 +386,8 @@ void ClientVerifier::print_stat_labels() {
     << " " << stats::edit_distance_compute_time.getShortName()
     << " " << stats::edit_distance_build_time.getShortName()
     << " " << stats::edit_distance_tree_size.getShortName()
+    << " " << stats::edit_distance_final_k.getShortName()
+    << " " << stats::edit_distance_min_score.getShortName()
     << "\n";
 }
 
@@ -416,6 +420,8 @@ void ClientVerifier::print_statistic_record(klee::StatisticRecord* sr,
     << " " << sr->getValue(stats::edit_distance_compute_time) / 1000000.
     << " " << sr->getValue(stats::edit_distance_build_time) / 1000000.
     << " " << sr->getValue(stats::edit_distance_tree_size)
+    << " " << sr->getValue(stats::edit_distance_final_k)
+    << " " << sr->getValue(stats::edit_distance_min_score)
     << "\n";
 
 #ifdef GOOGLE_PROFILER

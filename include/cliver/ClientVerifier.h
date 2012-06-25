@@ -47,6 +47,8 @@ namespace stats {
 	extern klee::Statistic edit_distance_compute_time;
 	extern klee::Statistic edit_distance_build_time;
 	extern klee::Statistic edit_distance_tree_size;
+	extern klee::Statistic edit_distance_final_k;
+	extern klee::Statistic edit_distance_min_score;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

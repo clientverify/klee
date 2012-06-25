@@ -410,6 +410,8 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
           bool zero_match = false;
           for (i=0; (i < score_list.size()) && (i < max_count); ++i) {
             double score = score_list[i].first;
+            if (i == 0)
+              stats::edit_distance_min_score += (int)(100 * score);
             CVDEBUG("Score: " << score);
             if (zero_match && score > 0.0f) {
               i--;
@@ -572,7 +574,13 @@ void VerifyExecutionTraceManager::process_all_states(
     ExecutionStage* stage = stages_[states[0]];
     CVMESSAGE("Doubling K from: " << stage->current_k 
               << " to " << stage->current_k*2);
+
+    //HACK, add assignment to stats!
+    stats::edit_distance_final_k += (0 - stage->current_k);
+
     stage->current_k = stage->current_k * 2;
+
+    stats::edit_distance_final_k += stage->current_k;
   }
 
   CVMESSAGE("All states should have INT_MAX=" << INT_MAX << " edit distance.");
