@@ -378,7 +378,7 @@ TEST_P(KPrefixEditDistanceTreeEquivalenceTest, UpdateWithExactMatches) {
   this->InsertDictionaryForAll();
 
   srand(0);
-  int r0, count = 5;
+  int r0, count = 15;
 
   for (int i=0; i < count;  ++i) {
     r0 = rand() % this->v_dictionary.size();
@@ -393,7 +393,6 @@ TEST_P(KPrefixEditDistanceTreeEquivalenceTest, UpdateWithExactMatches) {
       } else {
         dist = this->trees[j]->min_distance();
       }
-      std::cout << s << ", dist = " << dist << "\n";
     }
   }
 }
@@ -402,7 +401,7 @@ TEST_P(KPrefixEditDistanceTreeEquivalenceTest, UpdateElementWithExactMatches) {
   this->InsertDictionaryForAll();
 
   srand(1);
-  int r0, count = 5;
+  int r0, count = 15;
 
   for (int i=0; i < count;  ++i) {
     r0 = rand() % this->v_dictionary.size();
@@ -423,7 +422,6 @@ TEST_P(KPrefixEditDistanceTreeEquivalenceTest, UpdateElementWithExactMatches) {
         } else {
           dist = this->trees[j]->min_distance();
         }
-        std::cout << s[k] << ", dist = " << dist << "\n";
       }
     }
   }
@@ -433,7 +431,7 @@ TEST_P(KPrefixEditDistanceTreeEquivalenceTest, UpdateSuffixWithExactMatches) {
   this->InsertDictionaryForAll();
 
   srand(1);
-  int r0, count = 5;
+  int r0, count = 15;
   int stride = 3;
 
   for (int i=0; i < count;  ++i) {
@@ -444,7 +442,6 @@ TEST_P(KPrefixEditDistanceTreeEquivalenceTest, UpdateSuffixWithExactMatches) {
 
     int substr_count = (s.size() / stride) + 
                        ((s.size() % stride) != 0); 
-    std::cout << "substr_count: " << substr_count << "\n";
 
     for (unsigned k = 0; k < substr_count; ++k) {
       for (unsigned j=0; j<this->trees.size(); ++j) {
@@ -460,8 +457,6 @@ TEST_P(KPrefixEditDistanceTreeEquivalenceTest, UpdateSuffixWithExactMatches) {
         } else {
           dist = this->trees[j]->min_distance();
         }
-        std::cout << s.substr(k*stride, stride) 
-            << ", dist = " << dist << "\n";
       }
     }
   }
@@ -471,7 +466,7 @@ TEST_P(KPrefixEditDistanceTreeEquivalenceTest, UpdateWithInExactMatches) {
   this->InsertDictionaryForAll();
 
   srand(0);
-  int r0, count = 5;
+  int r0, count = 15;
 
   for (int i=0; i < count;  ++i) {
     r0 = rand() % this->v_dictionary.size();
@@ -487,7 +482,6 @@ TEST_P(KPrefixEditDistanceTreeEquivalenceTest, UpdateWithInExactMatches) {
       } else {
         dist = this->trees[j]->min_distance();
       }
-      std::cout << s << ", dist = " << dist << "\n";
     }
   }
 }
@@ -496,7 +490,7 @@ TEST_P(KPrefixEditDistanceTreeEquivalenceTest, UpdateElementWithInExactMatches) 
   this->InsertDictionaryForAll();
 
   srand(1);
-  int r0, count = 5;
+  int r0, count = 15;
 
   for (int i=0; i < count;  ++i) {
     r0 = rand() % this->v_dictionary.size();
@@ -518,7 +512,6 @@ TEST_P(KPrefixEditDistanceTreeEquivalenceTest, UpdateElementWithInExactMatches) 
         } else {
           dist = this->trees[j]->min_distance();
         }
-        std::cout << s[k] << ", dist = " << dist << "\n";
       }
     }
   }
@@ -527,24 +520,26 @@ TEST_P(KPrefixEditDistanceTreeEquivalenceTest, UpdateElementWithInExactMatches) 
 TEST_P(KPrefixEditDistanceTreeEquivalenceTest, UpdateSuffixWithInExactMatches) {
 
   this->InsertDictionaryForAll();
-  
-  //this->SetupDictionary();
-  //std::string a("samsung"), b("christmas"), c("Johnny");
-  //this->InsertForAll(a);
-  //this->InsertForAll(b);
-  //this->InsertForAll(c);
 
+  // alt test1
+  //std::string a = "seadogs"; // and s = srehtafdog
+  //this->InsertForAll(a);
+  
+  // alt test2
+  //std::string a = "nativities"; // and s = snimativitna 
+  //this->InsertForAll(a);
+  
   srand(1);
-  int r0, count = 5;
-  int stride = 1;
+  int r0, count = 15;
+  int stride = 3;
 
   //std::cout << "k = " << GetParam() << "\n";
   for (int i=0; i < count;  ++i) {
     r0 = rand() % this->v_dictionary.size();
     std::string s = this->v_dictionary[r0];
     std::reverse(s.begin(), s.end());
-    //std::string s = "son";/*this->v_dictionary[r0];*/
-    //std::string s = "stek";/*this->v_dictionary[r0];*/
+    //std::string s = "srehtafdog";
+    //std::string s = "snimativitna";
 
     int dist = 0;
 
