@@ -606,8 +606,6 @@ class KLevenshteinRadixTree
         std::advance(edge_it, offset-1);
         e1 = &(*edge_it);
         std::advance(edge_it, 1);
-      } else {
-        std::advance(edge_it, offset);
       }
 
       for (; edge_it != edge_ie && depth < max_depth; ++edge_it, ++depth) {
@@ -627,30 +625,17 @@ class KLevenshteinRadixTree
           if (edge_it == edge->begin())
             e0 = &(edge->from()->parent_edge()->back());
 
-          int e1_d_prev;
-          int e0_d_curr;
+          int e0_d_curr = e0->d[curr];
           int e0_d_prev = e0->d[prev];
+          int e1_d_prev = e1->d[prev];
 
+          // max column increments by 1 each row, so e1_d_prev is undefined,
+          // when depth == max_column
           if (depth == max_column())
-            e0_d_curr = INT_MAX - 1;
-          else
-            e0_d_curr = e0->d[curr];
-
-          if (depth == min_column())
             e1_d_prev = INT_MAX - 1;
-          else
-            e1_d_prev = e1->d[prev];
 
-          if (depth == min_column())
+          if (depth == (row_ - k_))
             e0_d_curr = INT_MAX - 1;
-
-          if (depth - 1 == min_column())
-            e0_d_curr = INT_MAX - 1;
-
-          if (depth == 1) {
-            e0_d_curr = row_;
-            e0_d_prev = row_ - 1;
-          }
 
           // Compute minimum cost of insert or delete
           int ins_or_del 
@@ -667,6 +652,7 @@ class KLevenshteinRadixTree
           // Store the minimum cost operation
           e1->d[curr] = res;
 
+          //// DEBUG OUTPUT
           //std::cout << "row: " << row_ << ", depth: " << depth 
           //    << ", t: " << t << ", e1->e: " << e1->e
           //    << ", e0_d_curr = " << e0_d_curr 
@@ -679,10 +665,22 @@ class KLevenshteinRadixTree
           //    << ", rep: " << e0_d_prev + 1 << "\n";
 
         }
-        min_prefix_distance_ = std::min(min_prefix_distance_, e1->d[curr]);
 
+        //// DEBUG OUTPUT
+        //if (min_prefix_distance_ > e1->d[curr] &&
+        //    e1->d[curr] != (INT_MAX - 1)) {
+        //  LSequence min_s;
+        //  edge->to()->get(min_s);
+        //  std::cout << "New min_pfx_dist: " << min_prefix_distance_ 
+        //      << " to " << e1->d[curr] << ": ";
+        //  for (int x=0; x<min_s.size(); x++)
+        //    std::cout << min_s[x];
+        //  std::cout << std::endl;
+        //}
         //std::cout << "row: " << row_ << ", depth: " << depth 
         //    << ", val: " << e1->d[curr] << "\n";
+        
+        min_prefix_distance_ = std::min(min_prefix_distance_, e1->d[curr]);
       }
 
       if (depth < max_depth) {
@@ -696,6 +694,7 @@ class KLevenshteinRadixTree
         if (e1->d[curr] < min_distance_) {
           min_distance_ = e1->d[curr];
         }
+        //// DEBUG
         //LSequence min_s;
         //edge->to()->get(min_s);
         //std::cout << "KL: min distance: " << min_distance_ << ": ";
@@ -703,8 +702,6 @@ class KLevenshteinRadixTree
         //  std::cout << min_s[x];
         //std::cout << std::endl;
       }
-
-      //min_prefix_distance_ = std::min(min_prefix_distance_, e1->d[curr]);
     }
     
     if (min_prefix_distance_ == (INT_MAX - 1))
