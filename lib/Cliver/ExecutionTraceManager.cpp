@@ -262,7 +262,7 @@ void TrainingExecutionTraceManager::notify(ExecutionEvent ev) {
           stages_.count(parent_property) && 
           stages_[parent_property]->etrace_tree->tracks(parent_property)) {
 
-        CVDEBUG("End state: " << *parent);
+        CVMESSAGE("NEW STAGE at state: " << *parent);
 
         new_stage->parent_stage = stages_[parent_property];
 
