@@ -87,8 +87,9 @@ class SearcherStageImpl : public SearcherStage {
   SearcherStageImpl(CVExecutionState* root)
     : live_(NULL) {
 
-    // Increment round number (do this elsewhere?)
+    // Increment round number and reset (do this elsewhere?)
     root->property()->round++;
+    root->property()->reset();
 
     // Set new root state
     cache_.set_root(root);

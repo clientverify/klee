@@ -91,6 +91,9 @@ SearcherStage* SearcherStageFactory::create(StateMerger* merger,
     case VerifyEditDistanceKPrefixHashPointer: {
       return new PQSearcherStage(state);
     }
+    case Training: {
+      return new PQSearcherStage(state);
+    }
     default:
       break;
   }

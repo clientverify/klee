@@ -89,6 +89,9 @@ class StateRebuilder : public ExecutionObserver {
     rebuild_state_ = root_->clone(property);
     rebuild_property_ = property;
 
+    // Reset rebuild property
+    rebuild_property_->reset();
+
     // Get the list of forks from the fork tree (uchar)
     UCharForkList uchar_fork_list;
     fork_tree_.tracker_get(property, uchar_fork_list);
