@@ -120,19 +120,19 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
   switch (ev.event_type) {
 
     case CV_BASICBLOCK_ENTRY: {
-      klee::TimerStatIncrementer timer(stats::execution_tree_time);
+      //klee::TimerStatIncrementer timer(stats::execution_tree_time);
 
       ExecutionStage* stage = stages_[property];
 
       if (state->basic_block_tracking() || !BasicBlockDisabling) {
-        klee::TimerStatIncrementer extend_timer(stats::execution_tree_extend_time);
+        //klee::TimerStatIncrementer extend_timer(stats::execution_tree_extend_time);
         stage->etrace_tree->extend_element(state->prevPC->kbb->id, property);
       }
     }
     break;
 
     case CV_STATE_REMOVED: {
-      klee::TimerStatIncrementer timer(stats::execution_tree_time);
+      //klee::TimerStatIncrementer timer(stats::execution_tree_time);
       CVDEBUG("Removing state: " << *state );
       ExecutionStage* stage = stages_[property];
       stage->etrace_tree->remove_tracker(property);
@@ -141,7 +141,7 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
     break;
 
     case CV_STATE_CLONE: {
-      klee::TimerStatIncrementer timer(stats::execution_tree_time);
+      //klee::TimerStatIncrementer timer(stats::execution_tree_time);
       CVDEBUG("Cloned state: " << *state);
       ExecutionStage* stage = stages_[parent_property];
       stages_[property] = stage;
@@ -150,7 +150,7 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
     break;
 
     case CV_SEARCHER_NEW_STAGE: {
-      klee::TimerStatIncrementer timer(stats::execution_tree_time);
+      //klee::TimerStatIncrementer timer(stats::execution_tree_time);
 
       ExecutionStage *new_stage = new ExecutionStage();
       new_stage->etrace_tree = new ExecutionTraceTree();
@@ -342,7 +342,7 @@ void VerifyExecutionTraceManager::initialize() {
 void VerifyExecutionTraceManager::update_edit_distance(
     ExecutionStateProperty* property) {
 
-  klee::TimerStatIncrementer edct(stats::edit_distance_compute_time);
+  //klee::TimerStatIncrementer edct(stats::edit_distance_compute_time);
 
   ExecutionStage* stage = stages_[property];
   assert(stage);
@@ -380,7 +380,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
   switch (ev.event_type) {
     case CV_BASICBLOCK_ENTRY: {
 
-      klee::TimerStatIncrementer timer(stats::execution_tree_time);
+      //klee::TimerStatIncrementer timer(stats::execution_tree_time);
 
       ExecutionStage* stage = stages_[property];
 
@@ -391,7 +391,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
         if (!stage->etrace_tree->tracks(property)) {
           assert(stage->etrace_tree->element_count() == 0);
           CVDEBUG("First basic block entry (stage)");
-          klee::TimerStatIncrementer build_timer(stats::edit_distance_build_time);
+          //klee::TimerStatIncrementer build_timer(stats::edit_distance_build_time);
 
           TrainingObjectScoreList score_list;
           TrainingManager::init_score_list(training_data_, score_list);
@@ -410,8 +410,9 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
           bool zero_match = false;
           for (i=0; (i < score_list.size()) && (i < max_count); ++i) {
             double score = score_list[i].first;
-            if (i == 0)
-              stats::edit_distance_min_score += (int)(100 * score);
+            if (i == 0) {
+              stats::edit_distance_min_score = (int)(100 * score);
+            }
             CVDEBUG("Score: " << score);
             if (zero_match && score > 0.0f) {
               i--;
@@ -431,7 +432,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
           // Store size of tree in stats
           CVDEBUG("Training object tree for round: "
               << state->property()->round << " used " << i+1 << " training objects");
-          stats::edit_distance_tree_size += (i+1); 
+          stats::edit_distance_tree_size = (i+1); 
 
           stage->ed_tree_map[property] = stage->root_ed_tree->clone_edit_distance_tree();
         }
@@ -439,7 +440,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
 
       if (state->basic_block_tracking() || !BasicBlockDisabling) {
         {
-          klee::TimerStatIncrementer extend_timer(stats::execution_tree_extend_time);
+          //klee::TimerStatIncrementer extend_timer(stats::execution_tree_extend_time);
           stage->etrace_tree->extend_element(state->prevPC->kbb->id, property);
         }
 
@@ -458,7 +459,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
     break;
 
     case CV_STATE_REMOVED: {
-      klee::TimerStatIncrementer timer(stats::execution_tree_time);
+      //klee::TimerStatIncrementer timer(stats::execution_tree_time);
       CVDEBUG("Removing state: " << *state );
       ExecutionStage* stage = stages_[property];
       stage->etrace_tree->remove_tracker(property);
@@ -475,7 +476,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
     break;
 
     case CV_STATE_CLONE: {
-      klee::TimerStatIncrementer timer(stats::execution_tree_time);
+      //klee::TimerStatIncrementer timer(stats::execution_tree_time);
 
       if (EditDistanceAtCloneOnly)
         update_edit_distance(parent_property);
@@ -503,7 +504,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
     break;
 
     case CV_SEARCHER_NEW_STAGE: {
-      klee::TimerStatIncrementer timer(stats::execution_tree_time);
+      //klee::TimerStatIncrementer timer(stats::execution_tree_time);
 
       // Increment stat counter
       stats::stage_count += 1;
@@ -551,7 +552,7 @@ bool VerifyExecutionTraceManager::ready_process_all_states(
 
 void VerifyExecutionTraceManager::recompute_property(
     ExecutionStateProperty *property) {
-  klee::TimerStatIncrementer compute_timer(stats::edit_distance_compute_time);
+  //klee::TimerStatIncrementer compute_timer(stats::edit_distance_compute_time);
 
   assert(stages_.count(property));
 
@@ -578,12 +579,9 @@ void VerifyExecutionTraceManager::process_all_states(
     CVMESSAGE("Doubling K from: " << stage->current_k 
               << " to " << stage->current_k*2);
 
-    //HACK, add assignment to stats!
-    stats::edit_distance_final_k += (0 - stage->current_k);
-
     stage->current_k = stage->current_k * 2;
 
-    stats::edit_distance_final_k += stage->current_k;
+    stats::edit_distance_final_k = stage->current_k;
   }
 
   CVMESSAGE("All states should have INT_MAX=" << INT_MAX << " edit distance.");
