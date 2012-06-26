@@ -64,6 +64,7 @@ namespace klee {
     
     void registerStatistic(Statistic &s);
     void incrementStatistic(Statistic &s, uint64_t addend);
+    void setValueStatistic(Statistic &s, uint64_t value);
     uint64_t getValue(const Statistic &s) const;
     void incrementIndexedValue(const Statistic &s, unsigned index, 
                                uint64_t addend) const;
@@ -86,6 +87,21 @@ namespace klee {
       }
 			if (cliverStats) {
 				cliverStats->data[s.id] += addend;
+			}
+    }
+  }
+
+  inline void StatisticManager::setValueStatistic(Statistic &s, 
+                                                  uint64_t value) {
+    if (enabled) {
+      globalStats[s.id] = value;
+      if (indexedStats) {
+        indexedStats[index*stats.size() + s.id] = value;
+        if (contextStats)
+          contextStats->data[s.id] = value;
+      }
+			if (cliverStats) {
+				cliverStats->data[s.id] = value;
 			}
     }
   }
