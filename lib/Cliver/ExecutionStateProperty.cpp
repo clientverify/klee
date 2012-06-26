@@ -24,23 +24,31 @@ bool ExecutionStatePropertyLT::operator()(const ExecutionStateProperty* a,
 //////////////////////////////////////////////////////////////////////////////
 
 ExecutionStateProperty::ExecutionStateProperty()
-	: round(-1), client_round(0), edit_distance(-1), recompute(true) {}
+	: round(-1), client_round(0), edit_distance(-1), symbolic_vars(0), recompute(true) {}
 
 ExecutionStateProperty* ExecutionStateProperty::clone() { 
   ExecutionStateProperty* esp = new ExecutionStateProperty(*this);
   esp->round = round;
   esp->client_round = client_round;
   esp->edit_distance = edit_distance;
+  esp->symbolic_vars = symbolic_vars;
   esp->recompute = true;
   return esp;
+}
+
+void ExecutionStateProperty::reset() {
+  symbolic_vars = 0;
 }
 
 // Order by greatest round number, then smallest edit distance
 int ExecutionStateProperty::compare(const ExecutionStateProperty &b) const {
 	const ExecutionStateProperty *_b = static_cast<const ExecutionStateProperty*>(&b);
 
-	//if (round != _b->round)
-	//	return round - _b->round;
+	if (round != _b->round)
+		return round - _b->round;
+
+	if (symbolic_vars != _b->symbolic_vars)
+		return _b->symbolic_vars - symbolic_vars;
 
 	//if (client_round != _b->client_round)
 	//	return client_round - _b->client_round;
@@ -53,10 +61,12 @@ int ExecutionStateProperty::compare(const ExecutionStateProperty &b) const {
 
 void ExecutionStateProperty::print(std::ostream &os) const {
 	os << "[rd: " << round << "]";
-  if (client_round >= 0)
+  if (client_round > 0)
     os << "[clrd: " << client_round << "]";
   if (edit_distance >= 0)
 	  os << "[ed: " << edit_distance << "]";
+  if (symbolic_vars >= 0)
+	  os << "[sv: " << symbolic_vars << "]";
   if (!recompute)
 	  os << "[NoRC]";
 }
