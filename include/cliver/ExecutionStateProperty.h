@@ -42,12 +42,14 @@ class ExecutionStateProperty {
   virtual void print(std::ostream &os) const;
 	virtual int compare(const ExecutionStateProperty &p) const;
 	virtual ExecutionStateProperty* clone();
+  virtual void reset();
 
 	// XXX redundant? alt use network_manager()->socket()->index()
   // round is incremented in CVSearcher.h: SearcherStageImpl
   int round;
   int client_round;
   int edit_distance;
+  int symbolic_vars;
 	bool recompute;
 
   // Not currently used
