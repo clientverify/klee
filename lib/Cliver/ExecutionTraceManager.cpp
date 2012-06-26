@@ -156,6 +156,9 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
       new_stage->etrace_tree = new ExecutionTraceTree();
       new_stage->root_property = parent_property;
 
+      // Increment stat counter
+      stats::stage_count += 1;
+
       if (!stages_.empty() && 
           stages_.count(parent_property) && 
           stages_[parent_property]->etrace_tree->tracks(parent_property)) {
@@ -257,6 +260,9 @@ void TrainingExecutionTraceManager::notify(ExecutionEvent ev) {
       ExecutionStage *new_stage = new ExecutionStage();
       new_stage->etrace_tree = new ExecutionTraceTree();
       new_stage->root_property = parent_property;
+
+      // Increment stat counter
+      stats::stage_count += 1;
 
       if (!stages_.empty() && 
           stages_.count(parent_property) && 
