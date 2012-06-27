@@ -81,7 +81,8 @@ enum RunModeType {
   VerifyEditDistanceRow,
   VerifyEditDistanceKPrefixRow,
   VerifyEditDistanceKPrefixHash,
-  VerifyEditDistanceKPrefixHashPointer
+  VerifyEditDistanceKPrefixHashPointer,
+  VerifyEditDistanceKPrefixTest,
 };
 
 enum ClientModelType {
@@ -148,6 +149,7 @@ class ClientVerifier : public klee::InterpreterHandler {
   void print_statistic_record(klee::StatisticRecord* sr,
                               std::string &prefix);
 	void print_stat_labels();
+  void print_current_stats_and_reset();
 	void print_all_stats();
 	void set_round(int round);
 

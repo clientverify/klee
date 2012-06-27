@@ -135,12 +135,30 @@ klee::ExecutionState &VerifySearcher::selectState() {
   //klee::TimerStatIncrementer timer(stats::searcher_time);
   
   if (!pending_states_.empty()) {
-    // Add pending stage to active stage list
-    stages_.push_back(get_new_stage(pending_states_.back()));
-    pending_states_.pop_back();
 
-    // Compute and update statistics for the previous round
-    cv_->set_round(stages_.back()->root_state()->property()->round);
+    if (RepeatExecutionAtRoundFlag > 0 &&
+        stages_.back()->root_state()->property()->round 
+          == RepeatExecutionAtRoundFlag) {
+
+      stages_.back()->root_state()->property()->round--;
+
+      CVMESSAGE("RepeatExecutionAtRoundFlag: " 
+                << *(stages_.back()->root_state()));
+
+      // Re-execute the same stage again
+      stages_.push_back(get_new_stage(stages_.back()->root_state()));
+
+    } else {
+      //CVMESSAGE("Not! RepeatExecutionAtRoundFlag: " 
+      //          << *(stages_.back()->root_state()));
+
+      // Add pending stage to active stage list
+      stages_.push_back(get_new_stage(pending_states_.back()));
+      pending_states_.pop_back();
+
+      // Compute and update statistics for the previous round
+      cv_->set_round(stages_.back()->root_state()->property()->round);
+    }
 
   } else {
     while (!stages_.empty() && stages_.back()->empty()) {
@@ -405,7 +423,5 @@ klee::ExecutionState &TrainingSearcher::selectState() {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
-
 
 } // end namespace cliver

@@ -437,6 +437,30 @@ void ClientVerifier::print_statistic_record(klee::StatisticRecord* sr,
 #endif
 }
 
+void ClientVerifier::print_current_stats_and_reset() {
+  // Update clocks with time spent in most recent round
+	update_time_statistics();
+
+  // Recalculate memory usage
+  executor()->update_memory_usage();
+
+  // Rebuild solvers each round change to keep caches fresh.
+	executor_->rebuild_solvers();
+
+  CVMESSAGE("Round Insts: " << statistics_[round_number_]->getValue(stats::round_instructions));
+
+  // Print current statistics
+  std::string prefix("STATS");
+  this->print_statistic_record(statistics_[round_number_], prefix);
+
+  // Delete current StatisticRecord and create a new one
+  delete statistics_[round_number_];
+  statistics_[round_number_] = new klee::StatisticRecord();
+  klee::theStatisticManager->setCliverContext(statistics_[round_number_]);
+
+  stats::round_number += round_number_;
+}
+
 void ClientVerifier::print_all_stats() {
   std::string prefix("STATS");
 
