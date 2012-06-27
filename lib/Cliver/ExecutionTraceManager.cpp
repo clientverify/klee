@@ -438,7 +438,7 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
   stage->ed_tree_map[property] = stage->root_ed_tree->clone_edit_distance_tree();
 }
 
-void VerifyExecutionTraceManager::create_ed_tree_from_all(CVExecutionState* state) {
+bool VerifyExecutionTraceManager::create_ed_tree_from_all(CVExecutionState* state) {
 
   //ExecutionStateProperty *property = state->property();
   //ExecutionStage* stage = stages_[property];
@@ -463,6 +463,12 @@ void VerifyExecutionTraceManager::create_ed_tree_from_all(CVExecutionState* stat
   //stats::edit_distance_tree_size = (i+1); 
 
   //stage->ed_tree_map[property] = stage->root_ed_tree->clone_edit_distance_tree();
+  create_ed_tree(state);
+
+  // TEMP
+  static int count = 0;
+  count++;
+  return count > 20;
 }
 
 void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
@@ -495,11 +501,14 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
           //klee::TimerStatIncrementer build_timer(stats::edit_distance_build_time);
 
           // Build the edit distance tree using training data
-          //if (RepeatExecutionAtRound > 0 && 
-          //    property->round == RepeatExecutionAtRound)
-          //  create_ed_tree_from_all(state);
-          //else
+          if (RepeatExecutionAtRound > 0 && 
+              property->round == RepeatExecutionAtRound) {
+            if (create_ed_tree_from_all(state)) {
+              cv_->executor()->setHaltExecution(true);
+            }
+          } else {
             create_ed_tree(state);
+          }
         }
       }
 
@@ -574,24 +583,14 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       // Increment stat counter
       stats::stage_count += 1;
 
-
+      /// Print stats when repeating rounds for testing and debugging
       if (RepeatExecutionAtRound > 0 && 
           property->round == RepeatExecutionAtRound) {
-
-        CVMESSAGE("RepeatExecutionAtRound: " << *state);
-
-        static int count = 0;
-        if (count == 0) {
-          cv_->print_all_stats();
-        }
-
-        cv_->print_current_stats_and_reset();
-
-        if (count > 5)
-          cv_->executor()->setHaltExecution(true);
+        static bool first_repeat = true;
+        if (first_repeat)
+          first_repeat = false;
         else
-          count++;
-
+          cv_->print_current_stats_and_reset();
       }
 
       // Initialize a new ExecutionTraceTree

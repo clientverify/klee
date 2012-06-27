@@ -117,7 +117,7 @@ class VerifyExecutionTraceManager : public ExecutionTraceManager {
   void update_edit_distance(ExecutionStateProperty *property);
 
   void create_ed_tree(CVExecutionState* state);
-  void create_ed_tree_from_all(CVExecutionState* state);
+  bool create_ed_tree_from_all(CVExecutionState* state);
 
   ExecutionTraceEditDistanceTree* get_ed_tree(ExecutionStateProperty *property);
   ExecutionTraceEditDistanceTree* clone_ed_tree(ExecutionStateProperty *property);

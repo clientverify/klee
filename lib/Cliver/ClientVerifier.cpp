@@ -447,8 +447,6 @@ void ClientVerifier::print_current_stats_and_reset() {
   // Rebuild solvers each round change to keep caches fresh.
 	executor_->rebuild_solvers();
 
-  CVMESSAGE("Round Insts: " << statistics_[round_number_]->getValue(stats::round_instructions));
-
   // Print current statistics
   std::string prefix("STATS");
   this->print_statistic_record(statistics_[round_number_], prefix);
@@ -476,11 +474,16 @@ void ClientVerifier::set_round(int round) {
   // Recalculate memory usage
   executor()->update_memory_usage();
 
+  // Print current stats
+  std::string prefix("STAGE");
+  this->print_current_statistics(prefix);
+
   // Set new round number
   round_number_ = round;
 
   // Rebuild solvers each round change to keep caches fresh.
 	executor_->rebuild_solvers();
+
 
 #ifdef GOOGLE_PROFILER
   if (ProfilerStartRoundNumber >= 0) {
@@ -515,10 +518,10 @@ void ClientVerifier::set_round(int round) {
 
   if (round_number_ == statistics_.size()) {
     statistics_.push_back(new klee::StatisticRecord());
-    stats::round_number += round_number_;
   }
 
   klee::theStatisticManager->setCliverContext(statistics_[round_number_]);
+  stats::round_number = round_number_;
 
 	if (MaxRoundNumber && round_number_ > MaxRoundNumber) {
     // XXX TBD: reimplement for set_round

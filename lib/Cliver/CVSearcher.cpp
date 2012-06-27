@@ -136,22 +136,19 @@ klee::ExecutionState &VerifySearcher::selectState() {
   
   if (!pending_states_.empty()) {
 
+    /// Check if we are to repeat this round for debugging/testing
     if (RepeatExecutionAtRoundFlag > 0 &&
         stages_.back()->root_state()->property()->round 
           == RepeatExecutionAtRoundFlag) {
 
       stages_.back()->root_state()->property()->round--;
 
-      CVMESSAGE("RepeatExecutionAtRoundFlag: " 
-                << *(stages_.back()->root_state()));
-
       // Re-execute the same stage again
       stages_.push_back(get_new_stage(stages_.back()->root_state()));
 
-    } else {
-      //CVMESSAGE("Not! RepeatExecutionAtRoundFlag: " 
-      //          << *(stages_.back()->root_state()));
+      pending_states_.pop_back();
 
+    } else {
       // Add pending stage to active stage list
       stages_.push_back(get_new_stage(pending_states_.back()));
       pending_states_.pop_back();
@@ -171,8 +168,6 @@ klee::ExecutionState &VerifySearcher::selectState() {
   check_searcher_stage_memory();
 
   assert(!stages_.empty());
-
-  //return *(static_cast<klee::ExecutionState*>(stages_.back()->next_state()));
 
   // Check if we should increase k
   CVExecutionState *state = stages_.back()->next_state();
