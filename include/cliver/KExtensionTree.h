@@ -11,6 +11,7 @@
 
 #include "cliver/RadixTree.h"
 #include "cliver/EditDistanceTree.h"
+#include "cliver/util/MurmurHash3.h"
 #include <limits.h>
 
 #include <vector>
@@ -418,6 +419,7 @@ class KExtensionTree
   typedef std::pair<Edge*, size_t> EdgeOffset;
 
   typedef boost::unordered_map<EdgeOffset, int> EdgeOffsetMap;
+  //typedef google::dense_hash_map<EdgeOffset, int> EdgeOffsetMap;
   typedef typename EdgeOffsetMap::iterator EdgeOffsetMapIterator;
   typedef typename EdgeOffsetMap::value_type EdgeOffsetMapValue;
   typedef std::vector<EdgeOffset> EdgeOffsetList;
@@ -703,6 +705,15 @@ class KExtensionTree
   //===-------------------------------------------------------------------===//
   // Internal EdgeOffset helper methods
   //===-------------------------------------------------------------------===//
+
+  //struct EdgeOffsetHash : public std::unary_function<EdgeOffset, size_t> {
+  //  size_t operator()(EdgeOffset const& eo) const {
+  //    size_t seed = 0;
+  //    boost::hash_combine(seed, eo.first);
+  //    boost::hash_combine(seed, eo.second);
+  //    return seed;
+  //  }
+  //};
 
   inline bool has_simple_child(EdgeOffset& eo) {
     if (eo.second == 0 && eo.first->size() == 0 && !eo.first->to()->leaf())

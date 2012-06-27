@@ -52,6 +52,13 @@ DebugExecutionTree("debug-execution-tree",llvm::cl::init(false));
 llvm::cl::opt<bool>
 DeleteOldTrees("delete-old-trees",llvm::cl::init(true));
 
+// Also used in CVSearcher
+unsigned RepeatExecutionAtRoundFlag;
+llvm::cl::opt<unsigned, true>
+RepeatExecutionAtRound("repeat-execution-at-round",
+                       llvm::cl::location(RepeatExecutionAtRoundFlag),
+                       llvm::cl::init(0));
+
 llvm::cl::list<std::string> TrainingPathFile("training-path-file",
 	llvm::cl::ZeroOrMore,
 	llvm::cl::ValueRequired,
@@ -353,21 +360,109 @@ void VerifyExecutionTraceManager::update_edit_distance(
   ExecutionStage* stage = stages_[property];
   assert(stage);
 
-  int row = stage->ed_tree_map[property]->row();
-
-  // XXX FIX ME -- make this operation O(1)
-  int trace_depth = stage->etrace_tree->tracker_depth(property);
-
-  if (trace_depth - row == 1) {
+  if (!EditDistanceAtCloneOnly) {
     stage->ed_tree_map[property]->update_element(
         stage->etrace_tree->leaf_element(property));
   } else {
     ExecutionTrace etrace;
-    etrace.reserve(trace_depth);
     stage->etrace_tree->tracker_get(property, etrace);
     stage->ed_tree_map[property]->update(etrace);
   }
+
+
+  //int row = stage->ed_tree_map[property]->row();
+
+  //// XXX FIX ME -- make this operation O(1)
+  //int trace_depth = stage->etrace_tree->tracker_depth(property);
+
+  //if (trace_depth - row == 1) {
+  //  stage->ed_tree_map[property]->update_element(
+  //      stage->etrace_tree->leaf_element(property));
+  //} else {
+  //  ExecutionTrace etrace;
+  //  etrace.reserve(trace_depth);
+  //  stage->etrace_tree->tracker_get(property, etrace);
+  //  stage->ed_tree_map[property]->update(etrace);
+  //}
+  
+  
   property->edit_distance = stage->ed_tree_map[property]->min_distance();
+}
+
+void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
+
+  ExecutionStateProperty *property = state->property();
+  ExecutionStage* stage = stages_[property];
+
+  TrainingObjectScoreList score_list;
+  TrainingManager::init_score_list(training_data_, score_list);
+
+  const SocketEvent* socket_event 
+    = &(state->network_manager()->socket()->event());
+
+  TrainingManager::sort_by_similarity_score(socket_event, score_list, 
+                                            *similarity_measure_);
+  // Create a new root edit distance
+  stage->root_ed_tree = EditDistanceTreeFactory::create();
+
+  // If exact match exists, only add exact match, otherwise
+  // add 5 closest matches 
+  size_t i, max_count = 5;
+  bool zero_match = false;
+  for (i=0; (i < score_list.size()) && (i < max_count); ++i) {
+    double score = score_list[i].first;
+    if (i == 0) {
+      stats::edit_distance_min_score = (int)(100 * score);
+    }
+    CVDEBUG("Score: " << score);
+    if (zero_match && score > 0.0f) {
+      i--;
+      break;
+    }
+    if (score == 0.0f)
+      zero_match = true;
+    stage->root_ed_tree->add_data(score_list[i].second->trace);
+  }
+
+  stage->root_ed_tree->init(stage->current_k);
+
+  // Set initial values for edit distance
+  property->edit_distance = INT_MAX;
+  property->recompute = true;
+
+  // Store size of tree in stats
+  CVDEBUG("Training object tree for round: "
+      << state->property()->round << " used " << i+1 << " training objects");
+  stats::edit_distance_tree_size = (i+1); 
+
+  stage->ed_tree_map[property] = stage->root_ed_tree->clone_edit_distance_tree();
+}
+
+void VerifyExecutionTraceManager::create_ed_tree_from_all(CVExecutionState* state) {
+
+  //ExecutionStateProperty *property = state->property();
+  //ExecutionStage* stage = stages_[property];
+
+  //TrainingObjectScoreList score_list;
+  //TrainingManager::init_score_list(training_data_, score_list);
+  //static TrainingObjectList* training_data = NULL;
+  //static unsigned training_data_index = 0;
+
+  //if (training_data == NULL) {
+  //  training_data 
+  //    = new TrainingObjectList(training_data_.begin(), training_data_.end());
+  //}
+
+  //const SocketEvent* socket_event 
+  //  = &(state->network_manager()->socket()->event());
+
+  //TrainingManager::sort_by_similarity_score(socket_event, score_list, 
+  //                                          *similarity_measure_);
+
+  //stats::edit_distance_min_score = (int)(100 * score);
+  //stats::edit_distance_tree_size = (i+1); 
+
+  //stage->ed_tree_map[property] = stage->root_ed_tree->clone_edit_distance_tree();
 }
 
 void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
@@ -399,48 +494,12 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
           CVDEBUG("First basic block entry (stage)");
           //klee::TimerStatIncrementer build_timer(stats::edit_distance_build_time);
 
-          TrainingObjectScoreList score_list;
-          TrainingManager::init_score_list(training_data_, score_list);
-
-          const SocketEvent* socket_event 
-            = &(state->network_manager()->socket()->event());
-
-          TrainingManager::sort_by_similarity_score(socket_event, score_list, 
-                                                    *similarity_measure_);
-          // Create a new root edit distance
-          stage->root_ed_tree = EditDistanceTreeFactory::create();
-
-          // If exact match exists, only add exact match, otherwise
-          // add 5 closest matches 
-          size_t i, max_count = 5;
-          bool zero_match = false;
-          for (i=0; (i < score_list.size()) && (i < max_count); ++i) {
-            double score = score_list[i].first;
-            if (i == 0) {
-              stats::edit_distance_min_score = (int)(100 * score);
-            }
-            CVDEBUG("Score: " << score);
-            if (zero_match && score > 0.0f) {
-              i--;
-              break;
-            }
-            if (score == 0.0f)
-              zero_match = true;
-            stage->root_ed_tree->add_data(score_list[i].second->trace);
-          }
-
-          stage->root_ed_tree->init(stage->current_k);
-
-          // Set initial values for edit distance
-          property->edit_distance = INT_MAX;
-          property->recompute = true;
-
-          // Store size of tree in stats
-          CVDEBUG("Training object tree for round: "
-              << state->property()->round << " used " << i+1 << " training objects");
-          stats::edit_distance_tree_size = (i+1); 
-
-          stage->ed_tree_map[property] = stage->root_ed_tree->clone_edit_distance_tree();
+          // Build the edit distance tree using training data
+          //if (RepeatExecutionAtRound > 0 && 
+          //    property->round == RepeatExecutionAtRound)
+          //  create_ed_tree_from_all(state);
+          //else
+            create_ed_tree(state);
         }
       }
 
@@ -514,6 +573,26 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
 
       // Increment stat counter
       stats::stage_count += 1;
+
+
+      if (RepeatExecutionAtRound > 0 && 
+          property->round == RepeatExecutionAtRound) {
+
+        CVMESSAGE("RepeatExecutionAtRound: " << *state);
+
+        static int count = 0;
+        if (count == 0) {
+          cv_->print_all_stats();
+        }
+
+        cv_->print_current_stats_and_reset();
+
+        if (count > 5)
+          cv_->executor()->setHaltExecution(true);
+        else
+          count++;
+
+      }
 
       // Initialize a new ExecutionTraceTree
       ExecutionStage *new_stage = new ExecutionStage();

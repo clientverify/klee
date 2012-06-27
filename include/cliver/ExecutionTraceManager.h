@@ -37,6 +37,10 @@ namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+extern unsigned RepeatExecutionAtRoundFlag;
+
+////////////////////////////////////////////////////////////////////////////////
+
 typedef TrackingRadixTree< ExecutionTrace, BasicBlockID, ExecutionStateProperty> 
     ExecutionTraceTree;
 
@@ -111,6 +115,9 @@ class VerifyExecutionTraceManager : public ExecutionTraceManager {
   void clear_execution_stage(ExecutionStateProperty *property);
   void recompute_property(ExecutionStateProperty *property);
   void update_edit_distance(ExecutionStateProperty *property);
+
+  void create_ed_tree(CVExecutionState* state);
+  void create_ed_tree_from_all(CVExecutionState* state);
 
   ExecutionTraceEditDistanceTree* get_ed_tree(ExecutionStateProperty *property);
   ExecutionTraceEditDistanceTree* clone_ed_tree(ExecutionStateProperty *property);

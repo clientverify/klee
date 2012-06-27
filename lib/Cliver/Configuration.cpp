@@ -11,6 +11,7 @@
 #include "cliver/CVSearcher.h"
 #include "cliver/CVStream.h"
 #include "cliver/EditDistanceTree.h"
+#include "cliver/EditDistanceTreeTest.h"
 #include "cliver/ExecutionStateProperty.h"
 #include "cliver/ExecutionTrace.h"
 #include "cliver/ExecutionTraceManager.h"
@@ -38,6 +39,8 @@ llvm::cl::opt<RunModeType> RunMode("cliver-mode",
       "Verify using edit distance and training data with k-Prefix hash table alg."),
     clEnumValN(VerifyEditDistanceKPrefixHashPointer, "edit-dist-kprefix-hashptr",
       "Verify using edit distance and training data with k-Prefix ptr hash table alg."),
+    clEnumValN(VerifyEditDistanceKPrefixTest, "edit-dist-kprefix-test",
+      "Verify using all k-Prefix to compare implementations."),
   clEnumValEnd));
 
 ClientModelType ClientModelFlag;
@@ -69,6 +72,7 @@ CVSearcher* CVSearcherFactory::create(klee::Searcher* base_searcher,
     case VerifyEditDistanceRow:
     case VerifyEditDistanceKPrefixRow:
     case VerifyEditDistanceKPrefixHash:
+    case VerifyEditDistanceKPrefixTest:
     case VerifyEditDistanceKPrefixHashPointer: {
       return new VerifySearcher(cv, merger);
     }
@@ -185,6 +189,12 @@ ExecutionTraceEditDistanceTree* EditDistanceTreeFactory::create() {
 
     case VerifyEditDistanceKPrefixHashPointer: {
       return new KExtensionOptTree<ExecutionTrace, BasicBlockID>();
+      break;
+    }
+
+    case VerifyEditDistanceKPrefixTest: {
+      //return new EditDistanceTreeTest<ExecutionTrace, BasicBlockID>();
+      return NULL;
       break;
     }
 
