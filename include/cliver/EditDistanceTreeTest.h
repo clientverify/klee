@@ -23,25 +23,26 @@
 namespace cliver {
 
 template<class Sequence, class Element>
-class EditDistanceTreeTest
+class EditDistanceTreeEquivalenceTest
 : public EditDistanceTree<Sequence,Element> {
 
  public:
 
-  EditDistanceTreeTest() {
+  EditDistanceTreeEquivalenceTest() {
+    //CVMESSAGE("creating EditDistanceEquivalenceTest Object");
     impl_.push_back(new KExtensionTree<Sequence, Element>());
     impl_name_.push_back(std::string("KExtensionTree"));
     impl_.push_back(new KLevenshteinRadixTree<Sequence, Element>());
     impl_name_.push_back(std::string("KLevenshteinRadixTree"));
   }
 
-  EditDistanceTreeTest(std::vector<EditDistanceTree<Sequence,Element>*> &impl,
+  EditDistanceTreeEquivalenceTest(std::vector<EditDistanceTree<Sequence,Element>*> &impl,
                        std::vector<std::string> impl_name) {
-    impl_ = impl;
-    impl_name_ = impl_name;
+    impl_.insert(impl_.begin(), impl.begin(), impl.end());
+    impl_name_.insert(impl_name_.begin(), impl_name.begin(), impl_name.end());
   }
 
-  virtual ~EditDistanceTreeTest() {
+  virtual ~EditDistanceTreeEquivalenceTest() {
     for (unsigned i=0; i<impl_.size(); ++i) {
       delete impl_[i];
     }
@@ -55,6 +56,7 @@ class EditDistanceTreeTest
 
   virtual void add_data(Sequence &s) {
     for (unsigned i=0; i<impl_.size(); ++i) {
+      //CVMESSAGE("Adding data of size: " << s.size());
       impl_[i]->add_data(s);
     }
   }
@@ -73,6 +75,7 @@ class EditDistanceTreeTest
 
   virtual void update_element(Element e) {
     for (unsigned i=0; i<impl_.size(); ++i) {
+      //CVMESSAGE("update_element(" << e << ")");
       impl_[i]->update_element(e);
     }
   }
@@ -82,9 +85,10 @@ class EditDistanceTreeTest
     bool all_equal = true;
     for (unsigned i=0; i<impl_.size(); ++i) {
       int res = impl_[i]->min_distance();
-      if (i > 0 && res != results.back())
+      if (i > 0 && res != results[i-1]) {
         all_equal = false;
-      results.push_back(res);
+      }
+      results[i] = res;
     }
     if (!all_equal) {
       for (unsigned i=0; i<results.size(); ++i) {
@@ -92,6 +96,7 @@ class EditDistanceTreeTest
       }
       cv_error("min_distance() implementations are not equivalent");
     }
+    CVMESSAGE("min_distance(): " << results[0] << ", " << results[1]);
     return results[0];
   }
 
@@ -100,9 +105,10 @@ class EditDistanceTreeTest
     bool all_equal = true;
     for (unsigned i=0; i<impl_.size(); ++i) {
       int res = impl_[i]->row();
-      if (i > 0 && res != results.back())
+      if (i > 0 && res != results[i-1]) {
         all_equal = false;
-      results.push_back(res);
+      }
+      results[i] = res;
     }
     if (!all_equal) {
       for (unsigned i=0; i<results.size(); ++i) {
@@ -124,7 +130,7 @@ class EditDistanceTreeTest
     for (unsigned i=0; i<impl_.size(); ++i) {
       impl_clone[i] = impl_[i]->clone_edit_distance_tree();
     }
-    return new EditDistanceTreeTest(impl_clone, impl_name_);
+    return new EditDistanceTreeEquivalenceTest(impl_clone, impl_name_);
   }
 
  protected:
