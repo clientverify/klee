@@ -155,6 +155,7 @@ ExecutionTraceManager* ExecutionTraceManagerFactory::create(ClientVerifier* cv) 
     case VerifyEditDistanceRow:
     case VerifyEditDistanceKPrefixRow:
     case VerifyEditDistanceKPrefixHash:
+    case VerifyEditDistanceKPrefixTest:
     case VerifyEditDistanceKPrefixHashPointer: {
       return new VerifyExecutionTraceManager(cv);
     }
@@ -193,8 +194,7 @@ ExecutionTraceEditDistanceTree* EditDistanceTreeFactory::create() {
     }
 
     case VerifyEditDistanceKPrefixTest: {
-      //return new EditDistanceTreeTest<ExecutionTrace, BasicBlockID>();
-      return NULL;
+      return new EditDistanceTreeEquivalenceTest<ExecutionTrace, BasicBlockID>();
       break;
     }
 
