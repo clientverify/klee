@@ -10,6 +10,7 @@
 #define CLIVER_SOCKET_EVENT_MEASUREMENT_H
 
 #include "cliver/Socket.h"
+#include "cliver/EditDistance.h"
 #include <iostream>
 #include <boost/regex.hpp>
 #include <boost/lexical_cast.hpp>
@@ -241,14 +242,20 @@ class SocketEvent;
 class SocketEventSimilarity {
  public:
   virtual double similarity_score(const SocketEvent* a, const SocketEvent* b) {
-    if (a->data == b->data)
-      return 0.0f;
-    return 1.0f;
+    if (a->data.size() != b->data.size())
+      return 1.0f;
+
+    for (unsigned i=0; i<a->data.size(); ++i) {
+      if (a->data[i] != b->data[i]) {
+        return 1.0f;
+      }
+    }
+    return 0.0f;
   }
 };
 
 /// TODO
-class SocketEventSimilarityXpilot : public SocketEventSimilarity {
+class SocketEventSimilarityXpilotEqual : public SocketEventSimilarity {
  public:
   double similarity_score(const SocketEvent* a, const SocketEvent* b) {
     double result = 0.0f;
@@ -333,6 +340,104 @@ class SocketEventSimilarityXpilot : public SocketEventSimilarity {
   }
 
 };
+
+typedef Score<std::vector<uint8_t>, uint8_t, int> UCharVecScore;
+typedef EditDistanceRow<UCharVecScore, std::vector<uint8_t>, int > UCharVecEditDistance;
+
+/// TODO
+class SocketEventSimilarityXpilot : public SocketEventSimilarity {
+ public:
+  double similarity_score(const SocketEvent* a, const SocketEvent* b) {
+    double result = 0.0f;
+
+    if (a->type != b->type) {
+      return 1.0f;
+    }
+
+    if (a->type == SocketEvent::SEND) {
+      
+      int32_t kbseq_a, kbseq_b, acklen_a, acklen_b, start_a, start_b;
+
+      kbseq_a = UBATOINT_I(a->data, 0);
+      kbseq_b = UBATOINT_I(b->data, 0);
+
+      acklen_a = UBATOINT_I(a->data, 4);
+      acklen_b = UBATOINT_I(b->data, 4);
+
+      start_a = 4 + 4 + acklen_a;
+      start_b = 4 + 4 + acklen_b;
+
+      //std::cout << "a & b are SEND events: "
+      //    << "a: " << xpilot_packet_string(a->data[start_a])
+      //    << ", b: " << xpilot_packet_string(b->data[start_b])
+      //    << ", size_a: " << a->data.size() << ", size_b: " << b->data.size()
+      //    << ", start_a: " << start_a  << ", start_b: " << start_b
+      //    << ", seq_a: " << kbseq_a  << ", seq_b: " << kbseq_b
+      //    << ", acklen_a: " << acklen_a << ", acklen_b: " << acklen_b << std::endl;
+
+      assert(acklen_a < a->data.size());
+      assert(acklen_b < b->data.size());
+
+      //for (unsigned i=start_a; i<a->data.size(); ++i)
+      //  std::cout << (int)( a->data[i]) << ", ";
+      //std::cout << std::endl;
+      //for (unsigned i=start_b; i<b->data.size(); ++i)
+      //  std::cout << (int)(b->data[i]) << ", ";
+      //std::cout << std::endl;
+ 
+      std::vector<uint8_t> msg_a(a->data.begin()+start_a, a->data.end());
+      std::vector<uint8_t> msg_b(b->data.begin()+start_b, b->data.end());
+
+      //if (msg_a != msg_b)
+      //  result += 1.0f;
+      UCharVecEditDistance ed(msg_a, msg_b);
+      int val = ed.compute_editdistance();
+      //result = (double)(val) / (double)(std::max(msg_a.size(), msg_b.size()));
+      result = (double)(val);
+
+    } else if (a->type == SocketEvent::RECV) {
+      // data is 8 bytes in
+      
+      int32_t smseq_a, smseq_b, kbseq_a, kbseq_b;
+      int32_t start_a, start_b;
+      //for (unsigned i=0; i<8; ++i)
+      //  std::cout << (int)( a->data[i]) << ", ";
+      //std::cout << std::endl;
+      //for (unsigned i=0; i<8; ++i)
+      //  std::cout << (int)(b->data[i]) << ", ";
+      //std::cout << std::endl;
+
+      smseq_a = UBATOINT_I(a->data, 0);
+      smseq_b = UBATOINT_I(b->data, 0);
+      kbseq_a = UBATOINT_I(a->data, 4);
+      kbseq_b = UBATOINT_I(b->data, 4);
+
+      start_a = 4 + 4;
+      start_b = 4 + 4;
+
+      //std::cout << "a & b are RECV events: "
+      //  << "a: " << xpilot_packet_string(a->data[start_a+13])
+      //  << ", b: " << xpilot_packet_string(b->data[start_b+13]) << ", "
+      //  << smseq_a << ", " << smseq_b << ", "
+      //  << kbseq_a << ", " << kbseq_b << std::endl;
+ 
+      std::vector<uint8_t> msg_a(a->data.begin()+start_a, a->data.end());
+      std::vector<uint8_t> msg_b(b->data.begin()+start_b, b->data.end());
+
+      //if (msg_a != msg_b)
+      //  result += 1.0f;
+      UCharVecEditDistance ed(msg_a, msg_b);
+      int val = ed.compute_editdistance();
+      //result = (double)(val) / (double)(std::max(msg_a.size(), msg_b.size()));
+      result = (double)(val);
+
+    }
+
+    return result;
+  }
+
+};
+
 
 class SocketEventSimilarityTetrinet: public SocketEventSimilarity {
  public:
