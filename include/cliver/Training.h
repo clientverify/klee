@@ -100,7 +100,7 @@ class TrainingManager {
     // Iterate over all of the TrainingObjects and compare their similarity
     // to 
     for (int i=0; i<scorelist.size(); ++i) {
-      double min = 1.0;
+      double min = INT_MAX;
       std::set<SocketEvent*>::iterator 
           it = scorelist[i].second->socket_event_set.begin(),
           ie = scorelist[i].second->socket_event_set.end();

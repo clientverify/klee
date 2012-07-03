@@ -152,6 +152,10 @@ class LevenshteinRadixTree
   /// Compute the minimum edit distance from s' to all sequences in the tree
   /// where s' is equal to the previously computed sequence + s
   virtual void update_suffix(Sequence &s) {
+    if (s.size() == 0)
+      return;
+
+    //std::cout << "update_suffix: " << s.size() << "\n";
     min_distance_ = INT_MAX;
 
     // Perform |s| traversals of the RadixTree to compute the updated edit
@@ -213,13 +217,26 @@ class LevenshteinRadixTree
 
           // Update the minimum cost if we have reached a leaf node and are at
           // the end of s, otherwise push the next node onto the stack
-          if (j == (s.size()-1) && edge->to()->leaf() && (e1->d[curr] < min_distance_) )
-            min_distance_ = e1->d[curr];
-          else
+          //if (j == (s.size()-1) && edge->to()->leaf() && (e1->d[curr] < min_distance_) )
+          if (j == (s.size()-1) && edge->to()->leaf()) {
+            //std::cout << " e1->d[curr] = " << e1->d[curr] 
+            //    << ", min_distance_ = " << min_distance_ << "\n";
+            if (e1->d[curr] < min_distance_) {
+              min_distance_ = e1->d[curr];
+            //} else {
+            }
+          } else {
             nodes.push(edge->to());
+          }
+          
+          //if (j == (s.size()-1) && edge->to()->leaf() && (e1->d[curr] < min_distance_) )
+          //  min_distance_ = e1->d[curr];
+          //else
+          //  nodes.push(edge->to());
         }
       }
     }
+    assert(min_distance_ != INT_MAX);
   }
 
   virtual void update_element(T t) {

@@ -118,12 +118,16 @@ class VerifyExecutionTraceManager : public ExecutionTraceManager {
 
   void create_ed_tree(CVExecutionState* state);
   bool create_ed_tree_from_all(CVExecutionState* state);
+  void create_ed_tree_guided_by_self(CVExecutionState* state);
 
   ExecutionTraceEditDistanceTree* get_ed_tree(ExecutionStateProperty *property);
   ExecutionTraceEditDistanceTree* clone_ed_tree(ExecutionStateProperty *property);
 
   TrainingObjectSet training_data_;
   SocketEventSimilarity *similarity_measure_;
+
+  // DEBUG
+  TrainingObjectSet self_training_data_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
