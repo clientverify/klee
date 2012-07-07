@@ -47,8 +47,12 @@ typedef TrackingRadixTree< ExecutionTrace, BasicBlockID, ExecutionStateProperty>
 typedef EditDistanceTree<ExecutionTrace, BasicBlockID> 
     ExecutionTraceEditDistanceTree;
 
-typedef boost::unordered_map<ExecutionStateProperty*,ExecutionTraceEditDistanceTree*>
+typedef boost::unordered_map<ExecutionStateProperty*, ExecutionTraceEditDistanceTree*>
     StatePropertyEditDistanceTreeMap;
+
+struct ExecutionStage;
+typedef boost::unordered_map<ExecutionStateProperty*, ExecutionStage*> 
+    StatePropertyStageMap;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -88,7 +92,7 @@ class ExecutionTraceManager : public ExecutionObserver {
  protected:
   std::vector< ExecutionTraceTree* > tree_list_;
   ClientVerifier *cv_;
-  boost::unordered_map<ExecutionStateProperty*, ExecutionStage*> stages_;
+  StatePropertyStageMap stages_;
 };
 
 class TrainingExecutionTraceManager : public ExecutionTraceManager {
@@ -111,7 +115,7 @@ class VerifyExecutionTraceManager : public ExecutionTraceManager {
   virtual bool ready_process_all_states(ExecutionStateProperty* property);
 
  private:
-  void clear_edit_distance_map();
+  void clear_caches();
   void clear_execution_stage(ExecutionStateProperty *property);
   void recompute_property(ExecutionStateProperty *property);
   void update_edit_distance(ExecutionStateProperty *property);

@@ -23,7 +23,7 @@
  
 namespace cliver {
 
-extern llvm::cl::opt<unsigned> StateCacheSize;
+extern llvm::cl::opt<size_t> StateCacheSize;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -191,7 +191,7 @@ class RebuildingStateCache : public StateRebuilder {
     capacity_ = c;
  
     // If necessary, make space 
-    while (cache_.size() > capacity_) { 
+    while (cache_.size() && cache_.size() > capacity_) { 
       purge_lru();
     } 
 
@@ -276,10 +276,9 @@ class RebuildingStateCache : public StateRebuilder {
 
   // purge the least-recently-used element 
   inline void purge_lru() {
-    if (cache_.size() > 1) {
-      cache_.right.begin()->first->erase_self();
-      cache_.right.erase(cache_.right.begin()); 
-    }
+    std::cout << "Erasing: " << *(cache_.right.begin()->first) << "\n";
+    cache_.right.begin()->first->erase_self();
+    cache_.right.erase(cache_.right.begin()); 
   }
  
   void insert(const key_type& k,const value_type& v) {

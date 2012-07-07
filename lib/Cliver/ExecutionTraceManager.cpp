@@ -137,7 +137,7 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
   switch (ev.event_type) {
 
     case CV_BASICBLOCK_ENTRY: {
-      //klee::TimerStatIncrementer timer(stats::execution_tree_time);
+      klee::TimerStatIncrementer timer(stats::execution_tree_time);
       ExecutionStage* stage = stages_[property];
 
       if (state->basic_block_tracking() || !BasicBlockDisabling) {
@@ -148,7 +148,7 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
     break;
 
     case CV_STATE_REMOVED: {
-      //klee::TimerStatIncrementer timer(stats::execution_tree_time);
+      klee::TimerStatIncrementer timer(stats::execution_tree_time);
       CVDEBUG("Removing state: " << *state );
       ExecutionStage* stage = stages_[property];
       stage->etrace_tree->remove_tracker(property);
@@ -157,7 +157,7 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
     break;
 
     case CV_STATE_CLONE: {
-      //klee::TimerStatIncrementer timer(stats::execution_tree_time);
+      klee::TimerStatIncrementer timer(stats::execution_tree_time);
       CVDEBUG("Cloned state: " << *state);
       ExecutionStage* stage = stages_[parent_property];
       stages_[property] = stage;
@@ -166,7 +166,7 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
     break;
 
     case CV_SEARCHER_NEW_STAGE: {
-      //klee::TimerStatIncrementer timer(stats::execution_tree_time);
+      klee::TimerStatIncrementer timer(stats::execution_tree_time);
 
       ExecutionStage *new_stage = new ExecutionStage();
       new_stage->etrace_tree = new ExecutionTraceTree();
@@ -391,15 +391,18 @@ void VerifyExecutionTraceManager::update_edit_distance(
   ExecutionStage* stage = stages_[property];
   assert(stage);
 
-  if (!EditDistanceAtCloneOnly) {
-    stage->ed_tree_map[property]->update_element(
-        stage->etrace_tree->leaf_element(property));
-  } else {
-    ExecutionTrace etrace;
-    stage->etrace_tree->tracker_get(property, etrace);
-    stage->ed_tree_map[property]->update(etrace);
-  }
+  //if (!EditDistanceAtCloneOnly) {
+  //  stage->ed_tree_map[property]->update_element(
+  //      stage->etrace_tree->leaf_element(property));
+  //} else {
+  //  ExecutionTrace etrace;
+  //  stage->etrace_tree->tracker_get(property, etrace);
+  //  stage->ed_tree_map[property]->update(etrace);
+  //}
 
+  ExecutionTrace etrace;
+  stage->etrace_tree->tracker_get(property, etrace);
+  stage->ed_tree_map[property]->update(etrace);
 
   //int row = stage->ed_tree_map[property]->row();
 
@@ -683,7 +686,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
   switch (ev.event_type) {
     case CV_BASICBLOCK_ENTRY: {
 
-      //klee::TimerStatIncrementer timer(stats::execution_tree_time);
+      klee::TimerStatIncrementer timer(stats::execution_tree_time);
 
       ExecutionStage* stage = stages_[property];
 
@@ -708,6 +711,12 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
             create_ed_tree(state);
           }
         }
+
+        // Check if we need to reclone the edit distance tree 
+        if (stage->ed_tree_map.count(property) == 0) {
+          stage->ed_tree_map[property] = stage->root_ed_tree->clone_edit_distance_tree();
+        }
+
       }
 
       if (state->basic_block_tracking() || !BasicBlockDisabling) {
@@ -731,7 +740,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
     break;
 
     case CV_STATE_REMOVED: {
-      //klee::TimerStatIncrementer timer(stats::execution_tree_time);
+      klee::TimerStatIncrementer timer(stats::execution_tree_time);
       CVDEBUG("Removing state: " << *state );
       ExecutionStage* stage = stages_[property];
       stage->etrace_tree->remove_tracker(property);
@@ -748,7 +757,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
     break;
 
     case CV_STATE_CLONE: {
-      //klee::TimerStatIncrementer timer(stats::execution_tree_time);
+      klee::TimerStatIncrementer timer(stats::execution_tree_time);
 
       if (EditDistanceAtCloneOnly)
         update_edit_distance(parent_property);
@@ -776,7 +785,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
     break;
 
     case CV_SEARCHER_NEW_STAGE: {
-      //klee::TimerStatIncrementer timer(stats::execution_tree_time);
+      klee::TimerStatIncrementer timer(stats::execution_tree_time);
 
       // Increment stat counter
       stats::stage_count += 1;
@@ -818,9 +827,38 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
     }
     break;
 
+    case CV_CLEAR_CACHES: {
+      clear_caches();
+      break;
+    }
+
     default:
     break;
   }
+}
+
+void VerifyExecutionTraceManager::clear_caches() {
+  CVMESSAGE("ExecutionTraceManager::clear_caches() starting");
+  StatePropertyStageMap::iterator stage_it = stages_.begin(), 
+      stage_ie = stages_.end();
+
+  for (;stage_it != stage_ie; ++stage_it) {
+    ExecutionStage* stage = stage_it->second;
+
+    if (stage->ed_tree_map.size()) {
+      CVMESSAGE("Clearing EditDistanceTreeMap in ExecutionTraceStage of size: " 
+                << stage->ed_tree_map.size());
+      StatePropertyEditDistanceTreeMap::iterator it = stage->ed_tree_map.begin();
+      StatePropertyEditDistanceTreeMap::iterator ie = stage->ed_tree_map.end();
+      for (; it!=ie; ++it) {
+        delete it->second;
+      }
+      stage->ed_tree_map.clear();
+    }
+
+    // We don't clear the root tree.
+  }
+  CVMESSAGE("ExecutionTraceManager::clear_caches() finished");
 }
 
 bool VerifyExecutionTraceManager::ready_process_all_states(
@@ -834,7 +872,6 @@ bool VerifyExecutionTraceManager::ready_process_all_states(
 
 void VerifyExecutionTraceManager::recompute_property(
     ExecutionStateProperty *property) {
-  //klee::TimerStatIncrementer compute_timer(stats::edit_distance_compute_time);
 
   assert(stages_.count(property));
 
@@ -853,6 +890,7 @@ void VerifyExecutionTraceManager::recompute_property(
 
 void VerifyExecutionTraceManager::process_all_states(
     std::vector<ExecutionStateProperty*> &states) {
+  klee::TimerStatIncrementer timer(stats::execution_tree_time);
 
   {
     assert(!states.empty());
