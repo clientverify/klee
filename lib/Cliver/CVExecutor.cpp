@@ -339,25 +339,6 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
   searcher->update(0, initial_state_set, std::set<klee::ExecutionState*>());
 
   while (!searcher->empty() && !haltExecution) {
-		klee::ExecutionState &state = searcher->selectState();
-    if (haltExecution) goto dump;
-
-    handle_pre_execution_events(state);
-
-		klee::KInstruction *ki = state.pc;
-
-    //cv_->notify_all(ExecutionEvent(CV_STEP_INSTRUCTION, &state));
-    stepInstruction(state);
-    executeInstruction(state, ki);
-    processTimers(&state, klee::MaxInstructionTime);
-    ++stats::round_instructions;
-
-    // Print usage stats during especially long rounds :)
-    if ((klee::stats::instructions & 0xFFFFFF) == 0) {
-        update_memory_usage();
-        cv_->print_current_statistics("UPDT");
-    }
-
     if (klee::MaxMemory) {
       if ((klee::stats::instructions & 0xFFFFF) == 0) {
         // We need to avoid calling GetMallocUsage() often because it
@@ -365,7 +346,17 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
         // to pummel the freelist once we hit the memory cap.
         //unsigned mbs = llvm::sys::Process::GetTotalMemoryUsage() >> 20;
         update_memory_usage();
-        unsigned mbs = memory_usage_mbs_;
+        size_t mbs = memory_usage_mbs_;
+
+        if (mbs > ((double)klee::MaxMemory*(0.80))) {
+					cv_message("Using %d MB of memory (limit is %d MB). Clearing Caches\n", 
+							mbs, (unsigned)klee::MaxMemory);
+          cv_->notify_all(ExecutionEvent(CV_CLEAR_CACHES));
+          update_memory_usage();
+          mbs = memory_usage_mbs_;
+					cv_message("Now using %d MB of memory (limit is %d MB). \n", 
+							mbs, (unsigned)klee::MaxMemory);
+        }
         
         if (mbs > klee::MaxMemory) {
 					cv_message("Using %d MB of memory (limit is %d MB). Exiting.", 
@@ -400,6 +391,24 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
         }
       }
     }
+
+    // Print usage stats during especially long rounds :)
+    if ((klee::stats::instructions & 0xFFFFFF) == 0) {
+        cv_->print_current_statistics("UPDT");
+    }
+
+		klee::ExecutionState &state = searcher->selectState();
+    if (haltExecution) goto dump;
+
+    handle_pre_execution_events(state);
+
+		klee::KInstruction *ki = state.pc;
+
+    //cv_->notify_all(ExecutionEvent(CV_STEP_INSTRUCTION, &state));
+    stepInstruction(state);
+    executeInstruction(state, ki);
+    processTimers(&state, klee::MaxInstructionTime);
+    ++stats::round_instructions;
 
 		//// Handle post execution events
 		//if (removedStates.find(&state) == removedStates.end()) {

@@ -46,6 +46,7 @@ class CVExecutionState;
   X(CV_SOCKET_READ)              \
   X(CV_SEARCHER_NEW_STAGE)       \
   X(CV_MERGE)                    \
+  X(CV_CLEAR_CACHES)             \
   X(CV_FINISH)
 
 #define X(x) x,

@@ -275,6 +275,7 @@ class VerifySearcher : public CVSearcher {
   virtual void remove_state(CVExecutionState* state);
   virtual bool check_pending(CVExecutionState* state);
   virtual void check_searcher_stage_memory();
+  virtual void clear_caches();
 
   unsigned current_stage_;
   SearcherStageList stages_;

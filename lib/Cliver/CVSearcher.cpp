@@ -33,8 +33,8 @@ namespace cliver {
 llvm::cl::opt<bool>
 DebugSearcher("debug-searcher",llvm::cl::init(false));
 
-llvm::cl::opt<unsigned>
-StateCacheSize("state-cache-size",llvm::cl::init(100000));
+llvm::cl::opt<size_t>
+StateCacheSize("state-cache-size",llvm::cl::init(INT_MAX));
 
 llvm::cl::opt<unsigned>
 TrainingMaxPending("training-max-pending",llvm::cl::init(1));
@@ -131,6 +131,19 @@ void VerifySearcher::check_searcher_stage_memory() {
   }
 }
 
+void VerifySearcher::clear_caches() {
+  CVMESSAGE("VerifySearcher::clear_caches() starting");
+  foreach (SearcherStage* stage, stages_) {
+    size_t cache_size = stage->cache_size();
+    if (cache_size > 1) {
+      CVMESSAGE("Clearing Searcher stage of size: " << cache_size);
+      stage->set_capacity(0);
+      stage->set_capacity(StateCacheSize);
+    }
+  }
+  CVMESSAGE("VerifySearcher::clear_caches() finished");
+}
+
 klee::ExecutionState &VerifySearcher::selectState() {
   //klee::TimerStatIncrementer timer(stats::searcher_time);
   
@@ -163,9 +176,6 @@ klee::ExecutionState &VerifySearcher::selectState() {
       stages_.pop_back();
     }
   }
-
-  // Check memory usage
-  check_searcher_stage_memory();
 
   assert(!stages_.empty());
 
@@ -352,6 +362,12 @@ void VerifySearcher::notify(ExecutionEvent ev) {
     case CV_SOCKET_WRITE:
     case CV_SOCKET_READ: {
       pending_events_[ev.state] = ev;
+      break;
+    }
+    case CV_CLEAR_CACHES: {
+      if (!stages_.back()->rebuilding()) {
+        clear_caches();
+      }
       break;
     }
     default:
