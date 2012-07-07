@@ -88,7 +88,7 @@ class SearcherStageImpl : public SearcherStage {
     : live_(NULL) {
 
     // Increment round number and reset (do this elsewhere?)
-    root->property()->round++;
+    //root->property()->round++;
     root->property()->reset();
 
     // Set new root state

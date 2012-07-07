@@ -245,6 +245,7 @@ void NetworkManager::execute_write(CVExecutor* executor,
 
 	if (!socket.has_data()) {
 		socket.advance();
+    state_->cv()->notify_all(ExecutionEvent(CV_SOCKET_ADVANCE, state_));
 	} else {
 		socket.set_state(Socket::WRITING);
 		RETURN_FAILURE_OBJ("send", "no data left");
@@ -295,6 +296,7 @@ void NetworkManager::execute_read(CVExecutor* executor,
 		RETURN_FAILURE("read", "bytes remain len=" << len);
 
 	socket.advance();
+  state_->cv()->notify_all(ExecutionEvent(CV_SOCKET_ADVANCE, state_));
 	RETURN_SUCCESS("read", bytes_written);
 }
 
@@ -340,6 +342,7 @@ void NetworkManagerXpilot::execute_read(CVExecutor* executor,
 
 	if (!socket.has_data()) {
 		socket.advance();
+    state_->cv()->notify_all(ExecutionEvent(CV_SOCKET_ADVANCE, state_));
 	}
 
 	RETURN_SUCCESS("read", bytes_written);
@@ -390,6 +393,7 @@ void NetworkManagerXpilot::execute_write(CVExecutor* executor,
 
 	if (!socket.has_data()) {
 		socket.advance();
+    state_->cv()->notify_all(ExecutionEvent(CV_SOCKET_ADVANCE, state_));
 	} else {
 		socket.set_state(Socket::WRITING);
 		RETURN_FAILURE_OBJ("send", "no data left");

@@ -287,10 +287,13 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
       }
 
       case CV_SOCKET_WRITE:
-      case CV_SOCKET_READ: {
+      case CV_SOCKET_READ: 
+      case CV_SOCKET_ADVANCE:
+      {
 
         Socket* socket = state->network_manager()->socket();
         ExecutionStateProperty* property = state->property();
+        property->round++;
 
         CVDEBUG("New pending stage. Socket: "
                 << *socket << ", State" << *state);
@@ -317,8 +320,8 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
 
         if (ClientModelFlag == XPilot) {
           if (socket->client_round() <= property->client_round) {
-            CVDEBUG("Removing state at xpilot merge event, wrong round "
-                    << *socket << ", State" << *state);
+            CVDEBUG("Removing state at xpilot merge event, wrong round. Socket: "
+                    << *socket << ", State: " << *state);
 
             // Remove invalid state with unfinished network processing
             cv_->executor()->remove_state_internal(state);
@@ -359,8 +362,10 @@ void VerifySearcher::notify(ExecutionEvent ev) {
     // These events will be processed later
     case CV_FINISH:
     case CV_MERGE:
-    case CV_SOCKET_WRITE:
-    case CV_SOCKET_READ: {
+    //case CV_SOCKET_WRITE:
+    //case CV_SOCKET_READ: 
+    case CV_SOCKET_ADVANCE:
+    {
       pending_events_[ev.state] = ev;
       break;
     }
