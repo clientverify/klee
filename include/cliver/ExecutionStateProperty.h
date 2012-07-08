@@ -44,20 +44,27 @@ class ExecutionStateProperty {
 	virtual ExecutionStateProperty* clone();
   virtual void reset();
 
-	// XXX redundant? alt use network_manager()->socket()->index()
-  // round is incremented in CVSearcher.h: SearcherStageImpl
-  int round;
-  int client_round;
-  int edit_distance;
-  int symbolic_vars;
+  int round; // current socket id
+  int client_round; // client specific round number
+  int edit_distance; // edit distance 
+  int symbolic_vars; // number of symbolic variables created for this round
 	bool recompute;
-
-  // Not currently used
-  //int num_symbolic_vars; 
 };
 
 inline std::ostream &operator<<(std::ostream &os, 
 		const ExecutionStateProperty &p) {
+  p.print(os);
+  return os;
+}
+
+class EditDistanceExecutionStateProperty : public ExecutionStateProperty {
+ public:
+  EditDistanceExecutionStateProperty();
+	virtual int compare(const ExecutionStateProperty &p) const;
+};
+
+inline std::ostream &operator<<(std::ostream &os, 
+		const EditDistanceExecutionStateProperty &p) {
   p.print(os);
   return os;
 }
