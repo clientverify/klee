@@ -877,8 +877,10 @@ void VerifyExecutionTraceManager::recompute_property(
 
   ExecutionStage* stage = stages_[property];
 
-  assert(stage->ed_tree_map.count(property));
-  
+  if (stage->ed_tree_map.count(property) == 0) {
+    stage->ed_tree_map[property] = stage->root_ed_tree->clone_edit_distance_tree();
+  }
+
   stage->ed_tree_map[property]->init(stage->current_k);
 
   ExecutionTrace etrace;

@@ -45,7 +45,7 @@ int ExecutionStateProperty::compare(const ExecutionStateProperty &b) const {
 	const ExecutionStateProperty *_b = static_cast<const ExecutionStateProperty*>(&b);
 
   // Reversed for priority queue!
-	if (_b->edit_distance - edit_distance) 
+	if (_b->edit_distance != edit_distance) 
     return _b->edit_distance - edit_distance;
 
 	if (round != _b->round)
@@ -71,6 +71,24 @@ void ExecutionStateProperty::print(std::ostream &os) const {
 	  os << "[sv: " << symbolic_vars << "]";
   if (!recompute)
 	  os << "[NoRC]";
+}
+
+//////////////////////////////////////////////////////////////////////////////
+
+EditDistanceExecutionStateProperty::EditDistanceExecutionStateProperty() {}
+
+// Only compare edit distance
+int EditDistanceExecutionStateProperty::compare(
+    const ExecutionStateProperty &b) const {
+
+	const EditDistanceExecutionStateProperty *_b 
+      = static_cast<const EditDistanceExecutionStateProperty*>(&b);
+
+  // Reversed for priority queue!
+	if (_b->edit_distance != edit_distance) 
+    return _b->edit_distance - edit_distance;
+
+  return 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

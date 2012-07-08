@@ -210,7 +210,22 @@ ExecutionTraceEditDistanceTree* EditDistanceTreeFactory::create() {
 ////////////////////////////////////////////////////////////////////////////////
 
 ExecutionStateProperty* ExecutionStatePropertyFactory::create() {
-  return new ExecutionStateProperty();
+  switch (RunMode) {
+    case VerifyNaive: {
+      return new ExecutionStateProperty();
+    }
+    case VerifyEditDistanceRow:
+    case VerifyEditDistanceKPrefixRow:
+    case VerifyEditDistanceKPrefixHash:
+    case VerifyEditDistanceKPrefixTest:
+    case VerifyEditDistanceKPrefixHashPointer: {
+      return new EditDistanceExecutionStateProperty();
+    }
+
+    case Training: {
+      return new ExecutionStateProperty();
+    }
+  }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
