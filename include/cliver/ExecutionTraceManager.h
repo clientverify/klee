@@ -78,7 +78,6 @@ struct ExecutionStage {
   StatePropertyEditDistanceTreeMap ed_tree_map;
 };
 
-
 ////////////////////////////////////////////////////////////////////////////////
 
 class ExecutionTraceManager : public ExecutionObserver {

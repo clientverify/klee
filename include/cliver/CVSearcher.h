@@ -274,13 +274,18 @@ class VerifySearcher : public CVSearcher {
   virtual void add_state(CVExecutionState* state);
   virtual void remove_state(CVExecutionState* state);
   virtual bool check_pending(CVExecutionState* state);
-  virtual void check_searcher_stage_memory();
+  //virtual void check_searcher_stage_memory();
   virtual void clear_caches();
 
-  unsigned current_stage_;
+  bool is_pending_duplicate(CVExecutionState* pending_state);
+  SearcherStage* create_and_add_stage(CVExecutionState* state);
+
+  SearcherStage* current_stage_;
+  unsigned current_round_;
   SearcherStageList stages_;
   std::vector<CVExecutionState*> pending_states_;
   std::map<CVExecutionState*, ExecutionEvent> pending_events_;
+  std::vector<SearcherStageList*> new_stages_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
