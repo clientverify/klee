@@ -133,14 +133,6 @@ VerifySearcher::VerifySearcher(ClientVerifier* cv, StateMerger* merger)
 
 void VerifySearcher::clear_caches() {
   CVMESSAGE("VerifySearcher::clear_caches() starting");
-  foreach (SearcherStage* stage, stages_) {
-    size_t cache_size = stage->cache_size();
-    if (cache_size > 1) {
-      CVMESSAGE("Clearing Searcher stage of size: " << cache_size);
-      stage->set_capacity(0);
-      stage->set_capacity(StateCacheSize);
-    }
-  }
 
   // Iterate over each rounds set of SearcherStages and reset the caches
   for (unsigned i=0; i<new_stages_.size(); ++i) {
@@ -157,36 +149,14 @@ void VerifySearcher::clear_caches() {
   CVMESSAGE("VerifySearcher::clear_caches() finished");
 }
 
-bool VerifySearcher::is_pending_duplicate(CVExecutionState* pending_state) {
-  unsigned pending_round = pending_state->property()->round;
+void VerifySearcher::remove_pending_duplicates() {
 
-  if (pending_round < new_stages_.size() 
-      && new_stages_[pending_round]->size() > 0) {
-    ExecutionStateSet state_set, merged_set;
-
-    // Collect the other root states for this round
-    foreach (SearcherStage* stage, *(new_stages_[pending_round])) {
-      state_set.insert(stage->root_state());
-    }
-
-    // Determine if the states can be "merged" (equivalence check)
-    merger_->merge(state_set, merged_set);
-
-    if (merged_set.size() != state_set.size()) {
-      assert((merged_set.size() + 1) == state_set.size());
-      ++stats::merged_states;
-      return true;
-    }
-  }
-  return false;
-}
-
-bool VerifySearcher::remove_pending_duplicates() {
+  // Compare withing pending states
   if (pending_states_.size() > 1) {
 
     // Prune state constraints and merge states
     ExecutionStateSet merged_set, state_set;
-    merging_set.insert(pending_states_.begin(), pending_states_.end());
+    merged_set.insert(pending_states_.begin(), pending_states_.end());
     merger_->merge(state_set, merged_set);
 
     SearcherStageList new_stages;
@@ -206,29 +176,41 @@ bool VerifySearcher::remove_pending_duplicates() {
     }
   }
 
+  foreach (CVExecutionState* pending_state, pending_states_) {
+    int pending_round = pending_state->property()->round;
 
-  unsigned pending_round = pending_state->property()->round;
-  
-
-  if (pending_round < new_stages_.size() 
-      && new_stages_[pending_round]->size() > 0) {
-    ExecutionStateSet state_set, merged_set;
-
-    // Collect the other root states for this round
-    foreach (SearcherStage* stage, *(new_stages_[pending_round])) {
-      state_set.insert(stage->root_state());
+    // Create new SearcherStageList for this round if needed
+    assert(pending_round <= new_stages_.size());
+    if (pending_round == new_stages_.size()) {
+      new_stages_.push_back(new SearcherStageList());
     }
 
-    // Determine if the states can be "merged" (equivalence check)
-    merger_->merge(state_set, merged_set);
+    // If other stages for this round already exist, check if equivalent
+    if (new_stages_[pending_round]->size() > 0) {
 
-    if (merged_set.size() != state_set.size()) {
-      assert((merged_set.size() + 1) == state_set.size());
-      ++stats::merged_states;
-      return true;
+      ExecutionStateSet state_set, merged_set;
+
+      // Collect the other root states for this round
+      foreach (SearcherStage* stage, *(new_stages_[pending_round])) {
+        state_set.insert(stage->root_state());
+      }
+
+      // Add pending state
+      state_set.insert(pending_state);
+
+      // Determine if the states can be "merged" (equivalence check)
+      merger_->merge(state_set, merged_set);
+
+      if (merged_set.size() != state_set.size()) {
+        assert((merged_set.size() + 1) == state_set.size());
+        ++stats::merged_states;
+        cv_->executor()->remove_state_internal(pending_state);
+      } else {
+        create_and_add_stage(pending_state);
+      }
     }
   }
-  return false;
+  pending_states_.clear();
 }
 
 SearcherStage* VerifySearcher::create_and_add_stage(CVExecutionState* state) {
@@ -245,12 +227,6 @@ SearcherStage* VerifySearcher::create_and_add_stage(CVExecutionState* state) {
   SearcherStage* new_stage = get_new_stage(state);
   new_stages_[round]->push_back(new_stage);
 
-  // Update current round
-  current_round_ = round;
-
-  // Compute and update statistics for the previous round
-  cv_->set_round(current_round_);
-
   return new_stage;
 }
 
@@ -258,17 +234,7 @@ klee::ExecutionState &VerifySearcher::selectState() {
   //klee::TimerStatIncrementer timer(stats::searcher_time);
 
   if (!pending_states_.empty()) {
-
-    while (!pending_states_.empty()
-           && is_pending_duplicate(pending_states_.back())) {
-      cv_->executor()->remove_state_internal(pending_states_.back());
-      pending_states_.pop_back();
-    }
-
-    if (!pending_states_.empty()) {
-      current_stage_ = create_and_add_stage(pending_states_.back());
-      pending_states_.pop_back();
-    }
+    remove_pending_duplicates();
   }
 
   // If we've exhausted all the states in the current stage
@@ -289,7 +255,6 @@ klee::ExecutionState &VerifySearcher::selectState() {
 
       if (current_stage_->empty())
         current_round_--;
-
     }
   }
 
@@ -541,120 +506,43 @@ void VerifySearcher::notify(ExecutionEvent ev) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TrainingSearcher::TrainingSearcher(ClientVerifier *cv, 
-                                         StateMerger* merger)
+TrainingSearcher::TrainingSearcher(ClientVerifier *cv, StateMerger* merger)
   : VerifySearcher(cv, merger) {}
 
 klee::ExecutionState &TrainingSearcher::selectState() {
   //klee::TimerStatIncrementer timer(stats::searcher_time);
  
   if (pending_states_.size() > 0 && 
-      (stages_.back()->empty() || pending_states_.size() >= TrainingMaxPending)) {
-    assert(!pending_states_.empty());
-
-    // Prune state constraints and merge states
-    ExecutionStateSet merging_set, state_set;
-    merging_set.insert(pending_states_.begin(), pending_states_.end());
-    merger_->merge(merging_set, state_set);
-
-    SearcherStageList new_stages;
-
-    foreach (CVExecutionState* state, pending_states_) {
-      if (!state_set.count(state)) {
-        CVDEBUG("Removing duplicate state " << state << ":" << state->id());
-        // Remove/delete states that are duplicates 
-        cv_->executor()->remove_state_internal(state);
-        ++stats::merged_states;
-      } else {
-        CVDEBUG("New stage from unique state " << state << ":" << state->id());
-        // Create new stage and add to pending list
-        new_stages.push_back(get_new_stage(state));
-        ++stats::active_states;
-      }
-    }
-
-    assert(!new_stages.empty()); 
-
-    // Add all pending stages to active stage list
-    stages_.insert(stages_.end(), new_stages.begin(), new_stages.end());
-
-    // Compute and update statistics for the previous round
-    cv_->set_round(stages_.back()->root_state()->property()->round);
-
-    pending_states_.clear();
-  } else {
-    while (!stages_.empty() && stages_.back()->empty()) {
-      delete stages_.back();
-      stages_.pop_back();
-    }
-  }
-
-  assert(!stages_.empty());
-  assert(!stages_.back()->empty());
-
-  //check_searcher_stage_memory();
-
-  return *(static_cast<klee::ExecutionState*>(stages_.back()->next_state()));
-}
-
-klee::ExecutionState &TrainingSearcher::selectState() {
-  //klee::TimerStatIncrementer timer(stats::searcher_time);
- 
-  if (pending_states_.size() > 0 && 
       (current_stage_->empty() || pending_states_.size() >= TrainingMaxPending)) {
-
-    assert(!pending_states_.empty());
-
-    // Attempt to merge if there is more than one pending state
-    if (pending_states_.size() > 1) {
-      // Prune state constraints and merge states
-      ExecutionStateSet merging_set, state_set;
-      merging_set.insert(pending_states_.begin(), pending_states_.end());
-      merger_->merge(merging_set, state_set);
-
-      SearcherStageList new_stages;
-
-      foreach (CVExecutionState* state, pending_states_) {
-        if (!state_set.count(state)) {
-          CVDEBUG("Removing duplicate state " << state << ":" << state->id());
-          // Remove/delete states that are duplicates 
-          cv_->executor()->remove_state_internal(state);
-          ++stats::merged_states;
-        } else {
-          CVDEBUG("New stage from unique state " << state << ":" << state->id());
-          // Create new stage and add to pending list
-          new_stages.push_back(get_new_stage(state));
-          ++stats::active_states;
-        }
-      }
-    } else {
-
-    }
-
-    assert(!new_stages.empty()); 
-
-    // Add all pending stages to active stage list
-    stages_.insert(stages_.end(), new_stages.begin(), new_stages.end());
-
-    // Compute and update statistics for the previous round
-    cv_->set_round(stages_.back()->root_state()->property()->round);
-
-    pending_states_.clear();
+    remove_pending_duplicates();
   } else {
-    while (!stages_.empty() && stages_.back()->empty()) {
-      delete stages_.back();
-      stages_.pop_back();
+
+    // If we've exhausted all the states in the current stage
+    if (current_stage_->empty()) {
+
+      // Start looking for a non-empty stage in greatest round seen so far
+      current_round_ = new_stages_.size() - 1;
+
+      while (current_stage_->empty() && current_round_ >= 0) {
+
+        foreach (SearcherStage* stage, *(new_stages_[current_round_])) {
+          if (!stage->empty()) {
+            current_stage_ = stage;
+            cv_->set_round(current_round_);
+            break;
+          }
+        }
+
+        if (current_stage_->empty())
+          current_round_--;
+      }
     }
   }
 
-  assert(!stages_.empty());
-  assert(!stages_.back()->empty());
+  CVExecutionState *state = current_stage_->next_state();
 
-  //check_searcher_stage_memory();
-
-  return *(static_cast<klee::ExecutionState*>(stages_.back()->next_state()));
+  return *(static_cast<klee::ExecutionState*>(state));
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 

@@ -277,7 +277,7 @@ class VerifySearcher : public CVSearcher {
   //virtual void check_searcher_stage_memory();
   virtual void clear_caches();
 
-  bool is_pending_duplicate(CVExecutionState* pending_state);
+  void remove_pending_duplicates();
   SearcherStage* create_and_add_stage(CVExecutionState* state);
 
   SearcherStage* current_stage_;
