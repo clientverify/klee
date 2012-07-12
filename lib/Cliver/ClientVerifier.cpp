@@ -369,15 +369,15 @@ void ClientVerifier::print_stat_labels() {
 *cv_message_stream << "KEY" 
     << " " << "Rnd"
     << " " << stats::active_states.getShortName()
-    //<< " " << stats::merged_states.getShortName()
+    << " " << stats::merged_states.getShortName()
     //<< " " << stats::pruned_constraints.getShortName()
     << " " << stats::round_time.getShortName()
     << " " << stats::round_real_time.getShortName()
     << " " << stats::prune_time.getShortName()
     << " " << stats::merge_time.getShortName()
     << " " << stats::searcher_time.getShortName()
-    //<< " " << klee::stats::solverTime.getShortName()
-    //<< " " << stats::fork_time.getShortName()
+    << " " << klee::stats::solverTime.getShortName()
+    << " " << stats::fork_time.getShortName()
     << " " << stats::rebuild_time.getShortName()
     << " " << stats::round_instructions.getShortName()
     << " " << "StSz"
@@ -405,15 +405,15 @@ void ClientVerifier::print_statistic_record(klee::StatisticRecord* sr,
   *cv_message_stream << prefix 
     << " " << sr->getValue(stats::round_number)
     << " " << sr->getValue(stats::active_states)
-    //<< " " << sr->getValue(stats::merged_states)
+    << " " << sr->getValue(stats::merged_states)
     //<< " " << sr->getValue(stats::pruned_constraints)
     << " " << sr->getValue(stats::round_time) / 1000000.
     << " " << sr->getValue(stats::round_real_time) / 1000000.
     << " " << sr->getValue(stats::prune_time) / 1000000.
     << " " << sr->getValue(stats::merge_time) / 1000000.
     << " " << sr->getValue(stats::searcher_time) / 1000000.
-    //<< " " << sr->getValue(klee::stats::solverTime) / 1000000.
-    //<< " " << sr->getValue(stats::fork_time) / 1000000.
+    << " " << sr->getValue(klee::stats::solverTime) / 1000000.
+    << " " << sr->getValue(stats::fork_time) / 1000000.
     << " " << sr->getValue(stats::rebuild_time) / 1000000.
     << " " << sr->getValue(stats::round_instructions)
     << " " << executor()->states_size()
