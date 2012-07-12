@@ -101,36 +101,6 @@ bool CVSearcher::empty() {
 VerifySearcher::VerifySearcher(ClientVerifier* cv, StateMerger* merger)
   : CVSearcher(NULL, cv, merger), current_stage_(NULL), current_round_(0) {}
 
-// XXX TBD rework this code
-//void VerifySearcher::check_searcher_stage_memory() {
-//
-//  if (cv_->executor()->memory_usage() > (klee::MaxMemory - (klee::MaxMemory/8))) {
-//
-//    cv_->executor()->update_memory_usage();
-//    size_t current_usage = cv_->executor()->memory_usage();
-//    CVMESSAGE("Freeing memory from caches, current usage (MB) " 
-//              << cv_->executor()->memory_usage());
-//
-//    foreach (SearcherStage* stage, stages_) {
-//      size_t cache_size = stage->cache_size();
-//      if (cache_size > 1) {
-//        stage->set_capacity(cache_size / 2);
-//        CVDEBUG("Cache capacity reduced from " 
-//                << cache_size << " to " << cache_size / 2);
-//        stage->set_capacity(StateCacheSize);
-//      }
-//    }
-//
-//    cv_->executor()->update_memory_usage();
-//    CVMESSAGE("Updated usage after freeing caches (MB) "
-//              << cv_->executor()->memory_usage());
-//
-//    if (current_usage == cv_->executor()->memory_usage()) {
-//      cv_error("Freeing caches was not sucessful");
-//    }
-//  }
-//}
-
 void VerifySearcher::clear_caches() {
   CVMESSAGE("VerifySearcher::clear_caches() starting");
 
@@ -149,34 +119,35 @@ void VerifySearcher::clear_caches() {
   CVMESSAGE("VerifySearcher::clear_caches() finished");
 }
 
-void VerifySearcher::remove_pending_duplicates() {
+void VerifySearcher::process_unique_pending_states() {
+
+  std::set<CVExecutionState*> unique_pending_states(pending_states_.begin(),
+                                                    pending_states_.end());
 
   // Compare withing pending states
   if (pending_states_.size() > 1) {
 
     // Prune state constraints and merge states
-    ExecutionStateSet merged_set, state_set;
-    merged_set.insert(pending_states_.begin(), pending_states_.end());
+    ExecutionStateSet state_set, merged_set;
+    state_set.insert(pending_states_.begin(), pending_states_.end());
     merger_->merge(state_set, merged_set);
 
     SearcherStageList new_stages;
 
+    // Check if a pending state is not found in merged set, if so remove as a
+    // duplicate
     foreach (CVExecutionState* state, pending_states_) {
-      if (!state_set.count(state)) {
+      if (!merged_set.count(state)) {
         CVDEBUG("Removing duplicate state " << state << ":" << state->id());
         // Remove/delete states that are duplicates 
         cv_->executor()->remove_state_internal(state);
+        unique_pending_states.erase(state);
         ++stats::merged_states;
-      } else {
-        CVDEBUG("New stage from unique state " << state << ":" << state->id());
-        // Create new stage and add to pending list
-        new_stages.push_back(get_new_stage(state));
-        ++stats::active_states;
       }
     }
   }
 
-  foreach (CVExecutionState* pending_state, pending_states_) {
+  foreach (CVExecutionState* pending_state, unique_pending_states) {
     int pending_round = pending_state->property()->round;
 
     // Create new SearcherStageList for this round if needed
@@ -184,6 +155,12 @@ void VerifySearcher::remove_pending_duplicates() {
     if (pending_round == new_stages_.size()) {
       new_stages_.push_back(new SearcherStageList());
     }
+    
+    //CVMESSAGE("adding pending state: " << *pending_state);
+    //CVMESSAGE("adding pending state. current round: "
+    //         << current_round_ << ", pendingstate round: "
+    //         << pending_round << ", pending state: " << *pending_state);
+    //create_and_add_stage(pending_state);
 
     // If other stages for this round already exist, check if equivalent
     if (new_stages_[pending_round]->size() > 0) {
@@ -208,6 +185,8 @@ void VerifySearcher::remove_pending_duplicates() {
       } else {
         create_and_add_stage(pending_state);
       }
+    } else {
+      create_and_add_stage(pending_state);
     }
   }
   pending_states_.clear();
@@ -234,60 +213,43 @@ klee::ExecutionState &VerifySearcher::selectState() {
   //klee::TimerStatIncrementer timer(stats::searcher_time);
 
   if (!pending_states_.empty()) {
-    remove_pending_duplicates();
+    process_unique_pending_states();
   }
 
-  // If we've exhausted all the states in the current stage
-  if (current_stage_->empty()) {
+  // If we've exhausted all the states in the current stage or there is a newer
+  // stage to search
+  if (current_stage_->empty() ||
+      current_round_ < (new_stages_.size()-1)) {
 
     // Start looking for a non-empty stage in greatest round seen so far
-    current_round_ = new_stages_.size() - 1;
+    SearcherStage* new_current_stage = NULL;
+    int new_current_round = new_stages_.size() - 1; 
 
-    while (current_stage_->empty() && current_round_ >= 0) {
+    // Walk backwards through the stages from most recent round to previous
+    // rounds
+    while (NULL == new_current_stage && new_current_round >= 0) {
 
-      foreach (SearcherStage* stage, *(new_stages_[current_round_])) {
+      foreach (SearcherStage* stage, *(new_stages_[new_current_round])) {
         if (!stage->empty()) {
-          current_stage_ = stage;
-          cv_->set_round(current_round_);
+          new_current_stage = stage;
           break;
         }
       }
 
-      if (current_stage_->empty())
-        current_round_--;
+      if (NULL == new_current_stage)
+        new_current_round--;
+    }
+
+    if (NULL != new_current_stage) {
+      current_stage_ = new_current_stage;
+      current_round_ = new_current_round;
+      cv_->set_round(current_round_);
     }
   }
 
-  if (current_stage_ == NULL) {
+  if (NULL == current_stage_ || current_stage_->empty()) {
     cv_error("No stages remain!");
   }
-
-  //while (!stages_.empty() && stages_.back()->empty()) {
-  //  delete stages_.back();
-  //  stages_.pop_back();
-  //}
-
-  //assert(!stages_.empty());
-
-  //// Check if we should increase k
-  //CVExecutionState *state = stages_.back()->next_state();
-
-  //// Check the edit distance
-  //if (state->property()->edit_distance == INT_MAX 
-  //    && stages_.back()->size() > 1
-  //    && cv_->execution_trace_manager()->ready_process_all_states(state->property())
-  //    && !stages_.back()->rebuilding()) {
-  //  //CVMESSAGE("Next state is INT_MAX");
-
-  //  stages_.back()->add_state(state);
-  //  std::vector<ExecutionStateProperty*> states;
-  //  stages_.back()->get_states(states);
-  //  cv_->execution_trace_manager()->process_all_states(states);
-
-  //  // recompute edit distance
-  //  stages_.back()->set_states(states);
-  //  state = stages_.back()->next_state();
-  //}
 
   // Check if we should increase k
   CVExecutionState *state = current_stage_->next_state();
@@ -377,6 +339,7 @@ SearcherStage* VerifySearcher::get_new_stage(CVExecutionState* state) {
 void VerifySearcher::add_state(CVExecutionState* state) {
   if (this->empty()) {
     //stages_.push_back(get_new_stage(state));
+    CVMESSAGE("Creating stage from add_state() " << *state);
     current_stage_ = create_and_add_stage(state);
   } else {
     if (!check_pending(state))
@@ -514,29 +477,42 @@ klee::ExecutionState &TrainingSearcher::selectState() {
  
   if (pending_states_.size() > 0 && 
       (current_stage_->empty() || pending_states_.size() >= TrainingMaxPending)) {
-    remove_pending_duplicates();
-  } else {
+    process_unique_pending_states();
+  }
 
-    // If we've exhausted all the states in the current stage
-    if (current_stage_->empty()) {
+  // If we've exhausted all the states in the current stage or there is a newer
+  // stage to search
+  if (current_stage_->empty() ||
+      current_round_ < (new_stages_.size()-1)) {
 
-      // Start looking for a non-empty stage in greatest round seen so far
-      current_round_ = new_stages_.size() - 1;
+    // Start looking for a non-empty stage in greatest round seen so far
+    SearcherStage* new_current_stage = NULL;
+    int new_current_round = new_stages_.size() - 1; 
 
-      while (current_stage_->empty() && current_round_ >= 0) {
+    // Walk backwards through the stages from most recent round to previous
+    // rounds
+    while (NULL == new_current_stage && new_current_round >= 0) {
 
-        foreach (SearcherStage* stage, *(new_stages_[current_round_])) {
-          if (!stage->empty()) {
-            current_stage_ = stage;
-            cv_->set_round(current_round_);
-            break;
-          }
+      foreach (SearcherStage* stage, *(new_stages_[new_current_round])) {
+        if (!stage->empty()) {
+          new_current_stage = stage;
+          break;
         }
-
-        if (current_stage_->empty())
-          current_round_--;
       }
+
+      if (NULL == new_current_stage)
+        new_current_round--;
     }
+
+    if (NULL != new_current_stage) {
+      current_stage_ = new_current_stage;
+      current_round_ = new_current_round;
+      cv_->set_round(current_round_);
+    }
+  }
+
+  if (NULL == current_stage_ || current_stage_->empty()) {
+    cv_error("No stages remain!");
   }
 
   CVExecutionState *state = current_stage_->next_state();
