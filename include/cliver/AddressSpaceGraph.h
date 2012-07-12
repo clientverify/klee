@@ -124,6 +124,11 @@ friend class AddressSpaceGraphVisitor;
   std::vector<const klee::Array*> in_order_arrays_;
 
   MemoryObjectMap unconnected_map_;
+
+  // If true, this state has characteristics that make comparison impossible for
+  // now
+  bool unsupported_comparison_; 
+
 };
 
 }  // End cliver namespace

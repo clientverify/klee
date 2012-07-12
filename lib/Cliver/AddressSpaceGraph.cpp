@@ -157,9 +157,10 @@ class ReplaceArrayVisitor : public klee::ExprVisitor {
 ////////////////////////////////////////////////////////////////////////////////
 
 AddressSpaceGraph::AddressSpaceGraph(klee::ExecutionState *state)
-  : state_(state), pointer_width_(klee::Context::get().getPointerWidth()) {
-  cv_state_ = static_cast<CVExecutionState*>(state);
-}
+  : state_(state), 
+    cv_state_(static_cast<CVExecutionState*>(state)),
+    pointer_width_(klee::Context::get().getPointerWidth()),
+    unsupported_comparison_(false) {}
 
 /// Compares two ObjectStates, ignoring pointer values and symbolics. Returns
 /// false if pointer masks or concrete values differ.
@@ -562,6 +563,10 @@ bool AddressSpaceGraph::equal(
 
   int id_a = cv_state_->id(), id_b = b.cv_state_->id();
 
+  if (unsupported_comparison_ || b.unsupported_comparison_) {
+    return false;
+  }
+
   if (!array_size_equal(b)) {
     return false;
   }
@@ -752,25 +757,32 @@ void AddressSpaceGraph::extract_pointers(klee::ObjectState *obj,
   for (unsigned i = 0; i < obj->size; ++i) {
     if (obj->isBytePointer(i)) {
       for (unsigned j = 0; j < pointer_width_/8; ++j) {
-        assert(obj->isBytePointer(i+j) && "invalid pointer size");
-      }
-      klee::ref<klee::Expr> pexpr = obj->read(i, pointer_width_);
-      if (klee::ConstantExpr *CE = llvm::dyn_cast<klee::ConstantExpr>(pexpr)) {
-        klee::ObjectPair object_pair;
-        uint64_t val = CE->getZExtValue(pointer_width_);
-        if (val) {
-          if (state_->addressSpace.resolveOne(CE, object_pair)) {
-            PointerProperties p;
-            p.offset = i;
-            p.address = val;
-            p.object = const_cast<klee::ObjectState*>(object_pair.second);
-            results.push_back(p);
-          } else {
-            CVDEBUG_S(cv_state_->id(), "address " << *CE << " did not resolve");
-          }
+        if (!obj->isBytePointer(i+j)) {
+          CVMESSAGE("Unsupported Comparison: invalid pointer length: " << j-1);
+          unsupported_comparison_ = true;
         }
-      } else {
-        CVDEBUG_S(cv_state_->id(), "Non-concrete pointer");
+      }
+      if (!unsupported_comparison_) {
+        klee::ref<klee::Expr> pexpr = obj->read(i, pointer_width_);
+        if (klee::ConstantExpr *CE = llvm::dyn_cast<klee::ConstantExpr>(pexpr)) {
+          klee::ObjectPair object_pair;
+          uint64_t val = CE->getZExtValue(pointer_width_);
+          if (val) {
+            if (state_->addressSpace.resolveOne(CE, object_pair)) {
+              PointerProperties p;
+              p.offset = i;
+              p.address = val;
+              p.object = const_cast<klee::ObjectState*>(object_pair.second);
+              results.push_back(p);
+            } else {
+              CVDEBUG_S(cv_state_->id(), "address " << *CE << " did not resolve");
+            }
+          }
+        } else {
+          CVDEBUG_S(cv_state_->id(), "Non-concrete pointer");
+          CVMESSAGE("Unsupported Comparison: non-concrete pointer");
+          unsupported_comparison_ = true;
+        }
       }
       i += (pointer_width_/8) - 1;
     }
