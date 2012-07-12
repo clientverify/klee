@@ -274,7 +274,7 @@ class VerifySearcher : public CVSearcher {
   virtual void add_state(CVExecutionState* state);
   virtual void remove_state(CVExecutionState* state);
   virtual bool check_pending(CVExecutionState* state);
-  //virtual void check_searcher_stage_memory();
+  virtual void process_unique_pending_states();
   virtual void clear_caches();
 
   void remove_pending_duplicates();
