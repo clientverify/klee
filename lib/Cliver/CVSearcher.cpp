@@ -126,16 +126,16 @@ void VerifySearcher::process_unique_pending_states() {
 
   std::set<CVExecutionState*> unique_pending_states(pending_states_.begin(),
                                                     pending_states_.end());
-  // Compare withing pending states
+
+  // Prune state constraints and merge states
+  ExecutionStateSet state_set, merged_set;
+  state_set.insert(pending_states_.begin(), pending_states_.end());
+  merger_->merge(state_set, merged_set);
+
+  // Check if duplicate pending states exist
   if (pending_states_.size() > 1) {
 
-    // Prune state constraints and merge states
-    ExecutionStateSet state_set, merged_set;
-    state_set.insert(pending_states_.begin(), pending_states_.end());
-    merger_->merge(state_set, merged_set);
-
     SearcherStageList new_stages;
-
     // Check if a pending state is not found in merged set, if so remove as a
     // duplicate
     foreach (CVExecutionState* state, pending_states_) {
