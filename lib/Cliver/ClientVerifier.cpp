@@ -370,7 +370,7 @@ void ClientVerifier::print_stat_labels() {
     << " " << "Rnd"
     << " " << stats::active_states.getShortName()
     << " " << stats::merged_states.getShortName()
-    //<< " " << stats::pruned_constraints.getShortName()
+    << " " << stats::pruned_constraints.getShortName()
     << " " << stats::round_time.getShortName()
     << " " << stats::round_real_time.getShortName()
     << " " << stats::prune_time.getShortName()
@@ -406,7 +406,7 @@ void ClientVerifier::print_statistic_record(klee::StatisticRecord* sr,
     << " " << sr->getValue(stats::round_number)
     << " " << sr->getValue(stats::active_states)
     << " " << sr->getValue(stats::merged_states)
-    //<< " " << sr->getValue(stats::pruned_constraints)
+    << " " << sr->getValue(stats::pruned_constraints)
     << " " << sr->getValue(stats::round_time) / 1000000.
     << " " << sr->getValue(stats::round_real_time) / 1000000.
     << " " << sr->getValue(stats::prune_time) / 1000000.
