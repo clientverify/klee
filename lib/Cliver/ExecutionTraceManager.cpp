@@ -747,9 +747,11 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
 
       if (state->network_manager() && state->network_manager()->socket() &&
           state->network_manager()->socket()->end_of_log()) {
-        assert(stage->ed_tree_map.count(property));
-        delete stage->ed_tree_map[property];
-        stage->ed_tree_map.erase(property);
+        //assert(stage->ed_tree_map.count(property));
+        if (stage->ed_tree_map.count(property)) {
+          delete stage->ed_tree_map[property];
+          stage->ed_tree_map.erase(property);
+        }
       }
 
       stages_.erase(property);
