@@ -61,7 +61,7 @@ llvm::cl::opt<SearchModeType> SearchMode("search-mode",
     clEnumValN(BreadthFirst,  "bfs",    "Breadth first mode"),
     clEnumValN(DepthFirst,    "dfs",    "Depth first mode"),
   clEnumValEnd),
-  llvm::cl::init(DepthFirst));
+  llvm::cl::init(PriorityQueue));
 
 ////////////////////////////////////////////////////////////////////////////////
 
