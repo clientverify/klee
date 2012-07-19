@@ -402,6 +402,11 @@ void VerifyExecutionTraceManager::update_edit_distance(
 
   ExecutionTrace etrace;
   stage->etrace_tree->tracker_get(property, etrace);
+
+  if (stage->ed_tree_map.count(property) == 0) {
+    stage->ed_tree_map[property] = stage->root_ed_tree->clone_edit_distance_tree();
+  }
+
   stage->ed_tree_map[property]->update(etrace);
 
   //int row = stage->ed_tree_map[property]->row();
