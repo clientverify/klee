@@ -122,7 +122,7 @@ class TrainingManager {
           ie = scorelist[i].second->socket_event_set.end();
       for (; it != ie; ++it) {
         double result = measure.similarity_score(se, *it);
-        if (result < first_score)
+        if (result <= first_score)
           return scorelist[i].second;
       }
     }
