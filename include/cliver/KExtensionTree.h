@@ -632,6 +632,31 @@ class KExtensionTree
     return min_dist;
   }
 
+  // Return the sequence that is has the minimum edit distance
+  void min_edit_distance_sequence(Sequence &s) {
+    int min_dist = INT_MAX;
+    Node* min_leaf_node = NULL;
+    for (unsigned i=0; i<valid_list_->size(); ++i) {
+
+      Edge* edge = (*valid_list_)[i].first;
+      size_t offset = (*valid_list_)[i].second;
+      int dist = distance(valid_, (*valid_list_)[i]);
+
+      if (edge->to()->leaf() && edge->size()-1 == offset) {
+        if (min_dist > dist) {
+          min_dist = dist;
+          min_leaf_node = edge->to();
+        }
+      }
+    }
+    //std::cout << "min: distance: " << min_distance 
+    //  << ", value: " << min_s << std::endl;
+    //return min_dist;
+    if (NULL != min_leaf_node) {
+      min_leaf_node->get(s);
+    }
+  }
+
  private:
 
   //===-------------------------------------------------------------------===//

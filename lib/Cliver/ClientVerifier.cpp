@@ -98,6 +98,7 @@ namespace stats {
 	klee::Statistic edit_distance_min_score("EditDistanceMinScore","EDMS");
 	klee::Statistic stage_count("StageCount","StgCnt");
 	klee::Statistic self_path_edit_distance("SelfPathEditDistance","SpED");
+	klee::Statistic training_time("TrainingTime","TrTm");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -392,6 +393,7 @@ void ClientVerifier::print_stat_labels() {
     << " " << stats::edit_distance_min_score.getShortName()
     << " " << stats::stage_count.getShortName()
     << " " << stats::self_path_edit_distance.getShortName()
+    << " " << stats::training_time.getShortName()
     << "\n";
 }
 
@@ -428,6 +430,7 @@ void ClientVerifier::print_statistic_record(klee::StatisticRecord* sr,
     << " " << sr->getValue(stats::edit_distance_min_score)
     << " " << sr->getValue(stats::stage_count)
     << " " << sr->getValue(stats::self_path_edit_distance)
+    << " " << sr->getValue(stats::training_time)
     << "\n";
 
 #ifdef GOOGLE_PROFILER
