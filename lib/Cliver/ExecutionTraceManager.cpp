@@ -609,6 +609,8 @@ void VerifyExecutionTraceManager::create_ed_tree_guided_by_self(CVExecutionState
       = TrainingManager::find_first_with_score(socket_event, self_score_list, 
                                                base_measure, 0.0);
   //assert(self_score_list[0].first == 0);
+  assert(self_path != NULL);
+  CVDEBUG("Self path has length: " << self_path->trace.size());
   
   // This is the path that will solve the round, now find the closest path in
   // the training set
