@@ -98,7 +98,6 @@ class TrainingManager {
                                        TrainingObjectScoreList &scorelist,
                                        SocketEventSimilarity &measure) {
     // Iterate over all of the TrainingObjects and compare their similarity
-    // to 
     for (int i=0; i<scorelist.size(); ++i) {
       double min = INT_MAX;
       std::set<SocketEvent*>::iterator 
@@ -112,6 +111,24 @@ class TrainingManager {
     }
     std::sort(scorelist.begin(), scorelist.end());
   }
+
+  static TrainingObject* find_first_with_score(const SocketEvent *se, 
+                                               TrainingObjectScoreList &scorelist,
+                                               SocketEventSimilarity &measure,
+                                               double first_score = 0.0f) {
+    for (int i=0; i<scorelist.size(); ++i) {
+      std::set<SocketEvent*>::iterator 
+          it = scorelist[i].second->socket_event_set.begin(),
+          ie = scorelist[i].second->socket_event_set.end();
+      for (; it != ie; ++it) {
+        double result = measure.similarity_score(se, *it);
+        if (result < first_score)
+          return scorelist[i].second;
+      }
+    }
+    return NULL;
+  }
+
 
   /// Return a set of TrainingObjects from a list of filenames, removing
   /// TrainingObjects with duplicate ExecutionTraces
