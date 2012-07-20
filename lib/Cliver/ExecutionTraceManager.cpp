@@ -631,10 +631,12 @@ void VerifyExecutionTraceManager::create_ed_tree_guided_by_self(CVExecutionState
   tmp_ed_tree->add_data(self_path->trace);
 
   // Iterate over all the training data to compute the edit distances
+  CVDEBUG("Computing edit distance for " << training_objs.size() << " training paths");
   foreach (TrainingObject* tobj, training_objs) {
     tmp_ed_tree->init(tobj->trace.size());
     tmp_ed_tree->update(tobj->trace);
     edit_distances.push_back(tmp_ed_tree->min_distance());
+    CVDEBUG("Edit Distance is: " << tmp_ed_tree->min_distance());
   }
 
   delete tmp_ed_tree;
@@ -651,6 +653,7 @@ void VerifyExecutionTraceManager::create_ed_tree_guided_by_self(CVExecutionState
   KExtensionTree<ExecutionTrace, BasicBlockID>* kext_tree = 
       new KExtensionTree<ExecutionTrace, BasicBlockID>();
 
+  CVDEBUG("Computing edit distance using newer method.");
   int max_training_trace_size = 0;
   foreach (TrainingObject* tobj, training_objs) {
     kext_tree->add_data(tobj->trace);
@@ -663,11 +666,13 @@ void VerifyExecutionTraceManager::create_ed_tree_guided_by_self(CVExecutionState
 
   while (min_ed_path.size() == 0 || k < max_training_trace_size) {
     k *= 2;
+    CVDEBUG("K == " << k);
     kext_tree->init(k);
     kext_tree->update(self_path->trace);
     kext_tree->min_edit_distance_sequence(min_ed_path);
   }
 
+  CVDEBUG("Found min ed path");
   assert(min_ed_path.size() > 0);
 
   assert(training_objs[min_edit_dist_index]->trace == min_ed_path);
