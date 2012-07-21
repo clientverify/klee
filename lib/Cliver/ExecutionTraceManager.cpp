@@ -664,7 +664,7 @@ void VerifyExecutionTraceManager::create_ed_tree_guided_by_self(CVExecutionState
 
   ExecutionTrace min_ed_path;
 
-  while (min_ed_path.size() == 0 || k < max_training_trace_size) {
+  while (min_ed_path.size() == 0 && k < max_training_trace_size) {
     k *= 2;
     CVDEBUG("K == " << k);
     kext_tree->init(k);
