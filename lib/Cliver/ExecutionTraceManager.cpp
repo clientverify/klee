@@ -612,41 +612,41 @@ void VerifyExecutionTraceManager::create_ed_tree_guided_by_self(CVExecutionState
   assert(self_path != NULL);
   CVDEBUG("Self path has length: " << self_path->trace.size());
   
-  // This is the path that will solve the round, now find the closest path in
-  // the training set
-  //TrainingObject* self_path = self_score_list[0].second;
+  //// This is the path that will solve the round, now find the closest path in
+  //// the training set
+  ////TrainingObject* self_path = self_score_list[0].second;
 
   // Place all of the training data into a vector
   std::vector<TrainingObject*> training_objs(training_data_.begin(), training_data_.end());
 
-  // Vec of edit distances between training data and the path that solves the
-  // round
-  std::vector<int> edit_distances;
+  //// Vec of edit distances between training data and the path that solves the
+  //// round
+  //std::vector<int> edit_distances;
 
-  // Construct a basic Levenshtein Edit Distance Tree
-  ExecutionTraceEditDistanceTree *tmp_ed_tree 
-      = new LevenshteinRadixTree<ExecutionTrace, BasicBlockID>();
+  //// Construct a basic Levenshtein Edit Distance Tree
+  //ExecutionTraceEditDistanceTree *tmp_ed_tree 
+  //    = new LevenshteinRadixTree<ExecutionTrace, BasicBlockID>();
 
-  // Add the path that solves the round
-  tmp_ed_tree->add_data(self_path->trace);
+  //// Add the path that solves the round
+  //tmp_ed_tree->add_data(self_path->trace);
 
-  // Iterate over all the training data to compute the edit distances
-  CVDEBUG("Computing edit distance for " << training_objs.size() << " training paths");
-  foreach (TrainingObject* tobj, training_objs) {
-    tmp_ed_tree->init(tobj->trace.size());
-    tmp_ed_tree->update(tobj->trace);
-    edit_distances.push_back(tmp_ed_tree->min_distance());
-    CVDEBUG("Edit Distance is: " << tmp_ed_tree->min_distance());
-  }
+  //// Iterate over all the training data to compute the edit distances
+  //CVDEBUG("Computing edit distance for " << training_objs.size() << " training paths");
+  //foreach (TrainingObject* tobj, training_objs) {
+  //  tmp_ed_tree->init(tobj->trace.size());
+  //  tmp_ed_tree->update(tobj->trace);
+  //  edit_distances.push_back(tmp_ed_tree->min_distance());
+  //  CVDEBUG("Edit Distance is: " << tmp_ed_tree->min_distance());
+  //}
 
-  delete tmp_ed_tree;
+  //delete tmp_ed_tree;
 
-  int min_edit_dist_index = 0;
-  for (unsigned i=0; i < edit_distances.size(); ++i) {
-    if (edit_distances[i] < edit_distances[min_edit_dist_index]) {
-      min_edit_dist_index = i;
-    }
-  }
+  //int min_edit_dist_index = 0;
+  //for (unsigned i=0; i < edit_distances.size(); ++i) {
+  //  if (edit_distances[i] < edit_distances[min_edit_dist_index]) {
+  //    min_edit_dist_index = i;
+  //  }
+  //}
 
   //////////////---------------------------------------------//////////////
 
@@ -675,18 +675,16 @@ void VerifyExecutionTraceManager::create_ed_tree_guided_by_self(CVExecutionState
   CVDEBUG("Found min ed path");
   assert(min_ed_path.size() > 0);
 
-  assert(training_objs[min_edit_dist_index]->trace == min_ed_path);
+  //assert(training_objs[min_edit_dist_index]->trace == min_ed_path);
  
-  //////////////---------------------------------------------//////////////
-  
   CVMESSAGE("Best path in training set has edit distance " 
-      << edit_distances[min_edit_dist_index]);
+      << kext_tree->min_edit_distance());
 
   // Create a new root edit distance
   stage->root_ed_tree = EditDistanceTreeFactory::create();
 
   // Add the closest edit distance training path to the tree
-  stage->root_ed_tree->add_data(training_objs[min_edit_dist_index]->trace);
+  stage->root_ed_tree->add_data(min_ed_path);
 
   // Initialze the edit distance tree
   stage->root_ed_tree->init(stage->current_k);
@@ -700,6 +698,30 @@ void VerifyExecutionTraceManager::create_ed_tree_guided_by_self(CVExecutionState
 
   // Clone the root tree into the property map
   stage->ed_tree_map[property] = stage->root_ed_tree->clone_edit_distance_tree();
+
+  //////////////---------------------------------------------//////////////
+  
+  //CVMESSAGE("Best path in training set has edit distance " 
+  //    << edit_distances[min_edit_dist_index]);
+
+  //// Create a new root edit distance
+  //stage->root_ed_tree = EditDistanceTreeFactory::create();
+
+  //// Add the closest edit distance training path to the tree
+  //stage->root_ed_tree->add_data(training_objs[min_edit_dist_index]->trace);
+
+  //// Initialze the edit distance tree
+  //stage->root_ed_tree->init(stage->current_k);
+
+  //// Set initial values for edit distance
+  //property->edit_distance = INT_MAX-1;
+  //property->recompute = true;
+
+  //// Store size of tree in stats
+  //stats::edit_distance_tree_size = 1; 
+
+  //// Clone the root tree into the property map
+  //stage->ed_tree_map[property] = stage->root_ed_tree->clone_edit_distance_tree();
 }
 
 bool VerifyExecutionTraceManager::create_ed_tree_from_all(CVExecutionState* state) {
