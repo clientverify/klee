@@ -430,7 +430,7 @@ void ClientVerifier::print_statistic_record(klee::StatisticRecord* sr,
     << " " << sr->getValue(stats::edit_distance_min_score)
     << " " << sr->getValue(stats::stage_count)
     << " " << sr->getValue(stats::self_path_edit_distance)
-    << " " << sr->getValue(stats::training_time)
+    << " " << sr->getValue(stats::training_time) / 1000000.
     << "\n";
 
 #ifdef GOOGLE_PROFILER
