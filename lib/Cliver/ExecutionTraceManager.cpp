@@ -677,8 +677,8 @@ void VerifyExecutionTraceManager::create_ed_tree_guided_by_self(CVExecutionState
 
   //assert(training_objs[min_edit_dist_index]->trace == min_ed_path);
  
-  int self_path_ed = kext_tree->min_edit_distance());
-  CVMESSAGE("Best path in training set has edit distance " << self_path_ed;
+  int self_path_ed = kext_tree->min_edit_distance();
+  CVMESSAGE("Best path in training set has edit distance " << self_path_ed);
   stats::self_path_edit_distance = self_path_ed;
 
   kext_tree->delete_shared_data();
