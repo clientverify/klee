@@ -680,6 +680,10 @@ void VerifyExecutionTraceManager::create_ed_tree_guided_by_self(CVExecutionState
   CVMESSAGE("Best path in training set has edit distance " 
       << kext_tree->min_edit_distance());
 
+  kext_tree->delete_shared_data();
+
+  delete kext_tree;
+
   // Create a new root edit distance
   stage->root_ed_tree = EditDistanceTreeFactory::create();
 
