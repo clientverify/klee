@@ -966,6 +966,7 @@ void VerifyExecutionTraceManager::recompute_property(
 void VerifyExecutionTraceManager::process_all_states(
     std::vector<ExecutionStateProperty*> &states) {
   klee::TimerStatIncrementer timer(stats::execution_tree_time);
+  klee::TimerStatIncrementer edct(stats::edit_distance_compute_time);
 
   {
     assert(!states.empty());
