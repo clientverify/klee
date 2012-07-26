@@ -23,6 +23,9 @@ REQUIRES_RTTI=1
 LIBS += -lboost_serialization -lboost_regex
 CPPFLAGS += -Wno-deprecated
 
+# Required for waffles
+LIBS += -lGClasses -lpng
+
 # TCMalloc enabled by default
 ifneq ($(DISABLE_TCMALLOC),1)
   LIBS += -ltcmalloc
