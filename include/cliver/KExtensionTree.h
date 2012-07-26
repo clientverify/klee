@@ -117,8 +117,11 @@ class KExtensionOptTree
   }
 
   virtual void update(Sequence &s_update) {
-    Sequence suffix(s_update.begin() + row_, s_update.end());
-    update_suffix(suffix);
+    //Sequence suffix(s_update.begin() + row_, s_update.end());
+    //update_suffix(suffix);
+    for (unsigned i=row_; i<s_update.size(); ++i) {
+      this->update_element(s_update[i]);
+    }
   }
 
   virtual void update_suffix(Sequence &s) {
