@@ -187,7 +187,6 @@ CVExecutor::CVExecutor(const InterpreterOptions &opts, klee::InterpreterHandler 
 	INVALID_CL_OPT(OnlyReplaySeeds,false);
 	INVALID_CL_OPT(OnlySeed,false);
 	INVALID_CL_OPT(NamedSeedMatching,false);
-	INVALID_CL_OPT(RandomizeFork,false);
 	INVALID_CL_OPT(MaxDepth,false);
 	INVALID_CL_OPT(UseRandomSearch,false);
 	INVALID_CL_OPT(UseInterleavedRS,false);
