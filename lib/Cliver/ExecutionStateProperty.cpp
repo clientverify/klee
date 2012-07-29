@@ -38,6 +38,7 @@ ExecutionStateProperty* ExecutionStateProperty::clone() {
 
 void ExecutionStateProperty::reset() {
   symbolic_vars = 0;
+  edit_distance = -1;
 }
 
 // Order by greatest round number, then smallest edit distance
