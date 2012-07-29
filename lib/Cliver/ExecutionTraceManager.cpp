@@ -757,13 +757,11 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
 
   // Check if network is ready
   bool is_socket_active = false;
-  const SocketEvent* socket_event = NULL;
 
   if (state && state->network_manager() && 
       state->network_manager()->socket() &&
       state->network_manager()->socket()->end_of_log()) {
     is_socket_active = true;
-    socket_event = &(state->network_manager()->socket()->event());
   }
 
   switch (ev.event_type) {
@@ -773,7 +771,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
 
       if (is_socket_active) {
 
-        if (FilterTrainingUsage == 0 || socket_event->type == SocketEvent::SEND) {
+        if (FilterTrainingUsage == 0 || stage->socket_event->type == SocketEvent::SEND) {
 
           // Check if this is the first basic block of the stage
           if (!stage->etrace_tree->tracks(property)) {
@@ -810,7 +808,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
           stage->etrace_tree->extend_element(state->prevPC->kbb->id, property);
         }
 
-        if (FilterTrainingUsage == 0 || socket_event->type == SocketEvent::SEND) {
+        if (FilterTrainingUsage == 0 || stage->socket_event->type == SocketEvent::SEND) {
           if (is_socket_active) {
             if (property->recompute) {
               if (EditDistanceAtCloneOnly) {
@@ -831,7 +829,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       stage->etrace_tree->remove_tracker(property);
 
       if (is_socket_active) {
-        if (FilterTrainingUsage == 0 || socket_event->type == SocketEvent::SEND) {
+        if (FilterTrainingUsage == 0 || stage->socket_event->type == SocketEvent::SEND) {
           //assert(stage->ed_tree_map.count(property));
           if (stage->ed_tree_map.count(property)) {
             delete stage->ed_tree_map[property];
@@ -846,13 +844,13 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
 
     case CV_STATE_CLONE: {
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
+      ExecutionStage* stage = stages_[parent_property];
 
-      if (FilterTrainingUsage == 0 || socket_event->type == SocketEvent::SEND) {
+      if (FilterTrainingUsage == 0 || stage->socket_event->type == SocketEvent::SEND) {
         if (EditDistanceAtCloneOnly)
           update_edit_distance(parent_property);
       }
 
-      ExecutionStage* stage = stages_[parent_property];
       stages_[property] = stage;
 
       stage->etrace_tree->clone_tracker(property, parent_property);
@@ -861,7 +859,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       parent_property->recompute=true;
 
       if (is_socket_active) {
-        if (FilterTrainingUsage == 0 || socket_event->type == SocketEvent::SEND) {
+        if (FilterTrainingUsage == 0 || stage->socket_event->type == SocketEvent::SEND) {
           assert(stage->ed_tree_map.count(parent_property));
 
           stage->ed_tree_map[property] = 
@@ -898,6 +896,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       ExecutionStage *new_stage = new ExecutionStage();
       new_stage->etrace_tree = new ExecutionTraceTree();
       new_stage->root_property = parent_property;
+      new_stage->socket_event = const_cast<SocketEvent*>(&(state->network_manager()->socket()->event()));
 
       if (!stages_.empty() && 
           stages_.count(property) && 
