@@ -48,7 +48,8 @@ class CVExecutionState;
   X(CV_SEARCHER_NEW_STAGE)       \
   X(CV_MERGE)                    \
   X(CV_CLEAR_CACHES)             \
-  X(CV_FINISH)
+  X(CV_FINISH)                   \
+  X(CV_SELECT_EVENT)             \
 
 #define X(x) x,
 enum ExecutionEventType {

@@ -24,7 +24,8 @@ bool ExecutionStatePropertyLT::operator()(const ExecutionStateProperty* a,
 //////////////////////////////////////////////////////////////////////////////
 
 ExecutionStateProperty::ExecutionStateProperty()
-	: round(-1), client_round(0), edit_distance(-1), symbolic_vars(0), recompute(true) {}
+	: round(-1), client_round(0), edit_distance(-1), 
+    symbolic_vars(0), recompute(true), is_recv_processing(false) {}
 
 ExecutionStateProperty* ExecutionStateProperty::clone() { 
   ExecutionStateProperty* esp = new ExecutionStateProperty(*this);
@@ -33,12 +34,14 @@ ExecutionStateProperty* ExecutionStateProperty::clone() {
   esp->edit_distance = edit_distance;
   esp->symbolic_vars = symbolic_vars;
   esp->recompute = true;
+  esp->is_recv_processing = is_recv_processing;
   return esp;
 }
 
 void ExecutionStateProperty::reset() {
   symbolic_vars = 0;
   edit_distance = -1;
+  is_recv_processing = false;
 }
 
 // Order by greatest round number, then smallest edit distance

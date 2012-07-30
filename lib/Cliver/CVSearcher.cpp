@@ -387,29 +387,31 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
         break;
       }
 
-      case CV_SOCKET_WRITE:
-      case CV_SOCKET_READ: 
+      //case CV_SOCKET_WRITE:
+      //case CV_SOCKET_READ: 
       case CV_SOCKET_ADVANCE:
       {
 
-        Socket* socket = state->network_manager()->socket();
+        //Socket* socket = state->network_manager()->socket();
         ExecutionStateProperty* property = state->property();
         property->round++;
 
-        CVDEBUG("New pending stage. Socket: "
-                << *socket << ", State" << *state);
+        //CVDEBUG("New pending stage. Socket: "
+        //        << *socket << ", State" << *state);
 
-        // Create new stage and add to pending list
-        if (ClientModelFlag != XPilot) {
-          // XXX Hack to prune state constraints
-          ExecutionStateSet state_set, merged_set;
-          state_set.insert(state);
-          merger_->merge(state_set, merged_set);
+        //// Create new stage and add to pending list
+        //if (ClientModelFlag != XPilot) {
+        //  // XXX Hack to prune state constraints
+        //  ExecutionStateSet state_set, merged_set;
+        //  state_set.insert(state);
+        //  merger_->merge(state_set, merged_set);
 
-          pending_states_.push_back(*(merged_set.begin()));
-        } else {
-          pending_states_.push_back(state);
-        }
+        //  pending_states_.push_back(*(merged_set.begin()));
+        //} else {
+        //  pending_states_.push_back(state);
+        //}
+
+        pending_states_.push_back(state);
 
         result = true;
         break;
