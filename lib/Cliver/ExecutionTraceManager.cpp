@@ -246,13 +246,21 @@ void TrainingExecutionTraceManager::notify(ExecutionEvent ev) {
     parent_property = parent->property();
 
   switch (ev.event_type) {
+
+    case CV_SELECT_EVENT: {
+      property->is_recv_processing = false;
+    }
+    break;
+
     case CV_BASICBLOCK_ENTRY: {
       assert(stages_.count(property));
 
-      ExecutionStage* stage = stages_[property];
+      if (FilterTrainingUsage > 0 && !property->is_recv_processing) {
+        ExecutionStage* stage = stages_[property];
 
-      if (state->basic_block_tracking() || !BasicBlockDisabling)
-        stage->etrace_tree->extend_element(state->prevPC->kbb->id, property);
+        if (state->basic_block_tracking() || !BasicBlockDisabling)
+          stage->etrace_tree->extend_element(state->prevPC->kbb->id, property);
+      }
     }
     break;
 
@@ -765,13 +773,19 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
   }
 
   switch (ev.event_type) {
+
+    case CV_SELECT_EVENT: {
+      property->is_recv_processing = false;
+    }
+    break;
+
     case CV_BASICBLOCK_ENTRY: {
 
       ExecutionStage* stage = stages_[property];
 
       if (is_socket_active) {
 
-        if (FilterTrainingUsage == 0 || stage->socket_event->type == SocketEvent::SEND) {
+        if (FilterTrainingUsage > 0 && !property->is_recv_processing) {
 
           // Check if this is the first basic block of the stage
           if (!stage->etrace_tree->tracks(property)) {
@@ -808,7 +822,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
           stage->etrace_tree->extend_element(state->prevPC->kbb->id, property);
         }
 
-        if (FilterTrainingUsage == 0 || stage->socket_event->type == SocketEvent::SEND) {
+        if (FilterTrainingUsage > 0 && !property->is_recv_processing) {
           if (is_socket_active) {
             if (property->recompute) {
               if (EditDistanceAtCloneOnly) {
@@ -829,12 +843,10 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       stage->etrace_tree->remove_tracker(property);
 
       if (is_socket_active) {
-        if (FilterTrainingUsage == 0 || stage->socket_event->type == SocketEvent::SEND) {
-          //assert(stage->ed_tree_map.count(property));
-          if (stage->ed_tree_map.count(property)) {
-            delete stage->ed_tree_map[property];
-            stage->ed_tree_map.erase(property);
-          }
+        //assert(stage->ed_tree_map.count(property));
+        if (stage->ed_tree_map.count(property)) {
+          delete stage->ed_tree_map[property];
+          stage->ed_tree_map.erase(property);
         }
       }
 
@@ -846,7 +858,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
       ExecutionStage* stage = stages_[parent_property];
 
-      if (FilterTrainingUsage == 0 || stage->socket_event->type == SocketEvent::SEND) {
+      if (FilterTrainingUsage > 0 && !property->is_recv_processing) {
         if (EditDistanceAtCloneOnly)
           update_edit_distance(parent_property);
       }
@@ -859,7 +871,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       parent_property->recompute=true;
 
       if (is_socket_active) {
-        if (FilterTrainingUsage == 0 || stage->socket_event->type == SocketEvent::SEND) {
+        if (FilterTrainingUsage > 0 && !property->is_recv_processing) {
           assert(stage->ed_tree_map.count(parent_property));
 
           stage->ed_tree_map[property] = 
@@ -879,6 +891,8 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
     case CV_SEARCHER_NEW_STAGE: {
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
 
+      ExecutionStage* stage = stages_[property];
+
       // Increment stat counter
       stats::stage_count += 1;
 
@@ -896,7 +910,11 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       ExecutionStage *new_stage = new ExecutionStage();
       new_stage->etrace_tree = new ExecutionTraceTree();
       new_stage->root_property = parent_property;
-      new_stage->socket_event = const_cast<SocketEvent*>(&(state->network_manager()->socket()->event()));
+
+      if (is_socket_active) {
+        new_stage->socket_event 
+            = const_cast<SocketEvent*>(&(state->network_manager()->socket()->previous_event()));
+      }
 
       if (!stages_.empty() && 
           stages_.count(property) && 

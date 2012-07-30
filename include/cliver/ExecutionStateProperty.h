@@ -49,6 +49,7 @@ class ExecutionStateProperty {
   int edit_distance; // edit distance 
   int symbolic_vars; // number of symbolic variables created for this round
 	bool recompute;
+  bool is_recv_processing;
 };
 
 inline std::ostream &operator<<(std::ostream &os, 
