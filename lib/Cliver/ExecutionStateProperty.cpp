@@ -41,7 +41,11 @@ ExecutionStateProperty* ExecutionStateProperty::clone() {
 void ExecutionStateProperty::reset() {
   symbolic_vars = 0;
   edit_distance = -1;
-  is_recv_processing = false;
+
+  //if (is_recv_processing) {
+  //  CVMESSAGE("Resetting is_recv_processing");
+  //  is_recv_processing = false;
+  //}
 }
 
 // Order by greatest round number, then smallest edit distance

@@ -10,6 +10,7 @@
 #define CLIVER_SOCKET_EVENT_MEASUREMENT_H
 
 #include "cliver/Socket.h"
+#include "cliver/CVStream.h"
 #include "cliver/EditDistance.h"
 #include <iostream>
 #include <boost/regex.hpp>
@@ -392,8 +393,9 @@ class SocketEventSimilarityXpilot : public SocketEventSimilarity {
       //  result += 1.0f;
       UCharVecEditDistance ed(msg_a, msg_b);
       int val = ed.compute_editdistance();
-      //result = (double)(val) / (double)(std::max(msg_a.size(), msg_b.size()));
-      result = (double)(val);
+      result = (double)(val) / (double)(std::max(msg_a.size(), msg_b.size()));
+      //result = (double)(val);
+      //CVMESSAGE("Edit distance(S) = " << result);
 
     } else if (a->type == SocketEvent::RECV) {
       // data is 8 bytes in
@@ -428,8 +430,9 @@ class SocketEventSimilarityXpilot : public SocketEventSimilarity {
       //  result += 1.0f;
       UCharVecEditDistance ed(msg_a, msg_b);
       int val = ed.compute_editdistance();
-      //result = (double)(val) / (double)(std::max(msg_a.size(), msg_b.size()));
-      result = (double)(val);
+      result = (double)(val) / (double)(std::max(msg_a.size(), msg_b.size()));
+      //result = (double)(val);
+      //CVMESSAGE("Edit distance(R) = " << result);
 
     }
 
