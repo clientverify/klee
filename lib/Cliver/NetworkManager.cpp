@@ -345,12 +345,15 @@ void NetworkManagerXpilot::execute_read(CVExecutor* executor,
     state_->cv()->notify_all(ExecutionEvent(CV_SOCKET_ADVANCE, state_));
 	}
 
-  state_->property()->is_recv_processing = false;
+  state_->property()->is_recv_processing = true;
+  CVMESSAGE("Currently recv processing");
 	RETURN_SUCCESS("read", bytes_written);
 }
 
 void NetworkManagerXpilot::execute_write(CVExecutor* executor,
 		klee::KInstruction *target, klee::ObjectState* object, int fd, int len) {
+
+  state_->property()->is_recv_processing = false;
 
 	GET_SOCKET_OR_DIE_TRYIN("send", fd);
 

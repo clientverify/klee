@@ -248,9 +248,9 @@ void TrainingExecutionTraceManager::notify(ExecutionEvent ev) {
   switch (ev.event_type) {
 
     case CV_SELECT_EVENT: {
+      CVMESSAGE("SELECT_EVENT");
       property->is_recv_processing = false;
     }
-    break;
 
     case CV_BASICBLOCK_ENTRY: {
       assert(stages_.count(property));
@@ -267,7 +267,8 @@ void TrainingExecutionTraceManager::notify(ExecutionEvent ev) {
     case CV_STATE_REMOVED: {
       CVDEBUG("Removing state: " << *state );
       ExecutionStage* stage = stages_[property];
-      stage->etrace_tree->remove_tracker(property);
+      if (stage->etrace_tree->tracks(property))
+        stage->etrace_tree->remove_tracker(property);
       stages_.erase(property);
  
     }
@@ -292,8 +293,8 @@ void TrainingExecutionTraceManager::notify(ExecutionEvent ev) {
       stats::stage_count += 1;
 
       if (!stages_.empty() && 
-          stages_.count(parent_property) && 
-          stages_[parent_property]->etrace_tree->tracks(parent_property)) {
+          stages_.count(parent_property)) {
+          //stages_[parent_property]->etrace_tree->tracks(parent_property)) {
 
         CVDEBUG("NEW STAGE at state: " << *parent);
 
@@ -325,9 +326,10 @@ void TrainingExecutionTraceManager::notify(ExecutionEvent ev) {
 
         ExecutionStateProperty* tmp_property = finished_property;
         foreach(ExecutionStage* stage, complete_stages) {
-          assert(stage->etrace_tree->tracks(tmp_property));
-          write_training_object(stage, tmp_property);
-          tmp_property = stage->root_property;
+          if (stage->etrace_tree->tracks(tmp_property)) {
+            write_training_object(stage, tmp_property);
+            tmp_property = stage->root_property;
+          }
         }
 
         // XXX Only output one set of paths for now
@@ -443,8 +445,24 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
   ExecutionStateProperty *property = state->property();
   ExecutionStage* stage = stages_[property];
 
+  TrainingObjectSet training_data_subset; 
+  BasicBlockID bb_id = state->prevPC->kbb->id;
+
+  foreach (TrainingObject* tobj, training_data_) {
+    if (tobj->trace[0] == bb_id) {
+      training_data_subset.insert(tobj);
+    }
+  }
+
+  CVMESSAGE("Selecting from " << training_data_subset.size() << " of "
+            << training_data_.size() << " training objects. ");
+
   TrainingObjectScoreList score_list;
-  TrainingManager::init_score_list(training_data_, score_list);
+
+  if (training_data_subset.size() == 0)
+    TrainingManager::init_score_list(training_data_, score_list);
+  else
+    TrainingManager::init_score_list(training_data_subset, score_list);
 
   TrainingObjectList selected_training_objs;
   std::vector<double> selected_scores;
@@ -459,14 +477,14 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
 
   // If exact match exists, only add exact match, otherwise
   // add 5 closest matches 
-  size_t i, max_count = 5;
+  size_t i, max_count = 0;
   bool zero_match = false;
   for (i=0; (i < score_list.size()) && (i < max_count); ++i) {
     double score = score_list[i].first;
     if (i == 0) {
       stats::edit_distance_min_score = (int)(100 * score);
     }
-    CVDEBUG("Score: " << score);
+    CVMESSAGE("Score: " << score);
     if (zero_match && score > 0.0f) {
       i--;
       break;
@@ -485,7 +503,7 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
   property->recompute = true;
 
   // Store size of tree in stats
-  CVDEBUG("Training object tree for round: "
+  CVMESSAGE("Training object tree for round: "
       << state->property()->round << " used " << i+1 << " training objects");
   stats::edit_distance_tree_size = (i+1); 
 
@@ -775,9 +793,9 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
   switch (ev.event_type) {
 
     case CV_SELECT_EVENT: {
+      CVMESSAGE("SELECT_EVENT");
       property->is_recv_processing = false;
     }
-    break;
 
     case CV_BASICBLOCK_ENTRY: {
 
@@ -789,6 +807,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
 
           // Check if this is the first basic block of the stage
           if (!stage->etrace_tree->tracks(property)) {
+            CVMESSAGE("Computing EditdistanceTree");
             assert(stage->etrace_tree->element_count() == 0);
             CVDEBUG("First basic block entry (stage)");
             //klee::TimerStatIncrementer build_timer(stats::edit_distance_build_time);
@@ -815,17 +834,17 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       }
 
 
-      if (state->basic_block_tracking() || !BasicBlockDisabling) {
-        klee::TimerStatIncrementer timer(stats::execution_tree_time);
-        {
-          //klee::TimerStatIncrementer extend_timer(stats::execution_tree_extend_time);
-          stage->etrace_tree->extend_element(state->prevPC->kbb->id, property);
-        }
+      if (FilterTrainingUsage > 0 && !property->is_recv_processing) {
+        if (state->basic_block_tracking() || !BasicBlockDisabling) {
+          klee::TimerStatIncrementer timer(stats::execution_tree_time);
+          {
+            //klee::TimerStatIncrementer extend_timer(stats::execution_tree_extend_time);
+            stage->etrace_tree->extend_element(state->prevPC->kbb->id, property);
+          }
 
-        if (FilterTrainingUsage > 0 && !property->is_recv_processing) {
           if (is_socket_active) {
             if (property->recompute) {
-              if (EditDistanceAtCloneOnly) {
+              if (EditDistanceAtCloneOnly || property->round < 5) {
                 property->recompute = false;
               }
               update_edit_distance(property);
@@ -840,7 +859,9 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
       CVDEBUG("Removing state: " << *state );
       ExecutionStage* stage = stages_[property];
-      stage->etrace_tree->remove_tracker(property);
+
+      if (stage->etrace_tree->tracks(property))
+        stage->etrace_tree->remove_tracker(property);
 
       if (is_socket_active) {
         //assert(stage->ed_tree_map.count(property));
@@ -859,7 +880,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       ExecutionStage* stage = stages_[parent_property];
 
       if (FilterTrainingUsage > 0 && !property->is_recv_processing) {
-        if (EditDistanceAtCloneOnly)
+        if (EditDistanceAtCloneOnly || property->round < 5)
           update_edit_distance(parent_property);
       }
 
