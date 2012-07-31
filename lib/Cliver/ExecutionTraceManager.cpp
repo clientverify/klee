@@ -891,8 +891,6 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
     case CV_SEARCHER_NEW_STAGE: {
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
 
-      ExecutionStage* stage = stages_[property];
-
       // Increment stat counter
       stats::stage_count += 1;
 
@@ -911,10 +909,10 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       new_stage->etrace_tree = new ExecutionTraceTree();
       new_stage->root_property = parent_property;
 
-      if (is_socket_active) {
-        new_stage->socket_event 
-            = const_cast<SocketEvent*>(&(state->network_manager()->socket()->previous_event()));
-      }
+      //if (is_socket_active) {
+      //  new_stage->socket_event 
+      //      = const_cast<SocketEvent*>(&(state->network_manager()->socket()->previous_event()));
+      //}
 
       if (!stages_.empty() && 
           stages_.count(property) && 
