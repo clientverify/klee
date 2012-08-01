@@ -273,7 +273,7 @@ klee::ExecutionState &VerifySearcher::selectState() {
       && current_stage_->size() > 1
       && cv_->execution_trace_manager()->ready_process_all_states(state->property())
       && !current_stage_->rebuilding()) {
-    //CVMESSAGE("Next state is INT_MAX");
+    CVMESSAGE("Next state is INT_MAX, Rebuilding, # states = " << current_stage_->size());
 
     current_stage_->add_state(state);
     std::vector<ExecutionStateProperty*> states;
