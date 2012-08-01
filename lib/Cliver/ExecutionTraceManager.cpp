@@ -925,6 +925,8 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
     case CV_SEARCHER_NEW_STAGE: {
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
 
+      CVDEBUG("New Stage: " << property << ": " << *property);
+
       // Increment stat counter
       stats::stage_count += 1;
 
