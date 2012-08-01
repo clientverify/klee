@@ -55,6 +55,9 @@ DeleteOldTrees("delete-old-trees",llvm::cl::init(true));
 llvm::cl::opt<unsigned>
 FilterTrainingUsage("filter-training-usage",llvm::cl::init(0));
 
+llvm::cl::opt<unsigned>
+MedoidCount("medoid-count",llvm::cl::init(1));
+
 // Also used in CVSearcher
 unsigned RepeatExecutionAtRoundFlag;
 llvm::cl::opt<unsigned, true>
@@ -438,6 +441,8 @@ void VerifyExecutionTraceManager::update_edit_distance(
   //}
   
   property->edit_distance = stage->ed_tree_map[property]->min_distance();
+  CVMESSAGE("Updated edit distance: " << *property);
+            
 }
 
 void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
@@ -477,9 +482,9 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
 
   // If exact match exists, only add exact match, otherwise
   // add 5 closest matches 
-  size_t i, max_count = 1;
+  size_t i;
   bool zero_match = false;
-  for (i=0; (i < score_list.size()) && (i < max_count); ++i) {
+  for (i=0; (i < score_list.size()) && (i < MedoidCount); ++i) {
     double score = score_list[i].first;
     if (i == 0) {
       stats::edit_distance_min_score = (int)(100 * score);
@@ -489,8 +494,16 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
       i--;
       break;
     }
-    if (score == 0.0f)
+
+    if (score == 0.0f) {
       zero_match = true;
+    }
+
+    if (score > 0.9f) {
+      i--;
+      break;
+    }
+
     stage->root_ed_tree->add_data(score_list[i].second->trace);
     selected_training_objs.push_back(score_list[i].second);
     selected_scores.push_back(score);

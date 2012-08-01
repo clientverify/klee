@@ -161,6 +161,14 @@ void StateMerger::merge(ExecutionStateSet &state_set,
 		ExecutionStateSet &merged_set) {
 
 	//klee::TimerStatIncrementer timer(stats::merge_time);
+  
+  //if (state_set.size() <= 1) {
+  //  foreach (CVExecutionState* state, state_set) {
+  //    pruner_->prune_constraints(*state, *graph);
+	//		merged_set.insert(state);
+  //  }
+  //  return;
+  //}
 
 	std::map<CVExecutionState*, MergeInfo> merge_info;
 	foreach (CVExecutionState* state, state_set) {
