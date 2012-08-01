@@ -441,7 +441,7 @@ void VerifyExecutionTraceManager::update_edit_distance(
   //}
   
   property->edit_distance = stage->ed_tree_map[property]->min_distance();
-  CVMESSAGE("Updated edit distance: " << *property << " " << etrace.size());
+  CVMESSAGE("Updated edit distance: " << property << ": " << *property << " " << etrace.size());
             
 }
 
