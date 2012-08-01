@@ -477,7 +477,7 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
 
   // If exact match exists, only add exact match, otherwise
   // add 5 closest matches 
-  size_t i, max_count = 0;
+  size_t i, max_count = 1;
   bool zero_match = false;
   for (i=0; (i < score_list.size()) && (i < max_count); ++i) {
     double score = score_list[i].first;
@@ -503,7 +503,7 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
   property->recompute = true;
 
   // Store size of tree in stats
-  CVMESSAGE("Training object tree for round: "
+  CVDEBUG("Training object tree for round: "
       << state->property()->round << " used " << i+1 << " training objects");
   stats::edit_distance_tree_size = (i+1); 
 
