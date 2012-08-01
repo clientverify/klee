@@ -926,6 +926,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
 
       CVDEBUG("New Stage: " << property << ": " << *property);
+      CVDEBUG("New Stage (parent): " << parent_property << ": " << *parent_property);
 
       // Increment stat counter
       stats::stage_count += 1;
