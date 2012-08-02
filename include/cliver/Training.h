@@ -21,6 +21,7 @@ namespace boost {void throw_exception(std::exception const& e);}
 #include <boost/serialization/access.hpp>
 #include <boost/serialization/set.hpp>
 #include <boost/serialization/vector.hpp>
+#include <boost/unordered_map.hpp>
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -31,6 +32,59 @@ class ExecutionStateProperty;
 class SocketEvent;
 class ClientVerifier;
 
+////////////////////////////////////////////////////////////////////////////////
+
+//struct TrainingObjectFilter {
+//  TrainingObjectFilter(unsigned _socket_event_type, 
+//                       unsigned _initial_basic_block_id)
+//    : socket_event_type(_socket_event_type), 
+//      initial_basic_block_id(_initial_basic_block_id) {}
+//
+//  unsigned socket_event_type;
+//  unsigned initial_basic_block_id;
+//};
+//
+//// Comparator for TrainingObjecFilter 
+//struct TrainingObjectFilterLT {
+//	bool operator()(const TrainingObjectFilter *a, 
+//                  const TrainingObjectFilter *b) const;
+//};
+
+typedef std::pair<unsigned, unsigned> TrainingObjectFilter;
+
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TrainingObject;
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Comparator for ExecutionTrace contents
+struct TrainingObjectTraceLT {
+	bool operator()(const TrainingObject* a, const TrainingObject* b) const;
+};
+
+// Comparator for ExecutionTrace lengths
+struct TrainingObjectLengthLT {
+	bool operator()(const TrainingObject* a, const TrainingObject* b) const;
+};
+
+typedef std::set<TrainingObject*, TrainingObjectTraceLT> TrainingObjectSet;
+typedef std::vector<TrainingObject*> TrainingObjectList;
+typedef std::vector<std::pair<double, TrainingObject*> > TrainingObjectScoreList;
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TrainingObjectData {
+ public:
+  std::vector<TrainingObject*> training_objects;
+  TrainingObjectSet training_object_set;
+  std::vector<int> *edit_distance_matrix;
+};
+
+//typedef std::map<TrainingObjectFilter*, TrainingObjectData*, TrainingObjectFilterLT> TrainingFilterMap;
+
+typedef boost::unordered_map<TrainingObjectFilter, TrainingObjectData*> TrainingFilterMap;
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Holds a single execution trace and the associated socket event data(s)
@@ -63,23 +117,7 @@ class TrainingObject {
   }
 };
 
-// Comparator for ExecutionTrace contents
-struct TrainingObjectTraceLT {
-	bool operator()(const TrainingObject* a, const TrainingObject* b) const;
-};
-
-// Comparator for ExecutionTrace lengths
-struct TrainingObjectLengthLT {
-	bool operator()(const TrainingObject* a, const TrainingObject* b) const;
-};
-
 std::ostream& operator<<(std::ostream& os, const TrainingObject &tobject);
-
-////////////////////////////////////////////////////////////////////////////////
-
-typedef std::set<TrainingObject*, TrainingObjectTraceLT> TrainingObjectSet;
-typedef std::vector<TrainingObject*> TrainingObjectList;
-typedef std::vector<std::pair<double, TrainingObject*> > TrainingObjectScoreList;
 
 ////////////////////////////////////////////////////////////////////////////////
 

@@ -397,6 +397,97 @@ void VerifyExecutionTraceManager::initialize() {
   }
 
   // ------------------------------------------------------------------------//
+
+  initialize_training_data();
+}
+
+void VerifyExecutionTraceManager::initialize_training_data() {
+  // 1 Loop over all training data, creating a TrainingFilter for each
+  // and adding it to the vector of training objects in the TrainingObjectData
+
+  // For each TrainingObjectData, initialize the editdistance matrix and fill
+  // in the values by computing NxN edit distances
+
+  // Later (randomly?) choose a training path, compute the edit distance,
+  // then walk that msgs entries and eliminate those msgs that do not need
+  // to be computed, marked via a sentinal value, chose another msg that
+  // needs to be computed and continue
+
+  //TrainingObject* tobj = NULL;
+  //foreach (tobj, training_data_) {
+  //  SocketEvent *se = NULL;
+  //  TrainingObjectFilter *send_filter = NULL;
+  //  TrainingObjectFilter *recv_filter = NULL;
+
+  //  foreach (se, tobj->socket_event_set) {
+  //    if (send_filter == NULL && se->type == SocketEvent::SEND)
+  //      send_filter = new TrainingObjectFilter(se->type, tobj->trace[0]);
+  //    if (recv_filter == NULL && se->type == SocketEvent::RECV)
+  //      recv_filter = new TrainingObjectFilter(se->type, tobj->trace[0]);
+  //  }
+  //  assert(send_filter || recv_filter);
+
+  //  if (send_filter) {
+  //    if (filter_map_.count(send_filter) == 0) {
+  //      TrainingObjectData* tobj_data = new TrainingObjectData();
+  //      filter_map_[send_filter] = tobj_data;
+  //    }
+  //    filter_map_[send_filter]->training_objects.push_back(tobj);
+  //    filter_map_[send_filter]->training_object_set.insert(tobj);
+  //    delete send_filter;
+  //  }
+
+  //  if (recv_filter) {
+  //    if (filter_map_.count(recv_filter) == 0) {
+  //      filter_map_[recv_filter] = new TrainingObjectData();
+  //    }
+  //    filter_map_[recv_filter]->training_objects.push_back(tobj);
+  //    filter_map_[recv_filter]->training_object_set.insert(tobj);
+  //    delete recv_filter;
+  //  }
+  //}
+
+  //foreach (TrainingFilterMap::value_type &d, filter_map_) {
+  //  TrainingObjectData *tod = d.second;
+  //  size_t matrix_size = tod->training_objects.size()*tod->training_objects.size();
+  //  tod->edit_distance_matrix = new std::vector<int>(matrix_size, INT_MAX);
+
+  //}
+
+  TrainingObject* tobj = NULL;
+  foreach (tobj, training_data_) {
+    SocketEvent *se = NULL;
+    TrainingObjectFilter *send_filter = NULL;
+    TrainingObjectFilter *recv_filter = NULL;
+
+    foreach (se, tobj->socket_event_set) {
+      if (send_filter == NULL && se->type == SocketEvent::SEND)
+        send_filter = new TrainingObjectFilter(se->type, tobj->trace[0]);
+      if (recv_filter == NULL && se->type == SocketEvent::RECV)
+        recv_filter = new TrainingObjectFilter(se->type, tobj->trace[0]);
+    }
+    assert(send_filter || recv_filter);
+
+    if (send_filter) {
+      if (filter_map_.count(*send_filter) == 0) {
+        TrainingObjectData* tobj_data = new TrainingObjectData();
+        filter_map_[*send_filter] = tobj_data;
+      }
+      filter_map_[*send_filter]->training_objects.push_back(tobj);
+      filter_map_[*send_filter]->training_object_set.insert(tobj);
+      delete send_filter;
+    }
+
+    if (recv_filter) {
+      if (filter_map_.count(*recv_filter) == 0) {
+        filter_map_[*recv_filter] = new TrainingObjectData();
+      }
+      filter_map_[*recv_filter]->training_objects.push_back(tobj);
+      filter_map_[*recv_filter]->training_object_set.insert(tobj);
+      delete recv_filter;
+    }
+  }
+
 }
 
 void VerifyExecutionTraceManager::update_edit_distance(
@@ -441,7 +532,7 @@ void VerifyExecutionTraceManager::update_edit_distance(
   //}
   
   property->edit_distance = stage->ed_tree_map[property]->min_distance();
-  CVMESSAGE("Updated edit distance: " << property << ": " << *property << " " << etrace.size());
+  CVDEBUG("Updated edit distance: " << property << ": " << *property << " " << etrace.size());
             
 }
 
@@ -450,30 +541,52 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
   ExecutionStateProperty *property = state->property();
   ExecutionStage* stage = stages_[property];
 
-  TrainingObjectSet training_data_subset; 
-  BasicBlockID bb_id = state->prevPC->kbb->id;
-
-  foreach (TrainingObject* tobj, training_data_) {
-    if (tobj->trace[0] == bb_id) {
-      training_data_subset.insert(tobj);
-    }
-  }
-
-  CVMESSAGE("Selecting from " << training_data_subset.size() << " of "
-            << training_data_.size() << " training objects. ");
-
   TrainingObjectScoreList score_list;
 
-  if (training_data_subset.size() == 0)
-    TrainingManager::init_score_list(training_data_, score_list);
-  else
-    TrainingManager::init_score_list(training_data_subset, score_list);
+
+  BasicBlockID bb_id = state->prevPC->kbb->id;
+
+  //TrainingObjectSet training_data_subset; 
+  //foreach (TrainingObject* tobj, training_data_) {
+  //  if (tobj->trace[0] == bb_id) {
+  //    training_data_subset.insert(tobj);
+  //  }
+  //}
+  //CVMESSAGE("Selecting from " << training_data_subset.size() << " of "
+  //          << training_data_.size() << " training objects. ");
+  //if (training_data_subset.size() == 0)
+  //  TrainingManager::init_score_list(training_data_, score_list);
+  //else
+  //  TrainingManager::init_score_list(training_data_subset, score_list);
 
   TrainingObjectList selected_training_objs;
   std::vector<double> selected_scores;
 
   const SocketEvent* socket_event 
     = &(state->network_manager()->socket()->event());
+
+  TrainingObjectFilter filter(socket_event->type, state->prevPC->kbb->id);
+  if (filter_map_.count(filter) == 0) {
+    CVMESSAGE("Filter not found! using all data");
+    TrainingManager::init_score_list(training_data_, score_list);
+
+    //TrainingObjectFilter send_filter(SocketEvent::SEND, state->prevPC->kbb->id);
+    //TrainingObjectFilter recv_filter(SocketEvent::RECV, state->prevPC->kbb->id);
+    //if (filter_map_.count(send_filter)) {
+    //  CVMESSAGE("Send filter has: " << filter_map_[send_filter]->training_objects.size() 
+    //            << " matches.");
+    //}
+    //if (filter_map_.count(recv_filter)) {
+    //  CVMESSAGE("Recv filter has: " << filter_map_[recv_filter]->training_objects.size() 
+    //            << " matches.");
+    //}
+
+  } else {
+    CVMESSAGE("Filter found with " 
+              << filter_map_[filter]->training_objects.size() << " elements");
+    TrainingManager::init_score_list(filter_map_[filter]->training_object_set,
+                                     score_list);
+  }
 
   TrainingManager::sort_by_similarity_score(socket_event, score_list, 
                                             *similarity_measure_);
@@ -522,112 +635,6 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
 
   stage->ed_tree_map[property] = stage->root_ed_tree->clone_edit_distance_tree();
 
-  //static int self_count = 0;
-  //// Compute self_path_edit_distance (debug)
-  //if (self_count > 1 && self_training_data_.size()) {
-  //  TrainingObjectScoreList self_score_list;
-  //  TrainingManager::init_score_list(self_training_data_, self_score_list);
-  //  SocketEventSimilarity base_measure;
-  //  TrainingManager::sort_by_similarity_score(socket_event, self_score_list, 
-  //                                            base_measure);
-  //  assert(self_score_list[0].first == 0);
-  //  ExecutionTraceEditDistanceTree *self_ed_tree 
-  //      = stage->root_ed_tree->clone_edit_distance_tree();
-  //  self_ed_tree->update(self_score_list[0].second->trace);
-
-  //  stats::self_path_edit_distance = self_ed_tree->min_distance();
-
-  //  CVMESSAGE("SELF selected " << i+1 << " paths, " 
-  //            << "edit distance is " << self_ed_tree->min_distance()
-  //            << " with length " << self_score_list[0].second->trace.size());
-
-  //  if (self_ed_tree->min_distance() > 5) {
-
-  //    std::vector<int> edit_distances;
-  //    std::vector<TrainingObject*> training_objs(training_data_.begin(), training_data_.end());
-  //    //*cv_message_stream << "ED ";
-  //    TrainingObject* tobj;
-  //    ExecutionTraceEditDistanceTree *tmp_ed_tree = EditDistanceTreeFactory::create();
-  //    tmp_ed_tree->add_data(self_score_list[0].second->trace);
-  //    foreach (tobj, training_objs) {
-  //      tmp_ed_tree->init(0);
-  //      tmp_ed_tree->update(tobj->trace);
-
-  //      edit_distances.push_back(tmp_ed_tree->min_distance());
-  //      //*cv_message_stream << tmp_ed_tree->min_distance() << "," << tobj->trace.size() << " ";
-  //    }
-  //    //*cv_message_stream << "\n";
-
-  //    //std::sort(edit_distances.begin(), edit_distances.end());
-
-  //    delete tmp_ed_tree;
-
-  //    int min_edit_dist_index = 0;
-  //    for (unsigned i=0; i < edit_distances.size(); ++i) {
-  //      if (edit_distances[i] < edit_distances[min_edit_dist_index]) {
-  //        min_edit_dist_index = i;
-  //      }
-  //    }
-
-  //    *cv_message_stream << "Best edit distance is " << edit_distances[min_edit_dist_index] << "\n";
-  //    *cv_message_stream << "Current Msg: " << *socket_event << "\n";
-
-  //    {
-  //      TrainingObject* s_tobj;
-  //      for (unsigned i=0; i < selected_training_objs.size(); ++i) {
-  //        SocketEvent* s_event;
-  //        foreach (s_event, selected_training_objs[i]->socket_event_set) {
-  //          *cv_message_stream << "Selected Msg: " 
-  //              << selected_scores[i] << ", " << *s_event << "\n";
-  //        }
-  //      }
-  //    }
-
-  //    TrainingObjectScoreList best_score_list;
-  //    TrainingObjectSet best_training_obj;
-  //    best_training_obj.insert(training_objs[min_edit_dist_index]);
-  //    TrainingManager::init_score_list(best_training_obj, best_score_list);
-
-  //    {
-  //      unsigned i = 0;
-  //      SocketEvent* s_event;
-  //      foreach (s_event, training_objs[min_edit_dist_index]->socket_event_set) {
-  //        *cv_message_stream << "Best Msg:  " << best_score_list[i++].first << ", " << *s_event << "\n";
-  //        i++;
-  //      }
-  //    }
-
-  //    TrainingObjectList selected_training_objs;
-  //    std::vector<double> selected_scores;
-
-  //    const SocketEvent* socket_event 
-  //      = &(state->network_manager()->socket()->event());
-
-  //    TrainingManager::sort_by_similarity_score(socket_event, score_list, 
-  //                                              *similarity_measure_);
-  //    //*cv_message_stream << "IN ";
-  //    //foreach (tobj, training_data_) {
-  //    //  TrainingObject* selected_tobj;
-  //    //  bool equal = false;
-  //    //  foreach (selected_tobj, selected_training_objs) {
-  //    //    if (!equal && selected_tobj->trace == tobj->trace ) {
-  //    //      equal = true;
-  //    //    }
-  //    //  }
-  //    //  *cv_message_stream << equal << " ";
-  //    //}
-  //    //*cv_message_stream << "\n";
-
-  //    //*cv_message_stream << "EDS ";
-  //    //foreach (int ed, edit_distances) {
-  //    //  *cv_message_stream << ed << " ";
-  //    //}
-  //    //*cv_message_stream << "\n";
-
-  //    delete self_ed_tree;
-  //  }
-  //}
-  //self_count++;
 }
 
 void VerifyExecutionTraceManager::create_ed_tree_guided_by_self(CVExecutionState* state) {
@@ -806,7 +813,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
   switch (ev.event_type) {
 
     case CV_SELECT_EVENT: {
-      CVMESSAGE("SELECT_EVENT");
+      CVDEBUG("SELECT_EVENT");
       property->is_recv_processing = false;
     }
 
@@ -1053,12 +1060,12 @@ void VerifyExecutionTraceManager::process_all_states(
     stats::edit_distance_final_k = stage->current_k;
   }
 
-  CVMESSAGE("All states should have INT_MAX=" << INT_MAX << " edit distance.");
+  CVDEBUG("All states should have INT_MAX=" << INT_MAX << " edit distance.");
   for (unsigned i=0; i<states.size(); ++i) {
     //assert(states[i]->edit_distance == INT_MAX);
     int old_ed = states[i]->edit_distance;
     recompute_property(states[i]);
-    CVMESSAGE("Edit distance computed from: " << old_ed 
+    CVDEBUG("Edit distance computed from: " << old_ed 
               << " to " << states[i]->edit_distance);
   }
 }

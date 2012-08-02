@@ -114,6 +114,7 @@ class VerifyExecutionTraceManager : public ExecutionTraceManager {
   virtual bool ready_process_all_states(ExecutionStateProperty* property);
 
  private:
+  void initialize_training_data();
   void clear_caches();
   void clear_execution_stage(ExecutionStateProperty *property);
   void recompute_property(ExecutionStateProperty *property);
@@ -128,6 +129,9 @@ class VerifyExecutionTraceManager : public ExecutionTraceManager {
 
   TrainingObjectSet training_data_;
   SocketEventSimilarity *similarity_measure_;
+
+  // Training Filter
+  TrainingFilterMap filter_map_;
 
   // DEBUG
   TrainingObjectSet self_training_data_;
