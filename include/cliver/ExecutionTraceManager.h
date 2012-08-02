@@ -76,6 +76,7 @@ struct ExecutionStage {
   ExecutionTraceEditDistanceTree*  root_ed_tree;
   int                              current_k;
   StatePropertyEditDistanceTreeMap ed_tree_map;
+
 };
 
 ////////////////////////////////////////////////////////////////////////////////
