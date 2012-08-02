@@ -77,8 +77,10 @@ typedef std::vector<std::pair<double, TrainingObject*> > TrainingObjectScoreList
 
 class TrainingObjectData {
  public:
+  TrainingObjectData() : message_count(0), edit_distance_matrix(NULL) {}
   std::vector<TrainingObject*> training_objects;
   TrainingObjectSet training_object_set;
+  unsigned message_count;
   std::vector<int> *edit_distance_matrix;
 };
 

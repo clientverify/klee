@@ -475,6 +475,7 @@ void VerifyExecutionTraceManager::initialize_training_data() {
       }
       filter_map_[*send_filter]->training_objects.push_back(tobj);
       filter_map_[*send_filter]->training_object_set.insert(tobj);
+      filter_map_[*send_filter]->message_count += tobj->socket_event_set.size();
       delete send_filter;
     }
 
@@ -484,10 +485,23 @@ void VerifyExecutionTraceManager::initialize_training_data() {
       }
       filter_map_[*recv_filter]->training_objects.push_back(tobj);
       filter_map_[*recv_filter]->training_object_set.insert(tobj);
+      filter_map_[*recv_filter]->message_count += tobj->socket_event_set.size();
       delete recv_filter;
     }
   }
 
+  //foreach (TrainingFilterMap::value_type &d, filter_map_) {
+  //  TrainingObjectData *tod = d.second;
+  //  CVMESSAGE("---------------------------------------------------------");
+  //  CVMESSAGE("Message count: " << tod->message_count << "\n");
+  //  TrainingObject* tobj = NULL;
+  //  foreach (tobj, tod->training_objects) {
+  //    SocketEvent *se = NULL;
+  //    foreach (se, tobj->socket_event_set) {
+  //      CVMESSAGE(*se);
+  //    }
+  //  }
+  //}
 }
 
 void VerifyExecutionTraceManager::update_edit_distance(
@@ -548,7 +562,6 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
 
   TrainingObjectScoreList score_list;
 
-
   BasicBlockID bb_id = state->prevPC->kbb->id;
 
   //TrainingObjectSet training_data_subset; 
@@ -571,12 +584,15 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
     = &(state->network_manager()->socket()->event());
 
   TrainingObjectFilter filter(socket_event->type, state->prevPC->kbb->id);
-  if (filter_map_.count(filter) == 0) {
-    CVMESSAGE("Filter not found! naive search");
-    //TrainingManager::init_score_list(training_data_, score_list);
+  if (socket_event->type == SocketEvent::RECV) {
+    CVMESSAGE("Next in log is recv, using naive search");
     stage->root_ed_tree = NULL;
     return;
-
+  } else if (filter_map_.count(filter) == 0) {
+    CVMESSAGE("Filter not found! naive search");
+    stage->root_ed_tree = NULL;
+    return;
+    //TrainingManager::init_score_list(training_data_, score_list);
     //TrainingObjectFilter send_filter(SocketEvent::SEND, state->prevPC->kbb->id);
     //TrainingObjectFilter recv_filter(SocketEvent::RECV, state->prevPC->kbb->id);
     //if (filter_map_.count(send_filter)) {
@@ -590,6 +606,7 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
 
   } else {
     CVMESSAGE("Filter found with " 
+              << filter_map_[filter]->message_count << " messages, and "
               << filter_map_[filter]->training_objects.size() << " elements");
     TrainingManager::init_score_list(filter_map_[filter]->training_object_set,
                                      score_list);
@@ -920,7 +937,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
 
       if (is_socket_active) {
         if (FilterTrainingUsage > 0 && !property->is_recv_processing) {
-          assert(stage->ed_tree_map.count(parent_property));
+          //assert(stage->ed_tree_map.count(parent_property));
 
           if (stage->ed_tree_map.count(property) && stage->root_ed_tree) {
             stage->ed_tree_map[property] = 
