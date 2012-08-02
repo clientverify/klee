@@ -60,6 +60,16 @@ void TrainingObject::read(std::ifstream &is) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+//bool TrainingObjectFilterLT::operator()(const TrainingObjectFilter *a, 
+//                                        const TrainingObjectFilter *b) const {
+//  if (a->socket_event_type < b->socket_event_type)
+//    return true;
+//
+//  return a->initial_basic_block_id < b->initial_basic_block_id;
+//}
+
+////////////////////////////////////////////////////////////////////////////////
+
 bool TrainingObjectTraceLT::operator()(const TrainingObject* a, 
                                        const TrainingObject* b) const {
   return (a->trace) < (b->trace);
