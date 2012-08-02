@@ -507,12 +507,17 @@ void VerifyExecutionTraceManager::update_edit_distance(
   //  stage->ed_tree_map[property]->update(etrace);
   //}
 
-  ExecutionTrace etrace;
-  stage->etrace_tree->tracker_get(property, etrace);
 
   if (stage->ed_tree_map.count(property) == 0) {
-    stage->ed_tree_map[property] = stage->root_ed_tree->clone_edit_distance_tree();
+    if (stage->root_ed_tree != NULL) {
+      stage->ed_tree_map[property] = stage->root_ed_tree->clone_edit_distance_tree();
+    } else {
+      return;
+    }
   }
+
+  ExecutionTrace etrace;
+  stage->etrace_tree->tracker_get(property, etrace);
 
   stage->ed_tree_map[property]->update(etrace);
 
@@ -567,8 +572,10 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
 
   TrainingObjectFilter filter(socket_event->type, state->prevPC->kbb->id);
   if (filter_map_.count(filter) == 0) {
-    CVMESSAGE("Filter not found! using all data");
-    TrainingManager::init_score_list(training_data_, score_list);
+    CVMESSAGE("Filter not found! naive search");
+    //TrainingManager::init_score_list(training_data_, score_list);
+    stage->root_ed_tree = NULL;
+    return;
 
     //TrainingObjectFilter send_filter(SocketEvent::SEND, state->prevPC->kbb->id);
     //TrainingObjectFilter recv_filter(SocketEvent::RECV, state->prevPC->kbb->id);
@@ -847,7 +854,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
           }
 
           // Check if we need to reclone the edit distance tree 
-          if (stage->ed_tree_map.count(property) == 0) {
+          if (stage->ed_tree_map.count(property) == 0 && stage->root_ed_tree) {
             stage->ed_tree_map[property] = stage->root_ed_tree->clone_edit_distance_tree();
           }
         }
@@ -915,10 +922,14 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
         if (FilterTrainingUsage > 0 && !property->is_recv_processing) {
           assert(stage->ed_tree_map.count(parent_property));
 
-          stage->ed_tree_map[property] = 
-              stage->ed_tree_map[parent_property]->clone_edit_distance_tree();
+          if (stage->ed_tree_map.count(property) && stage->root_ed_tree) {
+            stage->ed_tree_map[property] = 
+                stage->ed_tree_map[parent_property]->clone_edit_distance_tree();
+            property->edit_distance = stage->ed_tree_map[property]->min_distance();
+          } else {
+            property->edit_distance = parent_property->edit_distance;
+          }
 
-          property->edit_distance = stage->ed_tree_map[property]->min_distance();
         } else {
           property->edit_distance = parent_property->edit_distance;
 
@@ -1020,7 +1031,7 @@ bool VerifyExecutionTraceManager::ready_process_all_states(
   assert(stages_.count(property));
   ExecutionStage* stage = stages_[property];
 
-  return stage->current_k < MaxKExtension;
+  return stage->root_ed_tree != NULL && (stage->current_k < MaxKExtension);
 }
 
 void VerifyExecutionTraceManager::recompute_property(
