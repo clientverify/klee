@@ -208,6 +208,8 @@ void NetworkManager::execute_write(CVExecutor* executor,
 
 	GET_SOCKET_OR_DIE_TRYIN("send", fd);
 
+  state_->property()->is_recv_processing = false;
+
 	if (socket.is_open() != true)
 		RETURN_FAILURE_OBJ("send", "not open");
 
@@ -297,6 +299,8 @@ void NetworkManager::execute_read(CVExecutor* executor,
 
 	socket.advance();
   state_->cv()->notify_all(ExecutionEvent(CV_SOCKET_ADVANCE, state_));
+
+  state_->property()->is_recv_processing = true;
 	RETURN_SUCCESS("read", bytes_written);
 }
 
@@ -346,7 +350,7 @@ void NetworkManagerXpilot::execute_read(CVExecutor* executor,
 	}
 
   state_->property()->is_recv_processing = true;
-  CVMESSAGE("Currently recv processing");
+  CVDEBUG("Currently recv processing");
 	RETURN_SUCCESS("read", bytes_written);
 }
 

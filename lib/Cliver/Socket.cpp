@@ -27,6 +27,7 @@ int Socket::NextFileDescriptor = 1000;
 SocketEvent::SocketEvent(const KTestObject &object) {
   init(object.bytes, object.numBytes);
   set_type(object.name);
+  set_header_length();
 }
 
 SocketEvent::SocketEvent(const unsigned char* buf, unsigned len) {
@@ -64,6 +65,18 @@ void SocketEvent::set_type(const char* name) {
 	} else {
 		cv_error("Invalid socket event name: \"%s\"", name);
 	}
+}
+
+// Set the length of the header, depends on socket type and client type
+void SocketEvent::set_header_length() {
+  header_length = 0;
+  if (ClientModelFlag == XPilot) {
+    if (type == SocketEvent::SEND) {
+      header_length = 4 + 4 + UBATOINT_I(data, 4);
+    } else {
+      header_length = 8;
+    }
+  }
 }
 
 void SocketEvent::print(std::ostream &os) const {
@@ -109,6 +122,9 @@ bool SocketEvent::less(const SocketEvent &se) const {
 	if (length < se.length)
 		return true;
 
+	if (header_length < se.header_length)
+		return true;
+
 	if (data_less(se))
 		return true;
 
@@ -116,7 +132,7 @@ bool SocketEvent::less(const SocketEvent &se) const {
 }
 
 bool SocketEvent::data_less(const SocketEvent &se) const {
-	for (unsigned i=0; i<length; ++i) {
+  for (unsigned i=0; i<length; ++i) {
 		if (data[i] != se.data[i]) {
 			if (data[i] < se.data[i])
 				return true;
@@ -129,16 +145,7 @@ bool SocketEvent::data_less(const SocketEvent &se) const {
 
 bool SocketEventSizeLT::operator()(const SocketEvent* a, 
 		const SocketEvent* b) const {
-  if (ClientModelFlag == XPilot && a->type == b->type) {
-    if (a->type == SocketEvent::SEND) {
-      size_t start_a = 4 + 4 + UBATOINT_I(a->data, 4);
-      size_t start_b = 4 + 4 + UBATOINT_I(b->data, 4);
-      return (a->size() - start_a) < (b->size() - start_b);
-    } else {
-      return (a->size() - 8) < (b->size() - 8);
-    }
-  }
-  return a->size() < b->size();
+  return (a->data_size()) < b->data_size();
 }
 
 bool SocketEventLT::operator()(const SocketEvent* a, 

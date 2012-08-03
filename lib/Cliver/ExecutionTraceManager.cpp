@@ -666,12 +666,15 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
     //                                 score_list);
   
     std::set<TrainingObject*> selected;
-    int radius = 2;
+    int radius = 0;
+    std::vector<int> scores;
+
+    if (ClientModelFlag == XPilot) radius = 2;
 
     while (selected.empty()) {
       filter_map_[filter]->select_training_paths_for_message(socket_event, radius,
                                                              similarity_measure_,
-                                                             selected);
+                                                             scores, selected);
       CVMESSAGE("Selected " << selected.size() << " paths with radius " << radius);
       if (selected.empty())
         radius *= 2;
