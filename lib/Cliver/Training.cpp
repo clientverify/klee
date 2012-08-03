@@ -88,6 +88,9 @@ void TrainingObjectData::select_training_paths_for_message(
     SocketEventSimilarity* smeasure,
     std::vector<int> &scores,
     std::set<TrainingObject*> &selected) {
+  if (msg->type == SocketEvent::RECV) {
+    selected.insert(training_objects.begin(), training_objects.end());
+  }
 
   std::set<SocketEvent*> worklist(socket_events_by_size.begin(),
                                   socket_events_by_size.end());

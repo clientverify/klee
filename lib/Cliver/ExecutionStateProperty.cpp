@@ -92,9 +92,25 @@ int EditDistanceExecutionStateProperty::compare(
 	const EditDistanceExecutionStateProperty *_b 
       = static_cast<const EditDistanceExecutionStateProperty*>(&b);
 
-  // Reversed for priority queue!
-	if (_b->edit_distance != edit_distance) 
-    return _b->edit_distance - edit_distance;
+	//if (_b->is_recv_processing != is_recv_processing)
+  //  return (int)_b->is_recv_processing - (int)is_recv_processing;
+
+  //// Reversed for priority queue!
+	//if (_b->edit_distance != edit_distance) 
+  //  return _b->edit_distance - edit_distance;
+
+	if (_b->is_recv_processing && is_recv_processing) {
+    if (client_round != _b->client_round)
+      return client_round - _b->client_round;
+
+    // Reversed for priority queue!
+    if (_b->symbolic_vars != symbolic_vars)
+      return _b->symbolic_vars - symbolic_vars;
+  } else {
+    // Reversed for priority queue!
+    if (_b->edit_distance != edit_distance) 
+      return _b->edit_distance - edit_distance;
+  }
 
   return 0;
 }

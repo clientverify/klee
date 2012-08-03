@@ -29,6 +29,9 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "llvm/System/Process.h"
+
+
 #include <fstream>
 #include <algorithm>
 
@@ -519,18 +522,22 @@ void VerifyExecutionTraceManager::initialize_training_data() {
   }
 
   foreach (TrainingFilterMap::value_type &d, filter_map_) {
-    if (d.first.first == SocketEvent::SEND) {
-      TrainingObjectData *tod = d.second;
+    TrainingObjectData *tod = d.second;
 
-      SocketEventSizeLT comp;
-      std::sort(tod->socket_events_by_size.begin(), tod->socket_events_by_size.end(), comp);
+    SocketEventSizeLT comp;
+    std::sort(tod->socket_events_by_size.begin(), tod->socket_events_by_size.end(), comp);
 
-      tod->edit_distance_matrix 
-          = new std::vector<int>(tod->message_count*tod->message_count, -1);
+    tod->edit_distance_matrix 
+        = new std::vector<int>(tod->message_count*tod->message_count, -1);
 
+   // if (d.first.first == SocketEvent::SEND) {
       CVMESSAGE("Computing " << tod->edit_distance_matrix->size() 
                 << " scores between training messages for " << tod->training_objects.size()
                 << " paths.");
+
+      llvm::sys::TimeValue start_now(0,0),start_user(0,0),sys(0,0);
+      llvm::sys::Process::GetTimeUsage(start_now,start_user,sys);
+      size_t count = 0;
       for (unsigned i = 0; i < tod->message_count; ++i) {
         SocketEvent *se_i = tod->socket_events_by_size[i];
         tod->socket_event_indices[se_i] = i;
@@ -541,9 +548,27 @@ void VerifyExecutionTraceManager::initialize_training_data() {
             //CVMESSAGE("Computed msg/msg distance measure: " << score);
             (*tod->edit_distance_matrix)[i*tod->message_count + j] = score;
           }
+          count++;
+          if ((count % 0xFFFFF) == 0) {
+            llvm::sys::TimeValue curr_now(0,0),curr_user(0,0);
+            llvm::sys::Process::GetTimeUsage(curr_now,curr_user,sys);
+            llvm::sys::TimeValue delta = curr_user - start_user;
+            double percent_done = 
+                ((double)(count))/((double)(tod->edit_distance_matrix->size()));
+
+            CVMESSAGE(percent_done * 100 << "% completed in " << delta.usec() / 1000000 << " (s), "
+                      << "est. time remaining is " << ((delta.usec() / 1000000)/percent_done)-(delta.usec() / 1000000) 
+                      << " (s)");
+
+
+          }
         }
       }
-    }
+    //} else {
+    //  CVMESSAGE("Not computing " << tod->edit_distance_matrix->size() 
+    //            << " scores between training messages for " << tod->training_objects.size()
+    //            << " paths because this is a recv cluster.");
+    //}
   }
 
   //foreach (TrainingFilterMap::value_type &d, filter_map_) {
