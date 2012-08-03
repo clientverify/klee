@@ -125,7 +125,7 @@ void TrainingObjectData::select_training_paths_for_message(
             scores[i] = INT_MAX;
             worklist.erase(se_i);
             overlap_count++;
-          } else if (i != se_index) {
+          } else if (i != se_index && edit_distance_matrix != NULL) {
             unsigned row = i*message_count;
             int ed = (*edit_distance_matrix)[row + se_index];
             if (ed > score + radius) {
