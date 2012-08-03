@@ -470,7 +470,10 @@ class SocketEventSimilarityTetrinet: public SocketEventSimilarity {
 
     // If the packet type is a player move, calculate the difference
     //result += check_player_move(str_a, str_b);
-    return check_player_move(str_a, str_b);
+    result = check_player_move(str_a, str_b);
+    if (result == INT_MAX) 
+      return 0;
+    return result;
   }
 
  private:
