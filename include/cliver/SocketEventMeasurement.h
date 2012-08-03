@@ -263,37 +263,40 @@ class SocketEventSimilarityXpilotEqual : public SocketEventSimilarity {
 
     if (a->type == SocketEvent::SEND) {
       
-      int32_t kbseq_a, kbseq_b, acklen_a, acklen_b, start_a, start_b;
+      //int32_t kbseq_a, kbseq_b, acklen_a, acklen_b, start_a, start_b;
 
-      kbseq_a = UBATOINT_I(a->data, 0);
-      kbseq_b = UBATOINT_I(b->data, 0);
+      //kbseq_a = UBATOINT_I(a->data, 0);
+      //kbseq_b = UBATOINT_I(b->data, 0);
 
-      acklen_a = UBATOINT_I(a->data, 4);
-      acklen_b = UBATOINT_I(b->data, 4);
+      //acklen_a = UBATOINT_I(a->data, 4);
+      //acklen_b = UBATOINT_I(b->data, 4);
 
-      start_a = 4 + 4 + acklen_a;
-      start_b = 4 + 4 + acklen_b;
+      //start_a = 4 + 4 + acklen_a;
+      //start_b = 4 + 4 + acklen_b;
 
-      //std::cout << "a & b are SEND events: "
-      //    << "a: " << xpilot_packet_string(a->data[start_a])
-      //    << ", b: " << xpilot_packet_string(b->data[start_b])
-      //    << ", size_a: " << a->data.size() << ", size_b: " << b->data.size()
-      //    << ", start_a: " << start_a  << ", start_b: " << start_b
-      //    << ", seq_a: " << kbseq_a  << ", seq_b: " << kbseq_b
-      //    << ", acklen_a: " << acklen_a << ", acklen_b: " << acklen_b << std::endl;
+      ////std::cout << "a & b are SEND events: "
+      ////    << "a: " << xpilot_packet_string(a->data[start_a])
+      ////    << ", b: " << xpilot_packet_string(b->data[start_b])
+      ////    << ", size_a: " << a->data.size() << ", size_b: " << b->data.size()
+      ////    << ", start_a: " << start_a  << ", start_b: " << start_b
+      ////    << ", seq_a: " << kbseq_a  << ", seq_b: " << kbseq_b
+      ////    << ", acklen_a: " << acklen_a << ", acklen_b: " << acklen_b << std::endl;
 
-      assert(acklen_a < a->data.size());
-      assert(acklen_b < b->data.size());
+      //assert(acklen_a < a->data.size());
+      //assert(acklen_b < b->data.size());
 
-      //for (unsigned i=start_a; i<a->data.size(); ++i)
-      //  std::cout << (int)( a->data[i]) << ", ";
-      //std::cout << std::endl;
-      //for (unsigned i=start_b; i<b->data.size(); ++i)
-      //  std::cout << (int)(b->data[i]) << ", ";
-      //std::cout << std::endl;
+      ////for (unsigned i=start_a; i<a->data.size(); ++i)
+      ////  std::cout << (int)( a->data[i]) << ", ";
+      ////std::cout << std::endl;
+      ////for (unsigned i=start_b; i<b->data.size(); ++i)
+      ////  std::cout << (int)(b->data[i]) << ", ";
+      ////std::cout << std::endl;
  
-      std::vector<uint8_t> msg_a(a->data.begin()+start_a, a->data.end());
-      std::vector<uint8_t> msg_b(b->data.begin()+start_b, b->data.end());
+      //std::vector<uint8_t> msg_a(a->data.begin()+start_a, a->data.end());
+      //std::vector<uint8_t> msg_b(b->data.begin()+start_b, b->data.end());
+      
+      std::vector<uint8_t> msg_a(a->data.begin()+a->header_length, a->data.end());
+      std::vector<uint8_t> msg_b(b->data.begin()+b->header_length, b->data.end());
 
       if (msg_a != msg_b)
         result = INT_MAX;
@@ -302,31 +305,34 @@ class SocketEventSimilarityXpilotEqual : public SocketEventSimilarity {
     } else if (a->type == SocketEvent::RECV) {
       // data is 8 bytes in
       
-      int32_t smseq_a, smseq_b, kbseq_a, kbseq_b;
-      int32_t start_a, start_b;
-      //for (unsigned i=0; i<8; ++i)
-      //  std::cout << (int)( a->data[i]) << ", ";
-      //std::cout << std::endl;
-      //for (unsigned i=0; i<8; ++i)
-      //  std::cout << (int)(b->data[i]) << ", ";
-      //std::cout << std::endl;
+      //int32_t smseq_a, smseq_b, kbseq_a, kbseq_b;
+      //int32_t start_a, start_b;
+      ////for (unsigned i=0; i<8; ++i)
+      ////  std::cout << (int)( a->data[i]) << ", ";
+      ////std::cout << std::endl;
+      ////for (unsigned i=0; i<8; ++i)
+      ////  std::cout << (int)(b->data[i]) << ", ";
+      ////std::cout << std::endl;
 
-      smseq_a = UBATOINT_I(a->data, 0);
-      smseq_b = UBATOINT_I(b->data, 0);
-      kbseq_a = UBATOINT_I(a->data, 4);
-      kbseq_b = UBATOINT_I(b->data, 4);
+      //smseq_a = UBATOINT_I(a->data, 0);
+      //smseq_b = UBATOINT_I(b->data, 0);
+      //kbseq_a = UBATOINT_I(a->data, 4);
+      //kbseq_b = UBATOINT_I(b->data, 4);
 
-      start_a = 4 + 4;
-      start_b = 4 + 4;
+      //start_a = 4 + 4;
+      //start_b = 4 + 4;
 
-      //std::cout << "a & b are RECV events: "
-      //  << "a: " << xpilot_packet_string(a->data[start_a+13])
-      //  << ", b: " << xpilot_packet_string(b->data[start_b+13]) << ", "
-      //  << smseq_a << ", " << smseq_b << ", "
-      //  << kbseq_a << ", " << kbseq_b << std::endl;
+      ////std::cout << "a & b are RECV events: "
+      ////  << "a: " << xpilot_packet_string(a->data[start_a+13])
+      ////  << ", b: " << xpilot_packet_string(b->data[start_b+13]) << ", "
+      ////  << smseq_a << ", " << smseq_b << ", "
+      ////  << kbseq_a << ", " << kbseq_b << std::endl;
  
-      std::vector<uint8_t> msg_a(a->data.begin()+start_a, a->data.end());
-      std::vector<uint8_t> msg_b(b->data.begin()+start_b, b->data.end());
+      //std::vector<uint8_t> msg_a(a->data.begin()+start_a, a->data.end());
+      //std::vector<uint8_t> msg_b(b->data.begin()+start_b, b->data.end());
+
+      std::vector<uint8_t> msg_a(a->data.begin()+a->header_length, a->data.end());
+      std::vector<uint8_t> msg_b(b->data.begin()+b->header_length, b->data.end());
 
       if (msg_a != msg_b)
         result = INT_MAX;
@@ -339,7 +345,7 @@ class SocketEventSimilarityXpilotEqual : public SocketEventSimilarity {
 };
 
 typedef Score<std::vector<uint8_t>, uint8_t, int> UCharVecScore;
-typedef EditDistanceRow<UCharVecScore, std::vector<uint8_t>, int > UCharVecEditDistance;
+typedef EditDistanceRowIt<UCharVecScore, std::vector<uint8_t>, int > UCharVecEditDistance;
 
 /// TODO
 class SocketEventSimilarityXpilot : public SocketEventSimilarity {
@@ -353,84 +359,105 @@ class SocketEventSimilarityXpilot : public SocketEventSimilarity {
 
     if (a->type == SocketEvent::SEND) {
       
-      int32_t kbseq_a, kbseq_b, acklen_a, acklen_b, start_a, start_b;
+      //int32_t kbseq_a, kbseq_b, acklen_a, acklen_b, start_a, start_b;
 
-      kbseq_a = UBATOINT_I(a->data, 0);
-      kbseq_b = UBATOINT_I(b->data, 0);
+      //kbseq_a = UBATOINT_I(a->data, 0);
+      //kbseq_b = UBATOINT_I(b->data, 0);
 
-      acklen_a = UBATOINT_I(a->data, 4);
-      acklen_b = UBATOINT_I(b->data, 4);
+      //acklen_a = UBATOINT_I(a->data, 4);
+      //acklen_b = UBATOINT_I(b->data, 4);
 
-      start_a = 4 + 4 + acklen_a;
-      start_b = 4 + 4 + acklen_b;
+      //start_a = 4 + 4 + acklen_a;
+      //start_b = 4 + 4 + acklen_b;
 
-      //std::cout << "a & b are SEND events: "
-      //    << "a: " << xpilot_packet_string(a->data[start_a])
-      //    << ", b: " << xpilot_packet_string(b->data[start_b])
-      //    << ", size_a: " << a->data.size() << ", size_b: " << b->data.size()
-      //    << ", start_a: " << start_a  << ", start_b: " << start_b
-      //    << ", seq_a: " << kbseq_a  << ", seq_b: " << kbseq_b
-      //    << ", acklen_a: " << acklen_a << ", acklen_b: " << acklen_b << std::endl;
+      ////std::cout << "a & b are SEND events: "
+      ////    << "a: " << xpilot_packet_string(a->data[start_a])
+      ////    << ", b: " << xpilot_packet_string(b->data[start_b])
+      ////    << ", size_a: " << a->data.size() << ", size_b: " << b->data.size()
+      ////    << ", start_a: " << start_a  << ", start_b: " << start_b
+      ////    << ", seq_a: " << kbseq_a  << ", seq_b: " << kbseq_b
+      ////    << ", acklen_a: " << acklen_a << ", acklen_b: " << acklen_b << std::endl;
 
-      assert(acklen_a < a->data.size());
-      assert(acklen_b < b->data.size());
+      //assert(acklen_a < a->data.size());
+      //assert(acklen_b < b->data.size());
 
-      //for (unsigned i=start_a; i<a->data.size(); ++i)
-      //  std::cout << (int)( a->data[i]) << ", ";
-      //std::cout << std::endl;
-      //for (unsigned i=start_b; i<b->data.size(); ++i)
-      //  std::cout << (int)(b->data[i]) << ", ";
-      //std::cout << std::endl;
+      ////for (unsigned i=start_a; i<a->data.size(); ++i)
+      ////  std::cout << (int)( a->data[i]) << ", ";
+      ////std::cout << std::endl;
+      ////for (unsigned i=start_b; i<b->data.size(); ++i)
+      ////  std::cout << (int)(b->data[i]) << ", ";
+      ////std::cout << std::endl;
  
-      std::vector<uint8_t> msg_a(a->data.begin()+start_a, a->data.end());
-      std::vector<uint8_t> msg_b(b->data.begin()+start_b, b->data.end());
+      //std::vector<uint8_t> msg_a(a->data.begin()+start_a, a->data.end());
+      //std::vector<uint8_t> msg_b(b->data.begin()+start_b, b->data.end());
 
-      //if (msg_a != msg_b)
-      //  result += 1.0f;
-      UCharVecEditDistance ed(msg_a, msg_b);
-      int val = ed.compute_editdistance();
-      result = val;
+      //std::vector<uint8_t> msg_a(a->data.begin()+a->header_length, a->data.end());
+      //std::vector<uint8_t> msg_b(b->data.begin()+b->header_length, b->data.end());
+
+      //UCharVecEditDistance ed(msg_a, msg_b);
+      //int val = ed.compute_editdistance();
+      //result = val;
+
       //result = (double)(val) / (double)(std::max(msg_a.size(), msg_b.size()));
       //result = (double)(val);
       //CVMESSAGE("Edit distance(S) = " << result);
 
+      UCharVecEditDistance ed(a->data_size(), b->data_size());
+      std::vector<uint8_t>::const_iterator a_begin = a->data.begin();
+      std::advance(a_begin, a->header_length);
+      std::vector<uint8_t>::const_iterator b_begin = b->data.begin();
+      std::advance(b_begin, b->header_length);
+      int val = ed.compute_editdistance(a_begin, b_begin);
+      result = val;
+     
     } else if (a->type == SocketEvent::RECV) {
       // data is 8 bytes in
       
-      int32_t smseq_a, smseq_b, kbseq_a, kbseq_b;
-      int32_t start_a, start_b;
-      //for (unsigned i=0; i<8; ++i)
-      //  std::cout << (int)( a->data[i]) << ", ";
-      //std::cout << std::endl;
-      //for (unsigned i=0; i<8; ++i)
-      //  std::cout << (int)(b->data[i]) << ", ";
-      //std::cout << std::endl;
+      //int32_t smseq_a, smseq_b, kbseq_a, kbseq_b;
+      //int32_t start_a, start_b;
+      ////for (unsigned i=0; i<8; ++i)
+      ////  std::cout << (int)( a->data[i]) << ", ";
+      ////std::cout << std::endl;
+      ////for (unsigned i=0; i<8; ++i)
+      ////  std::cout << (int)(b->data[i]) << ", ";
+      ////std::cout << std::endl;
 
-      smseq_a = UBATOINT_I(a->data, 0);
-      smseq_b = UBATOINT_I(b->data, 0);
-      kbseq_a = UBATOINT_I(a->data, 4);
-      kbseq_b = UBATOINT_I(b->data, 4);
+      //smseq_a = UBATOINT_I(a->data, 0);
+      //smseq_b = UBATOINT_I(b->data, 0);
+      //kbseq_a = UBATOINT_I(a->data, 4);
+      //kbseq_b = UBATOINT_I(b->data, 4);
 
-      start_a = 4 + 4;
-      start_b = 4 + 4;
+      //start_a = 4 + 4;
+      //start_b = 4 + 4;
 
-      //std::cout << "a & b are RECV events: "
-      //  << "a: " << xpilot_packet_string(a->data[start_a+13])
-      //  << ", b: " << xpilot_packet_string(b->data[start_b+13]) << ", "
-      //  << smseq_a << ", " << smseq_b << ", "
-      //  << kbseq_a << ", " << kbseq_b << std::endl;
+      ////std::cout << "a & b are RECV events: "
+      ////  << "a: " << xpilot_packet_string(a->data[start_a+13])
+      ////  << ", b: " << xpilot_packet_string(b->data[start_b+13]) << ", "
+      ////  << smseq_a << ", " << smseq_b << ", "
+      ////  << kbseq_a << ", " << kbseq_b << std::endl;
  
-      std::vector<uint8_t> msg_a(a->data.begin()+start_a, a->data.end());
-      std::vector<uint8_t> msg_b(b->data.begin()+start_b, b->data.end());
+      //std::vector<uint8_t> msg_a(a->data.begin()+start_a, a->data.end());
+      //std::vector<uint8_t> msg_b(b->data.begin()+start_b, b->data.end());
 
-      //if (msg_a != msg_b)
-      //  result += 1.0f;
-      UCharVecEditDistance ed(msg_a, msg_b);
-      int val = ed.compute_editdistance();
-      result = val;
+      //std::vector<uint8_t> msg_a(a->data.begin()+a->header_length, a->data.end());
+      //std::vector<uint8_t> msg_b(b->data.begin()+b->header_length, b->data.end());
+
+      ////if (msg_a != msg_b)
+      ////  result += 1.0f;
+      //UCharVecEditDistance ed(msg_a, msg_b);
+      //int val = ed.compute_editdistance();
+      //result = val;
       //result = (double)(val) / (double)(std::max(msg_a.size(), msg_b.size()));
       //result = (double)(val);
       //CVMESSAGE("Edit distance(R) = " << result);
+
+      UCharVecEditDistance ed(a->data_size(), b->data_size());
+      std::vector<uint8_t>::const_iterator a_begin = a->data.begin();
+      std::advance(a_begin, a->header_length);
+      std::vector<uint8_t>::const_iterator b_begin = b->data.begin();
+      std::advance(b_begin, b->header_length);
+      int val = ed.compute_editdistance(a_begin, b_begin);
+      result = val;
 
     }
     return result;
