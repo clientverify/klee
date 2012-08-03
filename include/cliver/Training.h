@@ -87,6 +87,7 @@ class TrainingObjectData {
 
   void select_training_paths_for_message(const SocketEvent *msg, int radius,
                                          SocketEventSimilarity *smeasure,
+                                         std::vector<int> &scores,
                                          std::set<TrainingObject*> &selected);
 };
 

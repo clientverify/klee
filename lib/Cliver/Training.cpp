@@ -84,13 +84,18 @@ bool TrainingObjectLengthLT::operator()(const TrainingObject* a,
 ////////////////////////////////////////////////////////////////////////////////
 
 void TrainingObjectData::select_training_paths_for_message(
-    const SocketEvent *msg, int radius, SocketEventSimilarity* smeasure,
+    const SocketEvent *msg, int radius, 
+    SocketEventSimilarity* smeasure,
+    std::vector<int> &scores,
     std::set<TrainingObject*> &selected) {
 
   std::set<SocketEvent*> worklist(socket_events_by_size.begin(),
                                   socket_events_by_size.end());
 
-  std::vector<int> se_scores(message_count, -1);
+  //std::vector<int> scores(message_count, -1);
+  if (scores.empty()) {
+    scores = std::vector<int>(message_count, -1);
+  }
 
   unsigned tri_ineq_count = 0, overlap_count = 0;
   while (!worklist.empty()) {
@@ -100,10 +105,13 @@ void TrainingObjectData::select_training_paths_for_message(
     // remove se from the worklist
     worklist.erase(se);
 
-    // Compute the distance score
-    int score = smeasure->similarity_score(msg, se);
-    se_scores[se_index] = score;
-    //CVMESSAGE("Computed msg/msg distance measure: " << score);
+    int score = scores[se_index];
+    if (score == -1 || score == INT_MAX) {
+      // Compute the distance score
+      score = smeasure->similarity_score(msg, se);
+      scores[se_index] = score;
+      //CVMESSAGE("Computed msg/msg distance measure: " << score);
+    }
 
     // If score is less than radius, we will select the paths it corresponds to
     if (score < radius) {
@@ -111,17 +119,17 @@ void TrainingObjectData::select_training_paths_for_message(
       for (unsigned i=0; i<message_count; ++i) {
         SocketEvent *se_i = socket_events_by_size[i];
         // If we haven't already computed distance, or eliminated this se
-        if (se_scores[i] == -1) {
+        if (scores[i] == -1) {
           TrainingObject* tobj = reverse_socket_event_map[se_i];
           if (selected.count(tobj) != 0) {
-            se_scores[i] = INT_MAX;
+            scores[i] = INT_MAX;
             worklist.erase(se_i);
             overlap_count++;
           } else if (i != se_index) {
             unsigned row = i*message_count;
             int ed = (*edit_distance_matrix)[row + se_index];
             if (ed > score + radius) {
-              se_scores[i] = INT_MAX;
+              scores[i] = INT_MAX;
               worklist.erase(se_i);
               tri_ineq_count++;
             }

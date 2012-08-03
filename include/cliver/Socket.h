@@ -39,6 +39,7 @@ class SocketEvent {
 	unsigned delta;
 	int client_round;
 	unsigned length;
+  unsigned header_length; 
 	std::vector<uint8_t> data;
 
 	void print(std::ostream &os) const;
@@ -46,11 +47,13 @@ class SocketEvent {
 	bool less(const SocketEvent &se) const;
 	bool data_less(const SocketEvent &se) const;
   unsigned size() const { return length; }
+  unsigned data_size() const { return length - header_length; }
 
  private:
   // Initialization
 	void init(const unsigned char* buf, unsigned len);
 	void set_type(const char* name);
+  void set_header_length();
 
 	// Serialization
 	SocketEvent() {};
@@ -61,6 +64,7 @@ class SocketEvent {
 		ar & delta;
 		ar & client_round;
 		ar & length;
+		ar & header_length;
 		ar & data;
 	}
 };
