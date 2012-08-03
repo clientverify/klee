@@ -519,25 +519,28 @@ void VerifyExecutionTraceManager::initialize_training_data() {
   }
 
   foreach (TrainingFilterMap::value_type &d, filter_map_) {
-    TrainingObjectData *tod = d.second;
+    if (d.first.first == SocketEvent::SEND) {
+      TrainingObjectData *tod = d.second;
 
-    SocketEventSizeLT comp;
-    std::sort(tod->socket_events_by_size.begin(), tod->socket_events_by_size.end(), comp);
+      SocketEventSizeLT comp;
+      std::sort(tod->socket_events_by_size.begin(), tod->socket_events_by_size.end(), comp);
 
-    tod->edit_distance_matrix 
-        = new std::vector<int>(tod->message_count*tod->message_count, -1);
+      tod->edit_distance_matrix 
+          = new std::vector<int>(tod->message_count*tod->message_count, -1);
 
-    CVMESSAGE("Computing " << tod->edit_distance_matrix->size() 
-              << " scores between training messages");
-    for (unsigned i = 0; i < tod->message_count; ++i) {
-      SocketEvent *se_i = tod->socket_events_by_size[i];
-      tod->socket_event_indices[se_i] = i;
-      for (unsigned j = 0; j < tod->message_count; ++j) {
-        if ((*tod->edit_distance_matrix)[i*tod->message_count + j] == -1) {
-          SocketEvent *se_j = tod->socket_events_by_size[j];
-          int score = similarity_measure_->similarity_score(se_i, se_j);
-          //CVMESSAGE("Computed msg/msg distance measure: " << score);
-          (*tod->edit_distance_matrix)[i*tod->message_count + j] = score;
+      CVMESSAGE("Computing " << tod->edit_distance_matrix->size() 
+                << " scores between training messages for " << tod->training_objects.size()
+                << " paths.");
+      for (unsigned i = 0; i < tod->message_count; ++i) {
+        SocketEvent *se_i = tod->socket_events_by_size[i];
+        tod->socket_event_indices[se_i] = i;
+        for (unsigned j = 0; j < tod->message_count; ++j) {
+          if ((*tod->edit_distance_matrix)[i*tod->message_count + j] == -1) {
+            SocketEvent *se_j = tod->socket_events_by_size[j];
+            int score = similarity_measure_->similarity_score(se_i, se_j);
+            //CVMESSAGE("Computed msg/msg distance measure: " << score);
+            (*tod->edit_distance_matrix)[i*tod->message_count + j] = score;
+          }
         }
       }
     }
@@ -678,7 +681,7 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
                                                              scores, selected);
       CVMESSAGE("Selected " << selected.size() << " paths with radius " << radius);
       if (selected.empty())
-        radius *= 2;
+        radius += 2;
     }
     stats::edit_distance_tree_size = selected.size(); 
 
