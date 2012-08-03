@@ -99,6 +99,7 @@ namespace stats {
 	klee::Statistic stage_count("StageCount","StgCnt");
 	klee::Statistic self_path_edit_distance("SelfPathEditDistance","SpED");
 	klee::Statistic training_time("TrainingTime","TrTm");
+	klee::Statistic recv_round_instructions("RecvRoundInsts", "RRInsts");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -395,6 +396,7 @@ void ClientVerifier::print_stat_labels() {
     << " " << stats::stage_count.getShortName()
     << " " << stats::self_path_edit_distance.getShortName()
     << " " << stats::training_time.getShortName()
+    << " " << stats::recv_round_instructions.getShortName()
     << "\n";
 }
 
@@ -432,6 +434,7 @@ void ClientVerifier::print_statistic_record(klee::StatisticRecord* sr,
     << " " << sr->getValue(stats::stage_count)
     << " " << sr->getValue(stats::self_path_edit_distance)
     << " " << sr->getValue(stats::training_time) / 1000000.
+    << " " << sr->getValue(stats::recv_round_instructions)
     << "\n";
 
 #ifdef GOOGLE_PROFILER

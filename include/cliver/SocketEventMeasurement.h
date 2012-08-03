@@ -231,10 +231,6 @@ std::string xpilot_packet_string(int type)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define UBATOINT_I(_b,_i) \
-    (((_b)[_i]<<24) + ((_b)[_i+1]<<16) + ((_b)[_i+2]<<8) + ((_b)[_i+3]))
-
-#define UBATOINT(_b) UBATOINT_I(_b, 0)
 namespace cliver {
 
 class SocketEvent;
@@ -242,27 +238,27 @@ class SocketEvent;
 /// TODO
 class SocketEventSimilarity {
  public:
-  virtual double similarity_score(const SocketEvent* a, const SocketEvent* b) {
+  virtual int similarity_score(const SocketEvent* a, const SocketEvent* b) {
     if (a->data.size() != b->data.size())
-      return 1.0f;
+      return INT_MAX;
 
     for (unsigned i=0; i<a->data.size(); ++i) {
       if (a->data[i] != b->data[i]) {
-        return 1.0f;
+        return INT_MAX;
       }
     }
-    return 0.0f;
+    return 0;
   }
 };
 
 /// TODO
 class SocketEventSimilarityXpilotEqual : public SocketEventSimilarity {
  public:
-  double similarity_score(const SocketEvent* a, const SocketEvent* b) {
-    double result = 0.0f;
+  int similarity_score(const SocketEvent* a, const SocketEvent* b) {
+    int result = 0;
 
     if (a->type != b->type) {
-      return 1.0f;
+      return INT_MAX;
     }
 
     if (a->type == SocketEvent::SEND) {
@@ -300,7 +296,7 @@ class SocketEventSimilarityXpilotEqual : public SocketEventSimilarity {
       std::vector<uint8_t> msg_b(b->data.begin()+start_b, b->data.end());
 
       if (msg_a != msg_b)
-        result += 1.0f;
+        result = INT_MAX;
 
 
     } else if (a->type == SocketEvent::RECV) {
@@ -333,7 +329,7 @@ class SocketEventSimilarityXpilotEqual : public SocketEventSimilarity {
       std::vector<uint8_t> msg_b(b->data.begin()+start_b, b->data.end());
 
       if (msg_a != msg_b)
-        result += 1.0f;
+        result = INT_MAX;
 
     }
 
@@ -348,11 +344,11 @@ typedef EditDistanceRow<UCharVecScore, std::vector<uint8_t>, int > UCharVecEditD
 /// TODO
 class SocketEventSimilarityXpilot : public SocketEventSimilarity {
  public:
-  double similarity_score(const SocketEvent* a, const SocketEvent* b) {
-    double result = 0.0f;
+  int similarity_score(const SocketEvent* a, const SocketEvent* b) {
+    int result = 0.0f;
 
     if (a->type != b->type) {
-      return 1.0f;
+      return INT_MAX;
     }
 
     if (a->type == SocketEvent::SEND) {
@@ -393,7 +389,8 @@ class SocketEventSimilarityXpilot : public SocketEventSimilarity {
       //  result += 1.0f;
       UCharVecEditDistance ed(msg_a, msg_b);
       int val = ed.compute_editdistance();
-      result = (double)(val) / (double)(std::max(msg_a.size(), msg_b.size()));
+      result = val;
+      //result = (double)(val) / (double)(std::max(msg_a.size(), msg_b.size()));
       //result = (double)(val);
       //CVMESSAGE("Edit distance(S) = " << result);
 
@@ -430,12 +427,12 @@ class SocketEventSimilarityXpilot : public SocketEventSimilarity {
       //  result += 1.0f;
       UCharVecEditDistance ed(msg_a, msg_b);
       int val = ed.compute_editdistance();
-      result = (double)(val) / (double)(std::max(msg_a.size(), msg_b.size()));
+      result = val;
+      //result = (double)(val) / (double)(std::max(msg_a.size(), msg_b.size()));
       //result = (double)(val);
       //CVMESSAGE("Edit distance(R) = " << result);
 
     }
-
     return result;
   }
 
@@ -455,8 +452,8 @@ class SocketEventSimilarityTetrinet: public SocketEventSimilarity {
 
   // Return a 0 to 1.0 measure of how similar two SocketEvents are, 0.0 being
   // equal, 1.0 being very different
-  double similarity_score(const SocketEvent* a, const SocketEvent* b) {
-    double result = 0.0f;
+  int similarity_score(const SocketEvent* a, const SocketEvent* b) {
+    int result = 0;
 
     assert(a->data[a->data.size()-1] == 0xFF);
     assert(b->data[b->data.size()-1] == 0xFF);
@@ -467,31 +464,32 @@ class SocketEventSimilarityTetrinet: public SocketEventSimilarity {
     //std::cout << "comparing: " << str_a << " with " << str_b << std::endl;
 
     // Check if the packet types are equal
-    result += check_packet_type(str_a, str_b);
+    //result += check_packet_type(str_a, str_b);
+    if(!check_packet_type(str_a, str_b))
+      return INT_MAX;
 
     // If the packet type is a player move, calculate the difference
-    result += check_player_move(str_a, str_b);
-
-    return result;
+    //result += check_player_move(str_a, str_b);
+    return check_player_move(str_a, str_b);
   }
 
  private:
 
   // Extract packet type name, and compare if equal
-  double check_packet_type(std::string &a, std::string &b) {
+  bool check_packet_type(std::string &a, std::string &b) {
     boost::smatch what_a, what_b;
     if (regex_match(a, what_a, packet_type_regex_) && 
         regex_match(b, what_b, packet_type_regex_) &&
         what_a[1].str() == what_b[1].str()) {
       //std::cout << "ptypes: " 
       //    << what_a[1].str() << " and " << what_b[1].str() << std::endl;
-      return 0.0f;
+      return true;
     }
-    return 1.0f;
+    return false;
   }
 
   // Compute difference if packet is of type player move 
-  double check_player_move(std::string &a, std::string &b) {
+  int check_player_move(std::string &a, std::string &b) {
     boost::smatch what_a, what_b;
     if (regex_match(a, what_a, player_move_regex_) && 
         regex_match(b, what_b, player_move_regex_)) {
@@ -503,13 +501,14 @@ class SocketEventSimilarityTetrinet: public SocketEventSimilarity {
         val_b = boost::lexical_cast<int>(what_b[i].str());
         sum_of_differences += std::abs(val_a - val_b);
       }
+      return sum_of_differences;
 
-      double max_difference = 12 + 20 + 3; // TODO correct ?
-      assert(sum_of_differences < max_difference);
-      if (sum_of_differences > 0)
-        return (double)sum_of_differences / max_difference;
+      //double max_difference = 12 + 20 + 3; // TODO correct ?
+      //assert(sum_of_differences < max_difference);
+      //if (sum_of_differences > 0)
+      //  return (double)sum_of_differences / max_difference;
     }
-    return 0.0;
+    return INT_MAX;
   }
 
   boost::regex packet_type_regex_; 

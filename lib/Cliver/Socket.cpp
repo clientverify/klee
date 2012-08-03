@@ -127,6 +127,20 @@ bool SocketEvent::data_less(const SocketEvent &se) const {
 	return false;
 }
 
+bool SocketEventSizeLT::operator()(const SocketEvent* a, 
+		const SocketEvent* b) const {
+  if (ClientModelFlag == XPilot && a->type == b->type) {
+    if (a->type == SocketEvent::SEND) {
+      size_t start_a = 4 + 4 + UBATOINT_I(a->data, 4);
+      size_t start_b = 4 + 4 + UBATOINT_I(b->data, 4);
+      return (a->size() - start_a) < (b->size() - start_b);
+    } else {
+      return (a->size() - 8) < (b->size() - 8);
+    }
+  }
+  return a->size() < b->size();
+}
+
 bool SocketEventLT::operator()(const SocketEvent* a, 
 		const SocketEvent* b) const {
 	return a->less(*b);

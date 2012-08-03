@@ -52,6 +52,7 @@ namespace stats {
 	extern klee::Statistic stage_count;
 	extern klee::Statistic self_path_edit_distance;
 	extern klee::Statistic training_time;
+	extern klee::Statistic recv_round_instructions;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

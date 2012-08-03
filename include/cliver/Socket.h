@@ -16,6 +16,11 @@
 #include <vector>
 #include <set>
 
+#define UBATOINT_I(_b,_i) \
+    (((_b)[_i]<<24) + ((_b)[_i+1]<<16) + ((_b)[_i+2]<<8) + ((_b)[_i+3]))
+
+#define UBATOINT(_b) UBATOINT_I(_b, 0)
+
 #include <boost/serialization/access.hpp>
 
 namespace cliver {
@@ -66,6 +71,10 @@ inline std::ostream &operator<<(std::ostream &os, const SocketEvent &se) {
 }
 
 struct SocketEventLT {
+	bool operator()(const SocketEvent* a, const SocketEvent* b) const;
+};
+
+struct SocketEventSizeLT {
 	bool operator()(const SocketEvent* a, const SocketEvent* b) const;
 };
 
