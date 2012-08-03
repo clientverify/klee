@@ -36,6 +36,14 @@ DebugNetworkManager("debug-network-manager",llvm::cl::init(false));
 
 #ifndef NDEBUG
 
+#undef CVDEBUG
+#define CVDEBUG(x) \
+	__CVDEBUG(DebugNetworkManager, x);
+
+#undef CVDEBUG_S
+#define CVDEBUG_S(__state_id, __x) \
+	__CVDEBUG_S(DebugNetworkManager, __state_id, __x)
+
 #define RETURN_FAILURE_NO_SOCKET(action, reason) { \
 	if (DebugNetworkManager) { \
 	CVDEBUG("State: " << std::setw(4) << std::right << state_->id() \
@@ -84,6 +92,12 @@ DebugNetworkManager("debug-network-manager",llvm::cl::init(false));
 	Socket &socket = sockets_[socket_index]; 
 
 #else
+
+#undef CVDEBUG
+#define CVDEBUG(x)
+
+#undef CVDEBUG_S
+#define CVDEBUG_S(__state_id, __x)
 
 #define RETURN_FAILURE_NO_SOCKET(action, reason) { \
 	executor->terminate_state(state_); \

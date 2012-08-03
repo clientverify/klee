@@ -17,6 +17,7 @@
 
 #include <assert.h>
 #include <limits.h>
+#include "stdint.h"
 
 namespace cliver {
 
@@ -264,6 +265,85 @@ std::ostream& operator<<(std::ostream& os,
   edt.debug_print(os);
   return os;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+//#if 0
+template<class ScoreType, class SequenceType, class ValueType>
+class EditDistanceRowIt {
+ public:
+  EditDistanceRowIt(size_t s_size, size_t t_size)
+   : m_(s_size+1), 
+     n_(t_size+1),
+     costs_(0) {}
+
+  ~EditDistanceRowIt() {
+    if (costs_)
+      delete costs_;
+  }
+
+  inline void update_row(typename SequenceType::const_iterator s_begin,
+                         typename SequenceType::const_iterator t_begin,
+                         unsigned j) {
+    ValueType opt[3];
+    set_cost(0, j, 0, j);
+
+    for (int i=1; i<m_; ++i) {
+      int s_pos=i-1, t_pos=j-1;
+
+      uint8_t s_e = *(s_begin+s_pos);
+      uint8_t t_e = *(t_begin+t_pos);
+      opt[MATCH]  = cost(i-1, j-1) + ScoreType::match(s_e, t_e);
+      opt[INSERT] = cost(  i, j-1) + ScoreType::insert(s_e, t_e);
+      opt[DELETE] = cost(i-1,   j) + ScoreType::del(s_e, t_e);
+
+      set_cost(i, j, MATCH, opt[MATCH]);
+
+      for (int k=MATCH; k<=DELETE; ++k) {
+        if (opt[k] < cost(i, j)) {
+          set_cost(i, j, k, opt[k]);
+        }
+      }
+    }
+  }
+
+  ValueType compute_editdistance(typename SequenceType::const_iterator &s_begin,
+                                 typename SequenceType::const_iterator &t_begin) {
+
+    costs_ = new ValueType[m_*2];
+    for (int i=0; i<m_; ++i) {
+      set_cost(i, 0, 0, i);
+    }
+    for (int j=1; j<n_; ++j) {
+      update_row(s_begin, t_begin, j);
+    }
+    return cost(m_-1, n_-1);
+  }
+
+  inline void set_cost(unsigned i, unsigned j, unsigned k, ValueType cost) {
+    //(*costs_)[i + (j % 2)*m_] = cost;
+    costs_[i + (j % 2)*m_] = cost;
+  }
+
+  inline ValueType cost(unsigned i, unsigned j) const {
+    //return (*costs_)[i + (j % 2)*m_];
+    return costs_[i + (j % 2)*m_];
+  }
+
+ protected:
+  EditDistanceRowIt() {}
+  int m_, n_;
+  ValueType* costs_;
+};
+
+//template<class ScoreType, class SequenceType, class ValueType>
+//std::ostream& operator<<(std::ostream& os, 
+//  const EditDistanceRowIt< ScoreType, SequenceType, ValueType > &edt) {
+//  edt.debug_print(os);
+//  return os;
+//}
+//#endif
+
 
 ////////////////////////////////////////////////////////////////////////////////
 

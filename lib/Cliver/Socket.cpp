@@ -14,6 +14,8 @@
 
 #include "llvm/Support/CommandLine.h"
 
+#include <algorithm>
+
 namespace cliver {
 
 bool DebugSocketFlag;
@@ -155,7 +157,9 @@ bool SocketEventLT::operator()(const SocketEvent* a,
 
 bool SocketEventDataOnlyLT::operator()(const SocketEvent* a, 
 		const SocketEvent* b) const {
-	return a->data_less(*b);
+	//return a->data_less(*b);
+  return std::lexicographical_compare(a->data.begin()+a->header_length, a->data.end(),
+                                      b->data.begin()+b->header_length, b->data.end());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

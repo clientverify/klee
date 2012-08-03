@@ -256,7 +256,7 @@ void TrainingExecutionTraceManager::notify(ExecutionEvent ev) {
   switch (ev.event_type) {
 
     case CV_SELECT_EVENT: {
-      CVMESSAGE("SELECT_EVENT");
+      CVDEBUG("SELECT_EVENT");
       property->is_recv_processing = false;
     }
 
@@ -536,6 +536,7 @@ void VerifyExecutionTraceManager::initialize_training_data() {
         if ((*tod->edit_distance_matrix)[i*tod->message_count + j] == -1) {
           SocketEvent *se_j = tod->socket_events_by_size[j];
           int score = similarity_measure_->similarity_score(se_i, se_j);
+          //CVMESSAGE("Computed msg/msg distance measure: " << score);
           (*tod->edit_distance_matrix)[i*tod->message_count + j] = score;
         }
       }

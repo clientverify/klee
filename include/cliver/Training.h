@@ -111,7 +111,8 @@ class TrainingObject {
   void write(ExecutionStateProperty* property, ClientVerifier* cv);
 
  public:
-  std::set<SocketEvent*> socket_event_set; // std::set of SocketEvent ptrs
+  //std::set<SocketEvent*> socket_event_set; // std::set of SocketEvent ptrs
+  SocketEventDataSet socket_event_set;
   ExecutionTrace trace; 
   std::string name; // Name created during seralization
   int id;
