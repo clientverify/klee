@@ -52,7 +52,6 @@ class ClientVerifier;
 
 typedef std::pair<unsigned, unsigned> TrainingObjectFilter;
 
-
 ////////////////////////////////////////////////////////////////////////////////
 
 class TrainingObject;
@@ -71,7 +70,7 @@ struct TrainingObjectLengthLT {
 
 typedef std::set<TrainingObject*, TrainingObjectTraceLT> TrainingObjectSet;
 typedef std::vector<TrainingObject*> TrainingObjectList;
-typedef std::vector<std::pair<double, TrainingObject*> > TrainingObjectScoreList;
+typedef std::vector<std::pair<int, TrainingObject*> > TrainingObjectScoreList;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -82,6 +81,13 @@ class TrainingObjectData {
   TrainingObjectSet training_object_set;
   unsigned message_count;
   std::vector<int> *edit_distance_matrix;
+  boost::unordered_map<SocketEvent*, TrainingObject*> reverse_socket_event_map;
+  std::vector<SocketEvent*> socket_events_by_size;
+  boost::unordered_map<SocketEvent*, unsigned> socket_event_indices;
+
+  void select_training_paths_for_message(const SocketEvent *msg, int radius,
+                                         SocketEventSimilarity *smeasure,
+                                         std::set<TrainingObject*> &selected);
 };
 
 //typedef std::map<TrainingObjectFilter*, TrainingObjectData*, TrainingObjectFilterLT> TrainingFilterMap;
@@ -139,12 +145,12 @@ class TrainingManager {
                                        SocketEventSimilarity &measure) {
     // Iterate over all of the TrainingObjects and compare their similarity
     for (int i=0; i<scorelist.size(); ++i) {
-      double min = INT_MAX;
+      int min = INT_MAX;
       std::set<SocketEvent*>::iterator 
           it = scorelist[i].second->socket_event_set.begin(),
           ie = scorelist[i].second->socket_event_set.end();
       for (; it != ie; ++it) {
-        double result = measure.similarity_score(se, *it);
+        int result = measure.similarity_score(se, *it);
         if (result < min) min = result;
       }
       scorelist[i].first = min;
@@ -155,13 +161,13 @@ class TrainingManager {
   static TrainingObject* find_first_with_score(const SocketEvent *se, 
                                                TrainingObjectScoreList &scorelist,
                                                SocketEventSimilarity &measure,
-                                               double first_score = 0.0f) {
+                                               int first_score = 0) {
     for (int i=0; i<scorelist.size(); ++i) {
       std::set<SocketEvent*>::iterator 
           it = scorelist[i].second->socket_event_set.begin(),
           ie = scorelist[i].second->socket_event_set.end();
       for (; it != ie; ++it) {
-        double result = measure.similarity_score(se, *it);
+        int result = measure.similarity_score(se, *it);
         if (result <= first_score)
           return scorelist[i].second;
       }
