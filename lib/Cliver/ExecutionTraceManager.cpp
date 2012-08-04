@@ -521,6 +521,13 @@ void VerifyExecutionTraceManager::initialize_training_data() {
     }
   }
 
+  size_t total_count = 0;
+  size_t count = 0;
+  foreach (TrainingFilterMap::value_type &d, filter_map_) {
+    TrainingObjectData *tod = d.second;
+    total_count += (tod->message_count*tod->message_count);
+  }
+
   foreach (TrainingFilterMap::value_type &d, filter_map_) {
     TrainingObjectData *tod = d.second;
 
@@ -537,7 +544,6 @@ void VerifyExecutionTraceManager::initialize_training_data() {
 
       llvm::sys::TimeValue start_now(0,0),start_user(0,0),sys(0,0);
       llvm::sys::Process::GetTimeUsage(start_now,start_user,sys);
-      size_t count = 0;
       for (unsigned i = 0; i < tod->message_count; ++i) {
         SocketEvent *se_i = tod->socket_events_by_size[i];
         tod->socket_event_indices[se_i] = i;
@@ -554,7 +560,8 @@ void VerifyExecutionTraceManager::initialize_training_data() {
             llvm::sys::Process::GetTimeUsage(curr_now,curr_user,sys);
             llvm::sys::TimeValue delta = curr_user - start_user;
             double percent_done = 
-                ((double)(count))/((double)(tod->edit_distance_matrix->size()));
+                ((double)(count))/((double)(total_count));
+                //((double)(count))/((double)(tod->edit_distance_matrix->size()));
 
             CVMESSAGE(percent_done * 100 << "% completed in " << delta.usec() / 1000000 << " (s), "
                       << "est. time remaining is " << ((delta.usec() / 1000000)/percent_done)-(delta.usec() / 1000000) 
