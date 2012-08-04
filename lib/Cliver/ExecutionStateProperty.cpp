@@ -53,7 +53,7 @@ int ExecutionStateProperty::compare(const ExecutionStateProperty &b) const {
 	const ExecutionStateProperty *_b = static_cast<const ExecutionStateProperty*>(&b);
 
 	if (_b->is_recv_processing != is_recv_processing) {
-    return (int)_b->is_recv_processing - (int)is_recv_processing;
+    return (char)_b->is_recv_processing - (char)is_recv_processing;
   }
 
   // Reversed for priority queue!

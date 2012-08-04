@@ -717,6 +717,21 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
         radius *= 2;
     }
 
+    if (selected.size() > 5) {
+      radius /= 2;
+      scores = std::vector<int>();
+      selected = std::set<TrainingObject*>();
+      while (selected.empty()) {
+        filter_map_[filter]->select_training_paths_for_message(socket_event, radius,
+                                                              similarity_measure_,
+                                                              scores, selected);
+        CVMESSAGE("Re-selected " << selected.size() << " paths with radius " << radius);
+        if (selected.empty())
+          radius++;
+      }
+
+    }
+
   // Store size of tree in stats
     stats::edit_distance_tree_size = selected.size(); 
 
@@ -1166,11 +1181,15 @@ void VerifyExecutionTraceManager::process_all_states(
 
   CVDEBUG("All states should have INT_MAX=" << INT_MAX << " edit distance.");
   for (unsigned i=0; i<states.size(); ++i) {
-    //assert(states[i]->edit_distance == INT_MAX);
-    int old_ed = states[i]->edit_distance;
-    recompute_property(states[i]);
-    CVDEBUG("Edit distance computed from: " << old_ed 
-              << " to " << states[i]->edit_distance);
+    if (states[i]->is_recv_processing) {
+      CVMESSAGE("Not recompting recv_processing state!");
+    } else {
+      //assert(states[i]->edit_distance == INT_MAX);
+      int old_ed = states[i]->edit_distance;
+      recompute_property(states[i]);
+      CVDEBUG("Edit distance computed from: " << old_ed 
+                << " to " << states[i]->edit_distance);
+    }
   }
   CVMESSAGE("Done recomputing.");
             
