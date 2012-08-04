@@ -527,6 +527,8 @@ void VerifyExecutionTraceManager::initialize_training_data() {
     TrainingObjectData *tod = d.second;
     total_count += (tod->message_count*tod->message_count);
   }
+  llvm::sys::TimeValue start_now(0,0),start_user(0,0),sys(0,0);
+  llvm::sys::Process::GetTimeUsage(start_now,start_user,sys);
 
   foreach (TrainingFilterMap::value_type &d, filter_map_) {
     TrainingObjectData *tod = d.second;
@@ -542,8 +544,6 @@ void VerifyExecutionTraceManager::initialize_training_data() {
                 << " scores between training messages for " << tod->training_objects.size()
                 << " paths.");
 
-      llvm::sys::TimeValue start_now(0,0),start_user(0,0),sys(0,0);
-      llvm::sys::Process::GetTimeUsage(start_now,start_user,sys);
       for (unsigned i = 0; i < tod->message_count; ++i) {
         SocketEvent *se_i = tod->socket_events_by_size[i];
         tod->socket_event_indices[se_i] = i;
@@ -558,7 +558,7 @@ void VerifyExecutionTraceManager::initialize_training_data() {
               = (*tod->edit_distance_matrix)[j*tod->message_count + i];
           }
           count++;
-          if ((count % 0xFFFF) == 0) {
+          if ((count % 0xFFFFF) == 0) {
             llvm::sys::TimeValue curr_now(0,0),curr_user(0,0);
             llvm::sys::Process::GetTimeUsage(curr_now,curr_user,sys);
             llvm::sys::TimeValue delta = curr_user - start_user;
