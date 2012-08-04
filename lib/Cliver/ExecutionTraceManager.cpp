@@ -526,7 +526,7 @@ void VerifyExecutionTraceManager::initialize_training_data() {
   size_t count = 0;
   foreach (TrainingFilterMap::value_type &d, filter_map_) {
     TrainingObjectData *tod = d.second;
-    total_count += (tod->message_count*tod->message_count);
+    total_count += ((tod->message_count*tod->message_count)/2);
   }
   llvm::sys::TimeValue start_now(0,0),start_user(0,0),sys(0,0);
   llvm::sys::Process::GetTimeUsage(start_now,start_user,sys);
@@ -535,24 +535,32 @@ void VerifyExecutionTraceManager::initialize_training_data() {
             << omp_get_max_threads() << " threads"
             << ", matrix has " << total_count << " elements.");
 
+  int tod_count = 0;
   foreach (TrainingFilterMap::value_type &d, filter_map_) {
     TrainingObjectData *tod = d.second;
+    tod_count++;
 
     SocketEventSizeLT comp;
     std::sort(tod->socket_events_by_size.begin(), tod->socket_events_by_size.end(), comp);
 
+    size_t matrix_size = tod->message_count*tod->message_count;
     //tod->edit_distance_matrix 
     //    = new std::vector<int>(tod->message_count*tod->message_count, -1);
-    tod->edit_distance_matrix = (int*)malloc(sizeof(int)*(tod->message_count*tod->message_count));
+    tod->edit_distance_matrix = (int*)malloc(sizeof(int)*matrix_size);
 
-    CVMESSAGE("Computing " << (tod->message_count*tod->message_count)/2
+    CVMESSAGE("Computing " << matrix_size/2
               << " scores between training messages for " << tod->training_objects.size()
               << " paths.");
 
-    double previous_percent_done = 0.0;
     for (unsigned i = 0; i < tod->message_count; ++i) {
       SocketEvent *se_i = tod->socket_events_by_size[i];
       tod->socket_event_indices[se_i] = i;
+    }
+
+    double previous_percent_done = 0.0;
+    #pragma omp parallel for schedule(dynamic)
+    for (unsigned i = 0; i < tod->message_count; ++i) {
+      SocketEvent *se_i = tod->socket_events_by_size[i];
 
       //unsigned j_max = tod->message_count;
       //unsigned chunk = j_max / omp_get_max_threads(); 
@@ -570,43 +578,53 @@ void VerifyExecutionTraceManager::initialize_training_data() {
       //}
 
       unsigned row = i*tod->message_count;
-      #pragma omp parallel for 
       for (unsigned j = 0; j < i; ++j) {
         SocketEvent *se_j = tod->socket_events_by_size[j];
         int score = similarity_measure_->similarity_score(se_i, se_j);
         tod->edit_distance_matrix[row + j] = score;
       }
+    }
 
-      //count += (tod->message_count*tod->message_count)/2;
-      count += i;
+    count += (tod->message_count*tod->message_count)/2;
+    //count += i;
 
-      double percent_done = 
-          ((double)(count))/((double)(total_count));
-          //((double)(count))/((double)(tod->edit_distance_matrix->size()));
-      
-      if ((percent_done - previous_percent_done) > 0.001f) {
-        llvm::sys::TimeValue curr_now(0,0),curr_user(0,0);
-        llvm::sys::Process::GetTimeUsage(curr_now,curr_user,sys);
-        llvm::sys::TimeValue delta = curr_user - start_user;
-        CVMESSAGE(percent_done * 100 
-                  << "% completed in " << delta.usec() / 1000000 << " (s), "
-                  << "est. time remaining is " 
-                  << ((delta.usec() / 1000000)/percent_done)-(delta.usec() / 1000000) 
-                  << " (s)");
-        previous_percent_done = percent_done;
-      }
+    double percent_done = 
+        ((double)(count))/((double)(total_count));
+        //((double)(count))/((double)(tod->edit_distance_matrix->size()));
+    
+    if ((percent_done - previous_percent_done) > 0.001f) {
+      llvm::sys::TimeValue curr_now(0,0),curr_user(0,0);
+      llvm::sys::Process::GetTimeUsage(curr_now,curr_user,sys);
+      llvm::sys::TimeValue delta = curr_user - start_user;
+      CVMESSAGE(percent_done * 100 
+                << "% completed in " << delta.usec() / 1000000 << " (s), "
+                << "est. time remaining is " 
+                << ((delta.usec() / 1000000)/percent_done)-(delta.usec() / 1000000) 
+                << " (s)");
+      previous_percent_done = percent_done;
     }
 
     unsigned j_max = tod->message_count;
+    #pragma omp parallel for schedule(dynamic)
     for (unsigned i = 0; i < tod->message_count; ++i) {
       unsigned row = i*tod->message_count;
-      #pragma omp parallel for 
       for (unsigned j = i; j < j_max; ++j) {
         tod->edit_distance_matrix[row + j]
           = tod->edit_distance_matrix[j*tod->message_count + i];
       }
     }
-    count += (tod->message_count*tod->message_count)/2;
+    //count += (tod->message_count*tod->message_count)/2;
+
+
+    std::stringstream name_ss;
+    name_ss << "training_ed_matrix_" << tod_count << "_" << matrix_size << ".mat";
+    std::string name = std::string(name_ss.str());
+    std::ostream *file = cv_->openOutputFile(name);
+    file->write( reinterpret_cast<char*>(&tod_count), sizeof(tod_count) );
+    file->write( reinterpret_cast<char*>(&matrix_size), sizeof(matrix_size) );
+    file->write( reinterpret_cast<char*>(tod->edit_distance_matrix), sizeof(int)*matrix_size );
+    static_cast<std::ofstream*>(file)->close();
+
 
   }
 
