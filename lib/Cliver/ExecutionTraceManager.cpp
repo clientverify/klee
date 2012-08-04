@@ -553,8 +553,10 @@ void VerifyExecutionTraceManager::initialize_training_data() {
       SocketEvent *se_i = tod->socket_events_by_size[i];
       tod->socket_event_indices[se_i] = i;
 
-      #pragma omp parallel for 
-      for (unsigned j = 0; j < tod->message_count; ++j) {
+      unsigned j_max = tod->message_count;
+      unsigned chunk = j_max / omp_get_max_threads(); 
+      #pragma omp parallel for schedule(dynamic,chunk)
+      for (unsigned j = 0; j < j_max; ++j) {
         if ((*tod->edit_distance_matrix)[j*tod->message_count + i] == -1) {
           SocketEvent *se_j = tod->socket_events_by_size[j];
           int score = similarity_measure_->similarity_score(se_i, se_j);
@@ -571,7 +573,7 @@ void VerifyExecutionTraceManager::initialize_training_data() {
           ((double)(count))/((double)(total_count));
           //((double)(count))/((double)(tod->edit_distance_matrix->size()));
       
-      if ((percent_done - previous_percent_done) > 0.01f) {
+      if ((percent_done - previous_percent_done) > 0.005f) {
         llvm::sys::TimeValue curr_now(0,0),curr_user(0,0);
         llvm::sys::Process::GetTimeUsage(curr_now,curr_user,sys);
         llvm::sys::TimeValue delta = curr_user - start_user;
