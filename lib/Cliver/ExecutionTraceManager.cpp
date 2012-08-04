@@ -578,7 +578,7 @@ void VerifyExecutionTraceManager::initialize_training_data() {
       }
 
       //count += (tod->message_count*tod->message_count)/2;
-      count += tod->message_count;
+      count += i;
 
       double percent_done = 
           ((double)(count))/((double)(total_count));
