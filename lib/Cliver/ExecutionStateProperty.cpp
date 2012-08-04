@@ -24,7 +24,7 @@ bool ExecutionStatePropertyLT::operator()(const ExecutionStateProperty* a,
 //////////////////////////////////////////////////////////////////////////////
 
 ExecutionStateProperty::ExecutionStateProperty()
-	: round(-1), client_round(0), edit_distance(-1), 
+	: round(-1), client_round(0), edit_distance(0), 
     symbolic_vars(0), recompute(true), is_recv_processing(false) {}
 
 ExecutionStateProperty* ExecutionStateProperty::clone() { 
@@ -40,7 +40,7 @@ ExecutionStateProperty* ExecutionStateProperty::clone() {
 
 void ExecutionStateProperty::reset() {
   symbolic_vars = 0;
-  edit_distance = -1;
+  edit_distance = 0;
 
   //if (is_recv_processing) {
   //  CVMESSAGE("Resetting is_recv_processing");
@@ -53,8 +53,11 @@ int ExecutionStateProperty::compare(const ExecutionStateProperty &b) const {
 	const ExecutionStateProperty *_b = static_cast<const ExecutionStateProperty*>(&b);
 
   // Reversed for priority queue!
-	if (_b->edit_distance != edit_distance) 
+	if (_b->edit_distance != edit_distance) {
+    if (edit_distance == INT_MAX)
+      return INT_MIN;
     return _b->edit_distance - edit_distance;
+  }
 
 	if (round != _b->round)
 		return round - _b->round;
