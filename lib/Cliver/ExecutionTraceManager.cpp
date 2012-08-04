@@ -62,6 +62,9 @@ FilterTrainingUsage("filter-training-usage",llvm::cl::init(0));
 llvm::cl::opt<unsigned>
 MedoidCount("medoid-count",llvm::cl::init(1));
 
+llvm::cl::opt<bool>
+AggressiveNaive("aggressive-naive",llvm::cl::init(false));
+
 // Also used in CVSearcher
 unsigned RepeatExecutionAtRoundFlag;
 llvm::cl::opt<unsigned, true>
@@ -629,6 +632,11 @@ void VerifyExecutionTraceManager::update_edit_distance(
   ExecutionStage* stage = stages_[property];
   assert(stage);
 
+  //if (stage->current_k >= MaxKExtension) {
+  if (property->edit_distance == INT_MAX) {
+    return;
+  }
+
   //if (!EditDistanceAtCloneOnly) {
   //  stage->ed_tree_map[property]->update_element(
   //      stage->etrace_tree->leaf_element(property));
@@ -682,8 +690,8 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
 
   TrainingObjectFilter filter(socket_event->type, state->prevPC->kbb->id);
  
-  //if (socket_event->type == SocketEvent::RECV || filter_map_.count(filter) == 0) {
-  if (filter_map_.count(filter) == 0) {
+  if ((AggressiveNaive && socket_event->type == SocketEvent::RECV) || filter_map_.count(filter) == 0) {
+  //if (filter_map_.count(filter) == 0) {
     CVMESSAGE("Filter not found! naive search");
     stage->root_ed_tree = NULL;
     return;
@@ -924,7 +932,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
             CVDEBUG("First basic block entry (stage)");
             //klee::TimerStatIncrementer build_timer(stats::edit_distance_build_time);
 
-            klee::TimerStatIncrementer training_timer(stats::training_time);
+            //klee::TimerStatIncrementer training_timer(stats::training_time);
             // Build the edit distance tree using training data
             if (RepeatExecutionAtRound > 0 && 
                 property->round == RepeatExecutionAtRound) {
@@ -1164,6 +1172,8 @@ void VerifyExecutionTraceManager::process_all_states(
     CVDEBUG("Edit distance computed from: " << old_ed 
               << " to " << states[i]->edit_distance);
   }
+  CVMESSAGE("Done recomputing.");
+            
 }
 
 // Delete the trees associated with each state in the edit distance map
