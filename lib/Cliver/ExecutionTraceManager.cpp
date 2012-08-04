@@ -544,9 +544,12 @@ void VerifyExecutionTraceManager::initialize_training_data() {
                 << " scores between training messages for " << tod->training_objects.size()
                 << " paths.");
 
+
       for (unsigned i = 0; i < tod->message_count; ++i) {
         SocketEvent *se_i = tod->socket_events_by_size[i];
         tod->socket_event_indices[se_i] = i;
+
+        #pragma omp parallel for 
         for (unsigned j = 0; j < tod->message_count; ++j) {
           if ((*tod->edit_distance_matrix)[j*tod->message_count + i] == -1) {
             SocketEvent *se_j = tod->socket_events_by_size[j];
@@ -557,23 +560,22 @@ void VerifyExecutionTraceManager::initialize_training_data() {
             (*tod->edit_distance_matrix)[i*tod->message_count + j]
               = (*tod->edit_distance_matrix)[j*tod->message_count + i];
           }
-          count++;
-          if ((count % 0xFFFFF) == 0) {
-            llvm::sys::TimeValue curr_now(0,0),curr_user(0,0);
-            llvm::sys::Process::GetTimeUsage(curr_now,curr_user,sys);
-            llvm::sys::TimeValue delta = curr_user - start_user;
-            double percent_done = 
-                ((double)(count))/((double)(total_count));
-                //((double)(count))/((double)(tod->edit_distance_matrix->size()));
-
-            CVMESSAGE(percent_done * 100 << "% completed in " << delta.usec() / 1000000 << " (s), "
-                      << "est. time remaining is " << ((delta.usec() / 1000000)/percent_done)-(delta.usec() / 1000000) 
-                      << " (s)");
-
-
-          }
         }
       }
+
+      count += tod->message_count;
+      llvm::sys::TimeValue curr_now(0,0),curr_user(0,0);
+      llvm::sys::Process::GetTimeUsage(curr_now,curr_user,sys);
+      llvm::sys::TimeValue delta = curr_user - start_user;
+      double percent_done = 
+          ((double)(count))/((double)(total_count));
+          //((double)(count))/((double)(tod->edit_distance_matrix->size()));
+
+      CVMESSAGE(percent_done * 100 
+                << "% completed in " << delta.usec() / 1000000 << " (s), "
+                << "est. time remaining is " 
+                << ((delta.usec() / 1000000)/percent_done)-(delta.usec() / 1000000) 
+                << " (s)");
     //} else {
     //  CVMESSAGE("Not computing " << tod->edit_distance_matrix->size() 
     //            << " scores between training messages for " << tod->training_objects.size()
