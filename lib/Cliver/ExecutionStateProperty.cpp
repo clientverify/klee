@@ -54,8 +54,6 @@ int ExecutionStateProperty::compare(const ExecutionStateProperty &b) const {
 
   // Reversed for priority queue!
 	if (_b->edit_distance != edit_distance) {
-    if (edit_distance == INT_MAX)
-      return INT_MIN;
     return _b->edit_distance - edit_distance;
   }
 
