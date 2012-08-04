@@ -548,14 +548,17 @@ void VerifyExecutionTraceManager::initialize_training_data() {
         SocketEvent *se_i = tod->socket_events_by_size[i];
         tod->socket_event_indices[se_i] = i;
         for (unsigned j = 0; j < tod->message_count; ++j) {
-          if ((*tod->edit_distance_matrix)[i*tod->message_count + j] == -1) {
+          if ((*tod->edit_distance_matrix)[j*tod->message_count + i] == -1) {
             SocketEvent *se_j = tod->socket_events_by_size[j];
             int score = similarity_measure_->similarity_score(se_i, se_j);
             //CVMESSAGE("Computed msg/msg distance measure: " << score);
             (*tod->edit_distance_matrix)[i*tod->message_count + j] = score;
+          } else {
+            (*tod->edit_distance_matrix)[i*tod->message_count + j]
+              = (*tod->edit_distance_matrix)[j*tod->message_count + i];
           }
           count++;
-          if ((count % 0xFFFFF) == 0) {
+          if ((count % 0xFFFF) == 0) {
             llvm::sys::TimeValue curr_now(0,0),curr_user(0,0);
             llvm::sys::Process::GetTimeUsage(curr_now,curr_user,sys);
             llvm::sys::TimeValue delta = curr_user - start_user;
