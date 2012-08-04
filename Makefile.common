@@ -26,6 +26,10 @@ CPPFLAGS += -Wno-deprecated
 # Required for waffles
 LIBS += -lGClasses -lpng
 
+# Required for openmp 
+CPPFLAGS += -fopenmp
+LIBS += -fopenmp
+
 # TCMalloc enabled by default
 ifneq ($(DISABLE_TCMALLOC),1)
   LIBS += -ltcmalloc
