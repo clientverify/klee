@@ -576,23 +576,25 @@ void VerifyExecutionTraceManager::initialize_training_data() {
         int score = similarity_measure_->similarity_score(se_i, se_j);
         tod->edit_distance_matrix[row + j] = score;
       }
-    }
-    count += (tod->message_count*tod->message_count)/2;
 
-    double percent_done = 
-        ((double)(count))/((double)(total_count));
-        //((double)(count))/((double)(tod->edit_distance_matrix->size()));
-    
-    if ((percent_done - previous_percent_done) > 0.005f) {
-      llvm::sys::TimeValue curr_now(0,0),curr_user(0,0);
-      llvm::sys::Process::GetTimeUsage(curr_now,curr_user,sys);
-      llvm::sys::TimeValue delta = curr_user - start_user;
-      CVMESSAGE(percent_done * 100 
-                << "% completed in " << delta.usec() / 1000000 << " (s), "
-                << "est. time remaining is " 
-                << ((delta.usec() / 1000000)/percent_done)-(delta.usec() / 1000000) 
-                << " (s)");
-      previous_percent_done = percent_done;
+      //count += (tod->message_count*tod->message_count)/2;
+      count += tod->message_count;
+
+      double percent_done = 
+          ((double)(count))/((double)(total_count));
+          //((double)(count))/((double)(tod->edit_distance_matrix->size()));
+      
+      if ((percent_done - previous_percent_done) > 0.001f) {
+        llvm::sys::TimeValue curr_now(0,0),curr_user(0,0);
+        llvm::sys::Process::GetTimeUsage(curr_now,curr_user,sys);
+        llvm::sys::TimeValue delta = curr_user - start_user;
+        CVMESSAGE(percent_done * 100 
+                  << "% completed in " << delta.usec() / 1000000 << " (s), "
+                  << "est. time remaining is " 
+                  << ((delta.usec() / 1000000)/percent_done)-(delta.usec() / 1000000) 
+                  << " (s)");
+        previous_percent_done = percent_done;
+      }
     }
 
     unsigned j_max = tod->message_count;
