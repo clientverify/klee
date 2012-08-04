@@ -80,7 +80,8 @@ class TrainingObjectData {
   std::vector<TrainingObject*> training_objects;
   TrainingObjectSet training_object_set;
   unsigned message_count;
-  std::vector<int> *edit_distance_matrix;
+  //std::vector<int> *edit_distance_matrix;
+  int *edit_distance_matrix;
   boost::unordered_map<SocketEvent*, TrainingObject*> reverse_socket_event_map;
   std::vector<SocketEvent*> socket_events_by_size;
   boost::unordered_map<SocketEvent*, unsigned> socket_event_indices;

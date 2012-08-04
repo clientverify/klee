@@ -541,10 +541,11 @@ void VerifyExecutionTraceManager::initialize_training_data() {
     SocketEventSizeLT comp;
     std::sort(tod->socket_events_by_size.begin(), tod->socket_events_by_size.end(), comp);
 
-    tod->edit_distance_matrix 
-        = new std::vector<int>(tod->message_count*tod->message_count, -1);
+    //tod->edit_distance_matrix 
+    //    = new std::vector<int>(tod->message_count*tod->message_count, -1);
+    tod->edit_distance_matrix = (int*)malloc(sizeof(int)*(tod->message_count*tod->message_count));
 
-    CVMESSAGE("Computing " << tod->edit_distance_matrix->size() 
+    CVMESSAGE("Computing " << (tod->message_count*tod->message_count)/2
               << " scores between training messages for " << tod->training_objects.size()
               << " paths.");
 
@@ -553,38 +554,58 @@ void VerifyExecutionTraceManager::initialize_training_data() {
       SocketEvent *se_i = tod->socket_events_by_size[i];
       tod->socket_event_indices[se_i] = i;
 
-      unsigned j_max = tod->message_count;
-      unsigned chunk = j_max / omp_get_max_threads(); 
-      #pragma omp parallel for schedule(dynamic,chunk)
-      for (unsigned j = 0; j < j_max; ++j) {
-        if ((*tod->edit_distance_matrix)[j*tod->message_count + i] == -1) {
-          SocketEvent *se_j = tod->socket_events_by_size[j];
-          int score = similarity_measure_->similarity_score(se_i, se_j);
-          //CVMESSAGE("Computed msg/msg distance measure: " << score);
-          (*tod->edit_distance_matrix)[i*tod->message_count + j] = score;
-        } else {
-          (*tod->edit_distance_matrix)[i*tod->message_count + j]
-            = (*tod->edit_distance_matrix)[j*tod->message_count + i];
-        }
-      }
-      count += tod->message_count;
+      //unsigned j_max = tod->message_count;
+      //unsigned chunk = j_max / omp_get_max_threads(); 
+      //#pragma omp parallel for schedule(dynamic,chunk)
+      //for (unsigned j = 0; j < j_max; ++j) {
+      //  if ((*tod->edit_distance_matrix)[j*tod->message_count + i] == -1) {
+      //    SocketEvent *se_j = tod->socket_events_by_size[j];
+      //    int score = similarity_measure_->similarity_score(se_i, se_j);
+      //    //CVMESSAGE("Computed msg/msg distance measure: " << score);
+      //    (*tod->edit_distance_matrix)[i*tod->message_count + j] = score;
+      //  } else {
+      //    (*tod->edit_distance_matrix)[i*tod->message_count + j]
+      //      = (*tod->edit_distance_matrix)[j*tod->message_count + i];
+      //  }
+      //}
 
-      double percent_done = 
-          ((double)(count))/((double)(total_count));
-          //((double)(count))/((double)(tod->edit_distance_matrix->size()));
-      
-      if ((percent_done - previous_percent_done) > 0.005f) {
-        llvm::sys::TimeValue curr_now(0,0),curr_user(0,0);
-        llvm::sys::Process::GetTimeUsage(curr_now,curr_user,sys);
-        llvm::sys::TimeValue delta = curr_user - start_user;
-        CVMESSAGE(percent_done * 100 
-                  << "% completed in " << delta.usec() / 1000000 << " (s), "
-                  << "est. time remaining is " 
-                  << ((delta.usec() / 1000000)/percent_done)-(delta.usec() / 1000000) 
-                  << " (s)");
-        previous_percent_done = percent_done;
+      unsigned row = i*tod->message_count;
+      #pragma omp parallel for 
+      for (unsigned j = 0; j < i; ++j) {
+        SocketEvent *se_j = tod->socket_events_by_size[j];
+        int score = similarity_measure_->similarity_score(se_i, se_j);
+        tod->edit_distance_matrix[row + j] = score;
       }
     }
+    count += (tod->message_count*tod->message_count)/2;
+
+    double percent_done = 
+        ((double)(count))/((double)(total_count));
+        //((double)(count))/((double)(tod->edit_distance_matrix->size()));
+    
+    if ((percent_done - previous_percent_done) > 0.005f) {
+      llvm::sys::TimeValue curr_now(0,0),curr_user(0,0);
+      llvm::sys::Process::GetTimeUsage(curr_now,curr_user,sys);
+      llvm::sys::TimeValue delta = curr_user - start_user;
+      CVMESSAGE(percent_done * 100 
+                << "% completed in " << delta.usec() / 1000000 << " (s), "
+                << "est. time remaining is " 
+                << ((delta.usec() / 1000000)/percent_done)-(delta.usec() / 1000000) 
+                << " (s)");
+      previous_percent_done = percent_done;
+    }
+
+    unsigned j_max = tod->message_count;
+    for (unsigned i = 0; i < tod->message_count; ++i) {
+      unsigned row = i*tod->message_count;
+      #pragma omp parallel for 
+      for (unsigned j = i; j < j_max; ++j) {
+        tod->edit_distance_matrix[row + j]
+          = tod->edit_distance_matrix[j*tod->message_count + i];
+      }
+    }
+    count += (tod->message_count*tod->message_count)/2;
+
   }
 
   //foreach (TrainingFilterMap::value_type &d, filter_map_) {
@@ -675,7 +696,7 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
               << filter_map_[filter]->training_objects.size() << " paths");
 
     std::set<TrainingObject*> selected;
-    int radius = 0;
+    int radius = 1;
     std::vector<int> scores;
 
     //if (ClientModelFlag == XPilot) radius = 2;
@@ -686,7 +707,7 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
                                                              scores, selected);
       CVMESSAGE("Selected " << selected.size() << " paths with radius " << radius);
       if (selected.empty())
-        radius += 1;
+        radius *= 2;
     }
 
   // Store size of tree in stats
