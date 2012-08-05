@@ -65,6 +65,9 @@ MedoidCount("medoid-count",llvm::cl::init(1));
 llvm::cl::opt<bool>
 AggressiveNaive("aggressive-naive",llvm::cl::init(false));
 
+llvm::cl::opt<bool>
+DisableExecutionTraceTree("disable-et-tree",llvm::cl::init(false));
+
 // Also used in CVSearcher
 unsigned RepeatExecutionAtRoundFlag;
 llvm::cl::opt<unsigned, true>
@@ -158,9 +161,11 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
       ExecutionStage* stage = stages_[property];
 
-      if (state->basic_block_tracking() || !BasicBlockDisabling) {
-        //klee::TimerStatIncrementer extend_timer(stats::execution_tree_extend_time);
-        stage->etrace_tree->extend_element(state->prevPC->kbb->id, property);
+      if (stage->etrace_tree) {
+        if (state->basic_block_tracking() || !BasicBlockDisabling) {
+          //klee::TimerStatIncrementer extend_timer(stats::execution_tree_extend_time);
+          stage->etrace_tree->extend_element(state->prevPC->kbb->id, property);
+        }
       }
     }
     break;
@@ -169,7 +174,9 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
       CVDEBUG("Removing state: " << *state );
       ExecutionStage* stage = stages_[property];
-      stage->etrace_tree->remove_tracker(property);
+      if (stage->etrace_tree) {
+        stage->etrace_tree->remove_tracker(property);
+      }
       stages_.erase(property);
     }
     break;
@@ -179,7 +186,9 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
       CVDEBUG("Cloned state: " << *state);
       ExecutionStage* stage = stages_[parent_property];
       stages_[property] = stage;
-      stage->etrace_tree->clone_tracker(property, parent_property);
+      if (stage->etrace_tree) {
+        stage->etrace_tree->clone_tracker(property, parent_property);
+      }
     }
     break;
 
@@ -187,7 +196,9 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
 
       ExecutionStage *new_stage = new ExecutionStage();
-      new_stage->etrace_tree = new ExecutionTraceTree();
+      if (!DisableExecutionTraceTree) {
+        new_stage->etrace_tree = new ExecutionTraceTree();
+      }
       new_stage->root_property = parent_property;
 
       // Increment stat counter
@@ -195,7 +206,7 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
 
       if (!stages_.empty() && 
           stages_.count(parent_property) && 
-          stages_[parent_property]->etrace_tree->tracks(parent_property)) {
+          (DisableExecutionTraceTree || stages_[parent_property]->etrace_tree->tracks(parent_property))) {
 
         CVDEBUG("End state: " << *parent);
 
