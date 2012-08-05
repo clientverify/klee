@@ -703,33 +703,40 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
               << filter_map_[filter]->training_objects.size() << " paths");
 
     std::set<TrainingObject*> selected;
-    int radius = 1;
     std::vector<int> scores;
 
-    //if (ClientModelFlag == XPilot) radius = 2;
+    int radius = 0;
+    if (ClientModelFlag == XPilot)
+      radius = 1;
 
     while (selected.empty()) {
       filter_map_[filter]->select_training_paths_for_message(socket_event, radius,
                                                              similarity_measure_,
                                                              scores, selected);
       CVMESSAGE("Selected " << selected.size() << " paths with radius " << radius);
-      if (selected.empty())
-        radius *= 2;
+      if (selected.empty()) {
+        if (ClientModelFlag == XPilot) {
+          radius *= 2;
+        } else {
+          radius += 1;
+        }
+      }
     }
 
-    if (selected.size() > 5) {
-      radius /= 2;
-      scores = std::vector<int>();
-      selected = std::set<TrainingObject*>();
-      while (selected.empty()) {
-        filter_map_[filter]->select_training_paths_for_message(socket_event, radius,
-                                                              similarity_measure_,
-                                                              scores, selected);
-        CVMESSAGE("Re-selected " << selected.size() << " paths with radius " << radius);
-        if (selected.empty())
-          radius++;
+    if (ClientModelFlag == XPilot) {
+      if (selected.size() > 5) {
+        radius /= 2;
+        scores = std::vector<int>();
+        selected = std::set<TrainingObject*>();
+        while (selected.empty()) {
+          filter_map_[filter]->select_training_paths_for_message(socket_event, radius,
+                                                                similarity_measure_,
+                                                                scores, selected);
+          CVMESSAGE("Re-selected " << selected.size() << " paths with radius " << radius);
+          if (selected.empty())
+            radius++;
+        }
       }
-
     }
 
   // Store size of tree in stats
