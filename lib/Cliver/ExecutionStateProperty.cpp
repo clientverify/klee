@@ -118,6 +118,10 @@ int EditDistanceExecutionStateProperty::compare(
     return _b->edit_distance - edit_distance;
   }
 
+  // Reversed for priority queue!
+  if (_b->symbolic_vars != symbolic_vars)
+    return _b->symbolic_vars - symbolic_vars;
+
   return 0;
 }
 
