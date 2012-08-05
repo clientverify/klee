@@ -224,26 +224,13 @@ class StatePropertyQueue
 class StatePropertyRandomSelector 
   : public std::vector<ExecutionStateProperty*> {
  public:
-  StatePropertyRandomSelector () : size_(0) {}
-
-  ExecutionStateProperty* top() { return random_swap(); }
-
-  void pop() { size_ = std::max(0, size_-1); }
-
-  void push(ExecutionStateProperty* property) {
-    if (size_ == (int)size())
-      push_back(property);
-    else
-      at(size_) = property;
-    size_++;
+  ExecutionStateProperty* top() { 
+    std::swap(at(rand() % size()), back());
+    return back();
   }
 
- private:
-  ExecutionStateProperty* random_swap() {
-    std::swap(at(rand() % size_), at(size_-1));
-    return at(size_-1);
-  }
-  int size_;
+  void pop() { pop_back(); }
+  void push(ExecutionStateProperty* property) { push_back(property); }
 };
 
 typedef SearcherStageImpl< 

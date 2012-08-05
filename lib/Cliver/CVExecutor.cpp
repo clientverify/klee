@@ -392,9 +392,9 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
     }
 
     // Print usage stats during especially long rounds :)
-    //if ((klee::stats::instructions & 0xFFFFFF) == 0) {
-    //    cv_->print_current_statistics("UPDT");
-    //}
+    if ((klee::stats::instructions & 0xFFFFFF) == 0) {
+        cv_->print_current_statistics("UPDT");
+    }
 
 		klee::ExecutionState &state = searcher->selectState();
     if (haltExecution) goto dump;
