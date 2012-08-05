@@ -314,7 +314,7 @@ void NetworkManager::execute_read(CVExecutor* executor,
 	socket.advance();
   state_->cv()->notify_all(ExecutionEvent(CV_SOCKET_ADVANCE, state_));
 
-  state_->property()->is_recv_processing = true;
+  //state_->property()->is_recv_processing = true;
 	RETURN_SUCCESS("read", bytes_written);
 }
 

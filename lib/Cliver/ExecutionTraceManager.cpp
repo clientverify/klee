@@ -484,10 +484,20 @@ void VerifyExecutionTraceManager::initialize_training_data() {
     TrainingObjectFilter *recv_filter = NULL;
 
     foreach (se, tobj->socket_event_set) {
-      if (send_filter == NULL && se->type == SocketEvent::SEND)
-        send_filter = new TrainingObjectFilter(se->type, tobj->trace[0]);
-      if (recv_filter == NULL && se->type == SocketEvent::RECV)
-        recv_filter = new TrainingObjectFilter(se->type, tobj->trace[0]);
+      if (send_filter == NULL && se->type == SocketEvent::SEND) {
+
+        if (ClientModelFlag == XPilot) 
+          send_filter = new TrainingObjectFilter(se->type, tobj->trace[0]);
+        else
+          send_filter = new TrainingObjectFilter(se->type, 0);
+      }
+
+      if (recv_filter == NULL && se->type == SocketEvent::RECV) {
+        if (ClientModelFlag == XPilot) 
+          recv_filter = new TrainingObjectFilter(se->type, tobj->trace[0]);
+        else
+          send_filter = new TrainingObjectFilter(se->type, 0);
+      }
     }
     assert(send_filter || recv_filter);
 
@@ -558,7 +568,7 @@ void VerifyExecutionTraceManager::initialize_training_data() {
     std::sort(tod->socket_events_by_size.begin(), tod->socket_events_by_size.end(), comp);
     size_t matrix_size = tod->message_count*tod->message_count;
 
-    if (tod->training_objects.size() <= 3) {
+    if (tod->training_objects.size() <= 3 || ClientModelFlag != XPilot) {
 
       CVMESSAGE("Not computing " << matrix_size/2
                 << " scores between training messages, because " << tod->training_objects.size()
@@ -699,7 +709,13 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
   const SocketEvent* socket_event 
     = &(state->network_manager()->socket()->event());
 
-  TrainingObjectFilter filter(socket_event->type, state->prevPC->kbb->id);
+  TrainingObjectFilter filter;
+
+  if (ClientModelFlag == XPilot) {
+    filter = TrainingObjectFilter(socket_event->type, state->prevPC->kbb->id);
+  } else {
+    filter = TrainingObjectFilter(socket_event->type, 0);
+  }
  
   if ((AggressiveNaive && socket_event->type == SocketEvent::RECV) || filter_map_.count(filter) == 0) {
   //if (filter_map_.count(filter) == 0) {
