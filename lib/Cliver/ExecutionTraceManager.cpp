@@ -568,7 +568,8 @@ void VerifyExecutionTraceManager::initialize_training_data() {
     std::sort(tod->socket_events_by_size.begin(), tod->socket_events_by_size.end(), comp);
     size_t matrix_size = tod->message_count*tod->message_count;
 
-    if (tod->training_objects.size() <= 3 || ClientModelFlag != XPilot) {
+    //if (tod->training_objects.size() <= 3 || ClientModelFlag != XPilot) {
+    if (tod->training_objects.size() <= 3) {
 
       CVMESSAGE("Not computing " << matrix_size/2
                 << " scores between training messages, because " << tod->training_objects.size()
