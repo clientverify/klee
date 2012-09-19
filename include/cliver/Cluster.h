@@ -1,0 +1,170 @@
+//===-- Cluster.h -----------------------------------------------*- C++ -*-===//
+//
+// <insert license>
+//
+//===----------------------------------------------------------------------===//
+//
+//
+//===----------------------------------------------------------------------===//
+#ifndef CLIVER_CLUSTER_H
+#define CLIVER_CLUSTER_H
+
+#include <fstream>
+#include <string>
+#include <vector>
+#include <list>
+#include <limits.h>
+
+namespace cliver {
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Only used at start up
+
+template <class Data> 
+class DistanceMetric {
+ public:
+  virtual void init(std::vector<Data*>* datalist);
+  virtual int distance(const Data* s1, const Data* s2);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <class Data, class Metric>
+class Clusterer {
+ public:
+  Clusterer(size_t cluster_count) : count_(cluster_count), cost_(INT_MAX) {}
+
+  ~Clusterer() {}
+
+  void add_data(std::vector<Data*>& data, Metric* metric) {
+    metric_ = metric;
+    data_.insert(data_.begin(), data.begin(), data.end());
+  }
+
+  void cluster() {
+    assert(count_ > 0 && data_.size() >= count_);
+
+    // Select random medoids
+    medoids_.resize(count_);
+    for (unsigned i=0; i<count_; ++i) {
+      unsigned r;
+      do {
+        r = rand() % data_.size();
+      } while (is_medoid(r));
+
+      set_medoid(i, r);
+    }
+
+    metric_->init(data_);
+
+    bool cost_changed = false;
+
+    while (true) {
+      for (unsigned id=0; id < count_; ++id) {
+
+        for (unsigned index=0; index < data_.size(); ++index) {
+
+          if (!is_medoid(index)) {
+            unsigned prev_index = medoids_[id];
+            replace_medoid(id, index);
+            unsigned cost = compute_configuration_cost();
+
+            if (cost < cost_) {
+              cost_changed = true;
+              cost_ = cost;
+              break;
+            } else {
+              replace_medoid(id, prev_index);
+            }
+
+          }
+        }
+      }
+
+      if (!cost_changed)
+        break;
+    }
+
+    for (unsigned i=0; i<data_.size(); ++i)
+      assign_to_closest_medoid(i);
+
+  }
+
+  std::pair<int, unsigned> find_closest_medoid(unsigned index) {
+
+    if(is_medoid(index)) {
+      for (unsigned id=0; id<medoids_.size(); ++id) {
+        // This index is an medoid
+        if (medoids_[id] == index)
+          return std::make_pair(0,id);
+      }
+      assert(0);
+    }
+
+    int min_dist = metric_->distance(data_[index], data_[medoids_[0]]);
+    unsigned min_id = 0;
+    for (unsigned id=1; id<medoids_.size(); ++id) {
+      // Compute distance
+      int dist = metric_->distance(data_[index], data_[medoids_[id]]);
+
+      // Update min distance medoid id
+      if (dist < min_dist) {
+        min_dist = dist;
+        min_id = id;
+      }
+    }
+
+    return std::make_pair(min_dist, min_id);
+  }
+
+  unsigned compute_configuration_cost() {
+    unsigned cost = 0;
+    for (unsigned index=0; index < data_.size(); ++index) {
+      cost += find_closest_medoid(index).first;
+    }
+    return cost;
+  }
+
+  void assign_to_closest_medoid(unsigned index) {
+
+    if (is_medoid(index))
+      return;
+
+    clusters_[index] = find_closest_medoid(index).second;
+  }
+
+  void set_medoid(unsigned id, unsigned index) {
+    medoids_[id] = index;
+    medoid_set_.insert(index);
+    clusters_[index] = id;
+  }
+
+  void replace_medoid(unsigned id, unsigned index) {
+    assert(!is_medoid(index));
+    assert(is_medoid(medoids_[id]));
+    medoid_set_.erase(medoids_[id]);
+
+    set_medoid(id, index);
+  }
+
+  bool is_medoid(unsigned index) {
+    return medoid_set_.count(index) > 0;
+  }
+
+ private:
+  unsigned count_;
+  Metric* metric_;
+  int cost_;
+  std::vector<Data*> data_;
+  std::vector<unsigned> clusters_;
+  std::vector<unsigned> medoids_;
+  std::set<unsigned> medoid_set_;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+} // end namespace cliver
+
+#endif // CLIVER_CLUSTERER_H
+
