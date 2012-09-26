@@ -14,7 +14,6 @@
 #include "cliver/LevenshteinRadixTree.h"
 #include "cliver/EditDistance.h"
 #include "cliver/KExtensionTree.h"
-#include "RadixTree.inc"
 
 #include <stdlib.h>
 #include <string>
@@ -22,6 +21,10 @@
 #include <set>
 
 using namespace cliver;
+
+namespace {
+
+#include "RadixTree.inc"
 
 //////////////////////////////////////////////////////////////////////////////////
 
@@ -323,6 +326,7 @@ class KPrefixEditDistanceTreeEquivalenceTest : public ::testing::TestWithParam<i
 
   virtual void SetUp() {
     this->AddTree(new StringKExtensionTree());
+    this->AddTree(new StringKExtensionOptTree());
     this->AddTree(new StringKLevenshteinRadixTree());
   }
 
@@ -370,7 +374,7 @@ TYPED_TEST_CASE(EditDistanceTreeTest, EditDistanceImplementations);
 
 //////////////////////////////////////////////////////////////////////////////////
 
-namespace {
+//namespace {
 
 //////////////////////////////////////////////////////////////////////////////////
 
