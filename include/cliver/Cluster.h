@@ -92,10 +92,25 @@ class Clusterer {
         cost_changed = false;
     }
 
+  }
+
+  void assign_all() {
     for (unsigned i=0; i<data_.size(); ++i)
       assign_to_closest_medoid(i);
-
   }
+  
+  void print_clusters() {
+    assign_all();
+    for (unsigned id=0; id<medoids_.size(); ++id) {
+      std::cout << "Medoid: " << *(data_[medoids_[id]]) << "\n";
+      for (unsigned index=0; index<data_.size(); ++index) {
+        if (clusters_[index] == id && !is_medoid(index))
+          std::cout << "\t" << *(data_[index]) << "\n";
+      }
+    }
+  }
+
+ private:
 
   std::pair<int, unsigned> find_closest_medoid(unsigned index) {
 
@@ -159,16 +174,6 @@ class Clusterer {
 
   bool is_medoid(unsigned index) {
     return medoid_set_.count(index) > 0;
-  }
-  
-  void print_clusters() {
-    for (unsigned id=0; id<medoids_.size(); ++id) {
-      std::cout << "Medoid: " << *(data_[medoids_[id]]) << "\n";
-      for (unsigned index=0; index<data_.size(); ++index) {
-        if (clusters_[index] == id && !is_medoid(index))
-          std::cout << "\t" << *(data_[index]) << "\n";
-      }
-    }
   }
 
  private:
