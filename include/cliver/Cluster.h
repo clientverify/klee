@@ -19,13 +19,11 @@ namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Only used at start up
-
 template <class Data> 
 class DistanceMetric {
  public:
-  virtual void init(std::vector<Data*>* datalist);
-  virtual int distance(const Data* s1, const Data* s2);
+  virtual void init(std::vector<Data*> &datalist) = 0;
+  virtual int distance(const Data* s1, const Data* s2) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -33,20 +31,27 @@ class DistanceMetric {
 template <class Data, class Metric>
 class Clusterer {
  public:
-  Clusterer(size_t cluster_count) : count_(cluster_count), cost_(INT_MAX) {}
+  typedef Data data_type;
 
+  Clusterer() {}
   ~Clusterer() {}
 
-  void add_data(std::vector<Data*>& data, Metric* metric) {
+  void init(size_t cluster_count, Metric* metric) {
+    cost_ = INT_MAX;
+    count_ = cluster_count;
+    medoids_.resize(count_);
     metric_ = metric;
+  }
+
+  void add_data(std::vector<Data*>& data) {
     data_.insert(data_.begin(), data.begin(), data.end());
+    clusters_.resize(data_.size());
   }
 
   void cluster() {
     assert(count_ > 0 && data_.size() >= count_);
 
     // Select random medoids
-    medoids_.resize(count_);
     for (unsigned i=0; i<count_; ++i) {
       unsigned r;
       do {
@@ -77,13 +82,14 @@ class Clusterer {
             } else {
               replace_medoid(id, prev_index);
             }
-
           }
         }
       }
 
       if (!cost_changed)
         break;
+      else
+        cost_changed = false;
     }
 
     for (unsigned i=0; i<data_.size(); ++i)
@@ -127,22 +133,25 @@ class Clusterer {
   }
 
   void assign_to_closest_medoid(unsigned index) {
-
-    if (is_medoid(index))
-      return;
-
     clusters_[index] = find_closest_medoid(index).second;
   }
 
   void set_medoid(unsigned id, unsigned index) {
+    
+    assert(0 == medoid_set_.count(index));
+    for (unsigned i=0; i<medoids_.size(); ++i) {
+      assert(medoids_[i] != index);
+    }
+
     medoids_[id] = index;
     medoid_set_.insert(index);
-    clusters_[index] = id;
   }
 
   void replace_medoid(unsigned id, unsigned index) {
     assert(!is_medoid(index));
     assert(is_medoid(medoids_[id]));
+    assert(1 == medoid_set_.count(medoids_[id]));
+    assert(0 == medoid_set_.count(index));
     medoid_set_.erase(medoids_[id]);
 
     set_medoid(id, index);
@@ -151,15 +160,26 @@ class Clusterer {
   bool is_medoid(unsigned index) {
     return medoid_set_.count(index) > 0;
   }
+  
+  void print_clusters() {
+    for (unsigned id=0; id<medoids_.size(); ++id) {
+      std::cout << "Medoid: " << *(data_[medoids_[id]]) << "\n";
+      for (unsigned index=0; index<data_.size(); ++index) {
+        if (clusters_[index] == id && !is_medoid(index))
+          std::cout << "\t" << *(data_[index]) << "\n";
+      }
+    }
+  }
 
  private:
   unsigned count_;
   Metric* metric_;
   int cost_;
-  std::vector<Data*> data_;
-  std::vector<unsigned> clusters_;
-  std::vector<unsigned> medoids_;
-  std::set<unsigned> medoid_set_;
+
+  std::vector<Data*> data_;        // map of data index to Data pointer
+  std::vector<unsigned> clusters_; // map of data index to cluster id
+  std::vector<unsigned> medoids_;  // map of cluster id to data index
+  std::set<unsigned> medoid_set_;  // set of data indicies that are medoids
 };
 
 ////////////////////////////////////////////////////////////////////////////////
