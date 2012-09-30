@@ -152,7 +152,7 @@ std::ostream& operator<<(std::ostream& os, const TrainingObject &tobject) {
   os << "(trace id:" << tobject.id << ") "
      << "(length:" << tobject.trace.size() << ") "
      << "(" << tobject.name << ") ";
-  os << "[socket_events: ";
+  os << "[socket_events (" << tobject.socket_event_set.size() << "): ";
   foreach (const SocketEvent* socket_event, tobject.socket_event_set) {
     os << *socket_event << ", ";
   }

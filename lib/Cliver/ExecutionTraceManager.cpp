@@ -20,6 +20,7 @@
 #include "cliver/NetworkManager.h"
 #include "cliver/SocketEventMeasurement.h"
 #include "cliver/Training.h"
+#include "cliver/TrainingCluster.h"
 
 #include "CVCommon.h"
 
@@ -476,6 +477,13 @@ void VerifyExecutionTraceManager::initialize_training_data() {
   //  tod->edit_distance_matrix = new std::vector<int>(matrix_size, INT_MAX);
 
   //}
+
+
+  TrainingObjectClusterManager<TrainingObjectDistanceMetric,SocketEventDistanceMetric> 
+      *tocm = new TrainingObjectClusterManager<TrainingObjectDistanceMetric,SocketEventDistanceMetric>();
+
+  std::vector<TrainingObject*> tobj_vec(training_data_.begin(), training_data_.end());
+  tocm->cluster(4, tobj_vec);
 
   TrainingObject* tobj = NULL;
   foreach (tobj, training_data_) {

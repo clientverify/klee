@@ -37,18 +37,18 @@ typedef EditDistanceRow<StringScore,std::string,int> StringEDR;
 class MemoStringDistanceMetric : public cliver::DistanceMetric<std::string> {
  public:
   typedef std::pair<const std::string*, const std::string*> StringPtrPair;
-  typedef boost::unordered_map<StringPtrPair, int> StringPtrPairDistanceMap;
+  typedef boost::unordered_map<StringPtrPair, double> StringPtrPairDistanceMap;
 
   void init(std::vector<std::string*> &datalist) {}
 
-  int distance(const std::string* s1, const std::string* s2) {
+  double distance(const std::string* s1, const std::string* s2) {
     StringPtrPair str_pair(std::min(s1,s2), std::max(s1,s2));
 
     if (distance_map_.count(str_pair))
       return distance_map_[str_pair];
 
     StringEDR edr(*s1, *s2);
-    int distance = edr.compute_editdistance();
+    double distance = (double)edr.compute_editdistance();
     distance_map_[str_pair] = distance;
     return distance;
   }
@@ -61,9 +61,9 @@ class StringDistanceMetric : public cliver::DistanceMetric<std::string> {
  public:
   void init(std::vector<std::string*> &datalist) {}
 
-  int distance(const std::string* s1, const std::string* s2) {
+  double distance(const std::string* s1, const std::string* s2) {
     StringEDR edr(*s1, *s2);
-    return edr.compute_editdistance();
+    return (double)edr.compute_editdistance();
   }
 
 };
