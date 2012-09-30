@@ -18,6 +18,10 @@
 #include <set>
 #include <iostream>
 
+//namespace klee {
+//  class TimerStatIncrementer;
+//}
+
 namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -50,6 +54,7 @@ class ExecutionStateProperty {
   int symbolic_vars; // number of symbolic variables created for this round
 	bool recompute;
   bool is_recv_processing;
+  //klee::TimerStatIncrementer* recv_processing_timer;
 };
 
 inline std::ostream &operator<<(std::ostream &os, 

@@ -12,6 +12,7 @@
 #include "cliver/RadixTree.h"
 #include "cliver/EditDistanceTree.h"
 #include "cliver/util/MurmurHash3.h"
+#include "GClasses/GCluster.h"
 #include <limits.h>
 
 #include <vector>
@@ -445,6 +446,7 @@ class KExtensionTree
     Sequence s;
     root_edge_ = new Edge(NULL, NULL, s);
     root_edge_->set_to(this->root_);
+    GClasses::GKMedoids* gk = new GClasses::GKMedoids(2);
   }
 
   virtual ~KExtensionTree() {

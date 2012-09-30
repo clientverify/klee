@@ -118,6 +118,12 @@ int EditDistanceExecutionStateProperty::compare(
     return _b->edit_distance - edit_distance;
   }
 
+  if (round != _b->round)
+    return round - _b->round;
+
+  if (client_round != _b->client_round)
+    return client_round - _b->client_round;
+  
   // Reversed for priority queue!
   if (_b->symbolic_vars != symbolic_vars)
     return _b->symbolic_vars - symbolic_vars;

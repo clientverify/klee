@@ -23,7 +23,7 @@ template <class Data>
 class DistanceMetric {
  public:
   virtual void init(std::vector<Data*> &datalist) = 0;
-  virtual int distance(const Data* s1, const Data* s2) = 0;
+  virtual double distance(const Data* s1, const Data* s2) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -39,19 +39,24 @@ class Clusterer {
   void init(size_t cluster_count, Metric* metric) {
     cost_ = INT_MAX;
     count_ = cluster_count;
-    medoids_.resize(count_);
+    medoids_.resize(count_, -1);
     metric_ = metric;
   }
 
   void add_data(std::vector<Data*>& data) {
     data_.insert(data_.begin(), data.begin(), data.end());
     clusters_.resize(data_.size());
+    std::cout << "added " << data.size() << " elements\n";
   }
 
   void cluster() {
-    assert(count_ > 0 && data_.size() >= count_);
+    assert(count_ > 0);
+
+    //if (data_.size() != 5) return;
+    if (data_.size() <= count_) return;
 
     // Select random medoids
+    std::cout << "assigning random medoids...\n";
     for (unsigned i=0; i<count_; ++i) {
       unsigned r;
       do {
@@ -60,16 +65,19 @@ class Clusterer {
 
       set_medoid(i, r);
     }
+    std::cout << " done.\n";
 
     metric_->init(data_);
 
     bool cost_changed = false;
 
     while (true) {
+      std::cout << "while loop begins...\n";
       for (unsigned id=0; id < count_; ++id) {
+        std::cout << "id = " << id << "\n";
 
         for (unsigned index=0; index < data_.size(); ++index) {
-
+          std::cout << "index = " << index << "\n";
           if (!is_medoid(index)) {
             unsigned prev_index = medoids_[id];
             replace_medoid(id, index);
@@ -98,16 +106,42 @@ class Clusterer {
     for (unsigned i=0; i<data_.size(); ++i)
       assign_to_closest_medoid(i);
   }
-  
+   
   void print_clusters() {
     assign_all();
     for (unsigned id=0; id<medoids_.size(); ++id) {
       std::cout << "Medoid: " << *(data_[medoids_[id]]) << "\n";
+      
+      //std::cout << "Medoid: ";
+      //for (unsigned j=0; j<(*(data_[medoids_[id]])).trace.size(); ++j) {
+      //  std::cout << (*(data_[medoids_[id]])).trace[j] << " ";
+      //}
+      //std::cout << "\n";
+
       for (unsigned index=0; index<data_.size(); ++index) {
-        if (clusters_[index] == id && !is_medoid(index))
+        if (clusters_[index] == id && !is_medoid(index)) {
           std::cout << "\t" << *(data_[index]) << "\n";
+          //std::cout << "\t";
+          //for (unsigned j=0; j<(*(data_[index])).trace.size(); ++j) {
+          //  std::cout << (*(data_[index])).trace[j] << " ";
+          //}
+          //std::cout << "\n";
+        }
       }
     }
+  }
+
+  // Adds all cluster members for given id to array, including medoid 
+  void get_cluster(unsigned id, std::vector<Data*> &cluster_data) {
+    for (unsigned index=0; index<data_.size(); ++index) {
+      if (clusters_[index] == id) {
+        cluster_data.push_back(data_[index]);
+      }
+    }
+  }
+
+  Data* get_medoid(unsigned id) {
+    return data_[medoids_[id]];
   }
 
  private:
@@ -123,11 +157,11 @@ class Clusterer {
       assert(0);
     }
 
-    int min_dist = metric_->distance(data_[index], data_[medoids_[0]]);
+    double min_dist = metric_->distance(data_[index], data_[medoids_[0]]);
     unsigned min_id = 0;
     for (unsigned id=1; id<medoids_.size(); ++id) {
       // Compute distance
-      int dist = metric_->distance(data_[index], data_[medoids_[id]]);
+      double dist = metric_->distance(data_[index], data_[medoids_[id]]);
 
       // Update min distance medoid id
       if (dist < min_dist) {
@@ -179,11 +213,11 @@ class Clusterer {
  private:
   unsigned count_;
   Metric* metric_;
-  int cost_;
+  double cost_;
 
   std::vector<Data*> data_;        // map of data index to Data pointer
   std::vector<unsigned> clusters_; // map of data index to cluster id
-  std::vector<unsigned> medoids_;  // map of cluster id to data index
+  std::vector<int> medoids_;  // map of cluster id to data index
   std::set<unsigned> medoid_set_;  // set of data indicies that are medoids
 };
 

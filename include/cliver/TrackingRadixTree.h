@@ -14,7 +14,6 @@
 #include <boost/unordered_map.hpp>
 #include <boost/unordered_set.hpp>
 
-
 namespace cliver {
 
 /// TrackingRadixTree: RadixTree that allows the tracking of nodes with 
@@ -112,10 +111,10 @@ class TrackingRadixTree
     return false;
   }
 
-  // When a tracker is cloned, we force the next extension to split the node, but
-  // until then, we maintain a set of trackers that have been cloned in
-  // cloned_tracking_objects_. We also associated the child tracker with the with the same
-  // node as the parent.
+  /// When a tracker is cloned, we force the next extension to split the node,
+  /// but until then, we maintain a set of trackers that have been cloned in
+  /// cloned_tracking_objects_. We also associated the child tracker with the
+  /// with the same node as the parent.
   bool clone_tracker(TrackingObject* child, TrackingObject* parent) {
     if (tracks(parent)) {
       Node* node = get_node(parent);
@@ -127,9 +126,9 @@ class TrackingRadixTree
     return false;
   }
 
-  // Checks that no other tracker is references the node associated with this
-  // tracker, and removes the leaf edge associated with the node if there are no
-  // other references
+  /// Checks that no other tracker is references the node associated with this
+  /// tracker, and removes the leaf edge associated with the node if there are no
+  /// other references
   void remove_tracker(TrackingObject* tracker) {
     assert(tracks(tracker));
     Node* node = get_node(tracker);
@@ -243,7 +242,8 @@ class TrackingRadixTree
     node_map_.erase(tracker);
   }
 
-  void insert_new_tracker(Sequence &s, TrackingObject* tracker, int type, Node* root = NULL) {
+  void insert_new_tracker(Sequence &s, TrackingObject* tracker, 
+                          int type, Node* root = NULL) {
     if (root == NULL)
       root = this->root_;
 

@@ -97,10 +97,14 @@ class TrainingObjectData {
 typedef boost::unordered_map<TrainingObjectFilter, TrainingObjectData*> TrainingFilterMap;
 ////////////////////////////////////////////////////////////////////////////////
 
+////////////////////////////////////////////////////////////////////////////////
+
 /// Holds a single execution trace and the associated socket event data(s)
 class TrainingObject {
  public:
   TrainingObject() {};
+  TrainingObject(ExecutionTrace *et) 
+      : trace(*et) {}
   TrainingObject(ExecutionTrace *et, SocketEvent *se)
       : trace(*et) { add_socket_event(se); }
 
@@ -129,6 +133,17 @@ class TrainingObject {
 };
 
 std::ostream& operator<<(std::ostream& os, const TrainingObject &tobject);
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TrainingObjectGroup {
+ public:
+  void insert(const TrainingObject* tobj);
+
+ private:
+  SocketEventDataSet socket_event_set_;
+  std::vector<const TrainingObject*> training_objects_;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
