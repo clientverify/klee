@@ -551,7 +551,7 @@ class ClientVerifier;
 
 class SocketEventSimilarityFactory {
  public:
-  static SocketEventSimilarity* create(ClientVerifier *cv);
+  static SocketEventSimilarity* create();
 };
 
 ////////////////////////////////////////////////////////////////////////////////

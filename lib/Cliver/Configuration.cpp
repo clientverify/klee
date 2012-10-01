@@ -231,7 +231,7 @@ ExecutionStateProperty* ExecutionStatePropertyFactory::create() {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-SocketEventSimilarity* SocketEventSimilarityFactory::create(ClientVerifier *cv) {
+SocketEventSimilarity* SocketEventSimilarityFactory::create() {
   switch (ClientModel) {
     case Tetrinet: {
       return new SocketEventSimilarityTetrinet();
