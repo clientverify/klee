@@ -47,6 +47,13 @@ unsigned TrainingFilter::extract_initial_basic_block_id(const TrainingObject* to
 
 ////////////////////////////////////////////////////////////////////////////////
 
+std::ostream& operator<<(std::ostream& os, const TrainingFilter &tf) {
+  os << "(type: " << tf.type << ") (IBB: " << tf.initial_basic_block_id << ")";
+  return os;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 TrainingFilter* TrainingFilterFactory::create(const TrainingObject *tobj) {
 
   TrainingFilter* tf = new TrainingFilter();

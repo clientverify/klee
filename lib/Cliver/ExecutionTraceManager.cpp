@@ -378,7 +378,7 @@ VerifyExecutionTraceManager::VerifyExecutionTraceManager(ClientVerifier* cv)
 
 void VerifyExecutionTraceManager::initialize() {
   // Create similarity measure
-  similarity_measure_ = SocketEventSimilarityFactory::create(cv_);
+  similarity_measure_ = SocketEventSimilarityFactory::create();
 
   // Parse the training data filenames
   if (!TrainingPathDir.empty())
@@ -477,7 +477,6 @@ void VerifyExecutionTraceManager::initialize_training_data() {
   //  tod->edit_distance_matrix = new std::vector<int>(matrix_size, INT_MAX);
 
   //}
-
 
   TrainingObjectClusterManager<TrainingObjectDistanceMetric,SocketEventDistanceMetric> 
       *tocm = new TrainingObjectClusterManager<TrainingObjectDistanceMetric,SocketEventDistanceMetric>();

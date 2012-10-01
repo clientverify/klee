@@ -36,6 +36,8 @@ class Clusterer {
   Clusterer() {}
   ~Clusterer() {}
 
+  size_t count() { return count_; }
+
   void init(size_t cluster_count, Metric* metric) {
     cost_ = INT_MAX;
     count_ = cluster_count;
@@ -46,17 +48,18 @@ class Clusterer {
   void add_data(std::vector<Data*>& data) {
     data_.insert(data_.begin(), data.begin(), data.end());
     clusters_.resize(data_.size());
-    std::cout << "added " << data.size() << " elements\n";
+    //std::cout << "added " << data.size() << " elements\n";
   }
 
   void cluster() {
-    assert(count_ > 0);
 
-    //if (data_.size() != 5) return;
-    if (data_.size() <= count_) return;
+    // Resize cluster if data size is too small
+    if (data_.size() < count_) {
+      init(data_.size(), metric_);
+    }
 
     // Select random medoids
-    std::cout << "assigning random medoids...\n";
+    //std::cout << "assigning random medoids...\n";
     for (unsigned i=0; i<count_; ++i) {
       unsigned r;
       do {
@@ -65,19 +68,19 @@ class Clusterer {
 
       set_medoid(i, r);
     }
-    std::cout << " done.\n";
 
+    // Initialize distance metric
     metric_->init(data_);
 
     bool cost_changed = false;
 
     while (true) {
-      std::cout << "while loop begins...\n";
+      //std::cout << "while loop begins...\n";
       for (unsigned id=0; id < count_; ++id) {
-        std::cout << "id = " << id << "\n";
+        //std::cout << "id = " << id << "\n";
 
         for (unsigned index=0; index < data_.size(); ++index) {
-          std::cout << "index = " << index << "\n";
+          //std::cout << "index = " << index << "\n";
           if (!is_medoid(index)) {
             unsigned prev_index = medoids_[id];
             replace_medoid(id, index);

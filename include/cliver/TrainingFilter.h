@@ -33,6 +33,8 @@ struct TrainingFilter {
   unsigned initial_basic_block_id; // initial instruction id
 };
 
+std::ostream& operator<<(std::ostream& os, const TrainingFilter &tf);
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TrainingFilterFactory {

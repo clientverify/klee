@@ -26,14 +26,19 @@
 //  5. Store the TrainingObjects in the TrainingObjectManager
 ////////////////////////////////////////////////////////////////////////////////
 
-#include <cliver/TrainingFilter.h>
-#include <cliver/Cluster.h>
+#include "cliver/TrainingFilter.h"
+#include "cliver/Cluster.h"
+#include "cliver/SocketEventMeasurement.h"
 #include "cliver/EditDistance.h"
 #include "CVCommon.h"
 
 namespace cliver {
 
+llvm::cl::opt<unsigned>
+SocketEventClusterSize("socket-event-cluster-size",llvm::cl::init(10));
+
 class TrainingObject;
+class SocketEvent;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -67,9 +72,33 @@ class TrainingObjectDistanceMetric : public cliver::DistanceMetric<TrainingObjec
 // Needs to be fast
 class SocketEventDistanceMetric {
  public:
-  virtual int distance(const SocketEvent* se1, const SocketEvent* se2) {
-    return 0;
+  typedef std::pair<const SocketEvent*, const SocketEvent*> SEPair;
+  typedef boost::unordered_map<SEPair, double> DistanceMap;
+
+  SocketEventDistanceMetric() {
+    similarity_measure_ = SocketEventSimilarityFactory::create();
   }
+
+  ~SocketEventDistanceMetric() {
+    delete similarity_measure_;
+  }
+
+  virtual void init(std::vector<SocketEvent*> &datalist) {}
+
+  virtual double distance(const SocketEvent* se1, const SocketEvent* se2) {
+    SEPair se_pair(std::min(se1,se2), std::max(se1,se2));
+
+    if (distance_map_.count(se_pair))
+      return distance_map_[se_pair];
+
+    double distance = (double)similarity_measure_->similarity_score(se1, se2);
+    distance_map_[se_pair] = distance;
+    return distance;
+  }
+
+ private:
+  SocketEventSimilarity* similarity_measure_;
+  DistanceMap distance_map_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -92,7 +121,30 @@ class TrainingObjectCluster {
 template <class TrainingObjectMetric, class SocketEventMetric>
 class TrainingObjectClusterManager {
  public:
+
+  typedef Clusterer<SocketEvent, SocketEventMetric> SocketEventClusterer;
+  typedef Clusterer<TrainingObject, TrainingObjectMetric> TrainingObjectClusterer;
+
   TrainingObjectClusterManager() {}
+
+  void cluster_socket_events(unsigned cluster_count, 
+                             SocketEventDataSet &se_set_in,
+                             SocketEventDataSet &se_set_out) {
+
+    SocketEventClusterer *clusterer = new SocketEventClusterer();
+    SocketEventMetric metric;
+    clusterer->init(cluster_count, &metric);
+    std::vector<SocketEvent*> se_vec(se_set_in.begin(), se_set_in.end());
+    clusterer->add_data(se_vec);
+    std::cout << "Clustering " << se_set_in.size() << " socket events.\n";
+    clusterer->cluster();
+
+    for (unsigned i = 0; i< clusterer->count(); ++i) {
+      std::vector<SocketEvent*> tmp_vec;
+      SocketEvent* se = clusterer->get_medoid(i);
+      se_set_out.insert(se);
+    }
+  }
 
   void cluster(unsigned cluster_count, std::vector<TrainingObject*>& tobjs) {
 
@@ -103,54 +155,71 @@ class TrainingObjectClusterManager {
       tf_map[tf].push_back(tobj);
     }
 
+    //foreach (TrainingObjectListMap::value_type &data_vec, tf_map) {
+    //  std::cout << "TrainingObjectListMap: " << data_vec.second.size() << "\n";
+    //}
+
     foreach (TrainingObjectListMap::value_type &data_vec, tf_map) {
-      std::cout << "TrainingObjectListMap: " << data_vec.second.size() << "\n";
-    }
 
 
-    foreach (TrainingObjectListMap::value_type &data_vec, tf_map) {
+      TrainingObjectClusterer *clusterer = new TrainingObjectClusterer();
 
-      if (data_vec.second.size() >= cluster_count) {
-        TrainingObjectMetric metric;
-        Clusterer<TrainingObject, TrainingObjectMetric>*
-        clusterer_ = new Clusterer<TrainingObject, TrainingObjectMetric>();
-        clusterer_->init(cluster_count, &metric);
-        clusterer_->add_data(data_vec.second);
+      TrainingObjectMetric metric;
+      clusterer->init(cluster_count, &metric);
+      clusterer->add_data(data_vec.second);
 
-        std::cout << "Clustering started.\n";
-        clusterer_->cluster();
-        clusterer_->print_clusters();
-        std::cout << "Clustering finished.\n";
-        delete clusterer_;
-      }
+      std::cout << "Clustering " << data_vec.second.size() << " training paths.\n";
+      clusterer->cluster();
+      //clusterer->print_clusters();
 
-      /*
-      for (unsigned i = 0; i< cluster_count; ++i) {
+      clusterer->assign_all();
+
+      for (unsigned i = 0; i< clusterer->count(); ++i) {
         std::vector<TrainingObject*> tobjs_vec;
-        TrainingObject* tobj_medoid;
-        TrainingObject* tobj_cluster;
-        ExecutionTrace* et;
 
-        clusterer_->get_cluster(i, tobjs_vec);
-        tobj_medoid = clusterer_->get_medoid(i, tobjs);
-        et = &(tobj_medoid->trace);
+        // Get all of the TrainingObjects assigned to this cluster
+        clusterer->get_cluster(i, tobjs_vec);
+        TrainingObject* tobj_medoid = clusterer->get_medoid(i);
+
+        ExecutionTrace* et = &(tobj_medoid->trace);
 
         // Extract all of the socket events from the cluster
         // Create a new TrainingObject that represents the medoid, and all of
         //   the associated socket event objects
-        tobj_cluster = new TrainingObject(et);
+        TrainingObject* tobj_cluster = new TrainingObject(et);
 
-        TrainingObject *tobj = NULL
-        SocketEvent* se = NULL;
+        TrainingObject *tobj = NULL;
+        SocketEvent *se = NULL;
+
+        SocketEventDataSet se_set;
+        SocketEventDataSet clustered_se_set;
 
         foreach(tobj, tobjs_vec) {
           foreach(se, tobj->socket_event_set) {
-            tobj_cluster->add_socket_event(se);
+            se_set.insert(se);
           }
         }
-        cluster_.push_back(tobj_cluster);
+
+        cluster_socket_events(SocketEventClusterSize, se_set, clustered_se_set);
+
+        foreach(se, clustered_se_set) {
+          tobj_cluster->add_socket_event(se);
+        }
+      
+        TrainingFilter tf(tobj_cluster);
+        clusters_[tf].push_back(tobj_cluster);
       }
-      */
+      
+      delete clusterer;
+    }
+
+    foreach (TrainingObjectListMap::value_type &data, clusters_) {
+      std::cout << data.first << " " << data.second.size() << " ";
+      for (size_t i=0; i < data.second.size(); ++i) {
+        std::cout << "(" << data.second[i]->trace.size() << " "
+            << data.second[i]->socket_event_set.size() << "), ";
+      }
+      std::cout << "\n";
     }
   }
 
@@ -161,7 +230,8 @@ class TrainingObjectClusterManager {
                           std::vector<TrainingObjectCluster*>& clusters);
 
  private:
-  std::vector<TrainingObject*> clusters_;
+  TrainingObjectListMap clusters_;
+  //std::vector<TrainingObject*> clusters_;
   //std::vector<TrainingObjectCluster*> clusters_;
   TrainingObjectMetric* training_object_metric_;
 };
