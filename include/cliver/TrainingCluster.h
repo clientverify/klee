@@ -207,13 +207,13 @@ class TrainingObjectClusterManager {
         }
       
         TrainingFilter tf(tobj_cluster);
-        clusters_[tf].push_back(tobj_cluster);
+        cluster_map_[tf].push_back(tobj_cluster);
       }
       
       delete clusterer;
     }
 
-    foreach (TrainingObjectListMap::value_type &data, clusters_) {
+    foreach (TrainingObjectListMap::value_type &data, cluster_map_) {
       std::cout << data.first << " " << data.second.size() << " ";
       for (size_t i=0; i < data.second.size(); ++i) {
         std::cout << "(" << data.second[i]->trace.size() << " "
@@ -223,16 +223,40 @@ class TrainingObjectClusterManager {
     }
   }
 
-  void clusters_within_distance(int distance, const SocketEvent* se, 
-                                std::vector<TrainingObjectCluster*>& clusters);
+  void sorted_clusters(const SocketEvent* se, 
+                       TrainingFilter &filter,
+                       TrainingObjectScoreList& sorted_clusters,
+                       SocketEventSimilarity &measure) {
 
-  void n_closest_clusters(int count, const SocketEvent* se, 
-                          std::vector<TrainingObjectCluster*>& clusters);
+    // XXX This case likely needs to be handled
+    assert(cluster_map_.count(filter));
+
+    std::vector<TrainingObject*>& clusters = cluster_map_[filter];
+
+    for (size_t i=0; i<clusters.size(); ++i) {
+      SocketEventDataSet::iterator it = clusters[i]->socket_event_set.begin(),
+          ie = clusters[i]->socket_event_set.end();
+      int min = INT_MAX;
+      for (; it != ie; ++it) {
+        // TODO change to double!
+        int result = measure.similarity_score(se, *it);
+        if (result < min) min = result;
+      }
+      sorted_clusters.push_back(std::make_pair(min, clusters[i]));
+    } 
+    std::sort(sorted_clusters.begin(), sorted_clusters.end());
+  }
+
+  void clusters_within_distance(double distance, const SocketEvent* se, 
+                                std::vector<TrainingObject*>& clusters) {
+  }
+
+  void n_closest_clusters(unsigned n, const SocketEvent* se, 
+                          std::vector<TrainingObject*>& clusters) {
+  }
 
  private:
-  TrainingObjectListMap clusters_;
-  //std::vector<TrainingObject*> clusters_;
-  //std::vector<TrainingObjectCluster*> clusters_;
+  TrainingObjectListMap cluster_map_;
   TrainingObjectMetric* training_object_metric_;
 };
 
