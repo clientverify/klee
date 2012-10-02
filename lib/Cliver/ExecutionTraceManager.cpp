@@ -69,6 +69,9 @@ AggressiveNaive("aggressive-naive",llvm::cl::init(false));
 llvm::cl::opt<bool>
 DisableExecutionTraceTree("disable-et-tree",llvm::cl::init(false));
 
+llvm::cl::opt<bool>
+UseClustering("use-clustering",llvm::cl::init(true));
+
 // Also used in CVSearcher
 unsigned RepeatExecutionAtRoundFlag;
 llvm::cl::opt<unsigned, true>
@@ -478,11 +481,9 @@ void VerifyExecutionTraceManager::initialize_training_data() {
 
   //}
 
-  TrainingObjectClusterManager<TrainingObjectDistanceMetric,SocketEventDistanceMetric> 
-      *tocm = new TrainingObjectClusterManager<TrainingObjectDistanceMetric,SocketEventDistanceMetric>();
-
+  cluster_manager_ = new TrainingObjectManager();
   std::vector<TrainingObject*> tobj_vec(training_data_.begin(), training_data_.end());
-  tocm->cluster(4, tobj_vec);
+  cluster_manager_->cluster(8, tobj_vec);
 
   TrainingObject* tobj = NULL;
   foreach (tobj, training_data_) {
@@ -723,6 +724,41 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
     filter = TrainingObjectFilter(socket_event->type, state->prevPC->kbb->id);
   } else {
     filter = TrainingObjectFilter(socket_event->type, 0);
+  }
+
+  if (UseClustering) {
+
+    // FIXME don't use old school filter
+    if ((AggressiveNaive && socket_event->type == SocketEvent::RECV) 
+        || filter_map_.count(filter) == 0) {
+      stage->root_ed_tree = NULL;
+      return;
+    }
+
+    TrainingFilter tf;
+    tf.type = socket_event->type;
+
+    if (ClientModelFlag == XPilot) {
+      tf.initial_basic_block_id = state->prevPC->kbb->id;
+    } else {
+      tf.initial_basic_block_id = 0;
+    }
+
+    TrainingObjectScoreList sorted_clusters;
+    cluster_manager_->sorted_clusters(socket_event, tf,
+                                      sorted_clusters, *similarity_measure_);
+
+    //if (filter_map_.count(filter) == 0) {
+    // Store size of tree in stats
+    //stats::edit_distance_tree_size = selected.size(); 
+    stats::edit_distance_tree_size = sorted_clusters.size(); 
+
+    // Create a new root edit distance
+    stage->root_ed_tree = EditDistanceTreeFactory::create();
+
+    for (size_t i=0; i < sorted_clusters.size(); ++i) {
+      stage->root_ed_tree->add_data(sorted_clusters[i].second->trace);
+    }
   }
  
   if ((AggressiveNaive && socket_event->type == SocketEvent::RECV) || filter_map_.count(filter) == 0) {

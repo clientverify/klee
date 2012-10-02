@@ -34,9 +34,6 @@
 
 namespace cliver {
 
-llvm::cl::opt<unsigned>
-SocketEventClusterSize("socket-event-cluster-size",llvm::cl::init(10));
-
 class TrainingObject;
 class SocketEvent;
 
@@ -200,7 +197,7 @@ class TrainingObjectClusterManager {
           }
         }
 
-        cluster_socket_events(SocketEventClusterSize, se_set, clustered_se_set);
+        cluster_socket_events(10, se_set, clustered_se_set);
 
         foreach(se, clustered_se_set) {
           tobj_cluster->add_socket_event(se);
