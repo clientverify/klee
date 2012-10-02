@@ -16,6 +16,7 @@
 #include "cliver/LevenshteinRadixTree.h"
 #include "cliver/KExtensionTree.h"
 #include "cliver/Training.h"
+#include "cliver/TrainingCluster.h"
 
 #include "klee/Solver.h"
 #include "klee/Internal/Module/KModule.h"
@@ -53,6 +54,11 @@ typedef boost::unordered_map<ExecutionStateProperty*, ExecutionTraceEditDistance
 struct ExecutionStage;
 typedef boost::unordered_map<ExecutionStateProperty*, ExecutionStage*> 
     StatePropertyStageMap;
+
+////////////////////////////////////////////////////////////////////////////////
+
+typedef TrainingObjectClusterManager<TrainingObjectDistanceMetric,
+    SocketEventDistanceMetric> TrainingObjectManager;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -133,6 +139,7 @@ class VerifyExecutionTraceManager : public ExecutionTraceManager {
 
   // Training Filter
   TrainingFilterMap filter_map_;
+  TrainingObjectManager *cluster_manager_;
 
   // DEBUG
   TrainingObjectSet self_training_data_;
