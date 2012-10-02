@@ -40,9 +40,6 @@
 namespace cliver {
 
 llvm::cl::opt<unsigned>
-StateTreesMemoryLimit("state-trees-memory-limit",llvm::cl::init(0));
-
-llvm::cl::opt<unsigned>
 MaxKExtension("max-k-extension",llvm::cl::init(16));
 
 llvm::cl::opt<bool>
@@ -53,9 +50,6 @@ BasicBlockDisabling("basicblock-disabling",llvm::cl::init(false));
 
 llvm::cl::opt<bool>
 DebugExecutionTree("debug-execution-tree",llvm::cl::init(false));
-
-llvm::cl::opt<bool>
-DeleteOldTrees("delete-old-trees",llvm::cl::init(true));
 
 llvm::cl::opt<unsigned>
 FilterTrainingUsage("filter-training-usage",llvm::cl::init(0));
@@ -72,13 +66,6 @@ DisableExecutionTraceTree("disable-et-tree",llvm::cl::init(false));
 llvm::cl::opt<bool>
 UseClustering("use-clustering",llvm::cl::init(true));
 
-// Also used in CVSearcher
-unsigned RepeatExecutionAtRoundFlag;
-llvm::cl::opt<unsigned, true>
-RepeatExecutionAtRound("repeat-execution-at-round",
-                       llvm::cl::location(RepeatExecutionAtRoundFlag),
-                       llvm::cl::init(0));
-
 llvm::cl::list<std::string> TrainingPathFile("training-path-file",
 	llvm::cl::ZeroOrMore,
 	llvm::cl::ValueRequired,
@@ -89,16 +76,6 @@ llvm::cl::list<std::string> TrainingPathDir("training-path-dir",
 	llvm::cl::ZeroOrMore,
 	llvm::cl::ValueRequired,
 	llvm::cl::desc("Specify directory containing .tpath files"),
-	llvm::cl::value_desc("tpath directory"));
-
-llvm::cl::list<std::string> SelfTrainingPathFile("self-training-path-file",
-	llvm::cl::ZeroOrMore,
-	llvm::cl::desc("Specify a training path file (.tpath) for the log we are verifying (debug)"),
-	llvm::cl::value_desc("tpath directory"));
-
-llvm::cl::list<std::string> SelfTrainingPathDir("self-training-path-dir",
-	llvm::cl::ZeroOrMore,
-	llvm::cl::desc("Specify directory containing .tpath files for the log we are verifying (debug)"),
 	llvm::cl::value_desc("tpath directory"));
 
 #ifndef NDEBUG
@@ -401,27 +378,6 @@ void VerifyExecutionTraceManager::initialize() {
 
   CVMESSAGE("Finished loading " 
             << training_data_.size() << " unique training objects.");
-
-  // ------------------------------------------------------------------------//
-
-  // Parse the self training data filenames 
-  if (!SelfTrainingPathDir.empty())
-    foreach (std::string path, SelfTrainingPathDir)
-      cv_->getFilesRecursive(path, ".tpath", SelfTrainingPathFile);
-
-  // Check if we are reading self-training data
-  if (SelfTrainingPathFile.size() > 0) {
-    CVMESSAGE("Loading " << SelfTrainingPathFile.size() 
-              << " self training data files for debugging.");
-
-    // Read self training data into memory
-    TrainingManager::read_files(SelfTrainingPathFile, self_training_data_); 
-    if (self_training_data_.empty())
-      cv_error("Error reading self, training data , exiting now.");
-
-    CVMESSAGE("Finished loading " 
-              << self_training_data_.size() << " unique self training objects.");
-  }
 
   // ------------------------------------------------------------------------//
 
@@ -810,7 +766,7 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
       }
     }
 
-  // Store size of tree in stats
+    // Store size of tree in stats
     stats::edit_distance_tree_size = selected.size(); 
 
     // Create a new root edit distance
@@ -828,157 +784,6 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
   property->recompute = true;
 
   stage->ed_tree_map[property] = stage->root_ed_tree->clone_edit_distance_tree();
-}
-
-void VerifyExecutionTraceManager::create_ed_tree_guided_by_self(CVExecutionState* state) {
-
-  ExecutionStateProperty *property = state->property();
-  ExecutionStage* stage = stages_[property];
-
-  assert(self_training_data_.size());
-
-  CVMESSAGE("Selecting training path using self data");
-
-  // Find path matching the current message in the self set
-  TrainingObjectScoreList self_score_list;
-  TrainingManager::init_score_list(self_training_data_, self_score_list);
-
-  const SocketEvent* socket_event 
-    = &(state->network_manager()->socket()->event());
-
-  SocketEventSimilarity base_measure;
-  TrainingObject* self_path 
-      = TrainingManager::find_first_with_score(socket_event, self_score_list, 
-                                               base_measure, 0.0);
-  //assert(self_score_list[0].first == 0);
-  assert(self_path != NULL);
-  CVDEBUG("Self path has length: " << self_path->trace.size());
-  
-  //// This is the path that will solve the round, now find the closest path in
-  //// the training set
-  ////TrainingObject* self_path = self_score_list[0].second;
-
-  // Place all of the training data into a vector
-  std::vector<TrainingObject*> training_objs(training_data_.begin(), training_data_.end());
-
-  //// Vec of edit distances between training data and the path that solves the
-  //// round
-  //std::vector<int> edit_distances;
-
-  //// Construct a basic Levenshtein Edit Distance Tree
-  //ExecutionTraceEditDistanceTree *tmp_ed_tree 
-  //    = new LevenshteinRadixTree<ExecutionTrace, BasicBlockID>();
-
-  //// Add the path that solves the round
-  //tmp_ed_tree->add_data(self_path->trace);
-
-  //// Iterate over all the training data to compute the edit distances
-  //CVDEBUG("Computing edit distance for " << training_objs.size() << " training paths");
-  //foreach (TrainingObject* tobj, training_objs) {
-  //  tmp_ed_tree->init(tobj->trace.size());
-  //  tmp_ed_tree->update(tobj->trace);
-  //  edit_distances.push_back(tmp_ed_tree->min_distance());
-  //  CVDEBUG("Edit Distance is: " << tmp_ed_tree->min_distance());
-  //}
-
-  //delete tmp_ed_tree;
-
-  //int min_edit_dist_index = 0;
-  //for (unsigned i=0; i < edit_distances.size(); ++i) {
-  //  if (edit_distances[i] < edit_distances[min_edit_dist_index]) {
-  //    min_edit_dist_index = i;
-  //  }
-  //}
-
-  //////////////---------------------------------------------//////////////
-
-  KExtensionTree<ExecutionTrace, BasicBlockID>* kext_tree = 
-      new KExtensionTree<ExecutionTrace, BasicBlockID>();
-
-  CVDEBUG("Computing edit distance using newer method.");
-  int max_training_trace_size = 0;
-  foreach (TrainingObject* tobj, training_objs) {
-    kext_tree->add_data(tobj->trace);
-    max_training_trace_size = std::max((int)tobj->trace.size(), max_training_trace_size);
-  }
-
-  int k = 2;
-
-  ExecutionTrace min_ed_path;
-
-  while (min_ed_path.size() == 0 && k < max_training_trace_size) {
-    k *= 2;
-    CVDEBUG("K == " << k);
-    kext_tree->init(k);
-    kext_tree->update(self_path->trace);
-    kext_tree->min_edit_distance_sequence(min_ed_path);
-  }
-
-  CVDEBUG("Found min ed path");
-  assert(min_ed_path.size() > 0);
-
-  //assert(training_objs[min_edit_dist_index]->trace == min_ed_path);
- 
-  int self_path_ed = kext_tree->min_edit_distance();
-  CVMESSAGE("Best path in training set has edit distance " << self_path_ed);
-  stats::self_path_edit_distance = self_path_ed;
-
-  kext_tree->delete_shared_data();
-
-  delete kext_tree;
-
-  // Create a new root edit distance
-  stage->root_ed_tree = EditDistanceTreeFactory::create();
-
-  // Add the closest edit distance training path to the tree
-  stage->root_ed_tree->add_data(min_ed_path);
-
-  // Initialze the edit distance tree
-  stage->root_ed_tree->init(stage->current_k);
-
-  // Set initial values for edit distance
-  property->edit_distance = INT_MAX-1;
-  property->recompute = true;
-
-  // Store size of tree in stats
-  stats::edit_distance_tree_size = 1; 
-
-  // Clone the root tree into the property map
-  stage->ed_tree_map[property] = stage->root_ed_tree->clone_edit_distance_tree();
-
-  //////////////---------------------------------------------//////////////
-  
-  //CVMESSAGE("Best path in training set has edit distance " 
-  //    << edit_distances[min_edit_dist_index]);
-
-  //// Create a new root edit distance
-  //stage->root_ed_tree = EditDistanceTreeFactory::create();
-
-  //// Add the closest edit distance training path to the tree
-  //stage->root_ed_tree->add_data(training_objs[min_edit_dist_index]->trace);
-
-  //// Initialze the edit distance tree
-  //stage->root_ed_tree->init(stage->current_k);
-
-  //// Set initial values for edit distance
-  //property->edit_distance = INT_MAX-1;
-  //property->recompute = true;
-
-  //// Store size of tree in stats
-  //stats::edit_distance_tree_size = 1; 
-
-  //// Clone the root tree into the property map
-  //stage->ed_tree_map[property] = stage->root_ed_tree->clone_edit_distance_tree();
-}
-
-bool VerifyExecutionTraceManager::create_ed_tree_from_all(CVExecutionState* state) {
-
-  create_ed_tree(state);
-
-  // TEMP
-  static int count = 0;
-  count++;
-  return count > 20;
 }
 
 void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
@@ -1024,19 +829,10 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
             assert(stage->etrace_tree->element_count() == 0);
             CVDEBUG("First basic block entry (stage)");
             //klee::TimerStatIncrementer build_timer(stats::edit_distance_build_time);
-
             //klee::TimerStatIncrementer training_timer(stats::training_time);
+            
             // Build the edit distance tree using training data
-            if (RepeatExecutionAtRound > 0 && 
-                property->round == RepeatExecutionAtRound) {
-              if (create_ed_tree_from_all(state)) {
-                cv_->executor()->setHaltExecution(true);
-              }
-            } else if (property->round > 0 && self_training_data_.size()) {
-              create_ed_tree_guided_by_self(state);
-            } else {
-              create_ed_tree(state);
-            }
+            create_ed_tree(state);
           }
 
           // Check if we need to reclone the edit distance tree 
@@ -1135,25 +931,10 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       // Increment stat counter
       stats::stage_count += 1;
 
-      /// Print stats when repeating rounds for testing and debugging
-      if (RepeatExecutionAtRound > 0 && 
-          property->round == RepeatExecutionAtRound) {
-        static bool first_repeat = true;
-        if (first_repeat)
-          first_repeat = false;
-        else
-          cv_->print_current_stats_and_reset();
-      }
-
       // Initialize a new ExecutionTraceTree
       ExecutionStage *new_stage = new ExecutionStage();
       new_stage->etrace_tree = new ExecutionTraceTree();
       new_stage->root_property = parent_property;
-
-      //if (is_socket_active) {
-      //  new_stage->socket_event 
-      //      = const_cast<SocketEvent*>(&(state->network_manager()->socket()->previous_event()));
-      //}
 
       if (!stages_.empty() && 
           stages_.count(property) && 
