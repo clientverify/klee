@@ -138,6 +138,8 @@ class VerifyExecutionTraceManager : public ExecutionTraceManager {
   // Training Filter
   TrainingFilterMap filter_map_;
   TrainingObjectManager *cluster_manager_;
+
+  std::set<TrainingObject*> self_training_data_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

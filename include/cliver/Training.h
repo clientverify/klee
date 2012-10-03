@@ -196,8 +196,9 @@ class TrainingManager {
 
   /// Return a set of TrainingObjects from a list of filenames, removing
   /// TrainingObjects with duplicate ExecutionTraces
+  template <class TrainingObjectSetType>
   static void read_files(std::vector<std::string> &filename_list,
-                         TrainingObjectSet &data) {
+                         TrainingObjectSetType &data) {
     
     for (int i=0; i<filename_list.size(); ++i) {
       std::string filename = filename_list[i];
@@ -217,7 +218,7 @@ class TrainingManager {
         tobj->id = ++current_id;
 
         // Check for duplicates with other TrainingObjects
-        TrainingObjectSet::iterator it = data.find(tobj);
+        typename TrainingObjectSetType::iterator it = data.find(tobj);
         if (data.end() != it) {
           // If duplicate found, insert associated SocketEvents into previously
           // create TrainingObject
