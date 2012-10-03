@@ -108,6 +108,10 @@ void CVExecutionState::erase_self_permanent() {
   cv_->executor()->remove_state_internal(this);
 }
 
+unsigned CVExecutionState::get_current_basic_block() {
+  return this->prevPC->kbb->id;
+}
+
 void CVExecutionState::print(std::ostream &os) const {
   if (property_)
     os << "[" << this << "][id:" << id_ << "]" << "[" << property_ << "] " << *property_;
