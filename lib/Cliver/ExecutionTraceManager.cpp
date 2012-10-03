@@ -684,9 +684,7 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
       cluster_manager_->sorted_clusters(socket_event, tf,
                                         sorted_clusters, *similarity_measure_);
 
-      //if (filter_map_.count(filter) == 0) {
       // Store size of tree in stats
-      //stats::edit_distance_tree_size = selected.size(); 
       stats::edit_distance_tree_size = sorted_clusters.size(); 
 
       // Create a new root edit distance

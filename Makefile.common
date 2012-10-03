@@ -20,8 +20,14 @@ endif
 
 # Required for Boost 
 REQUIRES_RTTI=1
+REQUIRES_EH=1
 LIBS += -lboost_serialization -lboost_regex
 CPPFLAGS += -Wno-deprecated
+CPPFLAGS += -DGOOGLE_PROFILER 
+
+# Use Boost.Timer rather than LLVM.Timer
+LIBS += -lboost_timer -lboost_system -lboost_chrono
+CPPFLAGS += -DUSE_BOOST_TIMER
 
 # Required for waffles
 LIBS += -lGClasses -lpng
