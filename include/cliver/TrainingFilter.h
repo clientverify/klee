@@ -17,30 +17,46 @@ namespace cliver {
 ////////////////////////////////////////////////////////////////////////////////
 
 class TrainingObject;
+class CVExecutionState;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TrainingFilter {
+class TrainingFilter {
+ public:
   TrainingFilter();
   TrainingFilter(TrainingObject* tobj);
+  TrainingFilter(CVExecutionState* state);
 
   // Extraction methods used to create different filters
   unsigned extract_socket_event_type(const TrainingObject *tobj);
   unsigned extract_initial_basic_block_id(const TrainingObject *tobj);
+  unsigned extract_socket_event_type(CVExecutionState* state);
+  unsigned extract_initial_basic_block_id(CVExecutionState* state);
 
   // Filter variables 
   unsigned type; // socket event type
   unsigned initial_basic_block_id; // initial instruction id
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+class XpilotTrainingFilter : public TrainingFilter {
+ public:
+ private:
+  // Filter variables 
+  unsigned type; // socket event type
+  unsigned initial_basic_block_id; // initial instruction id
+  size_t message_hash_; 
+};
+
 std::ostream& operator<<(std::ostream& os, const TrainingFilter &tf);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TrainingFilterFactory {
- public:
-  static TrainingFilter* create(const TrainingObject* tobj);
-};
+//class TrainingFilterFactory {
+// public:
+//  static TrainingFilter* create(const TrainingObject* tobj);
+//};
 
 ////////////////////////////////////////////////////////////////////////////////
 

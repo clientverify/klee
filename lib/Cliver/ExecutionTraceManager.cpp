@@ -674,106 +674,105 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
   const SocketEvent* socket_event 
     = &(state->network_manager()->socket()->event());
 
-  TrainingObjectFilter filter;
-
-  if (ClientModelFlag == XPilot) {
-    filter = TrainingObjectFilter(socket_event->type, state->prevPC->kbb->id);
-  } else {
-    filter = TrainingObjectFilter(socket_event->type, 0);
-  }
-
   if (UseClustering) {
 
-    // FIXME don't use old school filter
-    if ((AggressiveNaive && socket_event->type == SocketEvent::RECV) 
-        || filter_map_.count(filter) == 0) {
+    TrainingFilter tf(state);
+
+    if (cluster_manager_->check_filter(tf)) {
+
+      TrainingObjectScoreList sorted_clusters;
+      cluster_manager_->sorted_clusters(socket_event, tf,
+                                        sorted_clusters, *similarity_measure_);
+
+      //if (filter_map_.count(filter) == 0) {
+      // Store size of tree in stats
+      //stats::edit_distance_tree_size = selected.size(); 
+      stats::edit_distance_tree_size = sorted_clusters.size(); 
+
+      // Create a new root edit distance
+      stage->root_ed_tree = EditDistanceTreeFactory::create();
+
+      std::stringstream ss;
+      for (size_t i=0; i < sorted_clusters.size(); ++i) {
+        stage->root_ed_tree->add_data(sorted_clusters[i].second->trace);
+        ss << sorted_clusters[i].first << ",";
+      }
+      CVMESSAGE("Cluster Distances: " << ss.str());
+
+    } else {
       stage->root_ed_tree = NULL;
       return;
     }
 
-    TrainingFilter tf;
-    tf.type = socket_event->type;
-
-    if (ClientModelFlag == XPilot) {
-      tf.initial_basic_block_id = state->prevPC->kbb->id;
-    } else {
-      tf.initial_basic_block_id = 0;
-    }
-
-    TrainingObjectScoreList sorted_clusters;
-    cluster_manager_->sorted_clusters(socket_event, tf,
-                                      sorted_clusters, *similarity_measure_);
-
-    //if (filter_map_.count(filter) == 0) {
-    // Store size of tree in stats
-    //stats::edit_distance_tree_size = selected.size(); 
-    stats::edit_distance_tree_size = sorted_clusters.size(); 
-
-    // Create a new root edit distance
-    stage->root_ed_tree = EditDistanceTreeFactory::create();
-
-    for (size_t i=0; i < sorted_clusters.size(); ++i) {
-      stage->root_ed_tree->add_data(sorted_clusters[i].second->trace);
-    }
-  }
- 
-  if ((AggressiveNaive && socket_event->type == SocketEvent::RECV) || filter_map_.count(filter) == 0) {
-  //if (filter_map_.count(filter) == 0) {
-    CVMESSAGE("Filter not found! naive search");
-    stage->root_ed_tree = NULL;
-    return;
-
   } else {
-
-    CVMESSAGE("Filter found with " 
-              << filter_map_[filter]->message_count << " messages, and "
-              << filter_map_[filter]->training_objects.size() << " paths");
-
-    std::set<TrainingObject*> selected;
-    std::vector<int> scores;
-
-    int radius = 0;
-    if (ClientModelFlag == XPilot)
-      radius = 1;
-
-    while (selected.empty()) {
-      filter_map_[filter]->select_training_paths_for_message(socket_event, radius,
-                                                             similarity_measure_,
-                                                             scores, selected);
-      CVMESSAGE("Selected " << selected.size() << " paths with radius " << radius);
-      if (selected.empty()) {
-        if (ClientModelFlag == XPilot) {
-          radius *= 2;
-        } else {
-          radius += 1;
-        }
-      }
-    }
+  
+    TrainingObjectFilter filter;
 
     if (ClientModelFlag == XPilot) {
-      if (selected.size() > 5) {
-        radius /= 2;
-        scores = std::vector<int>();
-        selected = std::set<TrainingObject*>();
-        while (selected.empty()) {
-          filter_map_[filter]->select_training_paths_for_message(socket_event, radius,
-                                                                similarity_measure_,
-                                                                scores, selected);
-          CVMESSAGE("Re-selected " << selected.size() << " paths with radius " << radius);
-          if (selected.empty())
-            radius++;
-        }
-      }
+      filter = TrainingObjectFilter(socket_event->type, state->prevPC->kbb->id);
+    } else {
+      filter = TrainingObjectFilter(socket_event->type, 0);
     }
 
-    // Store size of tree in stats
-    stats::edit_distance_tree_size = selected.size(); 
+    if ((AggressiveNaive && socket_event->type == SocketEvent::RECV) 
+        || filter_map_.count(filter) == 0) {
+    //if (filter_map_.count(filter) == 0) {
+      CVMESSAGE("Filter not found! naive search");
+      stage->root_ed_tree = NULL;
+      return;
 
-    // Create a new root edit distance
-    stage->root_ed_tree = EditDistanceTreeFactory::create();
+    } else {
 
-    foreach (TrainingObject *tobj, selected) {
-      stage->root_ed_tree->add_data(tobj->trace);
+      CVMESSAGE("Filter found with " 
+                << filter_map_[filter]->message_count << " messages, and "
+                << filter_map_[filter]->training_objects.size() << " paths");
+
+      std::set<TrainingObject*> selected;
+      std::vector<int> scores;
+
+      int radius = 0;
+      if (ClientModelFlag == XPilot)
+        radius = 1;
+
+      while (selected.empty()) {
+        filter_map_[filter]->select_training_paths_for_message(socket_event, radius,
+                                                              similarity_measure_,
+                                                              scores, selected);
+        CVMESSAGE("Selected " << selected.size() << " paths with radius " << radius);
+        if (selected.empty()) {
+          if (ClientModelFlag == XPilot) {
+            radius *= 2;
+          } else {
+            radius += 1;
+          }
+        }
+      }
+
+      if (ClientModelFlag == XPilot) {
+        if (selected.size() > 5) {
+          radius /= 2;
+          scores = std::vector<int>();
+          selected = std::set<TrainingObject*>();
+          while (selected.empty()) {
+            filter_map_[filter]->select_training_paths_for_message(socket_event, radius,
+                                                                  similarity_measure_,
+                                                                  scores, selected);
+            CVMESSAGE("Re-selected " << selected.size() << " paths with radius " << radius);
+            if (selected.empty())
+              radius++;
+          }
+        }
+      }
+
+      // Store size of tree in stats
+      stats::edit_distance_tree_size = selected.size(); 
+
+      // Create a new root edit distance
+      stage->root_ed_tree = EditDistanceTreeFactory::create();
+
+      foreach (TrainingObject *tobj, selected) {
+        stage->root_ed_tree->add_data(tobj->trace);
+      }
     }
   }
 

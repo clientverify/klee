@@ -146,6 +146,7 @@ class TrainingObjectClusterManager {
   void cluster(unsigned cluster_count, std::vector<TrainingObject*>& tobjs) {
 
     TrainingObjectListMap tf_map;
+
     // Filter the TrainingObjects
     foreach (TrainingObject* tobj, tobjs) {
       TrainingFilter tf(tobj);
@@ -158,56 +159,57 @@ class TrainingObjectClusterManager {
 
     foreach (TrainingObjectListMap::value_type &data_vec, tf_map) {
 
+      if (data_vec.first.type == SocketEvent::SEND) {
+        TrainingObjectClusterer *clusterer = new TrainingObjectClusterer();
 
-      TrainingObjectClusterer *clusterer = new TrainingObjectClusterer();
+        TrainingObjectMetric metric;
+        clusterer->init(cluster_count, &metric);
+        clusterer->add_data(data_vec.second);
 
-      TrainingObjectMetric metric;
-      clusterer->init(cluster_count, &metric);
-      clusterer->add_data(data_vec.second);
+        std::cout << "Clustering " << data_vec.second.size() << " training paths.\n";
+        clusterer->cluster();
+        //clusterer->print_clusters();
 
-      std::cout << "Clustering " << data_vec.second.size() << " training paths.\n";
-      clusterer->cluster();
-      //clusterer->print_clusters();
+        clusterer->assign_all();
 
-      clusterer->assign_all();
+        for (unsigned i = 0; i< clusterer->count(); ++i) {
+          std::vector<TrainingObject*> tobjs_vec;
 
-      for (unsigned i = 0; i< clusterer->count(); ++i) {
-        std::vector<TrainingObject*> tobjs_vec;
+          // Get all of the TrainingObjects assigned to this cluster
+          clusterer->get_cluster(i, tobjs_vec);
+          TrainingObject* tobj_medoid = clusterer->get_medoid(i);
 
-        // Get all of the TrainingObjects assigned to this cluster
-        clusterer->get_cluster(i, tobjs_vec);
-        TrainingObject* tobj_medoid = clusterer->get_medoid(i);
+          ExecutionTrace* et = &(tobj_medoid->trace);
 
-        ExecutionTrace* et = &(tobj_medoid->trace);
+          // Extract all of the socket events from the cluster
+          // Create a new TrainingObject that represents the medoid, and all of
+          //   the associated socket event objects
+          TrainingObject* tobj_cluster = new TrainingObject(et);
 
-        // Extract all of the socket events from the cluster
-        // Create a new TrainingObject that represents the medoid, and all of
-        //   the associated socket event objects
-        TrainingObject* tobj_cluster = new TrainingObject(et);
+          TrainingObject *tobj = NULL;
+          SocketEvent *se = NULL;
 
-        TrainingObject *tobj = NULL;
-        SocketEvent *se = NULL;
+          SocketEventDataSet se_set;
+          SocketEventDataSet clustered_se_set;
 
-        SocketEventDataSet se_set;
-        SocketEventDataSet clustered_se_set;
-
-        foreach(tobj, tobjs_vec) {
-          foreach(se, tobj->socket_event_set) {
-            se_set.insert(se);
+          foreach(tobj, tobjs_vec) {
+            foreach(se, tobj->socket_event_set) {
+              se_set.insert(se);
+            }
           }
-        }
 
-        cluster_socket_events(10, se_set, clustered_se_set);
+          cluster_socket_events(10, se_set, clustered_se_set);
 
-        foreach(se, clustered_se_set) {
-          tobj_cluster->add_socket_event(se);
+          foreach(se, clustered_se_set) {
+            tobj_cluster->add_socket_event(se);
+          }
+        
+          TrainingFilter tf(tobj_cluster);
+          cluster_map_[tf].push_back(tobj_cluster);
         }
-      
-        TrainingFilter tf(tobj_cluster);
-        cluster_map_[tf].push_back(tobj_cluster);
+        
+        delete clusterer;
       }
-      
-      delete clusterer;
     }
 
     foreach (TrainingObjectListMap::value_type &data, cluster_map_) {
@@ -250,6 +252,10 @@ class TrainingObjectClusterManager {
 
   void n_closest_clusters(unsigned n, const SocketEvent* se, 
                           std::vector<TrainingObject*>& clusters) {
+  }
+
+  bool check_filter(TrainingFilter &filter) {
+    return cluster_map_.count(filter);
   }
 
  private:
