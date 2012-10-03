@@ -70,6 +70,8 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
   void erase_self();
   void erase_self_permanent();
 
+  unsigned get_current_basic_block();
+
  private:
   int increment_id() { return next_id_++; }
 
