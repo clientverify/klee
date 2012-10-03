@@ -66,6 +66,9 @@ DisableExecutionTraceTree("disable-et-tree",llvm::cl::init(false));
 llvm::cl::opt<bool>
 UseClustering("use-clustering",llvm::cl::init(true));
 
+llvm::cl::opt<bool>
+UseClusteringHint("use-clustering-hint",llvm::cl::init(false));
+
 llvm::cl::list<std::string> TrainingPathFile("training-path-file",
 	llvm::cl::ZeroOrMore,
 	llvm::cl::ValueRequired,
@@ -76,6 +79,16 @@ llvm::cl::list<std::string> TrainingPathDir("training-path-dir",
 	llvm::cl::ZeroOrMore,
 	llvm::cl::ValueRequired,
 	llvm::cl::desc("Specify directory containing .tpath files"),
+	llvm::cl::value_desc("tpath directory"));
+
+llvm::cl::list<std::string> SelfTrainingPathFile("self-training-path-file",
+	llvm::cl::ZeroOrMore,
+	llvm::cl::desc("Specify a training path file (.tpath) for the log we are verifying (debug)"),
+	llvm::cl::value_desc("tpath directory"));
+
+llvm::cl::list<std::string> SelfTrainingPathDir("self-training-path-dir",
+	llvm::cl::ZeroOrMore,
+	llvm::cl::desc("Specify directory containing .tpath files for the log we are verifying (debug)"),
 	llvm::cl::value_desc("tpath directory"));
 
 #ifndef NDEBUG
@@ -381,6 +394,27 @@ void VerifyExecutionTraceManager::initialize() {
 
   // ------------------------------------------------------------------------//
 
+  // Parse the self training data filenames 
+  if (!SelfTrainingPathDir.empty())
+    foreach (std::string path, SelfTrainingPathDir)
+      cv_->getFilesRecursive(path, ".tpath", SelfTrainingPathFile);
+
+  // Check if we are reading self-training data
+  if (SelfTrainingPathFile.size() > 0) {
+    CVMESSAGE("Loading " << SelfTrainingPathFile.size() 
+              << " self training data files for debugging.");
+
+    // Read self training data into memory
+    TrainingManager::read_files(SelfTrainingPathFile, self_training_data_); 
+    if (self_training_data_.empty())
+      cv_error("Error reading self, training data , exiting now.");
+
+    CVMESSAGE("Finished loading " 
+              << self_training_data_.size() << " unique self training objects.");
+  }
+
+  // ------------------------------------------------------------------------//
+
   initialize_training_data();
 }
 
@@ -674,7 +708,74 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
   const SocketEvent* socket_event 
     = &(state->network_manager()->socket()->event());
 
-  if (UseClustering) {
+  if (UseClusteringHint) {
+
+    TrainingFilter tf(state);
+
+    if (cluster_manager_->check_filter(tf)) {
+
+      klee::TimerStatIncrementer speds(stats::self_path_edit_distance);
+
+      // Create a new root edit distance
+      stage->root_ed_tree = EditDistanceTreeFactory::create();
+
+      // Find matching execution path
+      TrainingObject* tobj = NULL;
+      TrainingObject* matching_tobj = NULL;
+      int match_count = 0;
+
+      foreach (tobj, self_training_data_) {
+        SocketEventSet se_set(tobj->socket_event_set.begin(),
+                              tobj->socket_event_set.end());
+        if (se_set.count(const_cast<SocketEvent*>(socket_event))) {
+          match_count++;
+          matching_tobj = tobj;
+        }
+      }
+      if (match_count > 1) {
+        CVMESSAGE("match_count > 1 : " << match_count);
+      }
+
+      {
+        TrainingObjectScoreList sorted_clusters;
+        cluster_manager_->sorted_clusters(socket_event, tf,
+                                          sorted_clusters, *similarity_measure_);
+
+        // Store size of tree in stats
+        stats::edit_distance_tree_size = sorted_clusters.size(); 
+
+        std::stringstream ss;
+        for (size_t i=0; i < sorted_clusters.size(); ++i) {
+          if (match_count == 0) {
+            stage->root_ed_tree->add_data(sorted_clusters[i].second->trace);
+          }
+          ss << sorted_clusters[i].first << ",";
+        }
+        CVMESSAGE("Original Cluster Distances: " << ss.str());
+      }
+
+
+      if (match_count >= 1) {
+        TrainingObjectScoreList sorted_clusters;
+
+        cluster_manager_->all_clusters_distance(matching_tobj,
+                                                sorted_clusters);
+
+        std::stringstream ss;
+        for (size_t i=0; i < sorted_clusters.size(); ++i) {
+          ss << sorted_clusters[i].first << ",";
+        }
+        CVMESSAGE("All Cluster Distances: " << ss.str());
+
+        // Add closest cluster
+        stage->root_ed_tree->add_data(sorted_clusters[0].second->trace);
+      }
+    } else {
+      stage->root_ed_tree = NULL;
+      return;
+    }
+  }
+  else if (UseClustering) {
 
     TrainingFilter tf(state);
 
@@ -822,7 +923,6 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
 
           // Check if this is the first basic block of the stage
           if (!stage->etrace_tree->tracks(property)) {
-            CVMESSAGE("Computing EditdistanceTree");
             assert(stage->etrace_tree->element_count() == 0);
             CVDEBUG("First basic block entry (stage)");
             //klee::TimerStatIncrementer build_timer(stats::edit_distance_build_time);

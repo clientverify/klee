@@ -258,6 +258,19 @@ class TrainingObjectClusterManager {
     return cluster_map_.count(filter);
   }
 
+
+  void all_clusters_distance(TrainingObject* tobj,
+                             TrainingObjectScoreList& sorted_clusters) {
+    TrainingObjectMetric metric;
+    foreach (TrainingObjectListMap::value_type &data, cluster_map_) {
+      for (unsigned i=0; i<data.second.size(); ++i) {
+        int result = metric.distance(tobj, data.second[i]);
+        sorted_clusters.push_back(std::make_pair(result, data.second[i]));
+      }
+    }
+    std::sort(sorted_clusters.begin(), sorted_clusters.end());
+  }
+
  private:
   TrainingObjectListMap cluster_map_;
   TrainingObjectMetric* training_object_metric_;
