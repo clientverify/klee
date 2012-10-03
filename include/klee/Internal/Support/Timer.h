@@ -11,10 +11,17 @@
 #define KLEE_TIMER_H
 
 #include <stdint.h>
+#ifdef USE_BOOST_TIMER
+#include <boost/timer/timer.hpp>
+#endif
 
 namespace klee {
   class WallTimer {
+#ifdef USE_BOOST_TIMER
+    boost::timer::cpu_timer timer;
+#else
     uint64_t startMicroseconds;
+#endif
     
   public:
     WallTimer();
