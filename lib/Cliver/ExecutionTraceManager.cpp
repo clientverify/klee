@@ -31,6 +31,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include "llvm/System/Process.h"
+#include "llvm/Function.h"
 
 #include <omp.h>
 
@@ -659,7 +660,6 @@ void VerifyExecutionTraceManager::update_edit_distance(
     return;
   }
 
-
   //if (!EditDistanceAtCloneOnly) {
   //  stage->ed_tree_map[property]->update_element(
   //      stage->etrace_tree->leaf_element(property));
@@ -668,7 +668,6 @@ void VerifyExecutionTraceManager::update_edit_distance(
   //  stage->etrace_tree->tracker_get(property, etrace);
   //  stage->ed_tree_map[property]->update(etrace);
   //}
-
 
   if (stage->ed_tree_map.count(property) == 0) {
     if (stage->root_ed_tree != NULL) {
@@ -970,6 +969,10 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
                 property->recompute = false;
               }
               update_edit_distance(property);
+
+              //if (stage->current_k >= MaxKExtension) {
+              //  CVMESSAGE(">MaxK " << *state << " " << state->stack.back().kf->function->getNameStr());
+              //}
             }
           }
         }

@@ -110,6 +110,9 @@ DebugNetworkManager("debug-network-manager",llvm::cl::init(false));
 	executor->bind_local(target, state_, retval); \
 	return; }
 
+#define RETURN_FAILURE_OBJ(action, reason) \
+	RETURN_FAILURE_NO_SOCKET(action, reason)
+
 #define GET_SOCKET_OR_DIE_TRYIN(action, file_descriptor) \
 	unsigned socket_index; \
   for (socket_index = 0; socket_index < sockets_.size(); ++socket_index) \

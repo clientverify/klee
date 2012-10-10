@@ -258,7 +258,6 @@ class TrainingObjectClusterManager {
     return cluster_map_.count(filter);
   }
 
-
   void all_clusters_distance(TrainingObject* tobj,
                              TrainingObjectScoreList& sorted_clusters) {
     TrainingObjectMetric metric;
