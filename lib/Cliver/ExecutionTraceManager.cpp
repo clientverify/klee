@@ -471,9 +471,12 @@ void VerifyExecutionTraceManager::initialize_training_data() {
 
   //}
 
-  cluster_manager_ = new TrainingObjectManager();
-  std::vector<TrainingObject*> tobj_vec(training_data_.begin(), training_data_.end());
-  cluster_manager_->cluster(8, tobj_vec);
+  if (UseClusteringHint || UseClustering) {
+    cluster_manager_ = new TrainingObjectManager();
+    std::vector<TrainingObject*> tobj_vec(training_data_.begin(), training_data_.end());
+    cluster_manager_->cluster(8, tobj_vec);
+    return;
+  }
 
   TrainingObject* tobj = NULL;
   foreach (tobj, training_data_) {
@@ -647,7 +650,6 @@ void VerifyExecutionTraceManager::initialize_training_data() {
 void VerifyExecutionTraceManager::update_edit_distance(
     ExecutionStateProperty* property) {
 
-  //klee::TimerStatIncrementer edct(stats::edit_distance_compute_time);
 
   ExecutionStage* stage = stages_[property];
   assert(stage);
@@ -656,6 +658,7 @@ void VerifyExecutionTraceManager::update_edit_distance(
   if (property->edit_distance == INT_MAX) {
     return;
   }
+
 
   //if (!EditDistanceAtCloneOnly) {
   //  stage->ed_tree_map[property]->update_element(
@@ -674,6 +677,8 @@ void VerifyExecutionTraceManager::update_edit_distance(
       return;
     }
   }
+
+  klee::TimerStatIncrementer edct(stats::edit_distance_compute_time);
 
   ExecutionTrace etrace;
   stage->etrace_tree->tracker_get(property, etrace);
@@ -732,6 +737,7 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
           matching_tobj = tobj;
         }
       }
+
       if (match_count > 1) {
         CVMESSAGE("match_count > 1 : " << match_count);
       }
@@ -753,7 +759,6 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
         }
         CVMESSAGE("Original Cluster Distances: " << ss.str());
       }
-
 
       if (match_count >= 1) {
         TrainingObjectScoreList sorted_clusters;
@@ -815,7 +820,6 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
 
     if ((AggressiveNaive && socket_event->type == SocketEvent::RECV) 
         || filter_map_.count(filter) == 0) {
-    //if (filter_map_.count(filter) == 0) {
       CVMESSAGE("Filter not found! naive search");
       stage->root_ed_tree = NULL;
       return;
@@ -888,6 +892,18 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
   if (cv_->executor()->replay_path())
     return;
 
+  switch (ev.event_type) {
+    case CV_SELECT_EVENT:
+    case CV_BASICBLOCK_ENTRY:
+    case CV_STATE_REMOVED:
+    case CV_STATE_CLONE:
+    case CV_SEARCHER_NEW_STAGE:
+    case CV_CLEAR_CACHES:
+      break;
+    default:
+      return;
+  }
+
   CVExecutionState* state = ev.state;
   CVExecutionState* parent = ev.parent;
 
@@ -925,10 +941,10 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
           if (!stage->etrace_tree->tracks(property)) {
             assert(stage->etrace_tree->element_count() == 0);
             CVDEBUG("First basic block entry (stage)");
-            //klee::TimerStatIncrementer build_timer(stats::edit_distance_build_time);
             //klee::TimerStatIncrementer training_timer(stats::training_time);
             
             // Build the edit distance tree using training data
+            klee::TimerStatIncrementer build_timer(stats::edit_distance_build_time);
             create_ed_tree(state);
           }
 
@@ -944,7 +960,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
         if (state->basic_block_tracking() || !BasicBlockDisabling) {
           klee::TimerStatIncrementer timer(stats::execution_tree_time);
           {
-            //klee::TimerStatIncrementer extend_timer(stats::execution_tree_extend_time);
+            klee::TimerStatIncrementer extend_timer(stats::execution_tree_extend_time);
             stage->etrace_tree->extend_element(state->prevPC->kbb->id, property);
           }
 
