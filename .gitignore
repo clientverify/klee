@@ -8,6 +8,7 @@
 *.gcov
 Release/
 Release+Asserts/
+Release-Asserts/
 Debug/
 Debug+Asserts/
 Debug-Asserts/
