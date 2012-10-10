@@ -28,7 +28,7 @@ uint64_t WallTimer::check() {
 #ifdef USE_BOOST_TIMER
   // check_times.user and check_times.system are in nanoseconds
   boost::timer::cpu_times const check_times(timer.elapsed());
-  return ((check_times.system + check_times.user) * 1000);
+  return ((check_times.system + check_times.user) / 1000);
 #else
   sys::TimeValue now(0,0),user(0,0),sys(0,0);
   sys::Process::GetTimeUsage(now,user,sys);
