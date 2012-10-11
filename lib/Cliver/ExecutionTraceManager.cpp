@@ -799,11 +799,16 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
       stage->root_ed_tree = EditDistanceTreeFactory::create();
 
       std::stringstream ss;
-      for (size_t i=0; i < sorted_clusters.size(); ++i) {
+      size_t i = 0;
+      do {
         stage->root_ed_tree->add_data(sorted_clusters[i].second->trace);
         ss << sorted_clusters[i].first << ",";
-      }
-      CVMESSAGE("Cluster Distances: " << ss.str());
+      } while (sorted_clusters[i].first <= (sorted_clusters[0].first * 2));
+      //for (size_t i=0; i < sorted_clusters.size(); ++i) {
+      //  stage->root_ed_tree->add_data(sorted_clusters[i].second->trace);
+      //  ss << sorted_clusters[i].first << ",";
+      //}
+      CVMESSAGE("Cluster SocketEvent Distances (" << i << ") " << ss.str());
 
     } else {
       stage->root_ed_tree = NULL;
