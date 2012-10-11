@@ -64,6 +64,9 @@ AggressiveNaive("aggressive-naive",llvm::cl::init(false));
 llvm::cl::opt<bool>
 DisableExecutionTraceTree("disable-et-tree",llvm::cl::init(false));
 
+llvm::cl::opt<unsigned>
+ClusterSize("cluster-size",llvm::cl::init(4));
+
 llvm::cl::opt<bool>
 UseClustering("use-clustering",llvm::cl::init(true));
 
@@ -475,7 +478,7 @@ void VerifyExecutionTraceManager::initialize_training_data() {
   if (UseClusteringHint || UseClustering) {
     cluster_manager_ = new TrainingObjectManager();
     std::vector<TrainingObject*> tobj_vec(training_data_.begin(), training_data_.end());
-    cluster_manager_->cluster(8, tobj_vec);
+    cluster_manager_->cluster(ClusterSize, tobj_vec);
     return;
   }
 
