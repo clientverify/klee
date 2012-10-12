@@ -49,7 +49,6 @@ ConstraintPruner::ConstraintPruner() {}
 
 void ConstraintPruner::prune_constraints(
 		CVExecutionState &state, AddressSpaceGraph &graph ) {
-	klee::TimerStatIncrementer timer(stats::prune_time);
 
 	klee::IndependentElementSet array_set;
 	foreach (const klee::Array* array, graph.arrays()) {
@@ -86,7 +85,6 @@ void ConstraintPruner::prune_constraints(
 					it = worklist.begin(), ie = worklist.end(); it != ie; ++it) {
 		CVDEBUG("Removed: " << it->first );
 	}
-	stats::pruned_constraints += start_size - result.size();
 	CVDEBUG_S(state.id(), "removed " << start_size - result.size() << " constraints");
 
 	state.constraints = klee::ConstraintManager(result);
