@@ -78,28 +78,20 @@ HeapCheckRoundNumber("heap-check-round", llvm::cl::init(-1));
 
 namespace stats {
 	klee::Statistic round_number("RoundNumber", "Rn");
-	//klee::Statistic active_states("ActiveStates", "ASts");
 	klee::Statistic merged_states("MergedStates", "MSts");
 	klee::Statistic round_time("RoundTime", "RTm");
-	//klee::Statistic round_real_time("RoundRealTime", "RRTm");
+	klee::Statistic round_real_time("RoundRTime", "RRTm");
+	klee::Statistic round_sys_time("RoundSTime", "RSTm");
 	klee::Statistic merge_time("MergingTime", "MTm");
-	//klee::Statistic prune_time("PruningTime", "PTm");
-	//klee::Statistic pruned_constraints("PrunedConstraints", "Prn");
 	klee::Statistic searcher_time("SearcherTime", "STm");
 	klee::Statistic fork_time("ForkTime", "FTm");
 	klee::Statistic round_instructions("RoundInsts", "RInsts");
 	klee::Statistic recv_round_instructions("RecvRoundInsts", "RRInsts");
 	klee::Statistic rebuild_time("RebuildTime", "RBTime");
 	klee::Statistic execution_tree_time("ExecutionTreeTime", "ETTime");
-	//klee::Statistic execution_tree_extend_time("EditDistanceExtendTime","EDExTm");
 	klee::Statistic edit_distance_time("EditDistanceTime","EDTm");
 	klee::Statistic edit_distance_build_time("EditDistanceBuildTime","EDBdTm");
-	//klee::Statistic edit_distance_tree_size("EditDistanceTreeSize","EDTSz");
-	//klee::Statistic edit_distance_final_k("EditDistanceFinalK","EDFK");
-	//klee::Statistic edit_distance_min_score("EditDistanceMinScore","EDMS");
 	klee::Statistic stage_count("StageCount","StgCnt");
-	//klee::Statistic self_path_edit_distance("SelfPathEditDistance","SpED");
-	//klee::Statistic training_time("TrainingTime","TrTm");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -352,20 +344,22 @@ ExecutionTraceManager* ClientVerifier::execution_trace_manager() {
 }
 
 void ClientVerifier::update_time_statistics() {
-  static llvm::sys::TimeValue lastNowTime(0,0),lastUserTime(0,0);
+  static llvm::sys::TimeValue lastNowTime(0,0),lastUserTime(0,0),lastSysTime(0,0);
 
   if (lastUserTime.seconds()==0 && lastUserTime.nanoseconds()==0) {
-		llvm::sys::TimeValue sys(0,0);
-		llvm::sys::Process::GetTimeUsage(lastNowTime,lastUserTime,sys);
+		llvm::sys::Process::GetTimeUsage(lastNowTime,lastUserTime,lastSysTime);
   } else {
 		llvm::sys::TimeValue now(0,0),user(0,0),sys(0,0);
 		llvm::sys::Process::GetTimeUsage(now,user,sys);
 		llvm::sys::TimeValue delta = user - lastUserTime;
 		llvm::sys::TimeValue deltaNow = now - lastNowTime;
+		llvm::sys::TimeValue deltaSys = sys - lastSysTime;
     stats::round_time += delta.usec();
-    //stats::round_real_time += deltaNow.usec();
+    stats::round_real_time += deltaNow.usec();
+    stats::round_sys_time += deltaSys.usec();
     lastUserTime = user;
     lastNowTime = now;
+    lastSysTime = sys;
   }
 }
 
@@ -373,6 +367,8 @@ void ClientVerifier::print_stat_labels() {
 *cv_message_stream << "KEY" 
     << " " << "Rnd"
     << " " << stats::round_time.getShortName()
+    << " " << stats::round_real_time.getShortName()
+    << " " << stats::round_sys_time.getShortName()
     << " " << klee::stats::solverTime.getShortName()
     << " " << stats::searcher_time.getShortName()
     << " " << stats::execution_tree_time.getShortName()
@@ -401,6 +397,8 @@ void ClientVerifier::print_statistic_record(klee::StatisticRecord* sr,
   *cv_message_stream << prefix 
     << " " << sr->getValue(stats::round_number)
     << " " << sr->getValue(stats::round_time)               /// time_scale
+    << " " << sr->getValue(stats::round_real_time)               /// time_scale
+    << " " << sr->getValue(stats::round_sys_time)               /// time_scale
     << " " << sr->getValue(klee::stats::solverTime)         /// time_scale
     << " " << sr->getValue(stats::searcher_time)            /// time_scale
     << " " << sr->getValue(stats::execution_tree_time)      /// time_scale
