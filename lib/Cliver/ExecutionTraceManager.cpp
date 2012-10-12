@@ -680,7 +680,7 @@ void VerifyExecutionTraceManager::update_edit_distance(
     }
   }
 
-  klee::TimerStatIncrementer edct(stats::edit_distance_compute_time);
+  //klee::TimerStatIncrementer edct(stats::edit_distance_compute_time);
 
   ExecutionTrace etrace;
   stage->etrace_tree->tracker_get(property, etrace);
@@ -721,7 +721,7 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
 
     if (cluster_manager_->check_filter(tf)) {
 
-      klee::TimerStatIncrementer speds(stats::self_path_edit_distance);
+      //klee::TimerStatIncrementer speds(stats::self_path_edit_distance);
 
       // Create a new root edit distance
       stage->root_ed_tree = EditDistanceTreeFactory::create();
@@ -750,7 +750,7 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
                                           sorted_clusters, *similarity_measure_);
 
         // Store size of tree in stats
-        stats::edit_distance_tree_size = sorted_clusters.size(); 
+        //stats::edit_distance_tree_size = sorted_clusters.size(); 
 
         std::stringstream ss;
         for (size_t i=0; i < sorted_clusters.size(); ++i) {
@@ -792,9 +792,6 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
       cluster_manager_->sorted_clusters(socket_event, tf,
                                         sorted_clusters, *similarity_measure_);
 
-      // Store size of tree in stats
-      stats::edit_distance_tree_size = sorted_clusters.size(); 
-
       // Create a new root edit distance
       stage->root_ed_tree = EditDistanceTreeFactory::create();
 
@@ -803,11 +800,8 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
       do {
         stage->root_ed_tree->add_data(sorted_clusters[i].second->trace);
         ss << sorted_clusters[i].first << ",";
-      } while (sorted_clusters[i].first <= (sorted_clusters[0].first * 2));
-      //for (size_t i=0; i < sorted_clusters.size(); ++i) {
-      //  stage->root_ed_tree->add_data(sorted_clusters[i].second->trace);
-      //  ss << sorted_clusters[i].first << ",";
-      //}
+        i++;
+      } while (i < 8 && sorted_clusters[i].first <= (sorted_clusters[0].first * 2));
       CVMESSAGE("Cluster SocketEvent Distances (" << i << ") " << ss.str());
 
     } else {
@@ -875,7 +869,7 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
       }
 
       // Store size of tree in stats
-      stats::edit_distance_tree_size = selected.size(); 
+      //stats::edit_distance_tree_size = selected.size(); 
 
       // Create a new root edit distance
       stage->root_ed_tree = EditDistanceTreeFactory::create();
@@ -951,7 +945,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
             //klee::TimerStatIncrementer training_timer(stats::training_time);
             
             // Build the edit distance tree using training data
-            klee::TimerStatIncrementer build_timer(stats::edit_distance_build_time);
+            //klee::TimerStatIncrementer build_timer(stats::edit_distance_build_time);
             create_ed_tree(state);
           }
 
@@ -965,15 +959,15 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
 
       if (FilterTrainingUsage > 0 && !property->is_recv_processing) {
         if (state->basic_block_tracking() || !BasicBlockDisabling) {
-          klee::TimerStatIncrementer timer(stats::execution_tree_time);
+          //klee::TimerStatIncrementer timer(stats::execution_tree_time);
           {
-            klee::TimerStatIncrementer extend_timer(stats::execution_tree_extend_time);
+            //klee::TimerStatIncrementer extend_timer(stats::execution_tree_extend_time);
             stage->etrace_tree->extend_element(state->prevPC->kbb->id, property);
           }
 
           if (is_socket_active) {
             if (property->recompute) {
-              if (EditDistanceAtCloneOnly || property->round < 5) {
+              if (EditDistanceAtCloneOnly) {
                 property->recompute = false;
               }
               update_edit_distance(property);
@@ -1147,8 +1141,8 @@ void VerifyExecutionTraceManager::recompute_property(
 
 void VerifyExecutionTraceManager::process_all_states(
     std::vector<ExecutionStateProperty*> &states) {
-  klee::TimerStatIncrementer timer(stats::execution_tree_time);
-  klee::TimerStatIncrementer edct(stats::edit_distance_compute_time);
+  //klee::TimerStatIncrementer timer(stats::execution_tree_time);
+  //klee::TimerStatIncrementer edct(stats::edit_distance_compute_time);
 
   {
     assert(!states.empty());
@@ -1159,7 +1153,7 @@ void VerifyExecutionTraceManager::process_all_states(
 
     stage->current_k = stage->current_k * 2;
 
-    stats::edit_distance_final_k = stage->current_k;
+    //stats::edit_distance_final_k = stage->current_k;
   }
 
   CVDEBUG("All states should have INT_MAX=" << INT_MAX << " edit distance.");

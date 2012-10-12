@@ -104,7 +104,6 @@ class TrackingRadixTree
   bool tracker_get(TrackingObject* tracker, SequenceType& s) {
     // If tracker is in the node map, look up the assocated leaf node
     if (tracks(tracker)) { 
-      klee::TimerStatIncrementer training_timer(stats::training_time);
       this->get(get_node(tracker), s);
       return true;
     }

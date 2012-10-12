@@ -78,28 +78,28 @@ HeapCheckRoundNumber("heap-check-round", llvm::cl::init(-1));
 
 namespace stats {
 	klee::Statistic round_number("RoundNumber", "Rn");
-	klee::Statistic active_states("ActiveStates", "ASts");
+	//klee::Statistic active_states("ActiveStates", "ASts");
 	klee::Statistic merged_states("MergedStates", "MSts");
 	klee::Statistic round_time("RoundTime", "RTm");
-	klee::Statistic round_real_time("RoundRealTime", "RRTm");
+	//klee::Statistic round_real_time("RoundRealTime", "RRTm");
 	klee::Statistic merge_time("MergingTime", "MTm");
-	klee::Statistic prune_time("PruningTime", "PTm");
-	klee::Statistic pruned_constraints("PrunedConstraints", "Prn");
+	//klee::Statistic prune_time("PruningTime", "PTm");
+	//klee::Statistic pruned_constraints("PrunedConstraints", "Prn");
 	klee::Statistic searcher_time("SearcherTime", "STm");
 	klee::Statistic fork_time("ForkTime", "FTm");
 	klee::Statistic round_instructions("RoundInsts", "RInsts");
+	klee::Statistic recv_round_instructions("RecvRoundInsts", "RRInsts");
 	klee::Statistic rebuild_time("RebuildTime", "RBTime");
 	klee::Statistic execution_tree_time("ExecutionTreeTime", "ETTime");
-	klee::Statistic execution_tree_extend_time("EditDistanceExtendTime","EDExTm");
-	klee::Statistic edit_distance_compute_time("EditDistanceComputeTime","EDCoTm");
+	//klee::Statistic execution_tree_extend_time("EditDistanceExtendTime","EDExTm");
+	klee::Statistic edit_distance_time("EditDistanceTime","EDTm");
 	klee::Statistic edit_distance_build_time("EditDistanceBuildTime","EDBdTm");
-	klee::Statistic edit_distance_tree_size("EditDistanceTreeSize","EDTSz");
-	klee::Statistic edit_distance_final_k("EditDistanceFinalK","EDFK");
-	klee::Statistic edit_distance_min_score("EditDistanceMinScore","EDMS");
+	//klee::Statistic edit_distance_tree_size("EditDistanceTreeSize","EDTSz");
+	//klee::Statistic edit_distance_final_k("EditDistanceFinalK","EDFK");
+	//klee::Statistic edit_distance_min_score("EditDistanceMinScore","EDMS");
 	klee::Statistic stage_count("StageCount","StgCnt");
-	klee::Statistic self_path_edit_distance("SelfPathEditDistance","SpED");
-	klee::Statistic training_time("TrainingTime","TrTm");
-	klee::Statistic recv_round_instructions("RecvRoundInsts", "RRInsts");
+	//klee::Statistic self_path_edit_distance("SelfPathEditDistance","SpED");
+	//klee::Statistic training_time("TrainingTime","TrTm");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -153,12 +153,6 @@ ClientVerifier::ClientVerifier(std::string* input_filename)
     cvstream_->copyFileToOutputDirectory(*input_filename, dest_name);
   }
 
-  // Initialize time stats
-	update_time_statistics();
-
-  // Create and enable new StatisticRecord
-	statistics_.push_back(new klee::StatisticRecord());
-  klee::theStatisticManager->setCliverContext(statistics_[round_number_]);
 }
 
 ClientVerifier::~ClientVerifier() {
@@ -256,6 +250,13 @@ void ClientVerifier::initialize(CVExecutor *executor) {
   }
 
   print_stat_labels();
+
+  // Initialize time stats
+	update_time_statistics();
+
+  // Create and enable new StatisticRecord
+	statistics_.push_back(new klee::StatisticRecord());
+  klee::theStatisticManager->setCliverContext(statistics_[round_number_]);
 }
 
 void ClientVerifier::initialize_external_handlers(CVExecutor *executor) {
@@ -362,7 +363,7 @@ void ClientVerifier::update_time_statistics() {
 		llvm::sys::TimeValue delta = user - lastUserTime;
 		llvm::sys::TimeValue deltaNow = now - lastNowTime;
     stats::round_time += delta.usec();
-    stats::round_real_time += deltaNow.usec();
+    //stats::round_real_time += deltaNow.usec();
     lastUserTime = user;
     lastNowTime = now;
   }
@@ -371,32 +372,21 @@ void ClientVerifier::update_time_statistics() {
 void ClientVerifier::print_stat_labels() {
 *cv_message_stream << "KEY" 
     << " " << "Rnd"
-    << " " << stats::active_states.getShortName()
-    << " " << stats::merged_states.getShortName()
-    << " " << stats::pruned_constraints.getShortName()
     << " " << stats::round_time.getShortName()
-    << " " << stats::round_real_time.getShortName()
-    << " " << stats::prune_time.getShortName()
-    << " " << stats::merge_time.getShortName()
-    << " " << stats::searcher_time.getShortName()
     << " " << klee::stats::solverTime.getShortName()
-    << " " << stats::fork_time.getShortName()
+    << " " << stats::searcher_time.getShortName()
+    << " " << stats::execution_tree_time.getShortName()
+    << " " << stats::edit_distance_time.getShortName()
+    << " " << stats::edit_distance_build_time.getShortName()
+    << " " << stats::merge_time.getShortName()
     << " " << stats::rebuild_time.getShortName()
     << " " << stats::round_instructions.getShortName()
+    << " " << stats::recv_round_instructions.getShortName()
+    << " " << stats::stage_count.getShortName()
+    << " " << stats::merged_states.getShortName()
     << " " << "StSz"
     << " " << "StSzTot"
     << " " << "AllcMm"
-    << " " << stats::execution_tree_time.getShortName()
-    << " " << stats::execution_tree_extend_time.getShortName()
-    << " " << stats::edit_distance_compute_time.getShortName()
-    << " " << stats::edit_distance_build_time.getShortName()
-    << " " << stats::edit_distance_tree_size.getShortName()
-    << " " << stats::edit_distance_final_k.getShortName()
-    << " " << stats::edit_distance_min_score.getShortName()
-    << " " << stats::stage_count.getShortName()
-    << " " << stats::self_path_edit_distance.getShortName()
-    << " " << stats::training_time.getShortName()
-    << " " << stats::recv_round_instructions.getShortName()
     << "\n";
 }
 
@@ -407,34 +397,24 @@ void ClientVerifier::print_current_statistics(std::string prefix) {
 
 void ClientVerifier::print_statistic_record(klee::StatisticRecord* sr,
                                             std::string &prefix) {
+  double time_scale = 1.0; // 100000.
   *cv_message_stream << prefix 
     << " " << sr->getValue(stats::round_number)
-    << " " << sr->getValue(stats::active_states)
-    << " " << sr->getValue(stats::merged_states)
-    << " " << sr->getValue(stats::pruned_constraints)
-    << " " << sr->getValue(stats::round_time) / 1000000.
-    << " " << sr->getValue(stats::round_real_time) / 1000000.
-    << " " << sr->getValue(stats::prune_time) / 1000000.
-    << " " << sr->getValue(stats::merge_time) / 1000000.
-    << " " << sr->getValue(stats::searcher_time) / 1000000.
-    << " " << sr->getValue(klee::stats::solverTime) / 1000000.
-    << " " << sr->getValue(stats::fork_time) / 1000000.
-    << " " << sr->getValue(stats::rebuild_time) / 1000000.
+    << " " << sr->getValue(stats::round_time)               /// time_scale
+    << " " << sr->getValue(klee::stats::solverTime)         /// time_scale
+    << " " << sr->getValue(stats::searcher_time)            /// time_scale
+    << " " << sr->getValue(stats::execution_tree_time)      /// time_scale
+    << " " << sr->getValue(stats::edit_distance_time)       /// time_scale
+    << " " << sr->getValue(stats::edit_distance_build_time) /// time_scale
+    << " " << sr->getValue(stats::merge_time)               /// time_scale
+    << " " << sr->getValue(stats::rebuild_time)             /// time_scale
     << " " << sr->getValue(stats::round_instructions)
+    << " " << sr->getValue(stats::recv_round_instructions)
+    << " " << sr->getValue(stats::stage_count)
+    << " " << sr->getValue(stats::merged_states)
     << " " << executor()->states_size()
     << " " << CVExecutionState::next_id()
     << " " << executor()->memory_usage()
-    << " " << sr->getValue(stats::execution_tree_time) / 1000000.
-    << " " << sr->getValue(stats::execution_tree_extend_time) / 1000000.
-    << " " << sr->getValue(stats::edit_distance_compute_time) / 1000000.
-    << " " << sr->getValue(stats::edit_distance_build_time) / 1000000.
-    << " " << sr->getValue(stats::edit_distance_tree_size)
-    << " " << sr->getValue(stats::edit_distance_final_k)
-    << " " << sr->getValue(stats::edit_distance_min_score)
-    << " " << sr->getValue(stats::stage_count)
-    << " " << sr->getValue(stats::self_path_edit_distance) / 1000000.
-    << " " << sr->getValue(stats::training_time) / 1000000.
-    << " " << sr->getValue(stats::recv_round_instructions)
     << "\n";
 
 #ifdef GOOGLE_PROFILER
