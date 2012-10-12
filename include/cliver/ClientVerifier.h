@@ -31,16 +31,18 @@ namespace cliver {
 
 namespace stats {
 	extern klee::Statistic round_number;
-	extern klee::Statistic merged_states;
 	extern klee::Statistic round_time;
+	extern klee::Statistic round_real_time;
+	extern klee::Statistic round_sys_time;
 	extern klee::Statistic merge_time;
 	extern klee::Statistic searcher_time;
 	extern klee::Statistic rebuild_time;
-	extern klee::Statistic round_instructions;
-	extern klee::Statistic recv_round_instructions;
 	extern klee::Statistic execution_tree_time;
 	extern klee::Statistic edit_distance_time;
 	extern klee::Statistic edit_distance_build_time;
+	extern klee::Statistic round_instructions;
+	extern klee::Statistic recv_round_instructions;
+	extern klee::Statistic merged_states;
 	extern klee::Statistic stage_count;
 }
 

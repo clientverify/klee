@@ -52,15 +52,6 @@ BasicBlockDisabling("basicblock-disabling",llvm::cl::init(false));
 llvm::cl::opt<bool>
 DebugExecutionTree("debug-execution-tree",llvm::cl::init(false));
 
-llvm::cl::opt<unsigned>
-FilterTrainingUsage("filter-training-usage",llvm::cl::init(0));
-
-llvm::cl::opt<unsigned>
-MedoidCount("medoid-count",llvm::cl::init(1));
-
-llvm::cl::opt<bool>
-AggressiveNaive("aggressive-naive",llvm::cl::init(false));
-
 llvm::cl::opt<bool>
 DisableExecutionTraceTree("disable-et-tree",llvm::cl::init(false));
 
@@ -160,10 +151,8 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
       ExecutionStage* stage = stages_[property];
 
       if (stage->etrace_tree) {
-        if (state->basic_block_tracking() || !BasicBlockDisabling) {
-          //klee::TimerStatIncrementer extend_timer(stats::execution_tree_extend_time);
+        if (state->basic_block_tracking() || !BasicBlockDisabling)
           stage->etrace_tree->extend_element(state->prevPC->kbb->id, property);
-        }
       }
     }
     break;
@@ -279,7 +268,7 @@ void TrainingExecutionTraceManager::notify(ExecutionEvent ev) {
     case CV_BASICBLOCK_ENTRY: {
       assert(stages_.count(property));
 
-      if (FilterTrainingUsage > 0 && !property->is_recv_processing) {
+      if (!property->is_recv_processing) {
         ExecutionStage* stage = stages_[property];
 
         if (state->basic_block_tracking() || !BasicBlockDisabling)
@@ -423,232 +412,9 @@ void VerifyExecutionTraceManager::initialize() {
 }
 
 void VerifyExecutionTraceManager::initialize_training_data() {
-  // 1 Loop over all training data, creating a TrainingFilter for each
-  // and adding it to the vector of training objects in the TrainingObjectData
-
-  // For each TrainingObjectData, initialize the editdistance matrix and fill
-  // in the values by computing NxN edit distances
-
-  // Later (randomly?) choose a training path, compute the edit distance,
-  // then walk that msgs entries and eliminate those msgs that do not need
-  // to be computed, marked via a sentinal value, chose another msg that
-  // needs to be computed and continue
-
-  //TrainingObject* tobj = NULL;
-  //foreach (tobj, training_data_) {
-  //  SocketEvent *se = NULL;
-  //  TrainingObjectFilter *send_filter = NULL;
-  //  TrainingObjectFilter *recv_filter = NULL;
-
-  //  foreach (se, tobj->socket_event_set) {
-  //    if (send_filter == NULL && se->type == SocketEvent::SEND)
-  //      send_filter = new TrainingObjectFilter(se->type, tobj->trace[0]);
-  //    if (recv_filter == NULL && se->type == SocketEvent::RECV)
-  //      recv_filter = new TrainingObjectFilter(se->type, tobj->trace[0]);
-  //  }
-  //  assert(send_filter || recv_filter);
-
-  //  if (send_filter) {
-  //    if (filter_map_.count(send_filter) == 0) {
-  //      TrainingObjectData* tobj_data = new TrainingObjectData();
-  //      filter_map_[send_filter] = tobj_data;
-  //    }
-  //    filter_map_[send_filter]->training_objects.push_back(tobj);
-  //    filter_map_[send_filter]->training_object_set.insert(tobj);
-  //    delete send_filter;
-  //  }
-
-  //  if (recv_filter) {
-  //    if (filter_map_.count(recv_filter) == 0) {
-  //      filter_map_[recv_filter] = new TrainingObjectData();
-  //    }
-  //    filter_map_[recv_filter]->training_objects.push_back(tobj);
-  //    filter_map_[recv_filter]->training_object_set.insert(tobj);
-  //    delete recv_filter;
-  //  }
-  //}
-
-  //foreach (TrainingFilterMap::value_type &d, filter_map_) {
-  //  TrainingObjectData *tod = d.second;
-  //  size_t matrix_size = tod->training_objects.size()*tod->training_objects.size();
-  //  tod->edit_distance_matrix = new std::vector<int>(matrix_size, INT_MAX);
-
-  //}
-
-  if (UseClusteringHint || UseClustering) {
-    cluster_manager_ = new TrainingObjectManager();
-    std::vector<TrainingObject*> tobj_vec(training_data_.begin(), training_data_.end());
-    cluster_manager_->cluster(ClusterSize, tobj_vec);
-    return;
-  }
-
-  TrainingObject* tobj = NULL;
-  foreach (tobj, training_data_) {
-    SocketEvent *se = NULL;
-    TrainingObjectFilter *send_filter = NULL;
-    TrainingObjectFilter *recv_filter = NULL;
-
-    foreach (se, tobj->socket_event_set) {
-      if (send_filter == NULL && se->type == SocketEvent::SEND) {
-
-        if (ClientModelFlag == XPilot) 
-          send_filter = new TrainingObjectFilter(se->type, tobj->trace[0]);
-        else
-          send_filter = new TrainingObjectFilter(se->type, 0);
-      }
-
-      if (recv_filter == NULL && se->type == SocketEvent::RECV) {
-        if (ClientModelFlag == XPilot) 
-          recv_filter = new TrainingObjectFilter(se->type, tobj->trace[0]);
-        else
-          send_filter = new TrainingObjectFilter(se->type, 0);
-      }
-    }
-    assert(send_filter || recv_filter);
-
-    if (send_filter) {
-      TrainingObjectData* tobj_data = NULL;
-
-      if (filter_map_.count(*send_filter) == 0) {
-        tobj_data = new TrainingObjectData();
-        filter_map_[*send_filter] = tobj_data;
-      } else {
-        tobj_data = filter_map_[*send_filter];
-      }
-
-      tobj_data->training_objects.push_back(tobj);
-      tobj_data->training_object_set.insert(tobj);
-      tobj_data->message_count += tobj->socket_event_set.size();
-
-      foreach (se, tobj->socket_event_set) {
-        tobj_data->socket_events_by_size.push_back(se); 
-        tobj_data->reverse_socket_event_map[se] = tobj;
-      }
-
-      delete send_filter;
-    }
-
-    if (recv_filter) {
-      TrainingObjectData* tobj_data = NULL;
-
-      if (filter_map_.count(*recv_filter) == 0) {
-        tobj_data = new TrainingObjectData();
-        filter_map_[*recv_filter] = tobj_data;
-      } else {
-        tobj_data = filter_map_[*recv_filter];
-      }
-
-      tobj_data->training_objects.push_back(tobj);
-      tobj_data->training_object_set.insert(tobj);
-      tobj_data->message_count += tobj->socket_event_set.size();
-
-      foreach (se, tobj->socket_event_set) {
-        tobj_data->socket_events_by_size.push_back(se); 
-        tobj_data->reverse_socket_event_map[se] = tobj;
-      }
-
-      delete recv_filter;
-    }
-  }
-
-  size_t total_count = 0;
-  size_t count = 0;
-  foreach (TrainingFilterMap::value_type &d, filter_map_) {
-    TrainingObjectData *tod = d.second;
-    total_count += ((tod->message_count*tod->message_count)/2);
-  }
-  llvm::sys::TimeValue start_now(0,0),start_user(0,0),sys(0,0);
-  llvm::sys::Process::GetTimeUsage(start_now,start_user,sys);
-
-  CVMESSAGE("Message edit distance matrix computation with "
-            << omp_get_max_threads() << " threads"
-            << ", matrix has " << total_count << " elements.");
-
-  int tod_count = 0;
-  foreach (TrainingFilterMap::value_type &d, filter_map_) {
-    TrainingObjectData *tod = d.second;
-    tod_count++;
-
-    SocketEventSizeLT comp;
-    std::sort(tod->socket_events_by_size.begin(), tod->socket_events_by_size.end(), comp);
-    size_t matrix_size = tod->message_count*tod->message_count;
-
-    //if (tod->training_objects.size() <= 3 || ClientModelFlag != XPilot) {
-    if (tod->training_objects.size() <= 3) {
-
-      CVMESSAGE("Not computing " << matrix_size/2
-                << " scores between training messages, because " << tod->training_objects.size()
-                << " paths is <= 3");
-      count += (tod->message_count*tod->message_count)/2;
-    } else {
-
-      //tod->edit_distance_matrix 
-      //    = new std::vector<int>(tod->message_count*tod->message_count, -1);
-      tod->edit_distance_matrix = (int*)malloc(sizeof(int)*matrix_size);
-
-      CVMESSAGE("Computing " << matrix_size/2
-                << " scores between training messages for " << tod->training_objects.size()
-                << " paths.");
-
-      for (unsigned i = 0; i < tod->message_count; ++i) {
-        SocketEvent *se_i = tod->socket_events_by_size[i];
-        tod->socket_event_indices[se_i] = i;
-      }
-
-      double previous_percent_done = 0.0;
-      #pragma omp parallel for schedule(dynamic)
-      for (unsigned i = 0; i < tod->message_count; ++i) {
-        SocketEvent *se_i = tod->socket_events_by_size[i];
-
-        unsigned row = i*tod->message_count;
-        for (unsigned j = 0; j < i; ++j) {
-          SocketEvent *se_j = tod->socket_events_by_size[j];
-          int score = similarity_measure_->similarity_score(se_i, se_j);
-          tod->edit_distance_matrix[row + j] = score;
-        }
-      }
-
-      count += (tod->message_count*tod->message_count)/2;
-      //count += i;
-
-      double percent_done = 
-          ((double)(count))/((double)(total_count));
-          //((double)(count))/((double)(tod->edit_distance_matrix->size()));
-      
-      if ((percent_done - previous_percent_done) > 0.001f) {
-        llvm::sys::TimeValue curr_now(0,0),curr_user(0,0);
-        llvm::sys::Process::GetTimeUsage(curr_now,curr_user,sys);
-        llvm::sys::TimeValue delta = curr_user - start_user;
-        CVMESSAGE(percent_done * 100 
-                  << "% completed in " << delta.usec() / 1000000 << " (s), "
-                  << "est. time remaining is " 
-                  << ((delta.usec() / 1000000)/percent_done)-(delta.usec() / 1000000) 
-                  << " (s)");
-        previous_percent_done = percent_done;
-      }
-
-      unsigned j_max = tod->message_count;
-      #pragma omp parallel for schedule(dynamic)
-      for (unsigned i = 0; i < tod->message_count; ++i) {
-        unsigned row = i*tod->message_count;
-        for (unsigned j = i; j < j_max; ++j) {
-          tod->edit_distance_matrix[row + j]
-            = tod->edit_distance_matrix[j*tod->message_count + i];
-        }
-      }
-      //count += (tod->message_count*tod->message_count)/2;
-
-
-      std::stringstream name_ss;
-      name_ss << "training_ed_matrix_" << tod_count << "_" << matrix_size << ".mat";
-      std::string name = std::string(name_ss.str());
-      std::ostream *file = cv_->openOutputFile(name);
-      file->write( reinterpret_cast<char*>(&tod_count), sizeof(tod_count) );
-      file->write( reinterpret_cast<char*>(&matrix_size), sizeof(matrix_size) );
-      file->write( reinterpret_cast<char*>(tod->edit_distance_matrix), sizeof(int)*matrix_size );
-      static_cast<std::ofstream*>(file)->close();
-    }
-  }
+  cluster_manager_ = new TrainingObjectManager();
+  std::vector<TrainingObject*> tobj_vec(training_data_.begin(), training_data_.end());
+  cluster_manager_->cluster(ClusterSize, tobj_vec);
 }
 
 void VerifyExecutionTraceManager::update_edit_distance(
@@ -658,19 +424,9 @@ void VerifyExecutionTraceManager::update_edit_distance(
   ExecutionStage* stage = stages_[property];
   assert(stage);
 
-  //if (stage->current_k >= MaxKExtension) {
   if (property->edit_distance == INT_MAX) {
     return;
   }
-
-  //if (!EditDistanceAtCloneOnly) {
-  //  stage->ed_tree_map[property]->update_element(
-  //      stage->etrace_tree->leaf_element(property));
-  //} else {
-  //  ExecutionTrace etrace;
-  //  stage->etrace_tree->tracker_get(property, etrace);
-  //  stage->ed_tree_map[property]->update(etrace);
-  //}
 
   if (stage->ed_tree_map.count(property) == 0) {
     if (stage->root_ed_tree != NULL) {
@@ -679,8 +435,6 @@ void VerifyExecutionTraceManager::update_edit_distance(
       return;
     }
   }
-
-  //klee::TimerStatIncrementer edct(stats::edit_distance_compute_time);
 
   ExecutionTrace etrace;
   stage->etrace_tree->tracker_get(property, etrace);
@@ -721,8 +475,6 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
 
     if (cluster_manager_->check_filter(tf)) {
 
-      //klee::TimerStatIncrementer speds(stats::self_path_edit_distance);
-
       // Create a new root edit distance
       stage->root_ed_tree = EditDistanceTreeFactory::create();
 
@@ -748,9 +500,6 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
         TrainingObjectScoreList sorted_clusters;
         cluster_manager_->sorted_clusters(socket_event, tf,
                                           sorted_clusters, *similarity_measure_);
-
-        // Store size of tree in stats
-        //stats::edit_distance_tree_size = sorted_clusters.size(); 
 
         std::stringstream ss;
         for (size_t i=0; i < sorted_clusters.size(); ++i) {
@@ -781,8 +530,7 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
       stage->root_ed_tree = NULL;
       return;
     }
-  }
-  else if (UseClustering) {
+  } else {
 
     TrainingFilter tf(state);
 
@@ -801,82 +549,12 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
         stage->root_ed_tree->add_data(sorted_clusters[i].second->trace);
         ss << sorted_clusters[i].first << ",";
         i++;
-      } while (i < 8 && sorted_clusters[i].first <= (sorted_clusters[0].first * 2));
+      } while (i < 1 && sorted_clusters[i].first <= (sorted_clusters[0].first * 2));
       CVMESSAGE("Cluster SocketEvent Distances (" << i << ") " << ss.str());
 
     } else {
       stage->root_ed_tree = NULL;
       return;
-    }
-
-  } else {
-  
-    TrainingObjectFilter filter;
-
-    if (ClientModelFlag == XPilot) {
-      filter = TrainingObjectFilter(socket_event->type, state->prevPC->kbb->id);
-    } else {
-      filter = TrainingObjectFilter(socket_event->type, 0);
-    }
-
-    if ((AggressiveNaive && socket_event->type == SocketEvent::RECV) 
-        || filter_map_.count(filter) == 0) {
-      CVMESSAGE("Filter not found! naive search");
-      stage->root_ed_tree = NULL;
-      return;
-
-    } else {
-
-      CVMESSAGE("Filter found with " 
-                << filter_map_[filter]->message_count << " messages, and "
-                << filter_map_[filter]->training_objects.size() << " paths");
-
-      std::set<TrainingObject*> selected;
-      std::vector<int> scores;
-
-      int radius = 0;
-      if (ClientModelFlag == XPilot)
-        radius = 1;
-
-      while (selected.empty()) {
-        filter_map_[filter]->select_training_paths_for_message(socket_event, radius,
-                                                              similarity_measure_,
-                                                              scores, selected);
-        CVMESSAGE("Selected " << selected.size() << " paths with radius " << radius);
-        if (selected.empty()) {
-          if (ClientModelFlag == XPilot) {
-            radius *= 2;
-          } else {
-            radius += 1;
-          }
-        }
-      }
-
-      if (ClientModelFlag == XPilot) {
-        if (selected.size() > 5) {
-          radius /= 2;
-          scores = std::vector<int>();
-          selected = std::set<TrainingObject*>();
-          while (selected.empty()) {
-            filter_map_[filter]->select_training_paths_for_message(socket_event, radius,
-                                                                  similarity_measure_,
-                                                                  scores, selected);
-            CVMESSAGE("Re-selected " << selected.size() << " paths with radius " << radius);
-            if (selected.empty())
-              radius++;
-          }
-        }
-      }
-
-      // Store size of tree in stats
-      //stats::edit_distance_tree_size = selected.size(); 
-
-      // Create a new root edit distance
-      stage->root_ed_tree = EditDistanceTreeFactory::create();
-
-      foreach (TrainingObject *tobj, selected) {
-        stage->root_ed_tree->add_data(tobj->trace);
-      }
     }
   }
 
@@ -934,49 +612,38 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
 
       ExecutionStage* stage = stages_[property];
 
-      if (is_socket_active) {
+      if (is_socket_active && !property->is_recv_processing) {
 
-        if (FilterTrainingUsage > 0 && !property->is_recv_processing) {
+        // Check if this is the first basic block of the stage
+        if (!stage->etrace_tree->tracks(property)) {
+          assert(stage->etrace_tree->element_count() == 0);
+          CVDEBUG("First basic block entry (stage)");
+          
+          // Build the edit distance tree using training data
+          klee::TimerStatIncrementer build_timer(stats::edit_distance_build_time);
+          create_ed_tree(state);
+        }
 
-          // Check if this is the first basic block of the stage
-          if (!stage->etrace_tree->tracks(property)) {
-            assert(stage->etrace_tree->element_count() == 0);
-            CVDEBUG("First basic block entry (stage)");
-            //klee::TimerStatIncrementer training_timer(stats::training_time);
-            
-            // Build the edit distance tree using training data
-            //klee::TimerStatIncrementer build_timer(stats::edit_distance_build_time);
-            create_ed_tree(state);
-          }
-
-          // Check if we need to reclone the edit distance tree 
-          if (stage->ed_tree_map.count(property) == 0 && stage->root_ed_tree) {
-            stage->ed_tree_map[property] = stage->root_ed_tree->clone_edit_distance_tree();
-          }
+        // Check if we need to reclone the edit distance tree 
+        if (stage->ed_tree_map.count(property) == 0 && stage->root_ed_tree) {
+          stage->ed_tree_map[property] = stage->root_ed_tree->clone_edit_distance_tree();
         }
       }
 
+      if (!property->is_recv_processing && 
+          (state->basic_block_tracking() || !BasicBlockDisabling)) {
 
-      if (FilterTrainingUsage > 0 && !property->is_recv_processing) {
-        if (state->basic_block_tracking() || !BasicBlockDisabling) {
-          //klee::TimerStatIncrementer timer(stats::execution_tree_time);
-          {
-            //klee::TimerStatIncrementer extend_timer(stats::execution_tree_extend_time);
-            stage->etrace_tree->extend_element(state->prevPC->kbb->id, property);
-          }
+        {
+          klee::TimerStatIncrementer timer(stats::execution_tree_time);
+          stage->etrace_tree->extend_element(state->prevPC->kbb->id, property);
+        }
 
-          if (is_socket_active) {
-            if (property->recompute) {
-              if (EditDistanceAtCloneOnly) {
-                property->recompute = false;
-              }
-              update_edit_distance(property);
+        if (is_socket_active && property->recompute) {
+          if (EditDistanceAtCloneOnly)
+            property->recompute = false;
 
-              //if (stage->current_k >= MaxKExtension) {
-              //  CVMESSAGE(">MaxK " << *state << " " << state->stack.back().kf->function->getNameStr());
-              //}
-            }
-          }
+          klee::TimerStatIncrementer timer(stats::edit_distance_time);
+          update_edit_distance(property);
         }
       }
     }
@@ -1006,9 +673,9 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
       ExecutionStage* stage = stages_[parent_property];
 
-      if (FilterTrainingUsage > 0 && !property->is_recv_processing) {
-        if (EditDistanceAtCloneOnly || property->round < 5)
-          update_edit_distance(parent_property);
+      if (!property->is_recv_processing && EditDistanceAtCloneOnly) {
+        klee::TimerStatIncrementer timer(stats::edit_distance_time);
+        update_edit_distance(parent_property);
       }
 
       stages_[property] = stage;
@@ -1019,9 +686,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       parent_property->recompute=true;
 
       if (is_socket_active) {
-        if (FilterTrainingUsage > 0 && !property->is_recv_processing) {
-          //assert(stage->ed_tree_map.count(parent_property));
-
+        if (!property->is_recv_processing) {
           if (stage->ed_tree_map.count(property) && stage->root_ed_tree) {
             stage->ed_tree_map[property] = 
                 stage->ed_tree_map[parent_property]->clone_edit_distance_tree();
@@ -1032,7 +697,6 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
 
         } else {
           property->edit_distance = parent_property->edit_distance;
-
         }
       }
 
@@ -1141,20 +805,15 @@ void VerifyExecutionTraceManager::recompute_property(
 
 void VerifyExecutionTraceManager::process_all_states(
     std::vector<ExecutionStateProperty*> &states) {
-  //klee::TimerStatIncrementer timer(stats::execution_tree_time);
-  //klee::TimerStatIncrementer edct(stats::edit_distance_compute_time);
+  klee::TimerStatIncrementer edct(stats::edit_distance_time);
 
-  {
-    assert(!states.empty());
-    assert(stages_.count(states[0]));
-    ExecutionStage* stage = stages_[states[0]];
-    CVMESSAGE("Doubling K from: " << stage->current_k 
-              << " to " << stage->current_k*2);
+  assert(!states.empty());
+  assert(stages_.count(states[0]));
+  ExecutionStage* stage = stages_[states[0]];
+  CVMESSAGE("Doubling K from: " << stage->current_k 
+            << " to " << stage->current_k*2);
 
-    stage->current_k = stage->current_k * 2;
-
-    //stats::edit_distance_final_k = stage->current_k;
-  }
+  stage->current_k = stage->current_k * 2;
 
   CVDEBUG("All states should have INT_MAX=" << INT_MAX << " edit distance.");
   for (unsigned i=0; i<states.size(); ++i) {

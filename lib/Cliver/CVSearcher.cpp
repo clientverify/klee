@@ -126,7 +126,6 @@ void VerifySearcher::process_unique_pending_states() {
 
   std::set<CVExecutionState*> unique_pending_states(pending_states_.begin(),
                                                     pending_states_.end());
-
   // Prune state constraints and merge states
   ExecutionStateSet state_set, merged_set;
   state_set.insert(pending_states_.begin(), pending_states_.end());
@@ -215,60 +214,58 @@ SearcherStage* VerifySearcher::create_and_add_stage(CVExecutionState* state) {
 }
 
 klee::ExecutionState &VerifySearcher::selectState() {
-  //klee::TimerStatIncrementer timer(stats::searcher_time);
+  CVExecutionState *state = NULL;
+  {
+    klee::TimerStatIncrementer timer(stats::searcher_time);
 
-  if (!pending_states_.empty()) {
-    process_unique_pending_states();
-  }
+    if (!pending_states_.empty()) {
+      process_unique_pending_states();
+    }
 
-  // If we've exhausted all the states in the current stage or there is a newer
-  // stage to search
-  if (current_stage_->empty() ||
-      current_round_ < max_active_round_) {
+    // If we've exhausted all the states in the current stage or there is a newer
+    // stage to search
+    if (current_stage_->empty() ||
+        current_round_ < max_active_round_) {
 
-    // Start looking for a non-empty stage in greatest round seen so far
-    SearcherStage* new_current_stage = NULL;
-    int new_current_round = max_active_round_;
+      // Start looking for a non-empty stage in greatest round seen so far
+      SearcherStage* new_current_stage = NULL;
+      int new_current_round = max_active_round_;
 
-    // Walk backwards through the stages from most recent round to previous
-    // rounds
-    while (NULL == new_current_stage && new_current_round >= 0) {
+      // Walk backwards through the stages from most recent round to previous
+      // rounds
+      while (NULL == new_current_stage && new_current_round >= 0) {
 
-      foreach (SearcherStage* stage, *(new_stages_[new_current_round])) {
-        if (!stage->empty()) {
-          new_current_stage = stage;
-          break;
+        foreach (SearcherStage* stage, *(new_stages_[new_current_round])) {
+          if (!stage->empty()) {
+            new_current_stage = stage;
+            break;
+          }
+        }
+
+        if (NULL == new_current_stage) {
+          // All (if any) stages in this round our empty, continue searching
+          // backwards in the stage history for a state that is ready to execute
+          new_current_round--;
+
+          // Decrement max_active_round, so that we don' repeat this effort
+          // on the next instruction
+          max_active_round_ = new_current_round;
         }
       }
 
-      if (NULL == new_current_stage) {
-        // All (if any) stages in this round our empty, continue searching
-        // backwards in the stage history for a state that is ready to execute
-        new_current_round--;
-
-        // Decrement max_active_round, so that we don' repeat this effort
-        // on the next instruction
-        max_active_round_ = new_current_round;
+      if (NULL != new_current_stage) {
+        current_stage_ = new_current_stage;
+        current_round_ = new_current_round;
+        cv_->set_round(current_round_);
+      } else {
+        cv_error("No stages remain!");
       }
     }
 
-    if (NULL != new_current_stage) {
-      current_stage_ = new_current_stage;
-      current_round_ = new_current_round;
-      cv_->set_round(current_round_);
-    } else {
-      cv_error("No stages remain!");
-    }
+    state = current_stage_->next_state();
   }
 
-  //if (NULL == current_stage_ || current_stage_->empty()) {
-  //  cv_error("No stages remain!");
-  //}
-
   // Check if we should increase k
-  CVExecutionState *state = current_stage_->next_state();
-
-  // Check the edit distance
   if (state->property()->edit_distance == INT_MAX 
       && current_stage_->size() > 1
       && cv_->execution_trace_manager()->ready_process_all_states(state->property())
@@ -312,13 +309,6 @@ void VerifySearcher::update(klee::ExecutionState *current,
 
 bool VerifySearcher::empty() {
   
-  //if (ClientModelFlag == XPilot &&
-  //    !cv_->executor()->finished_states().empty()) {
-  //  CVDEBUG("Exiting. Num finished states: " 
-  //          << cv_->executor()->finished_states().size());
-  //  return true;
-  //}
-  
   if (current_stage_ && !current_stage_->empty())
     return false;
 
@@ -331,14 +321,6 @@ bool VerifySearcher::empty() {
         return false;
     }
   }
- 
-  //reverse_foreach (SearcherStage* stage, stages_) {
-  //  if (!stage->empty()) return false;
-  //}
-
-  //if (!pending_states_.empty())
-  //  return false;
-
   return true;
 }
 
@@ -352,7 +334,6 @@ SearcherStage* VerifySearcher::get_new_stage(CVExecutionState* state) {
 
 void VerifySearcher::add_state(CVExecutionState* state) {
   if (this->empty()) {
-    //stages_.push_back(get_new_stage(state));
     CVMESSAGE("Creating stage from add_state() " << *state);
     current_stage_ = create_and_add_stage(state);
   } else {
@@ -362,8 +343,6 @@ void VerifySearcher::add_state(CVExecutionState* state) {
 }
 
 void VerifySearcher::remove_state(CVExecutionState* state) {
-  //assert(!this->empty());
-  //assert(!check_pending(state));
   current_stage_->remove_state(state);
 }
 
@@ -372,6 +351,7 @@ void VerifySearcher::remove_state(CVExecutionState* state) {
 bool VerifySearcher::check_pending(CVExecutionState* state) {
   bool result = false;
   if (pending_events_.count(state)) {
+    klee::TimerStatIncrementer timer(stats::searcher_time);
     switch (pending_events_[state].event_type) {
 
       case CV_FINISH: {
@@ -387,30 +367,9 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
         break;
       }
 
-      //case CV_SOCKET_WRITE:
-      //case CV_SOCKET_READ: 
-      case CV_SOCKET_ADVANCE:
-      {
-
-        //Socket* socket = state->network_manager()->socket();
+      case CV_SOCKET_ADVANCE: {
         ExecutionStateProperty* property = state->property();
         property->round++;
-
-        //CVDEBUG("New pending stage. Socket: "
-        //        << *socket << ", State" << *state);
-
-        //// Create new stage and add to pending list
-        //if (ClientModelFlag != XPilot) {
-        //  // XXX Hack to prune state constraints
-        //  ExecutionStateSet state_set, merged_set;
-        //  state_set.insert(state);
-        //  merger_->merge(state_set, merged_set);
-
-        //  pending_states_.push_back(*(merged_set.begin()));
-        //} else {
-        //  pending_states_.push_back(state);
-        //}
-
         pending_states_.push_back(state);
 
         result = true;
@@ -457,18 +416,10 @@ void VerifySearcher::notify(ExecutionEvent ev) {
     current_stage_->notify(ev);
 
   switch(ev.event_type) {
-    //case CV_SOCKET_SHUTDOWN: {
-    //  CVMESSAGE("Socket Shutdown Event: " << *ev.state);
-    //  cv_->executor()->setHaltExecution(true);
-    //  break;
-    //}
     // These events will be processed later
     case CV_FINISH:
     case CV_MERGE:
-    //case CV_SOCKET_WRITE:
-    //case CV_SOCKET_READ: 
-    case CV_SOCKET_ADVANCE:
-    {
+    case CV_SOCKET_ADVANCE: {
       pending_events_[ev.state] = ev;
       break;
     }
@@ -489,7 +440,7 @@ TrainingSearcher::TrainingSearcher(ClientVerifier *cv, StateMerger* merger)
   : VerifySearcher(cv, merger) {}
 
 klee::ExecutionState &TrainingSearcher::selectState() {
-  //klee::TimerStatIncrementer timer(stats::searcher_time);
+  klee::TimerStatIncrementer timer(stats::searcher_time);
  
   if (pending_states_.size() > 0 && 
       (current_stage_->empty() || pending_states_.size() >= TrainingMaxPending)) {
@@ -536,10 +487,6 @@ klee::ExecutionState &TrainingSearcher::selectState() {
       cv_error("No stages remain!");
     }
   }
-
-  //if (NULL == current_stage_ || current_stage_->empty()) {
-  //  cv_error("No stages remain!");
-  //}
 
   CVExecutionState *state = current_stage_->next_state();
 
