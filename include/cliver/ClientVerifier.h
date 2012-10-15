@@ -44,6 +44,10 @@ namespace stats {
 	extern klee::Statistic recv_round_instructions;
 	extern klee::Statistic merged_states;
 	extern klee::Statistic stage_count;
+	extern klee::Statistic edit_distance;
+	extern klee::Statistic edit_distance_k;
+	extern klee::Statistic edit_distance_medoid_count;
+	extern klee::Statistic edit_distance_closest_medoid;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

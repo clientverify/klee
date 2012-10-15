@@ -199,7 +199,6 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
 
         new_stage->parent_stage = stages_[parent_property];
 
-        //clear_execution_stage(property);
       }
 
       stages_[property] = new_stage;
@@ -420,7 +419,6 @@ void VerifyExecutionTraceManager::initialize_training_data() {
 void VerifyExecutionTraceManager::update_edit_distance(
     ExecutionStateProperty* property) {
 
-
   ExecutionStage* stage = stages_[property];
   assert(stage);
 
@@ -439,12 +437,15 @@ void VerifyExecutionTraceManager::update_edit_distance(
   ExecutionTrace etrace;
   stage->etrace_tree->tracker_get(property, etrace);
 
-  stage->ed_tree_map[property]->update(etrace);
+  CVDEBUG("Updated edit distance: " << property << ": " << *property << " etrace.size = " 
+          << etrace.size() << ", row = " << stage->ed_tree_map[property]->row());
 
-  //int row = stage->ed_tree_map[property]->row();
+  stage->ed_tree_map[property]->update(etrace);
 
   //// XXX FIX ME -- make this operation O(1)
   //int trace_depth = stage->etrace_tree->tracker_depth(property);
+  //
+  //int row = stage->ed_tree_map[property]->row();
 
   //if (trace_depth - row == 1) {
   //  stage->ed_tree_map[property]->update_element(
@@ -492,24 +493,22 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
         }
       }
 
-      if (match_count > 1) {
-        CVMESSAGE("match_count > 1 : " << match_count);
-      }
+      //{
+      //  TrainingObjectScoreList sorted_clusters;
+      //  cluster_manager_->sorted_clusters(socket_event, tf,
+      //                                    sorted_clusters, *similarity_measure_);
 
-      {
-        TrainingObjectScoreList sorted_clusters;
-        cluster_manager_->sorted_clusters(socket_event, tf,
-                                          sorted_clusters, *similarity_measure_);
+      //  std::stringstream ss;
+      //  for (size_t i=0; i < sorted_clusters.size(); ++i) {
+      //    if (match_count == 0) {
+      //      stage->root_ed_tree->add_data(sorted_clusters[i].second->trace);
+      //    }
+      //    ss << sorted_clusters[i].first << ",";
+      //  }
+      //  CVMESSAGE("Original Cluster Distances: " << ss.str());
+      //}
 
-        std::stringstream ss;
-        for (size_t i=0; i < sorted_clusters.size(); ++i) {
-          if (match_count == 0) {
-            stage->root_ed_tree->add_data(sorted_clusters[i].second->trace);
-          }
-          ss << sorted_clusters[i].first << ",";
-        }
-        CVMESSAGE("Original Cluster Distances: " << ss.str());
-      }
+      assert(match_count != 0);
 
       if (match_count >= 1) {
         TrainingObjectScoreList sorted_clusters;
@@ -525,6 +524,7 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
 
         // Add closest cluster
         stage->root_ed_tree->add_data(sorted_clusters[0].second->trace);
+        stats::edit_distance_closest_medoid = sorted_clusters[0].first;
       }
     } else {
       stage->root_ed_tree = NULL;
@@ -543,14 +543,16 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
       // Create a new root edit distance
       stage->root_ed_tree = EditDistanceTreeFactory::create();
 
-      std::stringstream ss;
+      //std::stringstream ss;
       size_t i = 0;
+      stats::edit_distance_closest_medoid = sorted_clusters[0].first;
       do {
         stage->root_ed_tree->add_data(sorted_clusters[i].second->trace);
-        ss << sorted_clusters[i].first << ",";
+        stats::edit_distance_medoid_count += 1;
+        //ss << sorted_clusters[i].first << ",";
         i++;
       } while (i < 1 && sorted_clusters[i].first <= (sorted_clusters[0].first * 2));
-      CVMESSAGE("Cluster SocketEvent Distances (" << i << ") " << ss.str());
+      //CVMESSAGE("Cluster SocketEvent Distances (" << i << ") " << ss.str());
 
     } else {
       stage->root_ed_tree = NULL;
@@ -658,7 +660,6 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
         stage->etrace_tree->remove_tracker(property);
 
       if (is_socket_active) {
-        //assert(stage->ed_tree_map.count(property));
         if (stage->ed_tree_map.count(property)) {
           delete stage->ed_tree_map[property];
           stage->ed_tree_map.erase(property);
@@ -685,19 +686,21 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       property->recompute=true;
       parent_property->recompute=true;
 
-      if (is_socket_active) {
-        if (!property->is_recv_processing) {
-          if (stage->ed_tree_map.count(property) && stage->root_ed_tree) {
-            stage->ed_tree_map[property] = 
-                stage->ed_tree_map[parent_property]->clone_edit_distance_tree();
-            property->edit_distance = stage->ed_tree_map[property]->min_distance();
-          } else {
-            property->edit_distance = parent_property->edit_distance;
-          }
+      property->edit_distance = parent_property->edit_distance;
 
-        } else {
-          property->edit_distance = parent_property->edit_distance;
-        }
+      //if (is_socket_active && !property->is_recv_processing) {
+      if (stage->ed_tree_map.count(parent_property) && stage->root_ed_tree) {
+        stage->ed_tree_map[property] = 
+            stage->ed_tree_map[parent_property]->clone_edit_distance_tree();
+
+        //stage->ed_tree_map[property]->init(stage->current_k);
+        CVDEBUG("Cloned EDTree "
+                << " clone: " << property 
+                << " parent: " << parent_property 
+                << ", clone row = " << stage->ed_tree_map[property]->row()
+                << ", parent row = " << stage->ed_tree_map[parent_property]->row());
+
+        property->edit_distance = stage->ed_tree_map[property]->min_distance();
       }
 
       CVDEBUG("Cloned state: " << *state << ", parent: " << *parent )
@@ -713,6 +716,16 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       // Increment stat counter
       stats::stage_count += 1;
 
+      // Set edit distance stat
+      stats::edit_distance = parent_property->edit_distance;
+      //if (parent_property->edit_distance < (INT_MAX-1))
+      //else
+      //  stats::edit_distance = 0;
+
+      // Set kprefix stat
+      if (stages_.count(parent_property))
+        stats::edit_distance_k = stages_[parent_property]->current_k;
+
       // Initialize a new ExecutionTraceTree
       ExecutionStage *new_stage = new ExecutionStage();
       new_stage->etrace_tree = new ExecutionTraceTree();
@@ -727,7 +740,6 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
 
         new_stage->parent_stage = stages_[parent_property];
 
-        //clear_execution_stage(property);
       }
 
       stages_[property] = new_stage;
@@ -790,15 +802,17 @@ void VerifyExecutionTraceManager::recompute_property(
 
   ExecutionStage* stage = stages_[property];
 
-  if (stage->ed_tree_map.count(property) == 0) {
+  if (stage->ed_tree_map.count(property) == 0)
     stage->ed_tree_map[property] = stage->root_ed_tree->clone_edit_distance_tree();
-  }
 
   stage->ed_tree_map[property]->init(stage->current_k);
 
   ExecutionTrace etrace;
-  etrace.reserve(stage->etrace_tree->tracker_depth(property));
   stage->etrace_tree->tracker_get(property, etrace);
+
+  CVDEBUG("RC edit distance: " << property << ": " << *property << " etrace.size = " 
+          << etrace.size() << ", row = " << stage->ed_tree_map[property]->row());
+
   stage->ed_tree_map[property]->update(etrace);
   property->edit_distance = stage->ed_tree_map[property]->min_distance();
 }
@@ -810,25 +824,26 @@ void VerifyExecutionTraceManager::process_all_states(
   assert(!states.empty());
   assert(stages_.count(states[0]));
   ExecutionStage* stage = stages_[states[0]];
-  CVMESSAGE("Doubling K from: " << stage->current_k 
-            << " to " << stage->current_k*2);
-
   stage->current_k = stage->current_k * 2;
+  stage->root_ed_tree->init(stage->current_k);
 
-  CVDEBUG("All states should have INT_MAX=" << INT_MAX << " edit distance.");
   for (unsigned i=0; i<states.size(); ++i) {
     if (states[i]->is_recv_processing) {
-      CVMESSAGE("Not recompting recv_processing state!");
+      CVMESSAGE("Not recomputing recv_processing state!");
     } else {
-      //assert(states[i]->edit_distance == INT_MAX);
       int old_ed = states[i]->edit_distance;
       recompute_property(states[i]);
-      CVDEBUG("Edit distance computed from: " << old_ed 
-                << " to " << states[i]->edit_distance);
+      CVDEBUG("K: " << stage->current_k 
+              << " ed computed from: " << old_ed 
+              << " to " << states[i]->edit_distance 
+              << ", " << states[i] << " " << *(states[i]));
     }
   }
-  CVMESSAGE("Done recomputing.");
-            
+
+  CVMESSAGE("Recomputed kprefix edit distance trees with k=" 
+            << stage->current_k << " in "
+            << edct.check() / 1000000. << " secs");
+           
 }
 
 // Delete the trees associated with each state in the edit distance map
