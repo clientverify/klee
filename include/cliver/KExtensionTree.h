@@ -12,7 +12,6 @@
 #include "cliver/RadixTree.h"
 #include "cliver/EditDistanceTree.h"
 #include "cliver/util/MurmurHash3.h"
-#include "GClasses/GCluster.h"
 #include <limits.h>
 
 #include <vector>
@@ -133,7 +132,7 @@ class KExtensionOptTree
 
   virtual void update_element(Element e) {
     std::vector<EdgeOffset> children;
-    children.reserve(16);  
+    //children.reserve(16);  
 
     for (unsigned i=0; i<valid_list_->size(); ++i) {
       EdgeOffset *eo_ptr = const_cast<EdgeOffset*>(&(*(*valid_list_)[i]));
@@ -446,7 +445,6 @@ class KExtensionTree
     Sequence s;
     root_edge_ = new Edge(NULL, NULL, s);
     root_edge_->set_to(this->root_);
-    GClasses::GKMedoids* gk = new GClasses::GKMedoids(2);
   }
 
   virtual ~KExtensionTree() {
@@ -483,7 +481,7 @@ class KExtensionTree
     curr->push_back(EdgeOffset(root_edge_, 0));
 
     // XXX precompute for all k?
-    for (unsigned k=0; k < k_ && !curr->empty(); ++k) {
+    for (unsigned k=0; (k < k_) && !curr->empty(); ++k) {
       for (unsigned i=0; i<curr->size(); ++i) {
         EdgeOffset &eo = (*curr)[i];
         add_valid(eo, k);
@@ -501,8 +499,11 @@ class KExtensionTree
   }
 
   virtual void update(Sequence &s_update) {
-    Sequence suffix(s_update.begin() + row_, s_update.end());
-    update_suffix(suffix);
+    //Sequence suffix(s_update.begin() + row_, s_update.end());
+    //update_suffix(suffix);
+    for (unsigned i=row_; i<s_update.size(); ++i) {
+      this->update_element(s_update[i]);
+    }
   }
 
   virtual void update_suffix(Sequence &s) {
@@ -523,7 +524,7 @@ class KExtensionTree
       int curr_d = distance(valid_, eo);
       int d = curr_d;
 
-      if (curr_d + 1 <= k_) {
+      if ((curr_d + 1) <= k_) {
         d = std::min(curr_d, add_new_valid(eo, curr_d + 1));
       }
 
@@ -534,7 +535,7 @@ class KExtensionTree
           add_new_valid(children[j], curr_d);
       }
 
-      if (d + 1 <= k_) {
+      if ((d + 1) <= k_) {
         if (child_count(eo) > 0) {
           children.clear();
           get_children(eo, children);
@@ -550,6 +551,8 @@ class KExtensionTree
     std::swap(valid_, new_valid_);
     std::swap(valid_list_, new_valid_list_);
     std::swap(min_prefix_distance_, new_min_prefix_distance_);
+    //if (min_prefix_distance_ == INT_MAX)
+    //  std::cout << "min_prefix_dist = INT_MAX at row_ = " << row_ << "\n";
   }
 
   virtual int min_distance() {
