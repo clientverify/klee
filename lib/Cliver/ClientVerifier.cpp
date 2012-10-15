@@ -92,6 +92,11 @@ namespace stats {
 	klee::Statistic edit_distance_time("EditDistanceTime","EDTm");
 	klee::Statistic edit_distance_build_time("EditDistanceBuildTime","EDBdTm");
 	klee::Statistic stage_count("StageCount","StgCnt");
+	klee::Statistic edit_distance("EditDistance","ED");
+	klee::Statistic edit_distance_k("EditDistanceK","EDK");
+	klee::Statistic edit_distance_medoid_count("EditDistanceMedoidCount","EDMedCnt");
+	klee::Statistic edit_distance_closest_medoid("EditDistanceClosestMedoid","EDClMed");
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -383,6 +388,7 @@ void ClientVerifier::print_stat_labels() {
     << " " << "StSz"
     << " " << "StSzTot"
     << " " << "AllcMm"
+    << " " << stats::edit_distance.getShortName()
     << "\n";
 }
 
@@ -413,6 +419,10 @@ void ClientVerifier::print_statistic_record(klee::StatisticRecord* sr,
     << " " << executor()->states_size()
     << " " << CVExecutionState::next_id()
     << " " << executor()->memory_usage()
+    << " " << sr->getValue(stats::edit_distance) 
+    << " " << sr->getValue(stats::edit_distance_k) 
+    << " " << sr->getValue(stats::edit_distance_medoid_count) 
+    << " " << sr->getValue(stats::edit_distance_closest_medoid) 
     << "\n";
 
 #ifdef GOOGLE_PROFILER
