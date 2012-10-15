@@ -459,7 +459,8 @@ class KLevenshteinRadixTree
 
     std::vector<EdgeOffset> edge_offsets;
     get_at_depth(this->root_, col_start, edge_offsets);
-    //std::cout << "Edge offset count is " <<edge_offsets.size() << " at depth" << col_start
+    //std::cout << "Edge offset count is " <<edge_offsets.size() 
+    //    << " at depth" << col_start
     //    << std::endl;
 
     min_distance_ = min_prefix_distance_ = INT_MAX;
@@ -582,7 +583,7 @@ class KLevenshteinRadixTree
     KLevenshteinRadixTree *lrt 
       = new KLevenshteinRadixTree(this->clone_node(this->root_));
     lrt->row_ = this->row_;
-    lrt->min_prefix_distance_ = min_prefix_distance_;
+    lrt->min_prefix_distance_ = this->min_prefix_distance_;
     lrt->min_distance_ = this->min_distance_;
     lrt->k_ = this->k_;
     return lrt;

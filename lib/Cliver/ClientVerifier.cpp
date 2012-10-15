@@ -397,8 +397,8 @@ void ClientVerifier::print_statistic_record(klee::StatisticRecord* sr,
   *cv_message_stream << prefix 
     << " " << sr->getValue(stats::round_number)
     << " " << sr->getValue(stats::round_time)               /// time_scale
-    << " " << sr->getValue(stats::round_real_time)               /// time_scale
-    << " " << sr->getValue(stats::round_sys_time)               /// time_scale
+    << " " << sr->getValue(stats::round_real_time)          /// time_scale
+    << " " << sr->getValue(stats::round_sys_time)           /// time_scale
     << " " << sr->getValue(klee::stats::solverTime)         /// time_scale
     << " " << sr->getValue(stats::searcher_time)            /// time_scale
     << " " << sr->getValue(stats::execution_tree_time)      /// time_scale
