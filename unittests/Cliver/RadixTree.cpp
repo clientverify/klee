@@ -289,30 +289,37 @@ class EditDistanceTreeTest : public ::testing::Test {
 
   virtual void SetUp() {
     rt_ = new EditDistanceTreeType();
+    alt_rt_ = new EditDistanceTreeType();
   }
 
   void SetupDictionary() {
     if (dictionary.empty())
       dictionary = std::vector<std::string>(cstr_dictionary, end(cstr_dictionary));
-    for (unsigned i=0; i<dictionary.size(); ++i) {
-      typename EditDistanceTreeType::sequence_type 
-          v(dictionary[i].begin(), dictionary[i].end());
-      v_dictionary.push_back(v);
+    if (v_dictionary.empty()) {
+      for (unsigned i=0; i<dictionary.size(); ++i) {
+        typename EditDistanceTreeType::sequence_type 
+            v(dictionary[i].begin(), dictionary[i].end());
+        v_dictionary.push_back(v);
+      }
     }
   }
 
-  void InsertDictionary() {
+  void InsertDictionary(EditDistanceTreeType* rt = NULL) {
+    if (rt == NULL) 
+      rt = rt_;
     this->SetupDictionary();
     for (unsigned i=0; i<v_dictionary.size(); ++i) {
-      rt_->insert(v_dictionary[i]);
+      rt->insert(v_dictionary[i]);
     }
   }
 
   virtual void TearDown() {
     delete rt_;
+    delete alt_rt_;
   }
 
   EditDistanceTreeType* rt_;
+  EditDistanceTreeType* alt_rt_;
   std::vector<typename EditDistanceTreeType::sequence_type> v_dictionary;
 };
 
@@ -378,11 +385,15 @@ TYPED_TEST_CASE(EditDistanceTreeTest, EditDistanceImplementations);
 
 //////////////////////////////////////////////////////////////////////////////////
 
+unsigned kCount = 4;
+
+//////////////////////////////////////////////////////////////////////////////////
+
 TEST_P(KPrefixEditDistanceTreeEquivalenceTest, UpdateWithExactMatches) {
   this->InsertDictionaryForAll();
 
   srand(0);
-  int r0, count = 15;
+  int r0, count = kCount;
 
   for (int i=0; i < count;  ++i) {
     r0 = rand() % this->v_dictionary.size();
@@ -405,7 +416,7 @@ TEST_P(KPrefixEditDistanceTreeEquivalenceTest, UpdateElementWithExactMatches) {
   this->InsertDictionaryForAll();
 
   srand(1);
-  int r0, count = 15;
+  int r0, count = kCount;
 
   for (int i=0; i < count;  ++i) {
     r0 = rand() % this->v_dictionary.size();
@@ -435,7 +446,7 @@ TEST_P(KPrefixEditDistanceTreeEquivalenceTest, UpdateSuffixWithExactMatches) {
   this->InsertDictionaryForAll();
 
   srand(1);
-  int r0, count = 15;
+  int r0, count = kCount;
   int stride = 3;
 
   for (int i=0; i < count;  ++i) {
@@ -470,7 +481,7 @@ TEST_P(KPrefixEditDistanceTreeEquivalenceTest, UpdateWithInExactMatches) {
   this->InsertDictionaryForAll();
 
   srand(0);
-  int r0, count = 15;
+  int r0, count = kCount;
 
   for (int i=0; i < count;  ++i) {
     r0 = rand() % this->v_dictionary.size();
@@ -494,7 +505,7 @@ TEST_P(KPrefixEditDistanceTreeEquivalenceTest, UpdateElementWithInExactMatches) 
   this->InsertDictionaryForAll();
 
   srand(1);
-  int r0, count = 15;
+  int r0, count = kCount;
 
   for (int i=0; i < count;  ++i) {
     r0 = rand() % this->v_dictionary.size();
@@ -534,7 +545,7 @@ TEST_P(KPrefixEditDistanceTreeEquivalenceTest, UpdateSuffixWithInExactMatches) {
   //this->InsertForAll(a);
   
   srand(1);
-  int r0, count = 15;
+  int r0, count = kCount;
   int stride = 3;
 
   //std::cout << "k = " << GetParam() << "\n";
@@ -609,7 +620,7 @@ TYPED_TEST(EditDistanceTreeTest, Clone) {
 
 TYPED_TEST(EditDistanceTreeTest, Compute) {
   this->InsertDictionary();
-  unsigned r0, r1, count = 100;
+  unsigned r0, r1, count = kCount;
   srand(0);
   for (unsigned i=0; i < count;  ++i) {
     r0 = (rand() % this->v_dictionary.size());
@@ -619,6 +630,42 @@ TYPED_TEST(EditDistanceTreeTest, Compute) {
   }
 }
 
+TYPED_TEST(EditDistanceTreeTest, TestUpdate) {
+  this->InsertDictionary();
+  this->InsertDictionary(this->alt_rt_);
+
+  unsigned r0, r1, count = kCount, KPrefixSize = kCount;
+
+  srand(1);
+
+  r0 = (rand() % this->v_dictionary.size());
+  std::string rstr = this->v_dictionary[r0];
+
+  this->rt_->init(KPrefixSize);
+  this->alt_rt_->init(KPrefixSize);
+
+  for (unsigned i=0; i < count;  ++i) {
+    
+    std::cout << "looking up: " << rstr 
+        << " rt.row = " << this->rt_->row() 
+        << " altrt.row = " << this->alt_rt_->row() 
+        << "\n";
+    
+    this->rt_->update(rstr);
+    this->alt_rt_->update(rstr);
+
+    //std::cout << "looking up: " << rstr << "\n";
+
+    ASSERT_EQ(this->rt_->min_distance(), this->alt_rt_->min_distance());
+    std::cout
+        << " rt.min d = " << this->rt_->min_distance() 
+        << " altrt.min d= " << this->alt_rt_->min_distance()
+        << "\n";
+
+    this->alt_rt_->init(KPrefixSize);
+    rstr += (char)((rand() % 26) + 'a');
+  }
+}
 
 //////////////////////////////////////////////////////////////////////////////////
 
