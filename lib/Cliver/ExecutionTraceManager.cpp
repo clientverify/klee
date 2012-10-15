@@ -717,10 +717,10 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       stats::stage_count += 1;
 
       // Set edit distance stat
-      stats::edit_distance = parent_property->edit_distance;
-      //if (parent_property->edit_distance < (INT_MAX-1))
-      //else
-      //  stats::edit_distance = 0;
+      if (stages_.count(parent_property) &&
+          stages_[parent_property]->ed_tree_map.count(parent_property)) 
+        stats::edit_distance =
+          stages_[parent_property]->ed_tree_map[parent_property]->min_distance();
 
       // Set kprefix stat
       if (stages_.count(parent_property))
