@@ -156,82 +156,11 @@ TYPED_TEST(ClustererTest, DoCluster) {
   this->c_->init(25, &metric);
   this->InsertDictionary();
   this->c_->cluster();
-  this->c_->print_clusters();
+  //this->c_->print_clusters();
 }
 
 //INSTANTIATE_TEST_CASE_P(ClusterSizes, PClustererTest,
 //                        ::testing::Values(2,4));
-
-
-////////////////////////////////////////////////////////////////////////////////
-/*
-TEST(ClusterTest, Init) {
-  StringClusterer sc;
-  StringDistanceMetric metric;
-  sc.init(5, &metric);
-}
-
-TEST(ClusterTest, AddData) {
-  StringClusterer sc;
-  StringDistanceMetric metric;
-
-  sc.init(2, &metric);
-  std::string s1, s2, s3, s4, s5, s6, s7, s8;
-  std::vector<std::string*> v;
-
-  s1 = "ATest";
-  s2 = "ATestB";
-  s3 = "CTest";
-  s4 = "CTes";
-  s5 = "CTestExtra";
-  s6 = "CTestSuper";
-  s7 = "CTesB";
-  s8 = "CTestSup";
-
-  v.push_back(&s1);
-  v.push_back(&s2);
-  v.push_back(&s3);
-  v.push_back(&s4);
-  v.push_back(&s5);
-  v.push_back(&s6);
-  v.push_back(&s7);
-  v.push_back(&s8);
-  
-  sc.add_data(v);
-}
-
-TEST(ClusterTest, DoCluster) {
-  StringClusterer sc;
-  StringDistanceMetric metric;
-
-  sc.init(2, &metric);
-  std::string s1, s2, s3, s4, s5, s6, s7, s8;
-  std::vector<std::string*> v;
-
-  s1 = "Apple";
-  s2 = "AppLe";
-  s3 = "apple";
-  s4 = "crapple";
-  s5 = "worm";
-  s6 = "Worm";
-  s7 = "worms";
-  s8 = "wormy";
-
-  v.push_back(&s1);
-  v.push_back(&s2);
-  v.push_back(&s3);
-  v.push_back(&s4);
-  v.push_back(&s5);
-  v.push_back(&s6);
-  v.push_back(&s7);
-  v.push_back(&s8);
-  
-  sc.add_data(v);
-  sc.cluster();
-}
-*/
-
-
 
 //////////////////////////////////////////////////////////////////////////////////
 
