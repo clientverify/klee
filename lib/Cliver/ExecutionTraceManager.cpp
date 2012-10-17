@@ -52,9 +52,6 @@ BasicBlockDisabling("basicblock-disabling",llvm::cl::init(false));
 llvm::cl::opt<bool>
 DebugExecutionTree("debug-execution-tree",llvm::cl::init(false));
 
-llvm::cl::opt<bool>
-DisableExecutionTraceTree("disable-et-tree",llvm::cl::init(false));
-
 llvm::cl::opt<unsigned>
 ClusterSize("cluster-size",llvm::cl::init(4));
 
@@ -183,22 +180,17 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
 
       ExecutionStage *new_stage = new ExecutionStage();
-      if (!DisableExecutionTraceTree) {
-        new_stage->etrace_tree = new ExecutionTraceTree();
-      }
+      new_stage->etrace_tree = new ExecutionTraceTree();
       new_stage->root_property = parent_property;
 
       // Increment stat counter
       stats::stage_count += 1;
 
-      if (!stages_.empty() && 
-          stages_.count(parent_property) && 
-          (DisableExecutionTraceTree || stages_[parent_property]->etrace_tree->tracks(parent_property))) {
+      if (!stages_.empty() && stages_.count(parent_property) && 
+          stages_[parent_property]->etrace_tree->tracks(parent_property)) {
 
         CVDEBUG("End state: " << *parent);
-
         new_stage->parent_stage = stages_[parent_property];
-
       }
 
       stages_[property] = new_stage;
