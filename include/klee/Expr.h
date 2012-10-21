@@ -233,6 +233,7 @@ public:
   static ref<Expr> createTempRead(const Array *array, Expr::Width w);
   
   static ref<ConstantExpr> createPointer(uint64_t v);
+  static ref<ConstantExpr> createPointerWidthConstant(uint64_t v);
 
   struct CreateArg;
   static ref<Expr> createFromKind(Kind k, std::vector<CreateArg> args);
