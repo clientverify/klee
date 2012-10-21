@@ -1882,7 +1882,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 #endif
     unsigned elementSize = 
       kmodule->targetData->getTypeStoreSize(ai->getAllocatedType());
-    ref<Expr> size = Expr::createPointer(elementSize);
+    ref<Expr> size = Expr::createPointerWidthConstant(elementSize);
     if (ai->isArrayAllocation()) {
       ref<Expr> count = eval(ki, 0, state).value;
       count = Expr::createCoerceToPointerType(count);
@@ -1922,11 +1922,11 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       ref<Expr> index = eval(ki, it->first, state).value;
       base = AddExpr::create(base,
                              MulExpr::create(Expr::createCoerceToPointerType(index),
-                                             Expr::createPointer(elementSize)));
+                                             Expr::createPointerWidthConstant(elementSize)));
     }
     if (kgepi->offset)
       base = AddExpr::create(base,
-                             Expr::createPointer(kgepi->offset));
+                             Expr::createPointerWidthConstant(kgepi->offset));
     bindLocal(ki, state, base);
     break;
   }
