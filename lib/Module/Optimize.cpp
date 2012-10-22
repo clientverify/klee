@@ -101,7 +101,10 @@ static void AddStandardCompilePasses(PassManager &PM) {
   addPass(PM, createPromoteMemoryToRegisterPass());// Kill useless allocas
   addPass(PM, createGlobalOptimizerPass());      // Optimize out global vars
   addPass(PM, createGlobalDCEPass());            // Remove unused fns and globs
-  addPass(PM, createIPConstantPropagationPass());// IP Constant Propagation
+
+  // RAC: causes crashes in XPilot
+  //addPass(PM, createIPConstantPropagationPass());// IP Constant Propagation
+  
   addPass(PM, createDeadArgEliminationPass());   // Dead argument elimination
   addPass(PM, createInstructionCombiningPass()); // Clean up after IPCP & DAE
   addPass(PM, createCFGSimplificationPass());    // Clean up after IPCP & DAE
@@ -114,6 +117,7 @@ static void AddStandardCompilePasses(PassManager &PM) {
   addPass(PM, createArgumentPromotionPass());    // Scalarize uninlined fn args
 
   addPass(PM, createSimplifyLibCallsPass());     // Library Call Optimizations
+
   addPass(PM, createInstructionCombiningPass()); // Cleanup for scalarrepl.
   addPass(PM, createJumpThreadingPass());        // Thread jumps.
   addPass(PM, createCFGSimplificationPass());    // Merge & remove BBs
@@ -239,7 +243,7 @@ void Optimize(Module* M) {
 
     // Now that we have optimized the program, discard unreachable functions...
     addPass(Passes, createGlobalDCEPass());
-  }
+}
 
   // If the -s or -S command line options were specified, strip the symbols out
   // of the resulting program to make it smaller.  -s and -S are GNU ld options
