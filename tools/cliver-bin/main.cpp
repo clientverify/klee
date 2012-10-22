@@ -106,6 +106,10 @@ llvm::cl::opt<bool>
 WithPOSIXRuntime("posix-runtime", 
     llvm::cl::desc("Link with POSIX runtime"),
     llvm::cl::init(false));
+    
+llvm::cl::opt<bool>
+OptimizeModule("optimize", 
+    llvm::cl::desc("Optimize before execution"));
 
 enum LibcType { NoLibc, KleeLibc, UcLibc };
 
@@ -387,7 +391,7 @@ int main(int argc, char **argv, char **envp) {
 
   llvm::sys::Path LibraryDir(KLEE_DIR "/" RUNTIME_CONFIGURATION "/lib");
   klee::Interpreter::ModuleOptions Opts(LibraryDir.c_str(),
-      /*Optimize=*/ false, 
+      /*Optimize=*/OptimizeModule, 
       /*CheckDivZero=*/ false);
 
 	cliver::cv_message("Checking for POSIX runtime...");
