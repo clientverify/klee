@@ -24,8 +24,9 @@ bool ExecutionStatePropertyLT::operator()(const ExecutionStateProperty* a,
 //////////////////////////////////////////////////////////////////////////////
 
 ExecutionStateProperty::ExecutionStateProperty()
-	: round(-1), client_round(0), edit_distance(0), 
-    symbolic_vars(0), recompute(true), is_recv_processing(false) {}
+	: round(0), client_round(0), edit_distance(0), 
+    symbolic_vars(0), recompute(true), is_recv_processing(false),
+    inst_count(0) {}
 
 ExecutionStateProperty* ExecutionStateProperty::clone() { 
   ExecutionStateProperty* esp = new ExecutionStateProperty(*this);
@@ -35,12 +36,14 @@ ExecutionStateProperty* ExecutionStateProperty::clone() {
   esp->symbolic_vars = symbolic_vars;
   esp->recompute = true;
   esp->is_recv_processing = is_recv_processing;
+  esp->inst_count = inst_count;
   return esp;
 }
 
 void ExecutionStateProperty::reset() {
   symbolic_vars = 0;
   edit_distance = 0;
+  inst_count = 0;
 
   //if (is_recv_processing) {
   //  CVMESSAGE("Resetting is_recv_processing");
@@ -84,6 +87,7 @@ void ExecutionStateProperty::print(std::ostream &os) const {
 	  os << "[sv: " << symbolic_vars << "]";
   if (!recompute)
 	  os << "[NoRC]";
+  os << "[IC: " << inst_count << "]";
 }
 
 //////////////////////////////////////////////////////////////////////////////
