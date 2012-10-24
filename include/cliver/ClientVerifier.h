@@ -48,6 +48,8 @@ namespace stats {
 	extern klee::Statistic edit_distance_k;
 	extern klee::Statistic edit_distance_medoid_count;
 	extern klee::Statistic edit_distance_closest_medoid;
+	extern klee::Statistic socket_event_size;
+	extern klee::Statistic valid_path_instructions;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

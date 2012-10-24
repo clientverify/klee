@@ -35,7 +35,7 @@ class StateRebuilder : public ExecutionObserver {
       ForkTree;
 
   StateRebuilder() : 
-      root_(NULL), rebuild_state_(NULL), rebuild_property_(NULL) {}
+      root_(NULL), rebuild_state_(NULL), rebuild_property_(NULL), executor_(NULL) {}
 
   ~StateRebuilder() {
     if (root_)
@@ -46,12 +46,12 @@ class StateRebuilder : public ExecutionObserver {
     // root_ is never added to the CVExecutor state tracker because it is never
     // actually executed, only its clones in a rebuild
     root_ = root;
+    executor_ = root_->cv()->executor();
   }
 
   void notify(ExecutionEvent ev) {
     if (rebuild_state_ == NULL) {
       CVExecutionState* state = ev.state;
-      CVExecutionState* parent = ev.parent;
 
       switch (ev.event_type) {
         case CV_STATE_REMOVED: {
@@ -60,6 +60,7 @@ class StateRebuilder : public ExecutionObserver {
         }
 
         case CV_STATE_CLONE: {
+          CVExecutionState* parent = ev.parent;
           fork_tree_.clone_tracker(state->property(), parent->property());
           break;
         }
@@ -106,10 +107,10 @@ class StateRebuilder : public ExecutionObserver {
       replay_path_.push_back(*it);
 
     // Set the replay path in Executor
-    root_->cv()->executor()->reset_replay_path(&replay_path_);
+    executor_->reset_replay_path(&replay_path_);
 
     // Add new rebuild state to the executor
-    root_->cv()->executor()->add_state_internal(rebuild_state_);
+    executor_->add_state_internal(rebuild_state_);
 
     // Create new timer object
     rebuild_timer_ = new klee::TimerStatIncrementer(stats::rebuild_time);
@@ -125,7 +126,7 @@ class StateRebuilder : public ExecutionObserver {
   bool rebuilding() { 
     // If we've executed all of the replay path
     if (rebuild_state_ != NULL && 
-        root_->cv()->executor()->replay_position() == replay_path_.size())
+        executor_->replay_position() == replay_path_.size())
       finish_rebuild();
 
     return rebuild_state_ != NULL;
@@ -141,7 +142,7 @@ class StateRebuilder : public ExecutionObserver {
     replay_path_.clear();
 
     // Set replay path to null in Executor
-    root_->cv()->executor()->reset_replay_path();
+    executor_->reset_replay_path();
 
     // End the timer
     delete rebuild_timer_;
@@ -154,6 +155,7 @@ class StateRebuilder : public ExecutionObserver {
   CVExecutionState* root_;
   CVExecutionState* rebuild_state_;
   ExecutionStateProperty* rebuild_property_;
+  CVExecutor* executor_;
   ForkTree fork_tree_;
   BoolForkList replay_path_;
   klee::TimerStatIncrementer* rebuild_timer_;

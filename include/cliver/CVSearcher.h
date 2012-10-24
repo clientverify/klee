@@ -87,22 +87,22 @@ class SearcherStageImpl : public SearcherStage {
   SearcherStageImpl(CVExecutionState* root)
     : live_(NULL) {
 
-    // Increment round number and reset (do this elsewhere?)
-    //root->property()->round++;
-    root->property()->reset();
-
     // Set new root state
     cache_.set_root(root);
 
     // Clone root state
     ExecutionStateProperty* property_clone = root->property()->clone();
+
+    // Reset property values
+    property_clone->reset();
+
     assert(property_clone != root->property());
     CVExecutionState* root_clone = root->clone(property_clone);
 
     // Hack: add cloned state to the internal states set in Executor
     root->cv()->executor()->add_state_internal(root_clone);
 
-    // Insert Root state
+    // Insert clone of root state
     this->add_state(root_clone);
   }
 

@@ -96,7 +96,8 @@ namespace stats {
 	klee::Statistic edit_distance_k("EditDistanceK","EDK");
 	klee::Statistic edit_distance_medoid_count("EditDistanceMedoidCount","EDMedCnt");
 	klee::Statistic edit_distance_closest_medoid("EditDistanceClosestMedoid","EDClMed");
-
+	klee::Statistic socket_event_size("SocketEventSize","SES");
+	klee::Statistic valid_path_instructions("ValidPathInstructions","VPI");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -134,8 +135,7 @@ ClientVerifier::ClientVerifier(std::string* input_filename)
   : cvstream_(new CVStream()),
 		searcher_(NULL),
 		pruner_(NULL),
-		merger_(NULL),
-		execution_trace_manager_(NULL),
+		merger_(NULL), execution_trace_manager_(NULL),
 		array_id_(0),
 		round_number_(0) {
 
@@ -389,6 +389,8 @@ void ClientVerifier::print_stat_labels() {
     << " " << "StSzTot"
     << " " << "AllcMm"
     << " " << stats::edit_distance.getShortName()
+    << " " << stats::socket_event_size.getShortName()
+    << " " << stats::valid_path_instructions.getShortName()
     << "\n";
 }
 
@@ -423,6 +425,8 @@ void ClientVerifier::print_statistic_record(klee::StatisticRecord* sr,
     << " " << sr->getValue(stats::edit_distance_k) 
     << " " << sr->getValue(stats::edit_distance_medoid_count) 
     << " " << sr->getValue(stats::edit_distance_closest_medoid) 
+    << " " << sr->getValue(stats::socket_event_size)
+    << " " << sr->getValue(stats::valid_path_instructions)
     << "\n";
 
 #ifdef GOOGLE_PROFILER

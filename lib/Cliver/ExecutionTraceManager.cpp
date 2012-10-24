@@ -718,20 +718,26 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       if (stages_.count(parent_property))
         stats::edit_distance_k = stages_[parent_property]->current_k;
 
+      // Set Valid Path Instructions stat
+      stats::valid_path_instructions = parent_property->inst_count;
+
+      if (is_socket_active) {
+        stats::socket_event_size
+            = state->network_manager()->socket()->event().length;
+      }
+
       // Initialize a new ExecutionTraceTree
       ExecutionStage *new_stage = new ExecutionStage();
       new_stage->etrace_tree = new ExecutionTraceTree();
       new_stage->root_property = parent_property;
 
       if (!stages_.empty() && 
-          stages_.count(property) && 
-          stages_[property]->etrace_tree->tracks(property)) {
+          stages_.count(parent_property) && 
+          stages_[parent_property]->etrace_tree->tracks(parent_property)) {
 
         //update_edit_distance(property);
-        CVDEBUG("End state: " << *state);
-
+        CVDEBUG("End state: " << *parent);
         new_stage->parent_stage = stages_[parent_property];
-
       }
 
       stages_[property] = new_stage;
