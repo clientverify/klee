@@ -31,6 +31,7 @@
 #include "cliver/SocketEventMeasurement.h"
 #include "cliver/EditDistance.h"
 #include "CVCommon.h"
+#include "CVStream.h"
 
 namespace cliver {
 
@@ -133,7 +134,7 @@ class TrainingObjectClusterManager {
     clusterer->init(cluster_count, &metric);
     std::vector<SocketEvent*> se_vec(se_set_in.begin(), se_set_in.end());
     clusterer->add_data(se_vec);
-    std::cout << "Clustering " << se_set_in.size() << " socket events.\n";
+    CVMESSAGE("Clustering " << se_set_in.size() << " socket events.");
     clusterer->cluster();
 
     for (unsigned i = 0; i< clusterer->count(); ++i) {
@@ -166,7 +167,7 @@ class TrainingObjectClusterManager {
         clusterer->init(cluster_count, &metric);
         clusterer->add_data(data_vec.second);
 
-        std::cout << "Clustering " << data_vec.second.size() << " training paths.\n";
+        CVMESSAGE(<< "Clustering " << data_vec.second.size() << " training paths.");
         clusterer->cluster();
         //clusterer->print_clusters();
 
@@ -212,14 +213,14 @@ class TrainingObjectClusterManager {
       }
     }
 
-    foreach (TrainingObjectListMap::value_type &data, cluster_map_) {
-      std::cout << data.first << " " << data.second.size() << " ";
-      for (size_t i=0; i < data.second.size(); ++i) {
-        std::cout << "(" << data.second[i]->trace.size() << " "
-            << data.second[i]->socket_event_set.size() << "), ";
-      }
-      std::cout << "\n";
-    }
+    //foreach (TrainingObjectListMap::value_type &data, cluster_map_) {
+    //  std::cout << data.first << " " << data.second.size() << " ";
+    //  for (size_t i=0; i < data.second.size(); ++i) {
+    //    std::cout << "(" << data.second[i]->trace.size() << " "
+    //        << data.second[i]->socket_event_set.size() << "), ";
+    //  }
+    //  std::cout << "\n";
+    //}
   }
 
   void sorted_clusters(const SocketEvent* se, 
