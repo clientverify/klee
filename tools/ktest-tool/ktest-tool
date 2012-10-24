@@ -58,14 +58,14 @@ class KTest:
         self.args = args
         self.objects = objects
 
-        # add a field that represents the name of the program used to
-        # generate this .ktest file:
-        program_full_path = self.args[0]
-        program_name = os.path.basename(program_full_path)
-        # sometimes program names end in .bc, so strip them
-        if program_name.endswith('.bc'):
-          program_name = program_name[:-3]
-        self.programName = program_name
+        ## add a field that represents the name of the program used to
+        ## generate this .ktest file:
+        #program_full_path = self.args[0]
+        #program_name = os.path.basename(program_full_path)
+        ## sometimes program names end in .bc, so strip them
+        #if program_name.endswith('.bc'):
+        #  program_name = program_name[:-3]
+        #self.programName = program_name
         
 def trimZeros(str):
     for i in range(len(str))[::-1]:
