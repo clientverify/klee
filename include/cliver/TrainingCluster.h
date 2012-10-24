@@ -167,7 +167,7 @@ class TrainingObjectClusterManager {
         clusterer->init(cluster_count, &metric);
         clusterer->add_data(data_vec.second);
 
-        CVMESSAGE(<< "Clustering " << data_vec.second.size() << " training paths.");
+        CVMESSAGE("Clustering " << data_vec.second.size() << " training paths.");
         clusterer->cluster();
         //clusterer->print_clusters();
 
