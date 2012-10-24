@@ -54,6 +54,7 @@ class ExecutionStateProperty {
   int symbolic_vars; // number of symbolic variables created for this round
 	bool recompute;
   bool is_recv_processing;
+  size_t inst_count;
   //klee::TimerStatIncrementer* recv_processing_timer;
 };
 
