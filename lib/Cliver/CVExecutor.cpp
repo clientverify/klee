@@ -337,6 +337,8 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
 
   searcher->update(0, initial_state_set, std::set<klee::ExecutionState*>());
 
+  klee::ExecutionState *prev_state = NULL;
+
   while (!searcher->empty() && !haltExecution) {
     if (klee::MaxMemory) {
       if ((klee::stats::instructions & 0xFFFFF) == 0) {
@@ -362,28 +364,6 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
 							mbs, (unsigned)klee::MaxMemory);
 					goto dump;
 					
-          //if (mbs > klee::MaxMemory + 100) {
-          //  // just guess at how many to kill
-          //  unsigned numStates = states.size();
-          //  unsigned toKill = std::max(1U, numStates - numStates*klee::MaxMemory/mbs);
-
-          //  if (klee::MaxMemoryInhibit)
-          //    cv_warning("killing %d states (over memory cap)",
-          //                 toKill);
-
-          //  std::vector<klee::ExecutionState*> arr(states.begin(), states.end());
-          //  for (unsigned i=0,N=arr.size(); N && i<toKill; ++i,--N) {
-          //    unsigned idx = rand() % N;
-
-          //    // Make two pulls to try and not hit a state that
-          //    // covered new code.
-          //    if (arr[idx]->coveredNew)
-          //      idx = rand() % N;
-
-          //    std::swap(arr[idx], arr[N-1]);
-          //    terminateStateEarly(*arr[N-1], "memory limit");
-          //  }
-          //}
           atMemoryLimit = true;
         } else {
           atMemoryLimit = false;
@@ -396,10 +376,17 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
         cv_->print_current_statistics("UPDT");
     }
 
-		klee::ExecutionState &state = searcher->selectState();
+    cv_->set_execution_event_flag(false);
+
+		klee::ExecutionState &state 
+      = (prev_state ? *prev_state : searcher->selectState());
+
+    prev_state = &state;
+
     if (haltExecution) goto dump;
 
-    handle_pre_execution_events(state);
+    // XXX Not currently used
+    //handle_pre_execution_events(state);
 
 		klee::KInstruction *ki = state.pc;
 
@@ -438,7 +425,10 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
       cv_->notify_all(ExecutionEvent(CV_STATE_REMOVED, rstate));
     }
 
-    updateStates(&state);
+    if (cv_->execution_event_flag() || !removedStates.empty() || !addedStates.empty()) {
+      updateStates(&state);
+      prev_state = NULL;
+    }
   }
 
   if(searcher->empty())
