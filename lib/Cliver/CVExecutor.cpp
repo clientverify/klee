@@ -338,46 +338,47 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
   searcher->update(0, initial_state_set, std::set<klee::ExecutionState*>());
 
   klee::ExecutionState *prev_state = NULL;
+  bool clear_caches = false;
 
   while (!searcher->empty() && !haltExecution) {
-    if (klee::MaxMemory) {
-      if ((klee::stats::instructions & 0xFFFFF) == 0) {
-        // We need to avoid calling GetMallocUsage() often because it
-        // is O(elts on freelist). This is really bad since we start
-        // to pummel the freelist once we hit the memory cap.
-        //unsigned mbs = llvm::sys::Process::GetTotalMemoryUsage() >> 20;
-        update_memory_usage();
-        size_t mbs = memory_usage_mbs_;
-
-        if (mbs > ((double)klee::MaxMemory*(0.90))) {
-					cv_message("Using %d MB of memory (limit is %d MB). Clearing Caches\n", 
-							mbs, (unsigned)klee::MaxMemory);
-          cv_->notify_all(ExecutionEvent(CV_CLEAR_CACHES));
-          update_memory_usage();
-          mbs = memory_usage_mbs_;
-					cv_message("Now using %d MB of memory (limit is %d MB). \n", 
-							mbs, (unsigned)klee::MaxMemory);
-        }
-        
-        if (mbs > klee::MaxMemory) {
-					cv_message("Using %d MB of memory (limit is %d MB). Exiting.", 
-							mbs, (unsigned)klee::MaxMemory);
-					goto dump;
-					
-          atMemoryLimit = true;
-        } else {
-          atMemoryLimit = false;
-        }
-      }
-    }
-
-    // Print usage stats during especially long rounds :)
-    if ((klee::stats::instructions & 0xFFFFFF) == 0) {
-        cv_->print_current_statistics("UPDT");
-    }
 
     cv_->set_execution_event_flag(false);
 
+    if (clear_caches) {
+      clear_caches = false;
+
+      cv_message("Using %d MB of memory (limit is %d MB). Clearing Caches\n", 
+          memory_usage_mbs_, (unsigned)klee::MaxMemory);
+
+      cv_->notify_all(ExecutionEvent(CV_CLEAR_CACHES));
+
+      update_memory_usage();
+
+      cv_message("Now using %d MB of memory (limit is %d MB). \n", 
+          memory_usage_mbs_, (unsigned)klee::MaxMemory);
+    
+      if (memory_usage_mbs_ > klee::MaxMemory) {
+        goto dump;
+      }
+    }
+
+    if (klee::MaxMemory) {
+      // Only update the the memory usage here occasionally
+      if ((klee::stats::instructions & 0xFFFFF) == 0) {
+        update_memory_usage();
+      }
+
+      if (memory_usage_mbs_> ((double)klee::MaxMemory*(0.90))) {
+        clear_caches = true;
+      }
+    }
+
+    // Print usage stats during especially long rounds
+    if ((klee::stats::instructions & 0xFFFFFF) == 0)
+      cv_->print_current_statistics("UPDT");
+
+    // Select the next state from the search if it was updated (prev_state is
+    // null) or continue execution of the previous state
 		klee::ExecutionState &state 
       = (prev_state ? *prev_state : searcher->selectState());
 
@@ -402,22 +403,13 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
     if (static_cast<CVExecutionState*>(&state)->property()->is_recv_processing)
       ++stats::recv_round_instructions;
 
-		//// Handle post execution events
-		//if (removedStates.find(&state) == removedStates.end()) {
-		//	// Don't create event if state was terminated
-		//	assert(ki == state.prevPC && "instruction mismatch");
-		//	if (CliverEventInfo* ei = lookup_event(ki->inst)) {
-		//		//cv_message("Function call post event for %s",ei->function_name);
-		//		cv_->post_event(static_cast<CVExecutionState*>(&state), this, ei->type);
-		//	}
-		//}
-
+		// Handle post execution events if state wasn't removed
 		if (removedStates.find(&state) == removedStates.end()) {
       handle_post_execution_events(state);
     }
 
+		// Handle post execution events for each newly added state
     foreach (klee::ExecutionState* astate, addedStates) {
-      //cv_->notify_all(ExecutionEvent(CV_STATE_FORK, astate));
       handle_post_execution_events(*astate);
     }
 
@@ -425,7 +417,11 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
       cv_->notify_all(ExecutionEvent(CV_STATE_REMOVED, rstate));
     }
 
-    if (cv_->execution_event_flag() || !removedStates.empty() || !addedStates.empty()) {
+    // Update the searcher only if needed
+    if (cv_->execution_event_flag() 
+        || !removedStates.empty() 
+        || !addedStates.empty()
+        || clear_caches) {
       updateStates(&state);
       prev_state = NULL;
     }
@@ -822,7 +818,7 @@ void CVExecutor::add_state_internal(CVExecutionState* state) {
 void CVExecutor::rebuild_solvers() {
 
   delete solver;
-  klee::STPSolver *stpSolver = new klee::STPSolver(false);
+  klee::STPSolver *stpSolver = new klee::STPSolver(false /* useForkedSTP */);
   klee::Solver *new_solver = stpSolver;
 
   if (klee::UseSTPQueryPCLog)

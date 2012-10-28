@@ -25,6 +25,7 @@
 #include "klee/Internal/Module/KModule.h"
 #include "klee/SpecialFunctionHandler.h"
 #include "../lib/Core/CoreStats.h"
+#include "../lib/Solver/SolverStats.h"
 
 #include "llvm/Module.h"
 #include "llvm/Support/CommandLine.h"
@@ -409,6 +410,10 @@ void ClientVerifier::print_statistic_record(klee::StatisticRecord* sr,
     << " " << sr->getValue(stats::round_sys_time)           /// time_scale
     << " " << sr->getValue(klee::stats::solverTime)         /// time_scale
     << " " << sr->getValue(stats::searcher_time)            /// time_scale
+    << " " << sr->getValue(klee::stats::queryTime)          /// time_scale
+    << " " << sr->getValue(klee::stats::cexCacheTime)       /// time_scale
+    << " " << sr->getValue(klee::stats::queryConstructTime) /// time_scale
+    << " " << sr->getValue(klee::stats::resolveTime)        /// time_scale
     << " " << sr->getValue(stats::execution_tree_time)      /// time_scale
     << " " << sr->getValue(stats::edit_distance_time)       /// time_scale
     << " " << sr->getValue(stats::edit_distance_build_time) /// time_scale
@@ -427,6 +432,13 @@ void ClientVerifier::print_statistic_record(klee::StatisticRecord* sr,
     << " " << sr->getValue(stats::edit_distance_closest_medoid) 
     << " " << sr->getValue(stats::socket_event_size)
     << " " << sr->getValue(stats::valid_path_instructions)
+    << " " << sr->getValue(klee::stats::queries)
+    << " " << sr->getValue(klee::stats::queriesInvalid)
+    << " " << sr->getValue(klee::stats::queriesValid)
+    << " " << sr->getValue(klee::stats::queryCacheHits)
+    << " " << sr->getValue(klee::stats::queryCacheMisses)
+    << " " << sr->getValue(klee::stats::queryConstructs)
+
     << "\n";
 
 #ifdef GOOGLE_PROFILER
