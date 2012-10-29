@@ -14,6 +14,14 @@
 #include "klee/Internal/Support/Timer.h"
 
 namespace klee {
+#ifdef DISABLE_TIMER_STATS
+  class TimerStatIncrementer {
+  public:
+    TimerStatIncrementer(Statistic &_statistic) {}
+    uint64_t check() { return 0; }
+  };
+}
+#else
   class TimerStatIncrementer {
   private:
     WallTimer timer;
@@ -27,6 +35,7 @@ namespace klee {
 
     uint64_t check() { return timer.check(); }
   };
+#endif
 }
 
 #endif
