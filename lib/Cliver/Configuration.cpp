@@ -220,7 +220,6 @@ ExecutionStateProperty* ExecutionStatePropertyFactory::create() {
     case VerifyEditDistanceKPrefixTest:
     case VerifyEditDistanceKPrefixHashPointer: {
       return new EditDistanceExecutionStateProperty();
-      //return new ExecutionStateProperty();
     }
 
     case Training: {
