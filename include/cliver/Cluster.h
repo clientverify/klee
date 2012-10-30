@@ -41,7 +41,6 @@ class Clusterer {
   void init(size_t cluster_count, Metric* metric) {
     cost_ = INT_MAX;
     count_ = cluster_count;
-    medoids_.resize(std::min((size_t)count_,data_.size()), -1);
     metric_ = metric;
   }
 
@@ -57,6 +56,8 @@ class Clusterer {
     if (data_.size() < count_) {
       init(data_.size(), metric_);
     }
+
+    medoids_.resize(count_, -1);
 
     // Select random medoids
     //std::cout << "assigning random medoids...\n";
