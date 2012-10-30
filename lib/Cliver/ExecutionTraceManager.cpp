@@ -27,6 +27,7 @@
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/Internal/Module/KModule.h"
 #include "klee/Internal/Module/InstructionInfoTable.h"
+#include "klee/Internal/Support/Timer.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -403,9 +404,12 @@ void VerifyExecutionTraceManager::initialize() {
 }
 
 void VerifyExecutionTraceManager::initialize_training_data() {
+  klee::WallTimer timer;
   cluster_manager_ = new TrainingObjectManager();
   std::vector<TrainingObject*> tobj_vec(training_data_.begin(), training_data_.end());
   cluster_manager_->cluster(ClusterSize, tobj_vec);
+  CVMESSAGE("Finished initialized training data in " 
+            << timer.check() / 100000. << "s");
 }
 
 void VerifyExecutionTraceManager::update_edit_distance(
