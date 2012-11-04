@@ -472,8 +472,6 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
 
     if (cluster_manager_->check_filter(tf)) {
 
-      // Create a new root edit distance
-      stage->root_ed_tree = EditDistanceTreeFactory::create();
 
       // Find matching execution path
       TrainingObject* tobj = NULL;
@@ -504,9 +502,11 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
       //  CVMESSAGE("Original Cluster Distances: " << ss.str());
       //}
 
-      assert(match_count != 0);
+      if (match_count > 0) {
 
-      if (match_count >= 1) {
+        // Create a new root edit distance
+        stage->root_ed_tree = EditDistanceTreeFactory::create();
+
         TrainingObjectScoreList sorted_clusters;
 
         cluster_manager_->all_clusters_distance(matching_tobj,
@@ -521,8 +521,19 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
         // Add closest cluster
         stage->root_ed_tree->add_data(sorted_clusters[0].second->trace);
         stats::edit_distance_closest_medoid = sorted_clusters[0].first;
+        CVMESSAGE("Match count: " << match_count);
+        //CVMESSAGE(sorted_clusters[0].second->trace);
+
+      } else {
+        // Fail immediately if we do not find a match
+        CVMESSAGE("TrainingFilter: " << tf);
+        //cv_error("Matching socket event not found");
+        stage->root_ed_tree = NULL;
+        return;
       }
+
     } else {
+      CVMESSAGE("No match for filter in clusters");
       stage->root_ed_tree = NULL;
       return;
     }
