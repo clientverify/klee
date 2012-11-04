@@ -18,7 +18,7 @@ namespace cliver {
 
 bool ExecutionStatePropertyLT::operator()(const ExecutionStateProperty* a, 
 		const ExecutionStateProperty* b) const {
-	return a->compare(*b) < 0;
+	return a->compare(b) < 0;
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -28,15 +28,20 @@ ExecutionStateProperty::ExecutionStateProperty()
     symbolic_vars(0), recompute(true), is_recv_processing(false),
     inst_count(0) {}
 
+void ExecutionStateProperty::clone_helper(ExecutionStateProperty* p) { 
+  p->round = round;
+  p->client_round = client_round;
+  p->edit_distance = edit_distance;
+  p->symbolic_vars = symbolic_vars;
+  p->recompute = recompute;
+  p->is_recv_processing = is_recv_processing;
+  p->inst_count = inst_count;
+}
+
 ExecutionStateProperty* ExecutionStateProperty::clone() { 
-  ExecutionStateProperty* esp = new ExecutionStateProperty(*this);
-  esp->round = round;
-  esp->client_round = client_round;
-  esp->edit_distance = edit_distance;
-  esp->symbolic_vars = symbolic_vars;
+  ExecutionStateProperty* esp = new ExecutionStateProperty();
+  clone_helper(esp);
   esp->recompute = true;
-  esp->is_recv_processing = is_recv_processing;
-  esp->inst_count = inst_count;
   return esp;
 }
 
@@ -52,17 +57,8 @@ void ExecutionStateProperty::reset() {
 }
 
 // Order by greatest round number, then smallest edit distance
-int ExecutionStateProperty::compare(const ExecutionStateProperty &b) const {
-	const ExecutionStateProperty *_b = static_cast<const ExecutionStateProperty*>(&b);
-
-	//if (_b->is_recv_processing != is_recv_processing) {
-  //  return (char)_b->is_recv_processing - (char)is_recv_processing;
-  //}
-
-  //// Reversed for priority queue!
-	//if (_b->edit_distance != edit_distance) {
-  //  return _b->edit_distance - edit_distance;
-  //}
+int ExecutionStateProperty::compare(const ExecutionStateProperty *b) const {
+	const ExecutionStateProperty *_b = static_cast<const ExecutionStateProperty*>(b);
 
 	if (round != _b->round)
 		return round - _b->round;
@@ -94,31 +90,36 @@ void ExecutionStateProperty::print(std::ostream &os) const {
 
 EditDistanceExecutionStateProperty::EditDistanceExecutionStateProperty() {}
 
+ExecutionStateProperty* EditDistanceExecutionStateProperty::clone() { 
+  ExecutionStateProperty* esp = new EditDistanceExecutionStateProperty();
+  clone_helper(esp);
+  esp->recompute = true;
+  return esp;
+}
+
 // Only compare edit distance
 int EditDistanceExecutionStateProperty::compare(
-    const ExecutionStateProperty &b) const {
+    const ExecutionStateProperty *b) const {
 
 	const EditDistanceExecutionStateProperty *_b 
-      = static_cast<const EditDistanceExecutionStateProperty*>(&b);
+      = static_cast<const EditDistanceExecutionStateProperty*>(b);
 
+  // Prioritize state that is currently recv_processing
 	if (_b->is_recv_processing != is_recv_processing) {
     return (char)_b->is_recv_processing - (char)is_recv_processing;
-  } else if (_b->is_recv_processing == true &&
-             is_recv_processing == true) {
-
-    if (round != _b->round)
-      return round - _b->round;
-
-    if (client_round != _b->client_round)
-      return client_round - _b->client_round;
-    
-    // Reversed for priority queue!
-    if (_b->symbolic_vars != symbolic_vars)
-      return _b->symbolic_vars - symbolic_vars;
   }
 
+  //// Edit distance is irrelevant if both states are recv_processing
+	//if (_b->is_recv_processing == is_recv_processing &&
+  //    _b->is_recv_processing != true) {
+  //  // Reversed for priority queue!
+  //  if (_b->edit_distance != edit_distance) {
+  //    return _b->edit_distance - edit_distance;
+  //  }
+  //}
+
   // Reversed for priority queue!
-	if (_b->edit_distance != edit_distance) {
+  if (_b->edit_distance != edit_distance) {
     return _b->edit_distance - edit_distance;
   }
 
@@ -134,30 +135,6 @@ int EditDistanceExecutionStateProperty::compare(
 
   return 0;
 }
-
-
-//	//if (_b->is_recv_processing != is_recv_processing)
-//  //  return (int)_b->is_recv_processing - (int)is_recv_processing;
-//
-//  //// Reversed for priority queue!
-//	//if (_b->edit_distance != edit_distance) 
-//  //  return _b->edit_distance - edit_distance;
-//
-//	if (_b->is_recv_processing && is_recv_processing) {
-//    if (client_round != _b->client_round)
-//      return client_round - _b->client_round;
-//
-//    // Reversed for priority queue!
-//    if (_b->symbolic_vars != symbolic_vars)
-//      return _b->symbolic_vars - symbolic_vars;
-//  } else {
-//    // Reversed for priority queue!
-//    if (_b->edit_distance != edit_distance) 
-//      return _b->edit_distance - edit_distance;
-//  }
-//
-//  return 0;
-//}
 
 ////////////////////////////////////////////////////////////////////////////////
 

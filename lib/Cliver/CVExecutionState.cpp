@@ -45,7 +45,7 @@ CVExecutionState::~CVExecutionState() {
 }
 
 int CVExecutionState::compare(const CVExecutionState& b) const {
-	return property_->compare(*b.property_);
+	return property_->compare(b.property_);
 }
 
 void CVExecutionState::get_pc_string(std::string &rstr,

@@ -44,9 +44,11 @@ class ExecutionStateProperty {
  public:
   ExecutionStateProperty();
   virtual void print(std::ostream &os) const;
-	virtual int compare(const ExecutionStateProperty &p) const;
+	virtual int compare(const ExecutionStateProperty *p) const;
 	virtual ExecutionStateProperty* clone();
   virtual void reset();
+
+  void clone_helper(ExecutionStateProperty* p);
 
   int round; // current socket id
   int client_round; // client specific round number
@@ -55,7 +57,6 @@ class ExecutionStateProperty {
 	bool recompute;
   bool is_recv_processing;
   size_t inst_count;
-  //klee::TimerStatIncrementer* recv_processing_timer;
 };
 
 inline std::ostream &operator<<(std::ostream &os, 
@@ -67,7 +68,8 @@ inline std::ostream &operator<<(std::ostream &os,
 class EditDistanceExecutionStateProperty : public ExecutionStateProperty {
  public:
   EditDistanceExecutionStateProperty();
-	virtual int compare(const ExecutionStateProperty &p) const;
+	virtual int compare(const ExecutionStateProperty *p) const;
+	virtual ExecutionStateProperty* clone();
 };
 
 inline std::ostream &operator<<(std::ostream &os, 
