@@ -129,6 +129,9 @@ class VerifyExecutionTraceManager : public ExecutionTraceManager {
 
   void create_ed_tree(CVExecutionState* state);
 
+  void compare_to_self(CVExecutionState* state,
+                       std::vector<TrainingObject*> &selected);
+
   ExecutionTraceEditDistanceTree* get_ed_tree(ExecutionStateProperty *property);
   ExecutionTraceEditDistanceTree* clone_ed_tree(ExecutionStateProperty *property);
 
@@ -139,7 +142,11 @@ class VerifyExecutionTraceManager : public ExecutionTraceManager {
   TrainingFilterMap filter_map_;
   TrainingObjectManager *cluster_manager_;
 
+  // Training objects that were found for the current verification task
   std::set<TrainingObject*> self_training_data_;
+
+  // Map of round index to training object
+  std::map<int, TrainingObject*> self_training_data_map_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

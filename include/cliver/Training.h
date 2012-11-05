@@ -4,6 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
+// TODO: Remove unused functions
 //
 //===----------------------------------------------------------------------===//
 #ifndef CLIVER_TRAINING_H
@@ -114,13 +115,14 @@ class TrainingObject {
 
   void read(std::ifstream &is);
   void write(ExecutionStateProperty* property, ClientVerifier* cv);
+  void parse_round();
 
  public:
   //std::set<SocketEvent*> socket_event_set; // std::set of SocketEvent ptrs
   SocketEventDataSet socket_event_set;
   ExecutionTrace trace; 
   std::string name; // Name created during seralization
-  int id;
+  int round;
 
  protected:
   friend class boost::serialization::access;
@@ -213,9 +215,7 @@ class TrainingManager {
 
         // Read serialized TrainingObject
         tobj->read(is);
-
-        // Assign TrainingObject a unique id
-        tobj->id = ++current_id;
+        tobj->parse_round();
 
         // Check for duplicates with other TrainingObjects
         typename TrainingObjectSetType::iterator it = data.find(tobj);
@@ -235,8 +235,6 @@ class TrainingManager {
     }
   }
 
-  // Store next TrainingObject id
-  static int current_id;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
