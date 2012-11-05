@@ -17,6 +17,10 @@
 
 #include <boost/archive/binary_oarchive.hpp>
 #include <boost/archive/binary_iarchive.hpp>
+#include <boost/algorithm/string.hpp>
+#include <boost/lexical_cast.hpp>
+#include <string>
+#include <vector>
 
 namespace cliver {
 
@@ -56,6 +60,13 @@ void TrainingObject::write(ExecutionStateProperty* property,
 void TrainingObject::read(std::ifstream &is) {
 	boost::archive::binary_iarchive ia(is);
   ia >> *this;
+}
+
+// Extract the round index from string name
+void TrainingObject::parse_round() {
+  std::vector<std::string> fields;
+  boost::split(fields, this->name, boost::is_any_of("_"));
+  round = boost::lexical_cast<int>(fields[1]);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -149,8 +160,7 @@ void TrainingObjectData::select_training_paths_for_message(
 
 /// Print TrainingObject info
 std::ostream& operator<<(std::ostream& os, const TrainingObject &tobject) {
-  os << "(trace id:" << tobject.id << ") "
-     << "(length:" << tobject.trace.size() << ") "
+  os << "(length:" << tobject.trace.size() << ") "
      << "(" << tobject.name << ") ";
   os << "[socket_events (" << tobject.socket_event_set.size() << "): ";
   foreach (const SocketEvent* socket_event, tobject.socket_event_set) {
@@ -159,10 +169,6 @@ std::ostream& operator<<(std::ostream& os, const TrainingObject &tobject) {
   os << "]";
   return os;
 }
-
-////////////////////////////////////////////////////////////////////////////////
-
-int TrainingManager::current_id = 0;
 
 ////////////////////////////////////////////////////////////////////////////////
 
