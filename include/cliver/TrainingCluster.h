@@ -134,7 +134,6 @@ class TrainingObjectClusterManager {
     clusterer->init(cluster_count, &metric);
     std::vector<SocketEvent*> se_vec(se_set_in.begin(), se_set_in.end());
     clusterer->add_data(se_vec);
-    CVMESSAGE("Clustering " << se_set_in.size() << " socket events.");
     clusterer->cluster();
 
     for (unsigned i = 0; i< clusterer->count(); ++i) {
@@ -173,6 +172,7 @@ class TrainingObjectClusterManager {
 
         clusterer->assign_all();
 
+        #pragma omp parallel for schedule(dynamic)
         for (unsigned i = 0; i< clusterer->count(); ++i) {
           std::vector<TrainingObject*> tobjs_vec;
 
@@ -199,14 +199,21 @@ class TrainingObjectClusterManager {
             }
           }
 
+          #pragma omp critical 
+          CVMESSAGE("Clustering " << se_set.size() << " socket events for medoid " << i);
+          
           cluster_socket_events(10, se_set, clustered_se_set);
+
+          #pragma omp critical 
+          CVMESSAGE("Done clustering socket events for medoid " << i);
 
           foreach(se, clustered_se_set) {
             tobj_cluster->add_socket_event(se);
           }
         
           TrainingFilter tf(tobj_cluster);
-          cluster_map_[tf].push_back(tobj_cluster);
+          #pragma omp critical 
+          { cluster_map_[tf].push_back(tobj_cluster); }
         }
         
         delete clusterer;

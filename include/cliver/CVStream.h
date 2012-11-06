@@ -31,7 +31,7 @@ extern std::ostream* cv_message_stream;
 extern std::ostream* cv_debug_stream;
 
 #define CVMESSAGE(__x) \
-	*cv_message_stream <<"CV: "<< __x << "\n";
+  { *cv_message_stream <<"CV: "<< __x << "\n"; }
 
 #ifndef NDEBUG
 

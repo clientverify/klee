@@ -404,7 +404,7 @@ void VerifyExecutionTraceManager::initialize() {
     foreach (TrainingObject *tobj, self_training_data_) {
       self_training_data_map_[tobj->round] = tobj;
     }
-    assert(self_training_data_map_.size() == self_training_data_.size());
+    //CVMESSAGE("Loself_training_data_map_.size() << ", " << self_training_data_.size());
   }
 
   // ------------------------------------------------------------------------//
@@ -470,17 +470,19 @@ void VerifyExecutionTraceManager::update_edit_distance(
 void VerifyExecutionTraceManager::compare_to_self(CVExecutionState* state,
                                                   std::vector<TrainingObject*> &selected) {
   ExecutionStateProperty *property = state->property();
-  TrainingObject* self_tobj = self_training_data_map_[property->round];
-  std::vector<int> distances;
+  if (!self_training_data_.empty()) {
+    TrainingObject* self_tobj = self_training_data_map_[property->round];
+    std::vector<int> distances;
 
-  TrainingObjectDistanceMetric metric;
-  std::stringstream ss;
-  foreach (TrainingObject* tobj, selected) {
-    int result = metric.distance(tobj, self_tobj);
-    distances.push_back(result);
-    ss << result << ",";
+    TrainingObjectDistanceMetric metric;
+    std::stringstream ss;
+    foreach (TrainingObject* tobj, selected) {
+      int result = metric.distance(tobj, self_tobj);
+      distances.push_back(result);
+      ss << result << ",";
+    }
+    CVMESSAGE("Hint Cluster Distances: " << ss.str());
   }
-  CVMESSAGE("Hint Cluster Distances: " << ss.str());
 }
 
 void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
@@ -538,10 +540,11 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
         i++;
       } while (i < MaxMedoids && sorted_clusters[i].first <= (sorted_clusters[0].first * 1.25));
       CVMESSAGE("SocketEvent Cluster Distances: " << ss.str());
+
       compare_to_self(state, selected_training_objs);
     }
   } else {
-    CVMESSAGE("No match for filter in clusters: " << tf);
+    CVMESSAGE("No match for filter in clusters: " << tf << " " << *socket_event);
     stage->root_ed_tree = NULL;
     return;
   }

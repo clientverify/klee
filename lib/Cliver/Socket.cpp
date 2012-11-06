@@ -88,21 +88,23 @@ void SocketEvent::print(std::ostream &os) const {
 	os << "[" << socketevent_types[type] << "][LEN:" << length << "]";
   if (ClientModelFlag == XPilot)
     os << "[CLRN:" << client_round << "] ";
-	for (unsigned i=0; i<length; ++i) {
-    char buf[8];
-    sprintf(buf,"%.2X ", data[i]);
-    os << buf;
-    //if (data[i] > 47 && data[i] < 126) {
-    //  os << (char)(data[i]) << ":";
-    //} else {
-    //  char buf[8];
-    //  sprintf(buf,"%.2X ", data[i]);
-    //  //os << std::hex << data[i];
-    //  //os << buf << ":";
-    //  os << buf;
-    //}
-	}
-	os << std::dec;
+  if (DebugSocket) {
+    for (unsigned i=0; i<length; ++i) {
+      char buf[8];
+      sprintf(buf,"%.2X ", data[i]);
+      os << buf;
+      //if (data[i] > 47 && data[i] < 126) {
+      //  os << (char)(data[i]) << ":";
+      //} else {
+      //  char buf[8];
+      //  sprintf(buf,"%.2X ", data[i]);
+      //  //os << std::hex << data[i];
+      //  //os << buf << ":";
+      //  os << buf;
+      //}
+    }
+    //os << std::dec;
+  }
 }
 
 bool SocketEvent::equal(const SocketEvent &se) const {
@@ -236,8 +238,6 @@ void  Socket::set_state(State s) {
 }
 
 void  Socket::advance(){ 
-  if (DebugSocket) 
-    print(*cv_debug_stream);
 	index_++; state_ = IDLE; offset_ = 0;
 }
 
