@@ -74,7 +74,7 @@ class SocketEventDistanceMetric {
   typedef boost::unordered_map<SEPair, double> DistanceMap;
 
   SocketEventDistanceMetric() {
-    similarity_measure_ = SocketEventSimilarityDataOnly();
+    similarity_measure_ = new SocketEventSimilarityDataOnly();
   }
 
   ~SocketEventDistanceMetric() {

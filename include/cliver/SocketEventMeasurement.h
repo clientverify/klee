@@ -361,6 +361,7 @@ class SocketEventSimilarityDataOnly : public SocketEventSimilarity {
     std::advance(b_begin, b->header_length);
     int dist = ed.compute_editdistance(a_begin, b_begin);
     return dist;
+  }
 };
 
 /// TODO
