@@ -347,6 +347,22 @@ class SocketEventSimilarityXpilotEqual : public SocketEventSimilarity {
 typedef Score<std::vector<uint8_t>, uint8_t, int> UCharVecScore;
 typedef EditDistanceRowIt<UCharVecScore, std::vector<uint8_t>, int > UCharVecEditDistance;
 
+class SocketEventSimilarityDataOnly : public SocketEventSimilarity {
+ public:
+  int similarity_score(const SocketEvent* a, const SocketEvent* b) {
+
+    if (a->type != b->type)
+      return INT_MAX;
+
+    UCharVecEditDistance ed(a->data_size(), b->data_size());
+    std::vector<uint8_t>::const_iterator a_begin = a->data.begin();
+    std::advance(a_begin, a->header_length);
+    std::vector<uint8_t>::const_iterator b_begin = b->data.begin();
+    std::advance(b_begin, b->header_length);
+    int dist = ed.compute_editdistance(a_begin, b_begin);
+    return dist;
+};
+
 /// TODO
 class SocketEventSimilarityXpilot : public SocketEventSimilarity {
  public:
