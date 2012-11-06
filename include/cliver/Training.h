@@ -229,6 +229,8 @@ class TrainingManager {
         } else {
           data.insert(tobj);
         }
+      } else {
+        CVMESSAGE("Error opening: " << filename);
       }
 
       is.close();

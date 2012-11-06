@@ -178,7 +178,6 @@ class ClientVerifier : public klee::InterpreterHandler {
 
   std::list<ExecutionObserver*> observers_;
 
-
 	uint64_t array_id_;
 	int round_number_;
   std::string client_name_;
