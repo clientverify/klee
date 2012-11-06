@@ -44,6 +44,9 @@ namespace cliver {
 llvm::cl::opt<unsigned>
 MaxKExtension("max-k-extension",llvm::cl::init(16));
 
+llvm::cl::opt<unsigned>
+MaxMedoids("max-medoids",llvm::cl::init(8));
+
 llvm::cl::opt<bool>
 EditDistanceAtCloneOnly("edit-distance-at-clone-only",llvm::cl::init(true));
 
@@ -533,7 +536,7 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
         stats::edit_distance_medoid_count += 1;
         ss << sorted_clusters[i].first << ",";
         i++;
-      } while (sorted_clusters[i].first <= (sorted_clusters[0].first * 2));
+      } while (i < MaxMedoids && sorted_clusters[i].first <= (sorted_clusters[0].first * 1.25));
       CVMESSAGE("SocketEvent Cluster Distances: " << ss.str());
       compare_to_self(state, selected_training_objs);
     }
