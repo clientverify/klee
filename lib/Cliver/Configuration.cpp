@@ -236,7 +236,7 @@ SocketEventSimilarity* SocketEventSimilarityFactory::create() {
       return new SocketEventSimilarityTetrinet();
     }
     case XPilot: {
-      return new SocketEventSimilarityXpilot();
+      return new SocketEventSimilarityDataOnly();
     }
     default: {
       return new SocketEventSimilarity();
