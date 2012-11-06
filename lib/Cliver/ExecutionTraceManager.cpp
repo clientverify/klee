@@ -538,7 +538,9 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
         stats::edit_distance_medoid_count += 1;
         ss << sorted_clusters[i].first << ",";
         i++;
-      } while (i < MaxMedoids && sorted_clusters[i].first <= (sorted_clusters[0].first * 1.25));
+      } while (i < MaxMedoids 
+               && i < sorted_clusters.size()
+               && sorted_clusters[i].first <= (sorted_clusters[0].first * 1.25));
       CVMESSAGE("SocketEvent Cluster Distances: " << ss.str());
 
       compare_to_self(state, selected_training_objs);
