@@ -471,14 +471,16 @@ void VerifyExecutionTraceManager::compare_to_self(CVExecutionState* state,
                                                   std::vector<TrainingObject*> &selected) {
   ExecutionStateProperty *property = state->property();
   if (!self_training_data_.empty()) {
+    if (self_training_data_map_.count(property->round) == 0) {
+      CVMESSAGE("Hint Cluster Distances: Not found for round " << property->round);
+      return;
+    }
     TrainingObject* self_tobj = self_training_data_map_[property->round];
-    std::vector<int> distances;
 
     TrainingObjectDistanceMetric metric;
     std::stringstream ss;
     foreach (TrainingObject* tobj, selected) {
       int result = metric.distance(tobj, self_tobj);
-      distances.push_back(result);
       ss << result << ",";
     }
     CVMESSAGE("Hint Cluster Distances: " << ss.str());
