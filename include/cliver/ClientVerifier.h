@@ -82,12 +82,12 @@ enum RunModeType {
   VerifyEditDistanceKPrefixRow,
   VerifyEditDistanceKPrefixHash,
   VerifyEditDistanceKPrefixHashPointer,
-  VerifyEditDistanceKPrefixTest,
+  VerifyEditDistanceKPrefixTest
 };
 
 enum ClientModelType {
   Tetrinet,
-  XPilot,
+  XPilot
 };
 // stored in Configuration.cpp
 extern ClientModelType ClientModelFlag; 
