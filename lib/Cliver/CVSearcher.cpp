@@ -134,7 +134,6 @@ void VerifySearcher::process_unique_pending_states() {
   // Check if duplicate pending states exist
   if (pending_states_.size() > 1) {
 
-    SearcherStageList new_stages;
     // Check if a pending state is not found in merged set, if so remove as a
     // duplicate
     foreach (CVExecutionState* state, pending_states_) {
@@ -329,6 +328,7 @@ SearcherStage* VerifySearcher::get_new_stage(CVExecutionState* state) {
   CVExecutionState* next_state = stage->next_state();
   stage->add_state(next_state);
   cv_->notify_all(ExecutionEvent(CV_SEARCHER_NEW_STAGE, next_state, state));
+  CVDEBUG("Creating new stage: " << state << " " << *state);
   return stage;
 }
 
@@ -465,6 +465,9 @@ klee::ExecutionState &TrainingSearcher::selectState() {
         if (!stage->empty()) {
           new_current_stage = stage;
           break;
+        } else {
+          CVDEBUG("Stage Empty, round=" << new_current_round 
+                  << ", rootstate: " << *(stage->root_state()));
         }
       }
 
