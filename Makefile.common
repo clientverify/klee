@@ -29,6 +29,11 @@ CPPFLAGS += -DGOOGLE_PROFILER
 LIBS += -lboost_timer -lboost_system -lboost_chrono
 CPPFLAGS += -DUSE_BOOST_TIMER
 
+# Disable TimerStatIncrementer for ultra-optimized builds
+ifeq ($(DISABLE_TIMER_STATS),1)
+  CPPFLAGS += -DDISABLE_TIMER_STATS
+endif
+
 # Required for waffles
 LIBS += -lGClasses -lpng
 
