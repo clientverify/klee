@@ -20,7 +20,6 @@ namespace klee {
     TimerStatIncrementer(Statistic &_statistic) {}
     uint64_t check() { return 0; }
   };
-}
 #else
   class TimerStatIncrementer {
   private:
