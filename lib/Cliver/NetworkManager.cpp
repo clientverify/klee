@@ -302,6 +302,9 @@ void NetworkManager::execute_read(CVExecutor* executor,
 
 	GET_SOCKET_OR_DIE_TRYIN("read", fd);
 
+	if (socket.is_open() != true)
+		RETURN_FAILURE("read", "not open");
+
 	if (socket.type() != SocketEvent::RECV)
 		RETURN_FAILURE("read", "wrong type");
 
