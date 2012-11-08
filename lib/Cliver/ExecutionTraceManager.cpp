@@ -65,6 +65,9 @@ UseClustering("use-clustering",llvm::cl::init(true));
 llvm::cl::opt<bool>
 UseClusteringHint("use-clustering-hint",llvm::cl::init(false));
 
+llvm::cl::opt<bool>
+UseSelfTraining("use-self-training",llvm::cl::init(false));
+
 llvm::cl::list<std::string> TrainingPathFile("training-path-file",
 	llvm::cl::ZeroOrMore,
 	llvm::cl::ValueRequired,
@@ -365,53 +368,51 @@ void VerifyExecutionTraceManager::initialize() {
 
   // Parse the training data filenames
   if (!TrainingPathDir.empty())
-    foreach (std::string path, TrainingPathDir)
-      cv_->getFilesRecursive(path, ".tpath", TrainingPathFile);
+	foreach (std::string path, TrainingPathDir)
+	cv_->getFilesRecursive(path, ".tpath", TrainingPathFile);
 
-  // Report error if no filenames found
-  if (TrainingPathFile.empty())
-    cv_error("Error parsing training data file names, exiting now.");
+  if (!TrainingPathFile.empty()) {
+    CVMESSAGE("Loading " << TrainingPathFile.size() << " training data files.");
 
-  CVMESSAGE("Loading " << TrainingPathFile.size() << " training data files.");
+	// Read training data into memory
+	TrainingManager::read_files(TrainingPathFile, training_data_); 
+	if (training_data_.empty())
+	  cv_error("Error reading training data , exiting now.");
 
-  // Read training data into memory
-  TrainingManager::read_files(TrainingPathFile, training_data_); 
-  if (training_data_.empty())
-    cv_error("Error reading training data , exiting now.");
-
-  CVMESSAGE("Finished loading " 
-            << training_data_.size() << " unique training objects.");
+	CVMESSAGE("Finished loading " 
+		<< training_data_.size() << " unique training objects.");
+  }
 
   // ------------------------------------------------------------------------//
 
   // Parse the self training data filenames 
   if (!SelfTrainingPathDir.empty())
-    foreach (std::string path, SelfTrainingPathDir)
-      cv_->getFilesRecursive(path, ".tpath", SelfTrainingPathFile);
+	foreach (std::string path, SelfTrainingPathDir)
+	cv_->getFilesRecursive(path, ".tpath", SelfTrainingPathFile);
 
   // Check if we are reading self-training data
   if (SelfTrainingPathFile.size() > 0) {
-    CVMESSAGE("Loading " << SelfTrainingPathFile.size() 
-              << " self training data files for debugging.");
+	CVMESSAGE("Loading " << SelfTrainingPathFile.size() 
+		<< " self training data files for debugging.");
 
-    // Read self training data into memory
-    TrainingManager::read_files(SelfTrainingPathFile, self_training_data_); 
-    if (self_training_data_.empty())
-      cv_error("Error reading self, training data , exiting now.");
+	// Read self training data into memory
+	TrainingManager::read_files(SelfTrainingPathFile, self_training_data_); 
+	if (self_training_data_.empty())
+	  cv_error("Error reading self, training data , exiting now.");
 
-    CVMESSAGE("Finished loading " 
-              << self_training_data_.size() << " unique self training objects.");
+	CVMESSAGE("Finished loading " 
+		<< self_training_data_.size() << " unique self training objects.");
 
-    // Assign tobjs to map according to round index
-    foreach (TrainingObject *tobj, self_training_data_) {
-      self_training_data_map_[tobj->round] = tobj;
-    }
-    //CVMESSAGE("Loself_training_data_map_.size() << ", " << self_training_data_.size());
+	// Assign tobjs to map according to round index
+	foreach (TrainingObject *tobj, self_training_data_) {
+	  self_training_data_map_[tobj->round] = tobj;
+	}
   }
 
   // ------------------------------------------------------------------------//
 
-  initialize_training_data();
+  if (UseClustering || UseClusteringHint)
+	initialize_training_data();
 }
 
 void VerifyExecutionTraceManager::initialize_training_data() {
@@ -499,10 +500,31 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
 
   TrainingFilter tf(state);
 
-  if (cluster_manager_->check_filter(tf)) {
-    if (UseClusteringHint) {
+  if (UseSelfTraining) {
+	if (self_training_data_map_.count(property->round) == 0) {
+	  CVMESSAGE("No path in self training data for round " << property->round);
+	  stage->root_ed_tree = NULL;
+	  return;
+	} else {
+	  TrainingObject* matching_tobj = self_training_data_map_[property->round];
+	  CVDEBUG("Curr Socket Event: " << *socket_event);
+	  CVDEBUG("Self Socket Event: " << *(*(matching_tobj->socket_event_set.begin())));
+	  assert(matching_tobj->socket_event_set.size() == 1);
+	  assert(socket_event->equal(*(*(matching_tobj->socket_event_set.begin()))));
+
+	  // Create a new root edit distance
+	  stage->root_ed_tree = EditDistanceTreeFactory::create();
+
+	  stage->root_ed_tree->add_data(matching_tobj->trace);
+	}
+  } else if (cluster_manager_->check_filter(tf)) {
+	if (UseClusteringHint) {
       // Select matching execution path
-      assert(self_training_data_map_.count(property->round) > 0);
+      if (self_training_data_map_.count(property->round) == 0) {
+				CVMESSAGE("No path in self training data for round " << property->round);
+				stage->root_ed_tree = NULL;
+				return;
+			}
       TrainingObject* matching_tobj = self_training_data_map_[property->round];
 
       // Create a new root edit distance
@@ -617,8 +639,9 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
           CVDEBUG("First basic block entry (stage)");
           
           // Build the edit distance tree using training data
-          klee::TimerStatIncrementer build_timer(stats::edit_distance_build_time);
-          create_ed_tree(state);
+          WallTimer build_timer;
+					create_ed_tree(state);
+          stats::edit_distance_build_time += build_timer.check();
         }
 
         // Check if we need to reclone the edit distance tree 

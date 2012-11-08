@@ -67,6 +67,7 @@ void TrainingObject::parse_round() {
   std::vector<std::string> fields;
   boost::split(fields, this->name, boost::is_any_of("_"));
   round = boost::lexical_cast<int>(fields[1]);
+  round--;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
