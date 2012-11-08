@@ -1,6 +1,7 @@
 #!/bin/bash
 
 WRAPPER="`readlink -f "$0"`"
+WRAPPER_BASENAME="`basename $WRAPPER`"
 
 HERE="`dirname "$WRAPPER"`"
 
@@ -14,5 +15,5 @@ fi
 
 export LD_LIBRARY_PATH
 
-exec -a "$0" "$HERE/cliver-bin" "$@"
+exec -a "$0" "$HERE/$WRAPPER_BASENAME-bin" "$@"
 
