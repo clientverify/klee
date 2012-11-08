@@ -85,25 +85,17 @@ void SocketEvent::print(std::ostream &os) const {
 #define X(x) #x
 	static std::string socketevent_types[] = { SOCKETEVENT_TYPES };
 #undef X
-	os << "[" << socketevent_types[type] << "][LEN:" << length << "]";
+	os << "[" << socketevent_types[type] << "][LEN:" << length << "] ";
   if (ClientModelFlag == XPilot)
     os << "[CLRN:" << client_round << "] ";
+
   if (DebugSocket) {
-    for (unsigned i=0; i<length; ++i) {
-      char buf[8];
-      sprintf(buf,"%.2X ", data[i]);
-      os << buf;
-      //if (data[i] > 47 && data[i] < 126) {
-      //  os << (char)(data[i]) << ":";
-      //} else {
-      //  char buf[8];
-      //  sprintf(buf,"%.2X ", data[i]);
-      //  //os << std::hex << data[i];
-      //  //os << buf << ":";
-      //  os << buf;
-      //}
-    }
-    //os << std::dec;
+    std::string s(data.begin(), data.begin()+(length-1));
+    os << "(ascii) " << s << ", (hex) ";
+    os << std::hex;
+    for (unsigned i=0; i<length; ++i)
+      os << (int)data[i] << ':';
+    os << std::dec;
   }
 }
 
@@ -244,20 +236,6 @@ void  Socket::advance(){
 const SocketEvent& Socket::event() { 
 	if (event_) return *event_;
 	assert (log_ && index_ < log_->size());
-	return *((*log_)[index_]);
-}
-
-const SocketEvent& Socket::last_event() {
-	if (event_) return *event_;
-	//assert (log_ && index_ < log_->size());
-  if (ClientModelFlag == XPilot) {
-    unsigned i = index_;
-    int client_round = (*log_)[i]->client_round;
-    while (i+1 < log_->size() && (*log_)[i+1]->client_round == client_round)
-      i++;
-    return *((*log_)[i]);
-  }
-
 	return *((*log_)[index_]);
 }
 
