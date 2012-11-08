@@ -300,6 +300,8 @@ void TrainingExecutionTraceManager::notify(ExecutionEvent ev) {
       // Increment stat counter
       stats::stage_count += 1;
 
+      CVDEBUG("Next Socket Event: " << state->network_manager()->socket()->event());
+
       if (!stages_.empty() && 
           stages_.count(parent_property)) {
           //stages_[parent_property]->etrace_tree->tracks(parent_property)) {
@@ -725,6 +727,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       if (is_socket_active) {
         stats::socket_event_size
             = state->network_manager()->socket()->event().length;
+        CVDEBUG("Next Socket Event: " << state->network_manager()->socket()->event());
       }
 
       // Initialize a new ExecutionTraceTree
