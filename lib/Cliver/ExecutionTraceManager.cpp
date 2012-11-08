@@ -639,7 +639,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
           CVDEBUG("First basic block entry (stage)");
           
           // Build the edit distance tree using training data
-          WallTimer build_timer;
+		  klee::WallTimer build_timer;
 					create_ed_tree(state);
           stats::edit_distance_build_time += build_timer.check();
         }
