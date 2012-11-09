@@ -326,9 +326,16 @@ bool VerifySearcher::empty() {
 SearcherStage* VerifySearcher::get_new_stage(CVExecutionState* state) {
   SearcherStage* stage = SearcherStageFactory::create(merger_, state);
   CVExecutionState* next_state = stage->next_state();
-  stage->add_state(next_state);
+
+  // Notify
   cv_->notify_all(ExecutionEvent(CV_SEARCHER_NEW_STAGE, next_state, state));
-  CVDEBUG("Creating new stage: " << state << " " << *state);
+
+  // Reset property values
+  next_state->property()->reset();
+
+  // Add back to stage
+  stage->add_state(next_state);
+
   return stage;
 }
 

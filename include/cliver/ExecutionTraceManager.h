@@ -129,8 +129,8 @@ class VerifyExecutionTraceManager : public ExecutionTraceManager {
 
   void create_ed_tree(CVExecutionState* state);
 
-  void compare_to_self(CVExecutionState* state,
-                       std::vector<TrainingObject*> &selected);
+  void compute_self_training_stats(CVExecutionState* state,
+                                   std::vector<TrainingObject*> &selected);
 
   ExecutionTraceEditDistanceTree* get_ed_tree(ExecutionStateProperty *property);
   ExecutionTraceEditDistanceTree* clone_ed_tree(ExecutionStateProperty *property);

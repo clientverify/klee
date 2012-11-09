@@ -93,9 +93,6 @@ class SearcherStageImpl : public SearcherStage {
     // Clone root state
     ExecutionStateProperty* property_clone = root->property()->clone();
 
-    // Reset property values
-    property_clone->reset();
-
     assert(property_clone != root->property());
     CVExecutionState* root_clone = root->clone(property_clone);
 

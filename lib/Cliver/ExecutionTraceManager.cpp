@@ -47,6 +47,9 @@ MaxKExtension("max-k-extension",llvm::cl::init(16));
 llvm::cl::opt<unsigned>
 MaxMedoids("max-medoids",llvm::cl::init(8));
 
+llvm::cl::opt<double>
+MedoidSelectRate("medoid-select-rate",llvm::cl::init(1.25));
+
 llvm::cl::opt<bool>
 EditDistanceAtCloneOnly("edit-distance-at-clone-only",llvm::cl::init(true));
 
@@ -146,7 +149,6 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
   switch (ev.event_type) {
 
     case CV_SELECT_EVENT: {
-      CVDEBUG("SELECT_EVENT");
       property->is_recv_processing = false;
     }
 
@@ -256,10 +258,18 @@ void TrainingExecutionTraceManager::notify(ExecutionEvent ev) {
   if (parent) 
     parent_property = parent->property();
 
+  // Check if network is ready
+  bool is_socket_active = false;
+
+  if (state && state->network_manager() && 
+      state->network_manager()->socket() &&
+      state->network_manager()->socket()->end_of_log()) {
+    is_socket_active = true;
+  }
+
   switch (ev.event_type) {
 
     case CV_SELECT_EVENT: {
-      CVDEBUG("SELECT_EVENT");
       property->is_recv_processing = false;
     }
 
@@ -303,13 +313,16 @@ void TrainingExecutionTraceManager::notify(ExecutionEvent ev) {
       // Increment stat counter
       stats::stage_count += 1;
 
-      CVDEBUG("Next Socket Event: " << state->network_manager()->socket()->event());
+      if (is_socket_active) {
+        CVDEBUG("Next Socket Event: " << state->network_manager()->socket()->event());
+      }
 
       if (!stages_.empty() && 
           stages_.count(parent_property)) {
           //stages_[parent_property]->etrace_tree->tracks(parent_property)) {
 
-        CVDEBUG("NEW STAGE at state: " << *parent);
+        CVDEBUG("New Stage: " << property << ": " << *property);
+        CVDEBUG("New Stage (parent): " << parent_property << ": " << *parent_property);
 
         new_stage->parent_stage = stages_[parent_property];
 
@@ -367,52 +380,58 @@ void VerifyExecutionTraceManager::initialize() {
   similarity_measure_ = SocketEventSimilarityFactory::create();
 
   // Parse the training data filenames
-  if (!TrainingPathDir.empty())
-	foreach (std::string path, TrainingPathDir)
-	cv_->getFilesRecursive(path, ".tpath", TrainingPathFile);
+  if (!TrainingPathDir.empty()) {
+    foreach (std::string path, TrainingPathDir) {
+      cv_->getFilesRecursive(path, ".tpath", TrainingPathFile);
+    }
+  }
 
   if (!TrainingPathFile.empty()) {
     CVMESSAGE("Loading " << TrainingPathFile.size() << " training data files.");
 
-	// Read training data into memory
-	TrainingManager::read_files(TrainingPathFile, training_data_); 
-	if (training_data_.empty())
-	  cv_error("Error reading training data , exiting now.");
+    // Read training data into memory
+    TrainingManager::read_files(TrainingPathFile, training_data_); 
 
-	CVMESSAGE("Finished loading " 
-		<< training_data_.size() << " unique training objects.");
+    if (training_data_.empty())
+      cv_error("Error reading training data , exiting now.");
+
+    CVMESSAGE("Finished loading " 
+              << training_data_.size() << " unique training objects.");
   }
 
   // ------------------------------------------------------------------------//
 
   // Parse the self training data filenames 
-  if (!SelfTrainingPathDir.empty())
-	foreach (std::string path, SelfTrainingPathDir)
-	cv_->getFilesRecursive(path, ".tpath", SelfTrainingPathFile);
+  if (!SelfTrainingPathDir.empty()) {
+    foreach (std::string path, SelfTrainingPathDir) {
+      cv_->getFilesRecursive(path, ".tpath", SelfTrainingPathFile);
+    }
+  }
 
   // Check if we are reading self-training data
   if (SelfTrainingPathFile.size() > 0) {
-	CVMESSAGE("Loading " << SelfTrainingPathFile.size() 
-		<< " self training data files for debugging.");
+    CVMESSAGE("Loading " << SelfTrainingPathFile.size() 
+              << " self training data files for debugging.");
 
-	// Read self training data into memory
-	TrainingManager::read_files(SelfTrainingPathFile, self_training_data_); 
-	if (self_training_data_.empty())
-	  cv_error("Error reading self, training data , exiting now.");
+    // Read self training data into memory
+    TrainingManager::read_files(SelfTrainingPathFile, self_training_data_); 
 
-	CVMESSAGE("Finished loading " 
-		<< self_training_data_.size() << " unique self training objects.");
+    if (self_training_data_.empty())
+      cv_error("Error reading self, training data , exiting now.");
 
-	// Assign tobjs to map according to round index
-	foreach (TrainingObject *tobj, self_training_data_) {
-	  self_training_data_map_[tobj->round] = tobj;
-	}
+    CVMESSAGE("Finished loading " 
+              << self_training_data_.size() << " unique self training objects.");
+
+    // Assign tobjs to map according to round index
+    foreach (TrainingObject *tobj, self_training_data_) {
+      self_training_data_map_[tobj->round] = tobj;
+    }
   }
 
   // ------------------------------------------------------------------------//
 
   if (UseClustering || UseClusteringHint)
-	initialize_training_data();
+    initialize_training_data();
 }
 
 void VerifyExecutionTraceManager::initialize_training_data() {
@@ -470,23 +489,15 @@ void VerifyExecutionTraceManager::update_edit_distance(
             
 }
 
-void VerifyExecutionTraceManager::compare_to_self(CVExecutionState* state,
-                                                  std::vector<TrainingObject*> &selected) {
+void VerifyExecutionTraceManager::compute_self_training_stats(CVExecutionState* state,
+                                                              std::vector<TrainingObject*> &selected) {
   ExecutionStateProperty *property = state->property();
-  if (!self_training_data_.empty()) {
-    if (self_training_data_map_.count(property->round) == 0) {
-      CVMESSAGE("Hint Cluster Distances: Not found for round " << property->round);
-      return;
-    }
+  if (!self_training_data_.empty() && self_training_data_map_.count(property->round)) {
     TrainingObject* self_tobj = self_training_data_map_[property->round];
-
     TrainingObjectDistanceMetric metric;
-    std::stringstream ss;
-    foreach (TrainingObject* tobj, selected) {
-      int result = metric.distance(tobj, self_tobj);
-      ss << result << ",";
-    }
-    CVMESSAGE("Hint Cluster Distances: " << ss.str());
+    stats::edit_distance_self_first_medoid = metric.distance(self_tobj, selected[0]);
+    stats::edit_distance_self_last_medoid = metric.distance(self_tobj, selected[selected.size()-1]);
+    stats::edit_distance_medoid_count += selected.size();
   }
 }
 
@@ -498,82 +509,85 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
   const SocketEvent* socket_event 
     = &(state->network_manager()->socket()->event());
 
+  stage->root_ed_tree = NULL;
+
   TrainingFilter tf(state);
 
   if (UseSelfTraining) {
-	if (self_training_data_map_.count(property->round) == 0) {
-	  CVMESSAGE("No path in self training data for round " << property->round);
-	  stage->root_ed_tree = NULL;
-	  return;
-	} else {
-	  TrainingObject* matching_tobj = self_training_data_map_[property->round];
-	  CVDEBUG("Curr Socket Event: " << *socket_event);
-	  CVDEBUG("Self Socket Event: " << *(*(matching_tobj->socket_event_set.begin())));
-	  assert(matching_tobj->socket_event_set.size() == 1);
-	  assert(socket_event->equal(*(*(matching_tobj->socket_event_set.begin()))));
+    if (self_training_data_map_.count(property->round) == 0) {
+      CVDEBUG("No path in self training data for round " << property->round);
+      return;
+    } else {
+      TrainingObject* matching_tobj = self_training_data_map_[property->round];
 
-	  // Create a new root edit distance
-	  stage->root_ed_tree = EditDistanceTreeFactory::create();
+      CVDEBUG("Curr Socket Event: " << *socket_event);
+      CVDEBUG("Self Socket Event: " << *(*(matching_tobj->socket_event_set.begin())));
+      assert(matching_tobj->socket_event_set.size() == 1);
+      assert(socket_event->equal(*(*(matching_tobj->socket_event_set.begin()))));
 
-	  stage->root_ed_tree->add_data(matching_tobj->trace);
-	}
+      // Create a new root edit distance
+      stage->root_ed_tree = EditDistanceTreeFactory::create();
+
+      // Add to edit distance tree
+      stage->root_ed_tree->add_data(matching_tobj->trace);
+    }
+
   } else if (cluster_manager_->check_filter(tf)) {
-	if (UseClusteringHint) {
+
+    TrainingObjectScoreList sorted_clusters;
+    std::vector<TrainingObject*> selected_training_objs;
+
+    if (UseClusteringHint) {
       // Select matching execution path
       if (self_training_data_map_.count(property->round) == 0) {
-				CVMESSAGE("No path in self training data for round " << property->round);
-				stage->root_ed_tree = NULL;
-				return;
-			}
+        CVDEBUG("No path in self training data for round " << property->round);
+        return;
+      }
       TrainingObject* matching_tobj = self_training_data_map_[property->round];
 
       // Create a new root edit distance
       stage->root_ed_tree = EditDistanceTreeFactory::create();
 
-      TrainingObjectScoreList sorted_clusters;
+      // Compute edit distances
+      cluster_manager_->all_clusters_distance(matching_tobj, sorted_clusters);
 
-      cluster_manager_->all_clusters_distance(matching_tobj,
-                                              sorted_clusters);
-      std::stringstream ss;
-      for (size_t i=0; i < sorted_clusters.size(); ++i) {
-        ss << sorted_clusters[i].first << ",";
-      }
-      CVMESSAGE("Hint Cluster Distances: " << ss.str());
+      // Compute medoid distance stats
+      selected_training_objs.push_back(sorted_clusters[0].second);
+      compute_self_training_stats(state, selected_training_objs);
 
-      // Add closest cluster
+      // Add closest object to 'hint'
       stage->root_ed_tree->add_data(sorted_clusters[0].second->trace);
-      stats::edit_distance_closest_medoid = sorted_clusters[0].first;
-      //CVMESSAGE(sorted_clusters[0].second->trace);
 
-    } else {
+    } else if (UseClustering) {
 
       TrainingObjectScoreList sorted_clusters;
       cluster_manager_->sorted_clusters(socket_event, tf,
                                         sorted_clusters, *similarity_measure_);
-
       // Create a new root edit distance
       stage->root_ed_tree = EditDistanceTreeFactory::create();
 
-      std::vector<TrainingObject*> selected_training_objs;
-      std::stringstream ss;
+      // Select the training paths 
       size_t i = 0;
-      stats::edit_distance_closest_medoid = sorted_clusters[0].first;
       do {
+        // Add path to edit distance tree
         stage->root_ed_tree->add_data(sorted_clusters[i].second->trace);
         selected_training_objs.push_back(sorted_clusters[i].second);
-        stats::edit_distance_medoid_count += 1;
-        ss << sorted_clusters[i].first << ",";
         i++;
-      } while (i < MaxMedoids 
-               && i < sorted_clusters.size()
-               && sorted_clusters[i].first <= (sorted_clusters[0].first * 1.25));
-      CVMESSAGE("SocketEvent Cluster Distances: " << ss.str());
+      } while (i < sorted_clusters.size() && i < MaxMedoids 
+          && sorted_clusters[i].first <= (sorted_clusters[0].first * MedoidSelectRate));
 
-      compare_to_self(state, selected_training_objs);
+      // Stats
+      stats::edit_distance_socket_event_first_medoid = sorted_clusters[0].first;
+      stats::edit_distance_socket_event_last_medoid = sorted_clusters[i-1].first;
+
+      // Compute medoid distance stats
+      compute_self_training_stats(state, selected_training_objs);
+    } else {
+      CVDEBUG("Not using Edit Distance Tree");
+      return;
     }
   } else {
-    CVMESSAGE("No match for filter in clusters: " << tf << " " << *socket_event);
-    stage->root_ed_tree = NULL;
+    CVDEBUG("No match for filter in clusters: " << tf << " " << *socket_event);
     return;
   }
 
@@ -623,7 +637,6 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
   switch (ev.event_type) {
 
     case CV_SELECT_EVENT: {
-      CVDEBUG("SELECT_EVENT");
       property->is_recv_processing = false;
     }
 
@@ -639,8 +652,8 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
           CVDEBUG("First basic block entry (stage)");
           
           // Build the edit distance tree using training data
-		  klee::WallTimer build_timer;
-					create_ed_tree(state);
+          klee::WallTimer build_timer;
+          create_ed_tree(state);
           stats::edit_distance_build_time += build_timer.check();
         }
 
@@ -731,28 +744,36 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       CVDEBUG("New Stage: " << property << ": " << *property);
       CVDEBUG("New Stage (parent): " << parent_property << ": " << *parent_property);
 
-      // Increment stat counter
+      // Stats ------------------------------------------------------
+      // Increment stage count
       stats::stage_count += 1;
 
-      // Set edit distance stat
+      // Final edit distance 
       if (stages_.count(parent_property) &&
-          stages_[parent_property]->ed_tree_map.count(parent_property)) 
-        stats::edit_distance =
-          stages_[parent_property]->ed_tree_map[parent_property]->min_distance();
+          stages_[parent_property]->ed_tree_map.count(parent_property)) {
+        int ed = stages_[parent_property]->ed_tree_map[parent_property]->min_distance();
+        stats::edit_distance = std::min(ed, 9999);
+      }
 
-      // Set kprefix stat
+      // Final kprefix
       if (stages_.count(parent_property))
         stats::edit_distance_k = stages_[parent_property]->current_k;
 
-      // Set Valid Path Instructions stat
+      // Valid path instructions count
       stats::valid_path_instructions = parent_property->inst_count;
 
+      // Socket event size
       if (is_socket_active) {
         stats::socket_event_size
             = state->network_manager()->socket()->event().length;
         CVDEBUG("Next Socket Event: " << state->network_manager()->socket()->event());
       }
 
+      // Symbolic variables
+      stats::symbolic_variable_count += parent_property->symbolic_vars;
+
+      // ------------------------------------------------------------
+      
       // Initialize a new ExecutionTraceTree
       ExecutionStage *new_stage = new ExecutionStage();
       new_stage->etrace_tree = new ExecutionTraceTree();
