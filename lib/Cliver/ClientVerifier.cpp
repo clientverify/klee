@@ -96,9 +96,13 @@ namespace stats {
 	klee::Statistic edit_distance("EditDistance","ED");
 	klee::Statistic edit_distance_k("EditDistanceK","EDK");
 	klee::Statistic edit_distance_medoid_count("EditDistanceMedoidCount","EDMedCnt");
-	klee::Statistic edit_distance_closest_medoid("EditDistanceClosestMedoid","EDClMed");
+	klee::Statistic edit_distance_self_first_medoid("EditDistanceSelfFirstMedoid","EDSFMed");
+	klee::Statistic edit_distance_self_last_medoid("EditDistanceSelfLastMedoid","EDSLMed");
+	klee::Statistic edit_distance_socket_event_first_medoid("EditDistanceSocketEventFirstMedoid","EDSEFMed");
+	klee::Statistic edit_distance_socket_event_last_medoid("EditDistanceSocketEventLastMedoid","EDSELMed");
 	klee::Statistic socket_event_size("SocketEventSize","SES");
 	klee::Statistic valid_path_instructions("ValidPathInstructions","VPI");
+	klee::Statistic symbolic_variable_count("SymbolicVariableCount","SVC");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -429,16 +433,19 @@ void ClientVerifier::print_statistic_record(klee::StatisticRecord* sr,
     << " " << sr->getValue(stats::edit_distance) 
     << " " << sr->getValue(stats::edit_distance_k) 
     << " " << sr->getValue(stats::edit_distance_medoid_count) 
-    << " " << sr->getValue(stats::edit_distance_closest_medoid) 
+    << " " << sr->getValue(stats::edit_distance_self_first_medoid) 
+    << " " << sr->getValue(stats::edit_distance_self_last_medoid) 
+    << " " << sr->getValue(stats::edit_distance_socket_event_first_medoid) 
+    << " " << sr->getValue(stats::edit_distance_socket_event_last_medoid) 
     << " " << sr->getValue(stats::socket_event_size)
     << " " << sr->getValue(stats::valid_path_instructions)
+    << " " << sr->getValue(stats::symbolic_variable_count)
     << " " << sr->getValue(klee::stats::queries)
     << " " << sr->getValue(klee::stats::queriesInvalid)
     << " " << sr->getValue(klee::stats::queriesValid)
     << " " << sr->getValue(klee::stats::queryCacheHits)
     << " " << sr->getValue(klee::stats::queryCacheMisses)
     << " " << sr->getValue(klee::stats::queryConstructs)
-
     << "\n";
 
 #ifdef GOOGLE_PROFILER
