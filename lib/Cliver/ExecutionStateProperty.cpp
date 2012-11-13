@@ -83,6 +83,8 @@ void ExecutionStateProperty::print(std::ostream &os) const {
 	  os << "[sv: " << symbolic_vars << "]";
   if (!recompute)
 	  os << "[NoRC]";
+	if (is_recv_processing)
+	  os << "[Recv]";
   os << "[IC: " << inst_count << "]";
 }
 

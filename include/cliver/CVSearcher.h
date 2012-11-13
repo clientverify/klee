@@ -268,6 +268,7 @@ class VerifySearcher : public CVSearcher {
   unsigned current_round_;
   unsigned max_active_round_;
   ExecutionStateProperty *prev_property_;
+  bool prev_property_removed_;
   SearcherStageList stages_;
   std::vector<CVExecutionState*> pending_states_;
   std::map<CVExecutionState*, ExecutionEvent> pending_events_;

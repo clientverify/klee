@@ -103,7 +103,8 @@ VerifySearcher::VerifySearcher(ClientVerifier* cv, StateMerger* merger)
     current_stage_(NULL), 
     current_round_(0),
     max_active_round_(0),
-    prev_property_(NULL) {}
+    prev_property_(NULL),
+    prev_property_removed_(false) {}
 
 void VerifySearcher::clear_caches() {
   CVMESSAGE("VerifySearcher::clear_caches() starting");
@@ -289,19 +290,28 @@ klee::ExecutionState &VerifySearcher::selectState() {
   // Sanity checks for heap operation
   if (prev_property_) {
     bool failed_check = false;
-    if (prev_property_->round >= state->property()->round) {
-      if (prev_property_->edit_distance > state->property()->edit_distance)
-        failed_check = true;
-
-      if (state->property()->edit_distance == INT_MAX)
-        if (prev_property_->symbolic_vars > state->property()->symbolic_vars)
+    if (prev_property_->is_recv_processing != state->property()->is_recv_processing) {
+      if (state->property()->is_recv_processing) {
+        CVMESSAGE("Switched to recv processing: " << *(state->property()));
+      } else {
+        CVMESSAGE("Switched from recv processing: " << *(state->property()));
+      }
+    } else if (!prev_property_removed_ && !(state->property()->is_recv_processing)) {
+      if (prev_property_->round >= state->property()->round) {
+        if (prev_property_->edit_distance > state->property()->edit_distance)
           failed_check = true;
 
-      if (failed_check) {
-        CVMESSAGE("Searcher Property Check Failed: " 
-                  << *prev_property_ << ", " << *(state->property()));
+        if (state->property()->edit_distance == INT_MAX)
+          if (prev_property_->symbolic_vars > state->property()->symbolic_vars)
+            failed_check = true;
+
+        if (failed_check) {
+          CVMESSAGE("Searcher Property Check Failed: " 
+                    << *prev_property_ << ", " << *(state->property()));
+        }
       }
     }
+    prev_property_removed_ = false;
   }
 
   prev_property_ = state->property();
@@ -320,16 +330,12 @@ void VerifySearcher::update(klee::ExecutionState *current,
 
   if (addedStates.size()) {
     foreach (klee::ExecutionState* klee_state, addedStates) {
-     this->add_state(static_cast<CVExecutionState*>(klee_state));
+      this->add_state(static_cast<CVExecutionState*>(klee_state));
     }
   }
 
   if (removedStates.size()) {
     foreach (klee::ExecutionState* klee_state, removedStates) {
-      if (prev_property_ == 
-          static_cast<CVExecutionState*>(klee_state)->property())
-        prev_property_ = NULL;
-
       this->remove_state(static_cast<CVExecutionState*>(klee_state));
     }
   }
@@ -379,6 +385,9 @@ void VerifySearcher::add_state(CVExecutionState* state) {
 }
 
 void VerifySearcher::remove_state(CVExecutionState* state) {
+  if (prev_property_ == state->property())
+    prev_property_removed_ = true;
+
   current_stage_->remove_state(state);
 }
 
