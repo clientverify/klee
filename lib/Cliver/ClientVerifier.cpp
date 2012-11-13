@@ -93,11 +93,14 @@ namespace stats {
 	klee::Statistic edit_distance_time("EditDistanceTime","EDTm");
 	klee::Statistic edit_distance_build_time("EditDistanceBuildTime","EDBdTm");
 	klee::Statistic stage_count("StageCount","StgCnt");
+	klee::Statistic state_clone_count("StateCloneCount","StClnCnt");
+	klee::Statistic state_remove_count("StateRemoveCount","StRemCnt");
 	klee::Statistic edit_distance("EditDistance","ED");
 	klee::Statistic edit_distance_k("EditDistanceK","EDK");
 	klee::Statistic edit_distance_medoid_count("EditDistanceMedoidCount","EDMedCnt");
 	klee::Statistic edit_distance_self_first_medoid("EditDistanceSelfFirstMedoid","EDSFMed");
 	klee::Statistic edit_distance_self_last_medoid("EditDistanceSelfLastMedoid","EDSLMed");
+	klee::Statistic edit_distance_self_socket_event("EditDistanceSelfSocketEvent","EDSLSE");
 	klee::Statistic edit_distance_socket_event_first_medoid("EditDistanceSocketEventFirstMedoid","EDSEFMed");
 	klee::Statistic edit_distance_socket_event_last_medoid("EditDistanceSocketEventLastMedoid","EDSELMed");
 	klee::Statistic socket_event_size("SocketEventSize","SES");
@@ -426,6 +429,8 @@ void ClientVerifier::print_statistic_record(klee::StatisticRecord* sr,
     << " " << sr->getValue(stats::round_instructions)
     << " " << sr->getValue(stats::recv_round_instructions)
     << " " << sr->getValue(stats::stage_count)
+    << " " << sr->getValue(stats::state_clone_count)
+    << " " << sr->getValue(stats::state_remove_count)
     << " " << sr->getValue(stats::merged_states)
     << " " << executor()->states_size()
     << " " << CVExecutionState::next_id()
@@ -435,6 +440,7 @@ void ClientVerifier::print_statistic_record(klee::StatisticRecord* sr,
     << " " << sr->getValue(stats::edit_distance_medoid_count) 
     << " " << sr->getValue(stats::edit_distance_self_first_medoid) 
     << " " << sr->getValue(stats::edit_distance_self_last_medoid) 
+    << " " << sr->getValue(stats::edit_distance_self_socket_event) 
     << " " << sr->getValue(stats::edit_distance_socket_event_first_medoid) 
     << " " << sr->getValue(stats::edit_distance_socket_event_last_medoid) 
     << " " << sr->getValue(stats::socket_event_size)

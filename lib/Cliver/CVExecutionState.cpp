@@ -34,6 +34,7 @@ CVExecutionState::CVExecutionState(
 }
 
 CVExecutionState::~CVExecutionState() {
+  stats::state_remove_count += 1;
   while (!stack.empty()) 
     popFrame();
 
@@ -69,6 +70,7 @@ void CVExecutionState::initialize(ClientVerifier *cv) {
 }
 
 CVExecutionState* CVExecutionState::clone(ExecutionStateProperty* property) {
+  stats::state_clone_count += 1;
   assert(cv_->executor()->replay_path() == NULL);
   CVExecutionState *cloned_state = new CVExecutionState(*this);
   cloned_state->id_ = increment_id();

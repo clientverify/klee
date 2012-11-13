@@ -44,11 +44,14 @@ namespace stats {
 	extern klee::Statistic recv_round_instructions;
 	extern klee::Statistic merged_states;
 	extern klee::Statistic stage_count;
+	extern klee::Statistic state_clone_count;
+	extern klee::Statistic state_remove_count;
 	extern klee::Statistic edit_distance;
 	extern klee::Statistic edit_distance_k;
 	extern klee::Statistic edit_distance_medoid_count;
 	extern klee::Statistic edit_distance_self_first_medoid;
 	extern klee::Statistic edit_distance_self_last_medoid;
+	extern klee::Statistic edit_distance_self_socket_event;
 	extern klee::Statistic edit_distance_socket_event_first_medoid;
 	extern klee::Statistic edit_distance_socket_event_last_medoid;
 	extern klee::Statistic socket_event_size;
