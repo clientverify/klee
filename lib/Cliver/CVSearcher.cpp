@@ -326,7 +326,11 @@ void VerifySearcher::update(klee::ExecutionState *current,
 
   if (removedStates.size()) {
     foreach (klee::ExecutionState* klee_state, removedStates) {
-     this->remove_state(static_cast<CVExecutionState*>(klee_state));
+      if (prev_property_ == 
+          static_cast<CVExecutionState*>(klee_state)->property())
+        prev_property_ = NULL;
+
+      this->remove_state(static_cast<CVExecutionState*>(klee_state));
     }
   }
 }
