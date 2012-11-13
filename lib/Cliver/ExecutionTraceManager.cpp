@@ -492,12 +492,21 @@ void VerifyExecutionTraceManager::update_edit_distance(
 void VerifyExecutionTraceManager::compute_self_training_stats(CVExecutionState* state,
                                                               std::vector<TrainingObject*> &selected) {
   ExecutionStateProperty *property = state->property();
+
+  stats::edit_distance_medoid_count = selected.size();
+
   if (!self_training_data_.empty() && self_training_data_map_.count(property->round)) {
     TrainingObject* self_tobj = self_training_data_map_[property->round];
+
     TrainingObjectDistanceMetric metric;
     stats::edit_distance_self_first_medoid = metric.distance(self_tobj, selected[0]);
     stats::edit_distance_self_last_medoid = metric.distance(self_tobj, selected[selected.size()-1]);
-    stats::edit_distance_medoid_count += selected.size();
+
+    const SocketEvent* se      = &(state->network_manager()->socket()->event());
+    const SocketEvent* self_se = *(self_tobj->socket_event_set.begin());
+
+    int ed = similarity_measure_->similarity_score(self_se, se);
+    stats::edit_distance_self_socket_event = ed;
   }
 }
 
@@ -752,7 +761,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       if (stages_.count(parent_property) &&
           stages_[parent_property]->ed_tree_map.count(parent_property)) {
         int ed = stages_[parent_property]->ed_tree_map[parent_property]->min_distance();
-        stats::edit_distance = std::min(ed, 9999);
+        stats::edit_distance = std::min(ed, 99999);
       }
 
       // Final kprefix
