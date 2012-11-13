@@ -102,7 +102,8 @@ VerifySearcher::VerifySearcher(ClientVerifier* cv, StateMerger* merger)
   : CVSearcher(NULL, cv, merger), 
     current_stage_(NULL), 
     current_round_(0),
-    max_active_round_(0) {}
+    max_active_round_(0),
+    prev_property_(NULL) {}
 
 void VerifySearcher::clear_caches() {
   CVMESSAGE("VerifySearcher::clear_caches() starting");
@@ -111,10 +112,14 @@ void VerifySearcher::clear_caches() {
   for (unsigned i=0; i<new_stages_.size(); ++i) {
     foreach (SearcherStage* stage, *(new_stages_[i])) {
       size_t cache_size = stage->cache_size();
-      if (cache_size > 1) {
-        CVMESSAGE("Clearing Searcher stage of size: " << cache_size);
-        stage->set_capacity(0);
-        stage->set_capacity(StateCacheSize);
+      if (stage != current_stage_) {
+        if (cache_size > 1) {
+          CVMESSAGE("Clearing searcher stage of size: " << cache_size);
+          stage->set_capacity(0);
+          stage->set_capacity(StateCacheSize);
+        }
+      } else {
+        CVMESSAGE("Not clearing current searcher stage of size: " << cache_size);
       }
     }
   }
@@ -280,6 +285,26 @@ klee::ExecutionState &VerifySearcher::selectState() {
     current_stage_->set_states(states);
     state = current_stage_->next_state();
   }
+
+  // Sanity checks for heap operation
+  if (prev_property_) {
+    bool failed_check = false;
+    if (prev_property_->round >= state->property()->round) {
+      if (prev_property_->edit_distance > state->property()->edit_distance)
+        failed_check = true;
+
+      if (state->property()->edit_distance == INT_MAX)
+        if (prev_property_->symbolic_vars > state->property()->symbolic_vars)
+          failed_check = true;
+
+      if (failed_check) {
+        CVMESSAGE("Searcher Property Check Failed: " 
+                  << *prev_property_ << ", " << *(state->property()));
+      }
+    }
+  }
+
+  prev_property_ = state->property();
 
   return *(static_cast<klee::ExecutionState*>(state));
 }

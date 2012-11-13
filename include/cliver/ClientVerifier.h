@@ -159,6 +159,7 @@ class ClientVerifier : public klee::InterpreterHandler {
   void print_current_stats_and_reset();
 	void print_all_stats();
 	void set_round(int round);
+  int round() { return round_number_; }
 
 	// Arrays
 	inline uint64_t next_array_id() { return array_id_++; }
