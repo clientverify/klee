@@ -494,6 +494,9 @@ void VerifyExecutionTraceManager::compute_self_training_stats(CVExecutionState* 
   ExecutionStateProperty *property = state->property();
 
   stats::edit_distance_medoid_count = selected.size();
+  stats::edit_distance_self_first_medoid = 3003;
+  stats::edit_distance_self_last_medoid = 2002;
+  stats::edit_distance_self_socket_event = 1001;
 
   if (!self_training_data_.empty() && self_training_data_map_.count(property->round)) {
     TrainingObject* self_tobj = self_training_data_map_[property->round];
@@ -549,7 +552,7 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
     if (UseClusteringHint) {
       // Select matching execution path
       if (self_training_data_map_.count(property->round) == 0) {
-        CVDEBUG("No path in self training data for round " << property->round);
+        CVMESSAGE("No path in self training data for round " << property->round);
         return;
       }
       TrainingObject* matching_tobj = self_training_data_map_[property->round];
@@ -823,17 +826,22 @@ void VerifyExecutionTraceManager::clear_caches() {
       stage_ie = stages_.end();
 
   for (;stage_it != stage_ie; ++stage_it) {
+    ExecutionStateProperty *property = stage_it->first;
     ExecutionStage* stage = stage_it->second;
 
-    if (stage->ed_tree_map.size()) {
-      CVMESSAGE("Clearing EditDistanceTreeMap in ExecutionTraceStage of size: " 
-                << stage->ed_tree_map.size());
-      StatePropertyEditDistanceTreeMap::iterator it = stage->ed_tree_map.begin();
-      StatePropertyEditDistanceTreeMap::iterator ie = stage->ed_tree_map.end();
-      for (; it!=ie; ++it) {
-        delete it->second;
+    size_t size = stage->ed_tree_map.size();
+    if (property->round < cv_->round()) {
+      if (stage->ed_tree_map.size()) {
+        CVMESSAGE("Clearing EditDistanceTree of size: " << size);
+        StatePropertyEditDistanceTreeMap::iterator it = stage->ed_tree_map.begin();
+        StatePropertyEditDistanceTreeMap::iterator ie = stage->ed_tree_map.end();
+        for (; it!=ie; ++it) {
+          delete it->second;
+        }
+        stage->ed_tree_map.clear();
       }
-      stage->ed_tree_map.clear();
+    } else {
+      CVMESSAGE("Not clearing EditDistanceTree of size: " << size);
     }
 
     // We don't clear the root tree.
