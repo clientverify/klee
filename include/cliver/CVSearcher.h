@@ -268,6 +268,7 @@ class VerifySearcher : public CVSearcher {
   SearcherStage* current_stage_;
   unsigned current_round_;
   unsigned max_active_round_;
+  bool at_kprefix_max_;
   ExecutionStateProperty *prev_property_;
   bool prev_property_removed_;
   SearcherStageList stages_;

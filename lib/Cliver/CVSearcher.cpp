@@ -103,6 +103,7 @@ VerifySearcher::VerifySearcher(ClientVerifier* cv, StateMerger* merger)
     current_stage_(NULL), 
     current_round_(0),
     max_active_round_(0),
+    at_kprefix_max_(false),
     prev_property_(NULL),
     prev_property_removed_(false) {}
 
@@ -265,6 +266,7 @@ klee::ExecutionState &VerifySearcher::selectState() {
         if (prev_property_)
           delete prev_property_;
         prev_property_ = NULL;
+        at_kprefix_max_ = false;
       } else {
         cv_error("No stages remain!");
       }
@@ -288,6 +290,12 @@ klee::ExecutionState &VerifySearcher::selectState() {
     // recompute edit distance
     current_stage_->set_states(states);
     state = current_stage_->next_state();
+  }
+
+  if (!at_kprefix_max_ && state->property()->edit_distance == INT_MAX 
+      && !cv_->execution_trace_manager()->ready_process_all_states(state->property())) {
+    at_kprefix_max_ = true;
+    CVMESSAGE("Switching to BFS, KPrefix based search is exhausted.");
   }
 
   // Sanity checks for heap operation
