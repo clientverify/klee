@@ -840,8 +840,6 @@ void VerifyExecutionTraceManager::clear_caches() {
         }
         stage->ed_tree_map.clear();
       }
-    } else {
-      CVMESSAGE("Not clearing EditDistanceTree of size: " << size);
     }
 
     // We don't clear the root tree.

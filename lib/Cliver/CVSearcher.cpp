@@ -317,6 +317,10 @@ klee::ExecutionState &VerifySearcher::selectState() {
       //       || (prev_property_->symbolic_vars <= state->property()->symbolic_vars));
 
     }
+
+    if (prev_property_->symbolic_vars != state->property()->symbolic_vars)
+      CVMESSAGE("Symbolic vars changed to " << state->property()->symbolic_vars);
+
     prev_property_removed_ = false;
   } 
 
