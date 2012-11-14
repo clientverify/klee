@@ -88,6 +88,16 @@ void ExecutionStateProperty::print(std::ostream &os) const {
   os << "[IC: " << inst_count << "]";
 }
 
+ExecutionStateProperty& ExecutionStateProperty::operator=(const ExecutionStateProperty& esp) {
+  round = esp.round;
+  client_round = esp.client_round;
+  edit_distance = esp.edit_distance;
+  symbolic_vars = esp.symbolic_vars;
+  recompute = esp.recompute;
+  is_recv_processing = esp.is_recv_processing;
+  inst_count = esp.inst_count;
+}
+
 //////////////////////////////////////////////////////////////////////////////
 
 EditDistanceExecutionStateProperty::EditDistanceExecutionStateProperty() {}

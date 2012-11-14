@@ -48,6 +48,8 @@ class ExecutionStateProperty {
 	virtual ExecutionStateProperty* clone();
   virtual void reset();
 
+  ExecutionStateProperty& operator=(const ExecutionStateProperty& esp);
+
   void clone_helper(ExecutionStateProperty* p);
 
   int round; // current socket id

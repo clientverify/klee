@@ -262,6 +262,9 @@ klee::ExecutionState &VerifySearcher::selectState() {
         current_stage_ = new_current_stage;
         current_round_ = new_current_round;
         cv_->set_round(current_round_);
+        if (prev_property_)
+          delete prev_property_;
+        prev_property_ = NULL;
       } else {
         cv_error("No stages remain!");
       }
@@ -297,24 +300,30 @@ klee::ExecutionState &VerifySearcher::selectState() {
         CVMESSAGE("Switched from recv processing: " << *(state->property()));
       }
     } else if (!prev_property_removed_ && !(state->property()->is_recv_processing)) {
-      if (prev_property_->round >= state->property()->round) {
-        if (prev_property_->edit_distance > state->property()->edit_distance)
+      if (prev_property_->edit_distance > state->property()->edit_distance)
+        failed_check = true;
+
+      if (state->property()->edit_distance == INT_MAX
+        && prev_property_->symbolic_vars > state->property()->symbolic_vars)
           failed_check = true;
 
-        if (state->property()->edit_distance == INT_MAX)
-          if (prev_property_->symbolic_vars > state->property()->symbolic_vars)
-            failed_check = true;
-
-        if (failed_check) {
-          CVMESSAGE("Searcher Property Check Failed: " 
-                    << *prev_property_ << ", " << *(state->property()));
-        }
+      if (failed_check) {
+        CVMESSAGE("Searcher Property Check Failed: " 
+                  << *prev_property_ << ", " << *(state->property()));
       }
+
+      //assert(prev_property_->edit_distance <= state->property()->edit_distance);
+      //assert(state->property()->edit_distance != INT_MAX
+      //       || (prev_property_->symbolic_vars <= state->property()->symbolic_vars));
+
     }
     prev_property_removed_ = false;
-  }
+  } 
 
-  prev_property_ = state->property();
+  if (!prev_property_)
+    prev_property_ = state->property()->clone();
+  else 
+    *prev_property_ = *(state->property());
 
   return *(static_cast<klee::ExecutionState*>(state));
 }
@@ -385,8 +394,9 @@ void VerifySearcher::add_state(CVExecutionState* state) {
 }
 
 void VerifySearcher::remove_state(CVExecutionState* state) {
-  if (prev_property_ == state->property())
+  if (prev_property_ == state->property()) {
     prev_property_removed_ = true;
+  }
 
   current_stage_->remove_state(state);
 }
