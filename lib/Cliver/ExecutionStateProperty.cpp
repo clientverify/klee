@@ -117,9 +117,8 @@ int EditDistanceExecutionStateProperty::compare(
       = static_cast<const EditDistanceExecutionStateProperty*>(b);
 
   // Prioritize state that is currently recv_processing
-	if (_b->is_recv_processing != is_recv_processing) {
+	if (_b->is_recv_processing != is_recv_processing) 
     return (char)_b->is_recv_processing - (char)is_recv_processing;
-  }
 
   //// Edit distance is irrelevant if both states are recv_processing
 	//if (_b->is_recv_processing == is_recv_processing &&
@@ -131,9 +130,8 @@ int EditDistanceExecutionStateProperty::compare(
   //}
 
   // Reversed for priority queue!
-  if (_b->edit_distance != edit_distance) {
+  if (_b->edit_distance != edit_distance)
     return _b->edit_distance - edit_distance;
-  }
 
   if (round != _b->round)
     return round - _b->round;

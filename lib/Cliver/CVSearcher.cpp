@@ -318,6 +318,9 @@ klee::ExecutionState &VerifySearcher::selectState() {
 
     }
 
+    if (prev_property_->client_round != state->property()->client_round)
+      CVMESSAGE("Client round changed to " << state->property()->client_round);
+
     if (prev_property_->symbolic_vars != state->property()->symbolic_vars)
       CVMESSAGE("Symbolic vars changed to " << state->property()->symbolic_vars);
 

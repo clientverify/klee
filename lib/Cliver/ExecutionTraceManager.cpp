@@ -880,6 +880,7 @@ void VerifyExecutionTraceManager::recompute_property(
 
 void VerifyExecutionTraceManager::process_all_states(
     std::vector<ExecutionStateProperty*> &states) {
+  klee::WallTimer timer;
   klee::TimerStatIncrementer edct(stats::edit_distance_time);
 
   assert(!states.empty());
@@ -903,7 +904,7 @@ void VerifyExecutionTraceManager::process_all_states(
 
   CVMESSAGE("Recomputed kprefix edit distance trees with k=" 
             << stage->current_k << " in "
-            << edct.check() / 1000000. << " secs");
+            << timer.check() / 1000000. << " secs");
            
 }
 
