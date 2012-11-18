@@ -157,6 +157,9 @@ namespace cliver {
 llvm::cl::opt<bool>
 UseFullVariableNames("use-full-variable-names", llvm::cl::init(false));
 
+llvm::cl::opt<bool>
+UseCanonicalization("use-canonicalization", llvm::cl::init(false));
+
 ////////////////////////////////////////////////////////////////////////////////
 
 klee::Solver *createCanonicalSolver(klee::Solver *_solver);
@@ -831,13 +834,14 @@ void CVExecutor::rebuild_solvers() {
   if (klee::UseCache)
       new_solver = klee::createCachingSolver(new_solver);
 
+  if (UseCanonicalization)
+    new_solver = createCanonicalSolver(new_solver);
+
   if (klee::UseIndependentSolver)
       new_solver = klee::createIndependentSolver(new_solver);
 
   if (klee::UseQueryPCLog)
       new_solver = klee::createPCLoggingSolver(new_solver, "queries.pc");
-
-  new_solver = createCanonicalSolver(new_solver);
 
   solver = new klee::TimingSolver(new_solver, stpSolver);
 }

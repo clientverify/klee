@@ -65,6 +65,9 @@ llvm::cl::opt<bool>
 CopyInputFilesToOutputDir("copy-input-files-to-output-dir", llvm::cl::init(false));
 
 llvm::cl::opt<bool> 
+RebuildSolvers("rebuild-solvers", llvm::cl::init(false));
+
+llvm::cl::opt<bool> 
 DebugPrintExecutionEvents("debug-print-execution-events", llvm::cl::init(false));
 
 #ifdef GOOGLE_PROFILER
@@ -263,6 +266,11 @@ void ClientVerifier::initialize(CVExecutor *executor) {
   // Create and enable new StatisticRecord
 	statistics_.push_back(new klee::StatisticRecord());
   klee::theStatisticManager->setCliverContext(statistics_[round_number_]);
+
+  // Rebuild solvers
+  
+  CVMESSAGE("Building solver chain");
+  executor_->rebuild_solvers();
 }
 
 void ClientVerifier::initialize_external_handlers(CVExecutor *executor) {
@@ -472,7 +480,8 @@ void ClientVerifier::print_current_stats_and_reset() {
   executor()->update_memory_usage();
 
   // Rebuild solvers each round change to keep caches fresh.
-	executor_->rebuild_solvers();
+  if (RebuildSolvers)
+    executor_->rebuild_solvers();
 
   // Print current statistics
   std::string prefix("STATS");
@@ -509,7 +518,8 @@ void ClientVerifier::set_round(int round) {
   round_number_ = round;
 
   // Rebuild solvers each round change to keep caches fresh.
-	executor_->rebuild_solvers();
+  if (RebuildSolvers)
+    executor_->rebuild_solvers();
 
 
 #ifdef GOOGLE_PROFILER
