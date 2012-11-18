@@ -394,12 +394,11 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
     //cv_->notify_all(ExecutionEvent(CV_STEP_INSTRUCTION, &state));
     stepInstruction(state);
     executeInstruction(state, ki);
-    processTimers(&state, klee::MaxInstructionTime);
+    //processTimers(&state, klee::MaxInstructionTime);
 
     // Increment instruction counters
     ++stats::round_instructions;
     static_cast<CVExecutionState*>(&state)->property()->inst_count++;
-
     if (static_cast<CVExecutionState*>(&state)->property()->is_recv_processing)
       ++stats::recv_round_instructions;
 

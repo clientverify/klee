@@ -225,8 +225,6 @@ void NetworkManager::execute_write(CVExecutor* executor,
 
 	GET_SOCKET_OR_DIE_TRYIN("send", fd);
 
-  state_->property()->is_recv_processing = false;
-
 	if (socket.is_open() != true)
 		RETURN_FAILURE_OBJ("send", "not open");
 
@@ -367,7 +365,7 @@ void NetworkManagerXpilot::execute_read(CVExecutor* executor,
 	if (!socket.has_data()) {
 		socket.advance();
     state_->cv()->notify_all(ExecutionEvent(CV_SOCKET_ADVANCE, state_));
-	}
+  }
 
   state_->property()->is_recv_processing = true;
   CVDEBUG("Currently recv processing");
@@ -377,7 +375,7 @@ void NetworkManagerXpilot::execute_read(CVExecutor* executor,
 void NetworkManagerXpilot::execute_write(CVExecutor* executor,
 		klee::KInstruction *target, klee::ObjectState* object, int fd, int len) {
 
-  state_->property()->is_recv_processing = false;
+  //state_->property()->is_recv_processing = false;
 
 	GET_SOCKET_OR_DIE_TRYIN("send", fd);
 
