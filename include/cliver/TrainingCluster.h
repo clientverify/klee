@@ -42,8 +42,8 @@ class SocketEvent;
 
 typedef Score<ExecutionTrace, BasicBlockID, int> ExecutionTraceScore;
 typedef EditDistanceRow<ExecutionTraceScore,ExecutionTrace,int> ExecutionTraceEDR;
+typedef LevenshteinRadixTree<ExecutionTrace, BasicBlockID> LevEdTree;
 
-// Only used at start up
 class TrainingObjectDistanceMetric : public cliver::DistanceMetric<TrainingObject> {
  public:
   typedef std::pair<const TrainingObject*, const TrainingObject*> TObjPair;
@@ -66,6 +66,42 @@ class TrainingObjectDistanceMetric : public cliver::DistanceMetric<TrainingObjec
  private:
   DistanceMap distance_map_;
 };
+
+class SimpleTrainingObjectDistanceMetric : public cliver::DistanceMetric<TrainingObject> {
+ public:
+  void init(std::vector<TrainingObject*> &datalist) {}
+
+  double distance(const TrainingObject* t1, const TrainingObject* t2) {
+
+    ExecutionTraceEDR edr(t1->trace, t2->trace);
+    double distance = (double)edr.compute_editdistance();
+    return distance;
+  }
+ private:
+
+};
+
+//class TreeTrainingObjectDistanceMetric : public cliver::DistanceMetric<TrainingObject> {
+// public:
+//  void init(std::vector<TrainingObject*> &datalist) {
+//    ed_tree_ = new LevEdTree();
+//    foreach(TrainingObject* tobj, datalist) {
+//      ed_tree_->add_data(tobj);
+//    }
+//  }
+//
+//  double distance(const TrainingObject* t1, const TrainingObject* t2) {
+//
+//    ExecutionTraceEDR edr(t1->trace, t2->trace);
+//    double distance = (double)edr.compute_editdistance();
+//    return distance;
+//
+//  }
+// private:
+//  LevEdTree *ed_tree_;
+//
+//};
+
 
 // Needs to be fast
 class SocketEventDistanceMetric {
@@ -266,15 +302,25 @@ class TrainingObjectClusterManager {
     return cluster_map_.count(filter);
   }
 
-  void all_clusters_distance(TrainingObject* tobj,
+  void all_clusters_distance(TrainingFilter &tf,
+                             TrainingObject* tobj,
                              TrainingObjectScoreList& sorted_clusters) {
-    TrainingObjectMetric metric;
-    foreach (TrainingObjectListMap::value_type &data, cluster_map_) {
+    SimpleTrainingObjectDistanceMetric metric;
+
+    if (cluster_map_.count(tf) == 0) {
+      return;
+    }
+
+    TrainingObjectListMap::iterator it = cluster_map_.find(tf);
+    TrainingObjectListMap::value_type &data = *it;
+    //foreach (TrainingObjectListMap::value_type &data, cluster_map_) {
+      #pragma omp parallel for schedule(dynamic)
       for (unsigned i=0; i<data.second.size(); ++i) {
         int result = metric.distance(tobj, data.second[i]);
-        sorted_clusters.push_back(std::make_pair(result, data.second[i]));
+        #pragma omp critical 
+        { sorted_clusters.push_back(std::make_pair(result, data.second[i]));}
       }
-    }
+    //}
     std::sort(sorted_clusters.begin(), sorted_clusters.end());
   }
 
