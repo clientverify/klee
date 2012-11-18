@@ -111,6 +111,7 @@ class Socket {
 
 	uint8_t next_byte();
 	bool has_data();
+	unsigned bytes_remaining();
 	bool is_open();
 	bool end_of_log();
 	void open();

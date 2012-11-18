@@ -42,7 +42,7 @@
 namespace cliver {
 
 llvm::cl::opt<unsigned>
-MaxKExtension("max-k-extension",llvm::cl::init(16));
+MaxKExtension("max-k-extension",llvm::cl::init(2));
 
 llvm::cl::opt<unsigned>
 MaxMedoids("max-medoids",llvm::cl::init(8));
@@ -63,7 +63,7 @@ llvm::cl::opt<unsigned>
 ClusterSize("cluster-size",llvm::cl::init(4));
 
 llvm::cl::opt<bool>
-UseClustering("use-clustering",llvm::cl::init(true));
+UseClustering("use-clustering",llvm::cl::init(false));
 
 llvm::cl::opt<bool>
 UseClusteringHint("use-clustering-hint",llvm::cl::init(false));
@@ -146,6 +146,15 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
   if (parent) 
     parent_property = parent->property();
 
+  // Check if network is ready
+  bool is_socket_active = false;
+
+  if (state && state->network_manager() && 
+      state->network_manager()->socket() &&
+      state->network_manager()->socket()->end_of_log()) {
+    is_socket_active = true;
+  }
+
   switch (ev.event_type) {
 
     case CV_SELECT_EVENT: {
@@ -194,6 +203,19 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
 
       // Increment stat counter
       stats::stage_count += 1;
+
+      // Valid path instructions count
+      stats::valid_path_instructions = parent_property->inst_count;
+
+      // Socket event size
+      if (is_socket_active) {
+        stats::socket_event_size
+            = state->network_manager()->socket()->event().length;
+        CVDEBUG("Next Socket Event: " << state->network_manager()->socket()->event());
+      }
+
+      // Symbolic variables
+      stats::symbolic_variable_count += parent_property->symbolic_vars;
 
       if (!stages_.empty() && stages_.count(parent_property) && 
           stages_[parent_property]->etrace_tree->tracks(parent_property)) {
@@ -542,6 +564,8 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
 
       // Add to edit distance tree
       stage->root_ed_tree->add_data(matching_tobj->trace);
+
+      stats::edit_distance_medoid_count = 1;
     }
 
   } else if (cluster_manager_->check_filter(tf)) {
@@ -561,7 +585,11 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
       stage->root_ed_tree = EditDistanceTreeFactory::create();
 
       // Compute edit distances
-      cluster_manager_->all_clusters_distance(matching_tobj, sorted_clusters);
+      cluster_manager_->all_clusters_distance(tf, matching_tobj, sorted_clusters);
+      if (sorted_clusters.size() == 0) {
+        CVMESSAGE("No hint found for round " << property->round);
+        return;
+      }
 
       // Compute medoid distance stats
       selected_training_objs.push_back(sorted_clusters[0].second);
@@ -649,6 +677,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
   switch (ev.event_type) {
 
     case CV_SELECT_EVENT: {
+      CVDEBUG("SELECT EVENT");
       property->is_recv_processing = false;
     }
 
@@ -667,6 +696,9 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
           klee::WallTimer build_timer;
           create_ed_tree(state);
           stats::edit_distance_build_time += build_timer.check();
+
+          CVDEBUG("Constructed edit distance tree in "
+                  << build_timer.check() / 1000000. << " secs");
         }
 
         // Check if we need to reclone the edit distance tree 
@@ -731,12 +763,10 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
 
       property->edit_distance = parent_property->edit_distance;
 
-      //if (is_socket_active && !property->is_recv_processing) {
       if (stage->ed_tree_map.count(parent_property) && stage->root_ed_tree) {
         stage->ed_tree_map[property] = 
             stage->ed_tree_map[parent_property]->clone_edit_distance_tree();
 
-        //stage->ed_tree_map[property]->init(stage->current_k);
         CVDEBUG("Cloned EDTree "
                 << " clone: " << property 
                 << " parent: " << parent_property 

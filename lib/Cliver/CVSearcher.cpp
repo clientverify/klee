@@ -292,6 +292,7 @@ klee::ExecutionState &VerifySearcher::selectState() {
     state = current_stage_->next_state();
   }
 
+#ifndef NDEBUG
   if (!at_kprefix_max_ && state->property()->edit_distance == INT_MAX 
       && !cv_->execution_trace_manager()->ready_process_all_states(state->property())) {
     at_kprefix_max_ = true;
@@ -334,6 +335,7 @@ klee::ExecutionState &VerifySearcher::selectState() {
 
     prev_property_removed_ = false;
   } 
+#endif
 
   if (!prev_property_)
     prev_property_ = state->property()->clone();
@@ -409,9 +411,11 @@ void VerifySearcher::add_state(CVExecutionState* state) {
 }
 
 void VerifySearcher::remove_state(CVExecutionState* state) {
+#ifndef NDEBUG
   if (prev_property_ == state->property()) {
     prev_property_removed_ = true;
   }
+#endif
 
   current_stage_->remove_state(state);
 }
@@ -439,6 +443,11 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
 
       case CV_SOCKET_ADVANCE: {
         ExecutionStateProperty* property = state->property();
+        Socket* socket = state->network_manager()->socket();
+
+        if (socket->previous_event().type != SocketEvent::RECV)
+          property->is_recv_processing = false;
+
         property->round++;
         pending_states_.push_back(state);
 

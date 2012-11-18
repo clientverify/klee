@@ -24,6 +24,9 @@ DebugSocket("debug-socket",
   llvm::cl::location(DebugSocketFlag),
   llvm::cl::init(false));
 
+llvm::cl::opt<bool>
+PrintAsciiSocket("print-ascii-socket",llvm::cl::init(false));
+
 int Socket::NextFileDescriptor = 1000;
 
 SocketEvent::SocketEvent(const KTestObject &object) {
@@ -90,8 +93,10 @@ void SocketEvent::print(std::ostream &os) const {
     os << "[CLRN:" << client_round << "] ";
 
   if (DebugSocket) {
-    std::string s(data.begin(), data.begin()+(length-1));
-    os << "(ascii) " << s << ", (hex) ";
+    if (PrintAsciiSocket) {
+      std::string s(data.begin(), data.begin()+(length-1));
+      os << "(ascii) " << s << ", (hex) ";
+    }
     os << std::hex;
     for (unsigned i=0; i<length; ++i)
       os << (int)data[i] << ':';
@@ -201,6 +206,10 @@ uint8_t Socket::next_byte() {
 
 bool  Socket::has_data() {
  	return offset_ < event().length;
+}
+
+unsigned Socket::bytes_remaining() {
+ 	return event().length - offset_;
 }
 
 bool  Socket::is_open() {
