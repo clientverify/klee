@@ -159,6 +159,8 @@ UseFullVariableNames("use-full-variable-names", llvm::cl::init(false));
 
 ////////////////////////////////////////////////////////////////////////////////
 
+klee::Solver *createCanonicalSolver(klee::Solver *_solver);
+
 // Helper for debug output
 inline std::ostream &operator<<(std::ostream &os, 
 		const klee::KInstruction &ki) {
@@ -834,6 +836,8 @@ void CVExecutor::rebuild_solvers() {
 
   if (klee::UseQueryPCLog)
       new_solver = klee::createPCLoggingSolver(new_solver, "queries.pc");
+
+  new_solver = createCanonicalSolver(new_solver);
 
   solver = new klee::TimingSolver(new_solver, stpSolver);
 }
