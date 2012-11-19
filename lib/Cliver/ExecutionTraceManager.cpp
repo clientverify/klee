@@ -395,7 +395,7 @@ void TrainingExecutionTraceManager::notify(ExecutionEvent ev) {
 ////////////////////////////////////////////////////////////////////////////////
 
 VerifyExecutionTraceManager::VerifyExecutionTraceManager(ClientVerifier* cv) 
-  : ExecutionTraceManager(cv) {}
+  : ExecutionTraceManager(cv), last_round_cleared_(0) {}
 
 void VerifyExecutionTraceManager::initialize() {
   // Create similarity measure
@@ -860,7 +860,8 @@ void VerifyExecutionTraceManager::clear_caches() {
     ExecutionStage* stage = stage_it->second;
 
     size_t size = stage->ed_tree_map.size();
-    if (property->round < cv_->round()) {
+    if (last_round_cleared_ == cv_->round() 
+				|| property->round < cv_->round()) {
       if (stage->ed_tree_map.size()) {
         CVMESSAGE("Clearing EditDistanceTree of size: " << size);
         StatePropertyEditDistanceTreeMap::iterator it = stage->ed_tree_map.begin();
@@ -875,6 +876,7 @@ void VerifyExecutionTraceManager::clear_caches() {
     // We don't clear the root tree.
   }
   CVMESSAGE("ExecutionTraceManager::clear_caches() finished");
+	last_round_cleared_ = cv_->round();
 }
 
 bool VerifyExecutionTraceManager::ready_process_all_states(
