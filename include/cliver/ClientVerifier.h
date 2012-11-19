@@ -40,6 +40,8 @@ namespace stats {
 	extern klee::Statistic execution_tree_time;
 	extern klee::Statistic edit_distance_time;
 	extern klee::Statistic edit_distance_build_time;
+	extern klee::Statistic edit_distance_hint_time;
+	extern klee::Statistic edit_distance_stat_time;
 	extern klee::Statistic round_instructions;
 	extern klee::Statistic recv_round_instructions;
 	extern klee::Statistic merged_states;
