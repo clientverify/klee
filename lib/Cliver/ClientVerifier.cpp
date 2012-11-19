@@ -95,6 +95,8 @@ namespace stats {
 	klee::Statistic execution_tree_time("ExecutionTreeTime", "ETTime");
 	klee::Statistic edit_distance_time("EditDistanceTime","EDTm");
 	klee::Statistic edit_distance_build_time("EditDistanceBuildTime","EDBdTm");
+	klee::Statistic edit_distance_hint_time("EditDistanceHintTime","EDHtTm");
+	klee::Statistic edit_distance_stat_time("EditDistanceStatTime","EDStTm");
 	klee::Statistic stage_count("StageCount","StgCnt");
 	klee::Statistic state_clone_count("StateCloneCount","StClnCnt");
 	klee::Statistic state_remove_count("StateRemoveCount","StRemCnt");
@@ -395,6 +397,8 @@ void ClientVerifier::print_stat_labels() {
     << " " << stats::execution_tree_time.getShortName()
     << " " << stats::edit_distance_time.getShortName()
     << " " << stats::edit_distance_build_time.getShortName()
+    << " " << stats::edit_distance_hint_time.getShortName()
+    << " " << stats::edit_distance_stat_time.getShortName()
     << " " << stats::merge_time.getShortName()
     << " " << stats::rebuild_time.getShortName()
     << " " << stats::round_instructions.getShortName()
@@ -432,6 +436,8 @@ void ClientVerifier::print_statistic_record(klee::StatisticRecord* sr,
     << " " << sr->getValue(stats::execution_tree_time)      /// time_scale
     << " " << sr->getValue(stats::edit_distance_time)       /// time_scale
     << " " << sr->getValue(stats::edit_distance_build_time) /// time_scale
+    << " " << sr->getValue(stats::edit_distance_hint_time) /// time_scale
+    << " " << sr->getValue(stats::edit_distance_stat_time) /// time_scale
     << " " << sr->getValue(stats::merge_time)               /// time_scale
     << " " << sr->getValue(stats::rebuild_time)             /// time_scale
     << " " << sr->getValue(stats::round_instructions)
