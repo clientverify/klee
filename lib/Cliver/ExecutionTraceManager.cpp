@@ -66,6 +66,9 @@ llvm::cl::opt<bool>
 UseClustering("use-clustering",llvm::cl::init(false));
 
 llvm::cl::opt<bool>
+UseClusteringAll("use-clustering-all",llvm::cl::init(false));
+
+llvm::cl::opt<bool>
 UseClusteringHint("use-clustering-hint",llvm::cl::init(false));
 
 llvm::cl::opt<bool>
@@ -454,7 +457,7 @@ void VerifyExecutionTraceManager::initialize() {
 
   // ------------------------------------------------------------------------//
 
-  if (UseClustering || UseClusteringHint)
+  if (UseClustering || UseClusteringHint || UseClusteringAll)
     initialize_training_data();
 }
 
@@ -606,7 +609,7 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
       // Add closest object to 'hint'
       stage->root_ed_tree->add_data(sorted_clusters[0].second->trace);
 
-    } else if (UseClustering) {
+    } else if (UseClustering || UseClusteringAll) {
 
       TrainingObjectScoreList sorted_clusters;
       cluster_manager_->sorted_clusters(socket_event, tf,
@@ -627,6 +630,24 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
       // Stats
       stats::edit_distance_socket_event_first_medoid = sorted_clusters[0].first;
       stats::edit_distance_socket_event_last_medoid = sorted_clusters[i-1].first;
+
+      if (UseClusteringAll && self_training_data_map_.count(property->round)) {
+
+        TrainingObject* matching_tobj = self_training_data_map_[property->round];
+
+        // Compute hint
+        klee::WallTimer hint_timer;
+        TrainingObjectScoreList hint_sorted_clusters;
+        cluster_manager_->all_clusters_distance(tf, matching_tobj, hint_sorted_clusters);
+        stats::edit_distance_hint_time += hint_timer.check();
+
+        if (sorted_clusters.size() == 0) {
+          CVMESSAGE("No hint found for round " << property->round);
+        } else {
+          // Add closest object to the 'hint' to the ed tree
+          stage->root_ed_tree->add_data(hint_sorted_clusters[0].second->trace);
+        }
+      }
 
       // Compute medoid distance stats
       compute_self_training_stats(state, selected_training_objs);
