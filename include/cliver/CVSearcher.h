@@ -266,6 +266,7 @@ class VerifySearcher : public CVSearcher {
   SearcherStage* create_and_add_stage(CVExecutionState* state);
 
   SearcherStage* current_stage_;
+  SearcherStage* last_stage_cleared_;
   unsigned current_round_;
   unsigned max_active_round_;
   bool at_kprefix_max_;

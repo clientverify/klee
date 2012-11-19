@@ -101,6 +101,7 @@ bool CVSearcher::empty() {
 VerifySearcher::VerifySearcher(ClientVerifier* cv, StateMerger* merger)
   : CVSearcher(NULL, cv, merger), 
     current_stage_(NULL), 
+    last_stage_cleared_(NULL), 
     current_round_(0),
     max_active_round_(0),
     at_kprefix_max_(false),
@@ -114,7 +115,8 @@ void VerifySearcher::clear_caches() {
   for (unsigned i=0; i<new_stages_.size(); ++i) {
     foreach (SearcherStage* stage, *(new_stages_[i])) {
       size_t cache_size = stage->cache_size();
-      if (stage != current_stage_) {
+      if (last_stage_cleared_ == current_stage_
+					|| stage != current_stage_) {
         if (cache_size > 1) {
           CVMESSAGE("Clearing searcher stage of size: " << cache_size);
           stage->set_capacity(0);
@@ -125,6 +127,7 @@ void VerifySearcher::clear_caches() {
       }
     }
   }
+	last_stage_cleared_ = current_stage_;
 
   CVMESSAGE("VerifySearcher::clear_caches() finished");
 }

@@ -147,6 +147,8 @@ class VerifyExecutionTraceManager : public ExecutionTraceManager {
 
   // Map of round index to training object
   std::map<int, TrainingObject*> self_training_data_map_;
+
+	unsigned last_round_cleared_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
