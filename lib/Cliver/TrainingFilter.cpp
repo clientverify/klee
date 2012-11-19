@@ -51,15 +51,11 @@ unsigned TrainingFilter::extract_socket_event_type(const TrainingObject*tobj) {
 }
 
 unsigned TrainingFilter::extract_initial_basic_block_id(CVExecutionState* state) {
-  if (ClientModelFlag == XPilot) 
-    return state->get_current_basic_block();
-  return 0;
+  return state->get_current_basic_block();
 }
 
 unsigned TrainingFilter::extract_initial_basic_block_id(const TrainingObject* tobj) {
-  if (ClientModelFlag == XPilot) 
-    return tobj->trace[0];
-  return 0;
+  return tobj->trace[0];
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -68,19 +64,6 @@ std::ostream& operator<<(std::ostream& os, const TrainingFilter &tf) {
   os << "(type: " << tf.type << ") (IBB: " << tf.initial_basic_block_id << ")";
   return os;
 }
-
-////////////////////////////////////////////////////////////////////////////////
-
-//TrainingFilter* TrainingFilterFactory::create(const TrainingObject *tobj) {
-//
-//  TrainingFilter* tf = new TrainingFilter();
-//  tf->type = tf->extract_socket_event_type(tobj);
-//
-//  if (ClientModelFlag == XPilot) 
-//    tf->initial_basic_block_id = tf->extract_initial_basic_block_id(tobj);
-//
-//  return tf;
-//}
 
 ////////////////////////////////////////////////////////////////////////////////
 
