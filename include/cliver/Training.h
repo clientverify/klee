@@ -217,17 +217,23 @@ class TrainingManager {
         tobj->read(is);
         tobj->parse_round();
 
-        // Check for duplicates with other TrainingObjects
-        typename TrainingObjectSetType::iterator it = data.find(tobj);
-        if (data.end() != it) {
-          // If duplicate found, insert associated SocketEvents into previously
-          // create TrainingObject
-          (*it)->socket_event_set.insert(tobj->socket_event_set.begin(),
-                                         tobj->socket_event_set.end());
+        if (tobj->round >= 1) {
 
-        // Otherwise add new TrainingObject to the data set
+          // Check for duplicates with other TrainingObjects
+          typename TrainingObjectSetType::iterator it = data.find(tobj);
+          if (data.end() != it) {
+            // If duplicate found, insert associated SocketEvents into previously
+            // create TrainingObject
+            (*it)->socket_event_set.insert(tobj->socket_event_set.begin(),
+                                          tobj->socket_event_set.end());
+
+          // Otherwise add new TrainingObject to the data set
+          } else {
+            data.insert(tobj);
+          }
+
         } else {
-          data.insert(tobj);
+          delete tobj;
         }
       } else {
         CVMESSAGE("Error opening: " << filename);
