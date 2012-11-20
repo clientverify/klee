@@ -404,6 +404,7 @@ VerifyExecutionTraceManager::VerifyExecutionTraceManager(ClientVerifier* cv)
   : ExecutionTraceManager(cv), last_round_cleared_(0) {}
 
 void VerifyExecutionTraceManager::initialize() {
+  klee::WallTimer timer;
   // Create similarity measure
   similarity_measure_ = SocketEventSimilarityFactory::create();
 
@@ -455,6 +456,8 @@ void VerifyExecutionTraceManager::initialize() {
       self_training_data_map_[tobj->round] = tobj;
     }
   }
+  CVMESSAGE("Finished reading training data in " 
+            << timer.check() / 100000. << "s");
 
   // ------------------------------------------------------------------------//
 
