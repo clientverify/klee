@@ -378,10 +378,11 @@ void TrainingExecutionTraceManager::notify(ExecutionEvent ev) {
         ExecutionStateProperty* tmp_property = finished_property;
         foreach(ExecutionStage* stage, complete_stages) {
           if (!stage->etrace_tree->tracks(tmp_property)) {
-            CVMESSAGE("Root property not tracked! "
+            CVMESSAGE("Root property not tracked, can't write trace! "
                       << *(stage->root_property));
-          }
-          write_training_object(stage, tmp_property);
+          } else {
+						write_training_object(stage, tmp_property);
+					}
           tmp_property = stage->root_property;
         }
 
