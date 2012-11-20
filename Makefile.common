@@ -21,7 +21,7 @@ endif
 # Required for Boost 
 REQUIRES_RTTI=1
 REQUIRES_EH=1
-LIBS += -lboost_serialization -lboost_regex
+LIBS += -lboost_serialization -lboost_regex -lboost_iostreams
 CPPFLAGS += -Wno-deprecated
 CPPFLAGS += -DGOOGLE_PROFILER 
 

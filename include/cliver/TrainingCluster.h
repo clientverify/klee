@@ -102,7 +102,6 @@ class SimpleTrainingObjectDistanceMetric : public cliver::DistanceMetric<Trainin
 //
 //};
 
-
 // Needs to be fast
 class SocketEventDistanceMetric {
  public:
@@ -193,18 +192,25 @@ class TrainingObjectClusterManager {
     //  std::cout << "TrainingObjectListMap: " << data_vec.second.size() << "\n";
     //}
 
+    int group_count = 0;
     foreach (TrainingObjectListMap::value_type &data_vec, tf_map) {
 
       if (data_vec.first.type == SocketEvent::SEND) {
+        group_count++;
+
         TrainingObjectClusterer *clusterer = new TrainingObjectClusterer();
 
         TrainingObjectMetric metric;
         clusterer->init(cluster_count, &metric);
         clusterer->add_data(data_vec.second);
 
-        CVMESSAGE("Clustering " << data_vec.second.size() << " training paths.");
+
         clusterer->cluster();
         //clusterer->print_clusters();
+        
+        CVMESSAGE("Group " << group_count << " has " 
+                  << data_vec.second.size() << " elements in "
+                  << clusterer->count() << " clusters.");
 
         clusterer->assign_all();
 
@@ -228,6 +234,7 @@ class TrainingObjectClusterManager {
 
           SocketEventDataSet se_set;
           SocketEventDataSet clustered_se_set;
+          int se_cluster_count = 10;
 
           foreach(tobj, tobjs_vec) {
             foreach(se, tobj->socket_event_set) {
@@ -235,13 +242,14 @@ class TrainingObjectClusterManager {
             }
           }
 
-          #pragma omp critical 
-          CVMESSAGE("Clustering " << se_set.size() << " socket events for medoid " << i);
-          
-          cluster_socket_events(10, se_set, clustered_se_set);
+          if (se_set.size() > se_cluster_count) {
+            #pragma omp critical 
+            CVMESSAGE("\tClustering " << se_set.size() << " socket events for medoid " << i);
+            cluster_socket_events(se_cluster_count, se_set, clustered_se_set);
 
-          #pragma omp critical 
-          CVMESSAGE("Done clustering socket events for medoid " << i);
+          } else {
+            clustered_se_set = se_set;
+          }
 
           foreach(se, clustered_se_set) {
             tobj_cluster->add_socket_event(se);
