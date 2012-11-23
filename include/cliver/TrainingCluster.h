@@ -151,12 +151,12 @@ class TrainingObjectCluster {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <class TrainingObjectMetric, class SocketEventMetric>
+template <class TrainingObjectClusterer, class SocketEventClusterer>
 class TrainingObjectClusterManager {
  public:
 
-  typedef Clusterer<SocketEvent, SocketEventMetric> SocketEventClusterer;
-  typedef Clusterer<TrainingObject, TrainingObjectMetric> TrainingObjectClusterer;
+  //typedef Clusterer<SocketEvent, SocketEventMetric> SocketEventClusterer;
+  //typedef Clusterer<TrainingObject, TrainingObjectMetric> TrainingObjectClusterer;
 
   TrainingObjectClusterManager() {}
 
@@ -165,11 +165,9 @@ class TrainingObjectClusterManager {
                              SocketEventDataSet &se_set_out) {
 
     SocketEventClusterer *clusterer = new SocketEventClusterer();
-    SocketEventMetric metric;
-    clusterer->init(cluster_count, &metric);
     std::vector<SocketEvent*> se_vec(se_set_in.begin(), se_set_in.end());
     clusterer->add_data(se_vec);
-    clusterer->cluster();
+    clusterer->cluster(cluster_count);
 
     for (unsigned i = 0; i< clusterer->count(); ++i) {
       std::vector<SocketEvent*> tmp_vec;
@@ -188,10 +186,6 @@ class TrainingObjectClusterManager {
       tf_map[tf].push_back(tobj);
     }
 
-    //foreach (TrainingObjectListMap::value_type &data_vec, tf_map) {
-    //  std::cout << "TrainingObjectListMap: " << data_vec.second.size() << "\n";
-    //}
-
     int group_count = 0;
     foreach (TrainingObjectListMap::value_type &data_vec, tf_map) {
 
@@ -199,20 +193,13 @@ class TrainingObjectClusterManager {
         group_count++;
 
         TrainingObjectClusterer *clusterer = new TrainingObjectClusterer();
-
-        TrainingObjectMetric metric;
-        clusterer->init(cluster_count, &metric);
         clusterer->add_data(data_vec.second);
-
-
-        clusterer->cluster();
+        clusterer->cluster(cluster_count);
         //clusterer->print_clusters();
         
         CVMESSAGE("Group " << group_count << " has " 
                   << data_vec.second.size() << " elements in "
                   << clusterer->count() << " clusters.");
-
-        clusterer->assign_all();
 
         #pragma omp parallel for schedule(dynamic)
         for (unsigned i = 0; i< clusterer->count(); ++i) {
@@ -334,7 +321,6 @@ class TrainingObjectClusterManager {
 
  private:
   TrainingObjectListMap cluster_map_;
-  TrainingObjectMetric* training_object_metric_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
