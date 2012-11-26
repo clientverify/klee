@@ -69,7 +69,9 @@ class StringDistanceMetric : public cliver::DistanceMetric<std::string> {
 };
 
 
-typedef Clusterer<std::string, StringDistanceMetric> StringClusterer;
+typedef KMedoidsClusterer<std::string, StringDistanceMetric> KMedoidsStringClusterer;
+typedef KMeansClusterer<std::string, StringDistanceMetric> KMeansStringClusterer;
+//typedef Clusterer<std::string, StringDistanceMetric> StringClusterer;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -93,6 +95,7 @@ class ClustererTest : public ::testing::Test {
     size_t count = 100;
     if (dictionary.empty())
       dictionary = std::vector<std::string>(cstr_dictionary, end(cstr_dictionary));
+    srand(0);
     //for (unsigned i=0; i<dictionary.size(); ++i) {
     for (unsigned i=0; i<100; ++i) {
       size_t r = rand();
@@ -135,28 +138,29 @@ class ClustererTest : public ::testing::Test {
 using ::testing::Types;
 
 typedef Types<
-  StringClusterer
+  KMedoidsStringClusterer,
+  KMeansStringClusterer
 > ClustererTypes;
 
 TYPED_TEST_CASE(ClustererTest, ClustererTypes);
 
-TYPED_TEST(ClustererTest, Init) {
-  StringDistanceMetric metric;
-  this->c_->init(4, &metric);
-}
+//TYPED_TEST(ClustererTest, Init) {
+//  StringDistanceMetric metric;
+//  //this->c_->init(4, &metric);
+//}
 
-TYPED_TEST(ClustererTest, AddData) {
-  StringDistanceMetric metric;
-  this->c_->init(4, &metric);
-  this->InsertDictionary();
-}
+//TYPED_TEST(ClustererTest, AddData) {
+//  //StringDistanceMetric metric;
+//  this->c_->init(4, &metric);
+//  //this->InsertDictionary();
+//}
 
 TYPED_TEST(ClustererTest, DoCluster) {
-  StringDistanceMetric metric;
-  this->c_->init(25, &metric);
+  //StringDistanceMetric metric;
+  //this->c_->init(25, &metric);
   this->InsertDictionary();
-  this->c_->cluster();
-  //this->c_->print_clusters();
+  this->c_->cluster(50);
+  this->c_->print_clusters();
 }
 
 //INSTANTIATE_TEST_CASE_P(ClusterSizes, PClustererTest,

@@ -517,6 +517,30 @@ class RadixTree {
     return count;
   }
 
+  // Returns max leaf depth
+  size_t maximum_leaf_depth() {
+    size_t max_depth = 0; 
+    std::stack<Node*> worklist; 
+    if (root_) {
+      worklist.push(root_);
+      while (!worklist.empty()) {
+        Node* node = worklist.top();
+
+        if (node->leaf())
+          max_depth = std::max(max_depth, node->depth());
+
+        EdgeMapIterator 
+            it = node->edge_map().begin(), iend = node->edge_map().end();
+        worklist.pop();
+        for (; it != iend; ++it) {
+          Edge* edge = it->second;
+          worklist.push(edge->to());
+        }
+      }
+    }
+    return max_depth;
+  }
+
  protected: 
 
   bool remove_node(Node *node) {

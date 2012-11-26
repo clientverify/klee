@@ -828,23 +828,25 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
           stages_[parent_property]->ed_tree_map.count(parent_property)) {
         klee::WallTimer stat_timer;
 
-        ExecutionTrace etrace;
-        stages_[parent_property]->etrace_tree->tracker_get(parent_property, etrace);
-        stages_[parent_property]->ed_tree_map[parent_property]->update(etrace);
+        ExecutionStage* stage = stages_[parent_property];
+        ExecutionTraceEditDistanceTree *ed_tree 
+            = stage->ed_tree_map[parent_property];
 
-        int ed = stages_[parent_property]->ed_tree_map[parent_property]->min_distance();
+        ExecutionTrace etrace;
+        stage->etrace_tree->tracker_get(parent_property, etrace);
+        ed_tree->update(etrace);
+
+        int ed = ed_tree->min_distance();
 
         if (ed == INT_MAX) {
-          stages_[parent_property]->ed_tree_map[parent_property]->init(INT_MAX-1);
-          ExecutionTrace etrace;
-          stages_[parent_property]->etrace_tree->tracker_get(parent_property, etrace);
-          stages_[parent_property]->ed_tree_map[parent_property]->update(etrace);
-          stats::edit_distance 
-            = stages_[parent_property]->ed_tree_map[parent_property]->min_distance();
-        } else {
-          stats::edit_distance = ed;
+          ed_tree->init(10000000);
+          ed_tree->update(etrace);
+          ed = ed_tree->min_distance();
         }
 
+        assert(ed != INT_MAX);
+        
+        stats::edit_distance = ed;
         stats::edit_distance_stat_time += stat_timer.check();
       }
 

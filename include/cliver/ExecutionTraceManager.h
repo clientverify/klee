@@ -57,9 +57,14 @@ typedef boost::unordered_map<ExecutionStateProperty*, ExecutionStage*>
 
 ////////////////////////////////////////////////////////////////////////////////
 
-typedef KMedoidsClusterer<SocketEvent,
+//typedef KMedoidsClusterer<SocketEvent, 
+//    SocketEventDistanceMetric> SocketEventClusterer;
+//typedef KMedoidsClusterer<TrainingObject, 
+//    TrainingObjectDistanceMetric> TrainingObjectClusterer;
+
+typedef KMeansClusterer<SocketEvent, 
     SocketEventDistanceMetric> SocketEventClusterer;
-typedef KMedoidsClusterer<TrainingObject,
+typedef KMeansClusterer<TrainingObject, 
     TrainingObjectDistanceMetric> TrainingObjectClusterer;
 
 typedef TrainingObjectClusterManager<TrainingObjectClusterer,

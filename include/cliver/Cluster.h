@@ -57,6 +57,7 @@ class KMeansClusterer: public GenericClusterer<Data, Metric> {
  public:
   typedef Data data_type;
   typedef Metric metric_type;
+  typedef std::pair<int, unsigned> id_dist_type;
 
   KMeansClusterer() {
     cost_ = INT_MAX;
@@ -73,71 +74,48 @@ class KMeansClusterer: public GenericClusterer<Data, Metric> {
   }
 
   void cluster(size_t cluster_count = INT_MAX) {
-    count_ = cluster_count;
 
     // Resize cluster if data size is too small
-    if (data_.size() < count_) {
-      init(data_.size(), metric_);
-    }
-
-    //medoids_.resize(count_, -1);
+    if (data_.size() < cluster_count)
+      count_ = data_.size();
+    else
+      count_ = cluster_count;
 
     // Initialize distance metric
     metric_->init(data_);
 
-    // Select random first hub
-    set_medoid(0, rand() % data_.size());
+    // Select random first hub 
+    srand(0);
+    id_dist_type max = id_dist_type(0, rand() % data_.size());
 
-    //std::cout << "assigning random medoids...\n";
-    for (unsigned i=0; i<count_; ++i) {
-      unsigned r;
-      do {
-        r = rand() % data_.size();
-      } while (is_medoid(r));
+    while (medoids_.size() < count_) {
 
-      set_medoid(i, r);
-    }
+      //std::cout << "Setting medoid " << medoids_.size()
+      //    << " to data id " << max.second
+      //    << ", dist is: " << max.first << "\n";
 
-    bool cost_changed = false;
+      set_medoid(medoids_.size(), max.second);
+      max = id_dist_type(0, 0);
 
-    while (true) {
-      //std::cout << "while loop begins...\n";
-      for (unsigned id=0; id < count_; ++id) {
-        //std::cout << "id = " << id << "\n";
+      for (unsigned index=0; index < data_.size(); ++index) {
+        id_dist_type curr = find_closest_cluster(index);
 
-        for (unsigned index=0; index < data_.size(); ++index) {
-          //std::cout << "index = " << index << "\n";
-          if (!is_medoid(index)) {
-            unsigned prev_index = medoids_[id];
-            replace_medoid(id, index);
-            unsigned cost = compute_configuration_cost();
+        clusters_[index] = curr.second;
 
-            if (cost < cost_) {
-              cost_changed = true;
-              cost_ = cost;
-              break;
-            } else {
-              replace_medoid(id, prev_index);
-            }
-          }
+        if (!is_medoid(index) && curr.first >= max.first) {
+          max.first = curr.first;
+          max.second = index;
         }
+
       }
-
-      if (!cost_changed)
-        break;
-      else
-        cost_changed = false;
     }
-
-    // Assign all data to closest medoid
-    assign_all();
   }
-
+   
   void print_clusters() {
     assign_all();
     for (unsigned id=0; id<medoids_.size(); ++id) {
       std::cout << "Medoid: " << *(data_[medoids_[id]]) << "\n";
-
+      
       //std::cout << "Medoid: ";
       //for (unsigned j=0; j<(*(data_[medoids_[id]])).trace.size(); ++j) {
       //  std::cout << (*(data_[medoids_[id]])).trace[j] << " ";
@@ -157,7 +135,7 @@ class KMeansClusterer: public GenericClusterer<Data, Metric> {
     }
   }
 
-  // Adds all cluster members for given id to array, including medoid
+  // Adds all cluster members for given id to array, including medoid 
   void get_cluster(unsigned id, std::vector<Data*> &cluster_data) {
     for (unsigned index=0; index<data_.size(); ++index) {
       if (clusters_[index] == id) {
@@ -217,13 +195,15 @@ class KMeansClusterer: public GenericClusterer<Data, Metric> {
   }
 
   void set_medoid(unsigned id, unsigned index) {
-
+    
     assert(0 == medoid_set_.count(index));
     for (unsigned i=0; i<medoids_.size(); ++i) {
       assert(medoids_[i] != index);
     }
 
+    // Assert this id is at most one more than size of medoids_
     assert(medoids_.size() <= id);
+
     if (medoids_.size() == id)
       medoids_.push_back(index);
     else
@@ -292,6 +272,7 @@ class KMedoidsClusterer : public GenericClusterer<Data, Metric> {
     //std::cout << "assigning random medoids...\n";
     for (unsigned i=0; i<count_; ++i) {
       unsigned r;
+      srand(0);
       do {
         r = rand() % data_.size();
       } while (is_medoid(r));

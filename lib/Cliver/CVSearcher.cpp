@@ -299,7 +299,7 @@ klee::ExecutionState &VerifySearcher::selectState() {
   if (!at_kprefix_max_ && state->property()->edit_distance == INT_MAX 
       && !cv_->execution_trace_manager()->ready_process_all_states(state->property())) {
     at_kprefix_max_ = true;
-    CVMESSAGE("Switching to BFS, KPrefix based search is exhausted.");
+    CVDEBUG("Switching to BFS, KPrefix based search is exhausted.");
   }
 
   // Sanity checks for heap operation
@@ -307,9 +307,9 @@ klee::ExecutionState &VerifySearcher::selectState() {
     bool failed_check = false;
     if (prev_property_->is_recv_processing != state->property()->is_recv_processing) {
       if (state->property()->is_recv_processing) {
-        CVMESSAGE("Switched to recv processing: " << *(state->property()));
+        CVDEBUG("Switched to recv processing: " << *(state->property()));
       } else {
-        CVMESSAGE("Switched from recv processing: " << *(state->property()));
+        CVDEBUG("Switched from recv processing: " << *(state->property()));
       }
     } else if (!prev_property_removed_ && !(state->property()->is_recv_processing)) {
       if (prev_property_->edit_distance > state->property()->edit_distance)
@@ -320,7 +320,7 @@ klee::ExecutionState &VerifySearcher::selectState() {
           failed_check = true;
 
       if (failed_check) {
-        CVMESSAGE("Searcher Property Check Failed: " 
+        CVDEBUG("Searcher Property Check Failed: " 
                   << *prev_property_ << ", " << *(state->property()));
       }
 
@@ -331,10 +331,10 @@ klee::ExecutionState &VerifySearcher::selectState() {
     }
 
     if (prev_property_->client_round != state->property()->client_round)
-      CVMESSAGE("Client round changed to " << state->property()->client_round);
+      CVDEBUG("Client round changed to " << state->property()->client_round);
 
     if (prev_property_->symbolic_vars != state->property()->symbolic_vars)
-      CVMESSAGE("Symbolic vars changed to " << state->property()->symbolic_vars);
+      CVDEBUG("Symbolic vars changed to " << state->property()->symbolic_vars);
 
     prev_property_removed_ = false;
   } 
