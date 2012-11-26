@@ -221,7 +221,7 @@ class TrainingObjectClusterManager {
 
           SocketEventDataSet se_set;
           SocketEventDataSet clustered_se_set;
-          int se_cluster_count = 10;
+          int se_cluster_count = 256;
 
           foreach(tobj, tobjs_vec) {
             foreach(se, tobj->socket_event_set) {
