@@ -9,6 +9,7 @@
 #ifndef CLIVER_CLUSTER_H
 #define CLIVER_CLUSTER_H
 
+#include "CVCommon.h"
 #include <fstream>
 #include <string>
 #include <vector>
@@ -69,7 +70,6 @@ class KMeansClusterer: public GenericClusterer<Data, Metric> {
 
   void add_data(std::vector<Data*>& data) {
     data_.insert(data_.begin(), data.begin(), data.end());
-    clusters_.resize(data_.size());
     //std::cout << "added " << data.size() << " elements\n";
   }
 
@@ -88,6 +88,9 @@ class KMeansClusterer: public GenericClusterer<Data, Metric> {
     srand(0);
     id_dist_type max = id_dist_type(0, rand() % data_.size());
 
+    // Set all cluster to first random hub
+    clusters_.resize(data_.size(), max.second);
+
     while (medoids_.size() < count_) {
 
       //std::cout << "Setting medoid " << medoids_.size()
@@ -97,18 +100,25 @@ class KMeansClusterer: public GenericClusterer<Data, Metric> {
       set_medoid(medoids_.size(), max.second);
       max = id_dist_type(0, 0);
 
+      #pragma omp parallel for schedule(dynamic)
       for (unsigned index=0; index < data_.size(); ++index) {
-        id_dist_type curr = find_closest_cluster(index);
+        //id_dist_type curr = find_closest_cluster(index, max.first);
+        id_dist_type curr = find_cluster_less_than(index, max.first);
 
         clusters_[index] = curr.second;
 
+        //std::cout << "Result: i=" << index 
+        //    << ", dist=" << curr.first << ", medoid: " << is_medoid(index) << "\n";
+        #pragma omp critical 
         if (!is_medoid(index) && curr.first >= max.first) {
+          //std::cout << "New max, index=" << index << ", dist=" << curr.first << "\n";
           max.first = curr.first;
           max.second = index;
         }
 
       }
     }
+    assign_all();
   }
    
   void print_clusters() {
@@ -181,6 +191,42 @@ class KMeansClusterer: public GenericClusterer<Data, Metric> {
 
     return std::make_pair(min_dist, min_id);
   }
+
+  std::pair<int, unsigned> find_cluster_less_than(unsigned index, unsigned max) {
+
+    if(is_medoid(index)) {
+      for (unsigned id=0; id<medoids_.size(); ++id) {
+        // This index is an medoid
+        if (medoids_[id] == index)
+          return std::make_pair(0,id);
+      }
+      assert(0);
+    }
+
+    double min_dist = metric_->distance(data_[index], data_[clusters_[index]]);
+    unsigned min_id = clusters_[index];
+
+    for (unsigned id=0; id<medoids_.size(); ++id) {
+
+      if (min_dist < max)
+        return std::make_pair(min_dist, min_id);
+
+      // Skip first calculation
+      if (medoids_[id] != clusters_[index]) {
+        // Compute distance
+        double dist = metric_->distance(data_[index], data_[medoids_[id]]);
+
+        // Update min distance medoid id
+        if (dist < min_dist) {
+          min_dist = dist;
+          min_id = id;
+        }
+      }
+    }
+
+    return std::make_pair(min_dist, min_id);
+  }
+
 
   unsigned compute_configuration_cost() {
     unsigned cost = 0;
