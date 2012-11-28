@@ -460,7 +460,7 @@ void VerifyExecutionTraceManager::initialize() {
     }
   }
   CVMESSAGE("Finished reading training data in " 
-            << timer.check() / 100000. << "s");
+            << timer.check() / 1000000. << "s");
 
   // ------------------------------------------------------------------------//
 
@@ -474,7 +474,7 @@ void VerifyExecutionTraceManager::initialize_training_data() {
   std::vector<TrainingObject*> tobj_vec(training_data_.begin(), training_data_.end());
   cluster_manager_->cluster(tobj_vec);
   CVMESSAGE("Finished initialized training data in " 
-            << timer.check() / 100000. << "s");
+            << timer.check() / 1000000. << "s");
 }
 
 void VerifyExecutionTraceManager::update_edit_distance(
