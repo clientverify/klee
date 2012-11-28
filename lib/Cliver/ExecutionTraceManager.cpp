@@ -60,7 +60,10 @@ llvm::cl::opt<bool>
 DebugExecutionTree("debug-execution-tree",llvm::cl::init(false));
 
 llvm::cl::opt<unsigned>
-ClusterSize("cluster-size",llvm::cl::init(4));
+ClusterSize("cluster-size",llvm::cl::init(INT_MAX));
+
+llvm::cl::opt<unsigned>
+SocketEventClusterSize("socket-event-cluster-size",llvm::cl::init(10));
 
 llvm::cl::opt<bool>
 UseClustering("use-clustering",llvm::cl::init(false));
@@ -467,9 +470,9 @@ void VerifyExecutionTraceManager::initialize() {
 
 void VerifyExecutionTraceManager::initialize_training_data() {
   klee::WallTimer timer;
-  cluster_manager_ = new TrainingObjectManager();
+  cluster_manager_ = new TrainingObjectManager(ClusterSize,SocketEventClusterSize);
   std::vector<TrainingObject*> tobj_vec(training_data_.begin(), training_data_.end());
-  cluster_manager_->cluster(ClusterSize, tobj_vec);
+  cluster_manager_->cluster(tobj_vec);
   CVMESSAGE("Finished initialized training data in " 
             << timer.check() / 100000. << "s");
 }

@@ -53,15 +53,22 @@ class TrainingObjectDistanceMetric : public cliver::DistanceMetric<TrainingObjec
 
   double distance(const TrainingObject* t1, const TrainingObject* t2) {
     TObjPair tobj_pair(std::min(t1,t2), std::max(t1,t2));
+    double dist = -1;
 
-    if (distance_map_.count(tobj_pair))
-      return distance_map_[tobj_pair];
+    #pragma omp critical 
+    if (distance_map_.count(tobj_pair)) {
+      dist = distance_map_[tobj_pair];
+    }
 
-    ExecutionTraceEDR edr(t1->trace, t2->trace);
-    double distance = (double)edr.compute_editdistance();
-    distance_map_[tobj_pair] = distance;
-    return distance;
-    //return (double)edr.compute_editdistance();
+    if (dist == -1) {
+      ExecutionTraceEDR edr(t1->trace, t2->trace);
+      dist = (double)edr.compute_editdistance();
+
+      #pragma omp critical 
+      { distance_map_[tobj_pair] = dist; }
+    }
+
+    return dist;
   }
  private:
   DistanceMap distance_map_;
@@ -158,7 +165,10 @@ class TrainingObjectClusterManager {
   //typedef Clusterer<SocketEvent, SocketEventMetric> SocketEventClusterer;
   //typedef Clusterer<TrainingObject, TrainingObjectMetric> TrainingObjectClusterer;
 
-  TrainingObjectClusterManager() {}
+  TrainingObjectClusterManager(size_t training_object_cluster_count,
+                               size_t socket_event_cluster_count)
+     : training_object_cluster_count_(training_object_cluster_count),
+       socket_event_cluster_count_(socket_event_cluster_count) {}
 
   void cluster_socket_events(unsigned cluster_count, 
                              SocketEventDataSet &se_set_in,
@@ -176,7 +186,7 @@ class TrainingObjectClusterManager {
     }
   }
 
-  void cluster(unsigned cluster_count, std::vector<TrainingObject*>& tobjs) {
+  void cluster(std::vector<TrainingObject*>& tobjs) {
 
     TrainingObjectListMap tf_map;
 
@@ -193,8 +203,20 @@ class TrainingObjectClusterManager {
         group_count++;
 
         TrainingObjectClusterer *clusterer = new TrainingObjectClusterer();
+        CVMESSAGE("Adding " << data_vec.second.size() << " data objects into "
+                  << std::min(training_object_cluster_count_,data_vec.second.size())
+                  << " clusters.");
+        size_t min_data_size=INT_MAX, max_data_size=0;
+        for (unsigned i=0;i<data_vec.second.size();++i) {
+          min_data_size = std::min(min_data_size, data_vec.second[i]->trace.size());
+          max_data_size = std::max(max_data_size, data_vec.second[i]->trace.size());
+        }
+        CVMESSAGE("Min etrace size: " << min_data_size 
+                  << ", max etrace size: " << max_data_size);
+
         clusterer->add_data(data_vec.second);
-        clusterer->cluster(cluster_count);
+        CVMESSAGE("Starting clustering...");
+        clusterer->cluster(training_object_cluster_count_);
         //clusterer->print_clusters();
         
         CVMESSAGE("Group " << group_count << " has " 
@@ -221,7 +243,6 @@ class TrainingObjectClusterManager {
 
           SocketEventDataSet se_set;
           SocketEventDataSet clustered_se_set;
-          int se_cluster_count = 256;
 
           foreach(tobj, tobjs_vec) {
             foreach(se, tobj->socket_event_set) {
@@ -229,10 +250,10 @@ class TrainingObjectClusterManager {
             }
           }
 
-          if (se_set.size() > se_cluster_count) {
+          if (se_set.size() > socket_event_cluster_count_) {
             #pragma omp critical 
             CVMESSAGE("\tClustering " << se_set.size() << " socket events for medoid " << i);
-            cluster_socket_events(se_cluster_count, se_set, clustered_se_set);
+            cluster_socket_events(socket_event_cluster_count_, se_set, clustered_se_set);
 
           } else {
             clustered_se_set = se_set;
@@ -321,6 +342,8 @@ class TrainingObjectClusterManager {
 
  private:
   TrainingObjectListMap cluster_map_;
+  size_t training_object_cluster_count_;
+  size_t socket_event_cluster_count_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
