@@ -63,6 +63,11 @@ CVStreamPrintInstructions("cvstream-print-inst",
   llvm::cl::init(false));
 }
 
+llvm::cl::opt<bool>
+MinimalOutput("minimal-output",
+  llvm::cl::desc("Minimal output to only one file, not piped to stdout/stderr"),
+  llvm::cl::init(false));
+
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace cliver {
@@ -421,7 +426,15 @@ void CVStream::init() {
   std::cout.setf(ios_base::unitbuf);
   std::cerr.setf(ios_base::unitbuf);
 
-  if (UseTeeBuf) {
+  if (MinimalOutput) {
+    debug_file_stream_   = openOutputFile(CV_DEBUG_FILE);
+
+    info_stream_    = debug_file_stream_;
+    message_stream_ = debug_file_stream_;
+    warning_stream_ = debug_file_stream_;
+    debug_stream_   = debug_file_stream_;
+
+  } else if (UseTeeBuf) {
     if (!NoOutput) {
       info_file_stream_    = openOutputFile(CV_INFO_FILE);
       warning_file_stream_ = openOutputFile(CV_WARNING_FILE);
