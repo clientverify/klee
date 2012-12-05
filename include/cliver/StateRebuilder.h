@@ -278,7 +278,7 @@ class RebuildingStateCache : public StateRebuilder {
 
   // purge the least-recently-used element 
   inline void purge_lru() {
-    std::cout << "Erasing: " << *(cache_.right.begin()->first) << "\n";
+    CVMESSAGE("Purging LRU" << *(cache_.right.begin()->first));
     cache_.right.begin()->first->erase_self();
     cache_.right.erase(cache_.right.begin()); 
   }
