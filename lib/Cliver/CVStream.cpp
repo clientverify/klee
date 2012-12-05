@@ -173,21 +173,29 @@ void cv_error(const char *msg, ...) {
 
 CVStream::CVStream()
   : output_directory_(OutputDir),
-  initialized_(false) {
+    initialized_(false),
+    info_file_stream_(NULL),
+    debug_file_stream_(NULL),
+    message_file_stream_(NULL),
+    warning_file_stream_(NULL) {
 }
 
 CVStream::~CVStream() {
-  if (initialized_) {
-    if (!NoOutput) {
-      delete info_file_stream_;
-      delete debug_file_stream_;
-      delete message_file_stream_;
-      delete warning_file_stream_;
-    }
-    delete info_stream_;
-    delete debug_stream_;
-    delete message_stream_;
-    delete warning_stream_;
+  if (info_file_stream_) {
+    delete info_file_stream_;
+    info_file_stream_ = NULL;
+  }
+  if (debug_file_stream_) {
+    delete debug_file_stream_;
+    debug_file_stream_ = NULL;
+  }
+  if (message_file_stream_) {
+    delete message_file_stream_;
+    message_file_stream_ = NULL;
+  }
+  if (warning_file_stream_) {
+    delete warning_file_stream_;
+    warning_file_stream_ = NULL;
   }
 }
 
