@@ -111,7 +111,7 @@ void DoPathStats()
 
   foreach (TrainingObject *tobj, training_objects)
   {
-     CVMESSAGE(*tobj);
+    CVMESSAGE(*tobj);
   }
 }
 
@@ -130,11 +130,11 @@ int main(int argc, char **argv, char **envp) {
 
   switch (StatsMode)
   {
-     case PathStats: 
-     {
-	DoPathStats();
+    case PathStats: 
+      {
+        DoPathStats();
         break;
-     }
+      }
   }
 
   return 0;
