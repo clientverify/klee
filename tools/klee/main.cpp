@@ -642,6 +642,8 @@ static void parseArguments(int argc, char **argv) {
 #endif
   
   if (cliver::EnableCliver) {
+    // Check if klee options are compatible with cliver, 
+    // doesn't support options read from response file above
     std::vector<std::string> arguments;
     arguments.insert(arguments.begin(), argv, argv + argc);
     processKleeArgumentsForCliver(arguments);
