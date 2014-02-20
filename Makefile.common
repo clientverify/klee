@@ -34,9 +34,6 @@ ifeq ($(DISABLE_TIMER_STATS),1)
   CPPFLAGS += -DDISABLE_TIMER_STATS
 endif
 
-# Required for waffles
-LIBS += -lGClasses -lpng
-
 # Required for openmp 
 CPPFLAGS += -fopenmp
 LIBS += -fopenmp
