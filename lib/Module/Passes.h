@@ -10,11 +10,17 @@
 #ifndef KLEE_PASSES_H
 #define KLEE_PASSES_H
 
-#include "klee/Config/config.h"
+#include "klee/Config/Version.h"
 
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Module.h"
+#else
 #include "llvm/Constants.h"
 #include "llvm/Instructions.h"
 #include "llvm/Module.h"
+#endif
 #include "llvm/Pass.h"
 #include "llvm/CodeGen/IntrinsicLowering.h"
 
@@ -22,7 +28,11 @@ namespace llvm {
   class Function;
   class Instruction;
   class Module;
+#if LLVM_VERSION_CODE <= LLVM_VERSION(3, 1)
   class TargetData;
+#else
+  class DataLayout;
+#endif
   class TargetLowering;
   class Type;
 }
@@ -34,28 +44,22 @@ namespace klee {
 class RaiseAsmPass : public llvm::ModulePass {
   static char ID;
 
-#if (LLVM_VERSION_MAJOR == 2 && LLVM_VERSION_MINOR >= 9)
   const llvm::TargetLowering *TLI;
-#endif
 
   llvm::Function *getIntrinsic(llvm::Module &M,
                                unsigned IID,
-                               const llvm::Type **Tys,
+                               LLVM_TYPE_Q llvm::Type **Tys,
                                unsigned NumTys);
   llvm::Function *getIntrinsic(llvm::Module &M,
                                unsigned IID, 
-                               const llvm::Type *Ty0) {
+                               LLVM_TYPE_Q llvm::Type *Ty0) {
     return getIntrinsic(M, IID, &Ty0, 1);
   }
 
   bool runOnInstruction(llvm::Module &M, llvm::Instruction *I);
 
 public:
-#if (LLVM_VERSION_MAJOR == 2 && LLVM_VERSION_MINOR < 8)
-  RaiseAsmPass() : llvm::ModulePass((intptr_t) &ID) {}
-#else
-  RaiseAsmPass() : llvm::ModulePass(ID) {}
-#endif
+  RaiseAsmPass() : llvm::ModulePass(ID), TLI(0) {}
   
   virtual bool runOnModule(llvm::Module &M);
 };
@@ -64,20 +68,28 @@ public:
   // variables (via intrinsic lowering).
 class IntrinsicCleanerPass : public llvm::ModulePass {
   static char ID;
+#if LLVM_VERSION_CODE <= LLVM_VERSION(3, 1)
   const llvm::TargetData &TargetData;
+#else
+  const llvm::DataLayout &DataLayout;
+#endif
   llvm::IntrinsicLowering *IL;
   bool LowerIntrinsics;
 
-  bool runOnBasicBlock(llvm::BasicBlock &b);
+  bool runOnBasicBlock(llvm::BasicBlock &b, llvm::Module &M);
 public:
+#if LLVM_VERSION_CODE <= LLVM_VERSION(3, 1)
   IntrinsicCleanerPass(const llvm::TargetData &TD,
-                       bool LI=true)
-#if (LLVM_VERSION_MAJOR == 2 && LLVM_VERSION_MINOR < 8)
-    : llvm::ModulePass((intptr_t) &ID),
 #else
-    : llvm::ModulePass(ID),
+  IntrinsicCleanerPass(const llvm::DataLayout &TD,
 #endif
+                       bool LI=true)
+    : llvm::ModulePass(ID),
+#if LLVM_VERSION_CODE <= LLVM_VERSION(3, 1)
       TargetData(TD),
+#else
+      DataLayout(TD),
+#endif
       IL(new llvm::IntrinsicLowering(TD)),
       LowerIntrinsics(LI) {}
   ~IntrinsicCleanerPass() { delete IL; } 
@@ -101,11 +113,7 @@ class PhiCleanerPass : public llvm::FunctionPass {
   static char ID;
 
 public:
-#if (LLVM_VERSION_MAJOR == 2 && LLVM_VERSION_MINOR < 8)
-  PhiCleanerPass() : llvm::FunctionPass((intptr_t) &ID) {}
-#else
   PhiCleanerPass() : llvm::FunctionPass(ID) {}
-#endif
   
   virtual bool runOnFunction(llvm::Function &f);
 };
@@ -113,11 +121,28 @@ public:
 class DivCheckPass : public llvm::ModulePass {
   static char ID;
 public:
-#if (LLVM_VERSION_MAJOR == 2 && LLVM_VERSION_MINOR < 8)
-  DivCheckPass(): ModulePass((intptr_t) &ID) {}
-#else
   DivCheckPass(): ModulePass(ID) {}
-#endif
+  virtual bool runOnModule(llvm::Module &M);
+};
+
+/// This pass injects checks to check for overshifting.
+///
+/// Overshifting is where a Shl, LShr or AShr is performed
+/// where the shift amount is greater than width of the bitvector
+/// being shifted.
+/// In LLVM (and in C/C++) this undefined behaviour!
+///
+/// Example:
+/// \code
+///     unsigned char x=15;
+///     x << 4 ; // Defined behaviour
+///     x << 8 ; // Undefined behaviour
+///     x << 255 ; // Undefined behaviour
+/// \endcode
+class OvershiftCheckPass : public llvm::ModulePass {
+  static char ID;
+public:
+  OvershiftCheckPass(): ModulePass(ID) {}
   virtual bool runOnModule(llvm::Module &M);
 };
 
@@ -127,11 +152,7 @@ public:
 class LowerSwitchPass : public llvm::FunctionPass {
 public:
   static char ID; // Pass identification, replacement for typeid
-#if (LLVM_VERSION_MAJOR == 2 && LLVM_VERSION_MINOR < 8)
-  LowerSwitchPass() : FunctionPass((intptr_t) &ID) {} 
-#else
   LowerSwitchPass() : FunctionPass(ID) {} 
-#endif
   
   virtual bool runOnFunction(llvm::Function &F);
   

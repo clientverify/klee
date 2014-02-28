@@ -19,22 +19,22 @@ namespace llvm {
 
 namespace klee {
   class MemoryObject;
-  class ExecutionState;
 
   class MemoryManager {
-  protected:
+  private:
     typedef std::set<MemoryObject*> objects_ty;
     objects_ty objects;
 
   public:
     MemoryManager() {}
-    virtual ~MemoryManager();
+    ~MemoryManager();
 
-    virtual MemoryObject *allocate(ExecutionState &state, uint64_t size, bool isLocal, bool isGlobal,
+    MemoryObject *allocate(uint64_t size, bool isLocal, bool isGlobal,
                            const llvm::Value *allocSite);
-    virtual MemoryObject *allocateFixed(ExecutionState &state, uint64_t address, uint64_t size,
+    MemoryObject *allocateFixed(uint64_t address, uint64_t size,
                                 const llvm::Value *allocSite);
-    virtual void deallocate(const MemoryObject *mo);
+    void deallocate(const MemoryObject *mo);
+    void markFreed(MemoryObject *mo);
   };
 
 } // End klee namespace

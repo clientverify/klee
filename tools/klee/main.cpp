@@ -3,30 +3,40 @@
 // FIXME: This does not belong here.
 #include "../lib/Core/Common.h"
 
+#include "cliver/ClientVerifier.h"
+
 #include "klee/ExecutionState.h"
 #include "klee/Expr.h"
 #include "klee/Interpreter.h"
 #include "klee/Statistics.h"
-#include "klee/Config/config.h"
+#include "klee/Config/Version.h"
 #include "klee/Internal/ADT/KTest.h"
 #include "klee/Internal/ADT/TreeStream.h"
 #include "klee/Internal/Support/ModuleUtil.h"
 #include "klee/Internal/System/Time.h"
 
+#if LLVM_VERSION_CODE > LLVM_VERSION(3, 2)
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Type.h"
+#include "llvm/IR/InstrTypes.h"
+#include "llvm/IR/Instruction.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/LLVMContext.h"
+#else
 #include "llvm/Constants.h"
 #include "llvm/Module.h"
-#if (LLVM_VERSION_MAJOR == 2 && LLVM_VERSION_MINOR < 7)
-#include "llvm/ModuleProvider.h"
-#endif
 #include "llvm/Type.h"
 #include "llvm/InstrTypes.h"
 #include "llvm/Instruction.h"
 #include "llvm/Instructions.h"
-#if !(LLVM_VERSION_MAJOR == 2 && LLVM_VERSION_MINOR < 7)
 #include "llvm/LLVMContext.h"
+#include "llvm/Support/FileSystem.h"
 #endif
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/MemoryBuffer.h"
 
@@ -36,26 +46,32 @@
 #undef PACKAGE_STRING
 #undef PACKAGE_TARNAME
 #undef PACKAGE_VERSION
+#if LLVM_VERSION_CODE < LLVM_VERSION(3, 0)
 #include "llvm/Target/TargetSelect.h"
-#include "llvm/System/Signals.h"
-#include <iostream>
-#include <fstream>
-#include <cerrno>
+#else
+#include "llvm/Support/TargetSelect.h"
+#endif
+#include "llvm/Support/Signals.h"
+#include "llvm/Support/system_error.h"
+
 #include <dirent.h>
-#include <errno.h>
+#include <signal.h>
+#include <unistd.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
-#include <signal.h>
 
+#include <cerrno>
+#include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <iterator>
-#include <fstream>
 #include <sstream>
+
 
 using namespace llvm;
 using namespace klee;
 
-namespace {
+namespace klee {
   cl::opt<std::string>
   InputFile(cl::desc("<input bytecode>"), cl::Positional, cl::init("-"));
 
@@ -85,6 +101,10 @@ namespace {
   WritePCs("write-pcs", 
             cl::desc("Write .pc files for each test case"));
   
+  cl::opt<bool>
+  WriteSMT2s("write-smt2s",
+            cl::desc("Write .smt2 (SMT-LIBv2) files for each test case"));
+
   cl::opt<bool>
   WriteCov("write-cov", 
            cl::desc("Write coverage information for each test case"));
@@ -122,18 +142,24 @@ namespace {
     
   cl::opt<bool>
   WithPOSIXRuntime("posix-runtime", 
-		cl::desc("Link with POSIX runtime"),
+		cl::desc("Link with POSIX runtime.  Options that can be passed as arguments to the programs are: --sym-argv <max-len>  --sym-argvs <min-argvs> <max-argvs> <max-len> + file model options"),
 		cl::init(false));
     
   cl::opt<bool>
   OptimizeModule("optimize", 
-                 cl::desc("Optimize before execution"));
+                 cl::desc("Optimize before execution"),
+		 cl::init(false));
 
   cl::opt<bool>
   CheckDivZero("check-div-zero", 
                cl::desc("Inject checks for division-by-zero"),
                cl::init(true));
-    
+
+  cl::opt<bool>
+  CheckOvershift("check-overshift",
+               cl::desc("Inject checks for overshift"),
+               cl::init(true));
+
   cl::opt<std::string>
   OutputDir("output-dir", 
             cl::desc("Directory to write results in (defaults to klee-out-N)"),
@@ -146,7 +172,7 @@ namespace {
     
   cl::opt<bool>
   ReplayKeepSymbolic("replay-keep-symbolic", 
-                     cl::desc("Replay the test cases only by asserting"
+                     cl::desc("Replay the test cases only by asserting "
                               "the bytes, not necessarily making them concrete."));
     
   cl::list<std::string>
@@ -172,12 +198,10 @@ namespace {
   
   cl::opt<unsigned>
   MakeConcreteSymbolic("make-concrete-symbolic",
-                       cl::desc("Rate at which to make concrete reads symbolic (0=off)"),
+                       cl::desc("Probabilistic rate at which to make concrete reads symbolic, "
+				"i.e. approximately 1 in n concrete reads will be made symbolic (0=off, 1=all).  "
+				"Used for testing."),
                        cl::init(0));
-
-  cl::opt<bool>
-  InitEnv("init-env",
-	  cl::desc("Create custom environment.  Options that can be passed as arguments to the programs are: --sym-argv <max-len>  --sym-argvs <min-argvs> <max-argvs> <max-len> + file model options"));
  
   cl::opt<unsigned>
   StopAfterNTests("stop-after-n-tests",
@@ -188,9 +212,16 @@ namespace {
   Watchdog("watchdog",
            cl::desc("Use a watchdog process to enforce --max-time."),
            cl::init(0));
+
+  //cl::opt<bool> 
+  //EnableCliver("cliver", cl::desc("Enable cliver."), cl::init(false));
 }
 
 extern cl::opt<double> MaxTime;
+
+namespace cliver {
+  extern cl::opt<bool> EnableCliver;
+}
 
 /***/
 
@@ -200,7 +231,7 @@ private:
   TreeStreamWriter *m_pathWriter, *m_symPathWriter;
   std::ostream *m_infoFile;
 
-  char m_outputDirectory[1024];
+  sys::Path m_outputDirectory;
   unsigned m_testIndex;  // number of tests written so far
   unsigned m_pathsExplored; // number of paths explored so far
 
@@ -238,6 +269,8 @@ public:
 
   static void getOutFiles(std::string path,
 			  std::vector<std::string> &results);
+
+  static llvm::sys::Path getRunTimeLibraryPath(const char* argv0, void *MainExecAddr);
 };
 
 KleeHandler::KleeHandler(int argc, char **argv) 
@@ -245,75 +278,86 @@ KleeHandler::KleeHandler(int argc, char **argv)
     m_pathWriter(0),
     m_symPathWriter(0),
     m_infoFile(0),
+    m_outputDirectory(),
     m_testIndex(0),
     m_pathsExplored(0),
     m_argc(argc),
     m_argv(argv) {
-  std::string theDir;
 
   if (OutputDir=="") {
     llvm::sys::Path directory(InputFile);
-    std::string dirname = "";
+    std::stringstream dirname;
     directory.eraseComponent();
     
     if (directory.isEmpty())
       directory.set(".");
     
-    for (int i = 0; ; i++) {
-      char buf[256], tmp[64];
-      sprintf(tmp, "klee-out-%d", i);
-      dirname = tmp;
-      sprintf(buf, "%s/%s", directory.c_str(), tmp);
-      theDir = buf;
+    for (int i = 0; i< INT_MAX ; i++) {
+      dirname << "klee-out-";
+      dirname << i;
+
+      m_outputDirectory = llvm::sys::Path(directory); // Copy
+      if (!m_outputDirectory.appendComponent(dirname.str()))
+        klee_error("Failed to append \"%s\" to \"%s\"", dirname.str().c_str(), directory.c_str());
       
-      if (DIR *dir = opendir(theDir.c_str())) {
-        closedir(dir);
-      } else {
-        break;
+      bool isDir = true;
+      llvm::error_code e = llvm::sys::fs::exists(m_outputDirectory.str(), isDir);
+      if ( e != llvm::errc::success )
+        klee_error("Failed to check if \"%s\" exists.", m_outputDirectory.str().c_str());
+
+      if (!isDir)
+      {
+        break; // Found an available directory name
       }
+
+      // Warn the user if the klee-out-* exists but is not a directory
+      e = llvm::sys::fs::is_directory(m_outputDirectory.str(), isDir);
+      if ( e == llvm::errc::success && !isDir )
+        klee_warning("A file \"%s\" exists, but it is not a directory",
+                     m_outputDirectory.str().c_str());
+
+      dirname.str(""); // Clear
+      m_outputDirectory.clear();
     }    
 
-    std::cerr << "KLEE: output directory = \"" << dirname << "\"\n";
+    if (m_outputDirectory.empty())
+      klee_error("Failed to find available output directory in %s", dirname.str().c_str());
+
+    std::cerr << "KLEE: output directory = \"" << dirname.str() << "\"\n";
 
     llvm::sys::Path klee_last(directory);
-    klee_last.appendComponent("klee-last");
-      
-    if ((unlink(klee_last.c_str()) < 0) && (errno != ENOENT)) {
-      perror("Cannot unlink klee-last");
-      assert(0 && "exiting.");
-    }
+    if(!klee_last.appendComponent("klee-last"))
+      klee_error("cannot create path name for klee-last");
+
+    if ((unlink(klee_last.c_str()) < 0) && (errno != ENOENT))
+      klee_error("cannot unlink klee-last: %s", strerror(errno));
     
-    if (symlink(dirname.c_str(), klee_last.c_str()) < 0) {
-      perror("Cannot make symlink");
-      assert(0 && "exiting.");
-    }
+    if (symlink(dirname.str().c_str(), klee_last.c_str()) < 0)
+      klee_error("cannot create klee-last symlink: %s", strerror(errno));
+
   } else {
-    theDir = OutputDir;
+    if (!m_outputDirectory.set(OutputDir))
+      klee_error("cannot use klee output directory: %s", OutputDir.c_str());
   }
   
-  sys::Path p(theDir);
-  if (!p.isAbsolute()) {
+  if (!sys::path::is_absolute(m_outputDirectory.c_str())) {
     sys::Path cwd = sys::Path::GetCurrentDirectory();
-    cwd.appendComponent(theDir);
-    p = cwd;
-  }
-  strcpy(m_outputDirectory, p.c_str());
+    if(!cwd.appendComponent( m_outputDirectory.c_str()))
+      klee_error("cannot create absolute path name for output directory");
 
-  if (mkdir(m_outputDirectory, 0775) < 0) {
-    std::cerr << "KLEE: ERROR: Unable to make output directory: \"" 
-               << m_outputDirectory 
-               << "\", refusing to overwrite.\n";
-    exit(1);
+    m_outputDirectory = cwd;
   }
 
-  char fname[1024];
-  snprintf(fname, sizeof(fname), "%s/warnings.txt", m_outputDirectory);
-  klee_warning_file = fopen(fname, "w");
-  assert(klee_warning_file);
+  if (mkdir(m_outputDirectory.c_str(), 0775) < 0)
+    klee_error("cannot create directory \"%s\": %s", m_outputDirectory.c_str(), strerror(errno));
 
-  snprintf(fname, sizeof(fname), "%s/messages.txt", m_outputDirectory);
-  klee_message_file = fopen(fname, "w");
-  assert(klee_message_file);
+  std::string file_path = getOutputFilename("warnings.txt");
+  if ((klee_warning_file = fopen(file_path.c_str(), "w")) == NULL)
+    klee_error("cannot open file \"%s\": %s", file_path.c_str(), strerror(errno));
+
+  file_path = getOutputFilename("messages.txt");
+  if ((klee_message_file = fopen(file_path.c_str(), "w")) == NULL)
+    klee_error("cannot open file \"%s\": %s", file_path.c_str(), strerror(errno));
 
   m_infoFile = openOutputFile("info");
 }
@@ -321,6 +365,8 @@ KleeHandler::KleeHandler(int argc, char **argv)
 KleeHandler::~KleeHandler() {
   if (m_pathWriter) delete m_pathWriter;
   if (m_symPathWriter) delete m_symPathWriter;
+  fclose(klee_warning_file);
+  fclose(klee_message_file);
   delete m_infoFile;
 }
 
@@ -341,9 +387,12 @@ void KleeHandler::setInterpreter(Interpreter *i) {
 }
 
 std::string KleeHandler::getOutputFilename(const std::string &filename) {
-  char outfile[1024];
-  sprintf(outfile, "%s/%s", m_outputDirectory, filename.c_str());
-  return outfile;
+  sys::Path path(m_outputDirectory);
+  if(!path.appendComponent(filename)) {
+    klee_error("cannot create path name for \"%s\"", filename.c_str());
+  }
+
+  return path.str();
 }
 
 std::ostream *KleeHandler::openOutputFile(const std::string &filename) {
@@ -364,15 +413,13 @@ std::ostream *KleeHandler::openOutputFile(const std::string &filename) {
 }
 
 std::string KleeHandler::getTestFilename(const std::string &suffix, unsigned id) {
-  char filename[1024];
-  sprintf(filename, "test%06d.%s", id, suffix.c_str());
-  return getOutputFilename(filename);
+  std::stringstream filename;
+  filename << "test" << std::setfill('0') << std::setw(6) << id << '.' << suffix;
+  return filename.str();
 }
 
 std::ostream *KleeHandler::openTestFile(const std::string &suffix, unsigned id) {
-  char filename[1024];
-  sprintf(filename, "test%06d.%s", id, suffix.c_str());
-  return openOutputFile(filename);
+  return openOutputFile(getTestFilename(suffix, id));
 }
 
 
@@ -414,7 +461,7 @@ void KleeHandler::processTestCase(const ExecutionState &state,
         std::copy(out[i].second.begin(), out[i].second.end(), o->bytes);
       }
       
-      if (!kTest_toFile(&b, getTestFilename("ktest", id).c_str())) {
+      if (!kTest_toFile(&b, getOutputFilename(getTestFilename("ktest", id)).c_str())) {
         klee_warning("unable to write output test case, losing it");
       }
       
@@ -441,7 +488,7 @@ void KleeHandler::processTestCase(const ExecutionState &state,
    
     if (errorMessage || WritePCs) {
       std::string constraints;
-      m_interpreter->getConstraintLog(state, constraints);
+      m_interpreter->getConstraintLog(state, constraints,Interpreter::KQUERY);
       std::ostream *f = openTestFile("pc", id);
       *f << constraints;
       delete f;
@@ -449,12 +496,20 @@ void KleeHandler::processTestCase(const ExecutionState &state,
 
     if (WriteCVCs) {
       std::string constraints;
-      m_interpreter->getConstraintLog(state, constraints, true);
+      m_interpreter->getConstraintLog(state, constraints, Interpreter::STP);
       std::ostream *f = openTestFile("cvc", id);
       *f << constraints;
       delete f;
     }
     
+    if(WriteSMT2s) {
+    	std::string constraints;
+        m_interpreter->getConstraintLog(state, constraints, Interpreter::SMTLIB2);
+        std::ostream *f = openTestFile("smt2", id);
+        *f << constraints;
+        delete f;
+    }
+
     if (m_symPathWriter) {
       std::vector<unsigned char> symbolicBranches;
       m_symPathWriter->readStream(m_interpreter->getSymbolicPathStreamID(state),
@@ -521,15 +576,37 @@ void KleeHandler::getOutFiles(std::string path,
   }
   for (std::set<llvm::sys::Path>::iterator it = contents.begin(),
          ie = contents.end(); it != ie; ++it) {
-#if !(LLVM_VERSION_MAJOR == 2 && LLVM_VERSION_MINOR == 6)
     std::string f = it->str();
-#else
-    std::string f = it->toString();
-#endif
     if (f.substr(f.size()-6,f.size()) == ".ktest") {
       results.push_back(f);
     }
   }
+}
+
+
+llvm::sys::Path KleeHandler::getRunTimeLibraryPath(const char* argv0, void* MainExecAddr)
+{
+  llvm::sys::Path toolRoot = llvm::sys::Path::GetMainExecutable(argv0, MainExecAddr);
+  toolRoot.eraseComponent(); // Strip off executable so we have a directory path
+
+  llvm::sys::Path libDir;
+
+  if ( strcmp(toolRoot.c_str(), KLEE_INSTALL_BIN_DIR ) == 0)
+  {
+    DEBUG_WITH_TYPE("klee_runtime", llvm::dbgs() <<
+                    "Using installed KLEE library runtime: ");
+    libDir = llvm::sys::Path( KLEE_INSTALL_LIB_DIR );
+  }
+  else
+  {
+    DEBUG_WITH_TYPE("klee_runtime", llvm::dbgs() <<
+                    "Using build directory KLEE library runtime :");
+    libDir = llvm::sys::Path(KLEE_DIR "/" RUNTIME_CONFIGURATION "/lib");
+  }
+
+  DEBUG_WITH_TYPE("klee_runtime", llvm::dbgs() <<
+                  libDir.c_str() << "\n");
+  return libDir;
 }
 
 //===----------------------------------------------------------------------===//
@@ -581,7 +658,11 @@ static void parseArguments(int argc, char **argv) {
     argArray[i] = arguments[i-1].c_str();
   }
 
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 2)
+  cl::ParseCommandLineOptions(numArgs, (const char**) argArray, " klee\n");
+#else
   cl::ParseCommandLineOptions(numArgs, (char**) argArray, " klee\n");
+#endif
   delete[] argArray;
 }
 
@@ -604,8 +685,7 @@ static int initEnv(Module *mainModule) {
   Function *mainFn = mainModule->getFunction("main");
     
   if (mainFn->arg_size() < 2) {
-    std::cerr << "Cannot handle ""-init-env"" when main() has less than two arguments.\n";
-    return -1;
+    klee_error("Cannot handle ""--posix-runtime"" when main() has less than two arguments.\n");
   }
 
   Instruction* firstInst = mainFn->begin()->begin();
@@ -632,8 +712,13 @@ static int initEnv(Module *mainModule) {
   std::vector<Value*> args;
   args.push_back(argcPtr);
   args.push_back(argvPtr);
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 0)
+  Instruction* initEnvCall = CallInst::Create(initEnvFn, args,
+					      "", firstInst);
+#else
   Instruction* initEnvCall = CallInst::Create(initEnvFn, args.begin(), args.end(), 
 					      "", firstInst);
+#endif
   Value *argc = new LoadInst(argcPtr, "newArgc", firstInst);
   Value *argv = new LoadInst(argvPtr, "newArgv", firstInst);
   
@@ -647,8 +732,8 @@ static int initEnv(Module *mainModule) {
 }
 
 
-// This is a terrible hack until we get some real modelling of the
-// system. All we do is check the undefined symbols and m and warn about
+// This is a terrible hack until we get some real modeling of the
+// system. All we do is check the undefined symbols and warn about
 // any "unrecognized" externals and about any obviously unsafe ones.
 
 // Symbols we explicitly support
@@ -671,7 +756,12 @@ static const char *modelledExternals[] = {
   "klee_check_memory_access",
   "klee_define_fixed_object",
   "klee_get_errno", 
-  "klee_get_value",
+  "klee_get_valuef",
+  "klee_get_valued",
+  "klee_get_valuel",
+  "klee_get_valuell",
+  "klee_get_value_i32",
+  "klee_get_value_i64",
   "klee_get_obj_size", 
   "klee_is_symbolic", 
   "klee_make_symbolic", 
@@ -687,7 +777,10 @@ static const char *modelledExternals[] = {
   "klee_warning_once", 
   "klee_alias_function",
   "klee_stack_trace",
-  "llvm.dbg.stoppoint", 
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 1)
+  "llvm.dbg.declare",
+  "llvm.dbg.value",
+#endif
   "llvm.va_start", 
   "llvm.va_end", 
   "malloc", 
@@ -889,6 +982,10 @@ static void interrupt_handle() {
   interrupted = true;
 }
 
+static void interrupt_handle_watchdog() {
+  // just wait for the child to finish
+}
+
 // This is a temporary hack. If the running process has access to
 // externals then it can disable interrupts, which screws up the
 // normal "nice" watchdog termination process. We try to request the
@@ -920,24 +1017,50 @@ static char *format_tdiff(char *buf, long seconds)
   return buf;
 }
 
-#ifndef KLEE_UCLIBC
-static llvm::Module *linkWithUclibc(llvm::Module *mainModule) {
+#ifndef SUPPORT_KLEE_UCLIBC
+static llvm::Module *linkWithUclibc(llvm::Module *mainModule, llvm::sys::Path libDir) {
   fprintf(stderr, "error: invalid libc, no uclibc support!\n");
   exit(1);
   return 0;
 }
 #else
-static llvm::Module *linkWithUclibc(llvm::Module *mainModule) {
+static void replaceOrRenameFunction(llvm::Module *module,
+		const char *old_name, const char *new_name)
+{
+  Function *f, *f2;
+  f = module->getFunction(new_name);
+  f2 = module->getFunction(old_name);
+  if (f2) {
+    if (f) {
+      f2->replaceAllUsesWith(f);
+      f2->eraseFromParent();
+    } else {
+      f2->setName(new_name);
+      assert(f2->getName() == new_name);
+    }
+  }
+}
+
+static llvm::Module *linkWithUclibc(llvm::Module *mainModule, llvm::sys::Path libDir) {
+  // Ensure that klee-uclibc exists
+  llvm::sys::Path uclibcBCA(libDir);
+  uclibcBCA.appendComponent(KLEE_UCLIBC_BCA_NAME);
+
+  bool uclibcExists=false;
+  llvm::sys::fs::exists(uclibcBCA.c_str(), uclibcExists);
+  if (!uclibcExists)
+    klee_error("Cannot find klee-uclibc : %s", uclibcBCA.c_str());
+
   Function *f;
   // force import of __uClibc_main
   mainModule->getOrInsertFunction("__uClibc_main",
                                   FunctionType::get(Type::getVoidTy(getGlobalContext()),
-                                                    std::vector<const Type*>(),
+                                               std::vector<LLVM_TYPE_Q Type*>(),
                                                     true));
   
   // force various imports
   if (WithPOSIXRuntime) {
-    const llvm::Type *i8Ty = Type::getInt8Ty(getGlobalContext());
+    LLVM_TYPE_Q llvm::Type *i8Ty = Type::getInt8Ty(getGlobalContext());
     mainModule->getOrInsertFunction("realpath",
                                     PointerType::getUnqual(i8Ty),
                                     PointerType::getUnqual(i8Ty),
@@ -966,9 +1089,8 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule) {
   // versions are present in the module, make sure we don't create a
   // naming conflict.
   for (Module::iterator fi = mainModule->begin(), fe = mainModule->end();
-       fi != fe;) {
+       fi != fe; ++fi) {
     Function *f = fi;
-    ++fi;
     const std::string &name = f->getName();
     if (name[0]=='\01') {
       unsigned size = name.size();
@@ -986,40 +1108,13 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule) {
     }
   }
   
-  mainModule = klee::linkWithLibrary(mainModule, 
-                                     KLEE_UCLIBC "/lib/libc.a");
+  mainModule = klee::linkWithLibrary(mainModule, uclibcBCA.c_str());
   assert(mainModule && "unable to link with uclibc");
 
-  // more sighs, this is horrible but just a temp hack
-  //    f = mainModule->getFunction("__fputc_unlocked");
-  //    if (f) f->setName("fputc_unlocked");
-  //    f = mainModule->getFunction("__fgetc_unlocked");
-  //    if (f) f->setName("fgetc_unlocked");
-  
-  Function *f2;
-  f = mainModule->getFunction("open");
-  f2 = mainModule->getFunction("__libc_open");
-  if (f2) {
-    if (f) {
-      f2->replaceAllUsesWith(f);
-      f2->eraseFromParent();
-    } else {
-      f2->setName("open");
-      assert(f2->getName() == "open");
-    }
-  }
 
-  f = mainModule->getFunction("fcntl");
-  f2 = mainModule->getFunction("__libc_fcntl");
-  if (f2) {
-    if (f) {
-      f2->replaceAllUsesWith(f);
-      f2->eraseFromParent();
-    } else {
-      f2->setName("fcntl");
-      assert(f2->getName() == "fcntl");
-    }
-  }
+  replaceOrRenameFunction(mainModule, "__libc_open", "open");
+  replaceOrRenameFunction(mainModule, "__libc_fcntl", "fcntl");
+
 
   // XXX we need to rearchitect so this can also be used with
   // programs externally linked with uclibc.
@@ -1040,7 +1135,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule) {
   const FunctionType *ft = uclibcMainFn->getFunctionType();
   assert(ft->getNumParams() == 7);
 
-  std::vector<const Type*> fArgs;
+  std::vector<LLVM_TYPE_Q Type*> fArgs;
   fArgs.push_back(ft->getParamType(1)); // argc
   fArgs.push_back(ft->getParamType(2)); // argv
   Function *stub = Function::Create(FunctionType::get(Type::getInt32Ty(getGlobalContext()), fArgs, false),
@@ -1058,10 +1153,15 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule) {
   args.push_back(Constant::getNullValue(ft->getParamType(4))); // app_fini
   args.push_back(Constant::getNullValue(ft->getParamType(5))); // rtld_fini
   args.push_back(Constant::getNullValue(ft->getParamType(6))); // stack_end
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 0)
+  CallInst::Create(uclibcMainFn, args, "", bb);
+#else
   CallInst::Create(uclibcMainFn, args.begin(), args.end(), "", bb);
+#endif
   
   new UnreachableInst(getGlobalContext(), bb);
 
+  klee_message("NOTE: Using klee-uclibc : %s", uclibcBCA.c_str());
   return mainModule;
 }
 #endif
@@ -1089,6 +1189,7 @@ int main(int argc, char **argv, char **envp) {
     } else if (pid) {
       fprintf(stderr, "KLEE: WATCHDOG: watching %d\n", pid);
       fflush(stderr);
+      sys::SetInterruptFunction(interrupt_handle_watchdog);
 
       double nextStep = util::getWallTime() + MaxTime*1.1;
       int level = 0;
@@ -1143,28 +1244,16 @@ int main(int argc, char **argv, char **envp) {
   sys::SetInterruptFunction(interrupt_handle);
 
   // Load the bytecode...
-#if (LLVM_VERSION_MAJOR == 2 && LLVM_VERSION_MINOR < 7)
-  std::string ErrorMsg;
-  ModuleProvider *MP = 0;
-  if (MemoryBuffer *Buffer = MemoryBuffer::getFileOrSTDIN(InputFile, &ErrorMsg)) {
-    MP = getBitcodeModuleProvider(Buffer, getGlobalContext(), &ErrorMsg);
-    if (!MP) delete Buffer;
-  }
-  
-  if (!MP)
-    klee_error("error loading program '%s': %s", InputFile.c_str(), ErrorMsg.c_str());
-
-  Module *mainModule = MP->materializeModule();
-  MP->releaseModule();
-  delete MP;
-#else
   std::string ErrorMsg;
   Module *mainModule = 0;
-  MemoryBuffer *Buffer = MemoryBuffer::getFileOrSTDIN(InputFile, &ErrorMsg);
-  if (Buffer) {
-    mainModule = getLazyBitcodeModule(Buffer, getGlobalContext(), &ErrorMsg);
-    if (!mainModule) delete Buffer;
+  OwningPtr<MemoryBuffer> BufferPtr;
+  error_code ec=MemoryBuffer::getFileOrSTDIN(InputFile.c_str(), BufferPtr);
+  if (ec) {
+    klee_error("error loading program '%s': %s", InputFile.c_str(),
+               ec.message().c_str());
   }
+  mainModule = getLazyBitcodeModule(BufferPtr.get(), getGlobalContext(), &ErrorMsg);
+
   if (mainModule) {
     if (mainModule->MaterializeAllPermanently(&ErrorMsg)) {
       delete mainModule;
@@ -1174,22 +1263,28 @@ int main(int argc, char **argv, char **envp) {
   if (!mainModule)
     klee_error("error loading program '%s': %s", InputFile.c_str(),
                ErrorMsg.c_str());
-#endif
-  
-  if (WithPOSIXRuntime)
-    InitEnv = true;
 
-  if (InitEnv) {
+  if (WithPOSIXRuntime) {
     int r = initEnv(mainModule);
     if (r != 0)
       return r;
   }
 
-  llvm::sys::Path LibraryDir(KLEE_DIR "/" RUNTIME_CONFIGURATION "/lib");
+  llvm::sys::Path LibraryDir = KleeHandler::getRunTimeLibraryPath(argv[0], 
+                              reinterpret_cast<void*>(main));
   Interpreter::ModuleOptions Opts(LibraryDir.c_str(),
                                   /*Optimize=*/OptimizeModule, 
-                                  /*CheckDivZero=*/CheckDivZero);
-  
+                                  /*CheckDivZero=*/CheckDivZero,
+                                  /*CheckOvershift=*/CheckOvershift);
+ 
+  if (WithPOSIXRuntime && cliver::EnableCliver) {
+    llvm::sys::Path Path(Opts.LibraryDir);
+    Path.appendComponent("libkleeRuntimePOSIX.bca");
+    klee_message("NOTE: Using model: %s", Path.c_str());
+    mainModule = klee::linkWithLibrary(mainModule, Path.c_str());
+    assert(mainModule && "unable to link with simple model");
+  }  
+ 
   switch (Libc) {
   case NoLibc: /* silence compiler warning */
     break;
@@ -1197,18 +1292,22 @@ int main(int argc, char **argv, char **envp) {
   case KleeLibc: {
     // FIXME: Find a reasonable solution for this.
     llvm::sys::Path Path(Opts.LibraryDir);
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
+    Path.appendComponent("klee-libc.bc");
+#else
     Path.appendComponent("libklee-libc.bca");
+#endif
     mainModule = klee::linkWithLibrary(mainModule, Path.c_str());
     assert(mainModule && "unable to link with klee-libc");
     break;
   }
 
   case UcLibc:
-    mainModule = linkWithUclibc(mainModule);
+    mainModule = linkWithUclibc(mainModule, LibraryDir);
     break;
   }
 
-  if (WithPOSIXRuntime) {
+  if (WithPOSIXRuntime && !cliver::EnableCliver) {
     llvm::sys::Path Path(Opts.LibraryDir);
     Path.appendComponent("libkleeRuntimePOSIX.bca");
     klee_message("NOTE: Using model: %s", Path.c_str());
@@ -1271,10 +1370,18 @@ int main(int argc, char **argv, char **envp) {
 
   Interpreter::InterpreterOptions IOpts;
   IOpts.MakeConcreteSymbolic = MakeConcreteSymbolic;
-  KleeHandler *handler = new KleeHandler(pArgc, pArgv);
-  Interpreter *interpreter = 
-    theInterpreter = Interpreter::create(IOpts, handler);
-  handler->setInterpreter(interpreter);
+  InterpreterHandler *handler = NULL;
+  Interpreter *interpreter = NULL;
+
+  if (cliver::EnableCliver) {
+    handler = new cliver::ClientVerifier();
+    interpreter = theInterpreter = cliver::ClientVerifier::create_interpreter(IOpts, handler);
+    static_cast<cliver::ClientVerifier*>(handler)->setInterpreter(interpreter);
+  } else {
+    handler = new KleeHandler(pArgc, pArgv);
+    interpreter = theInterpreter = Interpreter::create(IOpts, handler);
+    static_cast<KleeHandler*>(handler)->setInterpreter(interpreter);
+  }
   
   std::ostream &infoFile = handler->getInfoStream();
   for (int i=0; i<argc; i++) {
@@ -1438,17 +1545,24 @@ int main(int argc, char **argv, char **envp) {
     << "KLEE: done: invalid queries = " << queriesInvalid << "\n"
     << "KLEE: done: query cex = " << queryCounterexamples << "\n";
 
+  if (cliver::EnableCliver) {
+    BufferPtr.take();
+    delete handler;
+    return 0;
+  }
+
   std::stringstream stats;
   stats << "\n";
   stats << "KLEE: done: total instructions = " 
         << instructions << "\n";
   stats << "KLEE: done: completed paths = " 
-        << handler->getNumPathsExplored() << "\n";
+        << static_cast<KleeHandler*>(handler)->getNumPathsExplored() << "\n";
   stats << "KLEE: done: generated tests = " 
-        << handler->getNumTestCases() << "\n";
+        << static_cast<KleeHandler*>(handler)->getNumTestCases() << "\n";
   std::cerr << stats.str();
-  handler->getInfoStream() << stats.str();
+  static_cast<KleeHandler*>(handler)->getInfoStream() << stats.str();
 
+  BufferPtr.take();
   delete handler;
 
   return 0;

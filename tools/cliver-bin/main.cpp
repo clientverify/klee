@@ -48,8 +48,13 @@
 #undef PACKAGE_STRING
 #undef PACKAGE_TARNAME
 #undef PACKAGE_VERSION
+#if LLVM_VERSION_CODE < LLVM_VERSION(3, 0)
 #include "llvm/Target/TargetSelect.h"
-#include "llvm/System/Signals.h"
+#else
+#include "llvm/Support/TargetSelect.h"
+#endif
+#include "llvm/Support/Signals.h"
+#include "llvm/Support/system_error.h"
 
 #include <cerrno>
 #include <dirent.h>

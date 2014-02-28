@@ -31,10 +31,8 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include "llvm/System/Process.h"
+#include "llvm/Support/Process.h"
 #include "llvm/Function.h"
-
-#include <omp.h>
 
 #include <fstream>
 #include <algorithm>

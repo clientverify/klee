@@ -11,6 +11,7 @@
 
 #include "expr/Lexer.h"
 
+#include "klee/Config/Version.h"
 #include "klee/Constraints.h"
 #include "klee/ExprBuilder.h"
 #include "klee/Solver.h"
@@ -1303,7 +1304,6 @@ VersionResult ParserImpl::ParseVersionSpecifier() {
     }
   }
 
-  Token Start = Tok;
   VersionResult Res = ParseVersion();
   // Define update list to avoid use-of-undef errors.
   if (!Res.isValid()) {
@@ -1496,9 +1496,9 @@ ExprResult ParserImpl::ParseNumberToken(Expr::Width Type, const Token &Tok) {
     Val = -Val;
 
   if (Type < Val.getBitWidth())
-    Val.trunc(Type);
+    Val=Val.trunc(Type);
   else if (Type > Val.getBitWidth())
-    Val.zext(Type);
+    Val=Val.zext(Type);
 
   return ExprResult(Builder->Constant(Val));
 }
@@ -1510,7 +1510,6 @@ TypeResult ParserImpl::ParseTypeSpecifier() {
   assert(Tok.kind == Token::KWWidth && "Unexpected token.");
 
   // FIXME: Need APInt technically.
-  Token TypeTok = Tok;
   int width = atoi(std::string(Tok.start+1,Tok.length-1).c_str());
   ConsumeToken();
 

@@ -114,8 +114,8 @@ class CVStream;
 
 class ClientVerifier : public klee::InterpreterHandler {
  public:
-  ClientVerifier(std::string* input_filename=NULL);
-  virtual ~ClientVerifier();
+  ClientVerifier();
+  ~ClientVerifier();
 	
 	// klee::InterpreterHandler
   std::ostream &getInfoStream() const;
@@ -131,8 +131,14 @@ class ClientVerifier : public klee::InterpreterHandler {
   void incPathsExplored();
   void processTestCase(const klee::ExecutionState &state, 
                        const char *err, const char *suffix);
+
+  void setInterpreter(klee::Interpreter *i);
+
+  static klee::Interpreter *create_interpreter(const klee::Interpreter::InterpreterOptions &opts,
+                                 klee::InterpreterHandler *ih);
+
 	// Initialization
-	void initialize(CVExecutor *executor);
+	void initialize();
   void assign_basic_block_ids();
 	
 	// ExternalHandlers
@@ -147,7 +153,7 @@ class ClientVerifier : public klee::InterpreterHandler {
   void unhook(ExecutionObserver* observer);
   void notify_all(ExecutionEvent ev);
  
-	// Accessors (ugly)
+	// Accessors
 	CVSearcher* searcher();
 	CVExecutor* executor();
   ExecutionTraceManager* execution_trace_manager();

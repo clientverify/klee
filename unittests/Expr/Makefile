@@ -1,13 +1,12 @@
 ##===- unittests/Expr/Makefile -----------------------------*- Makefile -*-===##
 
 LEVEL := ../..
+include $(LEVEL)/Makefile.config
+
 TESTNAME := Expr
-STP_LIBS := stp_c_interface.a stp_AST.a stp_bitvec.a \
-            stp_constantbv.a stp_sat.a stp_simplifier.a
-USEDLIBS := kleaverExpr.a kleeBasic.a $(STP_LIBS)
+USEDLIBS := kleaverExpr.a kleeBasic.a
 LINK_COMPONENTS := support
 
-include $(LEVEL)/Makefile.config
 include $(LLVM_SRC_ROOT)/unittests/Makefile.unittest
 
-
+LIBS += -lstp

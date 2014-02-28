@@ -10,18 +10,22 @@
 #include "Common.h"
 
 #include "Memory.h"
+#include "klee/SpecialFunctionHandler.h"
 #include "TimingSolver.h"
 
-#include "klee/Executor.h"
 #include "klee/ExecutionState.h"
-#include "klee/SpecialFunctionHandler.h"
+
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/Internal/Module/KModule.h"
 
+#include "klee/Executor.h"
 #include "MemoryManager.h"
 
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
+#include "llvm/IR/Module.h"
+#else
 #include "llvm/Module.h"
-#include "llvm/Type.h"
+#endif
 #include "llvm/ADT/Twine.h"
 
 #include <errno.h>
@@ -34,20 +38,14 @@ using namespace klee;
 
 ///
 
-struct HandlerInfo {
-  const char *name;
-  SpecialFunctionHandler::Handler handler;
-  bool doesNotReturn; /// Intrinsic terminates the process
-  bool hasReturnValue; /// Intrinsic has a return value
-  bool doNotOverride; /// Intrinsic should not be used if already defined
-};
+
 
 // FIXME: We are more or less committed to requiring an intrinsic
 // library these days. We can move some of this stuff there,
 // especially things like realloc which have complicated semantics
 // w.r.t. forking. Among other things this makes delayed query
 // dispatch easier to implement.
-HandlerInfo handlerInfo[] = {
+static SpecialFunctionHandler::HandlerInfo handlerInfo[] = {
 #define add(name, handler, ret) { name, \
                                   &SpecialFunctionHandler::handler, \
                                   false, ret, false }
@@ -113,12 +111,37 @@ HandlerInfo handlerInfo[] = {
 #undef add  
 };
 
+SpecialFunctionHandler::const_iterator SpecialFunctionHandler::begin() {
+  return SpecialFunctionHandler::const_iterator(handlerInfo);
+}
+
+SpecialFunctionHandler::const_iterator SpecialFunctionHandler::end() {
+  // NULL pointer is sentinel
+  return SpecialFunctionHandler::const_iterator(0);
+}
+
+SpecialFunctionHandler::const_iterator& SpecialFunctionHandler::const_iterator::operator++() {
+  ++index;
+  if ( index >= SpecialFunctionHandler::size())
+  {
+    // Out of range, return .end()
+    base=0; // Sentinel
+    index=0;
+  }
+
+  return *this;
+}
+
+int SpecialFunctionHandler::size() {
+	return sizeof(handlerInfo)/sizeof(handlerInfo[0]);
+}
+
 SpecialFunctionHandler::SpecialFunctionHandler(Executor &_executor) 
   : executor(_executor) {}
 
 
 void SpecialFunctionHandler::prepare() {
-  unsigned N = sizeof(handlerInfo)/sizeof(handlerInfo[0]);
+  unsigned N = size();
 
   for (unsigned i=0; i<N; ++i) {
     HandlerInfo &hi = handlerInfo[i];
@@ -131,7 +154,13 @@ void SpecialFunctionHandler::prepare() {
       // Make sure NoReturn attribute is set, for optimization and
       // coverage counting.
       if (hi.doesNotReturn)
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
         f->addFnAttr(Attribute::NoReturn);
+#elif LLVM_VERSION_CODE >= LLVM_VERSION(3, 2)
+        f->addFnAttr(Attributes::NoReturn);
+#else
+        f->addFnAttr(Attribute::NoReturn);
+#endif
 
       // Change to a declaration since we handle internally (simplifies
       // module and allows deleting dead code).
@@ -537,7 +566,7 @@ void SpecialFunctionHandler::handleGetErrno(ExecutionState &state,
                                             std::vector<ref<Expr> > &arguments) {
   // XXX should type check args
   assert(arguments.size()==0 &&
-         "invalid number of arguments to klee_get_obj_size");
+         "invalid number of arguments to klee_get_errno");
   executor.bindLocal(target, state,
                      ConstantExpr::create(errno, Expr::Int32));
 }
@@ -656,7 +685,7 @@ void SpecialFunctionHandler::handleDefineFixedObject(ExecutionState &state,
   
   uint64_t address = cast<ConstantExpr>(arguments[0])->getZExtValue();
   uint64_t size = cast<ConstantExpr>(arguments[1])->getZExtValue();
-  MemoryObject *mo = executor.memory->allocateFixed(state, address, size, state.prevPC->inst);
+  MemoryObject *mo = executor.memory->allocateFixed(address, size, state.prevPC->inst);
   executor.bindObjectInState(state, mo, false);
   mo->isUserSpecified = true; // XXX hack;
 }
@@ -706,7 +735,7 @@ void SpecialFunctionHandler::handleMakeSymbolic(ExecutionState &state,
     assert(success && "FIXME: Unhandled solver failure");
     
     if (res) {
-      executor.executeMakeSymbolic(*s, mo);
+      executor.executeMakeSymbolic(*s, mo, name);
     } else {      
       executor.terminateStateOnError(*s, 
                                      "wrong size given to klee_make_symbolic[_name]", 
@@ -731,3 +760,5 @@ void SpecialFunctionHandler::handleMarkGlobal(ExecutionState &state,
     mo->isGlobal = true;
   }
 }
+
+

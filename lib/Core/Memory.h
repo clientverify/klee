@@ -28,12 +28,14 @@ class BitArray;
 class MemoryManager;
 class Solver;
 
-
 class MemoryObject {
   friend class STPBuilder;
+  friend class ObjectState;
+  friend class ExecutionState;
 
 private:
   static int counter;
+  mutable unsigned refCount;
 
 public:
   unsigned id;
@@ -47,12 +49,11 @@ public:
   mutable bool isGlobal;
   bool isFixed;
 
-	mutable bool isMadeSymbolic;
-	mutable unsigned refCount;
-
   /// true if created by us.
   bool fake_object;
   bool isUserSpecified;
+
+  MemoryManager *parent;
 
   /// "Location" for which this memory object was allocated. This
   /// should be either the allocating instruction or the global object
@@ -73,29 +74,30 @@ public:
   // XXX this is just a temp hack, should be removed
   explicit
   MemoryObject(uint64_t _address) 
-    : id(counter++),
+    : refCount(0),
+      id(counter++), 
       address(_address),
       size(0),
       isFixed(true),
-			isMadeSymbolic(false),
-			refCount(0),
+      parent(NULL),
       allocSite(0) {
   }
 
   MemoryObject(uint64_t _address, unsigned _size, 
                bool _isLocal, bool _isGlobal, bool _isFixed,
-               const llvm::Value *_allocSite) 
-    : id(counter++),
+               const llvm::Value *_allocSite,
+               MemoryManager *_parent)
+    : refCount(0), 
+      id(counter++),
       address(_address),
       size(_size),
       name("unnamed"),
       isLocal(_isLocal),
       isGlobal(_isGlobal),
       isFixed(_isFixed),
-			isMadeSymbolic(false),
-			refCount(0),
       fake_object(false),
       isUserSpecified(false),
+      parent(_parent), 
       allocSite(_allocSite) {
   }
 
@@ -212,7 +214,7 @@ public:
   bool isByteConcrete(unsigned offset) const;
 
   void print(std::ostream &os, bool print_bytes=true) const;
-	void print_diff(ObjectState &b, std::ostream &os) const;
+  void print_diff(ObjectState &b, std::ostream &os) const;
   void print_diff(std::vector<ObjectState*> &_ovec, std::ostream &os) const;
   void print(); 
  

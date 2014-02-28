@@ -13,9 +13,9 @@
 #include "../lib/Core/Common.h"
 #include "klee/Interpreter.h"
 
-#include "llvm/System/Path.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/Path.h"
 
 #include <list>
 #include <sstream>
@@ -28,20 +28,12 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+namespace klee {
+	extern llvm::cl::opt<bool> NoOutput;
+	extern llvm::cl::opt<std::string> OutputDir;
+}
 
 namespace cliver {
-llvm::cl::opt<std::string>
-OutputDir("output-dir", 
-  llvm::cl::desc("Directory to write results in (defaults to cliver-out-N)"),
-  llvm::cl::init(""));
-
-bool NoOutputFlag;  
-static llvm::cl::opt<bool, true>
-NoOutput("no-output", 
-  llvm::cl::desc("Don't generate output files"),
-  llvm::cl::location(NoOutputFlag),
-  llvm::cl::init(false));
-
 llvm::cl::opt<std::string>
 OutputDirParent("output-dir-parent", 
   llvm::cl::desc("Directory within which to create cliver-out-N"),
@@ -172,8 +164,7 @@ void cv_error(const char *msg, ...) {
 ////////////////////////////////////////////////////////////////////////////////
 
 CVStream::CVStream()
-  : output_directory_(OutputDir),
-    initialized_(false),
+  : initialized_(false),
     info_file_stream_(NULL),
     debug_file_stream_(NULL),
     message_file_stream_(NULL),
@@ -212,7 +203,7 @@ std::string CVStream::appendComponent(const std::string &filename,
 }
 
 std::string CVStream::getOutputFilename(const std::string &filename) {
-  llvm::sys::Path filepath(output_directory_);
+  llvm::sys::Path filepath(klee::OutputDir);
   filepath.appendComponent(filename);
   return filepath.str();
 }
@@ -224,7 +215,7 @@ std::ostream *CVStream::openOutputFile(const std::string &filename) {
 
 std::ostream *CVStream::openOutputFileInSubDirectory(
     const std::string &filename, const std::string &sub_directory) {
-  if (NoOutput) {
+  if (klee::NoOutput) {
     teestream* null_teestream = new teestream();
     std::cerr << "output files disabled: \"" << filename 
       << "\"\n";
@@ -271,7 +262,7 @@ std::ostream *CVStream::openOutputFileInSubDirectory(
 
 void CVStream::initOutputDirectory() {
 
-  if (output_directory_.empty() || output_directory_ == "") {
+  if (klee::OutputDir.empty() || klee::OutputDir == "") {
     for (int i = 0; ; i++) {
       std::ostringstream dir_name;
       dir_name << "cliver-out-" << i;
@@ -280,7 +271,7 @@ void CVStream::initOutputDirectory() {
       dir_path.appendComponent(dir_name.str());
 
       if (!dir_path.exists()) {
-        output_directory_ = dir_path.str();
+        klee::OutputDir = dir_path.str();
         break;
       }
     }    
@@ -293,15 +284,15 @@ void CVStream::initOutputDirectory() {
       exit(1);
     }
 
-    if (symlink(output_directory_.c_str(), cliver_last.c_str()) < 0) {
+    if (symlink(klee::OutputDir.c_str(), cliver_last.c_str()) < 0) {
       perror("Cannot make symlink");
       exit(1);
     }
   }
 
-  if (mkdir(output_directory_.c_str(), 0775) < 0) {
+  if (mkdir(klee::OutputDir.c_str(), 0775) < 0) {
     std::cerr << "CV: ERROR: Unable to make output directory: \"" 
-      << output_directory_ 
+      << klee::OutputDir 
       << "\", refusing to overwrite.\n";
     exit(1);
   }
@@ -364,12 +355,12 @@ out_error:
 
 void CVStream::copyFileToOutputDirectory(const std::string &src_path,
                                          const std::string &dst_name) {
-  if (NoOutput)
+  if (klee::NoOutput)
     return;
 
-  assert(!output_directory_.empty() && output_directory_ != "");
+  assert(!klee::OutputDir.empty() && klee::OutputDir != "");
 
-  std::string dst_path = appendComponent(output_directory_, dst_name);
+  std::string dst_path = appendComponent(klee::OutputDir, dst_name);
 
   if (cp(dst_path.c_str(), src_path.c_str())) {
     std::cerr << "ERROR: unable to copy file " << src_path << "\n";
@@ -426,7 +417,7 @@ void CVStream::getFilesRecursive(std::string path,
 }
 
 void CVStream::init() {
-  if (!NoOutput)
+  if (!klee::NoOutput)
     initOutputDirectory();
 
   using std::ios_base;
@@ -443,7 +434,7 @@ void CVStream::init() {
     debug_stream_   = debug_file_stream_;
 
   } else if (UseTeeBuf) {
-    if (!NoOutput) {
+    if (!klee::NoOutput) {
       info_file_stream_    = openOutputFile(CV_INFO_FILE);
       warning_file_stream_ = openOutputFile(CV_WARNING_FILE);
       message_file_stream_ = openOutputFile(CV_MESSAGE_FILE);
@@ -472,7 +463,7 @@ void CVStream::init() {
     if (DebugStderr) 
       debug_teestream->add(std::cerr);
 
-    if (!NoOutput) {
+    if (!klee::NoOutput) {
       info_teestream->add(*info_file_stream_);
       info_teestream->add(*debug_file_stream_);
 

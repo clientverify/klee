@@ -9,7 +9,20 @@
 
 #include "Passes.h"
 
-#include "klee/Config/config.h"
+#include "klee/Config/Version.h"
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/InstrTypes.h"
+#include "llvm/IR/Instruction.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Type.h"
+#include "llvm/IR/IRBuilder.h"
+
+#else
 #include "llvm/Constants.h"
 #include "llvm/DerivedTypes.h"
 #include "llvm/Function.h"
@@ -17,15 +30,23 @@
 #include "llvm/Instruction.h"
 #include "llvm/Instructions.h"
 #include "llvm/IntrinsicInst.h"
-#if !(LLVM_VERSION_MAJOR == 2 && LLVM_VERSION_MINOR < 7)
 #include "llvm/LLVMContext.h"
-#endif
 #include "llvm/Module.h"
-#include "llvm/Pass.h"
 #include "llvm/Type.h"
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 2)
+#include "llvm/IRBuilder.h"
+#else
+#include "llvm/Support/IRBuilder.h"
+#endif
+#if LLVM_VERSION_CODE <= LLVM_VERSION(3, 1)
+#include "llvm/Target/TargetData.h"
+#else
+#include "llvm/DataLayout.h"
+#endif
+#endif
+#include "llvm/Pass.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
-#include "llvm/Target/TargetData.h"
 
 using namespace llvm;
 
@@ -37,14 +58,20 @@ bool IntrinsicCleanerPass::runOnModule(Module &M) {
   bool dirty = false;
   for (Module::iterator f = M.begin(), fe = M.end(); f != fe; ++f)
     for (Function::iterator b = f->begin(), be = f->end(); b != be; ++b)
-      dirty |= runOnBasicBlock(*b);
+      dirty |= runOnBasicBlock(*b, M);
+    if (Function *Declare = M.getFunction("llvm.trap"))
+      Declare->eraseFromParent();
   return dirty;
 }
 
-bool IntrinsicCleanerPass::runOnBasicBlock(BasicBlock &b) { 
+bool IntrinsicCleanerPass::runOnBasicBlock(BasicBlock &b, Module &M) {
   bool dirty = false;
   
+#if LLVM_VERSION_CODE <= LLVM_VERSION(3, 1)
   unsigned WordSize = TargetData.getPointerSizeInBits() / 8;
+#else
+  unsigned WordSize = DataLayout.getPointerSizeInBits() / 8;
+#endif
   for (BasicBlock::iterator i = b.begin(), ie = b.end(); i != ie;) {     
     IntrinsicInst *ii = dyn_cast<IntrinsicInst>(&*i);
     // increment now since LowerIntrinsic deletion makes iterator invalid.
@@ -61,13 +88,8 @@ bool IntrinsicCleanerPass::runOnBasicBlock(BasicBlock &b) {
         // FIXME: This is much more target dependent than just the word size,
         // however this works for x86-32 and x86-64.
       case Intrinsic::vacopy: { // (dst, src) -> *((i8**) dst) = *((i8**) src)
-#if (LLVM_VERSION_MAJOR == 2 && LLVM_VERSION_MINOR < 8)
-        Value *dst = ii->getOperand(1);
-        Value *src = ii->getOperand(2);
-#else
         Value *dst = ii->getArgOperand(0);
         Value *src = ii->getArgOperand(1);
-#endif
 
         if (WordSize == 4) {
           Type *i8pp = PointerType::getUnqual(PointerType::getUnqual(Type::getInt8Ty(getGlobalContext())));
@@ -94,42 +116,33 @@ bool IntrinsicCleanerPass::runOnBasicBlock(BasicBlock &b) {
         break;
       }
 
-#if (LLVM_VERSION_MAJOR == 2 && LLVM_VERSION_MINOR < 7)
-      case Intrinsic::dbg_stoppoint: {
-        // We can remove this stoppoint if the next instruction is
-        // sure to be another stoppoint. This is nice for cleanliness
-        // but also important for switch statements where it can allow
-        // the targets to be joined.
-        bool erase = false;
-        if (isa<DbgStopPointInst>(i) ||
-            isa<UnreachableInst>(i)) {
-          erase = true;
-        } else if (isa<BranchInst>(i) ||
-                   isa<SwitchInst>(i)) {
-          BasicBlock *bb = i->getParent();
-          erase = true;
-          for (succ_iterator it=succ_begin(bb), ie=succ_end(bb);
-               it!=ie; ++it) {
-            if (!isa<DbgStopPointInst>(it->getFirstNonPHI())) {
-              erase = false;
-              break;
-            }
-          }
-        }
+      case Intrinsic::uadd_with_overflow:
+      case Intrinsic::umul_with_overflow: {
+        IRBuilder<> builder(ii->getParent(), ii);
 
-        if (erase) {
-          ii->eraseFromParent();
-          dirty = true;
-        }
+        Value *op1 = ii->getArgOperand(0);
+        Value *op2 = ii->getArgOperand(1);
+        
+        Value *result = 0;
+        if (ii->getIntrinsicID() == Intrinsic::uadd_with_overflow)
+          result = builder.CreateAdd(op1, op2);
+        else
+          result = builder.CreateMul(op1, op2);
+
+        Value *overflow = builder.CreateICmpULT(result, op1);
+        
+        Value *resultStruct =
+          builder.CreateInsertValue(UndefValue::get(ii->getType()), result, 0);
+        resultStruct = builder.CreateInsertValue(resultStruct, overflow, 1);
+        
+        ii->replaceAllUsesWith(resultStruct);
+        ii->removeFromParent();
+        delete ii;
+        dirty = true;
         break;
       }
 
-      case Intrinsic::dbg_region_start:
-      case Intrinsic::dbg_region_end:
-      case Intrinsic::dbg_func_start:
-#else
       case Intrinsic::dbg_value:
-#endif
       case Intrinsic::dbg_declare:
         // Remove these regardless of lower intrinsics flag. This can
         // be removed once IntrinsicLowering is fixed to not have bad
@@ -137,6 +150,24 @@ bool IntrinsicCleanerPass::runOnBasicBlock(BasicBlock &b) {
         ii->eraseFromParent();
         dirty = true;
         break;
+
+      case Intrinsic::trap: {
+        // Intrisic instruction "llvm.trap" found. Directly lower it to
+        // a call of the abort() function.
+        Function *F = cast<Function>(
+          M.getOrInsertFunction(
+            "abort", Type::getVoidTy(getGlobalContext()), NULL));
+        F->setDoesNotReturn();
+        F->setDoesNotThrow();
+
+        CallInst::Create(F, Twine(), ii);
+        new UnreachableInst(getGlobalContext(), ii);
+
+        ii->eraseFromParent();
+
+        dirty = true;
+        break;
+      }
                     
       default:
         if (LowerIntrinsics)

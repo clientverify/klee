@@ -134,7 +134,6 @@ class CVStream {
   std::string appendComponent(const std::string &filename,
                               const std::string &append);
  private:
-  std::string output_directory_;
   bool initialized_;
   std::ostream* info_stream_;
   std::ostream* debug_stream_;

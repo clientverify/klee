@@ -73,15 +73,20 @@ public:
   bool computeValidity(const Query&, Solver::Validity &result);
   bool computeTruth(const Query&, bool &isValid);
   bool computeValue(const Query& query, ref<Expr> &result) {
+    ++stats::queryCacheMisses;
     return solver->impl->computeValue(query, result);
   }
   bool computeInitialValues(const Query& query,
                             const std::vector<const Array*> &objects,
                             std::vector< std::vector<unsigned char> > &values,
                             bool &hasSolution) {
+    ++stats::queryCacheMisses;
     return solver->impl->computeInitialValues(query, objects, values, 
                                               hasSolution);
   }
+  SolverRunStatus getOperationStatusCode();
+  char *getConstraintLog(const Query&);
+  void setCoreSolverTimeout(double timeout);
 };
 
 /** @returns the canonical version of the given query.  The reference
@@ -140,19 +145,21 @@ bool CachingSolver::computeValidity(const Query& query,
   bool tmp, cacheHit = cacheLookup(query, cachedResult);
   
   if (cacheHit) {
-    ++stats::queryCacheHits;
-
     switch(cachedResult) {
     case IncompleteSolver::MustBeTrue:   
       result = Solver::True;
+      ++stats::queryCacheHits;
       return true;
     case IncompleteSolver::MustBeFalse:  
       result = Solver::False;
+      ++stats::queryCacheHits;
       return true;
     case IncompleteSolver::TrueOrFalse:  
       result = Solver::Unknown;
+      ++stats::queryCacheHits;
       return true;
     case IncompleteSolver::MayBeTrue: {
+      ++stats::queryCacheMisses;
       if (!solver->impl->computeTruth(query, tmp))
         return false;
       if (tmp) {
@@ -166,6 +173,7 @@ bool CachingSolver::computeValidity(const Query& query,
       }
     }
     case IncompleteSolver::MayBeFalse: {
+      ++stats::queryCacheMisses;
       if (!solver->impl->computeTruth(query.negateExpr(), tmp))
         return false;
       if (tmp) {
@@ -232,6 +240,18 @@ bool CachingSolver::computeTruth(const Query& query,
   
   cacheInsert(query, cachedResult);
   return true;
+}
+
+SolverImpl::SolverRunStatus CachingSolver::getOperationStatusCode() {
+  return solver->impl->getOperationStatusCode();
+}
+
+char *CachingSolver::getConstraintLog(const Query& query) {
+  return solver->impl->getConstraintLog(query);
+}
+
+void CachingSolver::setCoreSolverTimeout(double timeout) {
+  solver->impl->setCoreSolverTimeout(timeout);
 }
 
 ///

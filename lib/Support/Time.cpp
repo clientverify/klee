@@ -7,9 +7,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "klee/Config/Version.h"
 #include "klee/Internal/System/Time.h"
 
-#include "llvm/System/Process.h"
+#include "llvm/Support/Process.h"
 
 using namespace llvm;
 using namespace klee;

@@ -14,6 +14,7 @@
 #include "klee/Executor.h"
 #include "klee/ExecutionState.h"
 #include "klee/Statistics.h"
+#include "klee/Config/Version.h"
 #include "klee/Internal/Module/InstructionInfoTable.h"
 #include "klee/Internal/Module/KModule.h"
 #include "klee/Internal/Module/KInstruction.h"
@@ -26,6 +27,15 @@
 #include "UserSearcher.h"
 #include "../Solver/SolverStats.h"
 
+#if LLVM_VERSION_CODE > LLVM_VERSION(3, 2)
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/InlineAsm.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Type.h"
+#else
 #include "llvm/BasicBlock.h"
 #include "llvm/Function.h"
 #include "llvm/Instructions.h"
@@ -33,10 +43,15 @@
 #include "llvm/InlineAsm.h"
 #include "llvm/Module.h"
 #include "llvm/Type.h"
+#endif
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/CFG.h"
-#include "llvm/System/Process.h"
-#include "llvm/System/Path.h"
+#include "llvm/Support/raw_os_ostream.h"
+#include "llvm/Support/Process.h"
+#include "llvm/Support/Path.h"
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 1)
+#include "llvm/Support/FileSystem.h"
+#endif
 
 #include <iostream>
 #include <fstream>
@@ -168,10 +183,18 @@ StatsTracker::StatsTracker(Executor &_executor, std::string _objectFilename,
   KModule *km = executor.kmodule;
 
   sys::Path module(objectFilename);
+#if LLVM_VERSION_CODE < LLVM_VERSION(3, 1)
   if (!sys::Path(objectFilename).isAbsolute()) {
+#else
+  if (!sys::path::is_absolute(objectFilename)) {
+#endif
     sys::Path current = sys::Path::GetCurrentDirectory();
     current.appendComponent(objectFilename);
+#if LLVM_VERSION_CODE < LLVM_VERSION(3, 1)
     if (current.exists())
+#else
+    if (sys::fs::exists(current.c_str()))
+#endif
       objectFilename = current.c_str();
   }
 
@@ -209,8 +232,10 @@ StatsTracker::StatsTracker(Executor &_executor, std::string _objectFilename,
 
     executor.addTimer(new WriteStatsTimer(this), StatsWriteInterval);
 
-    if (updateMinDistToUncovered)
+    if (updateMinDistToUncovered) {
+      computeReachableUncovered();
       executor.addTimer(new UpdateReachableTimer(this), UncoveredUpdateInterval);
+    }
   }
 
   if (OutputIStats) {
@@ -272,9 +297,6 @@ void StatsTracker::stepInstruction(ExecutionState &es) {
         //
         // FIXME: This trick no longer works, we should fix this in the line
         // number propogation.
-#if (LLVM_VERSION_MAJOR == 2 && LLVM_VERSION_MINOR < 7)
-        if (isa<DbgStopPointInst>(inst))
-#endif
           es.coveredLines[&ii.file].insert(ii.line);
 	es.coveredNew = true;
         es.instsSinceCovNew = 1;
@@ -361,6 +383,9 @@ void StatsTracker::writeStatsHeader() {
              << "'CexCacheTime',"
              << "'ForkTime',"
              << "'ResolveTime',"
+#ifdef DEBUG
+	     << "'ArrayHashTime',"
+#endif
              << ")\n";
   statsFile->flush();
 }
@@ -376,7 +401,11 @@ void StatsTracker::writeStatsLine() {
              << "," << numBranches
              << "," << util::getUserTime()
              << "," << executor.states.size()
+#if LLVM_VERSION_CODE > LLVM_VERSION(3, 2)
+             << "," << sys::Process::GetMallocUsage()
+#else
              << "," << sys::Process::GetTotalMemoryUsage()
+#endif
              << "," << stats::queries
              << "," << stats::queryConstructs
              << "," << 0 // was numObjects
@@ -388,6 +417,9 @@ void StatsTracker::writeStatsLine() {
              << "," << stats::cexCacheTime / 1000000.
              << "," << stats::forkTime / 1000000.
              << "," << stats::resolveTime / 1000000.
+#ifdef DEBUG
+             << "," << stats::arrayHashTime / 1000000.
+#endif
              << ")\n";
   statsFile->flush();
 }
@@ -469,7 +501,7 @@ void StatsTracker::writeIStats() {
   for (Module::iterator fnIt = m->begin(), fn_ie = m->end(); 
        fnIt != fn_ie; ++fnIt) {
     if (!fnIt->isDeclaration()) {
-      of << "fn=" << fnIt->getNameStr() << "\n";
+      of << "fn=" << fnIt->getName().str() << "\n";
       for (Function::iterator bbIt = fnIt->begin(), bb_ie = fnIt->end(); 
            bbIt != bb_ie; ++bbIt) {
         for (BasicBlock::iterator it = bbIt->begin(), ie = bbIt->end(); 
@@ -502,7 +534,7 @@ void StatsTracker::writeIStats() {
   
                 if (fii.file!="" && fii.file!=sourceFile)
                   of << "cfl=" << fii.file << "\n";
-                of << "cfn=" << f->getNameStr() << "\n";
+                of << "cfn=" << f->getName().str() << "\n";
                 of << "calls=" << csi.count << " ";
                 of << fii.assemblyLine << " ";
                 of << fii.line << "\n";
@@ -607,7 +639,7 @@ void StatsTracker::computeReachableUncovered() {
       for (Function::iterator bbIt = fnIt->begin(), bb_ie = fnIt->end(); 
            bbIt != bb_ie; ++bbIt) {
         for (BasicBlock::iterator it = bbIt->begin(), ie = bbIt->end(); 
-             it != it; ++it) {
+             it != ie; ++it) {
           if (isa<CallInst>(it) || isa<InvokeInst>(it)) {
             CallSite cs(it);
             if (isa<InlineAsm>(cs.getCalledValue())) {
@@ -653,12 +685,16 @@ void StatsTracker::computeReachableUncovered() {
       for (Function::iterator bbIt = fnIt->begin(), bb_ie = fnIt->end(); 
            bbIt != bb_ie; ++bbIt) {
         for (BasicBlock::iterator it = bbIt->begin(), ie = bbIt->end(); 
-             it != it; ++it) {
+             it != ie; ++it) {
           instructions.push_back(it);
           unsigned id = infos.getInfo(it).id;
           sm.setIndexedValue(stats::minDistToReturn, 
                              id, 
-                             isa<ReturnInst>(it) || isa<UnwindInst>(it));
+                             isa<ReturnInst>(it)
+#if LLVM_VERSION_CODE < LLVM_VERSION(3, 1)
+                             || isa<UnwindInst>(it)
+#endif
+                             );
         }
       }
     }
@@ -703,12 +739,18 @@ void StatsTracker::computeReachableUncovered() {
                 best = val;
             }
           }
-          if (best != cur) {
+          // there's a corner case here when a function only includes a single
+          // instruction (a ret). in that case, we MUST update
+          // functionShortestPath, or it will remain 0 (erroneously indicating
+          // that no return instructions are reachable)
+          Function *f = inst->getParent()->getParent();
+          if (best != cur
+              || (inst == f->begin()->begin()
+                  && functionShortestPath[f] != best)) {
             sm.setIndexedValue(stats::minDistToReturn, id, best);
             changed = true;
 
             // Update shortest path if this is the entry point.
-            Function *f = inst->getParent()->getParent();
             if (inst==f->begin()->begin())
               functionShortestPath[f] = best;
           }
@@ -725,7 +767,7 @@ void StatsTracker::computeReachableUncovered() {
     for (Function::iterator bbIt = fnIt->begin(), bb_ie = fnIt->end(); 
          bbIt != bb_ie; ++bbIt) {
       for (BasicBlock::iterator it = bbIt->begin(), ie = bbIt->end(); 
-           it != it; ++it) {
+           it != ie; ++it) {
         unsigned id = infos.getInfo(it).id;
         instructions.push_back(&*it);
         sm.setIndexedValue(stats::minDistToUncovered, 

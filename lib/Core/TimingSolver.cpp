@@ -9,6 +9,7 @@
 
 #include "TimingSolver.h"
 
+#include "klee/Config/Version.h"
 #include "klee/ExecutionState.h"
 #include "klee/Solver.h"
 #include "klee/Statistics.h"
@@ -16,7 +17,7 @@
 
 #include "CoreStats.h"
 
-#include "llvm/System/Process.h"
+#include "llvm/Support/Process.h"
 
 using namespace klee;
 using namespace llvm;

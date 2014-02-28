@@ -35,7 +35,7 @@ void klee_warning(const char*);
 void klee_warning_once(const char*);
 int klee_get_errno(void);
 
-/* Returns pointer to the symbolic file structure is the pathname is symbolic */
+/* Returns pointer to the symbolic file structure fs the pathname is symbolic */
 static exe_disk_file_t *__get_sym_file(const char *pathname) {
   char c = pathname[0];
   unsigned i;
@@ -198,6 +198,108 @@ int __fd_open(const char *pathname, int flags, mode_t mode) {
   return fd;
 }
 
+int __fd_openat(int basefd, const char *pathname, int flags, mode_t mode) {
+  exe_file_t *f;
+  int fd;
+  if (basefd != AT_FDCWD) {
+    exe_file_t *bf = __get_file(basefd);
+
+    if (!bf) {
+      errno = EBADF;
+      return -1;
+    } else if (bf->dfile) {
+      klee_warning("symbolic file descriptor, ignoring (ENOENT)");
+      errno = ENOENT;
+      return -1;
+    }
+    basefd = bf->fd;
+  }
+
+  if (__get_sym_file(pathname)) {
+    /* for a symbolic file, it doesn't matter if/where it exists on disk */
+    return __fd_open(pathname, flags, mode);
+  }
+
+  for (fd = 0; fd < MAX_FDS; ++fd)
+    if (!(__exe_env.fds[fd].flags & eOpen))
+      break;
+  if (fd == MAX_FDS) {
+    errno = EMFILE;
+    return -1;
+  }
+  
+  f = &__exe_env.fds[fd];
+
+  /* Should be the case if file was available, but just in case. */
+  memset(f, 0, sizeof *f);
+
+  int os_fd = syscall(__NR_openat, (long)basefd, __concretize_string(pathname), (long)flags, mode);
+  if (os_fd == -1) {
+    errno = klee_get_errno();
+    return -1;
+  }
+
+  f->fd = os_fd;
+  f->flags = eOpen;
+  if ((flags & O_ACCMODE) == O_RDONLY) {
+    f->flags |= eReadable;
+  } else if ((flags & O_ACCMODE) == O_WRONLY) {
+    f->flags |= eWriteable;
+  } else { /* XXX What actually happens here if != O_RDWR. */
+    f->flags |= eReadable | eWriteable;
+  }
+
+  return fd;
+}
+
+
+int utimes(const char *path, const struct timeval times[2]) {
+  exe_disk_file_t *dfile = __get_sym_file(path);
+
+  if (dfile) {
+    /* don't bother with usecs */
+    dfile->stat->st_atime = times[0].tv_sec;
+    dfile->stat->st_mtime = times[1].tv_sec;
+#ifdef _BSD_SOURCE
+    dfile->stat->st_atim.tv_nsec = 1000000000ll * times[0].tv_sec;
+    dfile->stat->st_mtim.tv_nsec = 1000000000ll * times[1].tv_sec;
+#endif
+    return 0;
+  }
+  int r = syscall(__NR_utimes, __concretize_string(path), times);
+  if (r == -1)
+    errno = klee_get_errno();
+
+  return r;
+}
+
+
+int futimesat(int fd, const char* path, const struct timeval times[2]) {
+  if (fd != AT_FDCWD) {
+    exe_file_t *f = __get_file(fd);
+
+    if (!f) {
+      errno = EBADF;
+      return -1;
+    } else if (f->dfile) {
+      klee_warning("symbolic file descriptor, ignoring (ENOENT)");
+      errno = ENOENT;
+      return -1;
+    }
+    fd = f->fd;
+  }
+  if (__get_sym_file(path)) {
+    return utimes(path, times);
+  }
+
+  int r = syscall(__NR_futimesat, (long)fd,
+                 (path ? __concretize_string(path) : NULL),
+                 times);
+  if (r == -1)
+    errno = klee_get_errno();
+  return r;
+}
+ 
 int close(int fd) {
   static int n_calls = 0;
   exe_file_t *f;
@@ -387,15 +489,15 @@ off64_t __fd_lseek(int fd, off64_t offset, int whence) {
        the offset, but really directories should only be SEEK_SET, so
        this solves the problem. */
     if (whence == SEEK_SET) {
-      new_off = syscall(__NR_lseek, f->fd, (int) offset, SEEK_SET);
+      new_off = syscall(__NR_lseek, f->fd, offset, SEEK_SET);
     } else {
-      new_off = syscall(__NR_lseek, f->fd, (int) f->off, SEEK_SET);
+      new_off = syscall(__NR_lseek, f->fd, f->off, SEEK_SET);
 
       /* If we can't seek to start off, just return same error.
          Probably ESPIPE. */
       if (new_off != -1) {
         assert(new_off == f->off);
-        new_off = syscall(__NR_lseek, f->fd, (int) offset, whence);
+        new_off = syscall(__NR_lseek, f->fd, offset, whence);
       }
     }
 
@@ -445,6 +547,42 @@ int __fd_stat(const char *path, struct stat64 *buf) {
     return r;
   }
 }
+
+int fstatat(int fd, const char *path, struct stat *buf, int flags) {  
+  if (fd != AT_FDCWD) {
+    exe_file_t *f = __get_file(fd);
+
+    if (!f) {
+      errno = EBADF;
+      return -1;
+    } else if (f->dfile) {
+      klee_warning("symbolic file descriptor, ignoring (ENOENT)");
+      errno = ENOENT;
+      return -1;
+    }
+    fd = f->fd;
+  }
+  exe_disk_file_t *dfile = __get_sym_file(path);
+  if (dfile) {
+    memcpy(buf, dfile->stat, sizeof(*dfile->stat));
+    return 0;
+  } 
+
+#if (defined __NR_newfstatat) && (__NR_newfstatat != 0)
+  int r = syscall(__NR_newfstatat, (long)fd,
+               (path ? __concretize_string(path) : NULL),
+               buf, (long)flags);
+#else
+  int r = syscall(__NR_fstatat64, (long)fd,
+               (path ? __concretize_string(path) : NULL),
+               buf, (long)flags);
+#endif
+
+  if (r == -1)
+    errno = klee_get_errno();
+  return r;
+}
+
 
 int __fd_lstat(const char *path, struct stat64 *buf) {
   exe_disk_file_t *dfile = __get_sym_file(path);
@@ -680,7 +818,7 @@ int __fd_getdents(unsigned int fd, struct dirent64 *dirp, unsigned int count) {
     errno = EBADF;
     return -1;
   }
-  
+
   if (f->dfile) {
     klee_warning("symbolic file, ignoring (EINVAL)");
     errno = EINVAL;
@@ -688,7 +826,7 @@ int __fd_getdents(unsigned int fd, struct dirent64 *dirp, unsigned int count) {
   } else {
     if ((unsigned long) f->off < 4096u) {
       /* Return our dirents */
-      unsigned i, pad, bytes=0;
+      off64_t i, pad, bytes=0;
 
       /* What happens for bad offsets? */
       i = f->off / sizeof(*dirp);
@@ -718,10 +856,12 @@ int __fd_getdents(unsigned int fd, struct dirent64 *dirp, unsigned int count) {
       dirp->d_off = 4096;
       bytes += dirp->d_reclen;
       f->off = pad;
+
       return bytes;
     } else {
-      unsigned os_pos = f->off - 4096;
-      int res, s;
+      off64_t os_pos = f->off - 4096;
+      int res;
+      off64_t s = 0;
 
       /* For reasons which I really don't understand, if I don't
          memset this then sometimes the kernel returns d_ino==0 for
@@ -731,14 +871,13 @@ int __fd_getdents(unsigned int fd, struct dirent64 *dirp, unsigned int count) {
          Even more bizarre, interchanging the memset and the seek also
          case strange behavior. Really should be debugged properly. */
       memset(dirp, 0, count);
-      s = syscall(__NR_lseek, f->fd, (int) os_pos, SEEK_SET);
+      s = syscall(__NR_lseek, f->fd, os_pos, SEEK_SET);
       assert(s != (off64_t) -1);
       res = syscall(__NR_getdents64, f->fd, dirp, count);
       if (res == -1) {
         errno = klee_get_errno();
       } else {
         int pos = 0;
-
         f->off = syscall(__NR_lseek, f->fd, 0, SEEK_CUR) + 4096;
 
         /* Patch offsets */
@@ -747,6 +886,7 @@ int __fd_getdents(unsigned int fd, struct dirent64 *dirp, unsigned int count) {
           struct dirent64 *dp = (struct dirent64*) ((char*) dirp + pos);
           dp->d_off += 4096;
           pos += dp->d_reclen;
+
         }
       }
       return res;
@@ -1076,6 +1216,29 @@ int rmdir(const char *pathname) {
 }
 
 int unlink(const char *pathname) {
+  exe_disk_file_t *dfile = __get_sym_file(pathname);
+  if (dfile) {
+    /* XXX check access */ 
+    if (S_ISREG(dfile->stat->st_mode)) {
+      dfile->stat->st_ino = 0;
+      return 0;
+    } else if (S_ISDIR(dfile->stat->st_mode)) {
+      errno = EISDIR;
+      return -1;
+    } else {
+      errno = EPERM;
+      return -1;
+    }
+  }
+
+  klee_warning("ignoring (EPERM)");
+  errno = EPERM;
+  return -1;
+}
+
+int unlinkat(int dirfd, const char *pathname, int flags) {
+  /* similar to unlink. keep them separated though to avoid
+     problems if unlink changes to actually delete files */
   exe_disk_file_t *dfile = __get_sym_file(pathname);
   if (dfile) {
     /* XXX check access */ 

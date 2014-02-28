@@ -54,14 +54,14 @@ const char *Token::getKindName() const {
 
 void Token::dump() {
   llvm::errs() << "(Token \"" << getKindName() << "\" "
-               << (void*) start << " " << length << " "
+               << (const void*) start << " " << length << " "
                << line << " " << column << ")";
 }
 
 ///
 
 static inline bool isInternalIdentifierChar(int Char) {
-  return isalnum(Char) || Char == '_' || Char == '.';
+  return isalnum(Char) || Char == '_' || Char == '.' || Char == '-';
 }
 
 Lexer::Lexer(const llvm::MemoryBuffer *MB) 

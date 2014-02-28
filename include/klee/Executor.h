@@ -37,7 +37,11 @@ namespace llvm {
   class Function;
   class GlobalValue;
   class Instruction;
+#if LLVM_VERSION_CODE <= LLVM_VERSION(3, 1)
   class TargetData;
+#else
+  class DataLayout;
+#endif
   class Twine;
   class Value;
 }
@@ -66,6 +70,8 @@ namespace klee {
   class TreeStreamWriter;
   class CliverFunctionHandler;
   template<class T> class ref;
+
+
 
   /// \todo Add a context object to keep track of data only live
   /// during an instruction step. Should contain addedStates,
@@ -169,10 +175,12 @@ protected:
   /// false, it is buggy (it needs to validate its writes).
   bool ivcEnabled;
 
-  /// The maximum time to allow for a single stp query.
-  double stpTimeout;  
+  /// The maximum time to allow for a single core solver query.
+  /// (e.g. for a single STP query)
+  double coreSolverTimeout; 
 
-  llvm::Function* getCalledFunction(llvm::CallSite &cs, ExecutionState &state);
+  llvm::Function* getTargetFunction(llvm::Value *calledVal,
+                                    ExecutionState &state);
   
   void executeInstruction(ExecutionState &state, KInstruction *ki);
 
@@ -186,7 +194,7 @@ protected:
                                   unsigned size, bool isReadOnly);
 
   void initializeGlobalObject(ExecutionState &state, ObjectState *os, 
-			      llvm::Constant *c,
+			      const llvm::Constant *c,
 			      unsigned offset);
   void initializeGlobals(ExecutionState &state);
 
@@ -263,7 +271,8 @@ protected:
                               ref<Expr> value /* undef if read */,
                               KInstruction *target /* undef if write */);
 
-  virtual void executeMakeSymbolic(ExecutionState &state, const MemoryObject *mo);
+  virtual void executeMakeSymbolic(ExecutionState &state, const MemoryObject *mo,
+                           const std::string &name);
 
   /// Create a new state where each input condition has been added as
   /// a constraint and return the results. The input state is included
@@ -280,7 +289,7 @@ protected:
 
   /// Add the given (boolean) condition as a constraint on state. This
   /// function is a wrapper around the state's addConstraint function
-  /// which also manages manages propogation of implied values,
+  /// which also manages propagation of implied values,
   /// validity checks, and seed patching.
   void addConstraint(ExecutionState &state, ref<Expr> condition);
 
@@ -310,7 +319,7 @@ protected:
                     ExecutionState &state,
                     ref<Expr> value);
 
-  ref<klee::ConstantExpr> evalConstantExpr(llvm::ConstantExpr *ce);
+  ref<klee::ConstantExpr> evalConstantExpr(const llvm::ConstantExpr *ce);
 
   /// Return a unique constant value for the given expression in the
   /// given state, if it has one (i.e. it provably only has a single
@@ -332,6 +341,11 @@ protected:
 
   /// Get textual information regarding a memory address.
   std::string getAddressInfo(ExecutionState &state, ref<Expr> address) const;
+
+  // Determines the \param lastInstruction of the \param state which is not KLEE
+  // internal and returns its InstructionInfo
+  const InstructionInfo & getLastNonKleeInternalInstruction(const ExecutionState &state,
+      llvm::Instruction** lastInstruction);
 
   // remove state from queue and delete
   virtual void terminateState(ExecutionState &state);
@@ -391,7 +405,7 @@ public:
   }
 
   // XXX should just be moved out to utility module
-  ref<klee::ConstantExpr> evalConstant(llvm::Constant *c);
+  ref<klee::ConstantExpr> evalConstant(const llvm::Constant *c);
 
   virtual void setPathWriter(TreeStreamWriter *tsw) {
     pathWriter = tsw;
@@ -442,7 +456,7 @@ public:
 
   virtual void getConstraintLog(const ExecutionState &state,
                                 std::string &res,
-                                bool asCVC = false);
+                                Interpreter::LogType logFormat = Interpreter::STP);
 
   virtual bool getSymbolicSolution(const ExecutionState &state, 
                                    std::vector< 
@@ -453,7 +467,7 @@ public:
   virtual void getCoveredLines(const ExecutionState &state,
                                std::map<const std::string*, std::set<unsigned> > &res);
 
-  Expr::Width getWidthForLLVMType(const llvm::Type *type) const;
+  Expr::Width getWidthForLLVMType(LLVM_TYPE_Q llvm::Type *type) const;
 };
   
 } // End klee namespace

@@ -34,15 +34,11 @@ class CVExecutor : public klee::Executor {
 
   virtual void updateStates(klee::ExecutionState *current);
 
-  virtual void transferToBasicBlock(llvm::BasicBlock *dst, 
-                                    llvm::BasicBlock *src,
-                                    klee::ExecutionState &state);
-
   virtual void runFunctionAsMain(llvm::Function *f,
 				                 int argc, char **argv, char **envp);
 
-  virtual void executeMakeSymbolic(klee::ExecutionState &state, 
-                                   const klee::MemoryObject *mo);
+  virtual void executeMakeSymbolic(klee::ExecutionState &state, const klee::MemoryObject *mo,
+                           const std::string &name);
 
   virtual void branch(klee::ExecutionState &state, 
               const std::vector< klee::ref<klee::Expr> > &conditions,

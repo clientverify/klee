@@ -134,3 +134,16 @@ StagedSolverImpl::computeInitialValues(const Query& query,
   return secondary->impl->computeInitialValues(query, objects, values,
                                                hasSolution);
 }
+
+SolverImpl::SolverRunStatus StagedSolverImpl::getOperationStatusCode() {
+  return secondary->impl->getOperationStatusCode();
+}
+
+char *StagedSolverImpl::getConstraintLog(const Query& query) {
+  return secondary->impl->getConstraintLog(query);
+}
+
+void StagedSolverImpl::setCoreSolverTimeout(double timeout) {
+  secondary->impl->setCoreSolverTimeout(timeout);
+}
+

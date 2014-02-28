@@ -31,7 +31,7 @@ namespace {
 
   cl::opt<bool>
   CexCacheTryAll("cex-cache-try-all",
-                 cl::desc("try substituting all counterexamples before asking STP"),
+                 cl::desc("try substituting all counterexamples before asking the SMT solver"),
                  cl::init(false));
 
   cl::opt<bool>
@@ -82,6 +82,9 @@ public:
                             const std::vector<const Array*> &objects,
                             std::vector< std::vector<unsigned char> > &values,
                             bool &hasSolution);
+  SolverRunStatus getOperationStatusCode();
+  char *getConstraintLog(const Query& query);
+  void setCoreSolverTimeout(double timeout);
 };
 
 ///
@@ -184,13 +187,19 @@ bool CexCachingSolver::lookupAssignment(const Query &query,
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(neg)) {
     if (CE->isFalse()) {
       result = (Assignment*) 0;
+      ++stats::queryCexCacheHits;
       return true;
     }
   } else {
     key.insert(neg);
   }
 
-  return searchForAssignment(key, result);
+  bool found = searchForAssignment(key, result);
+  if (found)
+    ++stats::queryCexCacheHits;
+  else ++stats::queryCexCacheMisses;
+    
+  return found;
 }
 
 bool CexCachingSolver::getAssignment(const Query& query, Assignment *&result) {
@@ -337,6 +346,18 @@ CexCachingSolver::computeInitialValues(const Query& query,
   }
   
   return true;
+}
+
+SolverImpl::SolverRunStatus CexCachingSolver::getOperationStatusCode() {
+  return solver->impl->getOperationStatusCode();
+}
+
+char *CexCachingSolver::getConstraintLog(const Query& query) {
+  return solver->impl->getConstraintLog(query);
+}
+
+void CexCachingSolver::setCoreSolverTimeout(double timeout) {
+  solver->impl->setCoreSolverTimeout(timeout);
 }
 
 ///

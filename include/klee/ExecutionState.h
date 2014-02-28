@@ -29,7 +29,6 @@ namespace klee {
   struct KFunction;
   struct KInstruction;
   class MemoryObject;
-  class MemoryManager;
   class PTreeNode;
   struct InstructionInfo;
 
@@ -95,13 +94,13 @@ public:
   std::map<const std::string*, std::set<unsigned> > coveredLines;
   PTreeNode *ptreeNode;
 
-	// For the deallocation of memory objects
-	MemoryManager* memory;
-
   /// ordered list of symbolics: used to generate test cases. 
   //
   // FIXME: Move to a shared list structure (not critical).
   std::vector< std::pair<const MemoryObject*, const Array*> > symbolics;
+
+  /// Set of used array names.  Used to avoid collisions.
+  std::set<std::string> arrayNames;
 
   // Used by the checkpoint/rollback methods for fake objects.
   // FIXME: not freeing things on branch deletion.
@@ -114,27 +113,25 @@ public:
   void removeFnAlias(std::string fn);
   
 private:
-  ExecutionState() : fakeState(false), underConstrained(0), 
-	ptreeNode(0), memory(0) {}
+  ExecutionState() : fakeState(false), underConstrained(0), ptreeNode(0) {}
 
 public:
-  ExecutionState(KFunction *kf, MemoryManager *mem);
+  ExecutionState(KFunction *kf);
 
   // XXX total hack, just used to make a state so solver can
   // use on structure
   ExecutionState(const std::vector<ref<Expr> > &assumptions);
 
+  ExecutionState(const ExecutionState& state);
+
   virtual ~ExecutionState();
   
   virtual ExecutionState *branch();
-
-	void addAlloca(const MemoryObject *mo);
 
   void pushFrame(KInstIterator caller, KFunction *kf);
   void popFrame();
 
   void addSymbolic(const MemoryObject *mo, const Array *array);
-
   void addConstraint(ref<Expr> e) { 
     constraints.addConstraint(e); 
   }

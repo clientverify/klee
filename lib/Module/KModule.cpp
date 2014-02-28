@@ -14,6 +14,7 @@
 
 #include "Passes.h"
 
+#include "klee/Config/Version.h"
 #include "klee/Interpreter.h"
 #include "klee/Internal/Module/Cell.h"
 #include "klee/Internal/Module/KInstruction.h"
@@ -21,22 +22,36 @@
 #include "klee/Internal/Support/ModuleUtil.h"
 
 #include "llvm/Bitcode/ReaderWriter.h"
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/ValueSymbolTable.h"
+#include "llvm/IR/DataLayout.h"
+#else
 #include "llvm/Instructions.h"
-#if !(LLVM_VERSION_MAJOR == 2 && LLVM_VERSION_MINOR < 7)
 #include "llvm/LLVMContext.h"
-#endif
 #include "llvm/Module.h"
-#include "llvm/PassManager.h"
 #include "llvm/ValueSymbolTable.h"
+#if LLVM_VERSION_CODE <= LLVM_VERSION(3, 1)
+#include "llvm/Target/TargetData.h"
+#else
+#include "llvm/DataLayout.h"
+#endif
+
+#endif
+
+#include "llvm/PassManager.h"
 #include "llvm/Support/CallSite.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
-#if !(LLVM_VERSION_MAJOR == 2 && LLVM_VERSION_MINOR < 7)
 #include "llvm/Support/raw_os_ostream.h"
-#endif
-#include "llvm/System/Path.h"
-#include "llvm/Target/TargetData.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Transforms/Scalar.h"
+
+#include <llvm/Transforms/Utils/Cloning.h>
+#include <llvm/Support/InstIterator.h>
+#include <llvm/Support/Debug.h>
 
 #include <sstream>
 
@@ -86,8 +101,11 @@ namespace {
 
 KModule::KModule(Module *_module) 
   : module(_module),
+#if LLVM_VERSION_CODE <= LLVM_VERSION(3, 1)
     targetData(new TargetData(module)),
-    dbgStopPointFn(0),
+#else
+    targetData(new DataLayout(module)),
+#endif
     kleeMergeFn(0),
     infos(0),
     constantTable(0) {
@@ -100,6 +118,10 @@ KModule::~KModule() {
   for (std::vector<KFunction*>::iterator it = functions.begin(), 
          ie = functions.end(); it != ie; ++it)
     delete *it;
+
+  for (std::map<llvm::Constant*, KConstant*>::iterator it=constantMap.begin(),
+      itE=constantMap.end(); it!=itE;++it)
+    delete it->second;
 
   delete targetData;
   delete module;
@@ -118,7 +140,7 @@ static Function *getStubFunctionForCtorList(Module *m,
   assert(!gv->isDeclaration() && !gv->hasInternalLinkage() &&
          "do not support old LLVM style constructor/destructor lists");
   
-  std::vector<const Type*> nullary;
+  std::vector<LLVM_TYPE_Q Type*> nullary;
 
   Function *fn = Function::Create(FunctionType::get(Type::getVoidTy(getGlobalContext()), 
 						    nullary, false),
@@ -161,7 +183,8 @@ static void injectStaticConstructorsAndDestructors(Module *m) {
   
   if (ctors || dtors) {
     Function *mainFn = m->getFunction("main");
-    assert(mainFn && "unable to find main function");
+    if (!mainFn)
+      klee_error("Could not find main() function.");
 
     if (ctors)
     CallInst::Create(getStubFunctionForCtorList(m, ctors, "klee.ctor_stub"),
@@ -177,7 +200,9 @@ static void injectStaticConstructorsAndDestructors(Module *m) {
   }
 }
 
-static void forceImport(Module *m, const char *name, const Type *retType, ...) {
+#if LLVM_VERSION_CODE < LLVM_VERSION(3, 3)
+static void forceImport(Module *m, const char *name, LLVM_TYPE_Q Type *retType,
+                        ...) {
   // If module lacks an externally visible symbol for the name then we
   // need to create one. We have to look in the symbol table because
   // we want to check everything (global variables, functions, and
@@ -190,13 +215,68 @@ static void forceImport(Module *m, const char *name, const Type *retType, ...) {
     va_list ap;
 
     va_start(ap, retType);
-    std::vector<const Type *> argTypes;
-    while (const Type *t = va_arg(ap, const Type*))
+    std::vector<LLVM_TYPE_Q Type *> argTypes;
+    while (LLVM_TYPE_Q Type *t = va_arg(ap, LLVM_TYPE_Q Type*))
       argTypes.push_back(t);
     va_end(ap);
 
     m->getOrInsertFunction(name, FunctionType::get(retType, argTypes, false));
   }
+}
+#endif
+
+/// This function will take try to inline all calls to \p functionName
+/// in the module \p module .
+///
+/// It is intended that this function be used for inling calls to
+/// check functions like <tt>klee_div_zero_check()</tt>
+static void inlineChecks(Module *module, const char * functionName) {
+  std::vector<CallSite> checkCalls;
+    Function* runtimeCheckCall = module->getFunction(functionName);
+    if (runtimeCheckCall == 0)
+    {
+      DEBUG( klee_warning("Failed to inline %s because no calls were made to it in module", functionName) );
+      return;
+    }
+
+    for (Value::use_iterator i = runtimeCheckCall->use_begin(),
+        e = runtimeCheckCall->use_end(); i != e; ++i)
+      if (isa<InvokeInst>(*i) || isa<CallInst>(*i)) {
+        CallSite cs(*i);
+        if (!cs.getCalledFunction())
+          continue;
+        checkCalls.push_back(cs);
+      }
+
+    unsigned int successCount=0;
+    unsigned int failCount=0;
+    InlineFunctionInfo IFI(0,0);
+    for ( std::vector<CallSite>::iterator ci = checkCalls.begin(),
+          cie = checkCalls.end();
+          ci != cie; ++ci)
+    {
+      // Try to inline the function
+      if (InlineFunction(*ci,IFI))
+        ++successCount;
+      else
+      {
+        ++failCount;
+        klee_warning("Failed to inline function %s", functionName);
+      }
+    }
+
+    DEBUG( klee_message("Tried to inline calls to %s. %u successes, %u failures",functionName, successCount, failCount) );
+}
+
+void KModule::addInternalFunction(const char* functionName){
+  Function* internalFunction = module->getFunction(functionName);
+  if (!internalFunction) {
+    DEBUG_WITH_TYPE("KModule", klee_warning(
+        "Failed to add internal function %s. Not found.", functionName));
+    return ;
+  }
+  DEBUG( klee_message("Added function %s.",functionName));
+  internalFunctions.insert(internalFunction);
 }
 
 void KModule::prepare(const Interpreter::ModuleOptions &opts,
@@ -204,9 +284,9 @@ void KModule::prepare(const Interpreter::ModuleOptions &opts,
   if (!MergeAtExit.empty()) {
     Function *mergeFn = module->getFunction("klee_merge");
     if (!mergeFn) {
-      const llvm::FunctionType *Ty = 
+      LLVM_TYPE_Q llvm::FunctionType *Ty = 
         FunctionType::get(Type::getVoidTy(getGlobalContext()), 
-                          std::vector<const Type*>(), false);
+                          std::vector<LLVM_TYPE_Q Type*>(), false);
       mergeFn = Function::Create(Ty, GlobalVariable::ExternalLinkage,
 				 "klee_merge",
 				 module);
@@ -227,7 +307,11 @@ void KModule::prepare(const Interpreter::ModuleOptions &opts,
       BasicBlock *exit = BasicBlock::Create(getGlobalContext(), "exit", f);
       PHINode *result = 0;
       if (f->getReturnType() != Type::getVoidTy(getGlobalContext()))
-        result = PHINode::Create(f->getReturnType(), "retval", exit);
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 0)
+        result = PHINode::Create(f->getReturnType(), 0, "retval", exit);
+#else
+		result = PHINode::Create(f->getReturnType(), "retval", exit);
+#endif
       CallInst::Create(mergeFn, "", exit);
       ReturnInst::Create(getGlobalContext(), result, exit);
 
@@ -255,6 +339,7 @@ void KModule::prepare(const Interpreter::ModuleOptions &opts,
   PassManager pm;
   pm.add(new RaiseAsmPass());
   if (opts.CheckDivZero) pm.add(new DivCheckPass());
+  if (opts.CheckOvershift) pm.add(new OvershiftCheckPass());
   // FIXME: This false here is to work around a bug in
   // IntrinsicLowering which caches values which may eventually be
   // deleted (via RAUW). This can be removed once LLVM fixes this
@@ -264,7 +349,7 @@ void KModule::prepare(const Interpreter::ModuleOptions &opts,
 
   if (opts.Optimize)
     Optimize(module);
-
+#if LLVM_VERSION_CODE < LLVM_VERSION(3, 3)
   // Force importing functions required by intrinsic lowering. Kind of
   // unfortunate clutter when we don't need them but we won't know
   // that until after all linking and intrinsic lowering is
@@ -272,7 +357,7 @@ void KModule::prepare(const Interpreter::ModuleOptions &opts,
   // by name. We only add them if such a function doesn't exist to
   // avoid creating stale uses.
 
-  const llvm::Type *i8Ty = Type::getInt8Ty(getGlobalContext());
+  LLVM_TYPE_Q llvm::Type *i8Ty = Type::getInt8Ty(getGlobalContext());
   forceImport(module, "memcpy", PointerType::getUnqual(i8Ty),
               PointerType::getUnqual(i8Ty),
               PointerType::getUnqual(i8Ty),
@@ -285,15 +370,27 @@ void KModule::prepare(const Interpreter::ModuleOptions &opts,
               PointerType::getUnqual(i8Ty),
               Type::getInt32Ty(getGlobalContext()),
               targetData->getIntPtrType(getGlobalContext()), (Type*) 0);
-
+#endif
   // FIXME: Missing force import for various math functions.
 
   // FIXME: Find a way that we can test programs without requiring
   // this to be linked in, it makes low level debugging much more
   // annoying.
   llvm::sys::Path path(opts.LibraryDir);
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
+  path.appendComponent("kleeRuntimeIntrinsic.bc");
+#else
   path.appendComponent("libkleeRuntimeIntrinsic.bca");
+#endif
   module = linkWithLibrary(module, path.c_str());
+
+  // Add internal functions which are not used to check if instructions
+  // have been already visited
+  if (opts.CheckDivZero)
+    addInternalFunction("klee_div_zero_check");
+  if (opts.CheckOvershift)
+    addInternalFunction("klee_overshift_check");
+
 
   // Needs to happen after linking (since ctors/dtors can be modified)
   // and optimization (since global optimization can rewrite lists).
@@ -315,7 +412,7 @@ void KModule::prepare(const Interpreter::ModuleOptions &opts,
   pm3.add(new IntrinsicCleanerPass(*targetData));
   pm3.add(new PhiCleanerPass());
   pm3.run(*module);
-
+#if LLVM_VERSION_CODE < LLVM_VERSION(3, 3)
   // For cleanliness see if we can discard any of the functions we
   // forced to import.
   Function *f;
@@ -325,7 +422,7 @@ void KModule::prepare(const Interpreter::ModuleOptions &opts,
   if (f && f->use_empty()) f->eraseFromParent();
   f = module->getFunction("memset");
   if (f && f->use_empty()) f->eraseFromParent();
-
+#endif
 
   // Write out the .ll assembly file. We truncate long lines to work
   // around a kcachegrind parsing bug (it puts them on new lines), so
@@ -334,38 +431,6 @@ void KModule::prepare(const Interpreter::ModuleOptions &opts,
     std::ostream *os = ih->openOutputFile("assembly.ll");
     assert(os && os->good() && "unable to open source output");
 
-#if (LLVM_VERSION_MAJOR == 2 && LLVM_VERSION_MINOR < 6)
-    // We have an option for this in case the user wants a .ll they
-    // can compile.
-    if (NoTruncateSourceLines) {
-      os << *module;
-    } else {
-      bool truncated = false;
-      std::string string;
-      llvm::raw_string_ostream rss(string);
-      rss << *module;
-      rss.flush();
-      const char *position = string.c_str();
-
-      for (;;) {
-        const char *end = index(position, '\n');
-        if (!end) {
-          os << position;
-          break;
-        } else {
-          unsigned count = (end - position) + 1;
-          if (count<255) {
-            os->write(position, count);
-          } else {
-            os->write(position, 254);
-            os << "\n";
-            truncated = true;
-          }
-          position = end+1;
-        }
-      }
-    }
-#else
     llvm::raw_os_ostream *ros = new llvm::raw_os_ostream(*os);
 
     // We have an option for this in case the user wants a .ll they
@@ -373,7 +438,6 @@ void KModule::prepare(const Interpreter::ModuleOptions &opts,
     if (NoTruncateSourceLines) {
       *ros << *module;
     } else {
-      bool truncated = false;
       std::string string;
       llvm::raw_string_ostream rss(string);
       rss << *module;
@@ -392,14 +456,12 @@ void KModule::prepare(const Interpreter::ModuleOptions &opts,
           } else {
             ros->write(position, 254);
             *ros << "\n";
-            truncated = true;
           }
           position = end+1;
         }
       }
     }
     delete ros;
-#endif
 
     delete os;
   }
@@ -412,7 +474,6 @@ void KModule::prepare(const Interpreter::ModuleOptions &opts,
     delete f;
   }
 
-  dbgStopPointFn = module->getFunction("llvm.dbg.stoppoint");
   kleeMergeFn = module->getFunction("klee_merge");
 
   /* Build shadow structures */

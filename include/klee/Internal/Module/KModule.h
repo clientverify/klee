@@ -10,6 +10,7 @@
 #ifndef KLEE_KMODULE_H
 #define KLEE_KMODULE_H
 
+#include "klee/Config/Version.h"
 #include "klee/Interpreter.h"
 
 #include <map>
@@ -22,7 +23,11 @@ namespace llvm {
   class Function;
   class Instruction;
   class Module;
+#if LLVM_VERSION_CODE <= LLVM_VERSION(3, 1)
   class TargetData;
+#else
+  class DataLayout;
+#endif
 }
 
 namespace klee {
@@ -86,7 +91,11 @@ namespace klee {
   class KModule {
   public:
     llvm::Module *module;
+#if LLVM_VERSION_CODE <= LLVM_VERSION(3, 1)
     llvm::TargetData *targetData;
+#else
+    llvm::DataLayout *targetData;
+#endif
     
     // Some useful functions to know the address of
     llvm::Function *dbgStopPointFn, *kleeMergeFn;
@@ -108,6 +117,13 @@ namespace klee {
     KConstant* getKConstant(llvm::Constant *c);
 
     Cell *constantTable;
+
+    // Functions which are part of KLEE runtime
+    std::set<const llvm::Function*> internalFunctions;
+
+  private:
+    // Mark function with functionName as part of the KLEE runtime
+    void addInternalFunction(const char* functionName);
 
   public:
     KModule(llvm::Module *_module);

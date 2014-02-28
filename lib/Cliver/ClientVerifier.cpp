@@ -30,7 +30,7 @@
 #include "llvm/Module.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/System/Process.h"
+#include "llvm/Support/Process.h"
 
 #ifdef GOOGLE_PROFILER
 #include <google/profiler.h>
@@ -39,6 +39,10 @@
 
 // Define somewhere else?
 void boost::throw_exception(std::exception const& e) {}
+
+namespace klee {
+  extern llvm::cl::opt<std::string> InputFile;
+}
 
 namespace cliver {
 
@@ -144,24 +148,24 @@ CVContext::CVContext() : context_id_(increment_id()) {}
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ClientVerifier::ClientVerifier(std::string* input_filename)
+ClientVerifier::ClientVerifier()
   : cvstream_(new CVStream()),
 		searcher_(NULL),
 		pruner_(NULL),
-		merger_(NULL), execution_trace_manager_(NULL),
+		merger_(NULL), 
+    execution_trace_manager_(NULL),
 		array_id_(0),
 		round_number_(0),
     execution_event_flag_(false) {
 
 	cvstream_->init();
 
-  if (input_filename)
-    client_name_ = cvstream_->getBasename(*input_filename);
+  client_name_ = cvstream_->getBasename(klee::InputFile);
 
   // Copy inputfile to output directory
   if (CopyInputFilesToOutputDir) {
     std::string dest_name("input.bc");
-    cvstream_->copyFileToOutputDirectory(*input_filename, dest_name);
+    cvstream_->copyFileToOutputDirectory(klee::InputFile, dest_name);
   }
 
 }
@@ -215,10 +219,13 @@ void ClientVerifier::processTestCase(const klee::ExecutionState &state,
     const char *err, const char *suffix) {
 }
 
-void ClientVerifier::initialize(CVExecutor *executor) {
-  executor_ = executor;
+void ClientVerifier::setInterpreter(klee::Interpreter *i) {
+  executor_ = static_cast<CVExecutor*>(i);
+}
 
-	initialize_external_handlers(executor);
+void ClientVerifier::initialize() {
+
+	initialize_external_handlers(executor_);
 
 	// Load Socket files (at lease one socket file required in all modes)
 	if (!SocketLogDir.empty()) {
@@ -572,6 +579,11 @@ void ClientVerifier::set_round(int round) {
     CVMESSAGE("Exiting early, max round is " << MaxRoundNumber);
     executor_->setHaltExecution(true);
 	}
+}
+
+klee::Interpreter *ClientVerifier::create_interpreter(const klee::Interpreter::InterpreterOptions &opts,
+                                 klee::InterpreterHandler *ih) {
+  return new CVExecutor(opts, ih);
 }
 
 //////////////////////////////////////////////////////////////////////////////

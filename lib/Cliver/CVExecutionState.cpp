@@ -23,8 +23,8 @@ namespace cliver {
 
 int CVExecutionState::next_id_ = 0;
 
-CVExecutionState::CVExecutionState(klee::KFunction *kF, klee::MemoryManager *mem)
- : klee::ExecutionState(kF, mem),
+CVExecutionState::CVExecutionState(klee::KFunction *kF)
+ : klee::ExecutionState(kF),
 	 id_(increment_id()), property_(0), basic_block_tracking_(true) {}
 
 CVExecutionState::CVExecutionState(

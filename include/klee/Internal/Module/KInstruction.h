@@ -10,12 +10,8 @@
 #ifndef KLEE_KINSTRUCTION_H
 #define KLEE_KINSTRUCTION_H
 
-#include "klee/Config/config.h"
-#if (LLVM_VERSION_MAJOR == 2 && LLVM_VERSION_MINOR < 7)
+#include "klee/Config/Version.h"
 #include "llvm/Support/DataTypes.h"
-#else
-#include "llvm/System/DataTypes.h"
-#endif
 #include <vector>
 
 namespace llvm {

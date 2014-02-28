@@ -17,10 +17,18 @@
 #include "klee/util/BitArray.h"
 
 #include "ObjectHolder.h"
+#include "MemoryManager.h"
 
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
+#include <llvm/IR/Function.h>
+#include <llvm/IR/Instruction.h>
+#include <llvm/IR/Value.h>
+#else
 #include <llvm/Function.h>
 #include <llvm/Instruction.h>
 #include <llvm/Value.h>
+#endif
+
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -67,6 +75,8 @@ ObjectHolder &ObjectHolder::operator=(const ObjectHolder &b) {
 int MemoryObject::counter = 0;
 
 MemoryObject::~MemoryObject() {
+  if (parent)
+    parent->markFreed(this);
 }
 
 void MemoryObject::getAllocInfo(std::string &result) const {
@@ -77,10 +87,10 @@ void MemoryObject::getAllocInfo(std::string &result) const {
   if (allocSite) {
     info << " allocated at ";
     if (const Instruction *i = dyn_cast<Instruction>(allocSite)) {
-      info << i->getParent()->getParent()->getNameStr() << "():";
+      info << i->getParent()->getParent()->getName() << "():";
       info << *i;
     } else if (const GlobalValue *gv = dyn_cast<GlobalValue>(allocSite)) {
-      info << "global:" << gv->getNameStr();
+      info << "global:" << gv->getName();
     } else {
       info << "value:" << *allocSite;
     }
@@ -105,12 +115,14 @@ ObjectState::ObjectState(const MemoryObject *mo)
     updates(0, 0),
     size(mo->size),
     readOnly(false) {
+  mo->refCount++;
   if (!UseConstantArrays) {
     // FIXME: Leaked.
     static unsigned id = 0;
     const Array *array = new Array("tmp_arr" + llvm::utostr(++id), size);
     updates = UpdateList(array, 0);
   }
+  memset(concreteStore, 0, size);
 }
 
 
@@ -126,7 +138,9 @@ ObjectState::ObjectState(const MemoryObject *mo, const Array *array)
     updates(array, 0),
     size(mo->size),
     readOnly(false) {
+  mo->refCount++;
   makeSymbolic();
+  memset(concreteStore, 0, size);
 }
 
 ObjectState::ObjectState(const ObjectState &os) 
@@ -142,6 +156,8 @@ ObjectState::ObjectState(const ObjectState &os)
     size(os.size),
     readOnly(false) {
   assert(!os.readOnly && "no need to copy read only object?");
+  if (object)
+    object->refCount++;
 
   if (os.knownSymbolics) {
     knownSymbolics = new ref<Expr>[size];
@@ -158,6 +174,16 @@ ObjectState::~ObjectState() {
   if (pointerMask) delete pointerMask;
   if (knownSymbolics) delete[] knownSymbolics;
   delete[] concreteStore;
+
+  if (object)
+  {
+    assert(object->refCount > 0);
+    object->refCount--;
+    if (object->refCount == 0)
+    {
+      delete object;
+    }
+  }
 }
 
 /***/
@@ -468,7 +494,7 @@ ref<Expr> ObjectState::read(ref<Expr> offset, Expr::Width width) const {
     ref<Expr> Byte = read8(AddExpr::create(offset, 
                                            ConstantExpr::create(idx, 
                                                                 Expr::Int32)));
-    Res = idx ? ConcatExpr::create(Byte, Res) : Byte;
+    Res = i ? ConcatExpr::create(Byte, Res) : Byte;
   }
 
   return Res;
@@ -491,7 +517,7 @@ ref<Expr> ObjectState::read(unsigned offset, Expr::Width width) const {
         CE->setPointer();
       }
     }
-    Res = idx ? ConcatExpr::create(Byte, Res) : Byte;
+    Res = i ? ConcatExpr::create(Byte, Res) : Byte;
   }
 
   return Res;
@@ -586,7 +612,6 @@ void ObjectState::write64(unsigned offset, uint64_t value) {
     write8(offset + idx, (uint8_t) (value >> (8 * i)));
   }
 }
-
 void ObjectState::print(std::ostream &os, bool print_bytes) const {
   os << std::setw(6) << size << "B ";
 	os << object->id << " ";
@@ -646,40 +671,6 @@ void ObjectState::print(std::ostream &os, bool print_bytes) const {
 		}
 	}
 
-	/*
-	if (print_bytes) {
-		ref<Expr> prev_e = ConstantExpr::alloc(1, Expr::Bool);
-		int start = -1;
-		for (unsigned i=0; i<size; i++) {
-			bool concrete = isByteConcrete(i);
-			bool knownSym = isByteKnownSymbolic(i);
-			bool flushed = isByteFlushed(i);
-			bool pointer = isBytePointer(i);
-
-			ref<Expr> e = read8(i);
-			if (prev_e == e) {
-				if (start == -1) {
-					start = i;
-				}
-			} 
-			if (prev_e != e || i==size-1) {
-			  if (start != -1) {
-			    os << "\t\t[" << start << "]-[" <<i-1<<"]"
-			       << " = " << prev_e << "\n";
-			    start = -1;
-			  }
-				os << "\t\t["<<i<<"]"
-									<< " pointer? " << pointer 
-									<< " concrete? " << concrete
-									<< " known-sym? " << knownSym 
-									<< " flushed? " << flushed << " = ";
-				os << e << "\n";
-			}
-			prev_e = e;
-		}
-	}
-	*/
-
   if (updates.head) {
 		os << "updates: ";
 		for (const UpdateNode *un=updates.head; un; un=un->next) {
@@ -687,91 +678,6 @@ void ObjectState::print(std::ostream &os, bool print_bytes) const {
 		}
 	}
 }
-/*
-void ObjectState::print(std::ostream &os, bool print_bytes) const {
-  os << "-- ObjectState --\n";
-  os << "\tMemoryObject: " << object << "\n";
-  os << "\tMemoryObject ID: " << object->id << "\n";
-  os << "\tMemoryObject Name: " << object->name << "\n";
-  os << "\tMemoryObject Info: ";
-	if (object->isLocal)
-		os << "Local ";
-	if (object->isGlobal)
-		os << "Global ";
-	if (object->isFixed)
-		os << "Fixed ";
-	if (object->fake_object)
-		os << "Fake ";
-	if (object->isUserSpecified)
-		os << "UserSpecified ";
-	os << "\n";
-
-  os << "\tRoot Object: " << updates.root << "\n";
-  if (updates.root)
-    os << "\tArray Name: " << updates.root->name << "\n";
-  else
-    os << "\tArray Name: (no name)\n";
-  os << "\tSize: " << size << "\n";
-
-  os <<"\tAlloc Site: \n";
-  if (object->allocSite) {
-		std::string str;
-		llvm::raw_string_ostream info(str);
-		if (const Instruction *i = dyn_cast<Instruction>(object->allocSite)) {
-			info << i->getParent()->getParent()->getNameStr() << "():";
-			info << *i;
-		} else if (const GlobalValue *gv = dyn_cast<GlobalValue>(object->allocSite)) {
-			info << "global:" << gv->getNameStr();
-		} else {
-			info << "value:" << *object->allocSite;
-		}
-		info.flush();
-		os << str;
-	} else {
-		os << " (no alloc info)";
-	}
-  os << "\n";
-
-
-	if (print_bytes) {
-		os << "\tBytes:\n";
-		ref<Expr> prev_e = ConstantExpr::alloc(1, Expr::Bool);
-		int start = -1;
-		for (unsigned i=0; i<size; i++) {
-			bool concrete = isByteConcrete(i);
-			bool knownSym = isByteKnownSymbolic(i);
-			bool flushed = isByteFlushed(i);
-			bool pointer = isBytePointer(i);
-
-			ref<Expr> e = read8(i);
-			if (prev_e == e) {
-				if (start == -1) {
-					start = i;
-				}
-			} 
-			if (prev_e != e || i==size-1) {
-			  if (start != -1) {
-			    os << "\t\t[" << start << "]-[" <<i-1<<"]"
-			       << " = " << prev_e << "\n";
-			    start = -1;
-			  }
-				os << "\t\t["<<i<<"]"
-									<< " pointer? " << pointer 
-									<< " concrete? " << concrete
-									<< " known-sym? " << knownSym 
-									<< " flushed? " << flushed << " = ";
-				os << e << "\n";
-			}
-			prev_e = e;
-		}
-	}
-
-  os << "\tUpdates:\n";
-  for (const UpdateNode *un=updates.head; un; un=un->next) {
-    os << "\t\t[" << un->index << "] = " << un->value << "\n";
-  }
-}
-*/
 
 void ObjectState::print_diff(ObjectState &b, std::ostream &os) const {
   std::vector<ObjectState*> ovec;
@@ -782,7 +688,6 @@ void ObjectState::print_diff(ObjectState &b, std::ostream &os) const {
 
 void ObjectState::print_diff(std::vector<ObjectState*> &_ovec, std::ostream &os) const {
   std::vector<ObjectState*>ovec(_ovec);
-  //ovec.push_back(const_cast<ObjectState*>(this));
   unsigned s = ovec.size();
   os << "-- ObjectState --\n";
 
@@ -895,9 +800,26 @@ void ObjectState::print_diff(std::vector<ObjectState*> &_ovec, std::ostream &os)
       os << "\t\t[" << i << "][" << un->index << "] = " << un->value << "\n";
     }
   }
-
 }
 
 void ObjectState::print() {
-  print(std::cerr);
+  std::cerr << "-- ObjectState --\n";
+  std::cerr << "\tMemoryObject ID: " << object->id << "\n";
+  std::cerr << "\tRoot Object: " << updates.root << "\n";
+  std::cerr << "\tSize: " << size << "\n";
+
+  std::cerr << "\tBytes:\n";
+  for (unsigned i=0; i<size; i++) {
+    std::cerr << "\t\t["<<i<<"]"
+               << " concrete? " << isByteConcrete(i)
+               << " known-sym? " << isByteKnownSymbolic(i)
+               << " flushed? " << isByteFlushed(i) << " = ";
+    ref<Expr> e = read8(i);
+    std::cerr << e << "\n";
+  }
+
+  std::cerr << "\tUpdates:\n";
+  for (const UpdateNode *un=updates.head; un; un=un->next) {
+    std::cerr << "\t\t[" << un->index << "] = " << un->value << "\n";
+  }
 }

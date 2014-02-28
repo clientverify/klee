@@ -15,7 +15,8 @@ LEVEL=..
 #
 # List all of the subdirectories that we will compile.
 #
-PARALLEL_DIRS=klee kleaver ktest-tool gen-random-bout klee-stats cliver-bin cliver cliverstats-bin cliverstats
+#PARALLEL_DIRS=klee kleaver ktest-tool gen-random-bout klee-stats cliver-bin cliver cliverstats-bin cliverstats
+PARALLEL_DIRS=klee kleaver ktest-tool gen-random-bout klee-stats cliver
 
 include $(LEVEL)/Makefile.config
 

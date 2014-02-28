@@ -15,6 +15,7 @@
 
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
 
 #include <set>
@@ -193,7 +194,14 @@ public:
   virtual unsigned computeHash();
   
   /// Returns 0 iff b is structuraly equivalent to *this
-  int compare(const Expr &b) const;
+  typedef llvm::DenseSet<std::pair<const Expr *, const Expr *> > ExprEquivSet;
+  int compare(const Expr &b, ExprEquivSet &equivs) const;
+  int compare(const Expr &b) const {
+    static ExprEquivSet equivs;
+    int r = compare(b, equivs);
+    equivs.clear();
+    return r;
+  }
   virtual int compareContents(const Expr &b) const { return 0; }
 
   // Given an array of new kids return a copy of the expression
@@ -224,7 +232,8 @@ public:
   /* Kind utilities */
 
   /* Utility creation functions */
-  static ref<Expr> createCoerceToPointerType(ref<Expr> e);
+  static ref<Expr> createSExtToPointerWidth(ref<Expr> e);
+  static ref<Expr> createZExtToPointerWidth(ref<Expr> e);
   static ref<Expr> createImplies(ref<Expr> hyp, ref<Expr> conc);
   static ref<Expr> createIsZero(ref<Expr> e);
 
@@ -324,10 +333,15 @@ public:
   /// native ConstantExpr APIs.
   const llvm::APInt &getAPValue() const { return value; }
 
-  /// getZExtValue - Return the constant value for a limited number of bits.
+  /// getZExtValue - Returns the constant value zero extended to the
+  /// return type of this method.
   ///
-  /// This routine should be used in situations where the width of the constant
-  /// is known to be limited to a certain number of bits.
+  ///\param bits - optional parameter that can be used to check that the
+  ///number of bits used by this constant is <= to the parameter
+  ///value. This is useful for checking that type casts won't truncate
+  ///useful bits.
+  ///
+  /// Example: unit8_t byte= (unit8_t) constant->getZExtValue(8);
   uint64_t getZExtValue(unsigned bits = 64) const {
     assert(getWidth() <= bits && "Value may be out of range!");
     return value.getZExtValue();
@@ -339,8 +353,12 @@ public:
     return value.getLimitedValue(Limit);
   }
 
-  /// toString - Return the constant value as a decimal string.
-  void toString(std::string &Res) const;
+  /// toString - Return the constant value as a string
+  /// \param Res specifies the string for the result to be placed in
+  /// \param radix specifies the base (e.g. 2,10,16). The default is base 10
+  void toString(std::string &Res, unsigned radix=10) const;
+
+
  
   int compareContents(const Expr &b) const { 
     const ConstantExpr &cb = static_cast<const ConstantExpr&>(b);
@@ -353,7 +371,7 @@ public:
 
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const { 
     assert(0 && "rebuild() on ConstantExpr"); 
-    return (Expr*) this;
+    return const_cast<ConstantExpr*>(this);
   }
 
   virtual unsigned computeHash();
@@ -410,25 +428,23 @@ public:
   /* Utility Functions */
 
   /// isZero - Is this a constant zero.
-  bool isZero() const { return getZExtValue() == 0; }
+  bool isZero() const { return getAPValue().isMinValue(); }
 
   /// isOne - Is this a constant one.
-  bool isOne() const { return getZExtValue() == 1; }
+  bool isOne() const { return getLimitedValue() == 1; }
   
   /// isTrue - Is this the true expression.
   bool isTrue() const { 
-    return getZExtValue(1) == 1;
+    return (getWidth() == Expr::Bool && value.getBoolValue()==true);
   }
 
   /// isFalse - Is this the false expression.
   bool isFalse() const {
-    return getZExtValue(1) == 0;
+    return (getWidth() == Expr::Bool && value.getBoolValue()==false);
   }
 
   /// isAllOnes - Is this constant all ones.
-  bool isAllOnes() const {
-    return getZExtValue(getWidth()) == bits64::maxValueOfNBits(getWidth());
-  }
+  bool isAllOnes() const { return getAPValue().isAllOnesValue(); }
 
   /* Constant Operations */
 
@@ -556,12 +572,9 @@ public:
 
 /// Class representing a byte update of an array.
 class UpdateNode {
-  friend class UpdateList;
-  friend class STPBuilder; // for setting STPArray
+  friend class UpdateList;  
 
   mutable unsigned refCount;
-  // gross
-  mutable void *stpArray;
   // cache instead of recalc
   unsigned hashValue;
 
@@ -584,7 +597,7 @@ public:
   unsigned hash() const { return hashValue; }
 
 private:
-  UpdateNode() : refCount(0), stpArray(0) {}
+  UpdateNode() : refCount(0) {}
   ~UpdateNode();
 
   unsigned computeHash();
@@ -594,16 +607,13 @@ class Array {
 public:
   const std::string name;
   // FIXME: Not 64-bit clean.
-  unsigned size;
+  unsigned size;  
 
   /// constantValues - The constant initial values for this array, or empty for
   /// a symbolic array. If non-empty, this size of this array is equivalent to
   /// the array size.
   const std::vector< ref<ConstantExpr> > constantValues;
-
-  // FIXME: This does not belong here.
-  mutable void *stpInitialArray;
-
+  
 public:
   /// Array - Construct a new array object.
   ///
@@ -616,14 +626,14 @@ public:
         const ref<ConstantExpr> *constantValuesBegin = 0,
         const ref<ConstantExpr> *constantValuesEnd = 0)
     : name(_name), size(_size), 
-      constantValues(constantValuesBegin, constantValuesEnd), 
-      stpInitialArray(0) {
+      constantValues(constantValuesBegin, constantValuesEnd) {      
     assert((isSymbolicArray() || constantValues.size() == size) &&
            "Invalid size for constant array!");
-#ifdef NDEBUG
+    computeHash();
+#ifndef NDEBUG
     for (const ref<ConstantExpr> *it = constantValuesBegin;
          it != constantValuesEnd; ++it)
-      assert(it->getWidth() == getRange() &&
+      assert((*it)->getWidth() == getRange() &&
              "Invalid initial constant value!");
 #endif
   }
@@ -634,6 +644,12 @@ public:
 
   Expr::Width getDomain() const { return Expr::Int32; }
   Expr::Width getRange() const { return Expr::Int8; }
+  
+  unsigned computeHash();
+  unsigned hash() const { return hashValue; }
+   
+private:
+  unsigned hashValue;
 };
 
 /// Class representing a complete list of updates into an array.

@@ -7,27 +7,33 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "klee/Config/config.h"
 #include "klee/Internal/Module/InstructionInfoTable.h"
+#include "klee/Config/Version.h"
 
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/Module.h"
+#else
 #include "llvm/Function.h"
 #include "llvm/Instructions.h"
 #include "llvm/IntrinsicInst.h"
-#include "llvm/Linker.h"
 #include "llvm/Module.h"
-#if (LLVM_VERSION_MAJOR == 2 && LLVM_VERSION_MINOR < 8)
-#include "llvm/Assembly/AsmAnnotationWriter.h"
-#else
+#endif
+#include "llvm/Linker.h"
 #include "llvm/Assembly/AssemblyAnnotationWriter.h"
 #include "llvm/Support/FormattedStream.h"
-#endif
 #include "llvm/Support/CFG.h"
 #include "llvm/Support/InstIterator.h"
 #include "llvm/Support/raw_ostream.h"
-#if !(LLVM_VERSION_MAJOR == 2 && LLVM_VERSION_MINOR < 7)
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 2)
+#include "llvm/DebugInfo.h"
+#else
 #include "llvm/Analysis/DebugInfo.h"
 #endif
 #include "llvm/Analysis/ValueTracking.h"
+#include "llvm/Support/Debug.h"
 
 #include <map>
 #include <string>
@@ -37,12 +43,8 @@ using namespace klee;
 
 class InstructionToLineAnnotator : public llvm::AssemblyAnnotationWriter {
 public:
-#if (LLVM_VERSION_MAJOR == 2 && LLVM_VERSION_MINOR < 8)
-  void emitInstructionAnnot(const Instruction *i, llvm::raw_ostream &os) {
-#else
   void emitInstructionAnnot(const Instruction *i,
                             llvm::formatted_raw_ostream &os) {
-#endif
     os << "%%%";
     os << (uintptr_t) i;
   }
@@ -74,26 +76,10 @@ static void buildInstructionToLineMap(Module *m,
   }
 }
 
-#if (LLVM_VERSION_MAJOR == 2 && LLVM_VERSION_MINOR < 7)
-static std::string getDSPIPath(const DbgStopPointInst *dspi) {
-  std::string dir, file;
-  bool res = GetConstantStringInfo(dspi->getDirectory(), dir);
-  assert(res && "GetConstantStringInfo failed");
-  res = GetConstantStringInfo(dspi->getFileName(), file);
-  assert(res && "GetConstantStringInfo failed");
-  if (dir.empty()) {
-    return file;
-  } else if (*dir.rbegin() == '/') {
-    return dir + file;
-  } else {
-    return dir + "/" + file;
-  }
-}
-#else
 static std::string getDSPIPath(DILocation Loc) {
   std::string dir = Loc.getDirectory();
   std::string file = Loc.getFilename();
-  if (dir.empty()) {
+  if (dir.empty() || file[0] == '/') {
     return file;
   } else if (*dir.rbegin() == '/') {
     return dir + file;
@@ -101,25 +87,16 @@ static std::string getDSPIPath(DILocation Loc) {
     return dir + "/" + file;
   }
 }
-#endif
 
 bool InstructionInfoTable::getInstructionDebugInfo(const llvm::Instruction *I, 
                                                    const std::string *&File,
                                                    unsigned &Line) {
-#if (LLVM_VERSION_MAJOR == 2 && LLVM_VERSION_MINOR < 7)
-  if (const DbgStopPointInst *dspi = dyn_cast<DbgStopPointInst>(I)) {
-    File = internString(getDSPIPath(dspi));
-    Line = dspi->getLine();
-    return true;
-  }
-#else
   if (MDNode *N = I->getMetadata("dbg")) {
     DILocation Loc(N);
     File = internString(getDSPIPath(Loc));
     Line = Loc.getLineNumber();
     return true;
   }
-#endif
 
   return false;
 }
@@ -132,64 +109,35 @@ InstructionInfoTable::InstructionInfoTable(Module *m)
 
   for (Module::iterator fnIt = m->begin(), fn_ie = m->end(); 
        fnIt != fn_ie; ++fnIt) {
-    const std::string *initialFile = &dummyString;
-    unsigned initialLine = 0;
 
-    // It may be better to look for the closest stoppoint to the entry
-    // following the CFG, but it is not clear that it ever matters in
-    // practice.
-    for (inst_iterator it = inst_begin(fnIt), ie = inst_end(fnIt);
-         it != ie; ++it)
-      if (getInstructionDebugInfo(&*it, initialFile, initialLine))
-        break;
-    
-    typedef std::map<BasicBlock*, std::pair<const std::string*,unsigned> > 
-      sourceinfo_ty;
-    sourceinfo_ty sourceInfo;
-    for (llvm::Function::iterator bbIt = fnIt->begin(), bbie = fnIt->end(); 
-         bbIt != bbie; ++bbIt) {
-      std::pair<sourceinfo_ty::iterator, bool>
-        res = sourceInfo.insert(std::make_pair(bbIt,
-                                               std::make_pair(initialFile,
-                                                              initialLine)));
-      if (!res.second)
-        continue;
+    for (inst_iterator it = inst_begin(fnIt), ie = inst_end(fnIt); it != ie;
+        ++it) {
+      const std::string *initialFile = &dummyString;
+      unsigned initialLine = 0;
+      Instruction *instr = &*it;
+      unsigned assemblyLine = 0;
 
-      std::vector<BasicBlock*> worklist;
-      worklist.push_back(bbIt);
-
-      do {
-        BasicBlock *bb = worklist.back();
-        worklist.pop_back();
-
-        sourceinfo_ty::iterator si = sourceInfo.find(bb);
-        assert(si != sourceInfo.end());
-        const std::string *file = si->second.first;
-        unsigned line = si->second.second;
-        
-        for (BasicBlock::iterator it = bb->begin(), ie = bb->end();
-             it != ie; ++it) {
-          Instruction *instr = it;
-          unsigned assemblyLine = 0;
-          std::map<const Instruction*, unsigned>::const_iterator ltit = 
-            lineTable.find(instr);
-          if (ltit!=lineTable.end())
-            assemblyLine = ltit->second;
-          getInstructionDebugInfo(instr, file, line);
-          infos.insert(std::make_pair(instr,
-                                      InstructionInfo(id++,
-                                                      *file,
-                                                      line,
-                                                      assemblyLine)));        
-        }
-        
-        for (succ_iterator it = succ_begin(bb), ie = succ_end(bb); 
-             it != ie; ++it) {
-          if (sourceInfo.insert(std::make_pair(*it,
-                                               std::make_pair(file, line))).second)
-            worklist.push_back(*it);
-        }
-      } while (!worklist.empty());
+      std::map<const Instruction*, unsigned>::const_iterator ltit =
+        lineTable.find(instr);
+      if (ltit!=lineTable.end())
+        assemblyLine = ltit->second;
+      if (getInstructionDebugInfo(instr, initialFile, initialLine))
+      {
+        infos.insert(std::make_pair(instr,
+                                    InstructionInfo(id++,
+                                                    *initialFile,
+                                                    initialLine,
+                                                    assemblyLine)));
+        DEBUG_WITH_TYPE("klee_obtained_debug", dbgs() <<
+          "Instruction: \"" << *instr << "\" (assembly line " << assemblyLine <<
+          ") has debug location " << *initialFile << ":" << initialLine << "\n");
+      }
+      else
+      {
+        DEBUG_WITH_TYPE("klee_missing_debug", dbgs() <<
+          "Instruction: \"" << *instr << "\" (assembly line " << assemblyLine <<
+          ") is missing debug info.\n");
+      }
     }
   }
 }

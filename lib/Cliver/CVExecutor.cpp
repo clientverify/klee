@@ -31,6 +31,8 @@
 #include "../Core/UserSearcher.h"
 #include "../Solver/SolverStats.h"
 
+#include "klee/CommandLine.h"
+#include "klee/Common.h"
 #include "klee/Config/config.h"
 #include "klee/ExecutionState.h"
 #include "klee/Expr.h"
@@ -51,6 +53,19 @@
 #include "klee/util/ExprUtil.h"
 #include "klee/util/GetElementPtrTypeIterator.h"
 
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Attributes.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/TypeBuilder.h"
+#else
 #include "llvm/Attributes.h"
 #include "llvm/BasicBlock.h"
 #include "llvm/Constants.h"
@@ -59,12 +74,20 @@
 #include "llvm/IntrinsicInst.h"
 #include "llvm/LLVMContext.h"
 #include "llvm/Module.h"
+#if LLVM_VERSION_CODE <= LLVM_VERSION(3, 1)
+#include "llvm/Target/TargetData.h"
+#else
+#include "llvm/DataLayout.h"
+#include "llvm/TypeBuilder.h"
+#endif
+#endif
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/CallSite.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/System/Process.h"
-#include "llvm/Target/TargetData.h"
+#include "llvm/Support/Process.h"
+
 
 #include <cassert>
 #include <algorithm>
@@ -127,8 +150,8 @@ namespace klee {
   extern llvm::cl::opt<unsigned> MaxDepth;
   extern llvm::cl::opt<unsigned> MaxMemory;
   extern llvm::cl::opt<bool> MaxMemoryInhibit;
-  extern llvm::cl::opt<bool> UseForkedSTP;
-  extern llvm::cl::opt<bool> STPOptimizeDivides;
+  extern llvm::cl::opt<bool> UseForkedCoreSolver;
+  extern llvm::cl::opt<bool> CoreSolverOptimizeDivides;
 
   // Command line options defined in lib/Core/Searcher.cpp
   extern llvm::cl::opt<bool> UseRandomSearch;
@@ -153,12 +176,12 @@ cliver::CVExecutor *g_executor = 0;
 
 namespace cliver {
 
+llvm::cl::opt<bool> 
+EnableCliver("cliver", llvm::cl::desc("Enable cliver."), llvm::cl::init(false));
+
 /// Give symbolic variables a name equal to the declared name + id
 llvm::cl::opt<bool>
 UseFullVariableNames("use-full-variable-names", llvm::cl::init(false));
-
-llvm::cl::opt<bool>
-UseCanonicalization("use-canonicalization", llvm::cl::init(false));
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -182,6 +205,7 @@ CVExecutor::CVExecutor(const InterpreterOptions &opts, klee::InterpreterHandler 
   memory_usage_mbs_(0)
 {
 
+  /*
 	// Check for incompatible or non-supported klee options.
 #define INVALID_CL_OPT(name, val) \
 	if ((int)name != (int)val) cv_error("Unsupported command line option: %s", #name);
@@ -208,14 +232,121 @@ CVExecutor::CVExecutor(const InterpreterOptions &opts, klee::InterpreterHandler 
 	INVALID_CL_OPT(UseIterativeDeepeningTimeSearch,false);
 	INVALID_CL_OPT(UseBatchingSearch,false);
 #undef INVALID_CL_OPT
+*/
 }
 
 CVExecutor::~CVExecutor() {}
 
 void CVExecutor::runFunctionAsMain(llvm::Function *f,
-				                   int argc, char **argv, char **envp) {
+				 int argc,
+				 char **argv,
+				 char **envp) {
   using namespace klee;
+  using namespace llvm;
+  std::vector<ref<Expr> > arguments;
+
+  // force deterministic initialization of memory objects
+  srand(1);
+  srandom(1);
+  
+  MemoryObject *argvMO = 0;
+
+	// Only difference from klee::Executor::runFunctionAsMain()
+  cv_->initialize();
+  CVExecutionState *state = new CVExecutionState(kmodule->functionMap[f]);
+	state->initialize(cv_);
+  
+  // In order to make uclibc happy and be closer to what the system is
+  // doing we lay out the environments at the end of the argv array
+  // (both are terminated by a null). There is also a final terminating
+  // null that uclibc seems to expect, possibly the ELF header?
+
+  int envc;
+  for (envc=0; envp[envc]; ++envc) ;
+
+  unsigned NumPtrBytes = Context::get().getPointerWidth() / 8;
+  KFunction *kf = kmodule->functionMap[f];
+  assert(kf);
+  Function::arg_iterator ai = f->arg_begin(), ae = f->arg_end();
+  if (ai!=ae) {
+    arguments.push_back(klee::ConstantExpr::alloc(argc, Expr::Int32));
+
+    if (++ai!=ae) {
+      argvMO = memory->allocate((argc+1+envc+1+1) * NumPtrBytes, false, true,
+                                f->begin()->begin());
+      
+      arguments.push_back(argvMO->getBaseExpr());
+
+      if (++ai!=ae) {
+        uint64_t envp_start = argvMO->address + (argc+1)*NumPtrBytes;
+        arguments.push_back(Expr::createPointer(envp_start));
+
+        if (++ai!=ae)
+          klee_error("invalid main function (expect 0-3 arguments)");
+      }
+    }
+  }
+
+  if (pathWriter) 
+    state->pathOS = pathWriter->open();
+  if (symPathWriter) 
+    state->symPathOS = symPathWriter->open();
+
+
+  if (statsTracker)
+    statsTracker->framePushed(*state, 0);
+
+  assert(arguments.size() == f->arg_size() && "wrong number of arguments");
+  for (unsigned i = 0, e = f->arg_size(); i != e; ++i)
+    bindArgument(kf, i, *state, arguments[i]);
+
+  if (argvMO) {
+    ObjectState *argvOS = bindObjectInState(*state, argvMO, false);
+
+    for (int i=0; i<argc+1+envc+1+1; i++) {
+      if (i==argc || i>=argc+1+envc) {
+        // Write NULL pointer
+        argvOS->write(i * NumPtrBytes, Expr::createPointer(0));
+      } else {
+        char *s = i<argc ? argv[i] : envp[i-(argc+1)];
+        int j, len = strlen(s);
+        
+        MemoryObject *arg = memory->allocate(len+1, false, true, state->pc->inst);
+        ObjectState *os = bindObjectInState(*state, arg, false);
+        for (j=0; j<len+1; j++)
+          os->write8(j, s[j]);
+
+        // Write pointer to newly allocated and initialised argv/envp c-string
+        argvOS->write(i * NumPtrBytes, arg->getBaseExpr());
+      }
+    }
+  }
+  
+  initializeGlobals(*state);
+
+  processTree = new PTree(state);
+  state->ptreeNode = processTree->root;
+  run(*state);
+  delete processTree;
+  processTree = 0;
+
+  // hack to clear memory objects
+  delete memory;
+  memory = new MemoryManager();
+  
+  globalObjects.clear();
+  globalAddresses.clear();
+
+  if (statsTracker)
+    statsTracker->done();
+}
+
+#if 0
+void CVExecutor::runFunctionAsMain(llvm::Function *f,
+				                   int argc, char **argv, char **envp) {
   std::vector< ref<Expr> > arguments;
+
+  cv_->initialize();
 
 	// force deterministic initialization of memory objects
   srand(1);
@@ -224,8 +355,7 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
   MemoryObject *argvMO = 0;
 
 	// Only difference from klee::Executor::runFunctionAsMain()
-  CVExecutionState *state 
-		= new CVExecutionState(kmodule->functionMap[f], memory);
+  CVExecutionState *state = new CVExecutionState(kmodule->functionMap[f]);
 	state->initialize(cv_);
   
   // In order to make uclibc happy and be closer to what the system is
@@ -246,7 +376,7 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
     arguments.push_back(ConstantExpr::alloc(argc, Expr::Int32));
 
     if (++ai!=ae) {
-      argvMO = memory->allocate(*state, (argc+1+envc+1+1) * NumPtrBytes, 
+      argvMO = memory->allocate((argc+1+envc+1+1) * NumPtrBytes, 
           false, true, f->begin()->begin());
       
       arguments.push_back(argvMO->getBaseExpr());
@@ -286,7 +416,7 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
         char *s = i<argc ? argv[i] : envp[i-(argc+1)];
         int j, len = strlen(s);
         
-        arg = memory->allocate(*state,len+1, false, true, state->pc->inst);
+        arg = memory->allocate(len+1, false, true, state->pc->inst);
 
         ObjectState *os = bindObjectInState(*state, arg, false);
         for (j=0; j<len+1; j++)
@@ -325,6 +455,7 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
   //  theMMap = 0;
   //}
 }
+#endif
 
 void CVExecutor::run(klee::ExecutionState &initialState) {
   bindModuleConstants();
@@ -352,14 +483,14 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
     if (clear_caches) {
       clear_caches = false;
 
-      cv_message("Using %d MB of memory (limit is %d MB). Clearing Caches\n", 
+      cv_message("Using %ld MB of memory (limit is %d MB). Clearing Caches\n", 
           memory_usage_mbs_, (unsigned)klee::MaxMemory);
 
       cv_->notify_all(ExecutionEvent(CV_CLEAR_CACHES));
 
       update_memory_usage();
 
-      cv_message("Now using %d MB of memory (limit is %d MB). \n", 
+      cv_message("Now using %ld MB of memory (limit is %d MB). \n", 
           memory_usage_mbs_, (unsigned)klee::MaxMemory);
     
       if (memory_usage_mbs_ > klee::MaxMemory) {
@@ -445,7 +576,6 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
       stepInstruction(state); // keep stats rolling
       terminateStateEarly(state, "execution halting");
     }
-    updateStates(0);
   }
 }
 
@@ -489,10 +619,10 @@ void CVExecutor::handle_post_execution_events(klee::ExecutionState &state) {
   switch(inst->getOpcode()) {
     case llvm::Instruction::Call: {
       llvm::CallSite cs(inst);
-      llvm::Function *f = getCalledFunction(cs, state);
+      llvm::Value *fp = cs.getCalledValue();
+      llvm::Function *f = getTargetFunction(fp, state);
 			if (!f) {
 				// special case the call with a bitcast case
-				llvm::Value *fp = cs.getCalledValue();
 				llvm::ConstantExpr *ce = llvm::dyn_cast<llvm::ConstantExpr>(fp);
 				if (ce && ce->getOpcode()==llvm::Instruction::BitCast) {
 					f = dyn_cast<llvm::Function>(ce->getOperand(0));
@@ -518,6 +648,7 @@ void CVExecutor::handle_post_execution_events(klee::ExecutionState &state) {
 void CVExecutor::stepInstruction(klee::ExecutionState &state) {
 
 	if (klee::DebugPrintInstructions) {
+    printFileLine(state, state.pc);
 		CVExecutionState *cvstate = static_cast<CVExecutionState*>(&state);
 		CVDEBUG_S(cvstate->id(), *state.pc);
   }
@@ -534,13 +665,17 @@ void CVExecutor::stepInstruction(klee::ExecutionState &state) {
 }
 
 void CVExecutor::executeMakeSymbolic(klee::ExecutionState &state, 
-                                     const klee::MemoryObject *mo) {
+                                     const klee::MemoryObject *mo,
+                                     const std::string &name) {
+
+  assert(!replayOut && "replayOut not supported by cliver");
+
   // Create a new object state for the memory object (instead of a copy).
 	uint64_t id = cv_->next_array_id();
   const klee::Array *array;
 
   if (UseFullVariableNames)
-		array = new klee::Array(mo->name + llvm::utostr(id), mo->size);
+		array = new klee::Array(name + llvm::utostr(id), mo->size);
   else
 		array = new klee::Array(std::string("mo") + llvm::utostr(id), mo->size);
 
@@ -549,7 +684,7 @@ void CVExecutor::executeMakeSymbolic(klee::ExecutionState &state,
 
   CVExecutionState *cvstate = static_cast<CVExecutionState*>(&state);
   cvstate->property()->symbolic_vars++;
-  //CVMESSAGE("Created symbolic: " << array->name << " in " << *cvstate);
+  CVMESSAGE("Created symbolic: " << array->name << " in " << *cvstate);
 }
 
 void CVExecutor::updateStates(klee::ExecutionState *current) {
@@ -572,29 +707,13 @@ void CVExecutor::updateStates(klee::ExecutionState *current) {
   removedStates.clear();
 }
 
-void CVExecutor::transferToBasicBlock(llvm::BasicBlock *dst, 
-                                    llvm::BasicBlock *src, 
-                                    klee::ExecutionState &state) {
-  klee::KFunction *kf = state.stack.back().kf;
-  unsigned entry = kf->basicBlockEntry[dst];
-  state.pc = &kf->instructions[entry];
-  if (state.pc->inst->getOpcode() == llvm::Instruction::PHI) {
-    llvm::PHINode *first = static_cast<llvm::PHINode*>(state.pc->inst);
-    state.incomingBBIndex = first->getBasicBlockIndex(src);
-  }
-  //if (src == dst)
-  //  cv_->notify_all(ExecutionEvent(CV_TRANSFER_TO_BASICBLOCK_LOOP, &state));
-  //else
-  //  cv_->notify_all(ExecutionEvent(CV_TRANSFER_TO_BASICBLOCK, &state));
-}
-
 klee::Executor::StatePair 
 CVExecutor::fork(klee::ExecutionState &current, 
                  klee::ref<klee::Expr> condition, bool isInternal) {
 
   klee::Solver::Validity res;
 
-  double timeout = stpTimeout;
+  double timeout = coreSolverTimeout;
 
   solver->setTimeout(timeout);
 
@@ -603,30 +722,30 @@ CVExecutor::fork(klee::ExecutionState &current,
 
   if (!success) {
     current.pc = current.prevPC;
-    terminateStateEarly(current, "query timed out");
+    terminateStateEarly(current, "Query timed out (fork).");
     return StatePair(0, 0);
   }
 
-  if (replayPath) {
-    assert(replayPosition < replayPath->size() &&
-            "ran out of branches in replay path mode");
-    bool branch = (*replayPath)[replayPosition++];
-    
-    if (res==klee::Solver::True) {
-      assert(branch && "hit invalid branch in replay path mode");
-    } else if (res==klee::Solver::False) {
-      assert(!branch && "hit invalid branch in replay path mode");
-    } else {
-      // add constraints
-      if(branch) {
-        res = klee::Solver::True;
-        addConstraint(current, condition);
-      } else  {
-        res = klee::Solver::False;
-        addConstraint(current, klee::Expr::createIsZero(condition));
-      }
-    }
-  } 
+  //if (replayPath) {
+  //  assert(replayPosition < replayPath->size() &&
+  //          "ran out of branches in replay path mode");
+  //  bool branch = (*replayPath)[replayPosition++];
+  //  
+  //  if (res==klee::Solver::True) {
+  //    assert(branch && "hit invalid branch in replay path mode");
+  //  } else if (res==klee::Solver::False) {
+  //    assert(!branch && "hit invalid branch in replay path mode");
+  //  } else {
+  //    // add constraints
+  //    if(branch) {
+  //      res = klee::Solver::True;
+  //      addConstraint(current, condition);
+  //    } else  {
+  //      res = klee::Solver::False;
+  //      addConstraint(current, klee::Expr::createIsZero(condition));
+  //    }
+  //  }
+  //} 
  
   if (res == klee::Solver::True) {
 
@@ -819,31 +938,20 @@ void CVExecutor::add_state_internal(CVExecutionState* state) {
 	states.insert(state);
 }
 
+// FIXME incorporate CanonicalSolver
 void CVExecutor::rebuild_solvers() {
 
   delete solver;
-  klee::STPSolver *stpSolver = new klee::STPSolver(false /* useForkedSTP */);
-  klee::Solver *new_solver = stpSolver;
+  klee::Solver* coreSolver = new klee::STPSolver(klee::UseForkedCoreSolver, klee::CoreSolverOptimizeDivides);
 
-  if (klee::UseSTPQueryPCLog)
-      new_solver = klee::createPCLoggingSolver(new_solver, "stp-queries.pc");
-
-  if (klee::UseCexCache)
-      new_solver = klee::createCexCachingSolver(new_solver);
-
-  if (klee::UseCache)
-      new_solver = klee::createCachingSolver(new_solver);
-
-  if (UseCanonicalization)
-    new_solver = createCanonicalSolver(new_solver);
-
-  if (klee::UseIndependentSolver)
-      new_solver = klee::createIndependentSolver(new_solver);
-
-  if (klee::UseQueryPCLog)
-      new_solver = klee::createPCLoggingSolver(new_solver, "queries.pc");
-
-  solver = new klee::TimingSolver(new_solver, stpSolver);
+  klee::Solver *solver = 
+    constructSolverChain(coreSolver,
+                         interpreterHandler->getOutputFilename(klee::ALL_QUERIES_SMT2_FILE_NAME),
+                         interpreterHandler->getOutputFilename(klee::SOLVER_QUERIES_SMT2_FILE_NAME),
+                         interpreterHandler->getOutputFilename(klee::ALL_QUERIES_PC_FILE_NAME),
+                         interpreterHandler->getOutputFilename(klee::SOLVER_QUERIES_PC_FILE_NAME));
+  
+  this->solver = new klee::TimingSolver(solver);
 }
 
 // Don't use mallinfo, overflows if usage is > 4GB
@@ -900,6 +1008,7 @@ void CVExecutor::add_finished_state(CVExecutionState* state) {
   assert(finished_states_.count(state->property()) == 0);
   finished_states_.insert(state->property());
 }
+///
 
 } // end namespace cliver
 

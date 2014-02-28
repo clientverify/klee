@@ -89,6 +89,8 @@ void SocketEvent::print(std::ostream &os) const {
 	static std::string socketevent_types[] = { SOCKETEVENT_TYPES };
 #undef X
 	os << "[" << socketevent_types[type] << "][LEN:" << length << "] ";
+  os << "[HLEN:" << header_length << "] ";
+  os << "[D:" << delta << "] ";
   if (ClientModelFlag == XPilot)
     os << "[CLRN:" << client_round << "] ";
 
@@ -114,8 +116,8 @@ bool SocketEvent::less(const SocketEvent &se) const {
 	if (type < se.type)
 		return true;
 
-	if (delta < se.delta)
-		return true;
+	//if (delta < se.delta)
+  //	return true;
 
 	if (client_round < se.client_round)
 		return true;

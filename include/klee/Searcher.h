@@ -66,6 +66,19 @@ namespace klee {
       tmp.insert(es);
       update(current, std::set<ExecutionState*>(), tmp);
     }
+
+    enum CoreSearchType {
+      DFS,
+      BFS,
+      RandomState,
+      RandomPath,
+      NURS_CovNew,
+      NURS_MD2U,
+      NURS_Depth,
+      NURS_ICnt,
+      NURS_CPICnt,
+      NURS_QC
+    };
   };
 
   class DFSSearcher : public Searcher {
@@ -79,6 +92,20 @@ namespace klee {
     bool empty() { return states.empty(); }
     void printName(std::ostream &os) {
       os << "DFSSearcher\n";
+    }
+  };
+
+  class BFSSearcher : public Searcher {
+    std::deque<ExecutionState*> states;
+
+  public:
+    ExecutionState &selectState();
+    void update(ExecutionState *current,
+                const std::set<ExecutionState*> &addedStates,
+                const std::set<ExecutionState*> &removedStates);
+    bool empty() { return states.empty(); }
+    void printName(std::ostream &os) {
+      os << "BFSSearcher\n";
     }
   };
 

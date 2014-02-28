@@ -26,29 +26,37 @@ FILE* klee::klee_message_file = NULL;
 std::ostream* klee::klee_warning_stream = NULL;
 std::ostream* klee::klee_message_stream = NULL;
 
-//static void klee_vfmessage(FILE *fp, const char *pfx, const char *msg, 
-//                           va_list ap) {
-//  if (!fp)
-//    return;
-//
-//  fprintf(fp, "KLEE: ");
-//  if (pfx) fprintf(fp, "%s: ", pfx);
-//  vfprintf(fp, msg, ap);
-//  fprintf(fp, "\n");
-//  fflush(fp);
-//}
+static void klee_vfmessage(FILE *fp, const char *pfx, const char *msg, 
+                           va_list ap) {
+  if (!fp)
+    return;
+
+  fprintf(fp, "KLEE: ");
+  if (pfx) fprintf(fp, "%s: ", pfx);
+  vfprintf(fp, msg, ap);
+  fprintf(fp, "\n");
+  fflush(fp);
+}
 
 static void klee_vomessage(std::ostream* os, const char *pfx, const char *msg, 
                            va_list ap) {
   if (!os)
     return;
 
+  // Compute buf size based on fmt string and args
+  va_list ap_copy;
+  va_copy(ap_copy, ap);
+  int buf_size = vsnprintf(NULL, 0, msg, ap_copy);
+  va_end(ap_copy);
+
+  // write to buffer
+	char buf[buf_size];
+	vsnprintf(buf, sizeof(buf), msg, ap);
+
+  // write buffer to stream
 	*os << "KLEE: ";
 	if (pfx)
 		*os << pfx << ": ";
-
-	char buf[1024];
-	vsnprintf(buf, sizeof(buf), msg, ap);
 	*os << buf << std::endl;
 }
 
@@ -59,18 +67,26 @@ static void klee_vomessage(std::ostream* os, const char *pfx, const char *msg,
    klee_warning_file (warnings.txt).
 
    Iff onlyToFile is false, the message is also printed on stderr.
+   FIXME: onlyToFile is ignored
 */
 static void klee_vmessage(const char *pfx, bool onlyToFile, const char *msg, 
                           va_list ap) {
-  
-	klee_vomessage(pfx ? klee_warning_stream : klee_message_stream, pfx, msg, ap);
+  klee_vomessage(pfx ? klee_warning_stream : klee_message_stream, pfx, msg, ap);
 }
-
 
 void klee::klee_message(const char *msg, ...) {
   va_list ap;
   va_start(ap, msg);
   klee_vmessage(NULL, false, msg, ap);
+  va_end(ap);
+}
+
+/* Message to be written only to file */
+void klee::klee_message_to_file(const char *msg, ...) {
+  va_list ap;
+  va_start(ap, msg);
+  // Use klee_vfmessage instead of klee_vmessage
+  klee_vfmessage(klee_message_file, NULL, msg, ap);
   va_end(ap);
 }
 
@@ -89,12 +105,10 @@ void klee::klee_warning(const char *msg, ...) {
   va_end(ap);
 }
 
-
 /* Prints a warning once per message. */
 void klee::klee_warning_once(const void *id, const char *msg, ...) {
   static std::set< std::pair<const void*, const char*> > keys;
   std::pair<const void*, const char*> key;
-
 
   /* "calling external" messages contain the actual arguments with
      which we called the external function, so we need to ignore them
@@ -108,7 +122,7 @@ void klee::klee_warning_once(const void *id, const char *msg, ...) {
     
     va_list ap;
     va_start(ap, msg);
-    klee_vmessage("WARNING", false, msg, ap);
+    klee_vmessage("WARNING ONCE", false, msg, ap);
     va_end(ap);
   }
 }

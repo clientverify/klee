@@ -21,7 +21,6 @@
 
 namespace klee {
 struct KFunction;
-class MemoryManager;
 }
 
 namespace cliver {
@@ -37,7 +36,7 @@ class NetworkManager;
 
 class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
  public:
-  CVExecutionState(klee::KFunction *kF, klee::MemoryManager *mem);
+  CVExecutionState(klee::KFunction *kF);
   CVExecutionState(const std::vector< klee::ref<klee::Expr> > &assumptions);
   ~CVExecutionState();
   virtual CVExecutionState *branch();

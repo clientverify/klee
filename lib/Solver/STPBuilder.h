@@ -11,17 +11,13 @@
 #define __UTIL_STPBUILDER_H__
 
 #include "klee/util/ExprHashMap.h"
+#include "klee/util/ArrayExprHash.h"
 #include "klee/Config/config.h"
 
 #include <vector>
-#include <map>
 
 #define Expr VCExpr
-#ifdef HAVE_EXT_STP
 #include <stp/c_interface.h>
-#else
-#include "../../stp/c_interface/c_interface.h"
-#endif
 
 #if ENABLE_STPLOG == 1
 #include "stp/stplog.h"
@@ -60,6 +56,15 @@ namespace klee {
     operator bool () { return H->expr; }
     operator ::VCExpr () { return H->expr; }
   };
+  
+  class STPArrayExprHash : public ArrayExprHash< ::VCExpr > {
+    
+    friend class STPBuilder;
+    
+  public:
+    STPArrayExprHash() {};
+    virtual ~STPArrayExprHash();
+  };
 
 class STPBuilder {
   ::VC vc;
@@ -71,30 +76,31 @@ class STPBuilder {
   /// use.
   bool optimizeDivides;
 
-private:
-  unsigned getShiftBits(unsigned amount) {
-    return (amount == 64) ? 6 : 5;
-  }
+  STPArrayExprHash _arr_hash;
+
+private:  
 
   ExprHandle bvOne(unsigned width);
   ExprHandle bvZero(unsigned width);
   ExprHandle bvMinusOne(unsigned width);
   ExprHandle bvConst32(unsigned width, uint32_t value);
   ExprHandle bvConst64(unsigned width, uint64_t value);
+  ExprHandle bvZExtConst(unsigned width, uint64_t value);
+  ExprHandle bvSExtConst(unsigned width, uint64_t value);
 
   ExprHandle bvBoolExtract(ExprHandle expr, int bit);
   ExprHandle bvExtract(ExprHandle expr, unsigned top, unsigned bottom);
   ExprHandle eqExpr(ExprHandle a, ExprHandle b);
 
   //logical left and right shift (not arithmetic)
-  ExprHandle bvLeftShift(ExprHandle expr, unsigned shift, unsigned shiftBits);
-  ExprHandle bvRightShift(ExprHandle expr, unsigned amount, unsigned shiftBits);
-  ExprHandle bvVarLeftShift(ExprHandle expr, ExprHandle amount, unsigned width);
-  ExprHandle bvVarRightShift(ExprHandle expr, ExprHandle amount, unsigned width);
-  ExprHandle bvVarArithRightShift(ExprHandle expr, ExprHandle amount, unsigned width);
+  ExprHandle bvLeftShift(ExprHandle expr, unsigned shift);
+  ExprHandle bvRightShift(ExprHandle expr, unsigned shift);
+  ExprHandle bvVarLeftShift(ExprHandle expr, ExprHandle shift);
+  ExprHandle bvVarRightShift(ExprHandle expr, ExprHandle shift);
+  ExprHandle bvVarArithRightShift(ExprHandle expr, ExprHandle shift);
 
   ExprHandle constructAShrByConstant(ExprHandle expr, unsigned shift, 
-                                     ExprHandle isSigned, unsigned shiftBits);
+                                     ExprHandle isSigned);
   ExprHandle constructMulByConstant(ExprHandle expr, unsigned width, uint64_t x);
   ExprHandle constructUDivByConstant(ExprHandle expr_n, unsigned width, uint64_t d);
   ExprHandle constructSDivByConstant(ExprHandle expr_n, unsigned width, uint64_t d);
@@ -107,7 +113,7 @@ private:
   
   ::VCExpr buildVar(const char *name, unsigned width);
   ::VCExpr buildArray(const char *name, unsigned indexWidth, unsigned valueWidth);
-
+ 
 public:
   STPBuilder(::VC _vc, bool _optimizeDivides=true);
   ~STPBuilder();

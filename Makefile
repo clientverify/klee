@@ -14,11 +14,13 @@ LEVEL = .
 
 include $(LEVEL)/Makefile.config
 
-DIRS = lib
-ifeq ($(ENABLE_EXT_STP),0)
-  DIRS += stp
-endif
-DIRS += tools runtime
+# The header files are normally installed
+# by the install-local target in the top-level
+# makefile. This disables installing anything
+# in the top-level makefile.
+NO_INSTALL=1
+
+DIRS = lib tools runtime
 EXTRA_DIST = include
 
 # Only build support directories when building unittests.
@@ -39,7 +41,7 @@ doxygen:
 .PHONY: cscope.files
 cscope.files:
 	find \
-          lib include stp tools runtime examples unittests test \
+          lib include tools runtime examples unittests test \
           -name Makefile -or \
           -name \*.in -or \
           -name \*.c -or \

@@ -16,6 +16,7 @@ override ENABLE_OPTIMIZED := $(RUNTIME_ENABLE_OPTIMIZED)
 override DISABLE_ASSERTIONS := $(RUNTIME_DISABLE_ASSERTIONS)
 override ENABLE_PROFILING := $(RUNTIME_ENABLE_PROFILING)
 override ENABLE_COVERAGE := $(RUNTIME_ENABLE_COVERAGE)
+override DEBUG_SYMBOLS := $(RUNTIME_DEBUG_SYMBOLS)
 endif
 
 # Required for Boost 
@@ -23,35 +24,38 @@ REQUIRES_RTTI=1
 REQUIRES_EH=1
 LIBS += -lboost_serialization -lboost_regex -lboost_iostreams
 CPPFLAGS += -Wno-deprecated
-CPPFLAGS += -DGOOGLE_PROFILER 
+# UNDO # CPPFLAGS += -DGOOGLE_PROFILER 
 
 # Use Boost.Timer rather than LLVM.Timer
-LIBS += -lboost_timer -lboost_system -lboost_chrono
-CPPFLAGS += -DUSE_BOOST_TIMER
+# UNDO # LIBS += -lboost_timer -lboost_system -lboost_chrono
+# UNDO # CPPFLAGS += -DUSE_BOOST_TIMER
 
 # Disable TimerStatIncrementer for ultra-optimized builds
 ifeq ($(DISABLE_TIMER_STATS),1)
   CPPFLAGS += -DDISABLE_TIMER_STATS
 endif
 
+CPPFLAGS += -Wall
+CPPFLAGS += -pedantic
+
 # Required for openmp 
-CPPFLAGS += -fopenmp
+CPPFLAGS += -fopenmp 
 LIBS += -fopenmp
 
 # TCMalloc enabled by default
-ifneq ($(DISABLE_TCMALLOC),1)
-  LIBS += -ltcmalloc
-  CPPFLAGS += -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free -DTCMALLOC
-endif
+# UNDO # ifneq ($(DISABLE_TCMALLOC),1)
+# UNDO #   LIBS += -ltcmalloc
+# UNDO #  CPPFLAGS += -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free -DTCMALLOC
+# UNDO # endif
 
 # Google perftools included by default, no performance hit unless enabled
 # at runtime.
-ifneq ($(DISABLE_GOOGLE_PROFILING),1)
-  LIBS += -lprofiler
-  CPPFLAGS += -DGOOGLE_PROFILER 
-endif
+# UNDO # ifneq ($(DISABLE_GOOGLE_PROFILING),1)
+# UNDO #   LIBS += -lprofiler
+# UNDO #   CPPFLAGS += -DGOOGLE_PROFILER 
+# UNDO # endif
 
-include $(LLVM_SRC_ROOT)/Makefile.rules
+include $(PROJ_SRC_ROOT)/Makefile.rules
 
 # LLVMCC was added in 2.7.
 ifeq ($(LLVMCC),)
@@ -62,16 +66,28 @@ endif
 # Needed to build runtime library using clang (gnu89 is the gcc default)
 C.Flags += -std=gnu89
 
-ifeq ($(ENABLE_EXT_STP),1)
-  LD.Flags += -L$(STP_ROOT)/lib
-  CXX.Flags += -I$(STP_ROOT)/include
-else
-  LD.Flags += -L$(PROJ_SRC_ROOT)/stp/lib
-  CXX.Flags += -I$(PROJ_SRC_ROOT)/stp/include
+# This is filename that KLEE will look for when trying to load klee-uclibc
+KLEE_UCLIBC_BCA_NAME="klee-uclibc.bca"
+
+LD.Flags += -L$(STP_ROOT)/lib
+CXX.Flags += -I$(STP_ROOT)/include
+CXX.Flags += -DKLEE_DIR=\"$(PROJ_OBJ_ROOT)\" -DKLEE_INSTALL_BIN_DIR=\"$(PROJ_bindir)\"
+CXX.Flags += -DKLEE_INSTALL_LIB_DIR=\"$(PROJ_libdir)\"
+
+ifeq ($(ENABLE_UCLIBC),1)
+	CXX.Flags += -DKLEE_UCLIBC_BCA_NAME=\"$(KLEE_UCLIBC_BCA_NAME)\"
 endif
-CXX.Flags += -DKLEE_DIR=\"$(PROJ_OBJ_ROOT)\"
+
 
 # For STP.
 CXX.Flags += -DEXT_HASH_MAP
 
+# For metaSMT
+ifeq ($(ENABLE_METASMT),1)
+  include $(METASMT_ROOT)/share/metaSMT/metaSMT.makefile
+  LD.Flags += -L$(METASMT_ROOT)/lib
+  CXX.Flags += -DBOOST_HAS_GCC_TR1 -D __STDC_LIMIT_MACROS -D __STDC_FORMAT_MACROS
+  CXX.Flags := $(filter-out -fno-exceptions,$(CXX.Flags))
+  CXX.Flags += $(metaSMT_INCLUDES)
+endif
 

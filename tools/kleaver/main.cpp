@@ -3,13 +3,19 @@
 #include "expr/Lexer.h"
 #include "expr/Parser.h"
 
+#include "klee/Config/Version.h"
 #include "klee/Constraints.h"
 #include "klee/Expr.h"
 #include "klee/ExprBuilder.h"
 #include "klee/Solver.h"
+#include "klee/SolverImpl.h"
 #include "klee/Statistics.h"
+#include "klee/CommandLine.h"
+#include "klee/Common.h"
 #include "klee/util/ExprPPrinter.h"
 #include "klee/util/ExprVisitor.h"
+
+#include "klee/util/ExprSMTLIBLetPrinter.h"
 
 #include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/StringExtras.h"
@@ -17,11 +23,45 @@
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/System/Signals.h"
+
+#include <sys/stat.h>
+#include <unistd.h>
+
+// FIXME: Ugh, this is gross. But otherwise our config.h conflicts with LLVMs.
+#undef PACKAGE_BUGREPORT
+#undef PACKAGE_NAME
+#undef PACKAGE_STRING
+#undef PACKAGE_TARNAME
+#undef PACKAGE_VERSION
+
+#include "llvm/Support/Signals.h"
+#include "llvm/Support/system_error.h"
 
 using namespace llvm;
 using namespace klee;
 using namespace klee::expr;
+
+#ifdef SUPPORT_METASMT
+
+#include <metaSMT/DirectSolver_Context.hpp>
+#include <metaSMT/backend/Z3_Backend.hpp>
+#include <metaSMT/backend/Boolector.hpp>
+
+#define Expr VCExpr
+#define Type VCType
+#define STP STP_Backend
+#include <metaSMT/backend/STP.hpp>
+#undef Expr
+#undef Type
+#undef STP
+
+using namespace metaSMT;
+using namespace metaSMT::solver;
+
+#endif /* SUPPORT_METASMT */
+
+
+
 
 namespace {
   llvm::cl::opt<std::string>
@@ -31,6 +71,7 @@ namespace {
   enum ToolActions {
     PrintTokens,
     PrintAST,
+    PrintSMTLIBv2,
     Evaluate
   };
 
@@ -40,11 +81,14 @@ namespace {
              llvm::cl::values(
              clEnumValN(PrintTokens, "print-tokens",
                         "Print tokens from the input file."),
+			clEnumValN(PrintSMTLIBv2, "print-smtlib",
+					   "Print parsed input file as SMT-LIBv2 query."),
              clEnumValN(PrintAST, "print-ast",
                         "Print parsed AST nodes from the input file."),
              clEnumValN(Evaluate, "evaluate",
                         "Print parsed AST nodes from the input file."),
              clEnumValEnd));
+
 
   enum BuilderKinds {
     DefaultBuilder,
@@ -69,13 +113,35 @@ namespace {
   UseDummySolver("use-dummy-solver",
 		   cl::init(false));
 
-  cl::opt<bool>
-  UseFastCexSolver("use-fast-cex-solver",
-		   cl::init(false));
-  
-  cl::opt<bool>
-  UseSTPQueryPCLog("use-stp-query-pc-log",
-                   cl::init(false));
+  llvm::cl::opt<std::string> directoryToWriteQueryLogs("query-log-dir",llvm::cl::desc("The folder to write query logs to. Defaults is current working directory."),
+		                                               llvm::cl::init("."));
+
+}
+
+static std::string getQueryLogPath(const char filename[])
+{
+	//check directoryToWriteLogs exists
+	struct stat s;
+	if( !(stat(directoryToWriteQueryLogs.c_str(),&s) == 0 && S_ISDIR(s.st_mode)) )
+	{
+		std::cerr << "Directory to log queries \"" << directoryToWriteQueryLogs << "\" does not exist!" << std::endl;
+		exit(1);
+	}
+
+	//check permissions okay
+	if( !( (s.st_mode & S_IWUSR) && getuid() == s.st_uid) &&
+	    !( (s.st_mode & S_IWGRP) && getgid() == s.st_gid) &&
+	    !( s.st_mode & S_IWOTH)
+	)
+	{
+		std::cerr << "Directory to log queries \"" << directoryToWriteQueryLogs << "\" is not writable!" << std::endl;
+		exit(1);
+	}
+
+	std::string path=directoryToWriteQueryLogs;
+	path+="/";
+	path+=filename;
+	return path;
 }
 
 static std::string escapedString(const char *start, unsigned length) {
@@ -163,17 +229,51 @@ static bool EvaluateInputAST(const char *Filename,
     return false;
 
   // FIXME: Support choice of solver.
-  Solver *S, *STP = S = 
-    UseDummySolver ? createDummySolver() : new STPSolver(true);
-  if (UseSTPQueryPCLog)
-    S = createPCLoggingSolver(S, "stp-queries.pc");
-  if (UseFastCexSolver)
-    S = createFastCexSolver(S);
-  S = createCexCachingSolver(S);
-  S = createCachingSolver(S);
-  S = createIndependentSolver(S);
-  if (0)
-    S = createValidatingSolver(S, STP);
+  Solver *coreSolver = NULL; // 
+  
+#ifdef SUPPORT_METASMT
+  if (UseMetaSMT != METASMT_BACKEND_NONE) {
+    
+    std::string backend;
+    
+    switch (UseMetaSMT) {
+          case METASMT_BACKEND_STP:
+              backend = "STP"; 
+              coreSolver = new MetaSMTSolver< DirectSolver_Context < STP_Backend > >(UseForkedCoreSolver, CoreSolverOptimizeDivides);
+              break;
+          case METASMT_BACKEND_Z3:
+              backend = "Z3";
+              coreSolver = new MetaSMTSolver< DirectSolver_Context < Z3_Backend > >(UseForkedCoreSolver, CoreSolverOptimizeDivides);
+              break;
+          case METASMT_BACKEND_BOOLECTOR:
+              backend = "Boolector";
+              coreSolver = new MetaSMTSolver< DirectSolver_Context < Boolector > >(UseForkedCoreSolver, CoreSolverOptimizeDivides);
+              break;
+          default:
+              assert(false);
+              break;
+    };
+    std::cerr << "Starting MetaSMTSolver(" << backend << ") ...\n";
+  }
+  else {
+    coreSolver = UseDummySolver ? createDummySolver() : new STPSolver(UseForkedCoreSolver);
+  }
+#else
+  coreSolver = UseDummySolver ? createDummySolver() : new STPSolver(UseForkedCoreSolver);
+#endif /* SUPPORT_METASMT */
+  
+  
+  if (!UseDummySolver) {
+    if (0 != MaxCoreSolverTime) {
+      coreSolver->setCoreSolverTimeout(MaxCoreSolverTime);
+    }
+  }
+
+  Solver *S = constructSolverChain(coreSolver,
+                                   getQueryLogPath(ALL_QUERIES_SMT2_FILE_NAME),
+                                   getQueryLogPath(SOLVER_QUERIES_SMT2_FILE_NAME),
+                                   getQueryLogPath(ALL_QUERIES_PC_FILE_NAME),
+                                   getQueryLogPath(SOLVER_QUERIES_PC_FILE_NAME));
 
   unsigned Index = 0;
   for (std::vector<Decl*>::iterator it = Decls.begin(),
@@ -189,7 +289,9 @@ static bool EvaluateInputAST(const char *Filename,
                           result)) {
           std::cout << (result ? "VALID" : "INVALID");
         } else {
-          std::cout << "FAIL";
+          std::cout << "FAIL (reason: " 
+                    << SolverImpl::getOperationStatusString(S->impl->getOperationStatusCode())
+                    << ")";
         }
       } else if (!QC->Values.empty()) {
         assert(QC->Objects.empty() && 
@@ -205,7 +307,9 @@ static bool EvaluateInputAST(const char *Filename,
           std::cout << "INVALID\n";
           std::cout << "\tExpr 0:\t" << result;
         } else {
-          std::cout << "FAIL";
+          std::cout << "FAIL (reason: " 
+                    << SolverImpl::getOperationStatusString(S->impl->getOperationStatusCode())
+                    << ")";
         }
       } else {
         std::vector< std::vector<unsigned char> > result;
@@ -229,7 +333,15 @@ static bool EvaluateInputAST(const char *Filename,
               std::cout << "\n";
           }
         } else {
-          std::cout << "FAIL";
+          SolverImpl::SolverRunStatus retCode = S->impl->getOperationStatusCode();
+          if (SolverImpl::SOLVER_RUN_STATUS_TIMEOUT == retCode) {
+            std::cout << " FAIL (reason: " 
+                      << SolverImpl::getOperationStatusString(retCode)
+                      << ")";
+          }           
+          else {
+            std::cout << "VALID (counterexample request ignored)";
+          }
         }
       }
 
@@ -262,6 +374,79 @@ static bool EvaluateInputAST(const char *Filename,
   return success;
 }
 
+static bool printInputAsSMTLIBv2(const char *Filename,
+                             const MemoryBuffer *MB,
+                             ExprBuilder *Builder)
+{
+	//Parse the input file
+	std::vector<Decl*> Decls;
+	Parser *P = Parser::Create(Filename, MB, Builder);
+	P->SetMaxErrors(20);
+	while (Decl *D = P->ParseTopLevelDecl())
+	{
+		Decls.push_back(D);
+	}
+
+	bool success = true;
+	if (unsigned N = P->GetNumErrors())
+	{
+		std::cerr << Filename << ": parse failure: "
+				   << N << " errors.\n";
+		success = false;
+	}
+
+	if (!success)
+	return false;
+
+	ExprSMTLIBPrinter* printer = createSMTLIBPrinter();
+	printer->setOutput(std::cout);
+
+	unsigned int queryNumber = 0;
+	//Loop over the declarations
+	for (std::vector<Decl*>::iterator it = Decls.begin(), ie = Decls.end(); it != ie; ++it)
+	{
+		Decl *D = *it;
+		if (QueryCommand *QC = dyn_cast<QueryCommand>(D))
+		{
+			//print line break to separate from previous query
+			if(queryNumber!=0) 	std::cout << std::endl;
+
+			//Output header for this query as a SMT-LIBv2 comment
+			std::cout << ";SMTLIBv2 Query " << queryNumber << std::endl;
+
+			/* Can't pass ConstraintManager constructor directly
+			 * as argument to Query object. Like...
+			 * query(ConstraintManager(QC->Constraints),QC->Query);
+			 *
+			 * For some reason if constructed this way the first
+			 * constraint in the constraint set is set to NULL and
+			 * will later cause a NULL pointer dereference.
+			 */
+			ConstraintManager constraintM(QC->Constraints);
+			Query query(constraintM,QC->Query);
+			printer->setQuery(query);
+
+			if(!QC->Objects.empty())
+				printer->setArrayValuesToGet(QC->Objects);
+
+			printer->generateOutput();
+
+
+			queryNumber++;
+		}
+	}
+
+	//Clean up
+	for (std::vector<Decl*>::iterator it = Decls.begin(),
+			ie = Decls.end(); it != ie; ++it)
+		delete *it;
+	delete P;
+
+	delete printer;
+
+	return true;
+}
+
 int main(int argc, char **argv) {
   bool success = true;
 
@@ -269,12 +454,14 @@ int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv);
 
   std::string ErrorStr;
-  MemoryBuffer *MB = MemoryBuffer::getFileOrSTDIN(InputFile.c_str(), &ErrorStr);
-  if (!MB) {
-    std::cerr << argv[0] << ": error: " << ErrorStr << "\n";
+  
+  OwningPtr<MemoryBuffer> MB;
+  error_code ec=MemoryBuffer::getFileOrSTDIN(InputFile.c_str(), MB);
+  if (ec) {
+    std::cerr << argv[0] << ": error: " << ec.message() << "\n";
     return 1;
   }
-
+  
   ExprBuilder *Builder = 0;
   switch (BuilderKind) {
   case DefaultBuilder:
@@ -293,23 +480,24 @@ int main(int argc, char **argv) {
 
   switch (ToolAction) {
   case PrintTokens:
-    PrintInputTokens(MB);
+    PrintInputTokens(MB.get());
     break;
   case PrintAST:
-    success = PrintInputAST(InputFile=="-" ? "<stdin>" : InputFile.c_str(), MB,
+    success = PrintInputAST(InputFile=="-" ? "<stdin>" : InputFile.c_str(), MB.get(),
                             Builder);
     break;
   case Evaluate:
     success = EvaluateInputAST(InputFile=="-" ? "<stdin>" : InputFile.c_str(),
-                               MB, Builder);
+                               MB.get(), Builder);
+    break;
+  case PrintSMTLIBv2:
+    success = printInputAsSMTLIBv2(InputFile=="-"? "<stdin>" : InputFile.c_str(), MB.get(),Builder);
     break;
   default:
     std::cerr << argv[0] << ": error: Unknown program action!\n";
   }
 
   delete Builder;
-  delete MB;
-
   llvm::llvm_shutdown();
   return success ? 0 : 1;
 }
