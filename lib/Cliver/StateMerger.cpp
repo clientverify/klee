@@ -21,7 +21,7 @@
 #include "../Core/Memory.h"
 #include "klee/Internal/Module/KModule.h"
 
-#include "llvm/Function.h"
+#include "llvm/IR/Function.h"
 #include "llvm/Support/CommandLine.h"
 
 namespace cliver {
@@ -95,8 +95,8 @@ bool StateMerger::callstacks_equal(
 	while (itA!=state_a->stack.end() && itB!=state_b->stack.end()) {
 		if (itA->caller!=itB->caller || itA->kf!=itB->kf) {
 			CVDEBUG_S2(id_a, id_b, "call stacks don't match" 
-					<< itA->kf->function->getNameStr() << " "
-					<< itB->kf->function->getNameStr());
+					<< itA->kf->function->getName().str() << " "
+					<< itB->kf->function->getName().str());
 			return false;
 		}
 		++itA;

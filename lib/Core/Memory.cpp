@@ -638,10 +638,10 @@ void ObjectState::print(std::ostream &os, bool print_bytes) const {
 		std::string str;
 		llvm::raw_string_ostream info(str);
 		if (const Instruction *i = dyn_cast<Instruction>(object->allocSite)) {
-			info << i->getParent()->getParent()->getNameStr() << ": ";
+			info << i->getParent()->getParent()->getName() << ": ";
 			info << *i;
 		} else if (const GlobalValue *gv = dyn_cast<GlobalValue>(object->allocSite)) {
-			info << "global:" << gv->getNameStr();
+			info << "global:" << gv->getName();
 		} else {
 			info << "value:" << *object->allocSite;
 		}
@@ -731,10 +731,10 @@ void ObjectState::print_diff(std::vector<ObjectState*> &_ovec, std::ostream &os)
 			std::string str;
 			llvm::raw_string_ostream info(str);
 			if (const Instruction *i = dyn_cast<Instruction>(as)) {
-				info << i->getParent()->getParent()->getNameStr() << "():";
+				info << i->getParent()->getParent()->getName() << "():";
 				info << *i;
 			} else if (const GlobalValue *gv = dyn_cast<GlobalValue>(as)) {
-				info << "global: " << gv->getNameStr();
+				info << "global: " << gv->getName();
 			} else {
 				info << "value: " << *as;
 			}

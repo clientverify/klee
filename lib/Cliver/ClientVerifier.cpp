@@ -27,7 +27,7 @@
 #include "../lib/Core/CoreStats.h"
 #include "../lib/Solver/SolverStats.h"
 
-#include "llvm/Module.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Process.h"
@@ -304,11 +304,11 @@ void ClientVerifier::assign_basic_block_ids() {
       it != ie; ++it) {
 
     if (!it->isDeclaration()) {
-      std::string function_name(it->getNameStr());
+      std::string function_name(it->getName());
       function_name += "_";
       for (llvm::Function::iterator fit = it->begin(), fie = it->end();
            fit != fie; ++fit) {
-        std::string bb_name(function_name + fit->getNameStr());
+        std::string bb_name(function_name + fit->getName().str());
         basicblock_names.push_back(BBNamePair(bb_name, &(*fit)));
       }
     }

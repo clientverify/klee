@@ -21,8 +21,8 @@
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/Internal/Module/KModule.h"
 
-#include "llvm/Module.h"
-#include "llvm/Type.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Type.h"
 #include "llvm/ADT/Twine.h"
 
 #include <errno.h>

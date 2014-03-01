@@ -32,7 +32,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include "llvm/Support/Process.h"
-#include "llvm/Function.h"
+#include "llvm/IR/Function.h"
 
 #include <fstream>
 #include <algorithm>

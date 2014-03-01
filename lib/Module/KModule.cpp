@@ -510,11 +510,11 @@ void KModule::prepare(const Interpreter::ModuleOptions &opts,
 				continue;
 			}
 
-			*ros << *it->getFunctionType() << " " << it->getNameStr() << " {\n";
+			*ros << *it->getFunctionType() << " " << it->getName() << " {\n";
 
 			for (Function::iterator fit = it->begin(), fie = it->end();
 					fit != fie; ++fit) {
-				*ros << fit->getNameStr() << " : " << llvm_kbasicblocks[&(*fit)]->id << ":\n";
+				*ros << fit->getName() << " : " << llvm_kbasicblocks[&(*fit)]->id << ":\n";
 				for (BasicBlock::iterator bit = fit->begin(), bie = fit->end();
 						bit != bie; ++bit) {
 					*ros << "  " << infos->getInfo(&(*bit)).id << ": " << *bit << "\n";

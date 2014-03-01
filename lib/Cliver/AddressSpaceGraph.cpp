@@ -22,7 +22,7 @@
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/Internal/Module/KModule.h"
 
-#include "llvm/Function.h"
+#include "llvm/IR/Function.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -348,12 +348,12 @@ bool AddressSpaceGraph::locals_equal(const AddressSpaceGraph &b) const {
           if (DebugAddressSpaceGraph) {
             if (locals_info_[i].isArg) {
               CVDEBUG_S2(id_a, id_b, "locals not equal in Function: "
-                << locals_info_[i].kf->function->getNameStr() << "(), " <<
+                << locals_info_[i].kf->function->getName().str() << "(), " <<
                 a_expr << " != " << b_expr << ", Arg "
                 << locals_info_[i].index);
             } else {
               CVDEBUG_S2(id_a, id_b, "locals not equal in Function: "
-                << locals_info_[i].kf->function->getNameStr() << "(), " <<
+                << locals_info_[i].kf->function->getName().str() << "(), " <<
                 a_expr << " != " << b_expr << ", "
                 << *(locals_info_[i].kf->instructions[locals_info_[i].index]));
             }

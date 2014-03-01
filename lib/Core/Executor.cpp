@@ -1223,7 +1223,7 @@ void Executor::executeCall(ExecutionState &state,
 
   std::string widget_str("Widget_");
   if (NoXWindows 
-      && f->getNameStr().substr(0,widget_str.size()) == widget_str) {
+      && f->getName().substr(0,widget_str.size()) == widget_str) {
       klee_warning_once("Ignoring Widget function: %s", 
                         f->getName().str().c_str());
       return;
