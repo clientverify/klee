@@ -1224,7 +1224,7 @@ void Executor::executeCall(ExecutionState &state,
   std::string widget_str("Widget_");
   if (NoXWindows 
       && f->getName().substr(0,widget_str.size()) == widget_str) {
-      klee_warning_once("Ignoring Widget function: %s", 
+      klee_warning_once(f, "Ignoring Widget function: %s", 
                         f->getName().str().c_str());
       return;
   }
@@ -2871,14 +2871,23 @@ void Executor::callExternalFunction(ExecutionState &state,
     return;
  
   if (NoXWindows && function->getName()[0] == 'X') { 
-    std::string n_str = "nuklear_";
-    std::string f_str = state.stack.back().kf->function->getName().str();
-    // check if we called this X function from within a nuklear_* function.
-    if (f_str.substr(0,n_str.size()) != n_str) {
-      //klee_warning_once("Ignoring X function: %s", 
-      //                  function->getName().str().c_str());
+    //std::string n_str = "nuklear_";
+    //std::string f_str = state.stack.back().kf->function->getName().str();
+    if (function->getName().str() == "XParseGeometry" ||
+        function->getName().str() == "XStringToKeysym") {
+      klee_warning_once(function, "Calling X function: %s", 
+                        function->getName().str().c_str());
+    } else {
+      klee_warning_once(function, "Ignoring X function: %s", 
+                        function->getName().str().c_str());
       return;
     }
+    // check if we called this X function from within a nuklear_* function.
+    //if (f_str.substr(0,n_str.size()) != n_str) {
+    //  //klee_warning_once("Ignoring X function: %s", 
+    //  //                  function->getName().str().c_str());
+    //  return;
+    //}
   }
  
   if (NoExternals && !okExternals.count(function->getName())) {

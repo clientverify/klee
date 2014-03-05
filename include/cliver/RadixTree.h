@@ -20,7 +20,9 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <boost/graph/adjacency_list.hpp>
+#ifdef USE_GRAPHVIZ
 #include <boost/graph/graphviz.hpp>
+#endif
 #include <boost/lexical_cast.hpp>
 
 // For writing RadixTree to dot file
@@ -487,6 +489,7 @@ class RadixTree {
         worklist.push(std::make_pair(edge->to(), v_to_desc));
       }
     }
+#ifdef USE_GRAPHVIZ
     if (edge_labels) 
       boost::write_graphviz(os, graph,
           boost::make_label_writer(boost::get(&dot_vertex::name, graph)),
@@ -494,6 +497,7 @@ class RadixTree {
     else
       boost::write_graphviz(os, graph,
           boost::make_label_writer(boost::get(&dot_vertex::name, graph)));
+#endif
   }
 
   // Returns the number of elements in the tree, i.e. sum over |edges|

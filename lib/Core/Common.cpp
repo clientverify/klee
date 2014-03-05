@@ -46,7 +46,7 @@ static void klee_vomessage(std::ostream* os, const char *pfx, const char *msg,
   // Compute buf size based on fmt string and args
   va_list ap_copy;
   va_copy(ap_copy, ap);
-  int buf_size = vsnprintf(NULL, 0, msg, ap_copy);
+  int buf_size = vsnprintf(NULL, 0, msg, ap_copy) + 1;
   va_end(ap_copy);
 
   // write to buffer

@@ -12,8 +12,6 @@
 
 #include <llvm/ADT/PriorityQueue.h>
 
-#include <boost/ptr_container/ptr_set.hpp>
-
 #include <map>
 #include <set>
 #include <iostream>

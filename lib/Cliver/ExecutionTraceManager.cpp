@@ -297,6 +297,7 @@ void TrainingExecutionTraceManager::notify(ExecutionEvent ev) {
 
     case CV_SELECT_EVENT: {
       property->is_recv_processing = false;
+      CVDEBUG("Select Event: " << *state);
     }
 
     case CV_BASICBLOCK_ENTRY: {
