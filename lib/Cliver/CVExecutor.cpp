@@ -684,7 +684,7 @@ void CVExecutor::executeMakeSymbolic(klee::ExecutionState &state,
 
   CVExecutionState *cvstate = static_cast<CVExecutionState*>(&state);
   cvstate->property()->symbolic_vars++;
-  CVMESSAGE("Created symbolic: " << array->name << " in " << *cvstate);
+  //CVMESSAGE("Created symbolic: " << array->name << " in " << *cvstate);
 }
 
 void CVExecutor::updateStates(klee::ExecutionState *current) {

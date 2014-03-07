@@ -21,8 +21,14 @@
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/Internal/Module/KModule.h"
 
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
+#else
+#include "llvm/Module.h"
+#include "llvm/Type.h"
+#endif
+
 #include "llvm/ADT/Twine.h"
 
 #include <errno.h>

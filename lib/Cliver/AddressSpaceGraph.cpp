@@ -22,7 +22,12 @@
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/Internal/Module/KModule.h"
 
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
 #include "llvm/IR/Function.h"
+#else
+#include "llvm/Function.h"
+#endif
+
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 

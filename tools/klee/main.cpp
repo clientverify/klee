@@ -213,8 +213,10 @@ namespace klee {
            cl::desc("Use a watchdog process to enforce --max-time."),
            cl::init(0));
 
-  //cl::opt<bool> 
-  //EnableCliver("cliver", cl::desc("Enable cliver."), cl::init(false));
+  cl::opt<bool>
+  StripUclibcAsm64("strip-uclibc-asm64",
+           cl::desc("Strip of asm prefixes for 64 bit functions not present in uclibc."),
+           cl::init(0));
 }
 
 extern cl::opt<double> MaxTime;
@@ -1088,21 +1090,23 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, llvm::sys::Path li
   // linked. In the off chance that both prefixed and unprefixed
   // versions are present in the module, make sure we don't create a
   // naming conflict.
-  for (Module::iterator fi = mainModule->begin(), fe = mainModule->end();
-       fi != fe; ++fi) {
-    Function *f = fi;
-    const std::string &name = f->getName();
-    if (name[0]=='\01') {
-      unsigned size = name.size();
-      if (name[size-2]=='6' && name[size-1]=='4') {
-        std::string unprefixed = name.substr(1);
+  if (StripUclibcAsm64) {
+    for (Module::iterator fi = mainModule->begin(), fe = mainModule->end();
+        fi != fe; ++fi) {
+      Function *f = fi;
+      const std::string &name = f->getName();
+      if (name[0]=='\01') {
+        unsigned size = name.size();
+        if (name[size-2]=='6' && name[size-1]=='4') {
+          std::string unprefixed = name.substr(1);
 
-        // See if the unprefixed version exists.
-        if (Function *f2 = mainModule->getFunction(unprefixed)) {
-          f->replaceAllUsesWith(f2);
-          f->eraseFromParent();
-        } else {
-          f->setName(unprefixed);
+          // See if the unprefixed version exists.
+          if (Function *f2 = mainModule->getFunction(unprefixed)) {
+            f->replaceAllUsesWith(f2);
+            f->eraseFromParent();
+          } else {
+            f->setName(unprefixed);
+          }
         }
       }
     }

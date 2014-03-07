@@ -27,7 +27,12 @@
 #include "../lib/Core/CoreStats.h"
 #include "../lib/Solver/SolverStats.h"
 
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
 #include "llvm/IR/Module.h"
+#else
+#include "llvm/Module.h"
+#endif
+
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Process.h"

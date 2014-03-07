@@ -21,7 +21,12 @@
 #include "../Core/Memory.h"
 #include "klee/Internal/Module/KModule.h"
 
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
 #include "llvm/IR/Function.h"
+#else
+#include "llvm/Function.h"
+#endif
+
 #include "llvm/Support/CommandLine.h"
 
 namespace cliver {
