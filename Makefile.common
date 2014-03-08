@@ -20,15 +20,13 @@ override DEBUG_SYMBOLS := $(RUNTIME_DEBUG_SYMBOLS)
 endif
 
 # Required for Boost 
-REQUIRES_RTTI=1
-REQUIRES_EH=1
 LIBS += -lboost_serialization -lboost_regex -lboost_iostreams
 CPPFLAGS += -Wno-deprecated
 # UNDO # CPPFLAGS += -DGOOGLE_PROFILER 
 
 # Use Boost.Timer rather than LLVM.Timer
-# UNDO # LIBS += -lboost_timer -lboost_system -lboost_chrono
-# UNDO # CPPFLAGS += -DUSE_BOOST_TIMER
+LIBS += -lboost_timer -lboost_system -lboost_chrono
+CPPFLAGS += -DUSE_BOOST_TIMER
 
 # Disable TimerStatIncrementer for ultra-optimized builds
 ifeq ($(DISABLE_TIMER_STATS),1)
@@ -43,17 +41,17 @@ CPPFLAGS += -fopenmp
 LIBS += -fopenmp
 
 # TCMalloc enabled by default
-# UNDO # ifneq ($(DISABLE_TCMALLOC),1)
-# UNDO #   LIBS += -ltcmalloc
-# UNDO #  CPPFLAGS += -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free -DTCMALLOC
-# UNDO # endif
+ifneq ($(ENABLE_TCMALLOC),1)
+  LIBS += -ltcmalloc
+  CPPFLAGS += -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free -DTCMALLOC
+endif
 
 # Google perftools included by default, no performance hit unless enabled
 # at runtime.
-# UNDO # ifneq ($(DISABLE_GOOGLE_PROFILING),1)
-# UNDO #   LIBS += -lprofiler
-# UNDO #   CPPFLAGS += -DGOOGLE_PROFILER 
-# UNDO # endif
+ifneq ($(DISABLE_GOOGLE_PROFILING),1)
+  LIBS += -lprofiler
+  CPPFLAGS += -DGOOGLE_PROFILER 
+endif
 
 include $(PROJ_SRC_ROOT)/Makefile.rules
 

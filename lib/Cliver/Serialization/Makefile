@@ -1,4 +1,4 @@
-#===-- lib/Cliver/Makefile ---------------------------------*- Makefile -*--===#
+#===-- lib/CliverSerialization/Makefile --------------------*- Makefile -*--===#
 #
 #                     The KLEE Symbolic Virtual Machine
 #
@@ -7,14 +7,14 @@
 #
 #===------------------------------------------------------------------------===#
 
-LEVEL=../..
+LEVEL=../../..
 
-PARALLEL_DIRS=Serialization
-
-LIBRARYNAME=Cliver
+LIBRARYNAME=CliverSerialization
 DONT_BUILD_RELINKED=1
 BUILD_ARCHIVE=1
 NO_INSTALL=1
 
 include $(LEVEL)/Makefile.common
 
+CXX.Flags := $(filter-out -fno-rtti,$(CXX.Flags))
+CXX.Flags := $(filter-out -fno-exceptions,$(CXX.Flags))

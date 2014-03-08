@@ -29,11 +29,6 @@
 #include <iostream>
 #include <vector>
 
-#include <boost/shared_ptr.hpp>
-#include <boost/serialization/access.hpp>
-#include <boost/serialization/vector.hpp>
-#include <boost/serialization/set.hpp>
-
 namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////

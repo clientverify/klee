@@ -28,8 +28,9 @@ std::ostream* klee::klee_message_stream = NULL;
 
 static void klee_vfmessage(FILE *fp, const char *pfx, const char *msg, 
                            va_list ap) {
-  if (!fp)
+  if (!fp) {
     return;
+  }
 
   fprintf(fp, "KLEE: ");
   if (pfx) fprintf(fp, "%s: ", pfx);
@@ -40,8 +41,13 @@ static void klee_vfmessage(FILE *fp, const char *pfx, const char *msg,
 
 static void klee_vomessage(std::ostream* os, const char *pfx, const char *msg, 
                            va_list ap) {
-  if (!os)
+  if (!os) {
+    printf("KLEE: ");
+    if (pfx) printf( "%s: ", pfx);
+    vprintf(msg, ap);
+    printf("\n");
     return;
+  }
 
   // Compute buf size based on fmt string and args
   va_list ap_copy;

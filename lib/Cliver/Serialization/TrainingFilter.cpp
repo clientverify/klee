@@ -14,7 +14,7 @@
 #include "cliver/NetworkManager.h"
 #include "cliver/Socket.h"
 
-#include "CVCommon.h"
+#include "../CVCommon.h"
 
 ////////////////////////////////////////////////////////////////////////////////
 

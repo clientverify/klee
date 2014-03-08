@@ -13,7 +13,7 @@
 #include "cliver/ExecutionTrace.h"
 #include "cliver/ExecutionStateProperty.h"
 #include "cliver/Socket.h"
-#include "CVCommon.h"
+#include "../CVCommon.h"
 
 #include <boost/archive/binary_oarchive.hpp>
 #include <boost/archive/binary_iarchive.hpp>
@@ -26,9 +26,6 @@
 #include <vector>
 
 namespace cliver {
-
-llvm::cl::opt<bool> 
-UseCompression("use-compression", llvm::cl::init(true));
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -55,16 +52,17 @@ void TrainingObject::write(ExecutionStateProperty* property,
 
   // Write to file using boost::serialization
   CVMESSAGE("Writing " << name << " to " << subdir);
-  if (UseCompression) {
-    boost::iostreams::filtering_streambuf<boost::iostreams::output> out;
-    out.push(boost::iostreams::gzip_compressor());
-    out.push(*file);
-    boost::archive::binary_oarchive oa(out);
-    oa << *this;
-  } else {
-    boost::archive::binary_oarchive oa(*file);
-    oa << *this;
-  }
+
+  // Write out compressed file
+  boost::iostreams::filtering_streambuf<boost::iostreams::output> out;
+  out.push(boost::iostreams::gzip_compressor());
+  out.push(*file);
+  boost::archive::binary_oarchive oa(out);
+  oa << *this;
+
+  // Without compression
+  //boost::archive::binary_oarchive oa(*file);
+  //oa << *this;
 
   // Close file
   static_cast<std::ofstream*>(file)->close();
@@ -72,16 +70,16 @@ void TrainingObject::write(ExecutionStateProperty* property,
 
 /// Read file using boost::serialization
 void TrainingObject::read(std::ifstream &is) {
-  if (UseCompression) {
-    boost::iostreams::filtering_streambuf<boost::iostreams::input> in;
-    in.push(boost::iostreams::gzip_decompressor());
-    in.push(is);
-    boost::archive::binary_iarchive ia(in);
-    ia >> *this;
-  } else {
-    boost::archive::binary_iarchive ia(is);
-    ia >> *this;
-  }
+  // Read in compressed file
+  boost::iostreams::filtering_streambuf<boost::iostreams::input> in;
+  in.push(boost::iostreams::gzip_decompressor());
+  in.push(is);
+  boost::archive::binary_iarchive ia(in);
+  ia >> *this;
+
+  // Without compression
+  //boost::archive::binary_iarchive ia(is);
+  //ia >> *this;
 }
 
 // Extract the round index from string name

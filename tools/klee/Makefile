@@ -12,7 +12,7 @@ TOOLNAME = klee
 
 include $(LEVEL)/Makefile.config
 
-USEDLIBS = kleeCore.a kleeBasic.a kleeModule.a  kleaverSolver.a kleaverExpr.a kleeSupport.a Cliver.a
+USEDLIBS = kleeCore.a kleeBasic.a kleeModule.a  kleaverSolver.a kleaverExpr.a kleeSupport.a Cliver.a CliverSerialization.a
 LINK_COMPONENTS = jit bitreader bitwriter ipo linker engine support core
 
 ifeq ($(shell echo "$(LLVM_VERSION_MAJOR).$(LLVM_VERSION_MINOR) >= 3.3" | bc), 1)
