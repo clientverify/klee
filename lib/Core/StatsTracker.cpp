@@ -75,7 +75,7 @@ namespace {
   cl::opt<bool>
   OutputIStats("output-istats",
                cl::desc("Write instruction level statistics (in callgrind format)"),
-               cl::init(false));
+               cl::init(true));
 
   cl::opt<double>
   StatsWriteInterval("stats-write-interval",

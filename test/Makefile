@@ -60,6 +60,8 @@ clean::
 	$(RM) -rf `find $(PROJ_OBJ_ROOT)/test -name 'ft-last' -print`
 	$(RM) -rf `find $(PROJ_OBJ_ROOT)/test -name 'klee-last'`
 	$(RM) -rf `find $(PROJ_OBJ_ROOT)/test -name 'klee-out*'`
+	$(RM) -rf `find $(PROJ_OBJ_ROOT)/test -name 'cliver-last'`
+	$(RM) -rf `find $(PROJ_OBJ_ROOT)/test -name 'cliver-out*'`
 	$(RM) -rf `find $(PROJ_OBJ_ROOT)/test -name '*~'`
 	$(RM) -rf `find $(PROJ_OBJ_ROOT)/test -name test.log`
 	rm -f site.exp

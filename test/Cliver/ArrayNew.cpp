@@ -1,5 +1,5 @@
 // RUN: %llvmgxx %s -emit-llvm -O0 -c -o %t1.bc
-// RUN: %cliver -libc=klee -all-external-warnings %t1.bc > %t.log
+// RUN: %klee -cliver -libc=klee -all-external-warnings %t1.bc > %t.log
 // RUN: grep -q "PASSED" %t.log
 
 // Original test RUN commands
