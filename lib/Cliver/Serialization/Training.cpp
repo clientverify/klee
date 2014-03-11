@@ -54,15 +54,15 @@ void TrainingObject::write(ExecutionStateProperty* property,
   CVMESSAGE("Writing " << name << " to " << subdir);
 
   // Write out compressed file
-  boost::iostreams::filtering_streambuf<boost::iostreams::output> out;
-  out.push(boost::iostreams::gzip_compressor());
-  out.push(*file);
-  boost::archive::binary_oarchive oa(out);
-  oa << *this;
+  //boost::iostreams::filtering_streambuf<boost::iostreams::output> out;
+  //out.push(boost::iostreams::gzip_compressor());
+  //out.push(*file);
+  //boost::archive::binary_oarchive oa(out);
+  //oa << *this;
 
   // Without compression
-  //boost::archive::binary_oarchive oa(*file);
-  //oa << *this;
+  boost::archive::binary_oarchive oa(*file);
+  oa << *this;
 
   // Close file
   static_cast<std::ofstream*>(file)->close();
@@ -71,15 +71,15 @@ void TrainingObject::write(ExecutionStateProperty* property,
 /// Read file using boost::serialization
 void TrainingObject::read(std::ifstream &is) {
   // Read in compressed file
-  boost::iostreams::filtering_streambuf<boost::iostreams::input> in;
-  in.push(boost::iostreams::gzip_decompressor());
-  in.push(is);
-  boost::archive::binary_iarchive ia(in);
-  ia >> *this;
+  //boost::iostreams::filtering_streambuf<boost::iostreams::input> in;
+  //in.push(boost::iostreams::gzip_decompressor());
+  //in.push(is);
+  //boost::archive::binary_iarchive ia(in);
+  //ia >> *this;
 
   // Without compression
-  //boost::archive::binary_iarchive ia(is);
-  //ia >> *this;
+  boost::archive::binary_iarchive ia(is);
+  ia >> *this;
 }
 
 // Extract the round index from string name
