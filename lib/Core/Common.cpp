@@ -16,6 +16,7 @@
 #include <string.h>
 
 #include <set>
+#include <vector>
 #include <ostream>
 
 using namespace klee;
@@ -39,31 +40,52 @@ static void klee_vfmessage(FILE *fp, const char *pfx, const char *msg,
   fflush(fp);
 }
 
-static void klee_vomessage(std::ostream* os, const char *pfx, const char *msg, 
-                           va_list ap) {
-  if (!os) {
-    printf("KLEE: ");
-    if (pfx) printf( "%s: ", pfx);
-    vprintf(msg, ap);
-    printf("\n");
-    return;
-  }
-
-  // Compute buf size based on fmt string and args
-  va_list ap_copy;
-  va_copy(ap_copy, ap);
-  int buf_size = vsnprintf(NULL, 0, msg, ap_copy) + 1;
-  va_end(ap_copy);
-
-  // write to buffer
-	char buf[buf_size];
-	vsnprintf(buf, sizeof(buf), msg, ap);
-
-  // write buffer to stream
+static void klee_vomessage_write(std::ostream* os, const char *pfx, const char* buf) {
 	*os << "KLEE: ";
 	if (pfx)
 		*os << pfx << ": ";
 	*os << buf << std::endl;
+}
+
+static void klee_vomessage(std::ostream* os, const char *pfx, const char *msg, 
+                           va_list ap) {
+  if (!os) {
+    return;
+  }
+
+  va_list ap_copy;
+  char buf[1024];
+
+  // write to buffer
+  va_copy(ap_copy, ap);
+  int res = vsnprintf(buf, sizeof(buf), msg, ap_copy);
+  va_end(ap_copy);
+
+  if (res >= 0 && res < (int)sizeof(buf)) {
+    klee_vomessage_write(os, pfx, buf);
+    return;
+  }
+
+  // 1024 buf wasn't big enough
+  int buf_size = 1024*2;
+  while (true) {
+    std::vector<char> heapbuf(buf_size);
+
+    va_copy(ap_copy, ap);
+    res = vsnprintf(&heapbuf[0], buf_size, msg, ap_copy);
+    va_end(ap_copy);
+
+    if (res >= 0 && res < buf_size) {
+      klee_vomessage_write(os, pfx, &heapbuf[0]);
+      return;
+    }
+
+    if (buf_size >= (1024 * 1024)) {
+      const char* error_too_large = "ERROR print request too large";
+      klee_vomessage_write(os, pfx, error_too_large);
+      return;
+    }
+  }
 }
 
 /* Prints a message/warning.
@@ -101,8 +123,7 @@ void klee::klee_message(const char *msg, ...) {
 void klee::klee_message_to_file(const char *msg, ...) {
   va_list ap;
   va_start(ap, msg);
-  // Use klee_vfmessage instead of klee_vmessage
-  klee_vfmessage(klee_message_file, NULL, msg, ap);
+  klee_vmessage(NULL, true, msg, ap);
   va_end(ap);
 }
 
