@@ -1,6 +1,6 @@
 // RUN: %llvmgcc %s -emit-llvm -O0 -c -o %t1.bc
-// RUN: %klee -cliver -libc=klee %t1.bc > %t.log
-// RUN: grep -q "PASSED" %t.log
+// RUN: %klee -cliver -no-output -libc=klee %t1.bc > %t
+// RUN: grep -q "test_extract_pointers: PASSED" %t
 
 // Original test RUN commands
 // %llvmgcc %s -emit-llvm -O0 -c -o %t1.bc

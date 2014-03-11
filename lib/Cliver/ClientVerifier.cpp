@@ -19,6 +19,7 @@
 #include "cliver/ExecutionTraceManager.h"
 #include "cliver/NetworkManager.h"
 #include "cliver/StateMerger.h"
+#include "cliver/TestHelper.h"
 #include "CVCommon.h"
 #include "ExternalHandlers.h"
 
@@ -142,6 +143,7 @@ ExternalHandlerInfo external_handler_info[] = {
 	{"cliver_disable_tracking", ExternalHandler_DisableBasicBlockTracking, false, CV_NULL_EVENT},
 	{"cliver_enable_tracking", ExternalHandler_EnableBasicBlockTracking, false, CV_NULL_EVENT},
 	{"cliver_finish", ExternalHandler_Finish, false, CV_FINISH},
+	{"cliver_test_extract_pointers", ExternalHandler_test_extract_pointers, false, CV_NULL_EVENT},
 	{"cliver_select_event", ExternalHandler_select_event, false, CV_SELECT_EVENT},
 };
 
@@ -252,7 +254,7 @@ void ClientVerifier::initialize() {
   }
 
 	if (SocketLogFile.empty() || read_socket_logs(SocketLogFile) == 0) {
-		cv_error("Error loading socket log files, exiting now.");
+    CVMESSAGE("No socket log files loaded");
 	}
 
   assign_basic_block_ids();
