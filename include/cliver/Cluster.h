@@ -9,7 +9,6 @@
 #ifndef CLIVER_CLUSTER_H
 #define CLIVER_CLUSTER_H
 
-#include "CVCommon.h"
 #include <fstream>
 #include <string>
 #include <vector>

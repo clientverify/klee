@@ -50,8 +50,14 @@
 #undef PACKAGE_STRING
 #undef PACKAGE_TARNAME
 #undef PACKAGE_VERSION
+#if LLVM_VERSION_CODE < LLVM_VERSION(3, 0)
 #include "llvm/Target/TargetSelect.h"
-#include "llvm/System/Signals.h"
+#else
+#include "llvm/Support/TargetSelect.h"
+#endif
+#include "llvm/Support/Signals.h"
+#include "llvm/Support/system_error.h"
+
 
 #include <cerrno>
 #include <dirent.h>
@@ -86,8 +92,6 @@ llvm::cl::list<std::string> InputDir("input-dir",
     llvm::cl::ValueRequired,
     llvm::cl::desc("Specify directory containing .tpath files"),
     llvm::cl::value_desc("tpath directory"));
-
-
 }
 
 cliver::CVStream *g_cvstream;
@@ -123,9 +127,9 @@ int main(int argc, char **argv, char **envp) {
 
   llvm::cl::ParseCommandLineOptions(argc, argv, " cliverstats\n");
 
-  cliver::NoOutputFlag = true; // Don't save output to file 
-
-  g_cvstream = new cliver::CVStream();
+  bool no_output = true;
+  std::string output_dir("./cliverstats-out");
+  g_cvstream = new cliver::CVStream(no_output, output_dir);
   g_cvstream->init();
 
   switch (StatsMode)
