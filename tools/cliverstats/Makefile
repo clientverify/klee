@@ -1,4 +1,4 @@
-#===-- tools/ktest-tool/Makefile -----------------------*- Makefile -*--===#
+#===-- tools/cliver/Makefile -------------------------------*- Makefile -*--===#
 #
 #                     The KLEE Symbolic Virtual Machine
 #
@@ -7,40 +7,27 @@
 #
 #===------------------------------------------------------------------------===#
 
-LEVEL = ../..
+LEVEL=../..
+TOOLNAME = cliverstats-bin
 
-TOOLSCRIPTNAME := cliverstats
+include $(LEVEL)/Makefile.config
+
+STP_LIBS := stp_c_interface.a stp_AST.a stp_bitvec.a stp_constantbv.a stp_sat.a \
+	stp_simplifier.a
+USEDLIBS = Cliver.a kleeCore.a kleeModule.a kleaverSolver.a kleaverExpr.a kleeSupport.a kleeBasic.a
+ifeq ($(ENABLE_EXT_STP),0)
+  USEDLIBS += $(STP_LIBS)
+endif
+
+ifneq ($(DISABLE_GOOGLE_PROFILING),1)
+  LIBS += -lprofiler
+endif
+
+LINK_COMPONENTS = jit bitreader bitwriter ipo linker engine
 
 include $(LEVEL)/Makefile.common
 
-# FIXME: Move this stuff (to "build" a script) into Makefile.rules.
-
-ToolBuildPath := $(ToolDir)/$(TOOLSCRIPTNAME)
-
-all-local:: $(ToolBuildPath)
-
-$(ToolBuildPath): $(ToolDir)/.dir
-
-$(ToolBuildPath): $(PROJ_SRC_DIR)/$(TOOLSCRIPTNAME)
-	$(Echo) Copying $(BuildMode) script $(TOOLSCRIPTNAME)
-	$(Verb) $(CP) -f $(PROJ_SRC_DIR)/$(TOOLSCRIPTNAME) "$@"
-	$(Verb) chmod 0755 "$@"
-
-ifdef NO_INSTALL
-install-local::
-	$(Echo) Install circumvented with NO_INSTALL
-uninstall-local::
-	$(Echo) Uninstall circumvented with NO_INSTALL
-else
-DestTool = $(PROJ_bindir)/$(TOOLSCRIPTNAME)
-
-install-local:: $(DestTool)
-
-$(DestTool): $(ToolBuildPath) $(PROJ_bindir)
-	$(Echo) Installing $(BuildMode) $(DestTool)
-	$(Verb) $(ScriptInstall) $(ToolBuildPath) $(DestTool)
-
-uninstall-local::
-	$(Echo) Uninstalling $(BuildMode) $(DestTool)
-	-$(Verb) $(RM) -f $(DestTool)
+ifeq ($(ENABLE_EXT_STP),1)
+  LIBS += -lstp
 endif
+
