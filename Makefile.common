@@ -22,11 +22,12 @@ endif
 # Required for Boost 
 LIBS += -lboost_serialization -lboost_regex -lboost_iostreams
 CPPFLAGS += -Wno-deprecated
-# UNDO # CPPFLAGS += -DGOOGLE_PROFILER 
 
-# Use Boost.Timer rather than LLVM.Timer
-LIBS += -lboost_timer -lboost_system -lboost_chrono
-CPPFLAGS += -DUSE_BOOST_TIMER
+# (Optional) Use Boost.Timer rather than LLVM.Timer
+ifeq ($(ENABLE_BOOST_TIMER),1)
+  LIBS += -lboost_timer -lboost_system -lboost_chrono
+  CPPFLAGS += -DUSE_BOOST_TIMER
+endif
 
 # Disable TimerStatIncrementer for ultra-optimized builds
 ifeq ($(DISABLE_TIMER_STATS),1)
@@ -40,15 +41,14 @@ CPPFLAGS += -pedantic
 CPPFLAGS += -fopenmp 
 LIBS += -fopenmp
 
-# TCMalloc enabled by default
-ifneq ($(ENABLE_TCMALLOC),1)
+# (Optional) TCMalloc support
+ifeq ($(ENABLE_TCMALLOC),1)
   LIBS += -ltcmalloc
   CPPFLAGS += -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free -DTCMALLOC
 endif
 
-# Google perftools included by default, no performance hit unless enabled
-# at runtime.
-ifneq ($(DISABLE_GOOGLE_PROFILING),1)
+# (Optional) Use Google profiler, no performance hit unless enabled at runtime.
+ifeq ($(ENABLE_GOOGLE_PROFILER),1)
   LIBS += -lprofiler
   CPPFLAGS += -DGOOGLE_PROFILER 
 endif
@@ -75,7 +75,6 @@ CXX.Flags += -DKLEE_INSTALL_LIB_DIR=\"$(PROJ_libdir)\"
 ifeq ($(ENABLE_UCLIBC),1)
 	CXX.Flags += -DKLEE_UCLIBC_BCA_NAME=\"$(KLEE_UCLIBC_BCA_NAME)\"
 endif
-
 
 # For STP.
 CXX.Flags += -DEXT_HASH_MAP
