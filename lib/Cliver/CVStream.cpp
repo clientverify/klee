@@ -28,11 +28,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-namespace klee {
-	extern llvm::cl::opt<bool> NoOutput;
-	extern llvm::cl::opt<std::string> OutputDir;
-}
-
 namespace cliver {
 llvm::cl::opt<std::string>
 OutputDirParent("output-dir-parent", 
@@ -163,8 +158,10 @@ void cv_error(const char *msg, ...) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-CVStream::CVStream()
+CVStream::CVStream(bool no_output, std::string &output_dir)
   : initialized_(false),
+    no_output_(no_output),
+    output_dir_(output_dir),
     info_file_stream_(NULL),
     debug_file_stream_(NULL),
     message_file_stream_(NULL),
@@ -203,7 +200,7 @@ std::string CVStream::appendComponent(const std::string &filename,
 }
 
 std::string CVStream::getOutputFilename(const std::string &filename) {
-  llvm::sys::Path filepath(klee::OutputDir);
+  llvm::sys::Path filepath(output_dir_);
   filepath.appendComponent(filename);
   return filepath.str();
 }
@@ -215,7 +212,7 @@ std::ostream *CVStream::openOutputFile(const std::string &filename) {
 
 std::ostream *CVStream::openOutputFileInSubDirectory(
     const std::string &filename, const std::string &sub_directory) {
-  if (klee::NoOutput) {
+  if (no_output_) {
     teestream* null_teestream = new teestream();
     std::cerr << "output files disabled: \"" << filename 
       << "\"\n";
@@ -262,7 +259,7 @@ std::ostream *CVStream::openOutputFileInSubDirectory(
 
 void CVStream::initOutputDirectory() {
 
-  if (klee::OutputDir.empty() || klee::OutputDir == "") {
+  if (output_dir_.empty() || output_dir_ == "") {
     for (int i = 0; ; i++) {
       std::ostringstream dir_name;
       dir_name << "cliver-out-" << i;
@@ -271,7 +268,7 @@ void CVStream::initOutputDirectory() {
       dir_path.appendComponent(dir_name.str());
 
       if (!dir_path.exists()) {
-        klee::OutputDir = dir_path.str();
+        output_dir_ = dir_path.str();
         break;
       }
     }    
@@ -284,15 +281,15 @@ void CVStream::initOutputDirectory() {
       exit(1);
     }
 
-    if (symlink(klee::OutputDir.c_str(), cliver_last.c_str()) < 0) {
+    if (symlink(output_dir_.c_str(), cliver_last.c_str()) < 0) {
       perror("Cannot make symlink");
       exit(1);
     }
   }
 
-  if (mkdir(klee::OutputDir.c_str(), 0775) < 0) {
+  if (mkdir(output_dir_.c_str(), 0775) < 0) {
     std::cerr << "CV: ERROR: Unable to make output directory: \"" 
-      << klee::OutputDir 
+      << output_dir_ 
       << "\", refusing to overwrite.\n";
     exit(1);
   }
@@ -355,12 +352,12 @@ out_error:
 
 void CVStream::copyFileToOutputDirectory(const std::string &src_path,
                                          const std::string &dst_name) {
-  if (klee::NoOutput)
+  if (no_output_)
     return;
 
-  assert(!klee::OutputDir.empty() && klee::OutputDir != "");
+  assert(!output_dir_.empty() && output_dir_ != "");
 
-  std::string dst_path = appendComponent(klee::OutputDir, dst_name);
+  std::string dst_path = appendComponent(output_dir_, dst_name);
 
   if (cp(dst_path.c_str(), src_path.c_str())) {
     std::cerr << "ERROR: unable to copy file " << src_path << "\n";
@@ -417,7 +414,7 @@ void CVStream::getFilesRecursive(std::string path,
 }
 
 void CVStream::init() {
-  if (!klee::NoOutput)
+  if (!no_output_)
     initOutputDirectory();
 
   using std::ios_base;
@@ -434,7 +431,7 @@ void CVStream::init() {
     debug_stream_   = debug_file_stream_;
 
   } else if (UseTeeBuf) {
-    if (!klee::NoOutput) {
+    if (!no_output_) {
       info_file_stream_    = openOutputFile(CV_INFO_FILE);
       warning_file_stream_ = openOutputFile(CV_WARNING_FILE);
       message_file_stream_ = openOutputFile(CV_MESSAGE_FILE);
@@ -463,7 +460,7 @@ void CVStream::init() {
     if (DebugStderr) 
       debug_teestream->add(std::cerr);
 
-    if (!klee::NoOutput) {
+    if (!no_output_) {
       info_teestream->add(*info_file_stream_);
       info_teestream->add(*debug_file_stream_);
 

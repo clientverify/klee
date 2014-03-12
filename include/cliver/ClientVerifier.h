@@ -114,7 +114,7 @@ class CVStream;
 
 class ClientVerifier : public klee::InterpreterHandler {
  public:
-  ClientVerifier();
+  ClientVerifier(std::string &input_file, bool no_output, std::string &output_dir);
   ~ClientVerifier();
 	
 	// klee::InterpreterHandler

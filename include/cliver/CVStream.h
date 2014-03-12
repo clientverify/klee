@@ -24,8 +24,6 @@
 
 namespace cliver {
 
-extern bool NoOutputFlag;
-
 extern std::ostream* cv_warning_stream;
 extern std::ostream* cv_message_stream;
 extern std::ostream* cv_debug_stream;
@@ -100,7 +98,7 @@ void cv_warning(const char *msg, ...)
 
 class CVStream {
  public:
-  CVStream();
+  CVStream(bool no_output, std::string &output_dir);
   ~CVStream();
 
   void init();
@@ -135,6 +133,8 @@ class CVStream {
                               const std::string &append);
  private:
   bool initialized_;
+  bool no_output_;
+  std::string output_dir_;
   std::ostream* info_stream_;
   std::ostream* debug_stream_;
   std::ostream* message_stream_;

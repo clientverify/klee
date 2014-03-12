@@ -46,10 +46,6 @@
 // Define somewhere else?
 void boost::throw_exception(std::exception const& e) {}
 
-namespace klee {
-  extern llvm::cl::opt<std::string> InputFile;
-}
-
 namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -155,8 +151,8 @@ CVContext::CVContext() : context_id_(increment_id()) {}
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ClientVerifier::ClientVerifier()
-  : cvstream_(new CVStream()),
+ClientVerifier::ClientVerifier(std::string &input_file, bool no_output, std::string &output_dir)
+  : cvstream_(new CVStream(no_output, output_dir)),
 		searcher_(NULL),
 		pruner_(NULL),
 		merger_(NULL), 
@@ -167,12 +163,12 @@ ClientVerifier::ClientVerifier()
 
 	cvstream_->init();
 
-  client_name_ = cvstream_->getBasename(klee::InputFile);
+  client_name_ = cvstream_->getBasename(input_file);
 
   // Copy inputfile to output directory
   if (CopyInputFilesToOutputDir) {
     std::string dest_name("input.bc");
-    cvstream_->copyFileToOutputDirectory(klee::InputFile, dest_name);
+    cvstream_->copyFileToOutputDirectory(input_file, dest_name);
   }
 
 }

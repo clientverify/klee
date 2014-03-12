@@ -1378,7 +1378,7 @@ int main(int argc, char **argv, char **envp) {
   Interpreter *interpreter = NULL;
 
   if (cliver::EnableCliver) {
-    handler = new cliver::ClientVerifier();
+    handler = new cliver::ClientVerifier(InputFile, NoOutput, OutputDir);
     interpreter = theInterpreter = cliver::ClientVerifier::create_interpreter(IOpts, handler);
     static_cast<cliver::ClientVerifier*>(handler)->setInterpreter(interpreter);
   } else {
