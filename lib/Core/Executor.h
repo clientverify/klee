@@ -20,6 +20,8 @@
 #include "klee/Internal/Module/Cell.h"
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/Internal/Module/KModule.h"
+#include "klee/util/Mutex.h"
+#include "klee/util/Thread.h"
 #include "llvm/Support/CallSite.h"
 #include <vector>
 #include <string>
@@ -97,6 +99,20 @@ public:
     virtual void run() = 0;
   };
 
+  /// Context object to keep track of data only live during an instruction step
+  struct ExecutorContext {
+    /// Used to track states that have been added during the current
+    /// instructions step. 
+    /// \invariant \ref addedStates is a subset of \ref states. 
+    /// \invariant \ref addedStates and \ref removedStates are disjoint.
+    std::set<ExecutionState*> addedStates;
+    /// Used to track states that have been removed during the current
+    /// instructions step. 
+    /// \invariant \ref removedStates is a subset of \ref states. 
+    /// \invariant \ref addedStates and \ref removedStates are disjoint.
+    std::set<ExecutionState*> removedStates;
+  };
+
   typedef std::pair<ExecutionState*,ExecutionState*> StatePair;
 
 protected:
@@ -116,16 +132,21 @@ protected:
   std::vector<TimerInfo*> timers;
   PTree *processTree;
 
-  /// Used to track states that have been added during the current
-  /// instructions step. 
-  /// \invariant \ref addedStates is a subset of \ref states. 
-  /// \invariant \ref addedStates and \ref removedStates are disjoint.
-  std::set<ExecutionState*> addedStates;
-  /// Used to track states that have been removed during the current
-  /// instructions step. 
-  /// \invariant \ref removedStates is a subset of \ref states. 
-  /// \invariant \ref addedStates and \ref removedStates are disjoint.
-  std::set<ExecutionState*> removedStates;
+  /// Mutex to lock access to the Executor's set of states
+  Mutex statesMutex;
+
+  /// Mutex to lock access to the searcher
+  Mutex searcherMutex;
+
+  /// Used to communicate to other threads when new states have been added
+  ConditionVariable searcherCond;
+
+  /// Used to wait until all threads have been initialized before executing
+  /// states
+  Barrier* threadInitializationBarrier;
+
+  /// Thread specific ExecutorContext
+  ThreadSpecificPointer<ExecutorContext>::type context;
 
   /// When non-empty the Executor is running in "seed" mode. The
   /// states in this map will be executed in an arbitrary order
@@ -186,6 +207,8 @@ protected:
 
   void printFileLine(ExecutionState &state, KInstruction *ki);
 
+  void execute(ExecutionState *initialState);
+
   virtual void run(ExecutionState &initialState);
 
   // Given a concrete object in our [klee's] address space, add it to 
@@ -197,6 +220,7 @@ protected:
 			      const llvm::Constant *c,
 			      unsigned offset);
   void initializeGlobals(ExecutionState &state);
+  void initializePerThreadGlobals(ExecutionState &state);
 
   virtual void stepInstruction(ExecutionState &state);
   virtual void updateStates(ExecutionState *current);
@@ -396,6 +420,15 @@ protected:
   void processTimers(ExecutionState *current,
                      double maxInstTime);
                 
+  /// Return the ExecutorContext for the current thread
+  ExecutorContext& getContext();
+
+  /// Returns true if the states set is empty (thread-safe)
+  bool statesEmpty();
+
+  /// Returns the current application memory usage in bytes (thread-safe)
+  size_t GetMemoryUsage();
+
 public:
   Executor(const InterpreterOptions &opts, InterpreterHandler *ie);
   virtual ~Executor();

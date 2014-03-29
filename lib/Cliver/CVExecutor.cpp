@@ -539,23 +539,23 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
       ++stats::recv_round_instructions;
 
 		// Handle post execution events if state wasn't removed
-		if (removedStates.find(&state) == removedStates.end()) {
+		if (getContext().removedStates.find(&state) == getContext().removedStates.end()) {
       handle_post_execution_events(state);
     }
 
 		// Handle post execution events for each newly added state
-    foreach (klee::ExecutionState* astate, addedStates) {
+    foreach (klee::ExecutionState* astate, getContext().addedStates) {
       handle_post_execution_events(*astate);
     }
 
-    foreach (klee::ExecutionState* rstate, removedStates) {
+    foreach (klee::ExecutionState* rstate, getContext().removedStates) {
       cv_->notify_all(ExecutionEvent(CV_STATE_REMOVED, rstate));
     }
 
     // Update the searcher only if needed
     if (cv_->execution_event_flag() 
-        || !removedStates.empty() 
-        || !addedStates.empty()
+        || !getContext().removedStates.empty() 
+        || !getContext().addedStates.empty()
         || clear_caches) {
       updateStates(&state);
       prev_state = NULL;
@@ -689,14 +689,14 @@ void CVExecutor::executeMakeSymbolic(klee::ExecutionState &state,
 
 void CVExecutor::updateStates(klee::ExecutionState *current) {
   if (searcher) {
-    searcher->update(current, addedStates, removedStates);
+    searcher->update(current, getContext().addedStates, getContext().removedStates);
   }
   
-  states.insert(addedStates.begin(), addedStates.end());
-  addedStates.clear();
+  states.insert(getContext().addedStates.begin(), getContext().addedStates.end());
+  getContext().addedStates.clear();
   
   for (std::set<klee::ExecutionState*>::iterator
-         it = removedStates.begin(), ie = removedStates.end();
+         it = getContext().removedStates.begin(), ie = getContext().removedStates.end();
        it != ie; ++it) {
 		klee::ExecutionState *es = *it;
     std::set<klee::ExecutionState*>::iterator it2 = states.find(es);
@@ -704,7 +704,7 @@ void CVExecutor::updateStates(klee::ExecutionState *current) {
     states.erase(it2);
     delete es;
   }
-  removedStates.clear();
+  getContext().removedStates.clear();
 }
 
 klee::Executor::StatePair 
@@ -767,7 +767,7 @@ CVExecutor::fork(klee::ExecutionState &current,
     ++klee::stats::forks;
 
     falseState = trueState->branch();
-    addedStates.insert(falseState);
+    getContext().addedStates.insert(falseState);
 
 
     addConstraint(*trueState, condition);
@@ -796,7 +796,7 @@ void CVExecutor::branch(klee::ExecutionState &state,
   for (unsigned i=1; i<N; ++i) {
 		klee::ExecutionState *es = result[klee::theRNG.getInt32() % i];
 		klee::ExecutionState *ns = es->branch();
-    addedStates.insert(ns);
+    getContext().addedStates.insert(ns);
     result.push_back(ns);
     es->ptreeNode->data = 0;
     std::pair<klee::PTree::Node*,klee::PTree::Node*> res = 
@@ -931,7 +931,7 @@ void CVExecutor::register_function_call_event(const char **fname,
 //}
 
 void CVExecutor::add_state(CVExecutionState* state) {
-	addedStates.insert(state);
+	getContext().addedStates.insert(state);
 }
 
 void CVExecutor::add_state_internal(CVExecutionState* state) {

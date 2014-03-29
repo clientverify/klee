@@ -431,6 +431,7 @@ void StatsTracker::writeStatsLine() {
 
 void StatsTracker::updateStateStatistics(uint64_t addend) {
   RecursiveLockGuard guard(statsMutex);
+  LockGuard statesGuard(executor.statesMutex);
   for (std::set<ExecutionState*>::iterator it = executor.states.begin(),
          ie = executor.states.end(); it != ie; ++it) {
     ExecutionState &state = **it;
