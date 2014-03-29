@@ -27,7 +27,7 @@ typedef std::list<BasicBlockID> ExecutionTraceList;
 // Print ExecutionTrace to std::ostream
 inline std::ostream &operator<<(std::ostream &os, const ExecutionTrace &t) {
   for (ExecutionTrace::const_iterator i = t.begin(), e = t.end(); i!= e; ++i)
-    os << *i << ",";
+    os << (i == t.begin() ? "" : ",") << *i;
   return os;
 }
 

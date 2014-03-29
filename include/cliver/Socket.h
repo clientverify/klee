@@ -39,7 +39,7 @@ class SocketEvent {
 	unsigned delta;
 	int client_round;
 	unsigned length;
-  unsigned header_length; 
+	unsigned header_length;
 	std::vector<uint8_t> data;
 
 	void print(std::ostream &os) const;

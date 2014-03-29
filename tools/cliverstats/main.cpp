@@ -116,6 +116,7 @@ void DoPathStats()
   foreach (TrainingObject *tobj, training_objects)
   {
     CVMESSAGE(*tobj);
+    CVMESSAGE("(" << tobj->name << ") " << tobj->trace);
   }
 }
 
