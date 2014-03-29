@@ -43,9 +43,6 @@
 #include <google/heap-checker.h>
 #endif
 
-// Define somewhere else?
-void boost::throw_exception(std::exception const& e) {}
-
 namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////

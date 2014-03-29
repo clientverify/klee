@@ -18,7 +18,6 @@
 #include <set>
 #include <vector>
 
-namespace boost {void throw_exception(std::exception const& e);}
 #include <boost/serialization/access.hpp>
 #include <boost/serialization/set.hpp>
 #include <boost/serialization/vector.hpp>
