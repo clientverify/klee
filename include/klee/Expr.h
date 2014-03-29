@@ -12,6 +12,7 @@
 
 #include "klee/util/Bits.h"
 #include "klee/util/Ref.h"
+#include "klee/util/RefCount.h"
 
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/APFloat.h"
@@ -85,7 +86,7 @@ Todo: Shouldn't bool \c Xor just be written as not equal?
 
 class Expr {
 public:
-  static unsigned count;
+  static RefCount count;
   static const unsigned MAGIC_HASH_CONSTANT = 39;
 
   /// The type of an expression is simply its width, in bits. 
@@ -166,14 +167,14 @@ public:
     CmpKindLast=Sge
   };
 
-  unsigned refCount;
+  RefCount refCount;
 
 protected:  
   unsigned hashValue;
   
 public:
-  Expr() : refCount(0) { Expr::count++; }
-  virtual ~Expr() { Expr::count--; } 
+  Expr() : refCount(0) { Expr::count.add_ref(); }
+  virtual ~Expr() { Expr::count.release(); } 
 
   virtual Kind getKind() const = 0;
   virtual Width getWidth() const = 0;
@@ -573,8 +574,9 @@ public:
 /// Class representing a byte update of an array.
 class UpdateNode {
   friend class UpdateList;  
+  friend class RefCount;
 
-  mutable unsigned refCount;
+  mutable RefCount refCount;
   // cache instead of recalc
   unsigned hashValue;
 

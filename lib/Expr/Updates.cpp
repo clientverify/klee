@@ -68,23 +68,23 @@ UpdateList::~UpdateList() {
   // We need to be careful and avoid recursion here. We do this in
   // cooperation with the private dtor of UpdateNode which does not
   // recursively free its tail.
-  while (head && --head->refCount==0) {
-    const UpdateNode *n = head->next;
-    delete head;
-    head = n;
+  const UpdateNode *next = (head) ? head->next : NULL;
+  while (head && head->refCount.release(head)) {
+    head = next;
+    if (head) next = head->next;
   }
 }
 
 UpdateList &UpdateList::operator=(const UpdateList &b) {
   if (b.head) ++b.head->refCount;
-  if (head && --head->refCount==0) delete head;
+  if (head) head->refCount.release(head);
   root = b.root;
   head = b.head;
   return *this;
 }
 
 void UpdateList::extend(const ref<Expr> &index, const ref<Expr> &value) {
-  if (head) --head->refCount;
+  if (head) head->refCount.release();
   head = new UpdateNode(head, index, value);
   ++head->refCount;
 }

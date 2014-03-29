@@ -35,7 +35,7 @@ namespace {
 
 /***/
 
-unsigned Expr::count = 0;
+RefCount Expr::count = 0;
 
 ref<Expr> Expr::createTempRead(const Array *array, Expr::Width w) {
   UpdateList ul(array, 0);
