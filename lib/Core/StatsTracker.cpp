@@ -247,6 +247,7 @@ StatsTracker::StatsTracker(Executor &_executor, std::string _objectFilename,
 }
 
 StatsTracker::~StatsTracker() {  
+  RecursiveLockGuard guard(statsMutex);
   if (statsFile)
     delete statsFile;
   if (istatsFile)
@@ -254,6 +255,7 @@ StatsTracker::~StatsTracker() {
 }
 
 void StatsTracker::done() {
+  RecursiveLockGuard guard(statsMutex);
   if (statsFile)
     writeStatsLine();
   if (OutputIStats)
@@ -261,6 +263,7 @@ void StatsTracker::done() {
 }
 
 void StatsTracker::stepInstruction(ExecutionState &es) {
+  RecursiveLockGuard guard(statsMutex);
   if (OutputIStats) {
     if (TrackInstructionTime) {
       static sys::TimeValue lastNowTime(0,0),lastUserTime(0,0);
@@ -311,6 +314,7 @@ void StatsTracker::stepInstruction(ExecutionState &es) {
 
 /* Should be called _after_ the es->pushFrame() */
 void StatsTracker::framePushed(ExecutionState &es, StackFrame *parentFrame) {
+  RecursiveLockGuard guard(statsMutex);
   if (OutputIStats) {
     StackFrame &sf = es.stack.back();
 
@@ -342,6 +346,7 @@ void StatsTracker::framePopped(ExecutionState &es) {
 
 void StatsTracker::markBranchVisited(ExecutionState *visitedTrue, 
                                      ExecutionState *visitedFalse) {
+  RecursiveLockGuard guard(statsMutex);
   if (OutputIStats) {
     unsigned id = theStatisticManager->getIndex();
     uint64_t hasTrue = theStatisticManager->getIndexedValue(stats::trueBranches, id);
@@ -425,6 +430,7 @@ void StatsTracker::writeStatsLine() {
 }
 
 void StatsTracker::updateStateStatistics(uint64_t addend) {
+  RecursiveLockGuard guard(statsMutex);
   for (std::set<ExecutionState*>::iterator it = executor.states.begin(),
          ie = executor.states.end(); it != ie; ++it) {
     ExecutionState &state = **it;
@@ -436,6 +442,7 @@ void StatsTracker::updateStateStatistics(uint64_t addend) {
 }
 
 void StatsTracker::writeIStats() {
+  RecursiveLockGuard guard(statsMutex);
   Module *m = executor.kmodule->module;
   uint64_t istatsMask = 0;
   std::ostream &of = *istatsFile;
@@ -622,6 +629,7 @@ uint64_t klee::computeMinDistToUncovered(const KInstruction *ki,
 }
 
 void StatsTracker::computeReachableUncovered() {
+  RecursiveLockGuard guard(statsMutex);
   KModule *km = executor.kmodule;
   Module *m = km->module;
   static bool init = true;
