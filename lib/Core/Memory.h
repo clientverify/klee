@@ -35,7 +35,7 @@ class MemoryObject {
 
 private:
   static int counter;
-  mutable unsigned refCount;
+  mutable RefCount refCount;
 
 public:
   unsigned id;
@@ -151,7 +151,7 @@ private:
   unsigned copyOnWriteOwner; // exclusively for AddressSpace
 
   friend class ObjectHolder;
-  unsigned refCount;
+  RefCount refCount;
 
   const MemoryObject *object;
 

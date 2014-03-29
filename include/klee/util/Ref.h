@@ -7,11 +7,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-//===----------------------------------------------------------------------===//
-//  Parallization issues
-//  Need atomic operations.
-//  Custom or use boost?
-//===----------------------------------------------------------------------===//
 #ifndef KLEE_REF_H
 #define KLEE_REF_H
 
@@ -39,12 +34,12 @@ public:
 private:
   void inc() const {
     if (ptr)
-      ++ptr->refCount;
+      ptr->refCount.add_ref();
   }
 
   void dec() const {
-    if (ptr && --ptr->refCount == 0)
-      delete ptr;
+    if (ptr)
+      ptr->refCount.release(ptr);
   }
 
 public:
