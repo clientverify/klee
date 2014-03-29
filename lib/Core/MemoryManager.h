@@ -10,6 +10,7 @@
 #ifndef KLEE_MEMORYMANAGER_H
 #define KLEE_MEMORYMANAGER_H
 
+#include "klee/util/Mutex.h"
 #include <set>
 #include <stdint.h>
 
@@ -24,6 +25,7 @@ namespace klee {
   private:
     typedef std::set<MemoryObject*> objects_ty;
     objects_ty objects;
+    Mutex objectsMutex;
 
   public:
     MemoryManager() {}

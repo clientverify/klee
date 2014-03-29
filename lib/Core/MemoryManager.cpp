@@ -36,6 +36,7 @@ MemoryManager::~MemoryManager() {
 MemoryObject *MemoryManager::allocate(uint64_t size, bool isLocal, 
                                       bool isGlobal,
                                       const llvm::Value *allocSite) {
+  LockGuard guard(objectsMutex);
   if (size>10*1024*1024)
     klee_warning_once(0, "Large alloc: %u bytes.  KLEE may run out of memory.", (unsigned) size);
   
@@ -52,6 +53,7 @@ MemoryObject *MemoryManager::allocate(uint64_t size, bool isLocal,
 
 MemoryObject *MemoryManager::allocateFixed(uint64_t address, uint64_t size,
                                            const llvm::Value *allocSite) {
+  LockGuard guard(objectsMutex);
 #ifndef NDEBUG
   for (objects_ty::iterator it = objects.begin(), ie = objects.end();
        it != ie; ++it) {
@@ -73,6 +75,7 @@ void MemoryManager::deallocate(const MemoryObject *mo) {
 }
 
 void MemoryManager::markFreed(MemoryObject *mo) {
+  LockGuard guard(objectsMutex);
   if (objects.find(mo) != objects.end())
   {
     if (!mo->isFixed)
