@@ -198,9 +198,8 @@ public:
   typedef llvm::DenseSet<std::pair<const Expr *, const Expr *> > ExprEquivSet;
   int compare(const Expr &b, ExprEquivSet &equivs) const;
   int compare(const Expr &b) const {
-    static ExprEquivSet equivs;
+    ExprEquivSet equivs;
     int r = compare(b, equivs);
-    equivs.clear();
     return r;
   }
   virtual int compareContents(const Expr &b) const { return 0; }
