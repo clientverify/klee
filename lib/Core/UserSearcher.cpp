@@ -19,7 +19,7 @@
 using namespace llvm;
 using namespace klee;
 
-namespace {
+namespace klee {
   cl::list<Searcher::CoreSearchType>
   CoreSearch("search", cl::desc("Specify the search heuristic (default=random-path interleaved with nurs:covnew)"),
 	     cl::values(clEnumValN(Searcher::DFS, "dfs", "use Depth First Search (DFS)"),
@@ -61,6 +61,17 @@ namespace {
   cl::opt<bool>
   UseBumpMerge("use-bump-merge", 
            cl::desc("Enable support for klee_merge() (extra experimental)"));
+
+  cl::opt<unsigned>
+  UseThreads("use-threads",
+           cl::desc("Use multiple threads"),
+           cl::init(4));
+
+  cl::opt<bool>
+  UseParallelSearcher("use-parallel-searcher",
+           cl::desc("Force usage of parallel searcher (default=on for -use-threads > 1, otherwise default=off)"),
+           cl::init(false));
+
 
 }
 
@@ -114,6 +125,12 @@ Searcher *klee::constructUserSearcher(Executor &executor) {
 
   if (UseBatchingSearch) {
     searcher = new BatchingSearcher(searcher, BatchTime, BatchInstructions);
+    if (UseThreads > 1) {
+      std::ostream &os = executor.getHandler().getInfoStream();
+      os << "Disabling multiple threads with BatchingSearcher\n";
+      UseThreads = 1;
+      UseParallelSearcher = false;
+    }
   }
 
   // merge support is experimental
@@ -127,6 +144,10 @@ Searcher *klee::constructUserSearcher(Executor &executor) {
   
   if (UseIterativeDeepeningTimeSearch) {
     searcher = new IterativeDeepeningTimeSearcher(searcher);
+  }
+
+  if (UseParallelSearcher || UseThreads > 1) {
+    searcher = new ParallelSearcher(searcher);
   }
 
   std::ostream &os = executor.getHandler().getInfoStream();
