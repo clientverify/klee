@@ -123,6 +123,23 @@ namespace klee {
     }
   };
 
+  /// This Searcher acts as wrapper around other searchers. It's only purpose is
+  /// to remove every state returned by selectState from the underlying searcher
+  /// and re-add it back when update is called so that multiple threads won't be
+  /// provided with the same state to execute.
+  class ParallelSearcher : public Searcher {
+    Searcher* searcher;
+
+  public:
+    ParallelSearcher(Searcher* searcher);
+    ExecutionState &selectState();
+    void update(ExecutionState *current,
+                const std::set<ExecutionState*> &addedStates,
+                const std::set<ExecutionState*> &removedStates);
+    bool empty();
+    void printName(std::ostream &os);
+  };
+
   class WeightedRandomSearcher : public Searcher {
   public:
     enum WeightType {
@@ -167,6 +184,7 @@ namespace klee {
 
   class RandomPathSearcher : public Searcher {
     Executor &executor;
+    std::set<ExecutionState*> states;
 
   public:
     RandomPathSearcher(Executor &_executor);

@@ -157,6 +157,37 @@ void RandomSearcher::update(ExecutionState *current,
 
 ///
 
+ParallelSearcher::ParallelSearcher(Searcher *internalSearcher) 
+  : searcher(internalSearcher) {
+}
+
+ExecutionState &ParallelSearcher::selectState() {
+  ExecutionState& state = searcher->selectState();
+  searcher->removeState(&state);
+  return state;
+}
+
+void ParallelSearcher::update(ExecutionState *current,
+                            const std::set<ExecutionState*> &addedStates,
+                            const std::set<ExecutionState*> &removedStates) {
+  if (current)
+    searcher->addState(current);
+
+  searcher->update(current, addedStates, removedStates);
+}
+
+bool ParallelSearcher::empty() {
+  return searcher->empty();
+}
+
+void ParallelSearcher::printName(std::ostream &os) {
+  os << "<ParallelSearcher>\n";
+  searcher->printName(os);
+  os << "</ParallelSearcher>\n";
+}
+
+///
+
 WeightedRandomSearcher::WeightedRandomSearcher(Executor &_executor,
                                                WeightType _type) 
   : executor(_executor),
@@ -256,20 +287,23 @@ RandomPathSearcher::~RandomPathSearcher() {
 
 ExecutionState &RandomPathSearcher::selectState() {
   unsigned flips=0, bits=0;
-  PTree::Node *n = executor.processTree->root;
+  PTree::Node *n = NULL;
   
-  while (!n->data) {
-    if (!n->left) {
-      n = n->right;
-    } else if (!n->right) {
-      n = n->left;
-    } else {
-      if (bits==0) {
-        flips = theRNG.getInt32();
-        bits = 32;
+  while (n == NULL || states.count(n->data) == 0) {
+    n = executor.processTree->root;
+    while (!n->data) {
+      if (!n->left) {
+        n = n->right;
+      } else if (!n->right) {
+        n = n->left;
+      } else {
+        if (bits==0) {
+          flips = theRNG.getInt32();
+          bits = 32;
+        }
+        --bits;
+        n = (flips&(1<<bits)) ? n->left : n->right;
       }
-      --bits;
-      n = (flips&(1<<bits)) ? n->left : n->right;
     }
   }
 
@@ -279,10 +313,17 @@ ExecutionState &RandomPathSearcher::selectState() {
 void RandomPathSearcher::update(ExecutionState *current,
                                 const std::set<ExecutionState*> &addedStates,
                                 const std::set<ExecutionState*> &removedStates) {
+  states.insert(addedStates.begin(), addedStates.end());
+  for (std::set<ExecutionState*>::const_iterator it = removedStates.begin(),
+         ie = removedStates.end(); it != ie; ++it) {
+    states.erase(*it);
+  }
 }
 
+
+
 bool RandomPathSearcher::empty() { 
-  return executor.states.empty(); 
+  return states.empty(); 
 }
 
 ///
