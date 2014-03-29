@@ -4,13 +4,15 @@
 #include "gtest/gtest.h"
 #include <iostream>
 #include "klee/util/Ref.h"
+#include "klee/util/RefCount.h"
 using klee::ref;
+using klee::RefCount;
 
 int finished = 0;
 
 struct Expr
 {
-  int refCount;
+  RefCount refCount;
   Expr() : refCount(0) { 
     //std::cout << "Expr(" << this << ") created\n"; 
   }
@@ -24,8 +26,8 @@ TEST(RefTest, SelfAssign)
 {
   struct Expr *r_e = new Expr();
   ref<Expr> r(r_e);
-  EXPECT_EQ(r_e->refCount, 1);
+  EXPECT_EQ(r_e->refCount.get(), 1);
   r = r;
-  EXPECT_EQ(r_e->refCount, 1);
+  EXPECT_EQ(r_e->refCount.get(), 1);
   finished = 1;
 }
