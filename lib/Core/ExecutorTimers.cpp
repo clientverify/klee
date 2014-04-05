@@ -10,6 +10,7 @@
 #include "Common.h"
 
 #include "Executor.h" // Must declare before ExecutorTimerInfo.h (FIXME ?)
+#include "Searcher.h"
 
 #include "CoreStats.h"
 #include "PTree.h"
