@@ -18,7 +18,7 @@ namespace klee {
   template<class K, class V, class KOV, class CMP>
   class ImmutableTree {
   public:
-    static size_t allocated;
+    static Atomic<size_t>::type allocated;
     class iterator;
 
     typedef K key_type;
@@ -243,7 +243,7 @@ namespace klee {
   ImmutableTree<K,V,KOV,CMP>::Node::terminator;
 
   template<class K, class V, class KOV, class CMP> 
-  size_t ImmutableTree<K,V,KOV,CMP>::allocated = 0;
+  Atomic<size_t>::type ImmutableTree<K,V,KOV,CMP>::allocated(0);
 
   template<class K, class V, class KOV, class CMP>
   ImmutableTree<K,V,KOV,CMP>::Node::Node() 
