@@ -278,7 +278,6 @@ namespace klee {
   RNG theRNG;
 }
 
-
 Executor::Executor(const InterpreterOptions &opts,
                    InterpreterHandler *ih) 
   : Interpreter(opts),
@@ -298,56 +297,21 @@ Executor::Executor(const InterpreterOptions &opts,
     inhibitForking(false),
     haltExecution(false),
     ivcEnabled(false),
+    stateCount(0),
     coreSolverTimeout(MaxCoreSolverTime != 0 && MaxInstructionTime != 0
       ? std::min(MaxCoreSolverTime,MaxInstructionTime)
       : std::max(MaxCoreSolverTime,MaxInstructionTime)) {
       
   if (coreSolverTimeout) UseForkedCoreSolver = true;
   
-  Solver *coreSolver = NULL;
-  
-#ifdef SUPPORT_METASMT
-  if (UseMetaSMT != METASMT_BACKEND_NONE) {
-    
-    std::string backend;
-    
-    switch (UseMetaSMT) {
-          case METASMT_BACKEND_STP:
-              backend = "STP"; 
-              coreSolver = new MetaSMTSolver< DirectSolver_Context < STP_Backend > >(UseForkedCoreSolver, CoreSolverOptimizeDivides);
-              break;
-          case METASMT_BACKEND_Z3:
-              backend = "Z3";
-              coreSolver = new MetaSMTSolver< DirectSolver_Context < Z3_Backend > >(UseForkedCoreSolver, CoreSolverOptimizeDivides);
-              break;
-          case METASMT_BACKEND_BOOLECTOR:
-              backend = "Boolector";
-              coreSolver = new MetaSMTSolver< DirectSolver_Context < Boolector > >(UseForkedCoreSolver, CoreSolverOptimizeDivides);
-              break;
-          default:
-              assert(false);
-              break;
-    };
-    std::cerr << "Starting MetaSMTSolver(" << backend << ") ...\n";
-  }
-  else {
-    coreSolver = new STPSolver(UseForkedCoreSolver, CoreSolverOptimizeDivides);
-  }
-#else
-  coreSolver = new STPSolver(UseForkedCoreSolver, CoreSolverOptimizeDivides);
-#endif /* SUPPORT_METASMT */
-  
-   
-  Solver *solver = 
-    constructSolverChain(coreSolver,
-                         interpreterHandler->getOutputFilename(ALL_QUERIES_SMT2_FILE_NAME),
-                         interpreterHandler->getOutputFilename(SOLVER_QUERIES_SMT2_FILE_NAME),
-                         interpreterHandler->getOutputFilename(ALL_QUERIES_PC_FILE_NAME),
-                         interpreterHandler->getOutputFilename(SOLVER_QUERIES_PC_FILE_NAME));
-  
-  this->solver = new TimingSolver(solver);
+  // Initialize solver for the root thread
+  this->solver.reset(new TimingSolver(initializeSolver()));
 
-  memory = new MemoryManager();
+  // Keep track of MemoryManager so we can delete later
+  memoryManagers.push_back(new MemoryManager());
+
+  // Initialize MemoryManager for the root thread
+  memory.reset(memoryManagers.back());
 }
 
 
@@ -383,7 +347,7 @@ const Module *Executor::setModule(llvm::Module *module,
 }
 
 Executor::~Executor() {
-  delete memory;
+  //delete memory;
   delete externalDispatcher;
   if (processTree)
     delete processTree;
@@ -391,7 +355,7 @@ Executor::~Executor() {
     delete specialFunctionHandler;
   if (statsTracker)
     delete statsTracker;
-  delete solver;
+  //delete solver;
   delete kmodule;
   while(!timers.empty()) {
     delete timers.back();
@@ -468,14 +432,23 @@ MemoryObject * Executor::addExternalObject(ExecutionState &state,
 
 extern void *__dso_handle __attribute__ ((__weak__));
 
-void Executor::initializePerThreadGlobals(ExecutionState &state) {
+void Executor::initializePerThread(ExecutionState &state, MemoryManager* memory) {
+  static Mutex initializePerThreadLock;
+  LockGuard guard(initializePerThreadLock);
+
+  if (!this->solver.get()) {
+    // Construct new Solver for this thread
+    this->solver.reset(new TimingSolver(initializeSolver()));
+  }
+
+  if (!this->memory.get()) {
+    // Set the MemoryManager for this thread
+    this->memory.reset(memory);
+  }
+
 #ifdef HAVE_CTYPE_EXTERNALS
 #ifndef WINDOWS
 #ifndef DARWIN
-
-  static Mutex initializePerThreadGlobalsLock;
-  LockGuard guard(initializePerThreadGlobalsLock);
-
   unsigned width = Context::get().getPointerWidth();
 
   /* From /usr/include/errno.h: it [errno] is a per-thread variable. */
@@ -754,14 +727,10 @@ void Executor::branch(ExecutionState &state,
       ExecutionState *ns = es->branch();
       getContext().addedStates.insert(ns);
       result.push_back(ns);
-      {
-      LockGuard guard(searcherMutex);
-      es->ptreeNode->data = 0;
       std::pair<PTree::Node*,PTree::Node*> res = 
         processTree->split(es->ptreeNode, ns, es);
       ns->ptreeNode = res.first;
       es->ptreeNode = res.second;
-      }
     }
   }
 
@@ -1012,14 +981,10 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
       }
     }
 
-    {
-    LockGuard guard(searcherMutex);
-    current.ptreeNode->data = 0;
     std::pair<PTree::Node*, PTree::Node*> res =
       processTree->split(current.ptreeNode, falseState, trueState);
     falseState->ptreeNode = res.first;
     trueState->ptreeNode = res.second;
-    }
 
     if (!isInternal) {
       if (pathWriter) {
@@ -1067,7 +1032,7 @@ void Executor::addConstraint(ExecutionState &state, ref<Expr> condition) {
       assert(success && "FIXME: Unhandled solver failure");
       (void) success;
       if (res) {
-        siit->patchSeed(state, condition, solver);
+        siit->patchSeed(state, condition, solver.get());
         warn = true;
       }
     }
@@ -2528,51 +2493,33 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 }
 
 void Executor::updateStates(ExecutionState *current) {
-  if (searcher) {
-    LockGuard guard(searcherMutex);
-    searcher->update(current, getContext().addedStates, getContext().removedStates);
-  }
-
   unsigned addedCount = getContext().addedStates.size();
-
-  if (getContext().addedStates.size() > 0) {
-    {
-      LockGuard guard(statesMutex);
-      states.insert(getContext().addedStates.begin(), getContext().addedStates.end());
-    }
-    getContext().addedStates.clear();
-  }
+  stateCount += addedCount;
 
   if (getContext().removedStates.size() > 0) {
     for (std::set<ExecutionState*>::iterator
           it = getContext().removedStates.begin(), ie = getContext().removedStates.end();
         it != ie; ++it) {
       ExecutionState *es = *it;
-      {
-        LockGuard guard(statesMutex);
-        std::set<ExecutionState*>::iterator it2 = states.find(es);
-        assert(it2!=states.end());
-        states.erase(it2);
-      }
+      --stateCount;
+
       std::map<ExecutionState*, std::vector<SeedInfo> >::iterator it3 = 
         seedMap.find(es);
       if (it3 != seedMap.end())
         seedMap.erase(it3);
-      {
-      LockGuard guard(searcherMutex);
       processTree->remove(es->ptreeNode);
-      }
       delete es;
     }
-    getContext().removedStates.clear();
   }
+
+  getContext().removedStates.clear();
+  getContext().addedStates.clear();
 
   if (addedCount == 1) {
     searcherCond.notify_one();
   } else if (addedCount > 1) {
     searcherCond.notify_all();
   }
-
 }
 
 template <typename TypeIt>
@@ -2637,25 +2584,23 @@ void Executor::bindModuleConstants() {
   }
 }
 
-void Executor::execute(ExecutionState *initialState) {
+void Executor::execute(ExecutionState *initialState, MemoryManager *memory) {
 
-  initializePerThreadGlobals(*initialState);
+  // Initialize thread specific globals and objects
+  initializePerThread(*initialState, memory);
 
-  threadInitializationBarrier->wait();
+  // Wait until all threads have initialized
+  threadBarrier->wait();
 
-  while (!statesEmpty() && !haltExecution) {
-    ExecutionState *statePtr = NULL;
+  ExecutionState *statePtr = NULL;
+  while (!empty() && !haltExecution) {
 
-    {
-      LockGuard guard(searcherMutex);
-      if (!searcher->empty()) {
-        statePtr = &(searcher->selectState());
-      }
-    }
+    if (statePtr == NULL)
+      statePtr = searcher->trySelectState();
 
     if (statePtr != NULL) {
       ExecutionState &state = *statePtr;
-
+      
       KInstruction *ki = state.pc;
       stepInstruction(state);
       executeInstruction(state, ki);
@@ -2671,18 +2616,22 @@ void Executor::execute(ExecutionState *initialState) {
 #else
           unsigned mbs = sys::Process::GetTotalMemoryUsage() >> 20;
 #endif
-          mbs = GetMemoryUsage() >> 20;
+          if (UseThreads > 1)
+            mbs = GetMemoryUsage() >> 20;
+
           if (mbs > MaxMemory) {
             if (mbs > MaxMemory + 100) {
               // just guess at how many to kill
-              unsigned numStates = states.size();
+              unsigned numStates = stateCount;
               unsigned toKill = std::max(1U, numStates - numStates*MaxMemory/mbs);
 
               if (MaxMemoryInhibit)
                 klee_warning("killing %d states (over memory cap)",
                             toKill);
 
-              std::vector<ExecutionState*> arr(states.begin(), states.end());
+              std::set<ExecutionState*> statesSet(searcher->states());
+              std::vector<ExecutionState*> arr(statesSet.begin(), statesSet.end());
+              arr.push_back(statePtr);
               for (unsigned i=0,N=arr.size(); N && i<toKill; ++i,--N) {
                 unsigned idx = rand() % N;
 
@@ -2701,19 +2650,34 @@ void Executor::execute(ExecutionState *initialState) {
           }
         }
       }
+
+      // Update searcher with new states and get next state to execute (if
+      // supported by searcher)
+      statePtr = searcher->updateAndTrySelectState(&state, 
+                                                   getContext().addedStates, 
+                                                   getContext().removedStates);
+      // Update Executor state tracking
       updateStates(&state);
     }
 
     // Wait for new states to be ready to execute
-    {
-    UniqueLock guard(searcherMutex);
-    while (!statesEmpty() && searcher->empty()) { searcherCond.wait(guard); }
+    while (statePtr == NULL && searcher->empty() && !empty() && !haltExecution) { 
+      Mutex lock;
+      UniqueLock guard(lock);
+      searcherCond.wait(guard);
     }
-
   }
 
-  // Alert other threads to wake up if there are no more states to execute
-  searcherCond.notify_all();
+  // Update searcher with last state we executed if we are halting early
+  if (statePtr) 
+    searcher->update(statePtr, getContext().addedStates, getContext().removedStates);
+
+  // Alert threads to wake up if there are no more states to execute
+  searcherCond.notify_one();
+
+  // Release TSS memory (i.e., don't destroy with thread); the memory manager
+  // for this thread may still be needed in dumpState
+  this->memory.release();
 }
 
 void Executor::run(ExecutionState &initialState) {
@@ -2723,10 +2687,9 @@ void Executor::run(ExecutionState &initialState) {
   // optimization and such.
   initTimers();
 
-  {
-    LockGuard guard(statesMutex);
-    states.insert(&initialState);
-  }
+  std::set<ExecutionState*> states;
+  states.insert(&initialState);
+  ++stateCount;
 
   if (usingSeeds) {
     std::vector<SeedInfo> &v = seedMap[&initialState];
@@ -2753,6 +2716,16 @@ void Executor::run(ExecutionState &initialState) {
 
       executeInstruction(state, ki);
       processTimers(&state, MaxInstructionTime * numSeeds);
+
+      states.insert(getContext().addedStates.begin(),getContext().addedStates.end());
+
+      for (std::set<ExecutionState*>::iterator
+            it = getContext().removedStates.begin(), ie = getContext().removedStates.end();
+          it != ie; ++it) {
+        ExecutionState *es = *it;
+        states.erase(es);
+      }
+
       updateStates(&state);
 
       if ((stats::instructions % 1000) == 0) {
@@ -2794,42 +2767,44 @@ void Executor::run(ExecutionState &initialState) {
 
   searcher = constructUserSearcher(*this);
 
-  {
-  LockGuard guard(searcherMutex);
   searcher->update(0, states, std::set<ExecutionState*>());
-  }
 
-  threadInitializationBarrier = new Barrier(UseThreads);
+  threadBarrier = new Barrier(UseThreads);
 
-  if (!statesEmpty()) {
+  if (!empty()) {
     if (UseThreads == 1) {
-      execute(&initialState);
+      execute(&initialState, NULL);
     } else {
       ThreadGroup threadGroup;
-
-      for (unsigned i=0; i<UseThreads; ++i)
-        threadGroup.add_thread(new Thread(&klee::Executor::execute, this, &initialState));
-
+      for (unsigned i=0; i<UseThreads; ++i) {
+        // Initialize MemoryManager outside of thread
+        memoryManagers.push_back(new MemoryManager());
+        threadGroup.add_thread(new Thread(&klee::Executor::execute, 
+                                          this, &initialState, memoryManagers.back()));
+      }
       // Wait for all threads to finish
       threadGroup.join_all();
     }
   }
-
-  delete searcher;
-  searcher = 0;
   
  dump:
-  if (DumpStatesOnHalt && !states.empty()) {
+  if (DumpStatesOnHalt && !empty()) {
     std::cerr << "KLEE: halting execution, dumping remaining states\n";
-    for (std::set<ExecutionState*>::iterator
-           it = states.begin(), ie = states.end();
-         it != ie; ++it) {
-      ExecutionState &state = **it;
-      stepInstruction(state); // keep stats rolling
-      terminateStateEarly(state, "Execution halting.");
+    while (ExecutionState* state = searcher->trySelectState()) {
+      stepInstruction(*state); // keep stats rolling
+      terminateStateEarly(*state, "Execution halting.");
     }
     updateStates(0);
   }
+
+  // Delete all MemoryManagers used by threads
+  memory.release();
+  for (std::vector<MemoryManager*>::iterator it = memoryManagers.begin(), 
+       ie = memoryManagers.end(); it != ie; ++it)
+    delete *it;
+
+  delete searcher;
+  searcher = 0;
 }
 
 std::string Executor::getAddressInfo(ExecutionState &state, 
@@ -2901,10 +2876,7 @@ void Executor::terminateState(ExecutionState &state) {
     if (it3 != seedMap.end())
       seedMap.erase(it3);
     getContext().addedStates.erase(it);
-    {
-    LockGuard guard(searcherMutex);
     processTree->remove(state.ptreeNode);
-    }
     delete &state;
   }
 }
@@ -3081,10 +3053,10 @@ void Executor::callExternalFunction(ExecutionState &state,
     }
   }
 
-  static Mutex lock; { // begin lock
   // Mutex is used because only have concrete backstore for the addressSpace 
   // and it is shared amongst all states.  
-  LockGuard guard(lock);
+  static Mutex externalCallMutex;
+  LockGuard guard(externalCallMutex);
 
   state.addressSpace.copyOutConcretes();
   if (!SuppressExternalWarnings) {
@@ -3116,7 +3088,6 @@ void Executor::callExternalFunction(ExecutionState &state,
                           "external.err");
     return;
   }
-  } // end lock
 
   LLVM_TYPE_Q Type *resultType = target->inst->getType();
   if (resultType != Type::getVoidTy(getGlobalContext())) {
@@ -3319,7 +3290,7 @@ void Executor::resolveExact(ExecutionState &state,
                             const std::string &name) {
   // XXX we may want to be capping this?
   ResolutionList rl;
-  state.addressSpace.resolve(state, solver, p, rl);
+  state.addressSpace.resolve(state, solver.get(), p, rl);
   
   ExecutionState *unbound = &state;
   for (ResolutionList::iterator it = rl.begin(), ie = rl.end(); 
@@ -3364,7 +3335,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
   ObjectPair op;
   bool success;
   solver->setTimeout(coreSolverTimeout);
-  if (!state.addressSpace.resolveOne(state, solver, address, op, success)) {
+  if (!state.addressSpace.resolveOne(state, solver.get(), address, op, success)) {
     address = toConstant(state, address, "resolveOne failure");
     success = state.addressSpace.resolveOne(cast<ConstantExpr>(address), op);
   }
@@ -3420,7 +3391,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
   
   ResolutionList rl;  
   solver->setTimeout(coreSolverTimeout);
-  bool incomplete = state.addressSpace.resolve(state, solver, address, rl,
+  bool incomplete = state.addressSpace.resolve(state, solver.get(), address, rl,
                                                0, coreSolverTimeout);
   solver->setTimeout(0);
   
@@ -3636,13 +3607,10 @@ void Executor::runFunctionAsMain(Function *f,
   processTree = new PTree(state);
   state->ptreeNode = processTree->root;
   run(*state);
+
   delete processTree;
   processTree = 0;
 
-  // hack to clear memory objects
-  delete memory;
-  memory = new MemoryManager();
-  
   globalObjects.clear();
   globalAddresses.clear();
 
@@ -3793,13 +3761,12 @@ Executor::ExecutorContext& Executor::getContext() {
   return *(context.get());
 }
 
-bool Executor::statesEmpty() {
-  LockGuard guard(statesMutex);
-  return states.empty();
+bool Executor::empty() {
+  return stateCount == 0;
 }
 
-// Don't use mallinfo, overflows if usage is > 4GB and also doesn't work with
-// threads
+/// Don't use mallinfo, overflows if usage is > 4GB and also doesn't work with
+/// threads
 size_t Executor::GetMemoryUsage() {
   size_t bytes_used = 0;
 #ifdef TCMALLOC
@@ -3829,6 +3796,48 @@ size_t Executor::GetMemoryUsage() {
 
   return peakMem * 1024;
 #endif
+}
+
+Solver* Executor::initializeSolver() {
+  Solver *coreSolver = NULL;
+#ifdef SUPPORT_METASMT
+  if (UseMetaSMT != METASMT_BACKEND_NONE) {
+    
+    std::string backend;
+    
+    switch (UseMetaSMT) {
+      case METASMT_BACKEND_STP:
+        backend = "STP"; 
+        coreSolver = new MetaSMTSolver< DirectSolver_Context < STP_Backend > >(UseForkedCoreSolver, CoreSolverOptimizeDivides);
+        break;
+      case METASMT_BACKEND_Z3:
+        backend = "Z3";
+        coreSolver = new MetaSMTSolver< DirectSolver_Context < Z3_Backend > >(UseForkedCoreSolver, CoreSolverOptimizeDivides);
+        break;
+      case METASMT_BACKEND_BOOLECTOR:
+        backend = "Boolector";
+        coreSolver = new MetaSMTSolver< DirectSolver_Context < Boolector > >(UseForkedCoreSolver, CoreSolverOptimizeDivides);
+        break;
+      default:
+        assert(false);
+        break;
+    };
+    std::cerr << "Starting MetaSMTSolver(" << backend << ") ...\n";
+  }
+  else {
+    coreSolver = new STPSolver(UseForkedCoreSolver, CoreSolverOptimizeDivides);
+  }
+#else
+  coreSolver = new STPSolver(UseForkedCoreSolver, CoreSolverOptimizeDivides);
+#endif /* SUPPORT_METASMT */
+   
+  Solver *solver = 
+    constructSolverChain(coreSolver,
+                         interpreterHandler->getOutputFilename(ALL_QUERIES_SMT2_FILE_NAME),
+                         interpreterHandler->getOutputFilename(SOLVER_QUERIES_SMT2_FILE_NAME),
+                         interpreterHandler->getOutputFilename(ALL_QUERIES_PC_FILE_NAME),
+                         interpreterHandler->getOutputFilename(SOLVER_QUERIES_PC_FILE_NAME));
+  return solver;
 }
 
 Expr::Width Executor::getWidthForLLVMType(LLVM_TYPE_Q llvm::Type *type) const {

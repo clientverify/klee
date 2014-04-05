@@ -68,6 +68,7 @@ namespace klee {
   class SpecialFunctionHandler;
   struct StackFrame;
   class StatsTracker;
+  class Solver;
   class TimingSolver;
   class TreeStreamWriter;
   class CliverFunctionHandler;
@@ -123,29 +124,24 @@ protected:
   Searcher *searcher;
 
   ExternalDispatcher *externalDispatcher;
-  TimingSolver *solver;
-  MemoryManager *memory;
-  std::set<ExecutionState*> states;
+  ThreadSpecificPointer<TimingSolver>::type solver;
+  ThreadSpecificPointer<MemoryManager>::type memory;
+  Atomic<int>::type stateCount;
+  std::vector<MemoryManager*> memoryManagers;
   StatsTracker *statsTracker;
   TreeStreamWriter *pathWriter, *symPathWriter;
   SpecialFunctionHandler *specialFunctionHandler;
   std::vector<TimerInfo*> timers;
   PTree *processTree;
 
-  /// Mutex to lock access to the Executor's set of states
-  Mutex statesMutex;
-
-  /// Mutex to lock access to the searcher
-  Mutex searcherMutex;
-
   /// Used to communicate to other threads when new states have been added
   ConditionVariable searcherCond;
 
   /// Used to wait until all threads have been initialized before executing
   /// states
-  Barrier* threadInitializationBarrier;
+  Barrier* threadBarrier;
 
-  /// Thread specific ExecutorContext
+  /// Per-thread ExecutorContext
   ThreadSpecificPointer<ExecutorContext>::type context;
 
   /// When non-empty the Executor is running in "seed" mode. The
@@ -190,7 +186,7 @@ protected:
 
   /// Signals the executor to halt execution at the next instruction
   /// step.
-  bool haltExecution;  
+  Atomic<bool>::type haltExecution;
 
   /// Whether implied-value concretization is enabled. Currently
   /// false, it is buggy (it needs to validate its writes).
@@ -207,7 +203,7 @@ protected:
 
   void printFileLine(ExecutionState &state, KInstruction *ki);
 
-  void execute(ExecutionState *initialState);
+  void execute(ExecutionState *initialState, MemoryManager* memory);
 
   virtual void run(ExecutionState &initialState);
 
@@ -220,7 +216,7 @@ protected:
 			      const llvm::Constant *c,
 			      unsigned offset);
   void initializeGlobals(ExecutionState &state);
-  void initializePerThreadGlobals(ExecutionState &state);
+  void initializePerThread(ExecutionState &state, MemoryManager* memory);
 
   virtual void stepInstruction(ExecutionState &state);
   virtual void updateStates(ExecutionState *current);
@@ -424,10 +420,13 @@ protected:
   ExecutorContext& getContext();
 
   /// Returns true if the states set is empty (thread-safe)
-  bool statesEmpty();
+  bool empty();
 
   /// Returns the current application memory usage in bytes (thread-safe)
   size_t GetMemoryUsage();
+
+  /// Initialize a new solver
+  Solver* initializeSolver();
 
 public:
   Executor(const InterpreterOptions &opts, InterpreterHandler *ie);
