@@ -330,9 +330,9 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
   delete processTree;
   processTree = 0;
 
-  // hack to clear memory objects
-  delete memory;
-  memory = new MemoryManager();
+  //// hack to clear memory objects
+  //delete memory;
+  //memory = new MemoryManager();
   
   globalObjects.clear();
   globalAddresses.clear();
@@ -439,9 +439,9 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
   delete processTree;
   processTree = 0;
 
-  // hack to clear memory objects
-  delete memory;
-  memory = new klee::MemoryManager();
+  //// hack to clear memory objects
+  //delete memory;
+  //memory = new klee::MemoryManager();
   
   globalObjects.clear();
   globalAddresses.clear();
@@ -941,6 +941,8 @@ void CVExecutor::add_state_internal(CVExecutionState* state) {
 // FIXME incorporate CanonicalSolver
 void CVExecutor::rebuild_solvers() {
 
+#if 0
+  FIXME
   delete solver;
   klee::Solver* coreSolver = new klee::STPSolver(klee::UseForkedCoreSolver, klee::CoreSolverOptimizeDivides);
 
@@ -952,6 +954,7 @@ void CVExecutor::rebuild_solvers() {
                          interpreterHandler->getOutputFilename(klee::SOLVER_QUERIES_PC_FILE_NAME));
   
   this->solver = new klee::TimingSolver(solver);
+#endif
 }
 
 // Don't use mallinfo, overflows if usage is > 4GB

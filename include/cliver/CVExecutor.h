@@ -124,6 +124,9 @@ class CVExecutor : public klee::Executor {
 	std::map<llvm::Function*, ExecutionEventType> function_call_events_;
   size_t memory_usage_mbs_;
   std::set<ExecutionStateProperty*> finished_states_;
+
+  // TO BE REMOVED
+  std::set<klee::ExecutionState*> states;
 };
 
 } // end cliver namespace
