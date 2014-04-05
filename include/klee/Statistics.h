@@ -12,17 +12,21 @@
 
 #include "Statistic.h"
 
+#include "klee/util/Atomic.h"
+
 #include <vector>
 #include <string>
 #include <string.h>
 
 namespace klee {
+  typedef Atomic<uint64_t>::type StatisticDataType;
+
   class Statistic;
   class StatisticRecord {
     friend class StatisticManager;
 
   private:
-    uint64_t *data;
+    StatisticDataType *data;
 
   public:    
     StatisticRecord();
@@ -41,8 +45,8 @@ namespace klee {
   private:
     bool enabled;
     std::vector<Statistic*> stats;
-    uint64_t *globalStats;
-    uint64_t *indexedStats;
+    StatisticDataType *globalStats;
+    StatisticDataType *indexedStats;
     StatisticRecord *contextStats;
     StatisticRecord *cliverStats;
     unsigned index;
@@ -121,12 +125,12 @@ namespace klee {
   }
 
   inline StatisticRecord::StatisticRecord() 
-    : data(new uint64_t[theStatisticManager->getNumStatistics()]) {
+    : data(new StatisticDataType[theStatisticManager->getNumStatistics()]) {
     zero();
   }
 
   inline StatisticRecord::StatisticRecord(const StatisticRecord &s) 
-    : data(new uint64_t[theStatisticManager->getNumStatistics()]) {
+    : data(new StatisticDataType[theStatisticManager->getNumStatistics()]) {
     ::memcpy(data, s.data, 
              sizeof(*data)*theStatisticManager->getNumStatistics());
   }

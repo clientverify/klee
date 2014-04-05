@@ -14,6 +14,7 @@
 #include "Executor.h"
 #include "klee/ExecutionState.h"
 #include "klee/Statistics.h"
+#include "klee/Searcher.h"
 #include "klee/Config/Version.h"
 #include "klee/Internal/Module/InstructionInfoTable.h"
 #include "klee/Internal/Module/KModule.h"
@@ -431,9 +432,11 @@ void StatsTracker::writeStatsLine() {
 
 void StatsTracker::updateStateStatistics(uint64_t addend) {
   RecursiveLockGuard guard(statsMutex);
-  LockGuard statesGuard(executor.statesMutex);
-  for (std::set<ExecutionState*>::iterator it = executor.states.begin(),
-         ie = executor.states.end(); it != ie; ++it) {
+  std::set<ExecutionState*> states;
+  if (executor.searcher)
+    states = executor.searcher->states();
+  for (std::set<ExecutionState*>::iterator it = states.begin(),
+         ie = states.end(); it != ie; ++it) {
     ExecutionState &state = **it;
     const InstructionInfo &ii = *state.pc->info;
     theStatisticManager->incrementIndexedValue(stats::states, ii.id, addend);
@@ -847,8 +850,12 @@ void StatsTracker::computeReachableUncovered() {
     }
   } while (changed);
 
-  for (std::set<ExecutionState*>::iterator it = executor.states.begin(),
-         ie = executor.states.end(); it != ie; ++it) {
+  std::set<ExecutionState*> states;
+  if (executor.searcher)
+    states = executor.searcher->states();
+
+  for (std::set<ExecutionState*>::iterator it = states.begin(),
+         ie = states.end(); it != ie; ++it) {
     ExecutionState *es = *it;
     uint64_t currentFrameMinDist = 0;
     for (ExecutionState::stack_ty::iterator sfIt = es->stack.begin(),

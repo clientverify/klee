@@ -29,16 +29,16 @@ StatisticManager::~StatisticManager() {
 
 void StatisticManager::useIndexedStats(unsigned totalIndices) {  
   if (indexedStats) delete[] indexedStats;
-  indexedStats = new uint64_t[totalIndices * stats.size()];
-  memset(indexedStats, 0, sizeof(*indexedStats) * totalIndices * stats.size());
+  indexedStats = new StatisticDataType[totalIndices * stats.size()];
+  for (int i=0; i< totalIndices * stats.size(); ++i) indexedStats[i] = 0;
 }
 
 void StatisticManager::registerStatistic(Statistic &s) {
   if (globalStats) delete[] globalStats;
   s.id = stats.size();
   stats.push_back(&s);
-  globalStats = new uint64_t[stats.size()];
-  memset(globalStats, 0, sizeof(*globalStats)*stats.size());
+  globalStats = new StatisticDataType[stats.size()];
+  for (int i=0; i< stats.size(); ++i) globalStats[i] = 0;
 }
 
 int StatisticManager::getStatisticID(const std::string &name) const {
