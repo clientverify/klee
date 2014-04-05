@@ -10,6 +10,7 @@
 #ifndef KLEE_MEMORYMANAGER_H
 #define KLEE_MEMORYMANAGER_H
 
+#include "klee/util/Atomic.h"
 #include "klee/util/Mutex.h"
 #include <set>
 #include <stdint.h>
@@ -23,12 +24,15 @@ namespace klee {
 
   class MemoryManager {
   private:
+    Atomic<unsigned>::type activeObjects;
+#ifndef NDEBUG
     typedef std::set<MemoryObject*> objects_ty;
     objects_ty objects;
-    Mutex objectsMutex;
+    SpinLock objectsLock;
+#endif
 
   public:
-    MemoryManager() {}
+    MemoryManager();
     ~MemoryManager();
 
     MemoryObject *allocate(uint64_t size, bool isLocal, bool isGlobal,
