@@ -72,7 +72,7 @@ ObjectHolder &ObjectHolder::operator=(const ObjectHolder &b) {
 
 /***/
 
-int MemoryObject::counter = 0;
+Atomic<int>::type MemoryObject::counter;
 
 MemoryObject::~MemoryObject() {
   if (parent)
@@ -181,6 +181,7 @@ ObjectState::~ObjectState() {
 /***/
 
 const UpdateList &ObjectState::getUpdates() const {
+  updatesLock.lock();
   // Constant arrays are created lazily.
   if (!updates.root) {
     // Collect the list of writes, with the oldest writes first.
@@ -232,6 +233,7 @@ const UpdateList &ObjectState::getUpdates() const {
     for (; Begin != End; ++Begin)
       updates.extend(Writes[Begin].first, Writes[Begin].second);
   }
+  updatesLock.unlock();
 
   return updates;
 }

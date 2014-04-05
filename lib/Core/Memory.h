@@ -12,6 +12,8 @@
 
 #include "Context.h"
 #include "klee/Expr.h"
+#include "klee/util/Atomic.h"
+#include "klee/util/Mutex.h"
 
 #include "llvm/ADT/StringExtras.h"
 
@@ -34,7 +36,7 @@ class MemoryObject {
   friend class ExecutionState;
 
 private:
-  static int counter;
+  static Atomic<int>::type counter;
   mutable RefCount refCount;
 
 public:
@@ -168,6 +170,7 @@ private:
 
   // mutable because we may need flush during read of const
   mutable UpdateList updates;
+  mutable SpinLock updatesLock;
 
 public:
   unsigned size;
