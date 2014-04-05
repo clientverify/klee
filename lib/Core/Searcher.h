@@ -10,10 +10,13 @@
 #ifndef KLEE_SEARCHER_H
 #define KLEE_SEARCHER_H
 
+#include "klee/util/Mutex.h"
+
 #include <vector>
 #include <set>
 #include <map>
 #include <queue>
+#include <stack>
 
 // FIXME: Move out of header, use llvm streams.
 #include <ostream>
@@ -67,8 +70,52 @@ namespace klee {
       update(current, std::set<ExecutionState*>(), tmp);
     }
 
+    // trySelectState and updateAndTrySelectState are wrappers around 
+    // selectState(), update() and empty(). Thread-aware Searcher 
+    // implmentations override them if needed.
+
+    virtual ExecutionState* trySelectState() {
+      if (!empty()) {
+        return &(selectState());
+      }
+      return NULL;
+    }
+
+    // updateAndTrySelectState() will always call update(), but may or may not call
+    // trySelectState(), the default is to return NULL.
+    // Note: update, followed by trySelectState will fail with BatchingSearcher
+    virtual ExecutionState* updateAndTrySelectState(ExecutionState *current,
+                                                    const std::set<ExecutionState*> &addedStates,
+                                                    const std::set<ExecutionState*> &removedStates) {
+      update(current, addedStates, removedStates);
+      return NULL;
+    }
+
+    // The searcher holds the authoritative collection of all states
+    virtual std::set<ExecutionState*> states() {
+      std::stack<ExecutionState*> stack;
+      std::set<ExecutionState*> states;
+
+      // Remove states from searcher
+      while (ExecutionState* es = trySelectState()) {
+        stack.push(es);
+        states.insert(es);
+      }
+
+      // Add them back into searcher
+      std::set<ExecutionState*> tmp;
+      while (!stack.empty()) {
+        tmp.insert(stack.top());
+        stack.pop();
+        update(0, tmp, std::set<ExecutionState*>());
+        tmp.clear();
+      }
+      return states;
+    }
+
     enum CoreSearchType {
       DFS,
+      ParallelDFS,
       BFS,
       RandomState,
       RandomPath,
@@ -123,12 +170,13 @@ namespace klee {
     }
   };
 
-  /// This Searcher acts as wrapper around other searchers. It's only purpose is
+  /// ParallelSearcher acts as wrapper around other searchers. It's only purpose is
   /// to remove every state returned by selectState from the underlying searcher
   /// and re-add it back when update is called so that multiple threads won't be
   /// provided with the same state to execute.
   class ParallelSearcher : public Searcher {
     Searcher* searcher;
+    RecursiveMutex lock;
 
   public:
     ParallelSearcher(Searcher* searcher);
@@ -138,7 +186,33 @@ namespace klee {
                 const std::set<ExecutionState*> &removedStates);
     bool empty();
     void printName(std::ostream &os);
+    ExecutionState* trySelectState();
+    std::set<ExecutionState*> states();
   };
+
+  class ParallelDFSSearcher : public Searcher {
+    LockFreeStack<ExecutionState*>::type* queue;
+    std::set<ExecutionState*> removedStatesSet;
+    SpinLock removedStatesLock;
+
+    Atomic<int>::type queueSize;
+    Atomic<int>::type removedStatesCount;
+
+  private:
+    bool checkStateRemoved(ExecutionState* state);
+  public:
+    ParallelDFSSearcher();
+    ExecutionState &selectState();
+    void update(ExecutionState *current,
+                const std::set<ExecutionState*> &addedStates,
+                const std::set<ExecutionState*> &removedStates);
+    ExecutionState* updateAndTrySelectState(ExecutionState *current,
+                    const std::set<ExecutionState*> &addedStates,
+                    const std::set<ExecutionState*> &removedStates);
+    bool empty();
+    void printName(std::ostream &os);
+  };
+
 
   class WeightedRandomSearcher : public Searcher {
   public:

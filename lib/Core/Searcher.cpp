@@ -157,11 +157,102 @@ void RandomSearcher::update(ExecutionState *current,
 
 ///
 
+ParallelDFSSearcher::ParallelDFSSearcher() {
+  queue = new LockFreeStack<ExecutionState*>::type(2048);
+  queueSize = 0;
+  removedStatesCount = 0;
+}
+
+bool ParallelDFSSearcher::checkStateRemoved(ExecutionState* state) {
+  if (removedStatesCount > 0) {
+    SpinLockGuard guard(removedStatesLock);
+    if (removedStatesSet.count(state)) {
+      --removedStatesCount;
+      removedStatesSet.erase(state);
+      return true;
+    }
+  }
+  return false;
+}
+
+ExecutionState &ParallelDFSSearcher::selectState() {
+  ExecutionState* state = NULL;
+popqueue:
+  while (!queue->pop(state))
+     ;
+
+  if (checkStateRemoved(state))
+    goto popqueue;
+
+  --queueSize;
+  return *state;
+}
+
+void ParallelDFSSearcher::update(ExecutionState *current,
+                            const std::set<ExecutionState*> &addedStates,
+                            const std::set<ExecutionState*> &removedStates) {
+  if (updateAndTrySelectState(current, addedStates, removedStates) && current) {
+    while (!queue->push(current))
+        ;
+
+    ++queueSize;
+  }
+}
+
+ExecutionState* ParallelDFSSearcher::updateAndTrySelectState(ExecutionState *current,
+                            const std::set<ExecutionState*> &addedStates,
+                            const std::set<ExecutionState*> &removedStates) {
+  if (addedStates.size()) {
+    for (std::set<ExecutionState*>::const_iterator it = addedStates.begin(),
+          ie = addedStates.end(); it != ie; ++it) {
+      ExecutionState *es = *it;
+
+      while (!queue->push(es))
+          ;
+
+      ++queueSize;
+    }
+  }
+
+  bool isCurrentRemoved = false;
+  if (removedStates.size()) {
+    SpinLockGuard guard(removedStatesLock);
+    for (std::set<ExecutionState*>::const_iterator it = removedStates.begin(),
+          ie = removedStates.end(); it != ie; ++it) {
+      if (*it != current) {
+        removedStatesSet.insert(*it);
+      } else {
+        isCurrentRemoved = true;
+      }
+    }
+
+    int count = (removedStates.size() - (isCurrentRemoved ? 1 : 0));
+    removedStatesCount += count;
+    queueSize -= count;
+  }
+
+  if (isCurrentRemoved)
+    return NULL;
+
+  return current;
+}
+
+bool ParallelDFSSearcher::empty() {
+  return queueSize == 0;
+}
+
+void ParallelDFSSearcher::printName(std::ostream &os) {
+  os << "ParallelDFSSearcher\n";
+}
+
+///
+
 ParallelSearcher::ParallelSearcher(Searcher *internalSearcher) 
   : searcher(internalSearcher) {
 }
 
 ExecutionState &ParallelSearcher::selectState() {
+  RecursiveLockGuard guard(lock);
   ExecutionState& state = searcher->selectState();
   searcher->removeState(&state);
   return state;
@@ -170,6 +261,8 @@ ExecutionState &ParallelSearcher::selectState() {
 void ParallelSearcher::update(ExecutionState *current,
                             const std::set<ExecutionState*> &addedStates,
                             const std::set<ExecutionState*> &removedStates) {
+  RecursiveLockGuard guard(lock);
+
   if (current)
     searcher->addState(current);
 
@@ -177,6 +270,7 @@ void ParallelSearcher::update(ExecutionState *current,
 }
 
 bool ParallelSearcher::empty() {
+  RecursiveLockGuard guard(lock);
   return searcher->empty();
 }
 
@@ -184,6 +278,37 @@ void ParallelSearcher::printName(std::ostream &os) {
   os << "<ParallelSearcher>\n";
   searcher->printName(os);
   os << "</ParallelSearcher>\n";
+}
+
+ExecutionState* ParallelSearcher::trySelectState() {
+  RecursiveLockGuard guard(lock);
+  if (!empty()) {
+    return &(selectState());
+  }
+  return NULL;
+}
+
+std::set<ExecutionState*> ParallelSearcher::states() {
+  std::stack<ExecutionState*> stack;
+  std::set<ExecutionState*> states;
+
+  RecursiveLockGuard guard(lock);
+
+  // Remove states from searcher
+  while (ExecutionState* es = trySelectState()) {
+    stack.push(es);
+    states.insert(es);
+  }
+
+  // Add them back into searcher
+  std::set<ExecutionState*> tmp;
+  while (!stack.empty()) {
+    tmp.insert(stack.top());
+    stack.pop();
+    update(0, tmp, std::set<ExecutionState*>());
+    tmp.clear();
+  }
+  return states;
 }
 
 ///
@@ -289,6 +414,8 @@ ExecutionState &RandomPathSearcher::selectState() {
   unsigned flips=0, bits=0;
   PTree::Node *n = NULL;
   
+  // Acquire lock on processTree externally
+  PTree::Guard guard(*executor.processTree);
   while (n == NULL || states.count(n->data) == 0) {
     n = executor.processTree->root;
     while (!n->data) {
