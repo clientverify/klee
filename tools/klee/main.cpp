@@ -14,6 +14,7 @@
 #include "klee/Internal/ADT/TreeStream.h"
 #include "klee/Internal/Support/ModuleUtil.h"
 #include "klee/Internal/System/Time.h"
+#include "klee/util/Atomic.h"
 
 #if LLVM_VERSION_CODE > LLVM_VERSION(3, 2)
 #include "llvm/IR/Constants.h"
@@ -234,8 +235,8 @@ private:
   std::ostream *m_infoFile;
 
   sys::Path m_outputDirectory;
-  unsigned m_testIndex;  // number of tests written so far
-  unsigned m_pathsExplored; // number of paths explored so far
+  Atomic<unsigned>::type m_testIndex;  // number of tests written so far
+  Atomic<unsigned>::type m_pathsExplored; // number of paths explored so far
 
   // used for writing .ktest files
   int m_argc;
