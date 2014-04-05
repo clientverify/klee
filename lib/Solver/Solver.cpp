@@ -9,6 +9,7 @@
 
 #include "klee/Solver.h"
 #include "klee/SolverImpl.h"
+#include "klee/util/Thread.h"
 
 #include "SolverStats.h"
 #include "STPBuilder.h"
@@ -44,6 +45,10 @@ IgnoreSolverFailures("ignore-solver-failures",
                      llvm::cl::init(false),
                      llvm::cl::desc("Ignore any solver failures (default=off)"));
 
+llvm::cl::opt<bool>
+TimeoutSolverWithAlarm("timeout-solver-with-alarm",
+                     llvm::cl::init(false),
+                     llvm::cl::desc("Check for solver timeout with sigalarm (not threadsafe) (default=off)"));
 
 using namespace klee;
 
@@ -517,9 +522,9 @@ public:
   SolverRunStatus getOperationStatusCode();
 };
 
-static unsigned char *shared_memory_ptr;
+static ThreadSpecificPointer<unsigned char *>::type shared_memory_ptr;
 static const unsigned shared_memory_size = 1<<20;
-static int shared_memory_id;
+static ThreadSpecificPointer<int>::type shared_memory_id;
 
 static void stp_error_handler(const char* err_msg) {
   fprintf(stderr, "error: STP Error: %s\n", err_msg);
@@ -548,11 +553,13 @@ STPSolverImpl::STPSolverImpl(STPSolver *_solver, bool _useForkedSTP, bool _optim
   vc_registerErrorHandler(::stp_error_handler);
 
   if (useForkedSTP) {
-    shared_memory_id = shmget(IPC_PRIVATE, shared_memory_size, IPC_CREAT | 0700);
-    assert(shared_memory_id>=0 && "shmget failed");
-    shared_memory_ptr = (unsigned char*) shmat(shared_memory_id, NULL, 0);
-    assert(shared_memory_ptr!=(void*)-1 && "shmat failed");
-    shmctl(shared_memory_id, IPC_RMID, NULL);
+    shared_memory_id.reset(new int());
+    *shared_memory_id = shmget(IPC_PRIVATE, shared_memory_size, IPC_CREAT | 0700);
+    assert(*shared_memory_id>=0 && "shmget failed");
+    shared_memory_ptr.reset(new unsigned char*());
+    *shared_memory_ptr = (unsigned char*) shmat(*shared_memory_id, NULL, 0);
+    assert(*shared_memory_ptr!=(void*)-1 && "shmat failed");
+    shmctl(*shared_memory_id, IPC_RMID, NULL);
   }
 }
 
@@ -675,7 +682,7 @@ static SolverImpl::SolverRunStatus runAndGetCexForked(::VC vc,
                                                       &values,
                                                       bool &hasSolution,
                                                       double timeout) {
-  unsigned char *pos = shared_memory_ptr;
+  unsigned char *pos = *shared_memory_ptr;
   unsigned sum = 0;
   for (std::vector<const Array*>::const_iterator
          it = objects.begin(), ie = objects.end(); it != ie; ++it)
@@ -693,11 +700,34 @@ static SolverImpl::SolverRunStatus runAndGetCexForked(::VC vc,
   }
 
   if (pid == 0) {
-    if (timeout) {      
+    if (timeout && TimeoutSolverWithAlarm) {
       ::alarm(0); /* Turn off alarm so we can safely set signal handler */
       ::signal(SIGALRM, stpTimeoutHandler);
       ::alarm(std::max(1, (int)timeout));
     }    
+    // Instead of using alarm, we can fork 3 additional processes: 1) query
+    // the solver, 2) sleep for timeout seconds and 3) wait for the other
+    // two processes to exit. And the last process forwards the exit status code
+    // to the parent process.
+    else if (timeout) {
+      int query_pid = fork();
+      if (query_pid != 0) {
+        int timeout_pid = fork();
+        if (timeout_pid == 0) {
+          sleep(timeout);
+          _exit(52);
+        }
+        int status;
+        int exit_pid = wait(&status);
+        if (exit_pid == query_pid)
+          kill(timeout_pid, SIGKILL);
+        else
+          kill(query_pid, SIGKILL);
+
+        wait(NULL);
+        _exit(status);
+      }
+    }
     unsigned res = vc_query(vc, q);
     if (!res) {
       for (std::vector<const Array*>::const_iterator
@@ -920,11 +950,13 @@ MetaSMTSolverImpl<SolverContext>::MetaSMTSolverImpl(MetaSMTSolver<SolverContext>
   assert(_builder && "unable to create MetaSMTBuilder");
   
   if (_useForked) {
-      shared_memory_id = shmget(IPC_PRIVATE, shared_memory_size, IPC_CREAT | 0700);
-      assert(shared_memory_id >= 0 && "shmget failed");
-      shared_memory_ptr = (unsigned char*) shmat(shared_memory_id, NULL, 0);
-      assert(shared_memory_ptr != (void*) -1 && "shmat failed");
-      shmctl(shared_memory_id, IPC_RMID, NULL);
+    shared_memory_id.reset(new int());
+    *shared_memory_id = shmget(IPC_PRIVATE, shared_memory_size, IPC_CREAT | 0700);
+    assert(*shared_memory_id>=0 && "shmget failed");
+    shared_memory_ptr.reset(new unsigned char*());
+    *shared_memory_ptr = (unsigned char*) shmat(*shared_memory_id, NULL, 0);
+    assert(*shared_memory_ptr!=(void*)-1 && "shmat failed");
+    shmctl(*shared_memory_id, IPC_RMID, NULL);
   }
 }
 
@@ -1085,7 +1117,7 @@ SolverImpl::SolverRunStatus MetaSMTSolverImpl<SolverContext>::runAndGetCexForked
                                                           bool &hasSolution,
                                                           double timeout)
 {
-  unsigned char *pos = shared_memory_ptr;
+  unsigned char *pos = *shared_memory_ptr;
   unsigned sum = 0;
   for (std::vector<const Array*>::const_iterator it = objects.begin(), ie = objects.end(); it != ie; ++it) {
       sum += (*it)->size;    
@@ -1103,12 +1135,35 @@ SolverImpl::SolverRunStatus MetaSMTSolverImpl<SolverContext>::runAndGetCexForked
   }
   
   if (pid == 0) {
-      if (timeout) {
+      if (timeout && TimeoutSolverWithAlarm) {
           ::alarm(0); /* Turn off alarm so we can safely set signal handler */
           ::signal(SIGALRM, metaSMTTimeoutHandler);
           ::alarm(std::max(1, (int) timeout));
       }     
-      
+      // Instead of using alarm, we can fork 3 additional processes: 1) query
+      // the solver, 2) sleep for timeout seconds and 3) wait for the other
+      // two processes to exit. And the last process forwards the exit status code
+      // to the parent process.
+      else if (timeout) {
+        int query_pid = fork();
+        if (query_pid != 0) {
+          int timeout_pid = fork();
+          if (timeout_pid == 0) {
+            sleep(timeout);
+            _exit(52);
+          }
+          int status;
+          int exit_pid = wait(&status);
+          if (exit_pid == query_pid)
+            kill(timeout_pid, SIGKILL);
+          else
+            kill(query_pid, SIGKILL);
+
+          wait(NULL);
+          _exit(status);
+        }
+      }
+ 
       for (ConstraintManager::const_iterator it = query.constraints.begin(), ie = query.constraints.end(); it != ie; ++it) {      
           assertion(_meta_solver, _builder->construct(*it));
           //assumption(_meta_solver, _builder->construct(*it));  
