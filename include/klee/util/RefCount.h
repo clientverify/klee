@@ -10,19 +10,13 @@
 #ifndef KLEE_REFCOUNT_H
 #define KLEE_REFCOUNT_H
 
-#ifdef ENABLE_BOOST_ATOMIC
-#include <boost/atomic.hpp>
-#endif
+#include <klee/util/Atomic.h>
 
 namespace klee {
 
 class RefCount
 {
-#ifdef ENABLE_BOOST_ATOMIC
-  boost::atomic<unsigned> count_;
-#else
-  unsigned count_;
-#endif
+  Atomic<unsigned>::type count_;
 
 public:
   RefCount() : count_(0) {}
@@ -98,7 +92,6 @@ public:
     }
     return false;
   }
-
 #endif
 
 };
