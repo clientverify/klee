@@ -406,7 +406,7 @@ void StatsTracker::writeStatsLine() {
              << "," << partialBranches
              << "," << numBranches
              << "," << util::getUserTime()
-             << "," << executor.states.size()
+             << "," << executor.stateCount
 #if LLVM_VERSION_CODE > LLVM_VERSION(3, 2)
              << "," << sys::Process::GetMallocUsage()
 #else
