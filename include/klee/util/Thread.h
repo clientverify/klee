@@ -13,6 +13,9 @@
 #include <boost/thread/thread.hpp>
 #include <boost/thread/tss.hpp>
 
+#define BOOST_LEXICAL_CAST_ASSUME_C_LOCALE
+#include <boost/lexical_cast.hpp>
+
 namespace klee {
 
 typedef boost::thread Thread;
@@ -22,6 +25,22 @@ template<class T>
 struct ThreadSpecificPointer {
   typedef boost::thread_specific_ptr<T> type;
 };
+
+static uint64_t GetNativeThreadID() {
+  return boost::lexical_cast<uint64_t>(boost::this_thread::get_id());
+}
+
+static int GetThreadID() {
+  static ThreadSpecificPointer<int>::type threadID;
+  static Atomic<int>::type threadCount(0);
+  if (!threadID.get())
+    threadID.reset(new int(++threadCount));
+  return *threadID;
+}
+
+static unsigned GetHardwareConcurrency() {
+  return boost::thread::hardware_concurrency();
+}
 
 } // end namespace klee
 
