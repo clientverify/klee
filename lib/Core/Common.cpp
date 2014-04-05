@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "Common.h"
+#include "klee/util/Mutex.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -144,8 +145,11 @@ void klee::klee_warning(const char *msg, ...) {
 
 /* Prints a warning once per message. */
 void klee::klee_warning_once(const void *id, const char *msg, ...) {
+  static Mutex lock;
   static std::set< std::pair<const void*, const char*> > keys;
   std::pair<const void*, const char*> key;
+
+  LockGuard guard(lock);
 
   /* "calling external" messages contain the actual arguments with
      which we called the external function, so we need to ignore them
