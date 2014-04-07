@@ -283,13 +283,6 @@ namespace klee {
   Solver *createSMTLIBLoggingSolver(Solver *s, std::string path,
                                     int minQueryTimeToLog);
 
-  /// createCanonicalSolver - Create a solver which will rename and rewrite
-  /// any variable names to a canonical set to improve cache hits for queries
-  /// that have identical structure but different variable names. 
-  ///
-  /// \param s - The underlying solver to use.
-  Solver *createCanonicalSolver(Solver *s);
-
   /// createDummySolver - Create a dummy solver implementation which always
   /// fails.
   Solver *createDummySolver();

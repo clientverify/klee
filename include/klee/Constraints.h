@@ -36,7 +36,6 @@ public:
   ConstraintManager(const ConstraintManager &cs) : constraints(cs.constraints) {}
 
   typedef std::vector< ref<Expr> >::const_iterator constraint_iterator;
-  typedef std::vector< ref<Expr> >::iterator nonconst_constraint_iterator;
 
   // given a constraint which is known to be valid, attempt to 
   // simplify the existing constraint set
@@ -60,20 +59,9 @@ public:
     return constraints.end();
   }
 
-  nonconst_constraint_iterator begin() {
-    return constraints.begin();
-  }
-  nonconst_constraint_iterator end() {
-    return constraints.end();
-  }
-
   size_t size() const {
     return constraints.size();
   }
-
-	void clear() {
-		constraints.clear();
-	}
 
   bool operator==(const ConstraintManager &other) const {
     return constraints == other.constraints;

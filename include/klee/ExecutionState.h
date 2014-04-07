@@ -128,9 +128,9 @@ public:
 
   ExecutionState(const ExecutionState& state);
 
-  virtual ~ExecutionState();
+  ~ExecutionState();
   
-  virtual ExecutionState *branch();
+  ExecutionState *branch();
 
   void pushFrame(KInstIterator caller, KFunction *kf);
   void popFrame();
