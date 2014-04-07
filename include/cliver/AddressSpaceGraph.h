@@ -20,7 +20,6 @@
 
 #include "klee/ExecutionState.h"
 #include "klee/util/ExprVisitor.h"
-#include "klee/IndependentElementSet.h"
 
 namespace klee {
   struct KFunction;
