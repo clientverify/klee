@@ -1298,7 +1298,7 @@ int main(int argc, char **argv, char **envp) {
     break;
   }
 
-  if (WithPOSIXRuntime)
+  if (WithPOSIXRuntime) {
     llvm::sys::Path Path(Opts.LibraryDir);
     Path.appendComponent("libkleeRuntimePOSIX.bca");
     klee_message("NOTE: Using model: %s", Path.c_str());
