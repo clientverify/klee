@@ -23,11 +23,6 @@ UseCache("use-cache",
          llvm::cl::desc("Use validity caching (default=on)"));
 
 llvm::cl::opt<bool>
-UseCanonicalization("use-canonicalization",
-         llvm::cl::init(false),
-         llvm::cl::desc("Use constraint canonicalization (default=off)"));
-
-llvm::cl::opt<bool>
 UseIndependentSolver("use-independent-solver",
                      llvm::cl::init(true),
                      llvm::cl::desc("Use constraint independence (default=on)"));

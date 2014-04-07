@@ -51,14 +51,12 @@ public:
   ref<Expr> back() const {
     return constraints.back();
   }
-
   constraint_iterator begin() const {
     return constraints.begin();
   }
   constraint_iterator end() const {
     return constraints.end();
   }
-
   size_t size() const {
     return constraints.size();
   }
