@@ -78,6 +78,11 @@ namespace {
                cl::init(true));
 
   cl::opt<bool>
+  OutputSourceWithIds("output-source-with-ids",
+               cl::desc("Write the assembly for the final transformed source (with ids)"),
+               cl::init(false));
+
+  cl::opt<bool>
   OutputModule("output-module",
                cl::desc("Write the bitcode for the final transformed module"),
                cl::init(false));
@@ -497,7 +502,7 @@ void KModule::prepare(const Interpreter::ModuleOptions &opts,
     functionMap.insert(std::make_pair(it, kf));
   }
   
-	if (OutputSource) {
+	if (OutputSourceWithIds) {
     std::ostream *os = ih->openOutputFile("assembly_with_ids.ll");
     assert(os && os->good() && "unable to open source output");
     llvm::raw_os_ostream *ros = new llvm::raw_os_ostream(*os);
