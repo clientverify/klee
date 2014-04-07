@@ -23,7 +23,7 @@ def getTreeStream(path):
     return paths
 
 def writeTreeStream(path, output):
-    paths = getTreeStream(path)
+    paths = getTreeSTream(path)
     print 'Writing %d paths'%len(paths)
     for i,data in paths.items():
         if i!=0:
@@ -38,10 +38,10 @@ def main(args):
 
     input,outputPrefix = args
 
-    #f = open(input,'rb')
-    #data = f.read()
-    #f.close()
-    writeTreeStream(input, outputPrefix)
+    f = open(input,'rb')
+    data = f.read()
+    f.close()
+    writeTreeStream(data, outputPrefix)
     
 if __name__=='__main__':
     main(sys.argv)

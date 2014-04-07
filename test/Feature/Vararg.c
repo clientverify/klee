@@ -17,8 +17,8 @@ int test1(int x, ...) {
   int i32 = va_arg(ap, int);
   long long i64 = va_arg(ap, long long);
   double d = va_arg(ap, double);
-  struct triple* p = va_arg(ap, struct triple*);
-  printf("types: (%d, %lld, %.2f, (%d,%d,%d))\n", i32, i64, d, p->first, p->second, p->third);
+  struct triple p = va_arg(ap, struct triple);
+  printf("types: (%d, %lld, %.2f, (%d,%d,%d))\n", i32, i64, d, p.first, p.second, p.third);
   va_end(ap);
 }
 
@@ -69,14 +69,14 @@ int va_array(int N, ...) {
 
 int main() {
   struct triple p = { 9, 12, 15 };
-  test1(-1, 52, 37ll, 2.0, &p);
+  test1(-1, 52, 37ll, 2.0, p);
 
   assert(sum(2, 3, 4) == 11);
   assert(sum(0) == 0);
   assert(va_array(5, 0, 5, 1, 1, 2, 1)==45); // 15 + 30
 
   // should give memory error
-  test1(-1, 52, 2.0, &p);
+  test1(-1, 52, 2.0, p);
 
   return 0;
 }

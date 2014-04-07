@@ -70,7 +70,7 @@
 using namespace llvm;
 using namespace klee;
 
-namespace klee {
+namespace {
   cl::opt<std::string>
   InputFile(cl::desc("<input bytecode>"), cl::Positional, cl::init("-"));
 
@@ -210,11 +210,6 @@ namespace klee {
   cl::opt<bool>
   Watchdog("watchdog",
            cl::desc("Use a watchdog process to enforce --max-time."),
-           cl::init(0));
-
-  cl::opt<bool>
-  StripUclibcAsm64("strip-uclibc-asm64",
-           cl::desc("Strip of asm prefixes for 64 bit functions not present in uclibc."),
            cl::init(0));
 }
 
@@ -1085,23 +1080,21 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, llvm::sys::Path li
   // linked. In the off chance that both prefixed and unprefixed
   // versions are present in the module, make sure we don't create a
   // naming conflict.
-  if (StripUclibcAsm64) {
-    for (Module::iterator fi = mainModule->begin(), fe = mainModule->end();
-        fi != fe; ++fi) {
-      Function *f = fi;
-      const std::string &name = f->getName();
-      if (name[0]=='\01') {
-        unsigned size = name.size();
-        if (name[size-2]=='6' && name[size-1]=='4') {
-          std::string unprefixed = name.substr(1);
+  for (Module::iterator fi = mainModule->begin(), fe = mainModule->end();
+       fi != fe; ++fi) {
+    Function *f = fi;
+    const std::string &name = f->getName();
+    if (name[0]=='\01') {
+      unsigned size = name.size();
+      if (name[size-2]=='6' && name[size-1]=='4') {
+        std::string unprefixed = name.substr(1);
 
-          // See if the unprefixed version exists.
-          if (Function *f2 = mainModule->getFunction(unprefixed)) {
-            f->replaceAllUsesWith(f2);
-            f->eraseFromParent();
-          } else {
-            f->setName(unprefixed);
-          }
+        // See if the unprefixed version exists.
+        if (Function *f2 = mainModule->getFunction(unprefixed)) {
+          f->replaceAllUsesWith(f2);
+          f->eraseFromParent();
+        } else {
+          f->setName(unprefixed);
         }
       }
     }
@@ -1275,7 +1268,7 @@ int main(int argc, char **argv, char **envp) {
                                   /*Optimize=*/OptimizeModule, 
                                   /*CheckDivZero=*/CheckDivZero,
                                   /*CheckOvershift=*/CheckOvershift);
- 
+  
   switch (Libc) {
   case NoLibc: /* silence compiler warning */
     break;
@@ -1361,12 +1354,10 @@ int main(int argc, char **argv, char **envp) {
 
   Interpreter::InterpreterOptions IOpts;
   IOpts.MakeConcreteSymbolic = MakeConcreteSymbolic;
-  InterpreterHandler *handler = NULL;
-  Interpreter *interpreter = NULL;
-
-  handler = new KleeHandler(pArgc, pArgv);
-  interpreter = theInterpreter = Interpreter::create(IOpts, handler);
-  static_cast<KleeHandler*>(handler)->setInterpreter(interpreter);
+  KleeHandler *handler = new KleeHandler(pArgc, pArgv);
+  Interpreter *interpreter = 
+    theInterpreter = Interpreter::create(IOpts, handler);
+  handler->setInterpreter(interpreter);
   
   std::ostream &infoFile = handler->getInfoStream();
   for (int i=0; i<argc; i++) {
@@ -1535,11 +1526,11 @@ int main(int argc, char **argv, char **envp) {
   stats << "KLEE: done: total instructions = " 
         << instructions << "\n";
   stats << "KLEE: done: completed paths = " 
-        << static_cast<KleeHandler*>(handler)->getNumPathsExplored() << "\n";
+        << handler->getNumPathsExplored() << "\n";
   stats << "KLEE: done: generated tests = " 
-        << static_cast<KleeHandler*>(handler)->getNumTestCases() << "\n";
+        << handler->getNumTestCases() << "\n";
   std::cerr << stats.str();
-  static_cast<KleeHandler*>(handler)->getInfoStream() << stats.str();
+  handler->getInfoStream() << stats.str();
 
   BufferPtr.take();
   delete handler;

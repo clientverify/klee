@@ -4,7 +4,6 @@
 // RUN: %klee --run-in=/tmp --search=random-state --libc=uclibc --posix-runtime --exit-on-error %t.bc --sym-files 1 1 > %t2.log
 // RUN: sort %t1.log %t2.log | uniq -c > %t3.log
 // RUN: grep -q "4 COUNT" %t3.log
-// XFAIL: *
 
 // For this test really to work as intended it needs to be run in a
 // directory large enough to cause uclibc to do multiple getdents
