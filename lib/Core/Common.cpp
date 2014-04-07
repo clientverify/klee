@@ -17,76 +17,22 @@
 #include <string.h>
 
 #include <set>
-#include <vector>
-#include <ostream>
 
 using namespace klee;
 
 FILE* klee::klee_warning_file = NULL;
 FILE* klee::klee_message_file = NULL;
 
-std::ostream* klee::klee_warning_stream = NULL;
-std::ostream* klee::klee_message_stream = NULL;
-
 static void klee_vfmessage(FILE *fp, const char *pfx, const char *msg, 
                            va_list ap) {
-  if (!fp) {
+  if (!fp)
     return;
-  }
 
   fprintf(fp, "KLEE: ");
   if (pfx) fprintf(fp, "%s: ", pfx);
   vfprintf(fp, msg, ap);
   fprintf(fp, "\n");
   fflush(fp);
-}
-
-static void klee_vomessage_write(std::ostream* os, const char *pfx, const char* buf) {
-	*os << "KLEE: ";
-	if (pfx)
-		*os << pfx << ": ";
-	*os << buf << std::endl;
-}
-
-static void klee_vomessage(std::ostream* os, const char *pfx, const char *msg, 
-                           va_list ap) {
-  if (!os) {
-    return;
-  }
-
-  va_list ap_copy;
-  char buf[1024];
-
-  // write to buffer
-  va_copy(ap_copy, ap);
-  int res = vsnprintf(buf, sizeof(buf), msg, ap_copy);
-  va_end(ap_copy);
-
-  if (res >= 0 && res < (int)sizeof(buf)) {
-    klee_vomessage_write(os, pfx, buf);
-    return;
-  }
-
-  // 1024 buf wasn't big enough
-  int buf_size = 1024*2;
-  while (true) {
-    std::vector<char> heapbuf(buf_size);
-
-    va_copy(ap_copy, ap);
-    res = vsnprintf(&heapbuf[0], buf_size, msg, ap_copy);
-    va_end(ap_copy);
-
-    if (res >= 0 && res < buf_size) {
-      klee_vomessage_write(os, pfx, &heapbuf[0]);
-      return;
-    }
-
-    if (buf_size >= (1024 * 1024)) {
-      const char* error_too_large = "ERROR print request too large";
-      klee_vomessage_write(os, pfx, error_too_large);
-      return;
-    }
-  }
 }
 
 /* Prints a message/warning.
@@ -96,22 +42,19 @@ static void klee_vomessage(std::ostream* os, const char *pfx, const char *msg,
    klee_warning_file (warnings.txt).
 
    Iff onlyToFile is false, the message is also printed on stderr.
-   FIXME: onlyToFile is ignored
 */
 static void klee_vmessage(const char *pfx, bool onlyToFile, const char *msg, 
                           va_list ap) {
-  if (klee_warning_stream && klee_message_stream) {
-    klee_vomessage(pfx ? klee_warning_stream : klee_message_stream, pfx, msg, ap);
-  } else {
-    if (!onlyToFile) {
-      va_list ap2;
-      va_copy(ap2, ap);
-      klee_vfmessage(stderr, pfx, msg, ap2);
-      va_end(ap2);
-    }
-    klee_vfmessage(pfx ? klee_warning_file : klee_message_file, pfx, msg, ap);
+  if (!onlyToFile) {
+    va_list ap2;
+    va_copy(ap2, ap);
+    klee_vfmessage(stderr, pfx, msg, ap2);
+    va_end(ap2);
   }
+
+  klee_vfmessage(pfx ? klee_warning_file : klee_message_file, pfx, msg, ap);
 }
+
 
 void klee::klee_message(const char *msg, ...) {
   va_list ap;
@@ -142,6 +85,7 @@ void klee::klee_warning(const char *msg, ...) {
   klee_vmessage("WARNING", false, msg, ap);
   va_end(ap);
 }
+
 
 /* Prints a warning once per message. */
 void klee::klee_warning_once(const void *id, const char *msg, ...) {

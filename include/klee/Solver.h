@@ -283,6 +283,7 @@ namespace klee {
   Solver *createSMTLIBLoggingSolver(Solver *s, std::string path,
                                     int minQueryTimeToLog);
 
+
   /// createDummySolver - Create a dummy solver implementation which always
   /// fails.
   Solver *createDummySolver();

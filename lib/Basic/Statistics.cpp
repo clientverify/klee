@@ -79,11 +79,6 @@ Statistic &Statistic::operator +=(const uint64_t addend) {
   return *this;
 }
 
-Statistic &Statistic::operator =(const uint64_t value) {
-  theStatisticManager->setValueStatistic(*this, value);
-  return *this;
-}
-
 uint64_t Statistic::getValue() const {
   return theStatisticManager->getValue(*this);
 }

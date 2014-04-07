@@ -11,7 +11,6 @@
 
 #include "StatsTracker.h"
 
-#include "Executor.h"
 #include "klee/ExecutionState.h"
 #include "klee/Statistics.h"
 #include "klee/Config/Version.h"
@@ -24,6 +23,7 @@
 
 #include "CallPathManager.h"
 #include "CoreStats.h"
+#include "Executor.h"
 #include "MemoryManager.h"
 #include "UserSearcher.h"
 #include "../Solver/SolverStats.h"
