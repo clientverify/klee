@@ -33,7 +33,6 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include <iostream>
-#include <iomanip>
 #include <cassert>
 #include <sstream>
 
@@ -44,9 +43,6 @@ namespace {
   cl::opt<bool>
   UseConstantArrays("use-constant-arrays",
                     cl::init(true));
-  cl::opt<bool>
-  AlwaysPrintObjectBytes("always-print-object-bytes",
-                    cl::init(false));
 }
 
 /***/
@@ -110,7 +106,6 @@ ObjectState::ObjectState(const MemoryObject *mo)
     concreteStore(new uint8_t[mo->size]),
     concreteMask(0),
     flushMask(0),
-    pointerMask(0),
     knownSymbolics(0),
     updates(0, 0),
     size(mo->size),
@@ -133,7 +128,6 @@ ObjectState::ObjectState(const MemoryObject *mo, const Array *array)
     concreteStore(new uint8_t[mo->size]),
     concreteMask(0),
     flushMask(0),
-    pointerMask(0),
     knownSymbolics(0),
     updates(array, 0),
     size(mo->size),
@@ -150,7 +144,6 @@ ObjectState::ObjectState(const ObjectState &os)
     concreteStore(new uint8_t[os.size]),
     concreteMask(os.concreteMask ? new BitArray(*os.concreteMask, os.size) : 0),
     flushMask(os.flushMask ? new BitArray(*os.flushMask, os.size) : 0),
-    pointerMask(os.pointerMask ? new BitArray(*os.pointerMask, os.size) : 0),
     knownSymbolics(0),
     updates(os.updates),
     size(os.size),
@@ -171,7 +164,6 @@ ObjectState::ObjectState(const ObjectState &os)
 ObjectState::~ObjectState() {
   if (concreteMask) delete concreteMask;
   if (flushMask) delete flushMask;
-  if (pointerMask) delete pointerMask;
   if (knownSymbolics) delete[] knownSymbolics;
   delete[] concreteStore;
 
@@ -349,10 +341,6 @@ bool ObjectState::isByteKnownSymbolic(unsigned offset) const {
   return knownSymbolics && knownSymbolics[offset].get();
 }
 
-bool ObjectState::isBytePointer(unsigned offset) const {
-  return pointerMask && pointerMask->get(offset);
-}
-
 void ObjectState::markByteConcrete(unsigned offset) {
   if (concreteMask)
     concreteMask->set(offset);
@@ -362,12 +350,6 @@ void ObjectState::markByteSymbolic(unsigned offset) {
   if (!concreteMask)
     concreteMask = new BitArray(size, true);
   concreteMask->unset(offset);
-}
-
-void ObjectState::markBytePointer(unsigned offset) {
-  if (!pointerMask)
-    pointerMask = new BitArray(size, false);
-  pointerMask->set(offset);
 }
 
 void ObjectState::markByteUnflushed(unsigned offset) {
@@ -506,11 +488,6 @@ ref<Expr> ObjectState::read(unsigned offset, Expr::Width width) const {
   for (unsigned i = 0; i != NumBytes; ++i) {
     unsigned idx = Context::get().isLittleEndian() ? i : (NumBytes - i - 1);
     ref<Expr> Byte = read8(offset + idx);
-    if (ConstantExpr *CE = dyn_cast<ConstantExpr>(Byte)) {
-      if (isBytePointer(offset+idx)) {
-        CE->setPointer();
-      }
-    }
     Res = i ? ConcatExpr::create(Byte, Res) : Byte;
   }
 
@@ -548,12 +525,6 @@ void ObjectState::write(unsigned offset, ref<Expr> value) {
   // Check for writes of constant values.
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(value)) {
     Expr::Width w = CE->getWidth();
-    if (CE->isPointer()) {
-      //if (w != Context::get().getPointerWidth())
-      //  klee_warning("Invalid pointer size %d ", w);
-      for (unsigned i=offset; i<offset+(w/8); i++)
-        markBytePointer(i);
-    }
     if (w <= 64) {
       uint64_t val = CE->getZExtValue();
       switch (w) {
@@ -604,195 +575,6 @@ void ObjectState::write64(unsigned offset, uint64_t value) {
   for (unsigned i = 0; i != NumBytes; ++i) {
     unsigned idx = Context::get().isLittleEndian() ? i : (NumBytes - i - 1);
     write8(offset + idx, (uint8_t) (value >> (8 * i)));
-  }
-}
-void ObjectState::print(std::ostream &os, bool print_bytes) const {
-  os << std::setw(6) << size << "B ";
-	os << object->id << " ";
-	os << object->name << " ";
-
-	if (object->isLocal)
-		os << "local ";
-	if (object->isGlobal)
-		os << "global ";
-	if (object->isFixed)
-		os << "fixed ";
-	if (object->fake_object)
-		os << "Fake ";
-	if (object->isUserSpecified)
-		os << "user-specified ";
-
-
-  if (updates.root)
-		os << updates.root << ":" <<  updates.root->name << " ";
-  else
-    os << "(no name) ";
-
-  if (object->allocSite) {
-		std::string str;
-		llvm::raw_string_ostream info(str);
-		if (const Instruction *i = dyn_cast<Instruction>(object->allocSite)) {
-			info << i->getParent()->getParent()->getName() << ": ";
-			info << *i;
-		} else if (const GlobalValue *gv = dyn_cast<GlobalValue>(object->allocSite)) {
-			info << "global:" << gv->getName();
-		} else {
-			info << "value:" << *object->allocSite;
-		}
-		info.flush();
-		os << str;
-	} else {
-		os << "(no alloc info) ";
-	}
-
-	if (print_bytes || AlwaysPrintObjectBytes) {
-		os << " ";
-		ref<Expr> prev_e = read8(0);
-		int repeat = 0;
-		for (unsigned i=1; i<=size; i++) {
-			if (i == size || prev_e != read8(i)) {
-				if (repeat > 0) {
-					os << "[" << i-repeat-1 << "-" << i-1 << ":" << prev_e << "]";
-				} else {
-					os << "[" << prev_e << "]";
-				}
-				repeat = 0;
-				if (i < size)
-					prev_e = read8(i);
-			} else {
-				repeat++;
-			}
-		}
-	}
-
-  if (updates.head) {
-		os << "updates: ";
-		for (const UpdateNode *un=updates.head; un; un=un->next) {
-			os << "[" << un->index << "] = " << un->value << ", ";
-		}
-	}
-}
-
-void ObjectState::print_diff(ObjectState &b, std::ostream &os) const {
-  std::vector<ObjectState*> ovec;
-	ovec.push_back(&b);
-	ovec.push_back(const_cast<ObjectState*>(this));
-	print_diff(ovec,os);
-}
-
-void ObjectState::print_diff(std::vector<ObjectState*> &_ovec, std::ostream &os) const {
-  std::vector<ObjectState*>ovec(_ovec);
-  unsigned s = ovec.size();
-  os << "-- ObjectState --\n";
-
-  os << "\tMemoryObjects: ";
-  for(unsigned i=0;i<s;i++) 
-    os << ovec[i]->object << ", ";
-  os << "\n";
-
-  os << "\tMemoryObject IDs: ";
-  for(unsigned i=0;i<s;i++) 
-    os << ovec[i]->object->id << ", ";
-  os << "\n";
-
-  os << "\tMemoryObject Names: ";
-  for(unsigned i=0;i<s;i++) 
-    os << ovec[i]->object->name << ", ";
-  os << "\n";
-
-  os << "\tRoot Objects: ";
-  for(unsigned i=0;i<s;i++) 
-    os << ovec[i]->updates.root << ", ";
-  os << "\n";
-
-  os << "\tArray Names: ";
-  for(unsigned i=0;i<s;i++) 
-    if (ovec[i]->updates.root)
-      os << ovec[i]->updates.root->name << ", ";
-    else
-      os << " None, ";
-  os << "\n";
-
-  os << "\tSizes: ";
-  for(unsigned i=0;i<s;i++) 
-    os << ovec[i]->size << ", ";
-  os << "\n";
-
-  os <<"\tAlloc Sites: ";
-  for(unsigned i=0;i<1;i++) {
-		const llvm::Value* as = ovec[i]->object->allocSite;
-    if (as) {
-			std::string str;
-			llvm::raw_string_ostream info(str);
-			if (const Instruction *i = dyn_cast<Instruction>(as)) {
-				info << i->getParent()->getParent()->getName() << "():";
-				info << *i;
-			} else if (const GlobalValue *gv = dyn_cast<GlobalValue>(as)) {
-				info << "global: " << gv->getName();
-			} else {
-				info << "value: " << *as;
-			}
-			info.flush();
-			os << str;
-		} else {
-			os << " (no alloc info)";
-		}
-		os << ", ";
-	}
-  os << "\n";
-
-  for(unsigned i=1;i<s;i++) 
-    assert(ovec[i]->size == ovec[i-1]->size);
-
-  os << "\tDifferent Bytes:\n";
-  ref<Expr> prev_e = ConstantExpr::alloc(0, Expr::Bool);
-  int start = -1;
-  for (unsigned i=0; i<size; i++) {
-
-    bool all_equal = true;
-    for(unsigned j=1;j<s;j++) {
-      if (ovec[j-1]->read8(i) != ovec[j]->read8(i)) {
-        all_equal = false;
-        break;
-      }
-    }
-
-    if (all_equal) {
-
-      ref<Expr> e = ovec[0]->read8(i);
-      if (prev_e == e) {
-        if (start == -1) {
-          start = i;
-        }
-      } 
-      if (prev_e != e || i==size-1) {
-        if (start != -1) {
-          os << "\t\t[" << start << "]-[" <<i-1<<"]"
-             << " = " << prev_e << "\n";
-          start = -1;
-        }
-        os << "\t\t["<<i<<"] = " << e << "\n";
-      }
-      prev_e = e;
-
-    } else {
-      if (start != -1) {
-        os << "\t\t[" << start << "]-[" <<i-1<<"]"
-           << " = " << prev_e << "\n";
-        start = -1;
-      }
-      os << "\t\t["<<i<<"] = ";
-      for(unsigned j=0;j<s;j++) 
-        os << ovec[j]->read8(i) << ", ";
-      os << "\n";
-    }
-  }
-
-  os << "\tUpdates:\n";
-  for(unsigned i=0;i<s;i++)  {
-    for (const UpdateNode *un=ovec[i]->updates.head; un; un=un->next) {
-      os << "\t\t[" << i << "][" << un->index << "] = " << un->value << "\n";
-    }
   }
 }
 

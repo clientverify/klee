@@ -479,9 +479,6 @@ void Executor::initializePerThread(ExecutionState &state, MemoryManager* memory)
 
   if (!state.addressSpace.resolveOne(ConstantExpr::alloc((uint64_t)addr, width), addr_obj)) {
     addExternalObject(state, addr, sizeof(*addr), true);
-
-    for (unsigned i=0; i<width/8; ++i)
-      const_cast<ObjectState*>(addr_obj.second)->markBytePointer(i);
   }
     
   ObjectPair lower_addr_obj;
@@ -493,9 +490,6 @@ void Executor::initializePerThread(ExecutionState &state, MemoryManager* memory)
 
   if (!state.addressSpace.resolveOne(ConstantExpr::alloc((uint64_t)lower_addr, width), lower_addr_obj)) {
     addExternalObject(state, lower_addr, sizeof(*lower_addr), true);
-
-    for (unsigned i=0; i<width/8; ++i)
-      const_cast<ObjectState*>(lower_addr_obj.second)->markBytePointer(i);
   }
   
   ObjectPair upper_addr_obj;
@@ -507,9 +501,6 @@ void Executor::initializePerThread(ExecutionState &state, MemoryManager* memory)
 
   if (!state.addressSpace.resolveOne(ConstantExpr::alloc((uint64_t)upper_addr, width), upper_addr_obj)) {
     addExternalObject(state, upper_addr, sizeof(*upper_addr), true);
-
-    for (unsigned i=0; i<width/8; ++i)
-      const_cast<ObjectState*>(upper_addr_obj.second)->markBytePointer(i);
   }
 
 #endif
@@ -574,21 +565,6 @@ void Executor::initializeGlobals(ExecutionState &state) {
   addExternalObject(state, const_cast<int32_t*>(*upper_addr-128),
                     384 * sizeof **upper_addr, true);
   addExternalObject(state, upper_addr, sizeof(*upper_addr), true);
-
-	ObjectPair addr_obj;
-	ObjectPair lower_addr_obj;
-	ObjectPair upper_addr_obj;
-	unsigned width = Context::get().getPointerWidth();
-	state.addressSpace.resolveOne(ConstantExpr::alloc((uint64_t)addr, width), addr_obj);
-	state.addressSpace.resolveOne(ConstantExpr::alloc((uint64_t)lower_addr, width), lower_addr_obj);
-	state.addressSpace.resolveOne(ConstantExpr::alloc((uint64_t)upper_addr, width), upper_addr_obj);
-	for (unsigned i=0; i<width/8; ++i) {
-		// const ugliness
-		const_cast<ObjectState*>(addr_obj.second)->markBytePointer(i);
-		const_cast<ObjectState*>(lower_addr_obj.second)->markBytePointer(i);
-		const_cast<ObjectState*>(upper_addr_obj.second)->markBytePointer(i);
-	}
-
 #endif
 #endif
 #endif

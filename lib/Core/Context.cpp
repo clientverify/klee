@@ -49,11 +49,5 @@ ref<Expr> Expr::createZExtToPointerWidth(ref<Expr> e) {
 }
 
 ref<ConstantExpr> Expr::createPointer(uint64_t v) {
-  if (v)
-    return ConstantExpr::create_pointer(v, Context::get().getPointerWidth());
-  return createPointerWidthConstant(v);
-}
-
-ref<ConstantExpr> Expr::createPointerWidthConstant(uint64_t v) {
   return ConstantExpr::create(v, Context::get().getPointerWidth());
 }
