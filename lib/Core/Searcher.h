@@ -91,24 +91,27 @@ namespace klee {
       return NULL;
     }
 
-    // The searcher holds the authoritative collection of all states
+    // hack to get a copy of all states in the searcher
     virtual std::set<ExecutionState*> states() {
       std::stack<ExecutionState*> stack;
       std::set<ExecutionState*> states;
 
       // Remove states from searcher
       while (ExecutionState* es = trySelectState()) {
+        removeState(es);
         stack.push(es);
         states.insert(es);
       }
 
       // Add them back into searcher
-      std::set<ExecutionState*> tmp;
+      std::set<ExecutionState*> tmpSet;
+      std::set<ExecutionState*> emptySet;
       while (!stack.empty()) {
-        tmp.insert(stack.top());
+        tmpSet.insert(stack.top());
+        addState(stack.top());
         stack.pop();
-        update(0, tmp, std::set<ExecutionState*>());
-        tmp.clear();
+        update(0, tmpSet, emptySet);
+        tmpSet.clear();
       }
       return states;
     }
