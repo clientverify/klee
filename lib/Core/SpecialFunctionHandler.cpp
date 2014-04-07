@@ -10,7 +10,7 @@
 #include "Common.h"
 
 #include "Memory.h"
-#include "klee/SpecialFunctionHandler.h"
+#include "SpecialFunctionHandler.h"
 #include "TimingSolver.h"
 
 #include "klee/ExecutionState.h"
@@ -18,7 +18,7 @@
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/Internal/Module/KModule.h"
 
-#include "klee/Executor.h"
+#include "Executor.h"
 #include "MemoryManager.h"
 
 #if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)

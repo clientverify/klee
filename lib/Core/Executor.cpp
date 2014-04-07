@@ -9,7 +9,7 @@
 
 #include "Common.h"
 
-#include "klee/Executor.h"
+#include "Executor.h"
  
 #include "Context.h"
 #include "CoreStats.h"
@@ -18,9 +18,9 @@
 #include "Memory.h"
 #include "MemoryManager.h"
 #include "PTree.h"
-#include "klee/Searcher.h"
+#include "Searcher.h"
 #include "SeedInfo.h"
-#include "klee/SpecialFunctionHandler.h"
+#include "SpecialFunctionHandler.h"
 #include "StatsTracker.h"
 #include "TimingSolver.h"
 #include "UserSearcher.h"

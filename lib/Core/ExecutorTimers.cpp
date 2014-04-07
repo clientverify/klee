@@ -9,7 +9,7 @@
 
 #include "Common.h"
 
-#include "klee/Executor.h" // Must declare before ExecutorTimerInfo.h (FIXME ?)
+#include "Executor.h" // Must declare before ExecutorTimerInfo.h (FIXME ?)
 
 #include "CoreStats.h"
 #include "PTree.h"

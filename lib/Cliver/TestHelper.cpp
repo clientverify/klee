@@ -13,11 +13,11 @@
 #include "cliver/CVStream.h"
 #include "CVCommon.h"
 
+#include "../Core/Executor.h"
 #include "../Core/Memory.h"
 #include "../Core/MemoryManager.h"
-#include "klee/Executor.h"
+#include "../Core/SpecialFunctionHandler.h"
 #include "klee/ExecutionState.h"
-#include "klee/SpecialFunctionHandler.h"
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/Internal/Module/KModule.h"
 

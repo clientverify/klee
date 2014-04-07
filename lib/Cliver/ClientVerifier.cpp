@@ -24,7 +24,7 @@
 #include "ExternalHandlers.h"
 
 #include "klee/Internal/Module/KModule.h"
-#include "klee/SpecialFunctionHandler.h"
+#include "../lib/Core/SpecialFunctionHandler.h"
 #include "../lib/Core/CoreStats.h"
 #include "../lib/Solver/SolverStats.h"
 

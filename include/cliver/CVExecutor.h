@@ -12,8 +12,8 @@
 #include "cliver/ClientVerifier.h"
 #include "cliver/ExecutionObserver.h"
 
-#include "klee/Executor.h"
-#include "klee/SpecialFunctionHandler.h"
+#include "../../lib/Core/Executor.h"
+#include "../../lib/Core/SpecialFunctionHandler.h"
 
 namespace cliver {
 

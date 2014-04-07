@@ -14,9 +14,9 @@
 #include "PTree.h"
 #include "StatsTracker.h"
 
-#include "klee/Executor.h"
+#include "Executor.h"
 #include "klee/ExecutionState.h"
-#include "klee/Searcher.h"
+#include "Searcher.h"
 #include "klee/Statistics.h"
 #include "klee/Internal/Module/InstructionInfoTable.h"
 #include "klee/Internal/Module/KInstruction.h"

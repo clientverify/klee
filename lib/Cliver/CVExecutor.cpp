@@ -29,6 +29,8 @@
 #include "../Core/StatsTracker.h"
 #include "../Core/TimingSolver.h"
 #include "../Core/UserSearcher.h"
+#include "../Core/Searcher.h"
+#include "../Core/SpecialFunctionHandler.h"
 #include "../Solver/SolverStats.h"
 
 #include "klee/CommandLine.h"
@@ -45,8 +47,6 @@
 #include "klee/Internal/Support/FloatEvaluation.h"
 #include "klee/Internal/System/Time.h"
 #include "klee/Interpreter.h"
-#include "klee/Searcher.h"
-#include "klee/SpecialFunctionHandler.h"
 #include "klee/TimerStatIncrementer.h"
 #include "klee/util/Assignment.h"
 #include "klee/util/ExprPPrinter.h"

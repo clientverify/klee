@@ -11,7 +11,7 @@
 #include "klee/Config/Version.h"
 // FIXME: This does not belong here.
 #include "../Core/Common.h"
-#include "klee/SpecialFunctionHandler.h"
+#include "../Core/SpecialFunctionHandler.h"
 
 #if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
 #include "llvm/Bitcode/ReaderWriter.h"

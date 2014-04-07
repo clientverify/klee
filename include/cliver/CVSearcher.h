@@ -17,7 +17,7 @@
 #include "cliver/ExecutionObserver.h"
 #include "cliver/StateRebuilder.h"
 
-#include "klee/Searcher.h"
+#include "../Core/Searcher.h"
 
 #include <boost/unordered_map.hpp>
 #include <stack>
