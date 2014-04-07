@@ -63,7 +63,7 @@ public:
 ///
 
 static const double kSecondsPerTick = .1;
-static volatile unsigned timerTicks = 0;
+static Atomic<unsigned>::type timerTicks(0);
 
 // XXX hack
 extern "C" unsigned dumpStates, dumpPTree;
@@ -112,6 +112,10 @@ void Executor::addTimer(Timer *timer, double rate) {
 
 void Executor::processTimers(ExecutionState *current,
                              double maxInstTime) {
+  static Mutex timerMutex;
+  if (!timerMutex.try_lock())
+    return;
+
   static unsigned callsWithoutCheck = 0;
   unsigned ticks = timerTicks;
 
@@ -137,6 +141,7 @@ void Executor::processTimers(ExecutionState *current,
       std::ostream *os = interpreterHandler->openOutputFile("states.txt");
       
       if (os) {
+        std::set<ExecutionState*> states(searcher->states());
         for (std::set<ExecutionState*>::const_iterator it = states.begin(), 
                ie = states.end(); it != ie; ++it) {
           ExecutionState *es = *it;
@@ -207,5 +212,7 @@ void Executor::processTimers(ExecutionState *current,
     timerTicks = 0;
     callsWithoutCheck = 0;
   }
+
+  timerMutex.unlock();
 }
 

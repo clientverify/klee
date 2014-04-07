@@ -298,6 +298,8 @@ Executor::Executor(const InterpreterOptions &opts,
     haltExecution(false),
     ivcEnabled(false),
     stateCount(0),
+    pauseExecution(false),
+    pausedThreadCount(0),
     coreSolverTimeout(MaxCoreSolverTime != 0 && MaxInstructionTime != 0
       ? std::min(MaxCoreSolverTime,MaxInstructionTime)
       : std::max(MaxCoreSolverTime,MaxInstructionTime)) {
@@ -2496,7 +2498,14 @@ void Executor::updateStates(ExecutionState *current) {
   unsigned addedCount = getContext().addedStates.size();
   stateCount += addedCount;
 
+  if (getContext().addedStates.size() > 0) {
+    LockGuard guard(statesMutex);
+    states.insert(getContext().addedStates.begin(),
+                  getContext().addedStates.end());
+  }
+
   if (getContext().removedStates.size() > 0) {
+    LockGuard guard(statesMutex);
     for (std::set<ExecutionState*>::iterator
           it = getContext().removedStates.begin(), ie = getContext().removedStates.end();
         it != ie; ++it) {
@@ -2508,6 +2517,7 @@ void Executor::updateStates(ExecutionState *current) {
       if (it3 != seedMap.end())
         seedMap.erase(it3);
       processTree->remove(es->ptreeNode);
+      states.erase(es);
       delete es;
     }
   }
@@ -2584,7 +2594,45 @@ void Executor::bindModuleConstants() {
   }
 }
 
+/// Caller will force all other threads to finish execution current instruction
+/// and wait for UnPauseExecution()
+bool Executor::PauseExecution() {
+  if (UseThreads > 1) {
+    if (pauseExecutionLock.try_lock()) {
+      Mutex lock;
+      UniqueLock guard(lock);
+
+      // Set pauseExecution condition
+      pauseExecution = true;
+
+      // Wake up any sleeping threads
+      searcherCond.notify_all();
+
+      // Wait for N-1 threads to pause
+      while (pausedThreadCount < (UseThreads - 1)) {
+        pauseExecutionCondition.wait(guard);
+      }
+      pausedThreadCount = 0;
+
+      return true;
+    }
+    return false;
+  }
+  // Pausing always "succeeds" when there is just 1 thread
+  return true;
+}
+
+void Executor::UnPauseExecution() {
+  if (UseThreads > 1) {
+    pauseExecution = false;
+    startExecutionCondition.notify_all();
+    pauseExecutionLock.unlock();
+  }
+}
+
 void Executor::execute(ExecutionState *initialState, MemoryManager *memory) {
+  Mutex lock;
+  UniqueLock guard(lock);
 
   // Initialize thread specific globals and objects
   initializePerThread(*initialState, memory);
@@ -2606,21 +2654,68 @@ void Executor::execute(ExecutionState *initialState, MemoryManager *memory) {
       executeInstruction(state, ki);
       processTimers(&state, MaxInstructionTime);
 
-      if (MaxMemory) {
-        if ((stats::instructions & 0xFFFF) == 0) {
-          // We need to avoid calling GetMallocUsage() often because it
-          // is O(elts on freelist). This is really bad since we start
-          // to pummel the freelist once we hit the memory cap.
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
-          unsigned mbs = sys::Process::GetMallocUsage() >> 20;
-#else
-          unsigned mbs = sys::Process::GetTotalMemoryUsage() >> 20;
-#endif
-          if (UseThreads > 1)
-            mbs = GetMemoryUsage() >> 20;
 
-          if (mbs > MaxMemory) {
-            if (mbs > MaxMemory + 100) {
+      // Update searcher with new states and get next state to execute
+      // (if supported by searcher)
+      statePtr = searcher->updateAndTrySelectState(&state, 
+                                                   getContext().addedStates, 
+                                                   getContext().removedStates);
+      // Update Executor state tracking
+      updateStates(&state);
+    }
+
+    // Wait for new states to be ready to execute
+    while (statePtr == NULL && searcher->empty() && !empty() && !haltExecution) { 
+      searcherCond.wait(guard);
+    }
+
+    // If another thread called PauseExecution();
+    if (pauseExecution) {
+      // Return statePtr to searcher if not NULL
+      if (statePtr) {
+        searcher->update(statePtr, std::set<ExecutionState*>(), std::set<ExecutionState*>());
+        statePtr = NULL;
+      }
+
+      // Increment paused thread count
+      ++pausedThreadCount;
+
+      // Notify initiating thread, that this thread is now paused
+      pauseExecutionCondition.notify_one();
+      
+      // Wait for initiating thread to restart execution
+      while (pauseExecution) {
+        startExecutionCondition.wait(guard);
+      }
+    }
+
+    // Check if we are running out of memory
+    if (MaxMemory) {
+      if ((stats::instructions & 0xFFFF) == 0) {
+
+        // We need to avoid calling GetMallocUsage() often because it
+        // is O(elts on freelist). This is really bad since we start
+        // to pummel the freelist once we hit the memory cap.
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
+        unsigned mbs = sys::Process::GetMallocUsage() >> 20;
+#else
+        unsigned mbs = sys::Process::GetTotalMemoryUsage() >> 20;
+#endif
+        if (UseThreads > 1)
+          mbs = GetMemoryUsage() >> 20;
+
+        if (mbs > MaxMemory) {
+          if (mbs > MaxMemory + 100) {
+
+            // Return statePtr to searcher
+            if (statePtr) {
+              searcher->update(statePtr, std::set<ExecutionState*>(), std::set<ExecutionState*>());
+              statePtr = NULL;
+            }
+
+            // Try to PauseExecution(), may fail
+            if (PauseExecution()) {
+
               // just guess at how many to kill
               unsigned numStates = stateCount;
               unsigned toKill = std::max(1U, numStates - numStates*MaxMemory/mbs);
@@ -2629,9 +2724,7 @@ void Executor::execute(ExecutionState *initialState, MemoryManager *memory) {
                 klee_warning("killing %d states (over memory cap)",
                             toKill);
 
-              std::set<ExecutionState*> statesSet(searcher->states());
-              std::vector<ExecutionState*> arr(statesSet.begin(), statesSet.end());
-              arr.push_back(statePtr);
+              std::vector<ExecutionState*> arr(states.begin(), states.end());
               for (unsigned i=0,N=arr.size(); N && i<toKill; ++i,--N) {
                 unsigned idx = rand() % N;
 
@@ -2643,28 +2736,15 @@ void Executor::execute(ExecutionState *initialState, MemoryManager *memory) {
                 std::swap(arr[idx], arr[N-1]);
                 terminateStateEarly(*arr[N-1], "Memory limit exceeded.");
               }
+              UnPauseExecution();
             }
-            atMemoryLimit = true;
-          } else {
-            atMemoryLimit = false;
           }
+          atMemoryLimit = true;
+        } else {
+          atMemoryLimit = false;
         }
+
       }
-
-      // Update searcher with new states and get next state to execute (if
-      // supported by searcher)
-      statePtr = searcher->updateAndTrySelectState(&state, 
-                                                   getContext().addedStates, 
-                                                   getContext().removedStates);
-      // Update Executor state tracking
-      updateStates(&state);
-    }
-
-    // Wait for new states to be ready to execute
-    while (statePtr == NULL && searcher->empty() && !empty() && !haltExecution) { 
-      Mutex lock;
-      UniqueLock guard(lock);
-      searcherCond.wait(guard);
     }
   }
 
@@ -2687,7 +2767,6 @@ void Executor::run(ExecutionState &initialState) {
   // optimization and such.
   initTimers();
 
-  std::set<ExecutionState*> states;
   states.insert(&initialState);
   ++stateCount;
 
@@ -2793,8 +2872,9 @@ void Executor::run(ExecutionState &initialState) {
     while (ExecutionState* state = searcher->trySelectState()) {
       stepInstruction(*state); // keep stats rolling
       terminateStateEarly(*state, "Execution halting.");
+      searcher->update(state, getContext().addedStates, getContext().removedStates);
+      updateStates(state);
     }
-    updateStates(0);
   }
 
   // Delete all MemoryManagers used by threads

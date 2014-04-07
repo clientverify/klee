@@ -126,6 +126,8 @@ protected:
   ExternalDispatcher *externalDispatcher;
   ThreadSpecificPointer<TimingSolver>::type solver;
   ThreadSpecificPointer<MemoryManager>::type memory;
+  std::set<ExecutionState*> states;
+  Mutex statesMutex;
   Atomic<int>::type stateCount;
   std::vector<MemoryManager*> memoryManagers;
   StatsTracker *statsTracker;
@@ -140,6 +142,16 @@ protected:
   /// Used to wait until all threads have been initialized before executing
   /// states
   Barrier* threadBarrier;
+
+  /// Indicate to threads when execution should be paused
+  Atomic<bool>::type pauseExecution;
+  Atomic<int>::type pausedThreadCount;
+  ConditionVariable pauseExecutionCondition;
+  ConditionVariable startExecutionCondition;
+  Mutex pauseExecutionMutex;
+
+  bool PauseExecution();
+  void UnPauseExecution();
 
   /// Per-thread ExecutorContext
   ThreadSpecificPointer<ExecutorContext>::type context;

@@ -432,11 +432,10 @@ void StatsTracker::writeStatsLine() {
 
 void StatsTracker::updateStateStatistics(uint64_t addend) {
   RecursiveLockGuard guard(statsMutex);
-  std::set<ExecutionState*> states;
-  if (executor.searcher)
-    states = executor.searcher->states();
-  for (std::set<ExecutionState*>::iterator it = states.begin(),
-         ie = states.end(); it != ie; ++it) {
+  
+  LockGuard statesGuard(executor.statesMutex);
+  for (std::set<ExecutionState*>::iterator it = executor.states.begin(),
+         ie = executor.states.end(); it != ie; ++it) {
     ExecutionState &state = **it;
     const InstructionInfo &ii = *state.pc->info;
     theStatisticManager->incrementIndexedValue(stats::states, ii.id, addend);
@@ -850,12 +849,9 @@ void StatsTracker::computeReachableUncovered() {
     }
   } while (changed);
 
-  std::set<ExecutionState*> states;
-  if (executor.searcher)
-    states = executor.searcher->states();
-
-  for (std::set<ExecutionState*>::iterator it = states.begin(),
-         ie = states.end(); it != ie; ++it) {
+  LockGuard statesGuard(executor.statesMutex);
+  for (std::set<ExecutionState*>::iterator it = executor.states.begin(),
+         ie = executor.states.end(); it != ie; ++it) {
     ExecutionState *es = *it;
     uint64_t currentFrameMinDist = 0;
     for (ExecutionState::stack_ty::iterator sfIt = es->stack.begin(),
