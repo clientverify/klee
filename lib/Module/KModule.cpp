@@ -78,11 +78,6 @@ namespace {
                cl::init(true));
 
   cl::opt<bool>
-  OutputSourceWithIds("output-source-with-ids",
-               cl::desc("Write the assembly for the final transformed source (with ids)"),
-               cl::init(false));
-
-  cl::opt<bool>
   OutputModule("output-module",
                cl::desc("Write the bitcode for the final transformed module"),
                cl::init(false));
@@ -100,8 +95,7 @@ namespace {
   
   cl::opt<bool>
   DebugPrintEscapingFunctions("debug-print-escaping-functions", 
-                              cl::desc("Print functions whose address is taken."),
-															cl::init(true));
+                              cl::desc("Print functions whose address is taken."));
 }
 
 KModule::KModule(Module *_module) 
@@ -495,43 +489,11 @@ void KModule::prepare(const Interpreter::ModuleOptions &opts,
     for (unsigned i=0; i<kf->numInstructions; ++i) {
       KInstruction *ki = kf->instructions[i];
       ki->info = &infos->getInfo(ki->inst);
-			kinsts[ki->info->id] = ki;
     }
-	
+
     functions.push_back(kf);
     functionMap.insert(std::make_pair(it, kf));
   }
-  
-	if (OutputSourceWithIds) {
-    std::ostream *os = ih->openOutputFile("assembly_with_ids.ll");
-    assert(os && os->good() && "unable to open source output");
-    llvm::raw_os_ostream *ros = new llvm::raw_os_ostream(*os);
-
-		for (Module::iterator it = module->begin(), ie = module->end();
-				it != ie; ++it) {
-
-			if (it->isDeclaration()) {
-				*ros << *it << "\n";
-				continue;
-			}
-
-			*ros << *it->getFunctionType() << " " << it->getName() << " {\n";
-
-			for (Function::iterator fit = it->begin(), fie = it->end();
-					fit != fie; ++fit) {
-				*ros << fit->getName() << " : " << llvm_kbasicblocks[&(*fit)]->id << ":\n";
-				for (BasicBlock::iterator bit = fit->begin(), bie = fit->end();
-						bit != bie; ++bit) {
-					*ros << "  " << infos->getInfo(&(*bit)).id << ": " << *bit << "\n";
-				}
-				*ros << "\n";
-			}
-			*ros <<"}\n";
-		}
-		ros->flush();
-		delete ros;
-		delete os;
-	}
 
   /* Compute various interesting properties */
 
@@ -629,8 +591,6 @@ KFunction::KFunction(llvm::Function *_function,
   unsigned i = 0;
   for (llvm::Function::iterator bbit = function->begin(), 
          bbie = function->end(); bbit != bbie; ++bbit) {
-    KBasicBlock* kbb = new KBasicBlock(&(*bbit), 0);
-    km->llvm_kbasicblocks[&(*bbit)] = kbb;
     for (llvm::BasicBlock::iterator it = bbit->begin(), ie = bbit->end();
          it != ie; ++it) {
       KInstruction *ki;
@@ -646,7 +606,6 @@ KFunction::KFunction(llvm::Function *_function,
 
       ki->inst = it;      
       ki->dest = registerMap[it];
-      ki->kbb = kbb;
 
       if (isa<CallInst>(it) || isa<InvokeInst>(it)) {
         CallSite cs(it);
