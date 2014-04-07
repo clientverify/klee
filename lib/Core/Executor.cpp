@@ -100,6 +100,7 @@
 using namespace llvm;
 using namespace klee;
 
+
 #ifdef SUPPORT_METASMT
 
 #include <metaSMT/frontend/Array.hpp>
@@ -260,15 +261,6 @@ namespace klee {
             cl::desc("Inhibit forking at memory cap (vs. random terminate) (default=on)"),
             cl::init(true));
 
-  cl::opt<bool> 
-  NoXWindows("no-xwindows", 
-           cl::desc("Do not allow external XWindows function calls"),
-           cl::init(false));
-   
-  cl::opt<bool>
-  PrintFunctionCalls("print-function-calls",
-                cl::init(false));
-
   extern llvm::cl::opt<unsigned> UseThreads;
 }
 
@@ -276,6 +268,7 @@ namespace klee {
 namespace klee {
   ThreadSpecificPointer<RNG>::type theRNG;
 }
+
 
 Executor::Executor(const InterpreterOptions &opts,
                    InterpreterHandler *ih) 
@@ -1234,25 +1227,6 @@ void Executor::executeCall(ExecutionState &state,
                            KInstruction *ki,
                            Function *f,
                            std::vector< ref<Expr> > &arguments) {
-  if (PrintFunctionCalls) {
-    #define MAX_DEPTH 64
-    int call_depth = 
-      state.stack.size() > MAX_DEPTH ? MAX_DEPTH : state.stack.size();
-    char call_depth_str[MAX_DEPTH+1];
-    memset(call_depth_str, '-', call_depth);
-    call_depth_str[call_depth] = '\0';
-    klee_warning("F%s%s ", call_depth_str, 
-                 f->getName().str().c_str());
-  }
-
-  std::string widget_str("Widget_");
-  if (NoXWindows 
-      && f->getName().substr(0,widget_str.size()) == widget_str) {
-      klee_warning_once(f, "Ignoring Widget function: %s", 
-                        f->getName().str().c_str());
-      return;
-  }
-
   Instruction *i = ki->inst;
   if (f && f->isDeclaration()) {
     switch(f->getIntrinsicID()) {
@@ -1347,7 +1321,7 @@ void Executor::executeCall(ExecutionState &state,
                               "user.err");
         return;
       }
-
+            
       StackFrame &sf = state.stack.back();
       unsigned size = 0;
       for (unsigned i = funcArgs; i < callingArgs; i++) {
@@ -3066,31 +3040,10 @@ void Executor::callExternalFunction(ExecutionState &state,
                                     KInstruction *target,
                                     Function *function,
                                     std::vector< ref<Expr> > &arguments) {
-
   // check if specialFunctionHandler wants it
   if (specialFunctionHandler->handle(state, function, target, arguments))
     return;
- 
-  if (NoXWindows && function->getName()[0] == 'X') { 
-    //std::string n_str = "nuklear_";
-    //std::string f_str = state.stack.back().kf->function->getName().str();
-    if (function->getName().str() == "XParseGeometry" ||
-        function->getName().str() == "XStringToKeysym") {
-      klee_warning_once(function, "Calling X function: %s", 
-                        function->getName().str().c_str());
-    } else {
-      klee_warning_once(function, "Ignoring X function: %s", 
-                        function->getName().str().c_str());
-      return;
-    }
-    // check if we called this X function from within a nuklear_* function.
-    //if (f_str.substr(0,n_str.size()) != n_str) {
-    //  //klee_warning_once("Ignoring X function: %s", 
-    //  //                  function->getName().str().c_str());
-    //  return;
-    //}
-  }
- 
+  
   if (NoExternals && !okExternals.count(function->getName())) {
     std::cerr << "KLEE:ERROR: Calling not-OK external function : " 
               << function->getName().str() << "\n";
@@ -3135,14 +3088,14 @@ void Executor::callExternalFunction(ExecutionState &state,
   LockGuard guard(externalCallMutex);
 
   state.addressSpace.copyOutConcretes();
+
   if (!SuppressExternalWarnings) {
     std::ostringstream os;
-
     os << "calling external: " << function->getName().str() << "(";
     for (unsigned i=0; i<arguments.size(); i++) {
       os << arguments[i];
       if (i != arguments.size()-1)
-        os << ", ";
+	os << ", ";
     }
     os << ")";
     
@@ -3481,7 +3434,6 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     
     StatePair branches = fork(*unbound, inBounds, true);
     ExecutionState *bound = branches.first;
-    
 
     // bound can be 0 on failure or overlapped 
     if (bound) {
@@ -3683,7 +3635,6 @@ void Executor::runFunctionAsMain(Function *f,
   processTree = new PTree(state);
   state->ptreeNode = processTree->root;
   run(*state);
-
   delete processTree;
   processTree = 0;
 

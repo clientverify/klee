@@ -9,9 +9,8 @@
 
 #include "Common.h"
 
-#include "Executor.h" // Must declare before ExecutorTimerInfo.h (FIXME ?)
-
 #include "CoreStats.h"
+#include "Executor.h"
 #include "PTree.h"
 #include "StatsTracker.h"
 #include "ExecutorTimerInfo.h"

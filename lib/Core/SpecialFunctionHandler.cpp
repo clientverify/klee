@@ -199,35 +199,9 @@ bool SpecialFunctionHandler::handle(ExecutionState &state,
       (this->*h)(state, target, arguments);
     }
     return true;
-  }
-
-  external_handlers_ty::iterator eit = external_handlers.find(f);
-  if (eit != external_handlers.end()) {    
-    ExternalHandler h = eit->second.first;
-    bool hasReturnValue = eit->second.second;
-     // FIXME: Check this... add test?
-    if (!hasReturnValue && !target->inst->use_empty()) {
-      executor.terminateStateOnExecError(state, 
-                                         "expected return value from void special function");
-    } else {
-      h(&executor, &state, target, arguments);
-    }
-    return true;
   } else {
     return false;
   }
-}
-
-void SpecialFunctionHandler::addExternalHandler(llvm::Function *function, 
-		ExternalHandler external_handler, bool has_return_value) {
-  assert(external_handlers.find(function) == external_handlers.end()
-			&& "already added external handler for this function");
-	external_handlers[function] =  
-			std::make_pair(external_handler, has_return_value);
-}
-
-void SpecialFunctionHandler::removeExternalHandler(llvm::Function *function) {
-	external_handlers.erase(function);
 }
 
 /****/

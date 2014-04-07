@@ -36,17 +36,6 @@ namespace klee {
                      std::pair<Handler,bool> > handlers_ty;
 
     handlers_ty handlers;
-
-    typedef void (*ExternalHandler)(Executor* executor,
-                                    ExecutionState *state,
-                                    KInstruction *target, 
-                                    std::vector<ref<Expr> > 
-                                      &arguments);
-    typedef std::map<const llvm::Function*, 
-                     std::pair<ExternalHandler,bool> > external_handlers_ty;
-
-    external_handlers_ty external_handlers;
-
     class Executor &executor;
 
     struct HandlerInfo {
@@ -98,10 +87,6 @@ namespace klee {
                 llvm::Function *f,
                 KInstruction *target,
                 std::vector< ref<Expr> > &arguments);
-
-    void addExternalHandler(llvm::Function *function, ExternalHandler external_handler,
-				bool void_return);
-    void removeExternalHandler(llvm::Function *function);
 
     /* Convenience routines */
 

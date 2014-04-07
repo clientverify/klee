@@ -71,7 +71,6 @@ namespace klee {
   class Solver;
   class TimingSolver;
   class TreeStreamWriter;
-  class CliverFunctionHandler;
   template<class T> class ref;
 
 
@@ -87,7 +86,6 @@ class Executor : public Interpreter {
   friend class OwningSearcher;
   friend class WeightedRandomSearcher;
   friend class SpecialFunctionHandler;
-  friend class CliverFunctionHandler;
   friend class StatsTracker;
 
 public:
@@ -218,7 +216,7 @@ protected:
 
   void execute(ExecutionState *initialState, MemoryManager* memory);
 
-  virtual void run(ExecutionState &initialState);
+  void run(ExecutionState &initialState);
 
   // Given a concrete object in our [klee's] address space, add it to 
   // objects checked code can reference.
@@ -231,13 +229,13 @@ protected:
   void initializeGlobals(ExecutionState &state);
   void initializePerThread(ExecutionState &state, MemoryManager* memory);
 
-  virtual void stepInstruction(ExecutionState &state);
-  virtual void updateStates(ExecutionState *current);
-  virtual void transferToBasicBlock(llvm::BasicBlock *dst, 
+  void stepInstruction(ExecutionState &state);
+  void updateStates(ExecutionState *current);
+  void transferToBasicBlock(llvm::BasicBlock *dst, 
 			    llvm::BasicBlock *src,
 			    ExecutionState &state);
 
-  virtual void callExternalFunction(ExecutionState &state,
+  void callExternalFunction(ExecutionState &state,
                             KInstruction *target,
                             llvm::Function *function,
                             std::vector< ref<Expr> > &arguments);
@@ -304,21 +302,21 @@ protected:
                               ref<Expr> value /* undef if read */,
                               KInstruction *target /* undef if write */);
 
-  virtual void executeMakeSymbolic(ExecutionState &state, const MemoryObject *mo,
+  void executeMakeSymbolic(ExecutionState &state, const MemoryObject *mo,
                            const std::string &name);
 
   /// Create a new state where each input condition has been added as
   /// a constraint and return the results. The input state is included
   /// as one of the results. Note that the output vector may included
   /// NULL pointers for states which were unable to be created.
-  virtual void branch(ExecutionState &state, 
+  void branch(ExecutionState &state, 
               const std::vector< ref<Expr> > &conditions,
               std::vector<ExecutionState*> &result);
 
   // Fork current and return states in which condition holds / does
   // not hold, respectively. One of the states is necessarily the
   // current state, and one of the states may be null.
-  virtual StatePair fork(ExecutionState &current, ref<Expr> condition, bool isInternal);
+  StatePair fork(ExecutionState &current, ref<Expr> condition, bool isInternal);
 
   /// Add the given (boolean) condition as a constraint on state. This
   /// function is a wrapper around the state's addConstraint function
@@ -381,7 +379,7 @@ protected:
       llvm::Instruction** lastInstruction);
 
   // remove state from queue and delete
-  virtual void terminateState(ExecutionState &state);
+  void terminateState(ExecutionState &state);
   // call exit handler and terminate state
   void terminateStateEarly(ExecutionState &state, const llvm::Twine &message);
   // call exit handler and terminate state
