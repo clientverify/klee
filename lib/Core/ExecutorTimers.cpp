@@ -10,7 +10,6 @@
 #include "Common.h"
 
 #include "Executor.h" // Must declare before ExecutorTimerInfo.h (FIXME ?)
-#include "Searcher.h"
 
 #include "CoreStats.h"
 #include "PTree.h"
@@ -141,7 +140,7 @@ void Executor::processTimers(ExecutionState *current,
       std::ostream *os = interpreterHandler->openOutputFile("states.txt");
       
       if (os) {
-        std::set<ExecutionState*> states(searcher->states());
+        // Not thread safe, but dumpStates only used for debugging
         for (std::set<ExecutionState*>::const_iterator it = states.begin(), 
                ie = states.end(); it != ie; ++it) {
           ExecutionState *es = *it;
