@@ -3,8 +3,6 @@
 // FIXME: This does not belong here.
 #include "../lib/Core/Common.h"
 
-#include "cliver/ClientVerifier.h"
-
 #include "klee/ExecutionState.h"
 #include "klee/Expr.h"
 #include "klee/Interpreter.h"
@@ -221,10 +219,6 @@ namespace klee {
 }
 
 extern cl::opt<double> MaxTime;
-
-namespace cliver {
-  extern cl::opt<bool> EnableCliver;
-}
 
 /***/
 
@@ -1282,14 +1276,6 @@ int main(int argc, char **argv, char **envp) {
                                   /*CheckDivZero=*/CheckDivZero,
                                   /*CheckOvershift=*/CheckOvershift);
  
-  if (WithPOSIXRuntime && cliver::EnableCliver) {
-    llvm::sys::Path Path(Opts.LibraryDir);
-    Path.appendComponent("libkleeRuntimePOSIX.bca");
-    klee_message("NOTE: Using model: %s", Path.c_str());
-    mainModule = klee::linkWithLibrary(mainModule, Path.c_str());
-    assert(mainModule && "unable to link with simple model");
-  }  
- 
   switch (Libc) {
   case NoLibc: /* silence compiler warning */
     break;
@@ -1312,7 +1298,7 @@ int main(int argc, char **argv, char **envp) {
     break;
   }
 
-  if (WithPOSIXRuntime && !cliver::EnableCliver) {
+  if (WithPOSIXRuntime)
     llvm::sys::Path Path(Opts.LibraryDir);
     Path.appendComponent("libkleeRuntimePOSIX.bca");
     klee_message("NOTE: Using model: %s", Path.c_str());
@@ -1378,15 +1364,9 @@ int main(int argc, char **argv, char **envp) {
   InterpreterHandler *handler = NULL;
   Interpreter *interpreter = NULL;
 
-  if (cliver::EnableCliver) {
-    handler = new cliver::ClientVerifier(InputFile, NoOutput, OutputDir);
-    interpreter = theInterpreter = cliver::ClientVerifier::create_interpreter(IOpts, handler);
-    static_cast<cliver::ClientVerifier*>(handler)->setInterpreter(interpreter);
-  } else {
-    handler = new KleeHandler(pArgc, pArgv);
-    interpreter = theInterpreter = Interpreter::create(IOpts, handler);
-    static_cast<KleeHandler*>(handler)->setInterpreter(interpreter);
-  }
+  handler = new KleeHandler(pArgc, pArgv);
+  interpreter = theInterpreter = Interpreter::create(IOpts, handler);
+  static_cast<KleeHandler*>(handler)->setInterpreter(interpreter);
   
   std::ostream &infoFile = handler->getInfoStream();
   for (int i=0; i<argc; i++) {
@@ -1549,12 +1529,6 @@ int main(int argc, char **argv, char **envp) {
     << "KLEE: done: valid queries = " << queriesValid << "\n"
     << "KLEE: done: invalid queries = " << queriesInvalid << "\n"
     << "KLEE: done: query cex = " << queryCounterexamples << "\n";
-
-  if (cliver::EnableCliver) {
-    BufferPtr.take();
-    delete handler;
-    return 0;
-  }
 
   std::stringstream stats;
   stats << "\n";
