@@ -13,6 +13,7 @@
 #include "klee/Constraints.h"
 #include "klee/Expr.h"
 #include "klee/Internal/ADT/TreeStream.h"
+#include "klee/util/Mutex.h"
 
 // FIXME: We do not want to be exposing these? :(
 #include "../../lib/Core/AddressSpace.h"
@@ -107,6 +108,9 @@ public:
   MemoryMap shadowObjects;
 
   unsigned incomingBBIndex;
+
+  /// Internal lock, held between Searcher::selectState and Searcher::update
+  SpinLock lock;
 
   std::string getFnAlias(std::string fn);
   void addFnAlias(std::string old_fn, std::string new_fn);
