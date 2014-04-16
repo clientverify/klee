@@ -197,6 +197,7 @@ namespace klee {
     LockFreeStack<ExecutionState*>::type* queue;
     std::set<ExecutionState*> removedStatesSet;
     SpinLock removedStatesLock;
+    SharedMutex statesMutex;
 
     Atomic<int>::type queueSize;
     Atomic<int>::type removedStatesCount;
@@ -206,6 +207,7 @@ namespace klee {
   public:
     ParallelDFSSearcher();
     ExecutionState &selectState();
+    ExecutionState* trySelectState();
     void update(ExecutionState *current,
                 const std::set<ExecutionState*> &addedStates,
                 const std::set<ExecutionState*> &removedStates);
@@ -216,6 +218,52 @@ namespace klee {
     void printName(std::ostream &os);
   };
 
+  class ParallelWeightedRandomSearcher : public Searcher {
+  public:
+    enum WeightType {
+      Depth,
+      QueryCost,
+      InstCount,
+      CPInstCount,
+      MinDistToUncovered,
+      CoveringNew
+    };
+
+  private:
+    Executor &executor;
+    DiscretePDF<ExecutionState*> *states;
+    WeightType type;
+    bool updateWeights;
+
+    SharedMutex statesMutex;
+    Atomic<int>::type stateCount;
+    Atomic<int>::type activeStateCount;
+    
+    double getWeight(ExecutionState*);
+
+  public:
+    ParallelWeightedRandomSearcher(Executor &executor, WeightType type);
+    ~ParallelWeightedRandomSearcher();
+
+    ExecutionState &selectState();
+    void update(ExecutionState *current,
+                const std::set<ExecutionState*> &addedStates,
+                const std::set<ExecutionState*> &removedStates);
+    bool empty();
+    ExecutionState* trySelectState();
+    void printName(std::ostream &os) {
+      os << "ParallelWeightedRandomSearcher::";
+      switch(type) {
+      case Depth              : os << "Depth\n"; return;
+      case QueryCost          : os << "QueryCost\n"; return;
+      case InstCount          : os << "InstCount\n"; return;
+      case CPInstCount        : os << "CPInstCount\n"; return;
+      case MinDistToUncovered : os << "MinDistToUncovered\n"; return;
+      case CoveringNew        : os << "CoveringNew\n"; return;
+      default                 : os << "<unknown type>\n"; return;
+      }
+    }
+  };
 
   class WeightedRandomSearcher : public Searcher {
   public:
