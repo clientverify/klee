@@ -19,6 +19,7 @@
 #include <boost/thread/condition_variable.hpp>
 #include <boost/thread/lock_guard.hpp>
 #include <boost/thread/mutex.hpp>
+#include <boost/thread/shared_mutex.hpp>
 #include <boost/thread/recursive_mutex.hpp>
 
 namespace boost { void throw_exception(std::exception const& e); }
@@ -49,12 +50,18 @@ public:
 };
 
 typedef boost::mutex Mutex;
+typedef boost::shared_mutex SharedMutex;
 typedef boost::recursive_mutex RecursiveMutex;
 
 typedef boost::lock_guard<RecursiveMutex> RecursiveLockGuard;
 typedef boost::lock_guard<Mutex> LockGuard;
 typedef boost::lock_guard<SpinLock> SpinLockGuard;
 typedef boost::unique_lock<Mutex> UniqueLock;
+
+typedef boost::shared_lock<SharedMutex> SharedLock;
+typedef boost::unique_lock<SharedMutex> UniqueSharedLock;
+typedef boost::upgrade_lock<SharedMutex> UpgradeSharedLock;
+typedef boost::upgrade_to_unique_lock<SharedMutex> UpgradeToUniqueSharedLock;
 
 template<class T>
 struct Guard {
