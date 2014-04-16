@@ -2604,7 +2604,7 @@ void Executor::bindModuleConstants() {
 /// and wait for UnPauseExecution()
 bool Executor::PauseExecution() {
   if (UseThreads > 1) {
-    if (pauseExecutionLock.try_lock()) {
+    if (pauseExecutionMutex.try_lock()) {
       Mutex lock;
       UniqueLock guard(lock);
 
@@ -2632,7 +2632,7 @@ void Executor::UnPauseExecution() {
   if (UseThreads > 1) {
     pauseExecution = false;
     startExecutionCondition.notify_all();
-    pauseExecutionLock.unlock();
+    pauseExecutionMutex.unlock();
   }
 }
 

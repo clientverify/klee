@@ -14,7 +14,6 @@
 #include "Executor.h"
 #include "klee/ExecutionState.h"
 #include "klee/Statistics.h"
-#include "klee/Searcher.h"
 #include "klee/Config/Version.h"
 #include "klee/Internal/Module/InstructionInfoTable.h"
 #include "klee/Internal/Module/KModule.h"
