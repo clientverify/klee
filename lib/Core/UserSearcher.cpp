@@ -23,7 +23,6 @@ namespace klee {
   cl::list<Searcher::CoreSearchType>
   CoreSearch("search", cl::desc("Specify the search heuristic (default=random-path interleaved with nurs:covnew)"),
 	     cl::values(clEnumValN(Searcher::DFS, "dfs", "use Depth First Search (DFS)"),
-			clEnumValN(Searcher::ParallelDFS, "parallel-dfs", "use parallel Depth First Search (DFS)"),
 			clEnumValN(Searcher::BFS, "bfs", "use Breadth First Search (BFS)"),
 			clEnumValN(Searcher::RandomState, "random-state", "randomly select a state to explore"),
 			clEnumValN(Searcher::RandomPath, "random-path", "use Random Path Selection (see OSDI'08 paper)"),
@@ -85,7 +84,6 @@ Searcher *getNewSearcher(Searcher::CoreSearchType type, Executor &executor) {
   Searcher *searcher = NULL;
   switch (type) {
   case Searcher::DFS: searcher = new DFSSearcher(); break;
-  case Searcher::ParallelDFS: searcher = new ParallelDFSSearcher(); break;
   case Searcher::BFS: searcher = new BFSSearcher(); break;
   case Searcher::RandomState: searcher = new RandomSearcher(); break;
   case Searcher::RandomPath: searcher = new RandomPathSearcher(executor); break;
@@ -100,7 +98,43 @@ Searcher *getNewSearcher(Searcher::CoreSearchType type, Executor &executor) {
   return searcher;
 }
 
+Searcher *getNewParallelSearcher(Searcher::CoreSearchType type, Executor &executor) {
+  Searcher *searcher = NULL;
+  switch (type) {
+  case Searcher::DFS: searcher = new ParallelDFSSearcher(); break;
+  case Searcher::BFS: searcher = new ParallelSearcher(new BFSSearcher()); break;
+  case Searcher::RandomState: searcher = new ParallelSearcher(new RandomSearcher()); break;
+  case Searcher::RandomPath: searcher = new ParallelSearcher(new RandomPathSearcher(executor)); break;
+  case Searcher::NURS_CovNew: searcher = new ParallelWeightedRandomSearcher(executor, ParallelWeightedRandomSearcher::CoveringNew); break;
+  case Searcher::NURS_MD2U: searcher = new ParallelWeightedRandomSearcher(executor, ParallelWeightedRandomSearcher::MinDistToUncovered); break;
+  case Searcher::NURS_Depth: searcher = new ParallelWeightedRandomSearcher(executor, ParallelWeightedRandomSearcher::Depth); break;
+  case Searcher::NURS_ICnt: searcher = new ParallelWeightedRandomSearcher(executor, ParallelWeightedRandomSearcher::InstCount); break;
+  case Searcher::NURS_CPICnt: searcher = new ParallelWeightedRandomSearcher(executor, ParallelWeightedRandomSearcher::CPInstCount); break;
+  case Searcher::NURS_QC: searcher = new ParallelWeightedRandomSearcher(executor, ParallelWeightedRandomSearcher::QueryCost); break;
+  }
+
+  return searcher;
+}
+
 Searcher *klee::constructUserSearcher(Executor &executor) {
+
+  // Check for invalid searcher configurations
+  if (UseBatchingSearch || UseMerge || UseBumpMerge) {
+    if (UseThreads > 1) {
+      std::ostream &os = executor.getHandler().getInfoStream();
+      os << "Invalid configuration: multiple threads not supported this configuration. ";
+      os << "Setting thread count to 1\n";
+      UseThreads = 1;
+    }
+  }
+
+  if (!UseProcessTree && 
+      std::find(CoreSearch.begin(), CoreSearch.end(), Searcher::RandomPath) 
+        != CoreSearch.end()) {
+    std::ostream &os = executor.getHandler().getInfoStream();
+    os << "Invalid configuration: -random-path=true requires -process-tree=true\n";
+    return NULL;
+  }
 
   // default values
   if (CoreSearch.size() == 0) {
@@ -108,12 +142,11 @@ Searcher *klee::constructUserSearcher(Executor &executor) {
     CoreSearch.push_back(Searcher::NURS_CovNew);
   }
 
-  assert("-random-path=true requires -process-tree=true"
-         && (UseProcessTree || 
-             std::find(CoreSearch.begin(), CoreSearch.end(), 
-                       Searcher::RandomPath) == CoreSearch.end()));
-
-  Searcher *searcher = getNewSearcher(CoreSearch[0], executor);
+  Searcher *searcher = NULL;
+  if (UseThreads > 1 && CoreSearch.size() == 1)
+    searcher = getNewParallelSearcher(CoreSearch[0], executor);
+  else
+    searcher = getNewSearcher(CoreSearch[0], executor);
   
   if (CoreSearch.size() > 1) {
     std::vector<Searcher *> s;
@@ -127,11 +160,6 @@ Searcher *klee::constructUserSearcher(Executor &executor) {
 
   if (UseBatchingSearch) {
     searcher = new BatchingSearcher(searcher, BatchTime, BatchInstructions);
-    if (UseThreads > 1) {
-      std::ostream &os = executor.getHandler().getInfoStream();
-      os << "Disabling multiple threads with BatchingSearcher\n";
-      UseThreads = 1;
-    }
   }
 
   // merge support is experimental
@@ -147,10 +175,8 @@ Searcher *klee::constructUserSearcher(Executor &executor) {
     searcher = new IterativeDeepeningTimeSearcher(searcher);
   }
 
-  if (UseThreads > 1) {
-    if (!(CoreSearch.size() == 1 && CoreSearch[0] == Searcher::ParallelDFS)) {
-      searcher = new ParallelSearcher(searcher);
-    }
+  if (UseThreads > 1 && CoreSearch.size() > 1) {
+    searcher = new ParallelSearcher(searcher);
   }
 
   std::ostream &os = executor.getHandler().getInfoStream();
