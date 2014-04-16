@@ -11,7 +11,6 @@
 #define KLEE_STATSTRACKER_H
 
 #include "CallPathManager.h"
-#include "klee/util/Mutex.h"
 
 #include <iostream>
 #include <set>
@@ -46,8 +45,6 @@ namespace klee {
     CallPathManager callPathManager;    
 
     bool updateMinDistToUncovered;
-
-    RecursiveMutex statsMutex;
 
   public:
     static bool useStatistics();

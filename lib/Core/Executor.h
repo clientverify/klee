@@ -146,6 +146,7 @@ protected:
   /// Indicate to threads when execution should be paused
   Atomic<bool>::type pauseExecution;
   Atomic<int>::type pausedThreadCount;
+  Atomic<int>::type totalThreadCount;
   ConditionVariable pauseExecutionCondition;
   ConditionVariable startExecutionCondition;
   Mutex pauseExecutionMutex;

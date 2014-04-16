@@ -275,7 +275,7 @@ namespace klee {
 
 
 namespace klee {
-  RNG theRNG;
+  ThreadSpecificPointer<RNG>::type theRNG;
 }
 
 Executor::Executor(const InterpreterOptions &opts,
@@ -314,6 +314,8 @@ Executor::Executor(const InterpreterOptions &opts,
 
   // Initialize MemoryManager for the root thread
   memory.reset(memoryManagers.back());
+
+  theRNG.reset(new RNG());
 }
 
 
@@ -446,6 +448,10 @@ void Executor::initializePerThread(ExecutionState &state, MemoryManager* memory)
   if (!this->memory.get()) {
     // Set the MemoryManager for this thread
     this->memory.reset(memory);
+  }
+
+  if (!theRNG.get()) {
+    theRNG.reset(new RNG());
   }
 
 #ifdef HAVE_CTYPE_EXTERNALS
@@ -711,7 +717,7 @@ void Executor::branch(ExecutionState &state,
   assert(N);
 
   if (MaxForks!=~0u && stats::forks >= MaxForks) {
-    unsigned next = theRNG.getInt32() % N;
+    unsigned next = theRNG->getInt32() % N;
     for (unsigned i=0; i<N; ++i) {
       if (i == next) {
         result.push_back(&state);
@@ -725,7 +731,7 @@ void Executor::branch(ExecutionState &state,
     // XXX do proper balance or keep random?
     result.push_back(&state);
     for (unsigned i=1; i<N; ++i) {
-      ExecutionState *es = result[theRNG.getInt32() % i];
+      ExecutionState *es = result[theRNG->getInt32() % i];
       ExecutionState *ns = es->branch();
       getContext().addedStates.insert(ns);
       result.push_back(ns);
@@ -766,7 +772,7 @@ void Executor::branch(ExecutionState &state,
       // If we didn't find a satisfying condition randomly pick one
       // (the seed will be patched).
       if (i==N)
-        i = theRNG.getInt32() % N;
+        i = theRNG->getInt32() % N;
 
       // Extra check in case we're replaying seeds with a max-fork
       if (result[i])
@@ -872,7 +878,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
 	  klee_warning_once(0, "skipping fork (max-forks reached)");
 
         TimerStatIncrementer timer(stats::forkTime);
-        if (theRNG.getBool()) {
+        if (theRNG->getBool()) {
           addConstraint(current, condition);
           res = Solver::True;        
         } else {
@@ -946,7 +952,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     falseState = trueState->branch();
     getContext().addedStates.insert(falseState);
 
-    if (RandomizeFork && theRNG.getBool())
+    if (RandomizeFork && theRNG->getBool())
       std::swap(trueState, falseState);
 
     if (it != seedMap.end()) {
@@ -2609,7 +2615,7 @@ bool Executor::PauseExecution() {
       searcherCond.notify_all();
 
       // Wait for N-1 threads to pause
-      while (pausedThreadCount < (UseThreads - 1)) {
+      while (pausedThreadCount < (totalThreadCount - 1)) {
         pauseExecutionCondition.wait(guard);
       }
       pausedThreadCount = 0;
@@ -2632,6 +2638,8 @@ void Executor::UnPauseExecution() {
 
 void Executor::execute(ExecutionState *initialState, MemoryManager *memory) {
   Mutex lock;
+  Mutex memoryMutex;
+
   UniqueLock guard(lock);
 
   // Initialize thread specific globals and objects
@@ -2691,25 +2699,31 @@ void Executor::execute(ExecutionState *initialState, MemoryManager *memory) {
 
     // Check if we are running out of memory
     if (MaxMemory) {
-      if ((stats::instructions & 0xFFFF) == 0) {
+      // Note: Only one thread needs to check the memory situation
+      if ((stats::instructions & 0xFFFF) == 0 && memoryMutex.try_lock()) {
+        klee_message("checking memory (%d)", GetThreadID());
 
         // We need to avoid calling GetMallocUsage() often because it
         // is O(elts on freelist). This is really bad since we start
         // to pummel the freelist once we hit the memory cap.
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
-        unsigned mbs = sys::Process::GetMallocUsage() >> 20;
-#else
-        unsigned mbs = sys::Process::GetTotalMemoryUsage() >> 20;
-#endif
-        if (UseThreads > 1)
+        unsigned mbs; 
+        if (UseThreads > 1) {
           mbs = GetMemoryUsage() >> 20;
+        } else {
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
+          mbs = sys::Process::GetMallocUsage() >> 20;
+#else
+          mbs = sys::Process::GetTotalMemoryUsage() >> 20;
+#endif
+        }
 
         if (mbs > MaxMemory) {
           if (mbs > MaxMemory + 100) {
 
             // Return statePtr to searcher
             if (statePtr) {
-              searcher->update(statePtr, std::set<ExecutionState*>(), std::set<ExecutionState*>());
+              searcher->update(statePtr, std::set<ExecutionState*>(), 
+                               std::set<ExecutionState*>());
               statePtr = NULL;
             }
 
@@ -2744,6 +2758,7 @@ void Executor::execute(ExecutionState *initialState, MemoryManager *memory) {
           atMemoryLimit = false;
         }
 
+        memoryMutex.unlock();
       }
     }
   }
@@ -2846,11 +2861,16 @@ void Executor::run(ExecutionState &initialState) {
 
   searcher = constructUserSearcher(*this);
 
+  if (!searcher) {
+    klee_error("failed to create searcher");
+  }
+
   searcher->update(0, states, std::set<ExecutionState*>());
 
   threadBarrier = new Barrier(UseThreads);
 
   if (!empty()) {
+    totalThreadCount = UseThreads;
     if (UseThreads == 1) {
       execute(&initialState, NULL);
     } else {
@@ -2864,6 +2884,7 @@ void Executor::run(ExecutionState &initialState) {
       // Wait for all threads to finish
       threadGroup.join_all();
     }
+    totalThreadCount = 1;
   }
   
  dump:
