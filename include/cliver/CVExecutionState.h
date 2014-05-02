@@ -13,12 +13,6 @@
 
 #include "klee/ExecutionState.h"
 
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
-#include "llvm/IR/Instructions.h"
-#else
-#include "llvm/Instructions.h"
-#endif
-
 #include <list>
 #include <sstream>
 #include <ostream>
@@ -47,9 +41,6 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
   CVExecutionState *clone(ExecutionStateProperty* property = NULL);
 
 	int compare(const CVExecutionState& b) const;
-
-	void get_pc_string(std::string &result, 
-			llvm::Instruction* inst=NULL);
 
   void initialize(ClientVerifier *cv);
   int id() const { return id_; }

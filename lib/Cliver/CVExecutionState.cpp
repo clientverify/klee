@@ -16,8 +16,7 @@
 
 #include "../Core/Common.h"
 #include "klee/Internal/Module/InstructionInfoTable.h"
-
-#include "llvm/Support/raw_ostream.h"
+#include "klee/Internal/Module/KInstruction.h"
 
 namespace cliver {
 
@@ -47,17 +46,6 @@ CVExecutionState::~CVExecutionState() {
 
 int CVExecutionState::compare(const CVExecutionState& b) const {
 	return property_->compare(b.property_);
-}
-
-void CVExecutionState::get_pc_string(std::string &rstr,
-		llvm::Instruction* inst) {
-	llvm::raw_string_ostream ros(rstr);
-	if (inst)
-		ros << *(inst);
-	else
-		ros << *(pc->inst);
-	rstr.erase(std::remove(rstr.begin(), rstr.end(), '\n'), rstr.end());
-	ros.flush();
 }
 
 void CVExecutionState::initialize(ClientVerifier *cv) {
@@ -115,10 +103,19 @@ unsigned CVExecutionState::get_current_basic_block() {
 }
 
 void CVExecutionState::print(std::ostream &os) const {
-  if (property_)
-    os << "[" << this << "][id:" << id_ << "]" << "[" << property_ << "] " << *property_;
-  else 
-    os << "[" << this << "][id:" << id_ << "]";
+  // Print state and property info
+  if (property_ != NULL)
+    os << "[" << this << "][id:" << id_ << "] " << *property_;
+  else
+    os << "[" << this << "][id:" << id_ << "] ";
+
+  // Print current instruction source file and line number info if available
+  const klee::InstructionInfo &ii = *(pc->info);
+  if (ii.file != "")
+    os << " [" << ii.file << ":" << ii.line << "]";
+
+  // Print current basic block id and instruction
+  os << "[BB:" << this->prevPC->kbb->id << "]" << " " << *pc;
 }
 
 std::ostream &operator<<(std::ostream &os, const CVExecutionState &s) {
