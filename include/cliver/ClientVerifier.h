@@ -6,8 +6,8 @@
 //
 //
 //===----------------------------------------------------------------------===//
-#ifndef CLIVER_H
-#define CLIVER_H
+#ifndef CLIENT_VERIFIER_H
+#define CLIENT_VERIFIER_H
 
 #include <fstream>
 #include <string>
@@ -215,4 +215,4 @@ class ClientVerifier : public klee::InterpreterHandler {
 
 extern cliver::ClientVerifier *g_client_verifier;
 
-#endif // CLIVER_H
+#endif // CLIENT_VERIFIER_H
