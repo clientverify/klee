@@ -49,37 +49,40 @@ static cl::list<const PassInfo*, bool, PassNameParser>
   OptimizationList(cl::desc("Optimizations available:"));
 #endif
 
-// Don't verify at the end
-static cl::opt<bool> DontVerify("disable-verify", cl::ReallyHidden);
+namespace llvm {
 
-static cl::opt<bool> DisableInline("disable-inlining",
+// Don't verify at the end
+cl::opt<bool> DontVerify("disable-verify", cl::ReallyHidden);
+
+cl::opt<bool> DisableInline("disable-inlining",
   cl::desc("Do not run the inliner pass"));
 
-static cl::opt<bool>
+cl::opt<bool>
 DisableOptimizations("disable-opt",
   cl::desc("Do not run any optimization passes"));
 
-static cl::opt<bool> DisableInternalize("disable-internalize",
+cl::opt<bool> DisableInternalize("disable-internalize",
   cl::desc("Do not mark all symbols as internal"));
 
-static cl::opt<bool> VerifyEach("verify-each",
+cl::opt<bool> VerifyEach("verify-each",
  cl::desc("Verify intermediate results of all passes"));
 
-static cl::alias ExportDynamic("export-dynamic",
+cl::alias ExportDynamic("export-dynamic",
   cl::aliasopt(DisableInternalize),
   cl::desc("Alias for -disable-internalize"));
 
-static cl::opt<bool> Strip("strip-all", 
+cl::opt<bool> Strip("strip-all", 
   cl::desc("Strip all symbol info from executable"));
 
-static cl::alias A0("s", cl::desc("Alias for --strip-all"), 
+cl::alias A0("s", cl::desc("Alias for --strip-all"), 
   cl::aliasopt(Strip));
 
-static cl::opt<bool> StripDebug("strip-debug",
+cl::opt<bool> StripDebug("strip-debug",
   cl::desc("Strip debugger symbol info from executable"));
 
-static cl::alias A1("S", cl::desc("Alias for --strip-debug"),
+cl::alias A1("S", cl::desc("Alias for --strip-debug"),
   cl::aliasopt(StripDebug));
+}
 
 // A utility function that adds a pass to the pass manager but will also add
 // a verifier pass after if we're supposed to verify.
