@@ -226,6 +226,8 @@ namespace cliver {
   extern cl::opt<bool> EnableCliver;
 }
 
+#include "cliver.h"
+
 /***/
 
 class KleeHandler : public InterpreterHandler {
@@ -652,7 +654,7 @@ static void parseArguments(int argc, char **argv) {
       arguments.push_back(argv[i]);
     }
   }
-    
+
   int numArgs = arguments.size() + 1;
   const char **argArray = new const char*[numArgs+1];
   argArray[0] = argv[0];
@@ -666,6 +668,10 @@ static void parseArguments(int argc, char **argv) {
 #else
   cl::ParseCommandLineOptions(numArgs, (char**) argArray, " klee\n");
 #endif
+  
+  if (cliver::EnableCliver)
+    processKleeArgumentsForCliver(arguments);
+
   delete[] argArray;
 }
 
@@ -1113,7 +1119,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, llvm::sys::Path li
     }
   }
   
-  mainModule = klee::linkWithLibrary(mainModule, uclibcBCA.c_str());
+  mainModule = klee::deterministicLinkWithLibrary(mainModule, uclibcBCA.c_str());
   assert(mainModule && "unable to link with uclibc");
 
 
@@ -1281,7 +1287,6 @@ int main(int argc, char **argv, char **envp) {
                                   /*Optimize=*/OptimizeModule, 
                                   /*CheckDivZero=*/CheckDivZero,
                                   /*CheckOvershift=*/CheckOvershift);
- 
   if (WithPOSIXRuntime && cliver::EnableCliver) {
     llvm::sys::Path Path(Opts.LibraryDir);
     Path.appendComponent("libkleeRuntimePOSIX.bca");
