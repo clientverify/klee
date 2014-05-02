@@ -253,8 +253,8 @@ namespace klee {
   
   cl::opt<unsigned>
   MaxMemory("max-memory",
-            cl::desc("Refuse to fork when above this amount of memory (in MB, default=2000)"),
-            cl::init(2000));
+            cl::desc("Refuse to fork when above this amount of memory (in MB, default=0)"),
+            cl::init(0));
 
   cl::opt<bool>
   MaxMemoryInhibit("max-memory-inhibit",
