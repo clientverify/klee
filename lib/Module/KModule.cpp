@@ -58,7 +58,7 @@
 using namespace llvm;
 using namespace klee;
 
-namespace {
+namespace klee {
   enum SwitchImplType {
     eSwitchTypeSimple,
     eSwitchTypeLLVM,
@@ -666,6 +666,9 @@ KFunction::KFunction(llvm::Function *_function,
           ki->operands[j] = getOperandNum(v, registerMap, km, ki);
         }
       }
+
+      if (it == bbit->begin())
+        kbb->kinst = ki;
 
       instructions[i++] = ki;
     }

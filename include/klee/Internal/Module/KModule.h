@@ -43,6 +43,7 @@ namespace klee {
   struct KBasicBlock {
     llvm::BasicBlock* basic_block;
     unsigned id;
+    KInstruction* kinst;
     KBasicBlock(llvm::BasicBlock *bb, unsigned _id) : basic_block(bb), id(_id) {}
   };
 
