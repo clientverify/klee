@@ -28,6 +28,7 @@ namespace cliver {
 llvm::cl::opt<RunModeType> RunMode("cliver-mode", 
   llvm::cl::ValueRequired,
   llvm::cl::desc("Mode in which cliver should run"),
+  llvm::cl::init(VerifyNaive),
   llvm::cl::values(
     clEnumValN(Training, "training", "Generate training traces"),
     clEnumValN(VerifyNaive, "naive", "Verify mode"),
@@ -48,13 +49,16 @@ llvm::cl::opt<ClientModelType,true> ClientModel("client-model",
   llvm::cl::location(ClientModelFlag),
   llvm::cl::ValueRequired,
   llvm::cl::desc("Model used for client"),
+  llvm::cl::init(Simple),
   llvm::cl::values(
     clEnumValN(Tetrinet, "tetrinet", "Tetrinet"),
     clEnumValN(XPilot,   "xpilot",   "XPilot"),
+    clEnumValN(Simple,   "simple",   "Simple"),
   clEnumValEnd));
 
 llvm::cl::opt<SearchModeType> SearchMode("search-mode",
   llvm::cl::desc("Manner in which states are selected for execution"),
+  llvm::cl::init(PriorityQueue),
   llvm::cl::values(
     clEnumValN(Random,        "random", "Random mode"),
     clEnumValN(PriorityQueue, "pq",     "Priority queue mode"),
@@ -125,6 +129,7 @@ SearcherStage* SearcherStageFactory::create(StateMerger* merger,
 NetworkManager* NetworkManagerFactory::create(CVExecutionState* state,
                                               ClientVerifier* cv) {
   switch (ClientModel) {
+    case Simple: 
     case Tetrinet: {
       NetworkManager *nm = new NetworkManager(state);
       foreach( SocketEventList *sel, cv->socket_events()) {
@@ -236,6 +241,9 @@ SocketEventSimilarity* SocketEventSimilarityFactory::create() {
       return new SocketEventSimilarityTetrinet();
     }
     case XPilot: {
+      return new SocketEventSimilarityDataOnly();
+    }
+    case Simple: {
       return new SocketEventSimilarityDataOnly();
     }
     default: {
