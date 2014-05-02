@@ -25,6 +25,10 @@ namespace klee {
   llvm::Module *linkWithLibrary(llvm::Module *module, 
                                 const std::string &libraryName);
 
+  /// Link a module with a specified bitcode archive (deterministic)
+  llvm::Module *deterministicLinkWithLibrary(llvm::Module *module, 
+                                  const std::string &libraryName);
+
   /// Return the Function* target of a Call or Invoke instruction, or
   /// null if it cannot be determined (should be only for indirect
   /// calls, although complicated constant expressions might be
