@@ -50,6 +50,8 @@ class CVExecutor : public klee::Executor {
   virtual klee::Executor::StatePair fork(klee::ExecutionState &current, 
 			klee::ref<klee::Expr> condition, bool isInternal);
 
+  void terminateStateOnExit(klee::ExecutionState &state);
+
 	ClientVerifier* client_verifier() { return cv_; }
 
 	void add_external_handler(std::string name, 
@@ -125,12 +127,9 @@ class CVExecutor : public klee::Executor {
   size_t memory_usage_mbs_;
   std::set<ExecutionStateProperty*> finished_states_;
 
-  // TO BE REMOVED
   std::set<klee::ExecutionState*> states;
 };
 
 } // end cliver namespace
-
-extern cliver::CVExecutor *g_executor;
 
 #endif // CLIVER_EXECUTOR_H

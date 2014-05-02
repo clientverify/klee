@@ -54,7 +54,6 @@
 #include "klee/util/GetElementPtrTypeIterator.h"
 
 #if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
-#include "llvm/IR/Function.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
@@ -109,130 +108,74 @@
 #endif
 
 namespace klee {
+  // Defined in lib/Core/Executor.cpp
+	extern RNG theRNG;
+
   // Command line options defined in lib/Core/Executor.cpp
   extern llvm::cl::opt<bool> DumpStatesOnHalt;
-  extern llvm::cl::opt<bool> NoPreferCex;
-  extern llvm::cl::opt<bool> UseAsmAddresses;
-  extern llvm::cl::opt<bool> RandomizeFork;
-  extern llvm::cl::opt<bool> AllowExternalSymCalls;
   extern llvm::cl::opt<bool> DebugPrintInstructions;
-  extern llvm::cl::opt<bool> DebugCheckForImpliedValues;
-  extern llvm::cl::opt<bool> SimplifySymIndices;
-  extern llvm::cl::opt<unsigned> MaxSymArraySize;
-  extern llvm::cl::opt<bool> DebugValidateSolver;
-  extern llvm::cl::opt<bool> SuppressExternalWarnings;
-  extern llvm::cl::opt<bool> AllExternalWarnings;
   extern llvm::cl::opt<bool> OnlyOutputStatesCoveringNew;
   extern llvm::cl::opt<bool> AlwaysOutputSeeds;
-  extern llvm::cl::opt<bool> UseFastCexSolver;
-  extern llvm::cl::opt<bool> UseIndependentSolver;
-  extern llvm::cl::opt<bool> EmitAllErrors;
-  extern llvm::cl::opt<bool> UseCexCache;
-  extern llvm::cl::opt<bool> UseQueryPCLog;
-  extern llvm::cl::opt<bool> UseSTPQueryPCLog;
-  extern llvm::cl::opt<bool> NoExternals;
-  extern llvm::cl::opt<bool> UseCache;
-  extern llvm::cl::opt<bool> OnlyReplaySeeds;
-  extern llvm::cl::opt<bool> OnlySeed;
-  extern llvm::cl::opt<bool> AllowSeedExtension;
-  extern llvm::cl::opt<bool> ZeroSeedExtension;
-  extern llvm::cl::opt<bool> AllowSeedTruncation;
-  extern llvm::cl::opt<bool> NamedSeedMatching;
-  extern llvm::cl::opt<double> MaxStaticForkPct;
-  extern llvm::cl::opt<double> MaxStaticSolvePct;
-  extern llvm::cl::opt<double> MaxStaticCPForkPct;
-  extern llvm::cl::opt<double> MaxStaticCPSolvePct;
-  extern llvm::cl::opt<double> MaxInstructionTime;
-  extern llvm::cl::opt<double> SeedTime;
-  extern llvm::cl::opt<double> MaxSTPTime;
   extern llvm::cl::opt<unsigned int> StopAfterNInstructions;
-  extern llvm::cl::opt<unsigned> MaxForks;
-  extern llvm::cl::opt<unsigned> MaxDepth;
   extern llvm::cl::opt<unsigned> MaxMemory;
-  extern llvm::cl::opt<bool> MaxMemoryInhibit;
-  extern llvm::cl::opt<bool> UseForkedCoreSolver;
-  extern llvm::cl::opt<bool> CoreSolverOptimizeDivides;
 
-  // Command line options defined in lib/Core/Searcher.cpp
-  extern llvm::cl::opt<bool> UseRandomSearch;
-  extern llvm::cl::opt<bool> UseInterleavedRS;
-  extern llvm::cl::opt<bool> UseInterleavedNURS;
-  extern llvm::cl::opt<bool> UseInterleavedMD2UNURS;
-  extern llvm::cl::opt<bool> UseInterleavedInstCountNURS;
-  extern llvm::cl::opt<bool> UseInterleavedCPInstCountNURS;
-  extern llvm::cl::opt<bool> UseInterleavedQueryCostNURS;
-  extern llvm::cl::opt<bool> UseInterleavedCovNewNURS;
-  extern llvm::cl::opt<bool> UseNonUniformRandomSearch;
-  extern llvm::cl::opt<bool> UseRandomPathSearch;
-	extern llvm::cl::opt<bool> UseMerge;
-  extern llvm::cl::opt<bool> UseBumpMerge;
-  extern llvm::cl::opt<bool> UseIterativeDeepeningTimeSearch;
-  extern llvm::cl::opt<bool> UseBatchingSearch;
-
-	extern RNG theRNG;
+  // Command line options defined in lib/Core/UserSearcher.cpp
+  extern llvm::cl::opt<unsigned> UseThreads;
 }
-
-cliver::CVExecutor *g_executor = 0;
 
 namespace cliver {
 
 llvm::cl::opt<bool> 
 EnableCliver("cliver", llvm::cl::desc("Enable cliver."), llvm::cl::init(false));
 
+llvm::cl::opt<bool> 
+DisableEnvironmentVariables("-disable-env-vars", 
+                            llvm::cl::desc("Disable environment variables"), 
+                            llvm::cl::init(true));
+
 /// Give symbolic variables a name equal to the declared name + id
 llvm::cl::opt<bool>
 UseFullVariableNames("use-full-variable-names", llvm::cl::init(false));
 
+llvm::cl::opt<bool>
+DebugExecutor("debug-executor",llvm::cl::init(false));
+
+////////////////////////////////////////////////////////////////////////////////
+
+#ifndef NDEBUG
+
+#undef CVDEBUG
+#define CVDEBUG(x) \
+	__CVDEBUG(DebugExecutor, x);
+
+#undef CVDEBUG_S
+#define CVDEBUG_S(__state_id, __x) \
+	__CVDEBUG_S(DebugExecutor, __state_id, __x)
+
+#else
+
+#undef CVDEBUG
+#define CVDEBUG(x)
+
+#undef CVDEBUG_S
+#define CVDEBUG_S(__state_id, __x)
+
+#endif
+
 ////////////////////////////////////////////////////////////////////////////////
 
 klee::Solver *createCanonicalSolver(klee::Solver *_solver);
-
-// Helper for debug output
-inline std::ostream &operator<<(std::ostream &os, 
-		const klee::KInstruction &ki) {
-	std::string str;
-	llvm::raw_string_ostream ros(str);
-	ros << ki.info->id << ":" << *ki.inst;
-	//str.erase(std::remove(str.begin(), str.end(), '\n'), str.end());
-	return os << ros.str();
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
 CVExecutor::CVExecutor(const InterpreterOptions &opts, klee::InterpreterHandler *ih)
 : klee::Executor(opts, ih), 
   cv_(static_cast<ClientVerifier*>(ih)),
-  memory_usage_mbs_(0)
-{
-
-  /*
-	// Check for incompatible or non-supported klee options.
-#define INVALID_CL_OPT(name, val) \
-	if ((int)name != (int)val) cv_error("Unsupported command line option: %s", #name);
-	using namespace klee;
-	INVALID_CL_OPT(ZeroSeedExtension,false);
-	INVALID_CL_OPT(AllowSeedExtension,false);
-	INVALID_CL_OPT(AlwaysOutputSeeds,true);
-	INVALID_CL_OPT(OnlyReplaySeeds,false);
-	INVALID_CL_OPT(OnlySeed,false);
-	INVALID_CL_OPT(NamedSeedMatching,false);
-	INVALID_CL_OPT(MaxDepth,false);
-	INVALID_CL_OPT(UseRandomSearch,false);
-	INVALID_CL_OPT(UseInterleavedRS,false);
-	INVALID_CL_OPT(UseInterleavedNURS,false);
-	INVALID_CL_OPT(UseInterleavedMD2UNURS,false);
-	INVALID_CL_OPT(UseInterleavedInstCountNURS,false);
-	INVALID_CL_OPT(UseInterleavedCPInstCountNURS,false);
-	INVALID_CL_OPT(UseInterleavedQueryCostNURS,false);
-	INVALID_CL_OPT(UseInterleavedCovNewNURS,false);
-	INVALID_CL_OPT(UseNonUniformRandomSearch,false);
-	INVALID_CL_OPT(UseRandomPathSearch,false);
-	INVALID_CL_OPT(UseMerge,false);
-	INVALID_CL_OPT(UseBumpMerge,false);
-	INVALID_CL_OPT(UseIterativeDeepeningTimeSearch,false);
-	INVALID_CL_OPT(UseBatchingSearch,false);
-#undef INVALID_CL_OPT
-*/
+  memory_usage_mbs_(0) {
+  if (klee::UseThreads > 1) {
+    cv_warning("Multi-threaded support is currently disabled");
+    klee::UseThreads = 1;
+  }
 }
 
 CVExecutor::~CVExecutor() {}
@@ -262,7 +205,15 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
   // null that uclibc seems to expect, possibly the ELF header?
 
   int envc;
+  for (envc=0; envp[envc]; ++envc) {
+    CVDEBUG("Environment:" << std::string(envp[envc]) );
+  }
+  CVDEBUG("Environment count = " << envc);
+
   for (envc=0; envp[envc]; ++envc) ;
+
+  if (DisableEnvironmentVariables)
+    envc = 0;
 
   unsigned NumPtrBytes = Context::get().getPointerWidth() / 8;
   KFunction *kf = kmodule->functionMap[f];
@@ -477,7 +428,6 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
   bool clear_caches = false;
 
   while (!searcher->empty() && !haltExecution) {
-
     cv_->set_execution_event_flag(false);
 
     if (clear_caches) {
@@ -577,6 +527,8 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
       terminateStateEarly(state, "execution halting");
     }
   }
+
+  cv_->print_all_stats();
 }
 
 void CVExecutor::handle_pre_execution_events(klee::ExecutionState &state) {
@@ -648,9 +600,13 @@ void CVExecutor::handle_post_execution_events(klee::ExecutionState &state) {
 void CVExecutor::stepInstruction(klee::ExecutionState &state) {
 
 	if (klee::DebugPrintInstructions) {
-    printFileLine(state, state.pc);
 		CVExecutionState *cvstate = static_cast<CVExecutionState*>(&state);
-		CVDEBUG_S(cvstate->id(), *state.pc);
+    const klee::InstructionInfo &ii = *(state.pc->info);
+    if (ii.file != "") {
+      CVMESSAGE("sID:" << cvstate->id() << " " << *state.pc << "[File: " << ii.file << ":" << ii.line << "]"); 
+    } else {
+      CVMESSAGE("sID:" << cvstate->id() << " " << *state.pc);
+    }
   }
 
   if (statsTracker)
@@ -684,7 +640,7 @@ void CVExecutor::executeMakeSymbolic(klee::ExecutionState &state,
 
   CVExecutionState *cvstate = static_cast<CVExecutionState*>(&state);
   cvstate->property()->symbolic_vars++;
-  //CVMESSAGE("Created symbolic: " << array->name << " in " << *cvstate);
+  CVDEBUG("Created symbolic: " << array->name << " in " << *cvstate);
 }
 
 void CVExecutor::updateStates(klee::ExecutionState *current) {
@@ -791,7 +747,9 @@ void CVExecutor::branch(klee::ExecutionState &state,
 
 	klee::stats::forks += N-1;
 
-  // XXX do proper balance or keep random?
+  // Cliver assumes each state branches from a single other state
+  assert(N <= 1);
+
   result.push_back(&state);
   for (unsigned i=1; i<N; ++i) {
 		klee::ExecutionState *es = result[klee::theRNG.getInt32() % i];
@@ -803,6 +761,7 @@ void CVExecutor::branch(klee::ExecutionState &state,
       processTree->split(es->ptreeNode, ns, es);
     ns->ptreeNode = res.first;
     es->ptreeNode = res.second;
+    // TODO do we still need this event? can we just use Executor::branch()?
     cv_->notify_all(ExecutionEvent(CV_BRANCH, ns, es));
   }
 
@@ -844,6 +803,23 @@ void CVExecutor::resolve_one(klee::ExecutionState *state,
     result.second = state->addressSpace.getWriteable(mo, os);
   else
     result.second = os;
+}
+
+void CVExecutor::terminateStateOnExit(klee::ExecutionState &state) {
+  if (!klee::OnlyOutputStatesCoveringNew || state.coveredNew || 
+      (klee::AlwaysOutputSeeds && seedMap.count(&state)))
+    interpreterHandler->processTestCase(state, 0, 0);
+  
+  // Check if finished:
+  CVExecutionState *cvstate = static_cast<CVExecutionState*>(&state);
+  if (cvstate->network_manager() &&
+      cvstate->network_manager()->socket() &&
+      !cvstate->network_manager()->socket()->is_open()) {
+    // TODO process finished state here instead of Searcher
+    cv_->notify_all(ExecutionEvent(CV_FINISH, cvstate));
+  } else {
+    terminateState(state);
+  }
 }
 
 void CVExecutor::terminate_state(CVExecutionState* state) {
