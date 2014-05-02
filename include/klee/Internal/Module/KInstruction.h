@@ -70,7 +70,12 @@ namespace klee {
   inline std::ostream &operator<<(std::ostream &os, const klee::KInstruction &ki) {
     std::string str;
     llvm::raw_string_ostream ros(str);
-    ros << ki.info->id << ":" << *ki.inst;
+    const InstructionInfo &ii = *ki.info;
+    ros << "[" << ki.info->id << *ki.inst << "]";
+    if (ii.file != "")
+      ros << " [" << ii.file << ":" << ii.line << "]";
+    else
+      ros << " [No File Info]";
     //str.erase(std::remove(str.begin(), str.end(), '\n'), str.end());
     return os << ros.str();
   }
