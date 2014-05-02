@@ -19,9 +19,6 @@
 
 #include "CVCommon.h"
 
-#include "klee/Internal/Module/InstructionInfoTable.h"
-
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/CommandLine.h"
 
 namespace klee {
@@ -60,18 +57,6 @@ TrainingMaxPending("training-max-pending",llvm::cl::init(1));
 #define CVDEBUG_S(__state_id, __x)
 
 #endif
-
-////////////////////////////////////////////////////////////////////////////////
-
-// Helper for debug output
-inline std::ostream &operator<<(std::ostream &os, 
-		const klee::KInstruction &ki) {
-	std::string str;
-	llvm::raw_string_ostream ros(str);
-	ros << ki.info->id << ":" << *ki.inst;
-	//str.erase(std::remove(str.begin(), str.end(), '\n'), str.end());
-	return os << ros.str();
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -225,7 +210,7 @@ SearcherStage* VerifySearcher::create_and_add_stage(CVExecutionState* state) {
 klee::ExecutionState &VerifySearcher::selectState() {
   CVExecutionState *state = NULL;
   {
-    klee::TimerStatIncrementer timer(stats::searcher_time);
+    //klee::TimerStatIncrementer timer(stats::searcher_time);
 
     if (!pending_states_.empty()) {
       process_unique_pending_states();
@@ -280,7 +265,6 @@ klee::ExecutionState &VerifySearcher::selectState() {
 
   // Check if we should increase k
   if (state->property()->edit_distance == INT_MAX 
-      && current_stage_->size() > 1
       && cv_->execution_trace_manager()->ready_process_all_states(state->property())
       && !current_stage_->rebuilding()) {
     CVMESSAGE("Next state is INT_MAX, Rebuilding, # states = " << current_stage_->size());
@@ -431,9 +415,13 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
     klee::TimerStatIncrementer timer(stats::searcher_time);
     switch (pending_events_[state].event_type) {
 
+      // TODO: this logic should completely moved to CVExecutor
+      // (see terminateStateOnExit)
       case CV_FINISH: {
         if (!state->network_manager()->socket()->is_open()) {
-          CVMESSAGE("Finish Event: " << *state);
+          ExecutionStateProperty* property = state->property();
+          property->round++;
+          CVMESSAGE("Finish Event - Socket: " << *(state->network_manager()->socket())<< " state: " << *state);
           cv_->executor()->add_finished_state(state);
           pending_states_.push_back(state);
           result = true;
@@ -522,7 +510,7 @@ TrainingSearcher::TrainingSearcher(ClientVerifier *cv, StateMerger* merger)
   : VerifySearcher(cv, merger) {}
 
 klee::ExecutionState &TrainingSearcher::selectState() {
-  klee::TimerStatIncrementer timer(stats::searcher_time);
+  //klee::TimerStatIncrementer timer(stats::searcher_time);
  
   if (pending_states_.size() > 0 && 
       (current_stage_->empty() || pending_states_.size() >= TrainingMaxPending)) {
