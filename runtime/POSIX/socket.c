@@ -109,10 +109,9 @@ int setsockopt(int s, int level, int optname,
 
 int gettimeofday(struct timeval *tv, struct timezone *tz) {
   if (tv == NULL) 
-		return -1; 
-  struct timeval __tv;
-  klee_make_symbolic(&__tv, sizeof(struct timeval), "gettimeofday");
-  tv = &__tv;
+    return -1; 
+  klee_warning_once("using symbolic time model in gettimeofday");
+  klee_make_symbolic(tv, sizeof(struct timeval), "gettimeofday");
   return 0;
 }
 
