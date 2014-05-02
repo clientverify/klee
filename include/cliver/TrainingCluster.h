@@ -193,6 +193,7 @@ class TrainingObjectClusterManager {
     // Filter the TrainingObjects
     foreach (TrainingObject* tobj, tobjs) {
       TrainingFilter tf(tobj);
+      CVMESSAGE("TF: " << tf);
       tf_map[tf].push_back(tobj);
     }
 

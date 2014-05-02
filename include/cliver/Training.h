@@ -203,6 +203,7 @@ class TrainingManager {
     
     for (int i=0; i<filename_list.size(); ++i) {
       std::string filename = filename_list[i];
+      CVMESSAGE("Reading: " << filename);
 
       // Construct input file stream from filename
       std::ifstream is(filename.c_str(), 
