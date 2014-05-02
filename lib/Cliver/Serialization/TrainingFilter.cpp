@@ -20,9 +20,38 @@
 
 namespace cliver {
 
+llvm::cl::opt<bool>
+DebugTrainingFilter("debug-training-filter",llvm::cl::init(false));
+
+////////////////////////////////////////////////////////////////////////////////
+
+#ifndef NDEBUG
+
+#undef CVDEBUG
+#define CVDEBUG(x) \
+	__CVDEBUG(DebugTrainingFilter, x);
+
+#undef CVDEBUG_S
+#define CVDEBUG_S(__state_id, __x) \
+	__CVDEBUG_S(DebugTrainingFilter, __state_id, __x)
+
+#else
+
+#undef CVDEBUG
+#define CVDEBUG(x)
+
+#undef CVDEBUG_S
+#define CVDEBUG_S(__state_id, __x)
+
+#endif
+
+////////////////////////////////////////////////////////////////////////////////
+
+
 TrainingFilter::TrainingFilter() : type(0), initial_basic_block_id(0) {}
 
 TrainingFilter::TrainingFilter(CVExecutionState* state) {
+  CVDEBUG("Creating TrainingFilter from state " << *state);
   type = extract_socket_event_type(state);
   initial_basic_block_id = extract_initial_basic_block_id(state);
 }
