@@ -2673,7 +2673,7 @@ void Executor::execute(ExecutionState *initialState, MemoryManager *memory) {
     }
 
     // Wait for new states to be ready to execute
-    while (statePtr == NULL && searcher->empty() && !empty() && !haltExecution) { 
+    while (statePtr == NULL && searcher->empty() && !empty() && !haltExecution && !pauseExecution) { 
       searcherCond.wait(guard);
     }
 
@@ -2869,8 +2869,8 @@ void Executor::run(ExecutionState &initialState) {
 
   threadBarrier = new Barrier(UseThreads);
 
+  totalThreadCount = UseThreads;
   if (!empty()) {
-    totalThreadCount = UseThreads;
     if (UseThreads == 1) {
       execute(&initialState, NULL);
     } else {
@@ -2884,8 +2884,8 @@ void Executor::run(ExecutionState &initialState) {
       // Wait for all threads to finish
       threadGroup.join_all();
     }
-    totalThreadCount = 1;
   }
+  totalThreadCount = 1;
   
  dump:
   if (DumpStatesOnHalt && !empty()) {

@@ -385,7 +385,7 @@ protected:
   // call exit handler and terminate state
   void terminateStateEarly(ExecutionState &state, const llvm::Twine &message);
   // call exit handler and terminate state
-  void terminateStateOnExit(ExecutionState &state);
+  virtual void terminateStateOnExit(ExecutionState &state);
   // call error handler and terminate state
   void terminateStateOnError(ExecutionState &state, 
                              const llvm::Twine &message,
