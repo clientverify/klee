@@ -600,13 +600,7 @@ void CVExecutor::handle_post_execution_events(klee::ExecutionState &state) {
 void CVExecutor::stepInstruction(klee::ExecutionState &state) {
 
 	if (klee::DebugPrintInstructions) {
-		CVExecutionState *cvstate = static_cast<CVExecutionState*>(&state);
-    const klee::InstructionInfo &ii = *(state.pc->info);
-    if (ii.file != "") {
-      CVMESSAGE("sID:" << cvstate->id() << " " << *state.pc << "[File: " << ii.file << ":" << ii.line << "]"); 
-    } else {
-      CVMESSAGE("sID:" << cvstate->id() << " " << *state.pc);
-    }
+    CVMESSAGE(*state.pc);
   }
 
   if (statsTracker)

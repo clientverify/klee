@@ -109,11 +109,6 @@ void CVExecutionState::print(std::ostream &os) const {
   else
     os << "[" << this << "][id:" << id_ << "] ";
 
-  // Print current instruction source file and line number info if available
-  const klee::InstructionInfo &ii = *(pc->info);
-  if (ii.file != "")
-    os << " [" << ii.file << ":" << ii.line << "]";
-
   // Print current basic block id and instruction
   os << "[BB:" << this->prevPC->kbb->id << "]" << " " << *pc;
 }
