@@ -130,7 +130,7 @@ class VerifyExecutionTraceManager : public ExecutionTraceManager {
   void clear_caches();
   void clear_execution_stage(ExecutionStateProperty *property);
   void recompute_property(ExecutionStateProperty *property);
-  void update_edit_distance(ExecutionStateProperty *property);
+  void update_edit_distance(ExecutionStateProperty *property, CVExecutionState *state);
 
   void create_ed_tree(CVExecutionState* state);
 

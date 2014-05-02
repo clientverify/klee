@@ -124,18 +124,6 @@ llvm::cl::list<std::string> SelfTrainingPathDir("self-training-path-dir",
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Helper for debug output
-inline std::ostream &operator<<(std::ostream &os, 
-		const klee::KInstruction &ki) {
-	std::string str;
-	llvm::raw_string_ostream ros(str);
-	ros << ki.info->id << ":" << *ki.inst;
-	//str.erase(std::remove(str.begin(), str.end(), '\n'), str.end());
-	return os << ros.str();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 ExecutionTraceManager::ExecutionTraceManager(ClientVerifier* cv) : cv_(cv) {}
 
 void ExecutionTraceManager::initialize() {
@@ -167,6 +155,7 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
   switch (ev.event_type) {
 
     case CV_SELECT_EVENT: {
+      CVDEBUG("SELECT EVENT: " << *state);
       property->is_recv_processing = false;
     }
 
@@ -240,7 +229,6 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
         ExecutionStateProperty* finished_property = parent_property;
         assert(stages_.count(finished_property));
 
-        cv_->print_all_stats();
         cv_->executor()->setHaltExecution(true);
       }
     }
@@ -271,6 +259,9 @@ void TrainingExecutionTraceManager::write_training_object(
 
   // Create training object and write to file
   TrainingObject training_obj(&etrace, stage->socket_event);
+
+  TrainingFilter tf(&training_obj);
+  CVMESSAGE("Writing training object: (TF)" << tf << ", (property)" << *property);
   training_obj.write(property, cv_);
 }
 
@@ -301,8 +292,8 @@ void TrainingExecutionTraceManager::notify(ExecutionEvent ev) {
   switch (ev.event_type) {
 
     case CV_SELECT_EVENT: {
+      CVDEBUG("SELECT EVENT: " << *state);
       property->is_recv_processing = false;
-      CVDEBUG("Select Event: " << *state);
     }
 
     case CV_BASICBLOCK_ENTRY: {
@@ -351,7 +342,6 @@ void TrainingExecutionTraceManager::notify(ExecutionEvent ev) {
 
       if (!stages_.empty() && 
           stages_.count(parent_property)) {
-          //stages_[parent_property]->etrace_tree->tracks(parent_property)) {
 
         CVDEBUG("New Stage: " << property << ": " << *property);
         CVDEBUG("New Stage (parent): " << parent_property << ": " << *parent_property);
@@ -363,8 +353,6 @@ void TrainingExecutionTraceManager::notify(ExecutionEvent ev) {
         assert(socket);
         stages_[parent_property]->socket_event = 
             const_cast<SocketEvent*>(&socket->previous_event());
-
-        //clear_execution_stage(property);
       }
 
       stages_[property] = new_stage;
@@ -393,8 +381,7 @@ void TrainingExecutionTraceManager::notify(ExecutionEvent ev) {
           tmp_property = stage->root_property;
         }
 
-        // XXX Only output one set of paths for now
-        cv_->print_all_stats();
+        // Only output one set of paths for now
         cv_->executor()->setHaltExecution(true);
       }
     }
@@ -462,6 +449,20 @@ void VerifyExecutionTraceManager::initialize() {
     foreach (TrainingObject *tobj, self_training_data_) {
       self_training_data_map_[tobj->round] = tobj;
     }
+    if (DebugExecutionTree) {
+      foreach (TrainingObject *tobj, self_training_data_) {
+        std::stringstream ss; 
+        foreach (SocketEvent* se, tobj->socket_event_set) {
+          ss << " " << *se << " ";
+        }
+        foreach (BasicBlockID bbid, tobj->trace) {
+          ss << bbid << ",";
+        }
+        CVDEBUG("Loaded SelfTraining (" << tobj->trace.size() << ") " 
+                << tobj->name << " " << tobj->round << " " << ss.str());
+      }
+    }
+
   }
   CVMESSAGE("Finished reading training data in " 
             << timer.check() / 1000000. << "s");
@@ -482,12 +483,14 @@ void VerifyExecutionTraceManager::initialize_training_data() {
 }
 
 void VerifyExecutionTraceManager::update_edit_distance(
-    ExecutionStateProperty* property) {
+    ExecutionStateProperty* property,
+    CVExecutionState* state) {
 
   ExecutionStage* stage = stages_[property];
   assert(stage);
 
   if (property->edit_distance == INT_MAX) {
+    CVDEBUG("property->edit_distance == INT_MAX");
     return;
   }
 
@@ -495,6 +498,7 @@ void VerifyExecutionTraceManager::update_edit_distance(
     if (stage->root_ed_tree != NULL) {
       stage->ed_tree_map[property] = stage->root_ed_tree->clone_edit_distance_tree();
     } else {
+      CVDEBUG("stage->root_ed_tree != NULL");
       return;
     }
   }
@@ -524,7 +528,42 @@ void VerifyExecutionTraceManager::update_edit_distance(
   
   property->edit_distance = stage->ed_tree_map[property]->min_distance();
   CVDEBUG("Updated edit distance: " << property << ": " << *property << " " << etrace.size());
-            
+
+  TrainingObject* matching_tobj = NULL;
+  int self_id;
+  if (UseSelfTraining) {
+    matching_tobj = self_training_data_map_[property->round];
+    self_id = matching_tobj->trace[etrace.size()-1];
+  }
+
+  {
+    klee::KBasicBlock * self_kbb = cv_->LookupBasicBlockID(state->pc->kbb->id);
+    const klee::InstructionInfo &ii = *(self_kbb->kinst->info);
+    if (ii.file != "") {
+      CVDEBUG("EditDistance " << ii.file << ":" << ii.line << ":" 
+                << "[BB: " << self_id << "] " << self_kbb->id << " " << *self_kbb->kinst );
+    } else {
+      CVDEBUG("EditDistance [no debug info]:" 
+                << "[BB: " << self_id << "] " << self_kbb->id << " " << *self_kbb->kinst );
+    }
+  }
+
+  if (UseSelfTraining) {
+    if (self_training_data_map_.count(property->round) == 0) {
+      CVDEBUG("No path in self training data for round " << property->round);
+      return;
+    } else {
+      klee::KBasicBlock * self_kbb = cv_->LookupBasicBlockID(self_id);
+      const klee::InstructionInfo &ii = *(self_kbb->kinst->info);
+      if (ii.file != "") {
+        CVDEBUG("SelfEditDistance " << ii.file << ":" << ii.line << ":" 
+                << "[BB: " << self_id << "] " << self_kbb->id << " " << *self_kbb->kinst );
+      } else {
+        CVDEBUG("SelfEditDistance [no debug info]:" 
+                << "[BB: " << self_id << "] " << self_kbb->id << " " << *self_kbb->kinst );
+      }
+    }
+  }
 }
 
 void VerifyExecutionTraceManager::compute_self_training_stats(CVExecutionState* state,
@@ -541,6 +580,10 @@ void VerifyExecutionTraceManager::compute_self_training_stats(CVExecutionState* 
     TrainingObject* self_tobj = self_training_data_map_[property->round];
 
     TrainingObjectDistanceMetric metric;
+    CVMESSAGE("Checking: self.length = " << self_tobj->trace.size() 
+              << " selected[0].size = " << selected[0]->trace.size());
+    CVMESSAGE("Checking: self.length = " << self_tobj->trace.size() 
+              << " selected[0].size = " << selected[selected.size()-1]->trace.size());
     stats::edit_distance_self_first_medoid = metric.distance(self_tobj, selected[0]);
     stats::edit_distance_self_last_medoid = metric.distance(self_tobj, selected[selected.size()-1]);
 
@@ -559,10 +602,15 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
   ExecutionStateProperty *property = state->property();
   ExecutionStage* stage = stages_[property];
 
+  stage->root_ed_tree = NULL;
+
+  if (!state->network_manager()->socket()->end_of_log()) {
+    CVDEBUG("End of log, not building edit distance tree");
+    return;
+  }
+
   const SocketEvent* socket_event 
     = &(state->network_manager()->socket()->event());
-
-  stage->root_ed_tree = NULL;
 
   TrainingFilter tf(state);
 
@@ -581,6 +629,14 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
       // Create a new root edit distance
       stage->root_ed_tree = EditDistanceTreeFactory::create();
 
+      if (DebugExecutionTree) {
+        std::stringstream ss; 
+        foreach (BasicBlockID bbid, matching_tobj->trace) {
+          ss << bbid << ",";
+        }
+        CVDEBUG("SelfTraining (" << matching_tobj->trace.size()
+                << ") " << ss.str());
+      }
       // Add to edit distance tree
       stage->root_ed_tree->add_data(matching_tobj->trace);
 
@@ -717,7 +773,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
   switch (ev.event_type) {
 
     case CV_SELECT_EVENT: {
-      CVDEBUG("SELECT EVENT");
+      CVDEBUG("SELECT EVENT: " << *state);
       property->is_recv_processing = false;
     }
 
@@ -725,7 +781,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
 
       ExecutionStage* stage = stages_[property];
 
-      if (is_socket_active && !property->is_recv_processing) {
+      if (!property->is_recv_processing) {
 
         // Check if this is the first basic block of the stage
         if (!stage->etrace_tree->tracks(property)) {
@@ -755,12 +811,14 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
           stage->etrace_tree->extend_element(state->prevPC->kbb->id, property);
         }
 
-        if (is_socket_active && property->recompute) {
-          if (EditDistanceAtCloneOnly)
+        if (property->recompute) {
+          if (EditDistanceAtCloneOnly) {
+            CVDEBUG("Setting recompute to false");
             property->recompute = false;
+          }
 
           klee::TimerStatIncrementer timer(stats::edit_distance_time);
-          update_edit_distance(property);
+          update_edit_distance(property, state);
         }
       }
     }
@@ -791,7 +849,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
 
       if (!property->is_recv_processing && EditDistanceAtCloneOnly) {
         klee::TimerStatIncrementer timer(stats::edit_distance_time);
-        update_edit_distance(parent_property);
+        update_edit_distance(parent_property, parent);
       }
 
       stages_[property] = stage;
@@ -894,7 +952,6 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
 
       if (cv_->executor()->finished_states().count(parent_property)) {
         CVMESSAGE("Verification complete");
-        cv_->print_all_stats();
         cv_->executor()->setHaltExecution(true);
       }
     }
