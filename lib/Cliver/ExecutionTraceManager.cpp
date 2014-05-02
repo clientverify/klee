@@ -505,10 +505,6 @@ void VerifyExecutionTraceManager::update_edit_distance(
 
   ExecutionTrace etrace;
   stage->etrace_tree->tracker_get(property, etrace);
-
-  CVDEBUG("Updated edit distance: " << property << ": " << *property << " etrace.size = " 
-          << etrace.size() << ", row = " << stage->ed_tree_map[property]->row());
-
   stage->ed_tree_map[property]->update(etrace);
 
   //// XXX FIX ME -- make this operation O(1)
@@ -527,40 +523,22 @@ void VerifyExecutionTraceManager::update_edit_distance(
   //}
   
   property->edit_distance = stage->ed_tree_map[property]->min_distance();
-  CVDEBUG("Updated edit distance: " << property << ": " << *property << " " << etrace.size());
+  CVDEBUG("Updated edit distance: " << property << ": " << *property << " etrace.size = " 
+          << etrace.size() << ", row = " << stage->ed_tree_map[property]->row());
 
-  TrainingObject* matching_tobj = NULL;
-  int self_id;
-  if (UseSelfTraining) {
-    matching_tobj = self_training_data_map_[property->round];
-    self_id = matching_tobj->trace[etrace.size()-1];
-  }
+  // We should never differ by more than one basic block
+  if (UseSelfTraining && property->edit_distance > 1) {
+    TrainingObject* matching_tobj = self_training_data_map_[property->round];
+    if (matching_tobj) {
+      int curr_bb_id = state->pc->kbb->id;
+      int self_bb_id = matching_tobj->trace[etrace.size()-1];
+      if (curr_bb_id != self_bb_id) {
+        klee::KBasicBlock *curr_kbb = cv_->LookupBasicBlockID(curr_bb_id);
+        klee::KBasicBlock *self_kbb = cv_->LookupBasicBlockID(self_bb_id);
 
-  {
-    klee::KBasicBlock * self_kbb = cv_->LookupBasicBlockID(state->pc->kbb->id);
-    const klee::InstructionInfo &ii = *(self_kbb->kinst->info);
-    if (ii.file != "") {
-      CVDEBUG("EditDistance " << ii.file << ":" << ii.line << ":" 
-                << "[BB: " << self_id << "] " << self_kbb->id << " " << *self_kbb->kinst );
-    } else {
-      CVDEBUG("EditDistance [no debug info]:" 
-                << "[BB: " << self_id << "] " << self_kbb->id << " " << *self_kbb->kinst );
-    }
-  }
-
-  if (UseSelfTraining) {
-    if (self_training_data_map_.count(property->round) == 0) {
-      CVDEBUG("No path in self training data for round " << property->round);
-      return;
-    } else {
-      klee::KBasicBlock * self_kbb = cv_->LookupBasicBlockID(self_id);
-      const klee::InstructionInfo &ii = *(self_kbb->kinst->info);
-      if (ii.file != "") {
-        CVDEBUG("SelfEditDistance " << ii.file << ":" << ii.line << ":" 
-                << "[BB: " << self_id << "] " << self_kbb->id << " " << *self_kbb->kinst );
-      } else {
-        CVDEBUG("SelfEditDistance [no debug info]:" 
-                << "[BB: " << self_id << "] " << self_kbb->id << " " << *self_kbb->kinst );
+        CVMESSAGE("Self Training Data Mismatch!!");
+        CVMESSAGE("Curr BasicBlock: [BB: " << curr_bb_id << "] " << *curr_kbb->kinst );
+        CVMESSAGE("Self BasicBlock: [BB: " << self_bb_id << "] " << *self_kbb->kinst );
       }
     }
   }
@@ -580,12 +558,10 @@ void VerifyExecutionTraceManager::compute_self_training_stats(CVExecutionState* 
     TrainingObject* self_tobj = self_training_data_map_[property->round];
 
     TrainingObjectDistanceMetric metric;
-    CVMESSAGE("Checking: self.length = " << self_tobj->trace.size() 
-              << " selected[0].size = " << selected[0]->trace.size());
-    CVMESSAGE("Checking: self.length = " << self_tobj->trace.size() 
-              << " selected[0].size = " << selected[selected.size()-1]->trace.size());
-    stats::edit_distance_self_first_medoid = metric.distance(self_tobj, selected[0]);
-    stats::edit_distance_self_last_medoid = metric.distance(self_tobj, selected[selected.size()-1]);
+    stats::edit_distance_self_first_medoid 
+        = metric.distance(self_tobj, selected[0]);
+    stats::edit_distance_self_last_medoid 
+        = metric.distance(self_tobj, selected[selected.size()-1]);
 
     const SocketEvent* se      = &(state->network_manager()->socket()->event());
     const SocketEvent* self_se = *(self_tobj->socket_event_set.begin());
