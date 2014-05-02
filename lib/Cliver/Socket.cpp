@@ -41,6 +41,9 @@ SocketEvent::SocketEvent(const unsigned char* buf, unsigned len) {
 
 // Initialization
 void SocketEvent::init(const unsigned char* buf, unsigned len) {
+  
+  // Delta (Not used)
+  delta = 0;
 
   // Set length
 	length = len;
