@@ -36,8 +36,8 @@ OutputDirParent("output-dir-parent",
 
 llvm::cl::opt<bool>
 DebugStderr("debug-stderr", 
-  llvm::cl::desc("Print debug statements onto stderr (also to debug.txt)"),
-  llvm::cl::init(false));
+  llvm::cl::desc("Print debug statements onto stderr (also to debug.txt) (Default=on)"),
+  llvm::cl::init(true));
 
 llvm::cl::opt<bool>
 UseTeeBuf("use-tee-buf",
