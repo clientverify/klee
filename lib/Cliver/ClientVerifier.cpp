@@ -313,14 +313,20 @@ void ClientVerifier::assign_basic_block_ids() {
       }
     }
   }
+  CVMESSAGE("BasicBlock count: " << basicblock_names.size());
 
   int count = 0;
   std::sort(basicblock_names.begin(), basicblock_names.end());
   foreach (BBNamePair &bb, basicblock_names) {
-    //CVMESSAGE(bb.first);
     klee::KBasicBlock *kbb = kmodule->llvm_kbasicblocks[bb.second];
     kbb->id = ++count;
+    basicblock_map_[kbb->id] = kbb;
   }
+}
+
+klee::KBasicBlock* ClientVerifier::LookupBasicBlockID(int id) {
+  assert(basicblock_map_.count(id));
+  return basicblock_map_[id];
 }
 
 int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {

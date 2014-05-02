@@ -25,6 +25,10 @@
 
 #include "llvm/Support/CommandLine.h"
 
+namespace klee {
+  struct KBasicBlock;
+}
+
 namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -96,7 +100,8 @@ enum RunModeType {
 
 enum ClientModelType {
   Tetrinet,
-  XPilot
+  XPilot,
+  Simple
 };
 // stored in Configuration.cpp
 extern ClientModelType ClientModelFlag; 
@@ -178,10 +183,13 @@ class ClientVerifier : public klee::InterpreterHandler {
   void set_execution_event_flag(bool v = true) { execution_event_flag_ = v; }
   bool execution_event_flag() { return execution_event_flag_; }
 
+  klee::KBasicBlock* LookupBasicBlockID(int id);
+
  private:
   CVStream *cvstream_;
 	int paths_explored_;
 	std::vector<klee::StatisticRecord*> statistics_;
+  std::map<int,klee::KBasicBlock*> basicblock_map_;
 
   CVExecutor *executor_;
   CVSearcher *searcher_;
