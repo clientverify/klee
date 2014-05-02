@@ -217,7 +217,7 @@ class TrainingManager {
         tobj->read(is);
         tobj->parse_round();
 
-        if (tobj->round >= 1) {
+        if (tobj->round >= 0) {
 
           // Check for duplicates with other TrainingObjects
           typename TrainingObjectSetType::iterator it = data.find(tobj);
