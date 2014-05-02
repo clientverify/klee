@@ -29,8 +29,8 @@
 #include "KTestSocket.inc"
 
 #define BUFFER_SIZE 256
-#define MESSAGE_COUNT 4
-#define BASKET_SIZE 3
+#define MESSAGE_COUNT 2
+#define BASKET_SIZE 2
 
 // TODO: better symbolic model of random
 
