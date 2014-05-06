@@ -264,13 +264,15 @@ ExecutionState* ParallelWeightedRandomSearcher::trySelectState() {
   // that we are able to acquire a lock. Selecting a state only requires a
   // shared reader lock.
   while (((stateCount - activeStateCount) > 0) && es == NULL) {
-    {
-      SharedLock lock(statesMutex);
-      es = states->choose(theRNG->getDoubleL()); 
-    }
-    if (!es->lock.try_lock()) {
+    SharedLock lock(statesMutex);
+    es = states->choose(theRNG->getDoubleL()); 
+
+    // Race condition: Need to try to lock now, before we release shared lock.
+    // T1: choose state  
+    // T2: remove current state and unlock current state
+    // T1: try lock succeeds,  but state is removed
+    if (!es->lock.try_lock())
       es = NULL;
-    }
   }
 
   if (es != NULL)
