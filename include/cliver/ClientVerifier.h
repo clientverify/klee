@@ -179,10 +179,6 @@ class ClientVerifier : public klee::InterpreterHandler {
 
   std::string& client_name() { return client_name_; }
 
-  // Flags
-  void set_execution_event_flag(bool v = true) { execution_event_flag_ = v; }
-  bool execution_event_flag() { return execution_event_flag_; }
-
   klee::KBasicBlock* LookupBasicBlockID(int id);
 
  private:
@@ -205,9 +201,6 @@ class ClientVerifier : public klee::InterpreterHandler {
 	uint64_t array_id_;
 	int round_number_;
   std::string client_name_;
-  // This flag is set if an execution event occurs and is cleared each time we
-  // start execution of a new instruction
-  bool execution_event_flag_; 
 };
 
 

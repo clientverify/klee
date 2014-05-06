@@ -427,7 +427,8 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
           result = true;
         } else {
           CVDEBUG("Finish Event (invalid): " << *state);
-          cv_->executor()->remove_state_internal(state);
+          cv_->executor()->terminate_state(state);
+          result = true;
         }
         break;
       }

@@ -59,6 +59,9 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
   bool basic_block_tracking() { return basic_block_tracking_; }
   void set_basic_block_tracking(bool b) { basic_block_tracking_ = b; }
 
+  bool event_flag() { return event_flag_; }
+  void set_event_flag(bool b) { event_flag_ = b; }
+
   static int next_id() { return next_id_; }
 
   void erase_self();
@@ -70,6 +73,7 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
   int increment_id() { return next_id_++; }
 
   int id_;
+  bool event_flag_;
   static int next_id_;
   CVContext* context_;
 	NetworkManager* network_manager_;

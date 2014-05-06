@@ -292,122 +292,6 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
     statsTracker->done();
 }
 
-#if 0
-void CVExecutor::runFunctionAsMain(llvm::Function *f,
-				                   int argc, char **argv, char **envp) {
-  std::vector< ref<Expr> > arguments;
-
-  cv_->initialize();
-
-	// force deterministic initialization of memory objects
-  srand(1);
-  srandom(1);
-  
-  MemoryObject *argvMO = 0;
-
-	// Only difference from klee::Executor::runFunctionAsMain()
-  CVExecutionState *state = new CVExecutionState(kmodule->functionMap[f]);
-	state->initialize(cv_);
-  
-  // In order to make uclibc happy and be closer to what the system is
-  // doing we lay out the environments at the end of the argv array
-  // (both are terminated by a null). There is also a final terminating
-  // null that uclibc seems to expect, possibly the ELF header?
-
-  int envc;
-  // Increment envc until envp[envc] == 0
-  for (envc=0; envp[envc]; ++envc) ;
-
-  unsigned NumPtrBytes = Context::get().getPointerWidth() / 8;
-  KFunction *kf = kmodule->functionMap[f];
-  assert(kf);
-  llvm::Function::arg_iterator ai = f->arg_begin(), ae = f->arg_end();
-  if (ai!=ae) {
-    // XXX Should Expr::Int32 depend on arch?
-    arguments.push_back(ConstantExpr::alloc(argc, Expr::Int32));
-
-    if (++ai!=ae) {
-      argvMO = memory->allocate((argc+1+envc+1+1) * NumPtrBytes, 
-          false, true, f->begin()->begin());
-      
-      arguments.push_back(argvMO->getBaseExpr());
-
-      if (++ai!=ae) {
-        uint64_t envp_start = argvMO->address + (argc+1)*NumPtrBytes;
-        arguments.push_back(Expr::createPointer(envp_start));
-
-        if (++ai!=ae)
-          klee_error("invalid main function (expect 0-3 arguments)");
-      }
-    }
-  }
-
-  if (pathWriter) 
-    state->pathOS = pathWriter->open();
-  if (symPathWriter) 
-    state->symPathOS = symPathWriter->open();
-
-
-  if (statsTracker)
-    statsTracker->framePushed(*state, 0);
-
-  assert(arguments.size() == f->arg_size() && "wrong number of arguments");
-  for (unsigned i = 0, e = f->arg_size(); i != e; ++i)
-    bindArgument(kf, i, *state, arguments[i]);
-
-  if (argvMO) {
-    ObjectState *argvOS = bindObjectInState(*state, argvMO, false);
-
-    for (int i=0; i<argc+1+envc+1+1; i++) {
-      MemoryObject *arg;
-      
-      if (i==argc || i>=argc+1+envc) {
-        arg = 0;
-      } else {
-        char *s = i<argc ? argv[i] : envp[i-(argc+1)];
-        int j, len = strlen(s);
-        
-        arg = memory->allocate(len+1, false, true, state->pc->inst);
-
-        ObjectState *os = bindObjectInState(*state, arg, false);
-        for (j=0; j<len+1; j++)
-          os->write8(j, s[j]);
-      }
-
-      if (arg) {
-        argvOS->write(i * NumPtrBytes, arg->getBaseExpr());
-      } else {
-        argvOS->write(i * NumPtrBytes, Expr::createPointer(0));
-      }
-    }
-  }
-  
-  initializeGlobals(*state);
-
-  processTree = new klee::PTree(state);
-  state->ptreeNode = processTree->root;
-  run(*state);
-  delete processTree;
-  processTree = 0;
-
-  //// hack to clear memory objects
-  //delete memory;
-  //memory = new klee::MemoryManager();
-  
-  globalObjects.clear();
-  globalAddresses.clear();
-
-  if (statsTracker)
-    statsTracker->done();
-
-  // theMMap doesn't seem to be used anywhere
-  //if (theMMap) {
-  //  munmap(theMMap, theMMapSize);
-  //  theMMap = 0;
-  //}
-}
-#endif
-
 void CVExecutor::run(klee::ExecutionState &initialState) {
   bindModuleConstants();
 
@@ -415,7 +299,10 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
   // optimization and such.
   initTimers();
 
-  states.insert(&initialState);
+  {
+    klee::LockGuard guard(statesMutex);
+    states.insert(&initialState);
+  }
 
 	searcher = cv_->searcher();
 
@@ -428,7 +315,6 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
   bool clear_caches = false;
 
   while (!searcher->empty() && !haltExecution) {
-    cv_->set_execution_event_flag(false);
 
     if (clear_caches) {
       clear_caches = false;
@@ -468,6 +354,8 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
 		klee::ExecutionState &state 
       = (prev_state ? *prev_state : searcher->selectState());
 
+    static_cast<CVExecutionState*>(&state)->set_event_flag(false);
+
     prev_state = &state;
 
     if (haltExecution) goto dump;
@@ -503,7 +391,7 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
     }
 
     // Update the searcher only if needed
-    if (cv_->execution_event_flag() 
+    if (static_cast<CVExecutionState*>(&state)->event_flag()
         || !getContext().removedStates.empty() 
         || !getContext().addedStates.empty()
         || clear_caches) {
@@ -642,16 +530,22 @@ void CVExecutor::updateStates(klee::ExecutionState *current) {
     searcher->update(current, getContext().addedStates, getContext().removedStates);
   }
   
-  states.insert(getContext().addedStates.begin(), getContext().addedStates.end());
+  {
+    klee::LockGuard guard(statesMutex);
+    states.insert(getContext().addedStates.begin(), getContext().addedStates.end());
+  }
   getContext().addedStates.clear();
   
   for (std::set<klee::ExecutionState*>::iterator
          it = getContext().removedStates.begin(), ie = getContext().removedStates.end();
        it != ie; ++it) {
 		klee::ExecutionState *es = *it;
-    std::set<klee::ExecutionState*>::iterator it2 = states.find(es);
-    assert(it2!=states.end());
-    states.erase(it2);
+    {
+      klee::LockGuard guard(statesMutex);
+      std::set<klee::ExecutionState*>::iterator it2 = states.find(es);
+      assert(it2!=states.end());
+      states.erase(it2);
+    }
     delete es;
   }
   getContext().removedStates.clear();
@@ -822,12 +716,18 @@ void CVExecutor::terminate_state(CVExecutionState* state) {
 
 void CVExecutor::remove_state_internal(CVExecutionState* state) {
   cv_->notify_all(ExecutionEvent(CV_STATE_REMOVED, state));
-  states.erase(state);
+  {
+    klee::LockGuard guard(statesMutex);
+    states.erase(state);
+  }
   delete state;
 }
 
 void CVExecutor::remove_state_internal_without_notify(CVExecutionState* state) {
-  states.erase(state);
+  {
+    klee::LockGuard guard(statesMutex);
+    states.erase(state);
+  }
   delete state;
 }
 
@@ -905,6 +805,7 @@ void CVExecutor::add_state(CVExecutionState* state) {
 }
 
 void CVExecutor::add_state_internal(CVExecutionState* state) {
+  klee::LockGuard guard(statesMutex);
 	states.insert(state);
 }
 

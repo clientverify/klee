@@ -155,8 +155,7 @@ ClientVerifier::ClientVerifier(std::string &input_file, bool no_output, std::str
 		merger_(NULL), 
     execution_trace_manager_(NULL),
 		array_id_(0),
-		round_number_(0),
-    execution_event_flag_(false) {
+		round_number_(0) {
 
 	cvstream_->init();
 
@@ -361,7 +360,8 @@ void ClientVerifier::notify_all(ExecutionEvent ev) {
   foreach (ExecutionObserver* observer, observers_) {
     observer->notify(ev);
   }
-  set_execution_event_flag();
+  if (ev.state)
+    ev.state->set_event_flag(true);
 }
 
 CVSearcher* ClientVerifier::searcher() {

@@ -51,6 +51,7 @@ int CVExecutionState::compare(const CVExecutionState& b) const {
 void CVExecutionState::initialize(ClientVerifier *cv) {
   cv_ = cv;
   id_ = increment_id();
+  event_flag_ = false;
   coveredNew = false;
   coveredLines.clear();
 	network_manager_ = NetworkManagerFactory::create(this,cv);
@@ -62,6 +63,7 @@ CVExecutionState* CVExecutionState::clone(ExecutionStateProperty* property) {
   assert(cv_->executor()->replay_path() == NULL);
   CVExecutionState *cloned_state = new CVExecutionState(*this);
   cloned_state->id_ = increment_id();
+  cloned_state->event_flag_ = event_flag_;
   cloned_state->network_manager_ 
 		= network_manager_->clone(cloned_state); 
 
