@@ -21,7 +21,7 @@ include Makefile.tests
 #===------------------------------------------------------------------------===#
 # llvm-lit testing support
 #===------------------------------------------------------------------------===#
-ULIMIT = ulimit -t 600 ; ulimit -d 512000 ;
+ULIMIT = ulimit -t 3000 ; ulimit -d 512000 ;
 
 # FIXME: Fix test suite so we can run lit in parallel.
 ifdef VERBOSE
