@@ -83,7 +83,6 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Process.h"
 
-
 #include <cassert>
 #include <algorithm>
 #include <iostream>
@@ -100,6 +99,7 @@
 
 using namespace llvm;
 using namespace klee;
+
 
 #ifdef SUPPORT_METASMT
 
@@ -128,6 +128,7 @@ using namespace metaSMT::solver;
 #ifdef TCMALLOC
 #include <google/malloc_extension.h>
 #endif
+
 
 namespace klee {
   cl::opt<bool>
@@ -318,6 +319,48 @@ Executor::Executor(const InterpreterOptions &opts,
   theRNG.reset(new RNG());
 }
 
+Solver* Executor::initializeSolver() {
+  Solver *coreSolver = NULL;
+  
+#ifdef SUPPORT_METASMT
+  if (UseMetaSMT != METASMT_BACKEND_NONE) {
+    
+    std::string backend;
+    
+    switch (UseMetaSMT) {
+          case METASMT_BACKEND_STP:
+              backend = "STP"; 
+              coreSolver = new MetaSMTSolver< DirectSolver_Context < STP_Backend > >(UseForkedCoreSolver, CoreSolverOptimizeDivides);
+              break;
+          case METASMT_BACKEND_Z3:
+              backend = "Z3";
+              coreSolver = new MetaSMTSolver< DirectSolver_Context < Z3_Backend > >(UseForkedCoreSolver, CoreSolverOptimizeDivides);
+              break;
+          case METASMT_BACKEND_BOOLECTOR:
+              backend = "Boolector";
+              coreSolver = new MetaSMTSolver< DirectSolver_Context < Boolector > >(UseForkedCoreSolver, CoreSolverOptimizeDivides);
+              break;
+          default:
+              assert(false);
+              break;
+    };
+    std::cerr << "Starting MetaSMTSolver(" << backend << ") ...\n";
+  }
+  else {
+    coreSolver = new STPSolver(UseForkedCoreSolver, CoreSolverOptimizeDivides);
+  }
+#else
+  coreSolver = new STPSolver(UseForkedCoreSolver, CoreSolverOptimizeDivides);
+#endif /* SUPPORT_METASMT */
+   
+  Solver *solver = 
+    constructSolverChain(coreSolver,
+                         interpreterHandler->getOutputFilename(ALL_QUERIES_SMT2_FILE_NAME),
+                         interpreterHandler->getOutputFilename(SOLVER_QUERIES_SMT2_FILE_NAME),
+                         interpreterHandler->getOutputFilename(ALL_QUERIES_PC_FILE_NAME),
+                         interpreterHandler->getOutputFilename(SOLVER_QUERIES_PC_FILE_NAME));
+  return solver;
+}
 
 const Module *Executor::setModule(llvm::Module *module, 
                                   const ModuleOptions &opts) {
@@ -434,88 +477,8 @@ MemoryObject * Executor::addExternalObject(ExecutionState &state,
   return mo;
 }
 
+
 extern void *__dso_handle __attribute__ ((__weak__));
-
-void Executor::initializePerThread(ExecutionState &state, MemoryManager* memory) {
-  static Mutex initializePerThreadLock;
-  LockGuard guard(initializePerThreadLock);
-
-  if (!this->solver.get()) {
-    // Construct new Solver for this thread
-    this->solver.reset(new TimingSolver(initializeSolver()));
-  }
-
-  if (!this->memory.get()) {
-    // Set the MemoryManager for this thread
-    this->memory.reset(memory);
-  }
-
-  if (!theRNG.get()) {
-    theRNG.reset(new RNG());
-  }
-
-#ifdef HAVE_CTYPE_EXTERNALS
-#ifndef WINDOWS
-#ifndef DARWIN
-  unsigned width = Context::get().getPointerWidth();
-
-  /* From /usr/include/errno.h: it [errno] is a per-thread variable. */
-  ObjectPair errno_addr_obj;
-  int *errno_addr = __errno_location();
-  if (!state.addressSpace.resolveOne(ConstantExpr::alloc((uint64_t)errno_addr, width), errno_addr_obj)) {
-    addExternalObject(state, (void *)errno_addr, sizeof(*errno_addr), false);
-  }
-
-  /* from /usr/include/ctype.h:
-       These point into arrays of 384, so they can be indexed by any `unsigned
-       char' value [0,255]; by EOF (-1); or by any `signed char' value
-       [-128,-1).  ISO C requires that the ctype functions work for `unsigned */
-  ObjectPair addr_obj;
-  const uint16_t **addr = __ctype_b_loc();
-
-  if (!state.addressSpace.resolveOne(ConstantExpr::alloc((uint64_t)(*addr-128), width), addr_obj)) {
-    addExternalObject(state, const_cast<uint16_t*>(*addr-128), 384 * sizeof **addr, true);
-  }
-
-  if (!state.addressSpace.resolveOne(ConstantExpr::alloc((uint64_t)addr, width), addr_obj)) {
-    addExternalObject(state, addr, sizeof(*addr), true);
-
-    for (unsigned i=0; i<width/8; ++i)
-      const_cast<ObjectState*>(addr_obj.second)->markBytePointer(i);
-  }
-    
-  ObjectPair lower_addr_obj;
-  const int32_t **lower_addr = __ctype_tolower_loc();
-
-  if (!state.addressSpace.resolveOne(ConstantExpr::alloc((uint64_t)(*lower_addr-128), width), lower_addr_obj)) {
-    addExternalObject(state, const_cast<int32_t*>(*lower_addr-128), 384 * sizeof **lower_addr, true);
-  }
-
-  if (!state.addressSpace.resolveOne(ConstantExpr::alloc((uint64_t)lower_addr, width), lower_addr_obj)) {
-    addExternalObject(state, lower_addr, sizeof(*lower_addr), true);
-
-    for (unsigned i=0; i<width/8; ++i)
-      const_cast<ObjectState*>(lower_addr_obj.second)->markBytePointer(i);
-  }
-  
-  ObjectPair upper_addr_obj;
-  const int32_t **upper_addr = __ctype_toupper_loc();
-
-  if (!state.addressSpace.resolveOne(ConstantExpr::alloc((uint64_t)(*upper_addr-128), width), upper_addr_obj)) {
-    addExternalObject(state, const_cast<int32_t*>(*upper_addr-128), 384 * sizeof **upper_addr, true);
-  }
-
-  if (!state.addressSpace.resolveOne(ConstantExpr::alloc((uint64_t)upper_addr, width), upper_addr_obj)) {
-    addExternalObject(state, upper_addr, sizeof(*upper_addr), true);
-
-    for (unsigned i=0; i<width/8; ++i)
-      const_cast<ObjectState*>(upper_addr_obj.second)->markBytePointer(i);
-  }
-
-#endif
-#endif
-#endif
-}
 
 void Executor::initializeGlobals(ExecutionState &state) {
   Module *m = kmodule->module;
@@ -2501,41 +2464,28 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 }
 
 void Executor::updateStates(ExecutionState *current) {
-  unsigned addedCount = getContext().addedStates.size();
-  stateCount += addedCount;
-
-  if (getContext().addedStates.size() > 0) {
-    LockGuard guard(statesMutex);
-    states.insert(getContext().addedStates.begin(),
-                  getContext().addedStates.end());
+  if (searcher) {
+    searcher->update(current, getContext().addedStates, getContext().removedStates);
   }
-
-  if (getContext().removedStates.size() > 0) {
-    LockGuard guard(statesMutex);
-    for (std::set<ExecutionState*>::iterator
-          it = getContext().removedStates.begin(), ie = getContext().removedStates.end();
-        it != ie; ++it) {
-      ExecutionState *es = *it;
-      --stateCount;
-
-      std::map<ExecutionState*, std::vector<SeedInfo> >::iterator it3 = 
-        seedMap.find(es);
-      if (it3 != seedMap.end())
-        seedMap.erase(it3);
-      processTree->remove(es->ptreeNode);
-      states.erase(es);
-      delete es;
-    }
-  }
-
-  getContext().removedStates.clear();
+  
+  states.insert(getContext().addedStates.begin(), getContext().addedStates.end());
   getContext().addedStates.clear();
-
-  if (addedCount == 1) {
-    searcherCond.notify_one();
-  } else if (addedCount > 1) {
-    searcherCond.notify_all();
+  
+  for (std::set<ExecutionState*>::iterator
+         it = getContext().removedStates.begin(), ie = getContext().removedStates.end();
+       it != ie; ++it) {
+    ExecutionState *es = *it;
+    std::set<ExecutionState*>::iterator it2 = states.find(es);
+    assert(it2!=states.end());
+    states.erase(it2);
+    std::map<ExecutionState*, std::vector<SeedInfo> >::iterator it3 = 
+      seedMap.find(es);
+    if (it3 != seedMap.end())
+      seedMap.erase(it3);
+    processTree->remove(es->ptreeNode);
+    delete es;
   }
+  getContext().removedStates.clear();
 }
 
 template <typename TypeIt>
@@ -2600,181 +2550,6 @@ void Executor::bindModuleConstants() {
   }
 }
 
-/// Caller will force all other threads to finish execution current instruction
-/// and wait for UnPauseExecution()
-bool Executor::PauseExecution() {
-  if (UseThreads > 1) {
-    if (pauseExecutionMutex.try_lock()) {
-      Mutex lock;
-      UniqueLock guard(lock);
-
-      // Set pauseExecution condition
-      pauseExecution = true;
-
-      // Wake up any sleeping threads
-      searcherCond.notify_all();
-
-      // Wait for N-1 threads to pause
-      while (pausedThreadCount < (totalThreadCount - 1)) {
-        pauseExecutionCondition.wait(guard);
-      }
-      pausedThreadCount = 0;
-
-      return true;
-    }
-    return false;
-  }
-  // Pausing always "succeeds" when there is just 1 thread
-  return true;
-}
-
-void Executor::UnPauseExecution() {
-  if (UseThreads > 1) {
-    pauseExecution = false;
-    startExecutionCondition.notify_all();
-    pauseExecutionMutex.unlock();
-  }
-}
-
-void Executor::execute(ExecutionState *initialState, MemoryManager *memory) {
-  Mutex lock;
-  Mutex memoryMutex;
-
-  UniqueLock guard(lock);
-
-  // Initialize thread specific globals and objects
-  initializePerThread(*initialState, memory);
-
-  // Wait until all threads have initialized
-  threadBarrier->wait();
-
-  ExecutionState *statePtr = NULL;
-  while (!empty() && !haltExecution) {
-
-    if (statePtr == NULL)
-      statePtr = searcher->trySelectState();
-
-    if (statePtr != NULL) {
-      ExecutionState &state = *statePtr;
-      
-      KInstruction *ki = state.pc;
-      stepInstruction(state);
-      executeInstruction(state, ki);
-      processTimers(&state, MaxInstructionTime);
-
-
-      // Update searcher with new states and get next state to execute
-      // (if supported by searcher)
-      statePtr = searcher->updateAndTrySelectState(&state, 
-                                                   getContext().addedStates, 
-                                                   getContext().removedStates);
-      // Update Executor state tracking
-      updateStates(&state);
-    }
-
-    // Wait for new states to be ready to execute
-    while (statePtr == NULL && searcher->empty() && !empty() && !haltExecution && !pauseExecution) { 
-      searcherCond.wait(guard);
-    }
-
-    // If another thread called PauseExecution();
-    if (pauseExecution) {
-      // Return statePtr to searcher if not NULL
-      if (statePtr) {
-        searcher->update(statePtr, std::set<ExecutionState*>(), std::set<ExecutionState*>());
-        statePtr = NULL;
-      }
-
-      // Increment paused thread count
-      ++pausedThreadCount;
-
-      // Notify initiating thread, that this thread is now paused
-      pauseExecutionCondition.notify_one();
-      
-      // Wait for initiating thread to restart execution
-      while (pauseExecution) {
-        startExecutionCondition.wait(guard);
-      }
-    }
-
-    // Check if we are running out of memory
-    if (MaxMemory) {
-      // Note: Only one thread needs to check the memory situation
-      if ((stats::instructions & 0xFFFF) == 0 && memoryMutex.try_lock()) {
-        klee_message("checking memory (%d)", GetThreadID());
-
-        // We need to avoid calling GetMallocUsage() often because it
-        // is O(elts on freelist). This is really bad since we start
-        // to pummel the freelist once we hit the memory cap.
-        unsigned mbs; 
-        if (UseThreads > 1) {
-          mbs = GetMemoryUsage() >> 20;
-        } else {
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
-          mbs = sys::Process::GetMallocUsage() >> 20;
-#else
-          mbs = sys::Process::GetTotalMemoryUsage() >> 20;
-#endif
-        }
-
-        if (mbs > MaxMemory) {
-          if (mbs > MaxMemory + 100) {
-
-            // Return statePtr to searcher
-            if (statePtr) {
-              searcher->update(statePtr, std::set<ExecutionState*>(), 
-                               std::set<ExecutionState*>());
-              statePtr = NULL;
-            }
-
-            // Try to PauseExecution(), may fail
-            if (PauseExecution()) {
-
-              // just guess at how many to kill
-              unsigned numStates = stateCount;
-              unsigned toKill = std::max(1U, numStates - numStates*MaxMemory/mbs);
-
-              if (MaxMemoryInhibit)
-                klee_warning("killing %d states (over memory cap)",
-                            toKill);
-
-              std::vector<ExecutionState*> arr(states.begin(), states.end());
-              for (unsigned i=0,N=arr.size(); N && i<toKill; ++i,--N) {
-                unsigned idx = rand() % N;
-
-                // Make two pulls to try and not hit a state that
-                // covered new code.
-                if (arr[idx]->coveredNew)
-                  idx = rand() % N;
-
-                std::swap(arr[idx], arr[N-1]);
-                terminateStateEarly(*arr[N-1], "Memory limit exceeded.");
-              }
-              UnPauseExecution();
-            }
-          }
-          atMemoryLimit = true;
-        } else {
-          atMemoryLimit = false;
-        }
-
-        memoryMutex.unlock();
-      }
-    }
-  }
-
-  // Update searcher with last state we executed if we are halting early
-  if (statePtr) 
-    searcher->update(statePtr, getContext().addedStates, getContext().removedStates);
-
-  // Alert threads to wake up if there are no more states to execute
-  searcherCond.notify_one();
-
-  // Release TSS memory (i.e., don't destroy with thread); the memory manager
-  // for this thread may still be needed in dumpState
-  this->memory.release();
-}
-
 void Executor::run(ExecutionState &initialState) {
   bindModuleConstants();
 
@@ -2783,7 +2558,6 @@ void Executor::run(ExecutionState &initialState) {
   initTimers();
 
   states.insert(&initialState);
-  ++stateCount;
 
   if (usingSeeds) {
     std::vector<SeedInfo> &v = seedMap[&initialState];
@@ -2810,16 +2584,6 @@ void Executor::run(ExecutionState &initialState) {
 
       executeInstruction(state, ki);
       processTimers(&state, MaxInstructionTime * numSeeds);
-
-      states.insert(getContext().addedStates.begin(),getContext().addedStates.end());
-
-      for (std::set<ExecutionState*>::iterator
-            it = getContext().removedStates.begin(), ie = getContext().removedStates.end();
-          it != ie; ++it) {
-        ExecutionState *es = *it;
-        states.erase(es);
-      }
-
       updateStates(&state);
 
       if ((stats::instructions % 1000) == 0) {
@@ -2861,51 +2625,74 @@ void Executor::run(ExecutionState &initialState) {
 
   searcher = constructUserSearcher(*this);
 
-  if (!searcher) {
-    klee_error("failed to create searcher");
-  }
-
   searcher->update(0, states, std::set<ExecutionState*>());
 
-  threadBarrier = new Barrier(UseThreads);
+  while (!states.empty() && !haltExecution) {
+    ExecutionState &state = searcher->selectState();
+    KInstruction *ki = state.pc;
+    stepInstruction(state);
 
-  totalThreadCount = UseThreads;
-  if (!empty()) {
-    if (UseThreads == 1) {
-      execute(&initialState, NULL);
-    } else {
-      ThreadGroup threadGroup;
-      for (unsigned i=0; i<UseThreads; ++i) {
-        // Initialize MemoryManager outside of thread
-        memoryManagers.push_back(new MemoryManager());
-        threadGroup.add_thread(new Thread(&klee::Executor::execute, 
-                                          this, &initialState, memoryManagers.back()));
+    executeInstruction(state, ki);
+    processTimers(&state, MaxInstructionTime);
+
+    if (MaxMemory) {
+      if ((stats::instructions & 0xFFFF) == 0) {
+        // We need to avoid calling GetMallocUsage() often because it
+        // is O(elts on freelist). This is really bad since we start
+        // to pummel the freelist once we hit the memory cap.
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
+        unsigned mbs = sys::Process::GetMallocUsage() >> 20;
+#else
+        unsigned mbs = sys::Process::GetTotalMemoryUsage() >> 20;
+#endif
+        if (mbs > MaxMemory) {
+          if (mbs > MaxMemory + 100) {
+            // just guess at how many to kill
+            unsigned numStates = states.size();
+            unsigned toKill = std::max(1U, numStates - numStates*MaxMemory/mbs);
+
+            if (MaxMemoryInhibit)
+              klee_warning("killing %d states (over memory cap)",
+                           toKill);
+
+            std::vector<ExecutionState*> arr(states.begin(), states.end());
+            for (unsigned i=0,N=arr.size(); N && i<toKill; ++i,--N) {
+              unsigned idx = rand() % N;
+
+              // Make two pulls to try and not hit a state that
+              // covered new code.
+              if (arr[idx]->coveredNew)
+                idx = rand() % N;
+
+              std::swap(arr[idx], arr[N-1]);
+              terminateStateEarly(*arr[N-1], "Memory limit exceeded.");
+            }
+          }
+          atMemoryLimit = true;
+        } else {
+          atMemoryLimit = false;
+        }
       }
-      // Wait for all threads to finish
-      threadGroup.join_all();
     }
-  }
-  totalThreadCount = 1;
-  
- dump:
-  if (DumpStatesOnHalt && !empty()) {
-    std::cerr << "KLEE: halting execution, dumping remaining states\n";
-    while (ExecutionState* state = searcher->trySelectState()) {
-      stepInstruction(*state); // keep stats rolling
-      terminateStateEarly(*state, "Execution halting.");
-      searcher->update(state, getContext().addedStates, getContext().removedStates);
-      updateStates(state);
-    }
-  }
 
-  // Delete all MemoryManagers used by threads
-  memory.release();
-  for (std::vector<MemoryManager*>::iterator it = memoryManagers.begin(), 
-       ie = memoryManagers.end(); it != ie; ++it)
-    delete *it;
+    updateStates(&state);
+  }
 
   delete searcher;
   searcher = 0;
+  
+ dump:
+  if (DumpStatesOnHalt && !states.empty()) {
+    std::cerr << "KLEE: halting execution, dumping remaining states\n";
+    for (std::set<ExecutionState*>::iterator
+           it = states.begin(), ie = states.end();
+         it != ie; ++it) {
+      ExecutionState &state = **it;
+      stepInstruction(state); // keep stats rolling
+      terminateStateEarly(state, "Execution halting.");
+    }
+    updateStates(0);
+  }
 }
 
 std::string Executor::getAddressInfo(ExecutionState &state, 
@@ -3091,11 +2878,10 @@ void Executor::callExternalFunction(ExecutionState &state,
                                     KInstruction *target,
                                     Function *function,
                                     std::vector< ref<Expr> > &arguments) {
-
   // check if specialFunctionHandler wants it
   if (specialFunctionHandler->handle(state, function, target, arguments))
     return;
- 
+  
   if (NoXWindows && function->getName()[0] == 'X') { 
     //std::string n_str = "nuklear_";
     //std::string f_str = state.stack.back().kf->function->getName().str();
@@ -3162,12 +2948,11 @@ void Executor::callExternalFunction(ExecutionState &state,
   state.addressSpace.copyOutConcretes();
   if (!SuppressExternalWarnings) {
     std::ostringstream os;
-
     os << "calling external: " << function->getName().str() << "(";
     for (unsigned i=0; i<arguments.size(); i++) {
       os << arguments[i];
       if (i != arguments.size()-1)
-        os << ", ";
+	os << ", ";
     }
     os << ")";
     
@@ -3506,7 +3291,6 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     
     StatePair branches = fork(*unbound, inBounds, true);
     ExecutionState *bound = branches.first;
-    
 
     // bound can be 0 on failure or overlapped 
     if (bound) {
@@ -3707,8 +3491,10 @@ void Executor::runFunctionAsMain(Function *f,
 
   processTree = new PTree(state);
   state->ptreeNode = processTree->root;
-  run(*state);
-
+  if (UseThreads > 1)
+    parallelRun(*state);
+  else
+    run(*state);
   delete processTree;
   processTree = 0;
 
@@ -3853,92 +3639,6 @@ void Executor::doImpliedValueConcretization(ExecutionState &state,
       }
     }
   }
-}
-
-Executor::ExecutorContext& Executor::getContext() { 
-  if(!context.get()) {
-    context.reset(new Executor::ExecutorContext());
-  }
-  return *(context.get());
-}
-
-bool Executor::empty() {
-  return stateCount == 0;
-}
-
-/// Don't use mallinfo, overflows if usage is > 4GB and also doesn't work with
-/// threads
-size_t Executor::GetMemoryUsage() {
-  size_t bytes_used = 0;
-#ifdef TCMALLOC
-  MallocExtension::instance()->GetNumericProperty(
-      "generic.current_allocated_bytes", &bytes_used);
-  return bytes_used;
-#else
-  pid_t myPid = getpid();
-  std::stringstream ss;
-  ss << "/proc/" << myPid << "/status";
-
-  FILE *fp = fopen(ss.str().c_str(), "r"); 
-  if (!fp) { 
-    return bytes_used;
-  }
-
-  uint64_t peakMem=0;
-
-  char buffer[512];
-  while(!peakMem && fgets(buffer, sizeof(buffer), fp)) { 
-    if (sscanf(buffer, "VmSize: %llu", (long long unsigned int*)&peakMem)) {
-      break; 
-    }
-  }
-
-  fclose(fp);
-
-  return peakMem * 1024;
-#endif
-}
-
-Solver* Executor::initializeSolver() {
-  Solver *coreSolver = NULL;
-#ifdef SUPPORT_METASMT
-  if (UseMetaSMT != METASMT_BACKEND_NONE) {
-    
-    std::string backend;
-    
-    switch (UseMetaSMT) {
-      case METASMT_BACKEND_STP:
-        backend = "STP"; 
-        coreSolver = new MetaSMTSolver< DirectSolver_Context < STP_Backend > >(UseForkedCoreSolver, CoreSolverOptimizeDivides);
-        break;
-      case METASMT_BACKEND_Z3:
-        backend = "Z3";
-        coreSolver = new MetaSMTSolver< DirectSolver_Context < Z3_Backend > >(UseForkedCoreSolver, CoreSolverOptimizeDivides);
-        break;
-      case METASMT_BACKEND_BOOLECTOR:
-        backend = "Boolector";
-        coreSolver = new MetaSMTSolver< DirectSolver_Context < Boolector > >(UseForkedCoreSolver, CoreSolverOptimizeDivides);
-        break;
-      default:
-        assert(false);
-        break;
-    };
-    std::cerr << "Starting MetaSMTSolver(" << backend << ") ...\n";
-  }
-  else {
-    coreSolver = new STPSolver(UseForkedCoreSolver, CoreSolverOptimizeDivides);
-  }
-#else
-  coreSolver = new STPSolver(UseForkedCoreSolver, CoreSolverOptimizeDivides);
-#endif /* SUPPORT_METASMT */
-   
-  Solver *solver = 
-    constructSolverChain(coreSolver,
-                         interpreterHandler->getOutputFilename(ALL_QUERIES_SMT2_FILE_NAME),
-                         interpreterHandler->getOutputFilename(SOLVER_QUERIES_SMT2_FILE_NAME),
-                         interpreterHandler->getOutputFilename(ALL_QUERIES_PC_FILE_NAME),
-                         interpreterHandler->getOutputFilename(SOLVER_QUERIES_PC_FILE_NAME));
-  return solver;
 }
 
 Expr::Width Executor::getWidthForLLVMType(LLVM_TYPE_Q llvm::Type *type) const {

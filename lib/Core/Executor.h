@@ -219,6 +219,7 @@ protected:
   void execute(ExecutionState *initialState, MemoryManager* memory);
 
   virtual void run(ExecutionState &initialState);
+  virtual void parallelRun(ExecutionState &initialState);
 
   // Given a concrete object in our [klee's] address space, add it to 
   // objects checked code can reference.
@@ -233,6 +234,7 @@ protected:
 
   virtual void stepInstruction(ExecutionState &state);
   virtual void updateStates(ExecutionState *current);
+  virtual void parallelUpdateStates(ExecutionState *current);
   virtual void transferToBasicBlock(llvm::BasicBlock *dst, 
 			    llvm::BasicBlock *src,
 			    ExecutionState &state);
