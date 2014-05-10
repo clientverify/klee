@@ -125,9 +125,6 @@ using namespace metaSMT::solver;
 
 #endif /* SUPPORT_METASMT */
 
-#ifdef TCMALLOC
-#include <google/malloc_extension.h>
-#endif
 
 
 namespace klee {
@@ -262,15 +259,6 @@ namespace klee {
             cl::desc("Inhibit forking at memory cap (vs. random terminate) (default=on)"),
             cl::init(true));
 
-  cl::opt<bool> 
-  NoXWindows("no-xwindows", 
-           cl::desc("Do not allow external XWindows function calls"),
-           cl::init(false));
-   
-  cl::opt<bool>
-  PrintFunctionCalls("print-function-calls",
-                cl::init(false));
-
   extern llvm::cl::opt<unsigned> UseThreads;
 }
 
@@ -394,7 +382,6 @@ const Module *Executor::setModule(llvm::Module *module,
 }
 
 Executor::~Executor() {
-  //delete memory;
   delete externalDispatcher;
   if (processTree)
     delete processTree;
@@ -402,7 +389,6 @@ Executor::~Executor() {
     delete specialFunctionHandler;
   if (statsTracker)
     delete statsTracker;
-  //delete solver;
   delete kmodule;
   while(!timers.empty()) {
     delete timers.back();
@@ -1222,25 +1208,6 @@ void Executor::executeCall(ExecutionState &state,
                            KInstruction *ki,
                            Function *f,
                            std::vector< ref<Expr> > &arguments) {
-  if (PrintFunctionCalls) {
-    #define MAX_DEPTH 64
-    int call_depth = 
-      state.stack.size() > MAX_DEPTH ? MAX_DEPTH : state.stack.size();
-    char call_depth_str[MAX_DEPTH+1];
-    memset(call_depth_str, '-', call_depth);
-    call_depth_str[call_depth] = '\0';
-    klee_warning("F%s%s ", call_depth_str, 
-                 f->getName().str().c_str());
-  }
-
-  std::string widget_str("Widget_");
-  if (NoXWindows 
-      && f->getName().substr(0,widget_str.size()) == widget_str) {
-      klee_warning_once(f, "Ignoring Widget function: %s", 
-                        f->getName().str().c_str());
-      return;
-  }
-
   Instruction *i = ki->inst;
   if (f && f->isDeclaration()) {
     switch(f->getIntrinsicID()) {
@@ -2882,26 +2849,6 @@ void Executor::callExternalFunction(ExecutionState &state,
   if (specialFunctionHandler->handle(state, function, target, arguments))
     return;
   
-  if (NoXWindows && function->getName()[0] == 'X') { 
-    //std::string n_str = "nuklear_";
-    //std::string f_str = state.stack.back().kf->function->getName().str();
-    if (function->getName().str() == "XParseGeometry" ||
-        function->getName().str() == "XStringToKeysym") {
-      klee_warning_once(function, "Calling X function: %s", 
-                        function->getName().str().c_str());
-    } else {
-      klee_warning_once(function, "Ignoring X function: %s", 
-                        function->getName().str().c_str());
-      return;
-    }
-    // check if we called this X function from within a nuklear_* function.
-    //if (f_str.substr(0,n_str.size()) != n_str) {
-    //  //klee_warning_once("Ignoring X function: %s", 
-    //  //                  function->getName().str().c_str());
-    //  return;
-    //}
-  }
- 
   if (NoExternals && !okExternals.count(function->getName())) {
     std::cerr << "KLEE:ERROR: Calling not-OK external function : " 
               << function->getName().str() << "\n";

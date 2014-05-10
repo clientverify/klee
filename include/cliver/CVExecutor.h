@@ -28,6 +28,16 @@ class CVExecutor : public klee::Executor {
 
   virtual ~CVExecutor();
 
+  virtual void executeCall(klee::ExecutionState &state, 
+                           klee::KInstruction *ki,
+                           llvm::Function *f,
+                           std::vector< klee::ref<klee::Expr> > &arguments);
+
+  virtual void callExternalFunction(klee::ExecutionState &state,
+                                    klee::KInstruction *target,
+                                    llvm::Function *function,
+                                    std::vector< klee::ref<klee::Expr> > &arguments);
+
   virtual void run(klee::ExecutionState &initialState);
 
   virtual void stepInstruction(klee::ExecutionState &state);

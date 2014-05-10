@@ -126,7 +126,8 @@ namespace klee {
 namespace cliver {
 
 llvm::cl::opt<bool> 
-EnableCliver("cliver", llvm::cl::desc("Enable cliver."), llvm::cl::init(false));
+EnableCliver("cliver", 
+             llvm::cl::desc("Enable cliver."), llvm::cl::init(false));
 
 llvm::cl::opt<bool> 
 DisableEnvironmentVariables("-disable-env-vars", 
@@ -135,11 +136,22 @@ DisableEnvironmentVariables("-disable-env-vars",
 
 /// Give symbolic variables a name equal to the declared name + id
 llvm::cl::opt<bool>
-UseFullVariableNames("use-full-variable-names", llvm::cl::init(false));
+UseFullVariableNames("use-full-variable-names",
+                     llvm::cl::init(false));
 
 llvm::cl::opt<bool>
-DebugExecutor("debug-executor",llvm::cl::init(false));
+DebugExecutor("debug-executor",
+              llvm::cl::init(false));
+  
+llvm::cl::opt<bool>
+PrintFunctionCalls("print-function-calls",
+                   llvm::cl::init(false));
 
+llvm::cl::opt<bool> 
+NoXWindows("no-xwindows", 
+           llvm::cl::desc("Do not allow external XWindows function calls"), 
+           llvm::cl::init(false));
+ 
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef NDEBUG
@@ -180,6 +192,43 @@ CVExecutor::CVExecutor(const InterpreterOptions &opts, klee::InterpreterHandler 
 
 CVExecutor::~CVExecutor() {}
 
+void CVExecutor::executeCall(klee::ExecutionState &state, 
+                             klee::KInstruction *ki,
+                             llvm::Function *f,
+                             std::vector< klee::ref<klee::Expr> > &arguments) {
+  if (PrintFunctionCalls) {
+    CVMESSAGE(std::string(state.stack.size(), '-') << f->getName().str());
+  }
+
+  std::string XWidgetStr("Widget_");
+  if (NoXWindows && f->getName().substr(0,XWidgetStr.size()) == XWidgetStr) {
+    CVMESSAGE("Skipping function call to " << f->getName().str());
+    return;
+  }
+
+  // Call base Executor implementation
+  Executor::executeCall(state, ki, f, arguments);
+}
+
+void CVExecutor::callExternalFunction(klee::ExecutionState &state,
+                                      klee::KInstruction *target,
+                                      llvm::Function *function,
+                                      std::vector< klee::ref<klee::Expr> > &arguments) {
+  
+  if (NoXWindows && function->getName()[0] == 'X') { 
+    if (function->getName().str() == "XParseGeometry" ||
+        function->getName().str() == "XStringToKeysym") {
+      CVMESSAGE("Calling X function: " << function->getName().str());
+    } else {
+      CVMESSAGE("Skipping function call to " << function->getName().str());
+      return;
+    }
+  }
+
+  // Call base Executor implementation
+  Executor::callExternalFunction(state, target, function, arguments);
+}
+ 
 void CVExecutor::runFunctionAsMain(llvm::Function *f,
 				 int argc,
 				 char **argv,
