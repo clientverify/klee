@@ -170,6 +170,11 @@ namespace klee {
   SimplifySymIndices("simplify-sym-indices",
                      cl::init(false));
 
+  cl::opt<bool>
+  SimplifyExpressions("simplify-expressions",
+                     cl::init(true),
+                     cl::desc("Simplify symbolic expressions before querying the solver (default=on)."));
+
   cl::opt<unsigned>
   MaxSymArraySize("max-sym-array-size",
                   cl::init(0));
@@ -303,7 +308,7 @@ Executor::Executor(const InterpreterOptions &opts,
   if (coreSolverTimeout) UseForkedCoreSolver = true;
   
   // Initialize solver for the root thread
-  this->solver.reset(new TimingSolver(initializeSolver()));
+  this->solver.reset(new TimingSolver(initializeSolver(), SimplifyExpressions));
 
   // Keep track of MemoryManager so we can delete later
   memoryManagers.push_back(new MemoryManager());

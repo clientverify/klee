@@ -141,6 +141,7 @@ namespace klee {
   extern llvm::cl::opt<bool> DebugPrintInstructions;
   extern llvm::cl::opt<bool> DebugCheckForImpliedValues;
   extern llvm::cl::opt<bool> SimplifySymIndices;
+  extern llvm::cl::opt<bool> SimplifyExpressions;
   extern llvm::cl::opt<unsigned> MaxSymArraySize;
   extern llvm::cl::opt<bool> SuppressExternalWarnings;
   extern llvm::cl::opt<bool> AllExternalWarnings;
@@ -180,7 +181,7 @@ void Executor::initializePerThread(ExecutionState &state, MemoryManager* memory)
 
   if (!this->solver.get()) {
     // Construct new Solver for this thread
-    this->solver.reset(new TimingSolver(initializeSolver()));
+    this->solver.reset(new TimingSolver(initializeSolver(), SimplifyExpressions));
   }
 
   if (!this->memory.get()) {
