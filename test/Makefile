@@ -73,8 +73,8 @@ lit.site.cfg: lit.site.cfg.in
 	     -e "s#@KLEE_TOOLS_DIR@#$(ToolDir)#g" \
 	     -e "s#@LLVM_TOOLS_DIR@#$(LLVMToolDir)#g" \
 	     -e "s#@LLVM_VERSION_MAJOR@#$(LLVM_VERSION_MAJOR)#g" \
-	     -e "s#@LLVMCC@#$(KLEE_BITCODE_C_COMPILER) -I$(PROJ_SRC_ROOT)/include#g" \
-	     -e "s#@LLVMCXX@#$(KLEE_BITCODE_CXX_COMPILER) -I$(PROJ_SRC_ROOT)/include#g" \
+	     -e "s#@LLVMCC@#$(KLEE_BITCODE_C_COMPILER) -I$(PROJ_SRC_ROOT)/include $(CFLAGS) $(LDFLAGS)#g" \
+	     -e "s#@LLVMCXX@#$(KLEE_BITCODE_CXX_COMPILER) -I$(PROJ_SRC_ROOT)/include $(CXXFLAGS) $(LDFLAGS)#g" \
 	     -e "s#@ENABLE_UCLIBC@#$(ENABLE_UCLIBC)#g" \
 	     -e "s#@ENABLE_POSIX_RUNTIME@#$(ENABLE_POSIX_RUNTIME)#g" \
 	     -e "s#@TARGET_TRIPLE@#$(TARGET_TRIPLE)#g" \
