@@ -62,8 +62,7 @@ TrainingMaxPending("training-max-pending",llvm::cl::init(1));
 
 CVSearcher::CVSearcher(klee::Searcher* base_searcher, ClientVerifier *cv,
                        StateMerger* merger) 
-	: base_searcher_(base_searcher), cv_(cv), merger_(merger) {
-}
+	: base_searcher_(base_searcher), cv_(cv), merger_(merger) { }
 
 klee::ExecutionState &CVSearcher::selectState() {
 	//klee::TimerStatIncrementer timer(stats::searcher_time);
@@ -207,20 +206,19 @@ SearcherStage* VerifySearcher::create_and_add_stage(CVExecutionState* state) {
   return new_stage;
 }
 
-klee::ExecutionState &VerifySearcher::selectState() {
-  CVExecutionState *state = NULL;
-  {
-    //klee::TimerStatIncrementer timer(stats::searcher_time);
+SearcherStage* VerifySearcher::select_stage() {
+  if (!pending_states_.empty()) {
+    process_unique_pending_states();
+  }
 
-    if (!pending_states_.empty()) {
-      process_unique_pending_states();
-    }
+  // If we've exhausted all the states in the current stage or there is a newer
+  // stage to search
+  if (current_stage_->empty() ||
+      current_round_ < max_active_round_) {
 
-    // If we've exhausted all the states in the current stage or there is a newer
-    // stage to search
-    if (current_stage_->empty() ||
-        current_round_ < max_active_round_) {
-
+    lock_.unlock();
+    if (cv_->executor()->PauseExecution()) {
+      lock_.lock();
       // Start looking for a non-empty stage in greatest round seen so far
       SearcherStage* new_current_stage = NULL;
       int new_current_round = max_active_round_;
@@ -251,33 +249,88 @@ klee::ExecutionState &VerifySearcher::selectState() {
         current_stage_ = new_current_stage;
         current_round_ = new_current_round;
         cv_->set_round(current_round_);
+#ifndef NDEBUG
         if (prev_property_)
           delete prev_property_;
         prev_property_ = NULL;
+#endif
         at_kprefix_max_ = false;
       } else {
         cv_error("No stages remain!");
       }
-    }
 
-    state = current_stage_->next_state();
+      cv_->executor()->UnPauseExecution();
+    } else {
+      lock_.lock();
+      CVDEBUG("Failed to create new stage, unable to pause execution");
+      return NULL;
+    }
   }
 
-  // Check if we should increase k
+  return current_stage_;
+}
+
+CVExecutionState* VerifySearcher::check_state_property(
+    SearcherStage* stage, CVExecutionState* state) {
+
+  CVExecutionState *updated_state = state;
+
+  // should we increase k?
   if (state->property()->edit_distance == INT_MAX 
       && cv_->execution_trace_manager()->ready_process_all_states(state->property())
-      && !current_stage_->rebuilding()) {
-    CVMESSAGE("Next state is INT_MAX, Rebuilding, # states = " << current_stage_->size());
+      && !stage->rebuilding()) {
 
-    current_stage_->add_state(state);
-    std::vector<ExecutionStateProperty*> states;
-    current_stage_->get_states(states);
-    cv_->execution_trace_manager()->process_all_states(states);
+    lock_.unlock();
+    if (cv_->executor()->PauseExecution()) {
+      CVMESSAGE("Next state is INT_MAX, Rebuilding, # states = " << stage->size());
+      // Add state back and process all states
+      stage->add_state(state);
+      std::vector<ExecutionStateProperty*> states;
+      stage->get_states(states);
+      cv_->execution_trace_manager()->process_all_states(states);
 
-    // recompute edit distance
-    current_stage_->set_states(states);
-    state = current_stage_->next_state();
+      // recompute edit distance
+      stage->set_states(states);
+      updated_state = stage->next_state();
+      cv_->executor()->UnPauseExecution();
+    } else {
+      CVDEBUG("Rebuild Failure: Next state is INT_MAX, couldn't pause execution");
+    }
+    lock_.lock();
   }
+
+  return updated_state;
+}
+
+klee::ExecutionState* VerifySearcher::trySelectState() {
+  klee::LockGuard guard(lock_);
+
+  CVExecutionState *state = NULL;
+
+  if ((current_stage_ && current_stage_->size()) || pending_states_.size()) {
+    SearcherStage* stage = select_stage();
+    if (stage) {
+      state = current_stage_->next_state();
+      state = check_state_property(current_stage_, state);
+    }
+  }
+  return state;
+}
+
+klee::ExecutionState &VerifySearcher::selectState() {
+  klee::LockGuard guard(lock_);
+
+  CVExecutionState *state = NULL;
+
+  current_stage_ = select_stage();
+
+  assert(current_stage_);
+
+  state = current_stage_->next_state();
+
+  assert(state);
+
+  state = check_state_property(current_stage_, state);
 
 #ifndef NDEBUG
   if (!at_kprefix_max_ && state->property()->edit_distance == INT_MAX 
@@ -322,12 +375,12 @@ klee::ExecutionState &VerifySearcher::selectState() {
 
     prev_property_removed_ = false;
   } 
-#endif
 
   if (!prev_property_)
     prev_property_ = state->property()->clone();
   else 
     *prev_property_ = *(state->property());
+#endif
 
   return *(static_cast<klee::ExecutionState*>(state));
 }
@@ -335,19 +388,22 @@ klee::ExecutionState &VerifySearcher::selectState() {
 void VerifySearcher::update(klee::ExecutionState *current,
     const std::set<klee::ExecutionState*> &addedStates,
     const std::set<klee::ExecutionState*> &removedStates) {
-  //klee::TimerStatIncrementer timer(stats::searcher_time);
+  klee::TimerStatIncrementer timer(stats::searcher_time);
 
   if (current != NULL && removedStates.count(current) == 0) {
+    klee::LockGuard guard(lock_);
     this->add_state(static_cast<CVExecutionState*>(current));
   }
 
   if (addedStates.size()) {
+    klee::LockGuard guard(lock_);
     foreach (klee::ExecutionState* klee_state, addedStates) {
       this->add_state(static_cast<CVExecutionState*>(klee_state));
     }
   }
 
   if (removedStates.size()) {
+    klee::LockGuard guard(lock_);
     foreach (klee::ExecutionState* klee_state, removedStates) {
       this->remove_state(static_cast<CVExecutionState*>(klee_state));
     }
@@ -355,19 +411,23 @@ void VerifySearcher::update(klee::ExecutionState *current,
 }
 
 bool VerifySearcher::empty() {
+  klee::LockGuard guard(lock_);
   
-  if (current_stage_ && !current_stage_->empty())
+  if (current_stage_ && current_stage_->size() > 0)
     return false;
 
   if (!pending_states_.empty())
     return false;
 
-  for (int i = new_stages_.size()-1; i >= 0; --i) {
-    foreach (SearcherStage* stage, *(new_stages_[i])) {
-      if (!stage->empty()) 
-        return false;
-    }
-  }
+  //XXX TODO THREAD SAFE BACKTRACKING
+  //for (int i = new_stages_.size()-1; i >= 0; --i) {
+  //  foreach (SearcherStage* stage, *(new_stages_[i])) {
+  //    if (!stage->empty())
+  //      return false;
+  //  }
+  //}
+
+  CVDEBUG("VerifySearcher is empty!");
   return true;
 }
 
@@ -376,7 +436,9 @@ SearcherStage* VerifySearcher::get_new_stage(CVExecutionState* state) {
   CVExecutionState* next_state = stage->next_state();
 
   // Notify
+  lock_.unlock();
   cv_->notify_all(ExecutionEvent(CV_SEARCHER_NEW_STAGE, next_state, state));
+  lock_.lock();
 
   // Reset property values
   next_state->property()->reset();
@@ -388,7 +450,7 @@ SearcherStage* VerifySearcher::get_new_stage(CVExecutionState* state) {
 }
 
 void VerifySearcher::add_state(CVExecutionState* state) {
-  if (this->empty()) {
+  if (current_stage_ == NULL) {
     CVMESSAGE("Creating stage from add_state() " << *state);
     current_stage_ = create_and_add_stage(state);
   } else {
@@ -483,18 +545,21 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
 
 void VerifySearcher::notify(ExecutionEvent ev) {
   // Notify stage for cache events
-  if (current_stage_ && !current_stage_->empty()) 
-    current_stage_->notify(ev);
+  // XXX FIXME
+  //if (current_stage_ && !current_stage_->empty())
+  //  current_stage_->notify(ev);
 
   switch(ev.event_type) {
     // These events will be processed later
     case CV_FINISH:
     case CV_MERGE:
     case CV_SOCKET_ADVANCE: {
+      klee::LockGuard guard(lock_);
       pending_events_[ev.state] = ev;
       break;
     }
     case CV_CLEAR_CACHES: {
+      cv_error("CLEAR_CACHES not currently supported!");
       if (!current_stage_->rebuilding()) {
         clear_caches();
       }
@@ -510,9 +575,34 @@ void VerifySearcher::notify(ExecutionEvent ev) {
 TrainingSearcher::TrainingSearcher(ClientVerifier *cv, StateMerger* merger)
   : VerifySearcher(cv, merger) {}
 
+klee::ExecutionState* TrainingSearcher::trySelectState() {
+  //klee::TimerStatIncrementer timer(stats::searcher_time);
+  klee::LockGuard guard(lock_);
+
+  CVExecutionState *state = NULL;
+
+  if ((current_stage_ && current_stage_->size()) || pending_states_.size()) {
+    SearcherStage* stage = select_stage();
+    if (stage) {
+      state = current_stage_->next_state();
+    }
+  }
+  return state;
+}
+
 klee::ExecutionState &TrainingSearcher::selectState() {
   //klee::TimerStatIncrementer timer(stats::searcher_time);
+  klee::LockGuard guard(lock_);
  
+  current_stage_ = select_stage();
+
+  CVExecutionState *state = current_stage_->next_state();
+
+  return *(static_cast<klee::ExecutionState*>(state));
+}
+
+SearcherStage* TrainingSearcher::select_stage() {
+
   if (pending_states_.size() > 0 && 
       (current_stage_->empty() || pending_states_.size() >= TrainingMaxPending)) {
     process_unique_pending_states();
@@ -523,48 +613,55 @@ klee::ExecutionState &TrainingSearcher::selectState() {
   if (current_stage_->empty() ||
       current_round_ < max_active_round_) {
 
-    // Start looking for a non-empty stage in greatest round seen so far
-    SearcherStage* new_current_stage = NULL;
+    lock_.unlock();
+    if (cv_->executor()->PauseExecution()) {
+      lock_.lock();
 
-    int new_current_round = max_active_round_;
+      // Start looking for a non-empty stage in greatest round seen so far
+      SearcherStage* new_current_stage = NULL;
 
-    // Walk backwards through the stages from most recent round to previous
-    // rounds
-    while (NULL == new_current_stage && new_current_round >= 0) {
+      int new_current_round = max_active_round_;
 
-      foreach (SearcherStage* stage, *(new_stages_[new_current_round])) {
-        if (!stage->empty()) {
-          new_current_stage = stage;
-          break;
-        } else {
-          CVDEBUG("Stage Empty, round=" << new_current_round 
-                  << ", rootstate: " << *(stage->root_state()));
+      // Walk backwards through the stages from most recent round to previous
+      // rounds
+      while (NULL == new_current_stage && new_current_round >= 0) {
+
+        foreach (SearcherStage* stage, *(new_stages_[new_current_round])) {
+          if (!stage->empty()) {
+            new_current_stage = stage;
+            break;
+          } else {
+            CVDEBUG("Stage Empty, round=" << new_current_round
+                    << ", rootstate: " << *(stage->root_state()));
+          }
+        }
+
+        if (NULL == new_current_stage) {
+          // All (if any) stages in this round our empty, continue searching
+          // backwards in the stage history for a state that is ready to execute
+          new_current_round--;
+
+          // Decrement max_active_round, so that we don' repeat this effort
+          // on the next instruction
+          max_active_round_ = new_current_round;
         }
       }
 
-      if (NULL == new_current_stage) {
-        // All (if any) stages in this round our empty, continue searching
-        // backwards in the stage history for a state that is ready to execute
-        new_current_round--;
-
-        // Decrement max_active_round, so that we don' repeat this effort
-        // on the next instruction
-        max_active_round_ = new_current_round;
+      if (NULL != new_current_stage) {
+        current_stage_ = new_current_stage;
+        current_round_ = new_current_round;
+        cv_->set_round(current_round_);
+      } else {
+        cv_error("No stages remain!");
       }
-    }
-
-    if (NULL != new_current_stage) {
-      current_stage_ = new_current_stage;
-      current_round_ = new_current_round;
-      cv_->set_round(current_round_);
+      cv_->executor()->UnPauseExecution();
     } else {
-      cv_error("No stages remain!");
+      lock_.lock();
+      CVDEBUG("Failed to create new stage, unable to pause execution");
+      return NULL;
     }
   }
-
-  CVExecutionState *state = current_stage_->next_state();
-
-  return *(static_cast<klee::ExecutionState*>(state));
+  return current_stage_;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
