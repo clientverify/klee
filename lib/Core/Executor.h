@@ -151,9 +151,6 @@ protected:
   ConditionVariable startExecutionCondition;
   Mutex pauseExecutionMutex;
 
-  bool PauseExecution();
-  void UnPauseExecution();
-
   /// Per-thread ExecutorContext
   ThreadSpecificPointer<ExecutorContext>::type context;
 
@@ -216,7 +213,7 @@ protected:
 
   void printFileLine(ExecutionState &state, KInstruction *ki);
 
-  void execute(ExecutionState *initialState, MemoryManager* memory);
+  virtual void execute(ExecutionState *initialState, MemoryManager* memory);
 
   virtual void run(ExecutionState &initialState);
   virtual void parallelRun(ExecutionState &initialState);
@@ -484,6 +481,10 @@ public:
                                  int argc,
                                  char **argv,
                                  char **envp);
+
+  virtual bool PauseExecution();
+
+  virtual void UnPauseExecution();
 
   /*** Runtime options ***/
   

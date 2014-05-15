@@ -82,6 +82,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Process.h"
 
+#include "boost/date_time/posix_time/posix_time_types.hpp"
 
 #include <cassert>
 #include <algorithm>
@@ -262,12 +263,13 @@ bool Executor::PauseExecution() {
       // Set pauseExecution condition
       pauseExecution = true;
 
-      // Wake up any sleeping threads
-      searcherCond.notify_all();
-
       // Wait for N-1 threads to pause
       while (pausedThreadCount < (totalThreadCount - 1)) {
-        pauseExecutionCondition.wait(guard);
+        // Wake up any sleeping threads
+        searcherCond.notify_all();
+
+        // TODO we shouldn't need this timeout and additional notify_all
+        pauseExecutionCondition.timed_wait(guard, boost::posix_time::milliseconds(500));
       }
       pausedThreadCount = 0;
 

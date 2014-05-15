@@ -10,6 +10,7 @@
 #ifndef KLEE_THREAD_H
 #define KLEE_THREAD_H
 
+#include "klee/util/Atomic.h"
 #include <boost/thread/thread.hpp>
 #include <boost/thread/tss.hpp>
 
