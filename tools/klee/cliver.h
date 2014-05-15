@@ -98,6 +98,9 @@ extern llvm::cl::opt<bool> UseCallPaths;
 // Command line options defined in lib/Core/UserSearcher.cpp
 extern llvm::cl::opt<unsigned> UseThreads;
 
+// Command line options defined in lib/Core/PTree.cpp
+extern llvm::cl::opt<bool> UseProcessTree;
+
 bool containsArg(std::string arg, std::vector<std::string> &args) {
   for (int i=0; i<args.size(); ++i)
     if (args[i].find(arg) != std::string::npos)
@@ -105,26 +108,28 @@ bool containsArg(std::string arg, std::vector<std::string> &args) {
   return false;
 }
 
+// cliver needs different default options and has some unsupported options,
+// here they are checked and set
 void processKleeArgumentsForCliver(std::vector<std::string> &args) {
 #define SET_DEFAULT_OPT(name, val) \
-	if (name != val && !containsArg(#name, args)) { \
-    name=val; klee_message("CV: Setting %s to %s", #name, #val);}
+	if (name != val && !containsArg(name.ArgStr, args)) { \
+    name=val; klee_message("Changing default option: -%s=%s", name.ArgStr, #val);}
 	//SET_DEFAULT_OPT(WithPOSIXRuntime,true);
 	//SET_DEFAULT_OPT(Libc,UcLibc);
 	SET_DEFAULT_OPT(CheckDivZero,false);
 	SET_DEFAULT_OPT(CheckOvershift,false);
 	SET_DEFAULT_OPT(OptimizeModule,true);
-	SET_DEFAULT_OPT(UseForkedCoreSolver,false);
 	SET_DEFAULT_OPT(SwitchType,eSwitchTypeSimple);
 	SET_DEFAULT_OPT(UseCanonicalization,true);
 	SET_DEFAULT_OPT(UseCallPaths,false);
 	SET_DEFAULT_OPT(OutputIStats,false);
 	SET_DEFAULT_OPT(llvm::DisableInline,true);
 	SET_DEFAULT_OPT(llvm::DisableInternalize,true);
+	SET_DEFAULT_OPT(UseProcessTree,false);
 #undef SET_DEFAULT_OPT
 
 #define INVALID_CL_OPT(name, val) \
-	if (name != val) {klee_error("CV: Unsupported command line option: %s", #name);}
+	if (name != val) {klee_error("Unsupported cliver option: -%s=%s", name.ArgStr, #val);}
 	INVALID_CL_OPT(ZeroSeedExtension,false);
 	INVALID_CL_OPT(AllowSeedExtension,false);
 	INVALID_CL_OPT(AlwaysOutputSeeds,true);
