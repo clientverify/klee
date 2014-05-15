@@ -117,7 +117,9 @@ namespace klee {
   extern llvm::cl::opt<bool> OnlyOutputStatesCoveringNew;
   extern llvm::cl::opt<bool> AlwaysOutputSeeds;
   extern llvm::cl::opt<unsigned int> StopAfterNInstructions;
+  extern llvm::cl::opt<double> MaxInstructionTime;
   extern llvm::cl::opt<unsigned> MaxMemory;
+  extern llvm::cl::opt<bool> MaxMemoryInhibit;
 
   // Command line options defined in lib/Core/UserSearcher.cpp
   extern llvm::cl::opt<unsigned> UseThreads;
@@ -197,7 +199,8 @@ void CVExecutor::executeCall(klee::ExecutionState &state,
                              llvm::Function *f,
                              std::vector< klee::ref<klee::Expr> > &arguments) {
   if (PrintFunctionCalls) {
-    CVMESSAGE(std::string(state.stack.size(), '-') << f->getName().str());
+    CVMESSAGE(std::setw(2) << std::right << klee::GetThreadID() << " "
+              << std::string(state.stack.size(), '-') << f->getName().str());
   }
 
   std::string XWidgetStr("Widget_");
@@ -341,6 +344,183 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
     statsTracker->done();
 }
 
+void CVExecutor::execute(klee::ExecutionState *initialState,
+                         klee::MemoryManager *memory) {
+  klee::Mutex lock;
+  klee::Mutex memoryMutex;
+
+  klee::UniqueLock guard(lock);
+
+  // Initialize thread specific globals and objects
+  initializePerThread(*initialState, memory);
+
+  // Wait until all threads have initialized
+  threadBarrier->wait();
+
+  klee::ExecutionState *statePtr = NULL;
+  while (!empty() && !haltExecution) {
+
+    if (klee::GetThreadID() == 2) {
+      searcherCond.notify_all();
+      sleep(1);
+    }
+
+    if (statePtr == NULL) {
+      statePtr = searcher->trySelectState();
+    }
+
+    if (statePtr != NULL) {
+      klee::ExecutionState &state = *statePtr;
+
+      klee::KInstruction *ki = state.pc;
+      stepInstruction(state);
+      executeInstruction(state, ki);
+
+      // XXX Process timers in cliver?
+      //processTimers(&state, klee::MaxInstructionTime);
+
+      // Increment instruction counters
+      ++stats::round_instructions;
+      static_cast<CVExecutionState*>(&state)->property()->inst_count++;
+      if (static_cast<CVExecutionState*>(&state)->property()->is_recv_processing)
+        ++stats::recv_round_instructions;
+
+      // Handle post execution events if state wasn't removed
+      if (getContext().removedStates.find(&state) == getContext().removedStates.end()) {
+        handle_post_execution_events(state);
+      }
+
+      // Handle post execution events for each newly added state
+      foreach (klee::ExecutionState* astate, getContext().addedStates) {
+        handle_post_execution_events(*astate);
+      }
+
+      // Notify all if a state was removed
+      foreach (klee::ExecutionState* rstate, getContext().removedStates) {
+        cv_->notify_all(ExecutionEvent(CV_STATE_REMOVED, rstate));
+      }
+
+      // Update searcher with new states and get next state to execute
+      if (static_cast<CVExecutionState*>(&state)->event_flag()
+          || !getContext().removedStates.empty()
+          || !getContext().addedStates.empty()) {
+        statePtr = searcher->updateAndTrySelectState(&state,
+                                                     getContext().addedStates,
+                                                     getContext().removedStates);
+        // Update Executor state tracking
+        parallelUpdateStates(&state);
+      }
+    }
+
+    // Wait for new states to be ready to execute
+    while (statePtr == NULL &&
+           searcher->empty() && !empty() &&
+           !haltExecution && !pauseExecution) {
+      searcherCond.wait(guard);
+    }
+
+    // If another thread called PauseExecution();
+    if (pauseExecution) {
+      // Return statePtr to searcher if not NULL
+      if (statePtr) {
+        searcher->update(statePtr,
+                         std::set<klee::ExecutionState*>(),
+                         std::set<klee::ExecutionState*>());
+        statePtr = NULL;
+      }
+
+      // Increment paused thread count
+      ++pausedThreadCount;
+
+      // Notify initiating thread, that this thread is now paused
+      pauseExecutionCondition.notify_one();
+
+      // Wait for initiating thread to restart execution
+      while (pauseExecution) {
+        startExecutionCondition.wait(guard);
+      }
+    }
+
+    // Check if we are running out of memory
+    if (klee::MaxMemory) {
+      // Note: Only one thread needs to check the memory situation
+      if ((klee::stats::instructions & 0xFFFF) == 0 && memoryMutex.try_lock()) {
+        klee::klee_message("checking memory (%d)", klee::GetThreadID());
+
+        // We need to avoid calling GetMallocUsage() often because it
+        // is O(elts on freelist). This is really bad since we start
+        // to pummel the freelist once we hit the memory cap.
+        unsigned mbs;
+        if (klee::UseThreads > 1) {
+          mbs = GetMemoryUsage() >> 20;
+        } else {
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
+          mbs = llvm::sys::Process::GetMallocUsage() >> 20;
+#else
+          mbs = llvm::sys::Process::GetTotalMemoryUsage() >> 20;
+#endif
+        }
+
+        if (mbs > klee::MaxMemory) {
+          if (mbs > klee::MaxMemory + 100) {
+
+            // Return statePtr to searcher
+            if (statePtr) {
+              searcher->update(statePtr, std::set<klee::ExecutionState*>(),
+                               std::set<klee::ExecutionState*>());
+              statePtr = NULL;
+            }
+
+            // Try to PauseExecution(), may fail
+            if (PauseExecution()) {
+
+              // just guess at how many to kill
+              unsigned numStates = stateCount;
+              unsigned toKill = std::max(1U, numStates - numStates*klee::MaxMemory/mbs);
+
+              if (klee::MaxMemoryInhibit)
+                klee::klee_warning("killing %d states (over memory cap)",
+                            toKill);
+
+              std::vector<klee::ExecutionState*> arr(states.begin(), states.end());
+              for (unsigned i=0,N=arr.size(); N && i<toKill; ++i,--N) {
+                unsigned idx = rand() % N;
+
+                // Make two pulls to try and not hit a state that
+                // covered new code.
+                if (arr[idx]->coveredNew)
+                  idx = rand() % N;
+
+                std::swap(arr[idx], arr[N-1]);
+                terminateStateEarly(*arr[N-1], "Memory limit exceeded.");
+              }
+              UnPauseExecution();
+            }
+          }
+          atMemoryLimit = true;
+        } else {
+          atMemoryLimit = false;
+        }
+
+        memoryMutex.unlock();
+      }
+    }
+  }
+
+  // Update searcher with last state we executed if we are halting early
+  if (statePtr) {
+    searcher->update(statePtr, getContext().addedStates, getContext().removedStates);
+  }
+
+  // Alert threads to wake up if there are no more states to execute
+  searcherCond.notify_one();
+
+  // Release TSS memory (i.e., don't destroy with thread); the memory manager
+  // for this thread may still be needed in dumpState
+  this->memory.release();
+}
+
+#if 1
 void CVExecutor::run(klee::ExecutionState &initialState) {
   bindModuleConstants();
 
@@ -348,125 +528,60 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
   // optimization and such.
   initTimers();
 
-  {
-    klee::LockGuard guard(statesMutex);
-    states.insert(&initialState);
-  }
+  states.insert(&initialState);
+  ++stateCount;
 
 	searcher = cv_->searcher();
+
+  if (!searcher) {
+    klee::klee_error("failed to create searcher");
+  }
 
   std::set<klee::ExecutionState*> initial_state_set;
   initial_state_set.insert(&initialState);
 
+  // only want searcher to know about this state!
   searcher->update(0, initial_state_set, std::set<klee::ExecutionState*>());
 
-  klee::ExecutionState *prev_state = NULL;
-  bool clear_caches = false;
+  threadBarrier = new klee::Barrier(klee::UseThreads);
 
-  while (!searcher->empty() && !haltExecution) {
-
-    if (clear_caches) {
-      clear_caches = false;
-
-      cv_message("Using %ld MB of memory (limit is %d MB). Clearing Caches\n", 
-          memory_usage_mbs_, (unsigned)klee::MaxMemory);
-
-      cv_->notify_all(ExecutionEvent(CV_CLEAR_CACHES));
-
-      update_memory_usage();
-
-      cv_message("Now using %ld MB of memory (limit is %d MB). \n", 
-          memory_usage_mbs_, (unsigned)klee::MaxMemory);
-    
-      if (memory_usage_mbs_ > klee::MaxMemory) {
-        goto dump;
+  totalThreadCount = klee::UseThreads;
+  if (!empty()) {
+    if (klee::UseThreads <= 1) {
+      execute(&initialState, NULL);
+    } else {
+      klee::ThreadGroup threadGroup;
+      for (unsigned i=0; i<klee::UseThreads; ++i) {
+        // Initialize MemoryManager outside of thread
+        memoryManagers.push_back(new klee::MemoryManager());
+        threadGroup.add_thread(new klee::Thread(&cliver::CVExecutor::execute,
+                                          this, &initialState, memoryManagers.back()));
       }
-    }
-
-    if (klee::MaxMemory) {
-      // Only update the the memory usage here occasionally
-      if ((klee::stats::instructions & 0xFFFFF) == 0) {
-        update_memory_usage();
-      }
-
-      if (memory_usage_mbs_> ((double)klee::MaxMemory*(0.90))) {
-        clear_caches = true;
-      }
-    }
-
-    // Print usage stats during especially long rounds
-    if ((klee::stats::instructions & 0xFFFFFF) == 0)
-      cv_->print_current_statistics("UPDT");
-
-    // Select the next state from the search if it was updated (prev_state is
-    // null) or continue execution of the previous state
-		klee::ExecutionState &state 
-      = (prev_state ? *prev_state : searcher->selectState());
-
-    static_cast<CVExecutionState*>(&state)->set_event_flag(false);
-
-    prev_state = &state;
-
-    if (haltExecution) goto dump;
-
-    // XXX Not currently used
-    //handle_pre_execution_events(state);
-
-		klee::KInstruction *ki = state.pc;
-
-    //cv_->notify_all(ExecutionEvent(CV_STEP_INSTRUCTION, &state));
-    stepInstruction(state);
-    executeInstruction(state, ki);
-    //processTimers(&state, klee::MaxInstructionTime);
-
-    // Increment instruction counters
-    ++stats::round_instructions;
-    static_cast<CVExecutionState*>(&state)->property()->inst_count++;
-    if (static_cast<CVExecutionState*>(&state)->property()->is_recv_processing)
-      ++stats::recv_round_instructions;
-
-		// Handle post execution events if state wasn't removed
-		if (getContext().removedStates.find(&state) == getContext().removedStates.end()) {
-      handle_post_execution_events(state);
-    }
-
-		// Handle post execution events for each newly added state
-    foreach (klee::ExecutionState* astate, getContext().addedStates) {
-      handle_post_execution_events(*astate);
-    }
-
-    foreach (klee::ExecutionState* rstate, getContext().removedStates) {
-      cv_->notify_all(ExecutionEvent(CV_STATE_REMOVED, rstate));
-    }
-
-    // Update the searcher only if needed
-    if (static_cast<CVExecutionState*>(&state)->event_flag()
-        || !getContext().removedStates.empty() 
-        || !getContext().addedStates.empty()
-        || clear_caches) {
-      updateStates(&state);
-      prev_state = NULL;
+      // Wait for all threads to finish
+      threadGroup.join_all();
     }
   }
-
-  if(searcher->empty())
-    CVMESSAGE("No more states to search.");
+  totalThreadCount = 1;
 
  dump:
-  if (klee::DumpStatesOnHalt && !states.empty()) {
-    //std::cerr << "KLEE: halting execution, dumping remaining states\n";
-		cv_warning("halting execution, dumping remaining states");
-    for (std::set<klee::ExecutionState*>::iterator
-           it = states.begin(), ie = states.end();
-         it != ie; ++it) {
-			klee::ExecutionState &state = **it;
-      stepInstruction(state); // keep stats rolling
-      terminateStateEarly(state, "execution halting");
+  if (klee::DumpStatesOnHalt && !empty()) {
+    std::cerr << "KLEE: halting execution, dumping remaining states\n";
+    while (klee::ExecutionState* state = searcher->trySelectState()) {
+      stepInstruction(*state); // keep stats rolling
+      terminateStateEarly(*state, "Execution halting.");
+      searcher->update(state, getContext().addedStates, getContext().removedStates);
+      parallelUpdateStates(state);
     }
   }
 
-  cv_->print_all_stats();
+  // Delete all MemoryManagers used by threads
+  memory.release();
+  for (std::vector<klee::MemoryManager*>::iterator it = memoryManagers.begin(),
+       ie = memoryManagers.end(); it != ie; ++it)
+    delete *it;
+
 }
+#endif
 
 void CVExecutor::handle_pre_execution_events(klee::ExecutionState &state) {
   klee::KInstruction* ki = state.pc;
@@ -572,32 +687,6 @@ void CVExecutor::executeMakeSymbolic(klee::ExecutionState &state,
   CVExecutionState *cvstate = static_cast<CVExecutionState*>(&state);
   cvstate->property()->symbolic_vars++;
   CVDEBUG("Created symbolic: " << array->name << " in " << *cvstate);
-}
-
-void CVExecutor::updateStates(klee::ExecutionState *current) {
-  if (searcher) {
-    searcher->update(current, getContext().addedStates, getContext().removedStates);
-  }
-  
-  {
-    klee::LockGuard guard(statesMutex);
-    states.insert(getContext().addedStates.begin(), getContext().addedStates.end());
-  }
-  getContext().addedStates.clear();
-  
-  for (std::set<klee::ExecutionState*>::iterator
-         it = getContext().removedStates.begin(), ie = getContext().removedStates.end();
-       it != ie; ++it) {
-		klee::ExecutionState *es = *it;
-    {
-      klee::LockGuard guard(statesMutex);
-      std::set<klee::ExecutionState*>::iterator it2 = states.find(es);
-      assert(it2!=states.end());
-      states.erase(it2);
-    }
-    delete es;
-  }
-  getContext().removedStates.clear();
 }
 
 klee::Executor::StatePair 

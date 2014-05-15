@@ -40,9 +40,9 @@ class CVExecutor : public klee::Executor {
 
   virtual void run(klee::ExecutionState &initialState);
 
-  virtual void stepInstruction(klee::ExecutionState &state);
+  virtual void execute(klee::ExecutionState *initialState, klee::MemoryManager* memory);
 
-  virtual void updateStates(klee::ExecutionState *current);
+  virtual void stepInstruction(klee::ExecutionState &state);
 
   virtual void runFunctionAsMain(llvm::Function *f,
 				                 int argc, char **argv, char **envp);
