@@ -9,6 +9,8 @@
 #ifndef CLIVER_STREAM_H
 #define CLIVER_STREAM_H
 
+#include "klee/util/Thread.h"
+#include "klee/util/Mutex.h"
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -28,6 +30,8 @@ extern std::ostream* cv_warning_stream;
 extern std::ostream* cv_message_stream;
 extern std::ostream* cv_debug_stream;
 
+// TODO FIXME make output thread safe
+
 #define CVMESSAGE(__x) \
   { *cv_message_stream <<"CV: "<< __x << "\n"; }
 
@@ -37,7 +41,7 @@ extern std::ostream* cv_debug_stream;
 	"CV: DEBUG (" __FILE__ ":"  << __LINE__  << ") "
 
 #define __CVDEBUG_FILE \
-  "CV: DEBUG " << std::setw(25) << std::left << "(" __FILE__ ") "
+  "CV: DEBUG " << std::setw(25) << std::left << "(" __FILE__ ") " << "[" << klee::GetThreadID() << "] "
 
 #define __CVDEBUG(__debug_enabled, __x) \
 	if (__debug_enabled) { \
