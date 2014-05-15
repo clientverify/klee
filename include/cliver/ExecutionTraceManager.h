@@ -20,6 +20,7 @@
 
 #include "klee/Solver.h"
 #include "klee/Internal/Module/KModule.h"
+#include "klee/util/Mutex.h"
 
 #include "llvm/Analysis/Trace.h"
 
@@ -104,6 +105,7 @@ class ExecutionTraceManager : public ExecutionObserver {
   std::vector< ExecutionTraceTree* > tree_list_;
   ClientVerifier *cv_;
   StatePropertyStageMap stages_;
+  klee::Mutex lock_;
 };
 
 class TrainingExecutionTraceManager : public ExecutionTraceManager {

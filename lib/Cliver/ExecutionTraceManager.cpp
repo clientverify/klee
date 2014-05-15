@@ -127,10 +127,12 @@ llvm::cl::list<std::string> SelfTrainingPathDir("self-training-path-dir",
 ExecutionTraceManager::ExecutionTraceManager(ClientVerifier* cv) : cv_(cv) {}
 
 void ExecutionTraceManager::initialize() {
+  klee::LockGuard guard(lock_);
   tree_list_.push_back(new ExecutionTraceTree() );
 }
 
 void ExecutionTraceManager::notify(ExecutionEvent ev) {
+  klee::LockGuard guard(lock_);
   if (cv_->executor()->replay_path())
     return;
 
@@ -174,7 +176,7 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
       CVDEBUG("Removing state: " << *state );
       ExecutionStage* stage = stages_[property];
-      if (stage->etrace_tree) {
+      if (stage->etrace_tree && stage->etrace_tree->tracks(property)) {
         stage->etrace_tree->remove_tracker(property);
       }
       stages_.erase(property);
@@ -266,6 +268,7 @@ void TrainingExecutionTraceManager::write_training_object(
 }
 
 void TrainingExecutionTraceManager::notify(ExecutionEvent ev) {
+  klee::LockGuard guard(lock_);
 
   // No Events if we are replaying a path that was expelled from cache
   if (cv_->executor()->replay_path())
@@ -398,6 +401,7 @@ VerifyExecutionTraceManager::VerifyExecutionTraceManager(ClientVerifier* cv)
   : ExecutionTraceManager(cv), last_round_cleared_(0) {}
 
 void VerifyExecutionTraceManager::initialize() {
+  klee::LockGuard guard(lock_);
   klee::WallTimer timer;
   // Create similarity measure
   similarity_measure_ = SocketEventSimilarityFactory::create();
@@ -754,6 +758,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
     }
 
     case CV_BASICBLOCK_ENTRY: {
+      klee::LockGuard guard(lock_);
 
       ExecutionStage* stage = stages_[property];
 
@@ -801,6 +806,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
     break;
 
     case CV_STATE_REMOVED: {
+      klee::LockGuard guard(lock_);
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
       CVDEBUG("Removing state: " << *state );
       ExecutionStage* stage = stages_[property];
@@ -820,6 +826,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
     break;
 
     case CV_STATE_CLONE: {
+      klee::LockGuard guard(lock_);
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
       ExecutionStage* stage = stages_[parent_property];
 
@@ -855,6 +862,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
     break;
 
     case CV_SEARCHER_NEW_STAGE: {
+      klee::LockGuard guard(lock_);
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
 
       CVDEBUG("New Stage: " << property << ": " << *property);
@@ -934,6 +942,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
     break;
 
     case CV_CLEAR_CACHES: {
+      cv_error("CLEAR_CACHES not currently supported!");
       clear_caches();
       break;
     }
@@ -974,6 +983,7 @@ void VerifyExecutionTraceManager::clear_caches() {
 
 bool VerifyExecutionTraceManager::ready_process_all_states(
     ExecutionStateProperty* property) {
+  klee::LockGuard guard(lock_);
 
   assert(stages_.count(property));
   ExecutionStage* stage = stages_[property];
@@ -1005,6 +1015,7 @@ void VerifyExecutionTraceManager::recompute_property(
 
 void VerifyExecutionTraceManager::process_all_states(
     std::vector<ExecutionStateProperty*> &states) {
+  klee::LockGuard guard(lock_);
   klee::WallTimer timer;
   klee::TimerStatIncrementer edct(stats::edit_distance_time);
 
