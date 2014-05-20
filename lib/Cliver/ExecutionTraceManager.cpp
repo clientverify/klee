@@ -537,12 +537,13 @@ void VerifyExecutionTraceManager::update_edit_distance(
       int curr_bb_id = state->pc->kbb->id;
       int self_bb_id = matching_tobj->trace[etrace.size()-1];
       if (curr_bb_id != self_bb_id) {
-        klee::KBasicBlock *curr_kbb = cv_->LookupBasicBlockID(curr_bb_id);
-        klee::KBasicBlock *self_kbb = cv_->LookupBasicBlockID(self_bb_id);
-
         CVMESSAGE("Self Training Data Mismatch!!");
-        CVMESSAGE("Curr BasicBlock: [BB: " << curr_bb_id << "] " << *curr_kbb->kinst );
-        CVMESSAGE("Self BasicBlock: [BB: " << self_bb_id << "] " << *self_kbb->kinst );
+        if (DebugExecutionTree) {
+          klee::KBasicBlock *curr_kbb = cv_->LookupBasicBlockID(curr_bb_id);
+          klee::KBasicBlock *self_kbb = cv_->LookupBasicBlockID(self_bb_id);
+          CVDEBUG("Curr BasicBlock: [BB: " << curr_bb_id << "] " << *curr_kbb->kinst );
+          CVDEBUG("Self BasicBlock: [BB: " << self_bb_id << "] " << *self_kbb->kinst );
+        }
       }
     }
   }
@@ -765,8 +766,8 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       if (!property->is_recv_processing) {
 
         // Check if this is the first basic block of the stage
-        if (!stage->etrace_tree->tracks(property)) {
-          assert(stage->etrace_tree->element_count() == 0);
+        // that needs an edit distance tree
+        if (stage->etrace_tree->element_count() == 0) {
           CVDEBUG("First basic block entry (stage)");
           
           // Build the edit distance tree using training data

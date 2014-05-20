@@ -188,7 +188,7 @@ CVExecutor::CVExecutor(const InterpreterOptions &opts, klee::InterpreterHandler 
   memory_usage_mbs_(0) {
   if (klee::UseThreads > 1) {
     cv_warning("Multi-threaded support is currently disabled");
-    klee::UseThreads = 1;
+    klee::UseThreads = 4;
   }
 }
 
