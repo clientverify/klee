@@ -148,12 +148,18 @@ bool StateMerger::constraints_equal(
 		CVDEBUG("constraints do not match");
 		foreach( klee::ref<klee::Expr> e, set_a) {
 			if (!common.count(e)) {
-				CVDEBUG("(1) " << e);
+        std::string str;
+        llvm::raw_string_ostream ss(str);
+        ss << e;
+				CVDEBUG("(1) " << str);
 			}
 		}
 		foreach( klee::ref<klee::Expr> e, set_b) {
 			if (!common.count(e)) {
-				CVDEBUG("(2) " << e);
+        std::string str;
+        llvm::raw_string_ostream ss(str);
+        ss << e;
+				CVDEBUG("(2) " << str);
 			}
 		}
 		return false;

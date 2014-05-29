@@ -340,15 +340,18 @@ bool AddressSpaceGraph::locals_equal(const AddressSpaceGraph &b) const {
         }
         if (a_expr != b_expr) {
           if (DebugAddressSpaceGraph) {
+            std::string str;
+            llvm::raw_string_ostream ss(str);
+            ss << a_expr << " != " << b_expr << ", ";
             if (locals_info_[i].isArg) {
               CVDEBUG_S2(id_a, id_b, "locals not equal in Function: "
                 << locals_info_[i].kf->function->getName().str() << "(), " <<
-                a_expr << " != " << b_expr << ", Arg "
+                str << " Arg "
                 << locals_info_[i].index);
             } else {
               CVDEBUG_S2(id_a, id_b, "locals not equal in Function: "
                 << locals_info_[i].kf->function->getName().str() << "(), " <<
-                a_expr << " != " << b_expr << ", "
+                str
                 << *(locals_info_[i].kf->instructions[locals_info_[i].index]));
             }
           }
@@ -769,7 +772,10 @@ void AddressSpaceGraph::extract_pointers(klee::ObjectState *obj,
               p.object = const_cast<klee::ObjectState*>(object_pair.second);
               results.push_back(p);
             } else {
-              CVDEBUG_S(cv_state_->id(), "address " << *CE << " did not resolve");
+              std::string str;
+              llvm::raw_string_ostream ss(str);
+              ss << *CE;
+              CVDEBUG_S(cv_state_->id(), "address " << str << " did not resolve");
             }
           }
         } else {

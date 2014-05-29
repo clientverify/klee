@@ -11,11 +11,16 @@
 #include "CVCommon.h"
 
 #include "../lib/Core/Common.h"
+
 #include "klee/Interpreter.h"
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Path.h"
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Support/raw_os_ostream.h"
+
+#include "klee/Config/Version.h"
 
 #include <list>
 #include <sstream>
@@ -197,26 +202,45 @@ CVStream::~CVStream() {
 }
 
 std::string CVStream::getBasename(const std::string &filename) {
-  llvm::sys::Path path(filename);
-  return path.getBasename().str();
+  return llvm::sys::path::filename(filename).str();
 }
 
 std::string CVStream::appendComponent(const std::string &filename,
                                       const std::string &append) {
-  llvm::sys::Path filepath(filename);
-  filepath.appendComponent(append);
+  llvm::SmallString<128> filepath(filename);
+  llvm::sys::path::append(filepath,append);
   return filepath.str();
 }
 
 std::string CVStream::getOutputFilename(const std::string &filename) {
-  llvm::sys::Path filepath(output_dir_);
-  filepath.appendComponent(filename);
-  return filepath.str();
+  llvm::SmallString<128> path(output_dir_);
+  llvm::sys::path::append(path,filename);
+  return path.str();
 }
 
 std::ostream *CVStream::openOutputFile(const std::string &filename) {
   std::string sub_dir("");
   return openOutputFileInSubDirectory(filename, sub_dir);
+}
+
+llvm::raw_fd_ostream *CVStream::openOutputFileLLVM(const std::string &filename) {
+  llvm::raw_fd_ostream *f;
+  std::string Error;
+  std::string path = getOutputFilename(filename);
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3,0)
+  f = new llvm::raw_fd_ostream(path.c_str(), Error, llvm::sys::fs::F_Binary);
+#else
+  f = new llvm::raw_fd_ostream(path.c_str(), Error, llvm::raw_fd_ostream::F_Binary);
+#endif
+  if (!Error.empty()) {
+    klee::klee_error("error opening file \"%s\".  KLEE may have run out of file "
+               "descriptors: try to increase the maximum number of open file "
+               "descriptors by using ulimit (%s).",
+               filename.c_str(), Error.c_str());
+    delete f;
+    f = NULL;
+  }
+  return f;
 }
 
 std::ostream *CVStream::openOutputFileInSubDirectory(
@@ -504,6 +528,8 @@ void CVStream::init() {
   cv_warning_stream = warning_stream_;
   cv_message_stream = message_stream_;
   cv_debug_stream   = debug_stream_;
+
+  raw_info_stream_ = new llvm::raw_os_ostream(*info_stream_);
 
   initialized_ = true;
 }

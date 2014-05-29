@@ -37,6 +37,7 @@
 #include "llvm/Support/CallSite.h"
 #include "llvm/Support/CFG.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <cassert>
 #include <fstream>
@@ -141,7 +142,7 @@ bool ParallelDFSSearcher::empty() {
   return queueSize == 0;
 }
 
-void ParallelDFSSearcher::printName(std::ostream &os) {
+void ParallelDFSSearcher::printName(llvm::raw_ostream &os) {
   os << "ParallelDFSSearcher\n";
 }
 
@@ -174,7 +175,7 @@ bool ParallelSearcher::empty() {
   return searcher->empty();
 }
 
-void ParallelSearcher::printName(std::ostream &os) {
+void ParallelSearcher::printName(llvm::raw_ostream &os) {
   os << "<ParallelSearcher>\n";
   searcher->printName(os);
   os << "</ParallelSearcher>\n";

@@ -125,10 +125,10 @@ class ClientVerifier : public klee::InterpreterHandler {
   ~ClientVerifier();
 	
 	// klee::InterpreterHandler
-  std::ostream &getInfoStream() const;
+  llvm::raw_ostream &getInfoStream() const;
   std::string getOutputFilename(const std::string &filename);
-  std::ostream* openOutputFile(const std::string &filename);
-  std::ostream* openOutputFileInSubDirectory(const std::string &filename, 
+  llvm::raw_fd_ostream *openOutputFile(const std::string &filename);
+  llvm::raw_fd_ostream *openOutputFileInSubDirectory(const std::string &filename,
                                              const std::string &sub_directory);
 	void getFiles(std::string path, std::string suffix,
                 std::vector<std::string> &results);
@@ -184,6 +184,8 @@ class ClientVerifier : public klee::InterpreterHandler {
   klee::KBasicBlock* LookupBasicBlockID(int id);
 
   KTest* get_replay_objs() { return replay_objs_; }
+
+  CVStream* get_cvstream() { return cvstream_; }
 
  private:
   CVStream *cvstream_;

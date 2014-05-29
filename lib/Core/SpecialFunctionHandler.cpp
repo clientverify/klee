@@ -28,6 +28,7 @@
 #include "llvm/Module.h"
 #endif
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/Debug.h"
 
 #include <errno.h>
 #include <iostream>
@@ -284,7 +285,7 @@ void SpecialFunctionHandler::handleAbort(ExecutionState &state,
 
   //XXX:DRE:TAINT
   if(state.underConstrained) {
-    std::cerr << "TAINT: skipping abort fail\n";
+    llvm::errs() << "TAINT: skipping abort fail\n";
     executor.terminateState(state);
   } else {
     executor.terminateStateOnError(state, "abort failure", "abort.err");
@@ -312,7 +313,8 @@ void SpecialFunctionHandler::handleAliasFunction(ExecutionState &state,
          "invalid number of arguments to klee_alias_function");
   std::string old_fn = readStringAtAddress(state, arguments[0]);
   std::string new_fn = readStringAtAddress(state, arguments[1]);
-  //std::cerr << "Replacing " << old_fn << "() with " << new_fn << "()\n";
+  DEBUG_WITH_TYPE("alias_handling", llvm::errs() << "Replacing " << old_fn
+                                            << "() with " << new_fn << "()\n");
   if (old_fn == new_fn)
     state.removeFnAlias(old_fn);
   else state.addFnAlias(old_fn, new_fn);
@@ -325,8 +327,8 @@ void SpecialFunctionHandler::handleAssert(ExecutionState &state,
   
   //XXX:DRE:TAINT
   if(state.underConstrained) {
-    std::cerr << "TAINT: skipping assertion:" 
-               << readStringAtAddress(state, arguments[0]) << "\n";
+    llvm::errs() << "TAINT: skipping assertion:"
+                 << readStringAtAddress(state, arguments[0]) << "\n";
     executor.terminateState(state);
   } else
     executor.terminateStateOnError(state, 
@@ -341,8 +343,8 @@ void SpecialFunctionHandler::handleAssertFail(ExecutionState &state,
   
   //XXX:DRE:TAINT
   if(state.underConstrained) {
-    std::cerr << "TAINT: skipping assertion:" 
-               << readStringAtAddress(state, arguments[0]) << "\n";
+    llvm::errs() << "TAINT: skipping assertion:"
+                 << readStringAtAddress(state, arguments[0]) << "\n";
     executor.terminateState(state);
   } else
     executor.terminateStateOnError(state, 
@@ -359,9 +361,9 @@ void SpecialFunctionHandler::handleReportError(ExecutionState &state,
   
   //XXX:DRE:TAINT
   if(state.underConstrained) {
-    std::cerr << "TAINT: skipping klee_report_error:"
-               << readStringAtAddress(state, arguments[2]) << ":"
-               << readStringAtAddress(state, arguments[3]) << "\n";
+    llvm::errs() << "TAINT: skipping klee_report_error:"
+                 << readStringAtAddress(state, arguments[2]) << ":"
+                 << readStringAtAddress(state, arguments[3]) << "\n";
     executor.terminateState(state);
   } else
     executor.terminateStateOnError(state, 
@@ -483,9 +485,7 @@ void SpecialFunctionHandler::handlePrintExpr(ExecutionState &state,
          "invalid number of arguments to klee_print_expr");
 
   std::string msg_str = readStringAtAddress(state, arguments[0]);
-  std::stringstream ss;
-  ss << msg_str << ":" << arguments[1];
-  klee_message(ss.str().c_str());
+  llvm::errs() << msg_str << ":" << arguments[1] << "\n";
 }
 
 void SpecialFunctionHandler::handlePrintBytes(ExecutionState &state,
@@ -522,7 +522,7 @@ void SpecialFunctionHandler::handlePrintBytes(ExecutionState &state,
   for (; i < sizeConcrete; i++) {
     ss << os->read8(offset+i) << " ";
   }
-  klee_message(ss.str().c_str());
+  llvm::errs() << ss.str() << "\n";
 }
 
 void SpecialFunctionHandler::handleSetForking(ExecutionState &state,
@@ -544,9 +544,7 @@ void SpecialFunctionHandler::handleSetForking(ExecutionState &state,
 void SpecialFunctionHandler::handleStackTrace(ExecutionState &state,
                                               KInstruction *target,
                                               std::vector<ref<Expr> > &arguments) {
-  std::stringstream ss;
-  state.dumpStack(ss);
-  klee_message(ss.str().c_str());
+  state.dumpStack(outs());
 }
 
 void SpecialFunctionHandler::handleWarning(ExecutionState &state,
@@ -577,7 +575,7 @@ void SpecialFunctionHandler::handlePrintRange(ExecutionState &state,
          "invalid number of arguments to klee_print_range");
 
   std::string msg_str = readStringAtAddress(state, arguments[0]);
-  std::cerr << msg_str << ":" << arguments[1];
+  llvm::errs() << msg_str << ":" << arguments[1];
   if (!isa<ConstantExpr>(arguments[1])) {
     // FIXME: Pull into a unique value method?
     ref<ConstantExpr> value;
@@ -589,15 +587,15 @@ void SpecialFunctionHandler::handlePrintRange(ExecutionState &state,
                                           res);
     assert(success && "FIXME: Unhandled solver failure");
     if (res) {
-      std::cerr << " == " << value;
+      llvm::errs() << " == " << value;
     } else { 
-      std::cerr << " ~= " << value;
+      llvm::errs() << " ~= " << value;
       std::pair< ref<Expr>, ref<Expr> > res =
         executor.solver->getRange(state, arguments[1]);
-      std::cerr << " (in [" << res.first << ", " << res.second <<"])";
+      llvm::errs() << " (in [" << res.first << ", " << res.second <<"])";
     }
   }
-  std::cerr << "\n";
+  llvm::errs() << "\n";
 }
 
 void SpecialFunctionHandler::handleGetObjSize(ExecutionState &state,

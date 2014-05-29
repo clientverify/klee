@@ -22,6 +22,7 @@
 
 #include "llvm/Support/Process.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/raw_os_ostream.h"
 
 using namespace klee;
 using namespace llvm;
@@ -60,7 +61,9 @@ bool TimingSolver::evaluate(const ExecutionState& state, ref<Expr> expr,
   if (DebugPrintSolverVars && !isa<ConstantExpr>(expr)) {
     *klee_warning_stream << "TimingSolver::evaluate(): StackTrace\n";
     *klee_warning_stream << "Expr vars: " << getExprVarStr(expr) << "\n";
-    state.dumpStack(*klee_warning_stream);
+    llvm::raw_ostream *ros = new llvm::raw_os_ostream(*klee_warning_stream);
+    state.dumpStack(*ros);
+    delete ros;
   }
 
   bool success = solver->evaluate(Query(state.constraints, expr), result);
@@ -88,7 +91,10 @@ bool TimingSolver::mustBeTrue(const ExecutionState& state, ref<Expr> expr,
     std::string expr_string = getExprVarStr(expr);
     *klee_warning_stream << "Expr vars: " << expr_string << "\n";
     if (expr_string.size() == 0) {
-      *klee_warning_stream << "Expr: " << expr<< "\n";
+      std::string str;
+      llvm::raw_string_ostream ss(str);
+      ss << "Expr: " << expr<< "\n";
+      *klee_warning_stream << str;
     }
   }
 
@@ -144,9 +150,14 @@ bool TimingSolver::getValue(const ExecutionState& state, ref<Expr> expr,
     std::string expr_string = getExprVarStr(expr);
     *klee_warning_stream << "Expr vars: " << expr_string << "\n";
     if (expr_string.size() == 0) {
-      *klee_warning_stream << "Expr: " << expr<< "\n";
+      std::string str;
+      llvm::raw_string_ostream ss(str);
+      ss << "Expr: " << expr<< "\n";
+      *klee_warning_stream << str;
     }
-    state.dumpStack(*klee_warning_stream);
+    llvm::raw_ostream *ros = new llvm::raw_os_ostream(*klee_warning_stream);
+    state.dumpStack(*ros);
+    delete ros;
   }
 
   bool success = solver->getValue(Query(state.constraints, expr), result);

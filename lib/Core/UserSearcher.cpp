@@ -121,7 +121,7 @@ Searcher *klee::constructUserSearcher(Executor &executor) {
   // Check for invalid searcher configurations
   if (UseBatchingSearch || UseMerge || UseBumpMerge) {
     if (UseThreads > 1) {
-      std::ostream &os = executor.getHandler().getInfoStream();
+      llvm::raw_ostream &os = executor.getHandler().getInfoStream();
       os << "Invalid configuration: multiple threads not supported this configuration. ";
       os << "Setting thread count to 1\n";
       UseThreads = 1;
@@ -131,7 +131,7 @@ Searcher *klee::constructUserSearcher(Executor &executor) {
   if (!UseProcessTree && 
       std::find(CoreSearch.begin(), CoreSearch.end(), Searcher::RandomPath) 
         != CoreSearch.end()) {
-    std::ostream &os = executor.getHandler().getInfoStream();
+    llvm::raw_ostream &os = executor.getHandler().getInfoStream();
     os << "Invalid configuration: -random-path=true requires -process-tree=true\n";
     return NULL;
   }
@@ -179,7 +179,7 @@ Searcher *klee::constructUserSearcher(Executor &executor) {
     searcher = new ParallelSearcher(searcher);
   }
 
-  std::ostream &os = executor.getHandler().getInfoStream();
+  llvm::raw_ostream &os = executor.getHandler().getInfoStream();
 
   os << "BEGIN searcher description\n";
   searcher->printName(os);

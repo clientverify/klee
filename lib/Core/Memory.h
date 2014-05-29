@@ -217,8 +217,10 @@ public:
   bool isByteConcrete(unsigned offset) const;
 
   void print(std::ostream &os, bool print_bytes=true) const;
+  void print(llvm::raw_ostream &os, bool print_bytes=true) const;
   void print_diff(ObjectState &b, std::ostream &os) const;
   void print_diff(std::vector<ObjectState*> &_ovec, std::ostream &os) const;
+  void print_diff(std::vector<ObjectState*> &_ovec, llvm::raw_ostream &os) const;
   void print(); 
  
 private:

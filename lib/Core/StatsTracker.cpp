@@ -439,11 +439,12 @@ void StatsTracker::writeIStats() {
   }
   Module *m = executor.kmodule->module;
   uint64_t istatsMask = 0;
-  std::ostream &of = *istatsFile;
+  llvm::raw_fd_ostream &of = *istatsFile;
   
-  of.seekp(0, std::ios::end);
-  unsigned istatsSize = of.tellp();
-  of.seekp(0);
+  // We assume that we didn't move the file pointer
+  unsigned istatsSize = of.tell();
+
+  of.seek(0);
 
   of << "version: 1\n";
   of << "creator: klee\n";
@@ -571,7 +572,7 @@ void StatsTracker::writeIStats() {
     updateStateStatistics((uint64_t)-1);
   
   // Clear then end of the file if necessary (no truncate op?).
-  unsigned pos = of.tellp();
+  unsigned pos = of.tell();
   for (unsigned i=pos; i<istatsSize; ++i)
     of << '\n';
   

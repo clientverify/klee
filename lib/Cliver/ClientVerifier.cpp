@@ -187,22 +187,22 @@ ClientVerifier::~ClientVerifier() {
 	delete cvstream_;
 }	
 
-std::ostream &ClientVerifier::getInfoStream() const { 
-  return cvstream_->info_stream();
+llvm::raw_ostream &ClientVerifier::getInfoStream() const {
+  return cvstream_->raw_info_stream();
 }
 
 std::string ClientVerifier::getOutputFilename(const std::string &filename) { 
   return cvstream_->getOutputFilename(filename);
 }
 
-std::ostream *ClientVerifier::openOutputFile(const std::string &filename) {
-  return cvstream_->openOutputFile(filename);
+llvm::raw_fd_ostream *ClientVerifier::openOutputFile(const std::string &filename) {
+  return cvstream_->openOutputFileLLVM(filename);
 }
 
-std::ostream *ClientVerifier::openOutputFileInSubDirectory(
-    const std::string &filename, const std::string &sub_directory) {
-  return cvstream_->openOutputFileInSubDirectory(filename, sub_directory);
-}
+//llvm::raw_fd_ostream *ClientVerifier::openOutputFileInSubDirectory(
+//    const std::string &filename, const std::string &sub_directory) {
+//  return cvstream_->openOutputFileInSubDirectory(filename, sub_directory);
+//}
 
 void ClientVerifier::getFiles(std::string path, std::string suffix,
                               std::vector<std::string> &results) {

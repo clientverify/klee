@@ -90,7 +90,11 @@ void ConstraintPruner::prune_independent_constraints(
 
 	for (std::vector< std::pair<klee::ref<klee::Expr>, klee::IndependentElementSet> >::iterator
 					it = worklist.begin(), ie = worklist.end(); it != ie; ++it) {
-		CVDEBUG("Removed: " << it->first );
+
+    std::string str;
+    llvm::raw_string_ostream ss(str);
+    ss << it->first;
+    CVDEBUG("Removed: " << str);
 	}
 	CVDEBUG_S(state.id(), "removed " << start_size - result.size() << " constraints");
 

@@ -24,6 +24,11 @@
 #define CV_MESSAGE_FILE "messages.txt"
 
 
+namespace llvm {
+class raw_ostream;
+class raw_fd_ostream;
+}
+
 namespace cliver {
 
 extern std::ostream* cv_warning_stream;
@@ -122,9 +127,13 @@ class CVStream {
   inline std::ostream& message_stream() { return *message_stream_; }
   inline std::ostream& warning_stream() { return *warning_stream_; }
 
+  inline llvm::raw_ostream& raw_info_stream() { return *raw_info_stream_; }
+
   std::string getOutputFilename(const std::string &filename);
 
   std::ostream* openOutputFile(const std::string &filename);
+
+  llvm::raw_fd_ostream* openOutputFileLLVM(const std::string &filename);
 
   std::ostream* openOutputFileInSubDirectory(const std::string &filename, 
                                              const std::string &sub_directory);
@@ -157,6 +166,8 @@ class CVStream {
   std::ostream* warning_file_stream_;
   std::ostream* message_file_stream_;
   std::ostream* debug_file_stream_;
+
+  llvm::raw_ostream* raw_info_stream_;
 };
 
 } // end namespace cliver
