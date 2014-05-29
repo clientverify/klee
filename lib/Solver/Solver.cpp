@@ -801,7 +801,6 @@ static SolverImpl::SolverRunStatus runAndGetCexForked(::VC vc,
     }
   }
 }
-#include <iostream>
 bool
 STPSolverImpl::computeInitialValues(const Query &query,
                                     const std::vector<const Array*> 

@@ -20,9 +20,6 @@
 #include <queue>
 #include <stack>
 
-// FIXME: Move out of header, use llvm streams.
-#include <ostream>
-
 namespace llvm {
   class BasicBlock;
   class Function;

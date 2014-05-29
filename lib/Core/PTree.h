@@ -13,10 +13,6 @@
 #include <klee/Expr.h>
 #include <klee/util/Mutex.h>
 
-#include <utility>
-#include <cassert>
-#include <iostream>
-
 namespace klee {
   class ExecutionState;
 

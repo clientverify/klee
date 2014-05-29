@@ -15,7 +15,6 @@
 #include "llvm/Support/CommandLine.h"
 
 #include <vector>
-#include <iostream>
 
 using namespace klee;
 
