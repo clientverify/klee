@@ -1596,7 +1596,18 @@ int main(int argc, char **argv, char **envp) {
         << static_cast<KleeHandler*>(handler)->getNumPathsExplored() << "\n";
   stats << "KLEE: done: generated tests = " 
         << static_cast<KleeHandler*>(handler)->getNumTestCases() << "\n";
+
+  bool useColors = llvm::errs().is_displayed();
+  if (useColors)
+    llvm::errs().changeColor(llvm::raw_ostream::GREEN,
+                             /*bold=*/true,
+                             /*bg=*/false);
+
   llvm::errs() << stats.str();
+
+  if (useColors)
+    llvm::errs().resetColor();
+
   static_cast<KleeHandler*>(handler)->getInfoStream() << stats.str();
 
   BufferPtr.take();
