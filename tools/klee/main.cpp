@@ -5,6 +5,7 @@
 
 #include "cliver/ClientVerifier.h"
 
+#include "klee/Cloud9Init.h"
 #include "klee/ExecutionState.h"
 #include "klee/Expr.h"
 #include "klee/Interpreter.h"
@@ -145,6 +146,11 @@ namespace klee {
   WithPOSIXRuntime("posix-runtime", 
 		cl::desc("Link with POSIX runtime.  Options that can be passed as arguments to the programs are: --sym-argv <max-len>  --sym-argvs <min-argvs> <max-argvs> <max-len> + file model options"),
 		cl::init(false));
+
+  cl::opt<bool>
+  WithCloud9POSIXRuntime("cloud9-posix-runtime",
+		cl::desc("Link with the cloud9 POSIX runtime.  Options that can be passed as arguments to the programs are: --sym-argv <max-len>  --sym-argvs <min-argvs> <max-argvs> <max-len> + file model options"),
+		cl::init(false));
     
   cl::opt<bool>
   OptimizeModule("optimize", 
@@ -217,7 +223,7 @@ namespace klee {
   cl::opt<bool>
   StripUclibcAsm64("strip-uclibc-asm64",
            cl::desc("Strip of asm prefixes for 64 bit functions not present in uclibc."),
-           cl::init(0));
+           cl::init(1));
 }
 
 extern cl::opt<double> MaxTime;
@@ -947,6 +953,12 @@ void externalsAndGlobalsCheck(const Module *m) {
       if (unsafe.count(ext)) {
         foundUnsafe.insert(*it);
       } else {
+        if (ext[0] == '\x1') {
+        klee_warning("asm sentinel in  %s: %s",
+                     it->second ? "variable" : "function",
+                     ext.c_str());
+        }
+
         klee_warning("undefined reference to %s: %s",
                      it->second ? "variable" : "function",
                      ext.c_str());
@@ -1068,7 +1080,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, llvm::sys::Path li
                                                     true));
   
   // force various imports
-  if (WithPOSIXRuntime) {
+  if (WithPOSIXRuntime || WithCloud9POSIXRuntime) {
     LLVM_TYPE_Q llvm::Type *i8Ty = Type::getInt8Ty(getGlobalContext());
     mainModule->getOrInsertFunction("realpath",
                                     PointerType::getUnqual(i8Ty),
@@ -1118,6 +1130,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, llvm::sys::Path li
       }
     }
   }
+  replaceOrRenameFunction(mainModule, "\01__isoc99_sscanf", "sscanf");
   
   mainModule = klee::deterministicLinkWithLibrary(mainModule, uclibcBCA.c_str());
   assert(mainModule && "unable to link with uclibc");
@@ -1125,6 +1138,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, llvm::sys::Path li
 
   replaceOrRenameFunction(mainModule, "__libc_open", "open");
   replaceOrRenameFunction(mainModule, "__libc_fcntl", "fcntl");
+  replaceOrRenameFunction(mainModule, "__libc_lseek", "lseek");
 
 
   // XXX we need to rearchitect so this can also be used with
@@ -1324,6 +1338,12 @@ int main(int argc, char **argv, char **envp) {
     mainModule = klee::linkWithLibrary(mainModule, Path.c_str());
     assert(mainModule && "unable to link with simple model");
   }  
+
+  if (WithCloud9POSIXRuntime) {
+    llvm::sys::Path Path(Opts.LibraryDir);
+    Path.appendComponent("libkleeRuntimeCloud9POSIX.bca");
+    mainModule = linkWithCloud9POSIX(mainModule, &Path);
+  }
 
   // Get the desired main function.  klee_main initializes uClibc
   // locale and other data and then calls main.
