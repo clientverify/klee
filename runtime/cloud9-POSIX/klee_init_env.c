@@ -151,8 +151,9 @@ void klee_init_env(int argc, char **argv) {
   klee_init_symfs(&fid);
   klee_init_fdt();
   klee_init_mmap();
-  klee_init_network();
-  klee_init_netlink();
+  // RAC: disable cloud9 network implementation
+  //klee_init_network();
+  //klee_init_netlink();
 }
 
 void klee_process_args(int* argcPtr, char*** argvPtr) {
@@ -223,5 +224,6 @@ void klee_process_args(int* argcPtr, char*** argvPtr) {
   *argcPtr = new_argc;
   *argvPtr = final_argv;
 
-  klee_event(__KLEE_EVENT_BREAKPOINT, __KLEE_BREAK_TRACE);
+  // RAC: not supported in cliver
+  //klee_event(__KLEE_EVENT_BREAKPOINT, __KLEE_BREAK_TRACE);
 }

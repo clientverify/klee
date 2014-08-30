@@ -48,12 +48,13 @@
 // The POSIX API
 ////////////////////////////////////////////////////////////////////////////////
 
-pid_t getpid(void) {
-  pid_t pid;
-  klee_get_context(0, &pid);
-
-  return pid;
-}
+// RAC: Disable in cliver until process model is supported
+//pid_t getpid(void) {
+//  pid_t pid;
+//  klee_get_context(0, &pid);
+//
+//  return pid;
+//}
 
 pid_t getppid(void) {
   pid_t pid;
