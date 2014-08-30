@@ -51,6 +51,8 @@
 // Sleeping Operations
 ////////////////////////////////////////////////////////////////////////////////
 
+// RAC: Disable in Cliver for now
+#if 0
 void _yield_sleep(unsigned sec, unsigned usec) {
   uint64_t amount = ((uint64_t)sec)*1000000 + (uint64_t)usec;
 
@@ -101,6 +103,7 @@ int settimeofday(const struct timeval *tv, const struct timezone *tz) {
 
   return 0;
 }
+#endif
 
 ////////////////////////////////////////////////////////////////////////////////
 // mmap Operations
@@ -316,4 +319,19 @@ DEFINE_MODEL(const unsigned short **, __ctype_b_loc, void) {
 
   return &b_locale;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Dynamic Linking
+////////////////////////////////////////////////////////////////////////////////
+
+// Model is used to disable return of externally allocated string
+DEFINE_MODEL(char *, dlerror) {
+  static char* fixed_err_str = "KLEE: dlerror model failed";
+  char* errstr = CALL_UNDERLYING(dlerror);
+  if (errstr)
+    return fixed_err_str;
+
+  return NULL;
+}
+
 #endif

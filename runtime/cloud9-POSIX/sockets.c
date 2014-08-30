@@ -55,6 +55,8 @@
 #include <linux/netlink.h>
 #include <klee/klee.h>
 
+// RAC: Disable cloud9 network modeling implementation
+#if 0
 
 #define CHECK_SEND_FLAGS(flags) \
     do { \
@@ -1941,6 +1943,7 @@ int getnameinfo(const struct sockaddr *sa, socklen_t salen,
 
   return 0;
 }
+#endif
 
 // Byte order conversion ///////////////////////////////////////////////////////
 

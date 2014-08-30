@@ -105,4 +105,6 @@ DECLARE_MODEL(const unsigned short **, __ctype_b_loc, void);
 DECLARE_MODEL(int, select, int nfds, fd_set *readfds, fd_set *writefds,
     fd_set *exceptfds, struct timeval *timeout)
 
+DECLARE_MODEL(char *, dlerror);
+
 #endif /* UNDERLYING_H_ */
