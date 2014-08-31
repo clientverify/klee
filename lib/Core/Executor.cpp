@@ -3557,32 +3557,37 @@ void Executor::getCoveredLines(const ExecutionState &state,
 void Executor::doImpliedValueConcretization(ExecutionState &state,
                                             ref<Expr> e,
                                             ref<ConstantExpr> value) {
-  abort(); // FIXME: Broken until we sort out how to do the write back.
-
   if (DebugCheckForImpliedValues)
     ImpliedValue::checkForImpliedValues(solver->solver, e, value);
 
   ImpliedValueList results;
   ImpliedValue::getImpliedValues(e, value, results);
-  for (ImpliedValueList::iterator it = results.begin(), ie = results.end();
-       it != ie; ++it) {
-    ReadExpr *re = it->first.get();
-    
-    if (ConstantExpr *CE = dyn_cast<ConstantExpr>(re->index)) {
-      // FIXME: This is the sole remaining usage of the Array object
-      // variable. Kill me.
-      const MemoryObject *mo = 0; //re->updates.root->object;
-      const ObjectState *os = state.addressSpace.findObject(mo);
 
-      if (!os) {
-        // object has been free'd, no need to concretize (although as
-        // in other cases we would like to concretize the outstanding
-        // reads, but we have no facility for that yet)
-      } else {
-        assert(!os->readOnly && 
-               "not possible? read only object with static read?");
-        ObjectState *wos = state.addressSpace.getWriteable(mo, os);
-        wos->write(CE, it->second);
+  std::map< ref<Expr>, ref<Expr> > impliedReads;
+  impliedReads.insert(results.begin(), results.end());
+
+  // Iterate over *entire* address space! FIXME: faster?
+  for (MemoryMap::iterator it = state.addressSpace.objects.begin(),
+        ie = state.addressSpace.objects.end(); it != ie; ++it) {
+    const MemoryObject *mo = it->first;
+    ObjectState *os = it->second;
+    for (unsigned i=0; i<os->size; i++) {
+      ref<Expr> curr_read = os->read8(i);
+      if (!isa<ConstantExpr>(curr_read)) {
+        if (impliedReads.find(curr_read) != impliedReads.end()) {
+
+          // Print info FIXME: make debug only
+          std::ostringstream info;
+          info << "Concretizing ";
+          ExprPPrinter::printSingleExpr(info, curr_read);
+          info << " = ";
+          ExprPPrinter::printSingleExpr(info, impliedReads[curr_read]);
+          klee_warning(info.str().c_str());
+
+          // Concretize the ReadExpr
+          ObjectState *wos = state.addressSpace.getWriteable(mo, os);
+          wos->write(i, impliedReads[curr_read]);
+        }
       }
     }
   }

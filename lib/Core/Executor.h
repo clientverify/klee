@@ -414,9 +414,11 @@ protected:
                          KInstruction *target, 
                          const std::vector<ref<Expr> > &arguments);
 
+public:
   void doImpliedValueConcretization(ExecutionState &state,
                                     ref<Expr> e,
                                     ref<ConstantExpr> value);
+protected:
 
   /// Add a timer to be executed periodically.
   ///
