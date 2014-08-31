@@ -42,6 +42,8 @@
 #include "misc.h"
 #include "symfs.h"
 
+#include "openssl.h"
+
 #include <sys/ioctl.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
@@ -149,6 +151,15 @@ static ssize_t _clean_read(int fd, void *buf, size_t count, off_t offset) {
   }
 
   if (fde->attr & FD_IS_FILE) {
+    // RAC: FIXME: Hack to set (recorded) length of stdin into 'count'
+    if (((file_t*)fde->io_object)->storage == _fs.stdin_file) {
+      klee_warning("Setting length of symbolic read on stdin");
+      static int stdin_index = -1;
+      count = cliver_ktest_copy("stdin", stdin_index--, buf, count);
+#ifdef KTEST_STDIN_PLAYBACK
+      return count;
+#endif
+    }
     return _read_file((file_t*)fde->io_object, buf, count, offset);
   } else if (fde->attr & FD_IS_PIPE) {
     return _read_pipe((pipe_end_t*)fde->io_object, buf, count);
