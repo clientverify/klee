@@ -255,23 +255,17 @@ void Executor::initializePerThread(ExecutionState &state, MemoryManager* memory)
 /// Caller will force all other threads to finish execution current instruction
 /// and wait for UnPauseExecution()
 bool Executor::PauseExecution() {
-  if (UseThreads > 1) {
-    if (pauseExecutionMutex.try_lock()) {
+  if (totalThreadCount > 1) {
+    if (!haltExecution && pauseExecutionMutex.try_lock()) {
       Mutex lock;
       UniqueLock guard(lock);
 
       // Set pauseExecution condition
       pauseExecution = true;
 
-      // Wait for N-1 threads to pause
-      while (pausedThreadCount < (totalThreadCount - 1)) {
-        // Wake up any sleeping threads
-        searcherCond.notify_all();
-
-        // TODO we shouldn't need this timeout and additional notify_all
-        pauseExecutionCondition.timed_wait(guard, boost::posix_time::milliseconds(500));
-      }
-      pausedThreadCount = 0;
+      // Wake up all threads and wait at first barrier
+      searcherCond.notify_all();
+      threadBarrier->wait();
 
       return true;
     }
@@ -282,9 +276,9 @@ bool Executor::PauseExecution() {
 }
 
 void Executor::UnPauseExecution() {
-  if (UseThreads > 1) {
+  if (totalThreadCount > 1) {
     pauseExecution = false;
-    startExecutionCondition.notify_all();
+    threadBarrier->wait();
     pauseExecutionMutex.unlock();
   }
 }
@@ -362,28 +356,25 @@ void Executor::execute(ExecutionState *initialState, MemoryManager *memory) {
       parallelUpdateStates(&state);
     }
 
-    // Wait for new states to be ready to execute
-    while (statePtr == NULL && searcher->empty() && !empty() && !haltExecution && !pauseExecution) { 
-      searcherCond.wait(guard);
-    }
+    while (pauseExecution
+           || (searcher->empty() && !empty() && !haltExecution)) {
 
-    // If another thread called PauseExecution();
-    if (pauseExecution) {
-      // Return statePtr to searcher if not NULL
       if (statePtr) {
-        searcher->update(statePtr, std::set<ExecutionState*>(), std::set<ExecutionState*>());
+        searcher->update(statePtr,
+                         std::set<ExecutionState*>(),
+                         std::set<ExecutionState*>());
         statePtr = NULL;
       }
 
-      // Increment paused thread count
-      ++pausedThreadCount;
+      searcherCond.timed_wait(guard, boost::posix_time::milliseconds(500));
 
-      // Notify initiating thread, that this thread is now paused
-      pauseExecutionCondition.notify_one();
-      
-      // Wait for initiating thread to restart execution
-      while (pauseExecution) {
-        startExecutionCondition.wait(guard);
+      if (pauseExecution) {
+        // 1st Barrier:
+        // All threads execept one (in PauseExecution) will wait here
+        threadBarrier->wait();
+        // 2nd Barrier:
+        // All threads execept one (in UnPauseExecution) will wait here
+        threadBarrier->wait();
       }
     }
 
@@ -557,15 +548,15 @@ void Executor::parallelRun(ExecutionState &initialState) {
 
   searcher->update(0, states, std::set<ExecutionState*>());
 
-  threadBarrier = new Barrier(UseThreads);
-
   totalThreadCount = UseThreads;
+  threadBarrier = new Barrier(totalThreadCount);
+
   if (!empty()) {
-    if (UseThreads == 1) {
+    if (totalThreadCount == 1) {
       execute(&initialState, NULL);
     } else {
       ThreadGroup threadGroup;
-      for (unsigned i=0; i<UseThreads; ++i) {
+      for (unsigned i=0; i<totalThreadCount; ++i) {
         // Initialize MemoryManager outside of thread
         memoryManagers.push_back(new MemoryManager());
         threadGroup.add_thread(new Thread(&klee::Executor::execute, 
@@ -594,6 +585,7 @@ void Executor::parallelRun(ExecutionState &initialState) {
        ie = memoryManagers.end(); it != ie; ++it)
     delete *it;
 
+  delete threadBarrier;
   delete searcher;
   searcher = 0;
 }
