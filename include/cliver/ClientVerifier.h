@@ -181,6 +181,8 @@ class ClientVerifier : public klee::InterpreterHandler {
 
   klee::KBasicBlock* LookupBasicBlockID(int id);
 
+  KTest* get_replay_objs() { return replay_objs_; }
+
  private:
   CVStream *cvstream_;
 	int paths_explored_;
@@ -201,6 +203,8 @@ class ClientVerifier : public klee::InterpreterHandler {
 	uint64_t array_id_;
 	int round_number_;
   std::string client_name_;
+
+  KTest* replay_objs_;
 };
 
 

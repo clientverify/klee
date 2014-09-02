@@ -155,7 +155,8 @@ ClientVerifier::ClientVerifier(std::string &input_file, bool no_output, std::str
 		merger_(NULL), 
     execution_trace_manager_(NULL),
 		array_id_(0),
-		round_number_(0) {
+		round_number_(0),
+		replay_objs_(NULL) {
 
 	cvstream_->init();
 
@@ -216,6 +217,9 @@ void ClientVerifier::incPathsExplored() {
 
 void ClientVerifier::processTestCase(const klee::ExecutionState &state, 
     const char *err, const char *suffix) {
+  if (err != NULL ) {
+    CVMESSAGE(std::string(err));
+  }
 }
 
 void ClientVerifier::setInterpreter(klee::Interpreter *i) {
@@ -245,6 +249,7 @@ void ClientVerifier::initialize() {
     }
   }
 
+  // Read socket log files
 	if (SocketLogFile.empty() || read_socket_logs(SocketLogFile) == 0) {
     CVMESSAGE("No socket log files loaded");
 	}
@@ -335,11 +340,15 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
 		if (ktest) {
 			socket_events_.push_back(new SocketEventList());
 			for (unsigned i=0; i<ktest->numObjects; ++i) {
-				socket_events_.back()->push_back(new SocketEvent(ktest->objects[i]));
+        std::string obj_name(ktest->objects[i].name);
+        if (obj_name == "s2c" || obj_name == "c2s")
+          socket_events_.back()->push_back(new SocketEvent(ktest->objects[i]));
 			}
 
 			cv_message("Opened socket log \"%s\" with %d objects",
 					filename.c_str(), ktest->numObjects);
+
+      replay_objs_ = ktest;
 		} else {
 			cv_message("Error opening socket log \"%s\"", filename.c_str());
 		}
