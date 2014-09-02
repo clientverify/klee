@@ -21,6 +21,7 @@ include $(LEVEL)/Makefile.config
 
 ifeq ($(ENABLE_POSIX_RUNTIME),1)
 PARALLEL_DIRS += POSIX
+PARALLEL_DIRS += cloud9-POSIX
 endif
 
 ifeq ($(ENABLE_UCLIBC),1)
