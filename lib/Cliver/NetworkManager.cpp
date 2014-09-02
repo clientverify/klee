@@ -18,9 +18,13 @@
 #include "cliver/ExecutionStateProperty.h"
 #include "CVCommon.h"
 
+#include "../Core/ImpliedValue.h"
 #include "../Core/Memory.h"
+#include "../Core/Common.h"
 #include "../Core/TimingSolver.h"
 #include "klee/Internal/Module/KInstruction.h"
+#include "klee/util/ExprPPrinter.h"
+#include "klee/util/ExprUtil.h"
 
 #include "llvm/Support/CommandLine.h"
 
@@ -242,11 +246,28 @@ void NetworkManager::execute_write(CVExecutor* executor,
 
 	int bytes_read = 0;
 
+  std::ostringstream info;
 	while (socket.has_data() && bytes_read < len) {
 		klee::ref<klee::Expr> condition
 			= klee::EqExpr::create(
 					object->read8(bytes_read++), 
 					klee::ConstantExpr::alloc(socket.next_byte(), klee::Expr::Int8));
+    if (DebugNetworkManager) {
+      if (!dyn_cast<klee::ConstantExpr>(condition)) {
+        std::vector<const klee::Array*> symbolic_objects;
+        klee::findSymbolicObjects(condition, symbolic_objects);
+
+        if (symbolic_objects.size())
+          info << "[" << bytes_read-1 << "] ";
+
+        foreach (const klee::Array *arr, symbolic_objects) {
+          info << arr->name << ", ";
+        }
+
+        if (symbolic_objects.size())
+          info << "\n";
+      }
+    }
 		write_condition = klee::AndExpr::create(write_condition, condition);
 	}
 
@@ -255,10 +276,26 @@ void NetworkManager::execute_write(CVExecutor* executor,
 			RETURN_FAILURE_OBJ("send", "not valid (1) ");
 	} else {
 		bool result; 
-		executor->compute_false(state_, write_condition, result);
-		if (result)
+
+    if (DebugNetworkManager) {
+      std::vector<const klee::Array*> symbolic_objects;
+      klee::findSymbolicObjects(write_condition, symbolic_objects);
+      std::ostringstream info2;
+      foreach (const klee::Array *arr, symbolic_objects) {
+        info2 << arr->name << ", ";
+      }
+      CVDEBUG("Symbolic objects at network send: " << info2.str());
+      CVDEBUG("Symbolic bytes:" << info.str());
+    }
+		
+    executor->compute_false(state_, write_condition, result);
+    if (result)
 			RETURN_FAILURE_OBJ("send", "not valid (2) ");
 	}
+
+  executor->doImpliedValueConcretization(*(static_cast<klee::ExecutionState*>(state_)),
+                                         write_condition,
+                                         klee::ConstantExpr::alloc(1,klee::Expr::Bool));
 
 	if (!socket.has_data()) {
 		socket.advance();
