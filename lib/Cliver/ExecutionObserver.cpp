@@ -42,6 +42,17 @@ void ExecutionObserverPrinter::notify(ExecutionEvent ev) {
 	static std::string execution_event_types[] = { CV_EXECUTION_EVENT_TYPES };
 #undef X
 
+  // Skip common events..
+  switch(ev.event_type) {
+    case CV_BRANCH:
+    case CV_BASICBLOCK_ENTRY:
+    case CV_STATE_FORK_TRUE:
+    case CV_STATE_FORK_FALSE:
+      {
+        return;
+      }
+  }
+
   switch(ev.event_type) {
 #define X(x) case x : { \
   if (ev.state && ev.parent) {\
