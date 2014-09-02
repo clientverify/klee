@@ -331,7 +331,7 @@ class SearcherStageThreadedImpl : public SearcherStage {
   void get_states(std::vector<ExecutionStateProperty*> &states) {
     //assert(!cache_.rebuild_property());
     while (!collection_.empty()) {
-      assert(collection_.top()->edit_distance == INT_MAX);
+      //assert(collection_.top()->edit_distance == INT_MAX);
       states.push_back(collection_.top());
       collection_.pop();
     }

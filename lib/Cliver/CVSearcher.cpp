@@ -156,6 +156,7 @@ void VerifySearcher::process_unique_pending_states() {
     //         << pending_round << ", pending state: " << *pending_state);
     //create_and_add_stage(pending_state);
 
+    // XXX root state not supported
     // If other stages for this round already exist, check if equivalent
     if (new_stages_[pending_round]->size() > 0) {
 
@@ -164,13 +165,17 @@ void VerifySearcher::process_unique_pending_states() {
       // Collect the other root states for this round
       foreach (SearcherStage* stage, *(new_stages_[pending_round])) {
         state_set.insert(stage->root_state());
+        CVDEBUG("Attempting to merge existing state: " << stage->root_state());
+        merged_set.insert(stage->root_state());
       }
 
       // Add pending state
       state_set.insert(pending_state);
+      merged_set.insert(pending_state);
 
       // Determine if the states can be "merged" (equivalence check)
-      merger_->merge(state_set, merged_set);
+      // FIXME: Disabled merging
+      //merger_->merge(state_set, merged_set);
 
       if (merged_set.size() != state_set.size()) {
         assert((merged_set.size() + 1) == state_set.size());
@@ -411,7 +416,6 @@ void VerifySearcher::update(klee::ExecutionState *current,
 }
 
 bool VerifySearcher::empty() {
-  klee::LockGuard guard(lock_);
   
   if (current_stage_ && current_stage_->size() > 0)
     return false;
