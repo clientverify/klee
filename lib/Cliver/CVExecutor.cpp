@@ -804,14 +804,13 @@ void CVExecutor::add_external_handler(std::string name,
 void CVExecutor::resolve_one(klee::ExecutionState *state, 
 		klee::ref<klee::Expr> address_expr, klee::ObjectPair &result,
     bool writeable = false) {
-	
-	klee::Executor::ExactResolutionList rl;
-  resolveExact(*state, address_expr, rl, "CVExecutor::resolve_one");
-	assert(rl.size() == 1);
-	//assert(rl[0].second == state);
 
-  const klee::MemoryObject *mo = rl[0].first.first;
-  const klee::ObjectState *os = rl[0].first.second;
+  bool success;
+  state->addressSpace.resolveOne(*state, solver.get(), address_expr,
+                                 result, success);
+  assert(success && "resolveOne failed");
+  const klee::MemoryObject *mo = result.first;
+  const klee::ObjectState *os = result.second;
 
   result.first = mo;
 
