@@ -188,7 +188,7 @@ CVExecutor::CVExecutor(const InterpreterOptions &opts, klee::InterpreterHandler 
   memory_usage_mbs_(0) {
   if (klee::UseThreads > 1) {
     cv_warning("Multi-threaded support is currently disabled");
-    klee::UseThreads = 4;
+    klee::UseThreads = 1;
   }
 }
 
@@ -360,11 +360,6 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
   klee::ExecutionState *statePtr = NULL;
   while (!empty() && !haltExecution) {
 
-    if (klee::GetThreadID() == 2) {
-      searcherCond.notify_all();
-      sleep(1);
-    }
-
     if (statePtr == NULL) {
       statePtr = searcher->trySelectState();
     }
@@ -412,16 +407,9 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
       }
     }
 
-    // Wait for new states to be ready to execute
-    while (statePtr == NULL &&
-           searcher->empty() && !empty() &&
-           !haltExecution && !pauseExecution) {
-      searcherCond.wait(guard);
-    }
+    while (pauseExecution
+           || (!statePtr && searcher->empty() && !empty() && !haltExecution)) {
 
-    // If another thread called PauseExecution();
-    if (pauseExecution) {
-      // Return statePtr to searcher if not NULL
       if (statePtr) {
         searcher->update(statePtr,
                          std::set<klee::ExecutionState*>(),
@@ -429,15 +417,18 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
         statePtr = NULL;
       }
 
-      // Increment paused thread count
-      ++pausedThreadCount;
+      if (!pauseExecution) {
+        if (klee::UseThreads > 1)
+          searcherCond.wait(guard);
+        else if (!statePtr && searcher->empty() && !empty() && !haltExecution) {
+          CVMESSAGE("BACKTRACKING DISABLED, searcher is empty, halting execution");
+          haltExecution = true;
+        }
+      }
 
-      // Notify initiating thread, that this thread is now paused
-      pauseExecutionCondition.notify_one();
-
-      // Wait for initiating thread to restart execution
-      while (pauseExecution) {
-        startExecutionCondition.wait(guard);
+      if (pauseExecution) {
+        threadBarrier->wait();
+        threadBarrier->wait();
       }
     }
 
@@ -513,7 +504,7 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
   }
 
   // Alert threads to wake up if there are no more states to execute
-  searcherCond.notify_one();
+  searcherCond.notify_all();
 
   // Release TSS memory (i.e., don't destroy with thread); the memory manager
   // for this thread may still be needed in dumpState
@@ -750,7 +741,6 @@ CVExecutor::fork(klee::ExecutionState &current,
 
     falseState = trueState->branch();
     getContext().addedStates.insert(falseState);
-
 
     addConstraint(*trueState, condition);
     addConstraint(*falseState, klee::Expr::createIsZero(condition));
