@@ -1020,6 +1020,67 @@ void CVExecutor::add_finished_state(CVExecutionState* state) {
   assert(finished_states_.count(state->property()) == 0);
   finished_states_.insert(state->property());
 }
+
+void CVExecutor::ktest_copy(CVExecutionState* state,
+                            klee::KInstruction *target,
+                            std::string &name,
+                            int ktest_index,
+                            klee::ObjectState* os,
+                            unsigned os_offset,
+                            unsigned len) {
+  KTest* replay_objs = cv_->get_replay_objs();
+  KTestObject* ktest_obj = NULL;
+
+  // HACK: Negative index values lookup the ith "name" ktest object
+  if (ktest_index < 0) {
+    int tmp_index = ktest_index;
+    if (replay_objs && replay_objs->numObjects > 0) {
+      for (unsigned i=0; i<replay_objs->numObjects; ++i) {
+        KTestObject* kto = NULL;
+        kto = &(replay_objs->objects[i]);
+        if (std::string(kto->name) == name) {
+          tmp_index++;
+          if (tmp_index == 0) {
+            ktest_obj = kto;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  if (!ktest_obj && replay_objs && replay_objs->numObjects > ktest_index) {
+    ktest_obj = &(replay_objs->objects[ktest_index]);
+  }
+
+  if (ktest_obj &&
+      std::string(ktest_obj->name) == name &&
+      ktest_obj->numBytes <= len) {
+
+    for (unsigned i=0; i<ktest_obj->numBytes; i++) {
+      os->write8(os_offset+i, ktest_obj->bytes[i]);
+    }
+    CVDEBUG("ktest_copy logname: " <<
+              ktest_obj->name << ", argname: " <<
+              name << ", index: " << ktest_index << ", loglen: " <<
+              ktest_obj->numBytes << ", arglen: " << len << ", offset: " <<
+              os_offset);
+    bindLocal(target, *state,
+              klee::ConstantExpr::alloc(ktest_obj->numBytes,
+                                        klee::Expr::Int32));
+  } else {
+    if (replay_objs && ktest_obj) {
+      CVMESSAGE("ktest_copy failed: logname: " <<
+                ktest_obj->name << ", argname: " <<
+                name << ", index: " << ktest_index << ", loglen: " <<
+                ktest_obj->numBytes << ", arglen: " << len);
+    } else {
+      CVMESSAGE("ktest_copy failed: null ktest obj");
+    }
+    terminate_state(state);
+  }
+}
+
 ///
 
 } // end namespace cliver

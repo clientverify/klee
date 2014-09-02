@@ -67,6 +67,14 @@ void ExternalHandler_select_event(
     klee::Executor* executor, klee::ExecutionState *state, 
     klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
 
+void ExternalHandler_select(
+    klee::Executor* executor, klee::ExecutionState *state,
+    klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
+
+void ExternalHandler_ktest_copy(
+    klee::Executor* executor, klee::ExecutionState *state,
+    klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
+
 ////////////////////////////////////////////////////////////////////////////////
 
 } // end namespace cliver

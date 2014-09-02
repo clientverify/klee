@@ -138,6 +138,8 @@ ExternalHandlerInfo external_handler_info[] = {
 	{"cliver_finish", ExternalHandler_Finish, false, CV_FINISH},
 	{"cliver_test_extract_pointers", ExternalHandler_test_extract_pointers, false, CV_NULL_EVENT},
 	{"cliver_select_event", ExternalHandler_select_event, false, CV_SELECT_EVENT},
+	{"cliver_select", ExternalHandler_select, true, CV_SELECT_EVENT},
+	{"cliver_ktest_copy", ExternalHandler_ktest_copy, true, CV_NULL_EVENT},
 };
 
 ////////////////////////////////////////////////////////////////////////////////

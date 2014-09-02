@@ -129,6 +129,10 @@ class CVExecutor : public klee::Executor {
 
   std::set<ExecutionStateProperty*>& finished_states() { return finished_states_; }
 
+  void ktest_copy(CVExecutionState* state, klee::KInstruction *target,
+                  std::string &name, int ktest_index, klee::ObjectState* os,
+                  unsigned os_offset, unsigned len);
+
  private:
   ClientVerifier *cv_;
 	StateMerger *merger_;

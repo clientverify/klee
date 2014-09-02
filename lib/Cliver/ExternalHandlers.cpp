@@ -55,7 +55,7 @@ void ExternalHandler_socket_create(
 
   CVExecutionState* cv_state = static_cast<CVExecutionState*>(state);
   CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
-  cv_state->network_manager()->execute_open_socket(cv_executor, target, 
+  cv_state->network_manager()->execute_open_socket(cv_executor, target,
       domain, type, protocol);
 }
 
@@ -69,6 +69,13 @@ void ExternalHandler_socket_read(
   int len = cast<klee::ConstantExpr>(arguments[2])->getZExtValue();
   klee::ObjectState *object = resolve_address(executor, state, address,
                                               true);
+
+  //uint64_t raw_address = cast<klee::ConstantExpr>(arguments[1])->getZExtValue();
+  //klee::ObjectPair res;
+  //static_cast<CVExecutor*>(executor)->resolve_one(state, address, res, true);
+  //unsigned object_offset = raw_address - res.first->address;
+  //CVMESSAGE("ExternalHandler_socket_read: offset: " << object_offset << ", " << raw_address << ", " << res.first->address);
+  //klee::ObjectState *object = const_cast<klee::ObjectState*>(res.second);
 
   CVExecutionState* cv_state = static_cast<CVExecutionState*>(state);
   CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
@@ -84,6 +91,13 @@ void ExternalHandler_socket_write(
   klee::ref<klee::Expr> address = arguments[1];
   int len = cast<klee::ConstantExpr>(arguments[2])->getZExtValue();
   klee::ObjectState *object = resolve_address(executor, state, address);
+
+  //uint64_t raw_address = cast<klee::ConstantExpr>(arguments[1])->getZExtValue();
+  //klee::ObjectPair res;
+  //static_cast<CVExecutor*>(executor)->resolve_one(state, address, res, true);
+  //unsigned object_offset = raw_address - res.first->address;
+  //CVMESSAGE("ExternalHandler_socket_write: offset: " << object_offset << ", " << raw_address << ", " << res.first->address);
+  //klee::ObjectState *object = const_cast<klee::ObjectState*>(res.second);
 
   CVExecutionState* cv_state = static_cast<CVExecutionState*>(state);
   CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
@@ -173,6 +187,35 @@ void ExternalHandler_select_event(
   //CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
 }
 
+void ExternalHandler_select(
+    klee::Executor* executor, klee::ExecutionState *state,
+    klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {
+  //CVExecutionState* cv_state = static_cast<CVExecutionState*>(state);
+  //CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
+}
+
+void ExternalHandler_ktest_copy(
+    klee::Executor* executor, klee::ExecutionState *state,
+    klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {
+
+  CVExecutionState* cv_state = static_cast<CVExecutionState*>(state);
+  CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
+  std::string ktest_name = cv_executor->get_string_at_address(cv_state, arguments[0]);
+  int ktest_index = cast<klee::ConstantExpr>(arguments[1])->getZExtValue();
+  klee::ref<klee::Expr> address = arguments[2];
+  uint64_t raw_address = cast<klee::ConstantExpr>(arguments[2])->getZExtValue();
+  unsigned len = cast<klee::ConstantExpr>(arguments[3])->getZExtValue();
+  klee::ObjectState *object = resolve_address(executor, state, address, true);
+
+  klee::ObjectPair res;
+  static_cast<CVExecutor*>(executor)->resolve_one(state, address, res, true);
+  unsigned object_offset = raw_address - res.first->address;
+
+  cv_executor->ktest_copy(cv_state, target,
+                          ktest_name, ktest_index,
+                          const_cast<klee::ObjectState*>(res.second),
+                          object_offset, len);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
