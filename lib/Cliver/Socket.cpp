@@ -27,7 +27,7 @@ DebugSocket("debug-socket",
 llvm::cl::opt<bool>
 PrintAsciiSocket("print-ascii-socket",llvm::cl::init(false));
 
-int Socket::NextFileDescriptor = 1000;
+int Socket::NextFileDescriptor = 10;
 
 SocketEvent::SocketEvent(const KTestObject &object) {
   init(object.bytes, object.numBytes);
