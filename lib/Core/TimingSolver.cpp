@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "TimingSolver.h"
+#include "Common.h"
 
 #include "klee/Config/Version.h"
 #include "klee/ExecutionState.h"
@@ -15,14 +16,33 @@
 #include "klee/Statistics.h"
 #include "klee/TimerStatIncrementer.h"
 
+#include "klee/util/ExprUtil.h"
+
 #include "CoreStats.h"
 
 #include "llvm/Support/Process.h"
+#include "llvm/Support/CommandLine.h"
 
 using namespace klee;
 using namespace llvm;
 
 /***/
+namespace klee {
+  cl::opt<bool>
+  DebugPrintSolverVars("debug-print-solver-vars",
+                        cl::init(false));
+
+}
+
+static std::string getExprVarStr(ref<Expr> expr) {
+  std::vector<const klee::Array*> symbolic_objects;
+  klee::findSymbolicObjects(expr, symbolic_objects);
+  std::ostringstream info2;
+  for (unsigned i=0; i<symbolic_objects.size(); ++i) {
+    info2 << symbolic_objects[i]->name << ", ";
+  }
+  return info2.str();
+}
 
 bool TimingSolver::evaluate(const ExecutionState& state, ref<Expr> expr,
                             Solver::Validity &result) {
@@ -36,6 +56,12 @@ bool TimingSolver::evaluate(const ExecutionState& state, ref<Expr> expr,
 
   if (simplifyExprs)
     expr = state.constraints.simplifyExpr(expr);
+
+  if (DebugPrintSolverVars && !isa<ConstantExpr>(expr)) {
+    *klee_warning_stream << "TimingSolver::evaluate(): StackTrace\n";
+    *klee_warning_stream << "Expr vars: " << getExprVarStr(expr) << "\n";
+    state.dumpStack(*klee_warning_stream);
+  }
 
   bool success = solver->evaluate(Query(state.constraints, expr), result);
 
@@ -56,6 +82,15 @@ bool TimingSolver::mustBeTrue(const ExecutionState& state, ref<Expr> expr,
 
   if (simplifyExprs)
     expr = state.constraints.simplifyExpr(expr);
+
+  if (DebugPrintSolverVars && !isa<ConstantExpr>(expr)) {
+    *klee_warning_stream << "TimingSolver::mustBeTrue(): StackTrace\n";
+    std::string expr_string = getExprVarStr(expr);
+    *klee_warning_stream << "Expr vars: " << expr_string << "\n";
+    if (expr_string.size() == 0) {
+      *klee_warning_stream << "Expr: " << expr<< "\n";
+    }
+  }
 
   bool success = solver->mustBeTrue(Query(state.constraints, expr), result);
 
@@ -103,6 +138,16 @@ bool TimingSolver::getValue(const ExecutionState& state, ref<Expr> expr,
 
   if (simplifyExprs)
     expr = state.constraints.simplifyExpr(expr);
+
+  if (DebugPrintSolverVars && !isa<ConstantExpr>(expr)) {
+    *klee_warning_stream << "TimingSolver::getValue(): StackTrace\n";
+    std::string expr_string = getExprVarStr(expr);
+    *klee_warning_stream << "Expr vars: " << expr_string << "\n";
+    if (expr_string.size() == 0) {
+      *klee_warning_stream << "Expr: " << expr<< "\n";
+    }
+    state.dumpStack(*klee_warning_stream);
+  }
 
   bool success = solver->getValue(Query(state.constraints, expr), result);
 
