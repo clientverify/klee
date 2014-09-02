@@ -142,7 +142,7 @@ KTest *kTest_fromFile(const char *path) {
     if (!read_uint32(f, &o->numBytes))
       goto error;
     o->bytes = (unsigned char*) malloc(o->numBytes);
-    if (fread(o->bytes, o->numBytes, 1, f)!=1)
+    if (o->numBytes && fread(o->bytes, o->numBytes, 1, f)!=1)
       goto error;
   }
 
