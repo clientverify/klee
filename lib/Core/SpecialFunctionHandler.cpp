@@ -17,6 +17,7 @@
 
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/Internal/Module/KModule.h"
+#include "klee/util/ExprUtil.h"
 
 #include "Executor.h"
 #include "MemoryManager.h"
@@ -75,8 +76,11 @@ static SpecialFunctionHandler::HandlerInfo handlerInfo[] = {
   add("klee_define_fixed_object", handleDefineFixedObject, false),
   add("klee_get_obj_size", handleGetObjSize, true),
   add("klee_get_errno", handleGetErrno, true),
+  add("klee_get_wlist", handleGetWList, true),
   add("klee_is_symbolic", handleIsSymbolic, true),
   add("klee_make_symbolic", handleMakeSymbolic, false),
+  add("klee_make_shared", handleMakeShared, false),
+  add("klee_debug", handleDebug, false),
   add("klee_mark_global", handleMarkGlobal, false),
   add("klee_merge", handleMerge, false),
   add("klee_prefer_cex", handlePreferCex, false),
@@ -439,8 +443,25 @@ void SpecialFunctionHandler::handleIsSymbolic(ExecutionState &state,
                                 std::vector<ref<Expr> > &arguments) {
   assert(arguments.size()==1 && "invalid number of arguments to klee_is_symbolic");
 
+  // Try to simply expr if it is non-constant
+  // FIXME: is this needed?
+  ref<Expr> e = arguments[0];
+  if (!isa<ConstantExpr>(arguments[0])) {
+    e = state.constraints.simplifyExpr(arguments[0]);
+    if (isa<ConstantExpr>(e)) {
+      std::vector<const klee::Array*> symbolic_objects;
+      klee::findSymbolicObjects(arguments[0], symbolic_objects);
+      std::ostringstream info2;
+      for (unsigned i=0; i<symbolic_objects.size(); ++i) {
+        if (i > 0) info2 << ", ";
+        info2 << symbolic_objects[i]->name;
+      }
+      *klee::klee_warning_stream
+          << "simplified (" << info2.str() << ") to " << e << "\n";
+    }
+  }
   executor.bindLocal(target, state, 
-                     ConstantExpr::create(!isa<ConstantExpr>(arguments[0]),
+                     ConstantExpr::create(!isa<ConstantExpr>(e),
                                           Expr::Int32));
 }
 
@@ -470,7 +491,7 @@ void SpecialFunctionHandler::handlePrintExpr(ExecutionState &state,
          "invalid number of arguments to klee_print_expr");
 
   std::string msg_str = readStringAtAddress(state, arguments[0]);
-  std::cerr << msg_str << ":" << arguments[1] << "\n";
+  *klee::klee_warning_stream << msg_str << ":" << arguments[1] << "\n";
 }
 
 void SpecialFunctionHandler::handleSetForking(ExecutionState &state,
@@ -492,7 +513,7 @@ void SpecialFunctionHandler::handleSetForking(ExecutionState &state,
 void SpecialFunctionHandler::handleStackTrace(ExecutionState &state,
                                               KInstruction *target,
                                               std::vector<ref<Expr> > &arguments) {
-  state.dumpStack(std::cout);
+  state.dumpStack(*klee_message_stream);
 }
 
 void SpecialFunctionHandler::handleWarning(ExecutionState &state,
@@ -694,11 +715,28 @@ void SpecialFunctionHandler::handleMakeSymbolic(ExecutionState &state,
                                                 KInstruction *target,
                                                 std::vector<ref<Expr> > &arguments) {
   std::string name;
+  std::string expr_name;
 
   // FIXME: For backwards compatibility, we should eventually enforce the
   // correct arguments.
   if (arguments.size() == 2) {
     name = "unnamed";
+    // Extract the symbolic variables (if any) referenced by the 4th arg
+    // and prepend these variable names to the name of this new symbolic
+    // variable. This is to be used to track sym var flow.
+  } else if (arguments.size() == 4) {
+    name = readStringAtAddress(state, arguments[2]);
+    std::vector<const klee::Array*> symbolic_objects;
+    klee::findSymbolicObjects(arguments[3], symbolic_objects);
+    for (unsigned i=0; i<symbolic_objects.size(); ++i)
+      expr_name = expr_name + symbolic_objects[i]->name + "__";
+    if (expr_name.size())
+      expr_name += "_";
+
+    //if (symbolic_objects.size()) {
+    //  klee_warning("name: %s : %s", name.c_str(), expr_name.c_str());
+    //}
+    name = expr_name + name;
   } else {
     // FIXME: Should be a user.err, not an assert.
     assert(arguments.size()==3 &&
@@ -761,4 +799,79 @@ void SpecialFunctionHandler::handleMarkGlobal(ExecutionState &state,
   }
 }
 
+// Cloud9 support
+
+void SpecialFunctionHandler::handleMakeShared(ExecutionState &state,
+                          KInstruction *target,
+                          std::vector<ref<Expr> > &arguments) {
+
+  assert(arguments.size() == 2 &&
+        "invalid number of arguments to klee_make_shared");
+}
+
+void SpecialFunctionHandler::handleGetWList(ExecutionState &state,
+                    KInstruction *target,
+                    std::vector<ref<Expr> > &arguments) {
+  assert(arguments.empty() && "invalid number of arguments to klee_get_wlist");
+
+  static uint64_t id = 0;
+
+  executor.bindLocal(target, state, ConstantExpr::create(++id,
+      executor.getWidthForLLVMType(target->inst->getType())));
+}
+
+void SpecialFunctionHandler::handleDebug(ExecutionState &state,
+                                           KInstruction *target,
+                                           std::vector<ref<Expr> > &arguments) {
+  assert(arguments.size() >= 1 && "invalid number of arguments to klee_debug");
+
+  std::string formatStr = readStringAtAddress(state, arguments[0]);
+
+  if (arguments.size() == 2 && arguments[1]->getWidth() == sizeof(long)*8) {
+    // Special case for displaying strings
+
+    std::string paramStr = readStringAtAddress(state, arguments[1]);
+
+    klee_message(formatStr.c_str(), paramStr.c_str());
+    return;
+  }
+
+  std::vector<int> args;
+
+  for (unsigned int i = 1; i < arguments.size(); i++) {
+    if (!isa<ConstantExpr>(arguments[i])) {
+      klee_message("%s: %s\n", formatStr.c_str(), "<nonconst args>");
+      return;
+    }
+
+    ref<ConstantExpr> arg = cast<ConstantExpr>(arguments[i]);
+
+    if (arg->getWidth() != sizeof(int)*8) {
+      klee_message("%s: %s\n", formatStr.c_str(), "<non-32-bit args>");
+      return;
+    }
+
+    args.push_back((int)arg->getZExtValue());
+  }
+
+  switch (args.size()) {
+  case 0:
+    klee_message("%s", formatStr.c_str());
+    break;
+  case 1:
+    klee_message(formatStr.c_str(), args[0]);
+    break;
+  case 2:
+    klee_message(formatStr.c_str(), args[0], args[1]);
+    break;
+  case 3:
+    klee_message(formatStr.c_str(), args[0], args[1], args[2]);
+    break;
+  default:
+    executor.terminateStateOnError(state,
+                                   "klee_debug allows up to 3 arguments",
+                                   "user.err");
+    return;
+  }
+}
 
