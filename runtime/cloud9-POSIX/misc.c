@@ -319,6 +319,7 @@ DEFINE_MODEL(const unsigned short **, __ctype_b_loc, void) {
 
   return &b_locale;
 }
+#endif
 
 ////////////////////////////////////////////////////////////////////////////////
 // Dynamic Linking
@@ -334,4 +335,3 @@ DEFINE_MODEL(char *, dlerror) {
   return NULL;
 }
 
-#endif
