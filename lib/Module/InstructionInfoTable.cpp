@@ -134,6 +134,11 @@ InstructionInfoTable::InstructionInfoTable(Module *m)
       }
       else
       {
+        infos.insert(std::make_pair(instr,
+                                    InstructionInfo(id++,
+                                                    *initialFile,
+                                                    initialLine,
+                                                    assemblyLine)));
         DEBUG_WITH_TYPE("klee_missing_debug", dbgs() <<
           "Instruction: \"" << *instr << "\" (assembly line " << assemblyLine <<
           ") is missing debug info.\n");
