@@ -424,12 +424,12 @@ bool VerifySearcher::empty() {
     return false;
 
   //XXX TODO THREAD SAFE BACKTRACKING
-  //for (int i = new_stages_.size()-1; i >= 0; --i) {
-  //  foreach (SearcherStage* stage, *(new_stages_[i])) {
-  //    if (!stage->empty())
-  //      return false;
-  //  }
-  //}
+  for (int i = new_stages_.size()-1; i >= 0; --i) {
+    foreach (SearcherStage* stage, *(new_stages_[i])) {
+      if (!stage->empty())
+        return false;
+    }
+  }
 
   CVDEBUG("VerifySearcher is empty!");
   return true;
