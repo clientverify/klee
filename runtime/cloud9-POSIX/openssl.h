@@ -49,4 +49,6 @@ DECLARE_MODEL(int, EVP_Cipher, EVP_CIPHER_CTX *ctx, unsigned char *out, const un
 DECLARE_MODEL(int, EVP_CipherUpdate, EVP_CIPHER_CTX *ctx, unsigned char *out, int *outl, const unsigned char *in, int inl)
 DECLARE_MODEL(int, EVP_CipherFinal, EVP_CIPHER_CTX *ctx, unsigned char *outm, int *outl)
 
+DECLARE_MODEL(void, print_stuff, BIO *bio, SSL *s, int full)
+
 #endif /* OPENSSL_H_ */

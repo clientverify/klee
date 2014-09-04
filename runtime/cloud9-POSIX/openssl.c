@@ -543,3 +543,13 @@ DEFINE_MODEL(int, EVP_CipherFinal, EVP_CIPHER_CTX *ctx, unsigned char *outm, int
   return CALL_UNDERLYING(EVP_CipherFinal, ctx, outm, outl);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Irrelevant output
+////////////////////////////////////////////////////////////////////////////////
+
+DEFINE_MODEL(void, print_stuff, BIO *bio, SSL *s, int full) {
+  DEBUG_PRINT("skipped");
+  // If you ever want to actually call it, do:
+  // CALL_UNDERLYING(print_stuff, bio, s, full)
+  return;
+}
