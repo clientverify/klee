@@ -33,7 +33,16 @@ extern std::ostream* cv_debug_stream;
 // TODO FIXME make output thread safe
 
 #define CVMESSAGE(__x) \
-  { *cv_message_stream <<"CV: "<< __x << "\n"; }
+  { \
+  char timebuff[20]; \
+  time_t rawtime; \
+  struct tm * timeinfo; \
+  time(&rawtime); \
+  timeinfo = localtime(&rawtime); \
+  strftime(timebuff, sizeof(timebuff), "%Y-%m-%d %H:%M:%S", timeinfo); \
+  *cv_message_stream << timebuff << " | "; \
+  *cv_message_stream <<"CV: "<< __x << "\n"; \
+  }
 
 #ifndef NDEBUG
 

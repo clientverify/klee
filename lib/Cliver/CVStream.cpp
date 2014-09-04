@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <time.h>
 
 namespace cliver {
 llvm::cl::opt<std::string>
@@ -118,6 +119,14 @@ static void cv_vomessage(std::ostream* os, const char *pfx, const char *msg,
   if (!os)
     return;
 
+  char timebuff[20];
+  time_t rawtime;
+  struct tm * timeinfo;
+  time(&rawtime);
+  timeinfo = localtime(&rawtime);
+  strftime(timebuff, sizeof(timebuff), "%Y-%m-%d %H:%M:%S", timeinfo);
+
+  *os << timebuff << " | ";
   *os << "CV: ";
   if (pfx)
     *os << pfx << ": ";

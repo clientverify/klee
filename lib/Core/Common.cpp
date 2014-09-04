@@ -15,6 +15,7 @@
 #include <stdarg.h>
 #include <assert.h>
 #include <string.h>
+#include <time.h>
 
 #include <set>
 #include <vector>
@@ -34,7 +35,14 @@ static void klee_vfmessage(FILE *fp, const char *pfx, const char *msg,
     return;
   }
 
-  fprintf(fp, "KLEE: ");
+  char timebuff[20];
+  time_t rawtime;
+  struct tm * timeinfo;
+  time(&rawtime);
+  timeinfo = localtime(&rawtime);
+  strftime(timebuff, sizeof(timebuff), "%Y-%m-%d %H:%M:%S", timeinfo);
+
+  fprintf(fp, "%s | KLEE: ", timebuff);
   if (pfx) fprintf(fp, "%s: ", pfx);
   vfprintf(fp, msg, ap);
   fprintf(fp, "\n");
@@ -42,6 +50,14 @@ static void klee_vfmessage(FILE *fp, const char *pfx, const char *msg,
 }
 
 static void klee_vomessage_write(std::ostream* os, const char *pfx, const char* buf) {
+	char timebuff[20];
+	time_t rawtime;
+	struct tm * timeinfo;
+	time(&rawtime);
+	timeinfo = localtime(&rawtime);
+	strftime(timebuff, sizeof(timebuff), "%Y-%m-%d %H:%M:%S", timeinfo);
+
+        *os << timebuff << " | ";
 	*os << "KLEE: ";
 	if (pfx)
 		*os << pfx << ": ";
