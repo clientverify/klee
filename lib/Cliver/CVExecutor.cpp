@@ -364,7 +364,7 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
       statePtr = searcher->trySelectState();
     }
 
-    if (statePtr != NULL) {
+    if (statePtr != NULL && !haltExecution) {
       klee::ExecutionState &state = *statePtr;
 
       klee::KInstruction *ki = state.pc;
@@ -420,10 +420,6 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
       if (!pauseExecution) {
         if (klee::UseThreads > 1)
           searcherCond.wait(guard);
-        else if (!statePtr && searcher->empty() && !empty() && !haltExecution) {
-          CVMESSAGE("BACKTRACKING DISABLED, searcher is empty, halting execution");
-          haltExecution = true;
-        }
       }
 
       if (pauseExecution) {
