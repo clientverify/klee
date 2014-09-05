@@ -129,6 +129,9 @@ using namespace metaSMT::solver;
 #include <google/malloc_extension.h>
 #endif
 
+// Not used if USE_BOOST_THREAD_SPECIFIC_PTR
+__thread Executor::ExecutorContext*  g_executor_context = NULL;
+
 namespace klee {
   extern llvm::cl::opt<bool> DumpStatesOnHalt;
   extern llvm::cl::opt<bool> NoPreferCex;
@@ -591,10 +594,18 @@ void Executor::parallelRun(ExecutionState &initialState) {
 }
 
 Executor::ExecutorContext& Executor::getContext() { 
-  if(!context.get()) {
+#if USE_BOOST_THREAD_SPECIFIC_PTR
+  ExecutorContext* context_ptr = context.get();
+  if(!context_ptr) {
     context.reset(new Executor::ExecutorContext());
+    context_ptr = context.get();
   }
-  return *(context.get());
+  return *context_ptr;
+#else
+  if(!g_executor_context)
+    g_executor_context = new Executor::ExecutorContext();
+  return *g_executor_context;
+#endif
 }
 
 bool Executor::empty() {

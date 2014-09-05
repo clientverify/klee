@@ -151,8 +151,10 @@ protected:
   ConditionVariable startExecutionCondition;
   Mutex pauseExecutionMutex;
 
+#if USE_BOOST_THREAD_SPECIFIC_PTR
   /// Per-thread ExecutorContext
   ThreadSpecificPointer<ExecutorContext>::type context;
+#endif
 
   /// When non-empty the Executor is running in "seed" mode. The
   /// states in this map will be executed in an arbitrary order
