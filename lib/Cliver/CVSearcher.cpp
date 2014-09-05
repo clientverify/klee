@@ -123,7 +123,12 @@ void VerifySearcher::process_unique_pending_states() {
   // Prune state constraints and merge states
   ExecutionStateSet state_set, merged_set;
   state_set.insert(pending_states_.begin(), pending_states_.end());
-  merger_->merge(state_set, merged_set);
+
+  // Don't attempt to merge a single state
+  if (state_set.size() == 1)
+    merged_set.insert(pending_states_.begin(), pending_states_.end());
+  else
+    merger_->merge(state_set, merged_set);
 
   // Check if duplicate pending states exist
   if (pending_states_.size() > 1) {
