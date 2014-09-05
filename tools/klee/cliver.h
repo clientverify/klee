@@ -77,6 +77,13 @@ extern llvm::cl::opt<unsigned> MaxDepth;
 extern llvm::cl::opt<unsigned> MaxMemory;
 extern llvm::cl::opt<bool> MaxMemoryInhibit;
 
+// Command line options defined in lib/Core/PTree.cpp
+extern llvm::cl::opt<bool> NoTruncateSourceLines;
+extern llvm::cl::opt<bool> OutputSource;
+extern llvm::cl::opt<bool> OutputSourceWithIds;
+extern llvm::cl::opt<bool> OutputModule;
+extern llvm::cl::opt<bool> DebugPrintEscapingFunctions;
+
 // Command line options defined in tools/klee/main.cpp
 extern llvm::cl::opt<LibcType> Libc;
 extern llvm::cl::opt<bool> WithPOSIXRuntime;
@@ -126,6 +133,9 @@ void processKleeArgumentsForCliver(std::vector<std::string> &args) {
 	SET_DEFAULT_OPT(llvm::DisableInline,true);
 	SET_DEFAULT_OPT(llvm::DisableInternalize,true);
 	SET_DEFAULT_OPT(UseProcessTree,false);
+	SET_DEFAULT_OPT(DumpStatesOnHalt,false);
+	SET_DEFAULT_OPT(OutputSource,false);
+	SET_DEFAULT_OPT(DebugPrintEscapingFunctions,false);
 #undef SET_DEFAULT_OPT
 
 #define INVALID_CL_OPT(name, val) \

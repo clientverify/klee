@@ -191,7 +191,7 @@ Module *klee::deterministicLinkWithLibrary(Module *module,
           klee_error("Could not load a module: %s", moduleErrorMsg.c_str());
         }
 
-        klee_message("  Linking in module: %s", aModule->getModuleIdentifier().c_str());
+        //klee_message("  Linking in module: %s", aModule->getModuleIdentifier().c_str());
 
         // Link it in
         if (linker.LinkInModule(aModule, &moduleErrorMsg)) {
