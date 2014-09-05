@@ -156,6 +156,12 @@ namespace klee {
                          cl::desc("Print instructions during execution."));
 
   cl::opt<bool>
+  DebugPrintConcretizations("debug-print-concretizations",
+                cl::init(false),
+                cl::desc("Print the read expressions that are concretized"
+                         "(default=off)"));
+
+  cl::opt<bool>
   DebugCheckForImpliedValues("debug-check-for-implied-values");
 
 
@@ -3566,6 +3572,8 @@ void Executor::doImpliedValueConcretization(ExecutionState &state,
   std::map< ref<Expr>, ref<Expr> > impliedReads;
   impliedReads.insert(results.begin(), results.end());
 
+  unsigned concretization_count = 0;
+
   // Iterate over *entire* address space! FIXME: faster?
   for (MemoryMap::iterator it = state.addressSpace.objects.begin(),
         ie = state.addressSpace.objects.end(); it != ie; ++it) {
@@ -3576,13 +3584,16 @@ void Executor::doImpliedValueConcretization(ExecutionState &state,
       if (!isa<ConstantExpr>(curr_read)) {
         if (impliedReads.find(curr_read) != impliedReads.end()) {
 
-          // Print info FIXME: make debug only
-          std::ostringstream info;
-          info << "Concretizing ";
-          ExprPPrinter::printSingleExpr(info, curr_read);
-          info << " = ";
-          ExprPPrinter::printSingleExpr(info, impliedReads[curr_read]);
-          klee_warning(info.str().c_str());
+          concretization_count++;
+
+          if (DebugPrintConcretizations) {
+            std::ostringstream info;
+            info << "Concretizing ";
+            ExprPPrinter::printSingleExpr(info, curr_read);
+            info << " = ";
+            ExprPPrinter::printSingleExpr(info, impliedReads[curr_read]);
+            klee_warning(info.str().c_str());
+          }
 
           // Concretize the ReadExpr
           ObjectState *wos = state.addressSpace.getWriteable(mo, os);
@@ -3591,6 +3602,8 @@ void Executor::doImpliedValueConcretization(ExecutionState &state,
       }
     }
   }
+  if (concretization_count)
+    klee_warning("Concretized %d symbolic reads", concretization_count);
 }
 
 Expr::Width Executor::getWidthForLLVMType(LLVM_TYPE_Q llvm::Type *type) const {
