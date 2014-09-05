@@ -299,7 +299,7 @@ DEFINE_MODEL(const int32_t **, __ctype_tolower_loc, void) {
 
   tolower_locale = &cached[128];
 
-  return &tolower_locale;
+  return locale;
 }
 
 static const unsigned short *b_locale = NULL;
@@ -317,7 +317,7 @@ DEFINE_MODEL(const unsigned short **, __ctype_b_loc, void) {
 
   b_locale = &cached[128];
 
-  return &b_locale;
+  return locale;
 }
 #endif
 
