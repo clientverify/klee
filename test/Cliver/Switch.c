@@ -1,5 +1,6 @@
 // RUN: %llvmgcc %s -DKLEE -emit-llvm -g -c -o %t1.bc 
-// RUN: %klee -cliver -optimize=0 -posix-runtime -libc=uclibc -no-output %t1.bc &> %t1.cliver.log
+// RUN: rm -rf %t.cliver-out
+// RUN: %klee -output-dir=%t.cliver-out -cliver -optimize=0 -posix-runtime -libc=uclibc %t1.bc &> %t1.cliver.log
 
 #include <errno.h>
 #include <stdio.h>

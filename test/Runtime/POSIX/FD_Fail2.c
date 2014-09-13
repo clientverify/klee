@@ -1,9 +1,10 @@
 // RUN: %llvmgcc %s -emit-llvm -O0 -c -o %t1.bc
-// RUN: %klee --libc=uclibc --posix-runtime --search=dfs %t1.bc --sym-files 1 10 --max-fail 2
-// RUN: test -f %T/klee-last/test000001.ktest
-// RUN: test -f %T/klee-last/test000002.ktest
-// RUN: test -f %T/klee-last/test000003.ktest
-// RUN: test -f %T/klee-last/test000004.ktest
+// RUN: rm -rf %t.klee-out
+// RUN: %klee --output-dir=%t.klee-out --libc=uclibc --posix-runtime --search=dfs %t1.bc --sym-files 1 10 --max-fail 2
+// RUN: test -f %t.klee-out/test000001.ktest
+// RUN: test -f %t.klee-out/test000002.ktest
+// RUN: test -f %t.klee-out/test000003.ktest
+// RUN: test -f %t.klee-out/test000004.ktest
 // RUN: not test -f %t.klee-out/test000005.ktest
 
 #include <stdio.h>

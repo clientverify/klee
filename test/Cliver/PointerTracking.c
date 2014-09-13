@@ -1,5 +1,6 @@
 // RUN: %llvmgcc %s -emit-llvm -g -c -o %t1.bc
-// RUN: %klee -cliver -no-output -libc=klee -posix-runtime -all-external-warnings %t1.bc > %t
+// RUN: rm -rf %t.cliver-out
+// RUN: %klee -output-dir=%t.cliver-out -cliver -libc=klee -posix-runtime -all-external-warnings %t1.bc > %t
 // RUN: grep -q "test_extract_pointers: PASSED" %t
 
 //#include <stdio.h>

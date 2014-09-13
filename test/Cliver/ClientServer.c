@@ -4,13 +4,14 @@
 // RUN: grep -q "CLIENT: success" %t1.log
 // RUN: grep -q "SERVER: success" %t1.log
 // RUN: not grep -q "error" %t1.log
-// RUN: %klee -cliver -optimize=0 -posix-runtime -libc=uclibc -no-output -socket-log=%t1.ktest %t1.bc &> %t1.cliver.log
+// RUN: rm -rf %t1.cliver-out
+// RUN: %klee --output-dir=%t1.cliver-out -cliver -optimize=0 -posix-runtime -libc=uclibc -socket-log=%t1.ktest %t1.bc &> %t1.cliver.log
 // RUN: grep -q "CLIENT: success" %t1.cliver.log
-// RUN: mkdir -p %t2.cliver.dir
-// RUN: %klee -cliver -cliver-mode=training -optimize=0 -posix-runtime -libc=uclibc -output-dir-parent=%t2.cliver.dir -socket-log=%t1.ktest %t1.bc &> %t2.cliver.log
+// RUN: rm -rf %t2.cliver-out
+// RUN: %klee -cliver -cliver-mode=training -optimize=0 -posix-runtime -libc=uclibc -output-dir=%t2.cliver-out -socket-log=%t1.ktest %t1.bc &> %t2.cliver.log
 // RUN: grep -q "CLIENT: success" %t2.cliver.log
-// RUN: mkdir -p %t3.cliver.dir
-// RUN: %klee -cliver -use-clustering -cliver-mode=edit-dist-kprefix-row -optimize=0 -posix-runtime -libc=uclibc -output-dir-parent=%t3.cliver.dir -training-path-dir=%t2.cliver.dir/cliver-last -socket-log=%t1.ktest %t1.bc &> %t3.cliver.log
+// RUN: rm -rf %t3.cliver-out
+// RUN: %klee -cliver -use-clustering -cliver-mode=edit-dist-kprefix-row -optimize=0 -posix-runtime -libc=uclibc -output-dir=%t3.cliver-out -training-path-dir=%t2.cliver-out -socket-log=%t1.ktest %t1.bc &> %t3.cliver.log
 // RUN: not grep -q "Recomputed kprefix" %t3.cliver.log
 // RUN: grep -q "CLIENT: success" %t3.cliver.log
 

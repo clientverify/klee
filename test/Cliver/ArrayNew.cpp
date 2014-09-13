@@ -1,11 +1,7 @@
 // RUN: %llvmgxx %s -emit-llvm -O0 -c -o %t1.bc
-// RUN: %klee -cliver -libc=klee -no-output -all-external-warnings %t1.bc > %t
+// RUN: rm -rf %t.klee-out
+// RUN: %klee --output-dir=%t.klee-out -cliver -libc=klee -all-external-warnings %t1.bc > %t
 // RUN: grep -q "test_extract_pointers: PASSED" %t
-
-// Original test RUN commands
-// %llvmgxx %s -emit-llvm -O0 -c -o %t1.bc
-// %klee --no-output --exit-on-error --no-externals %t1.bc
-
 
 #ifdef __cplusplus
 extern "C" {
