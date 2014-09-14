@@ -39,6 +39,7 @@
 #include <sys/shm.h>
 
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/ErrorHandling.h"
 
 llvm::cl::opt<bool>
 IgnoreSolverFailures("ignore-solver-failures",
@@ -551,17 +552,25 @@ STPSolverImpl::STPSolverImpl(bool _useForkedSTP, bool _optimizeDivides)
   vc_registerErrorHandler(::stp_error_handler);
 
   if (useForkedSTP) {
+    assert(shared_memory_id.get() == NULL && "shared memory id already allocated");
     shared_memory_id.reset(new int());
     *shared_memory_id = shmget(IPC_PRIVATE, shared_memory_size, IPC_CREAT | 0700);
-    assert(*shared_memory_id>=0 && "shmget failed");
+    if (*shared_memory_id < 0)
+      llvm::report_fatal_error("unable to allocate shared memory region");
     shared_memory_ptr.reset(new unsigned char*());
     *shared_memory_ptr = (unsigned char*) shmat(*shared_memory_id, NULL, 0);
-    assert(*shared_memory_ptr!=(void*)-1 && "shmat failed");
+    if (*shared_memory_ptr == (void*)-1)
+      llvm::report_fatal_error("unable to attach shared memory region");
     shmctl(*shared_memory_id, IPC_RMID, NULL);
   }
 }
 
 STPSolverImpl::~STPSolverImpl() {
+  // Detach the memory region.
+  shmdt(*shared_memory_ptr);
+  shared_memory_ptr.release();
+  shared_memory_id.release();
+
   delete builder;
 
   vc_Destroy(vc);
@@ -685,7 +694,8 @@ static SolverImpl::SolverRunStatus runAndGetCexForked(::VC vc,
   for (std::vector<const Array*>::const_iterator
          it = objects.begin(), ie = objects.end(); it != ie; ++it)
     sum += (*it)->size;
-  assert(sum<shared_memory_size && "not enough shared memory for counterexample");
+  if (sum >= shared_memory_size)
+    llvm::report_fatal_error("not enough shared memory for counterexample");
 
   fflush(stdout);
   fflush(stderr);
