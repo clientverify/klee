@@ -22,6 +22,9 @@
 #include "klee/Internal/Module/KModule.h"
 #include "klee/util/Mutex.h"
 #include "klee/util/Thread.h"
+
+#include "llvm/ADT/Twine.h"
+
 #include <vector>
 #include <string>
 #include <map>
