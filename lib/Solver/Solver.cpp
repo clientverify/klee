@@ -522,13 +522,8 @@ public:
   SolverRunStatus getOperationStatusCode();
 };
 
-<<<<<<< HEAD
 static ThreadSpecificPointer<unsigned char *>::type shared_memory_ptr;
-static const unsigned shared_memory_size = 1<<20;
 static ThreadSpecificPointer<int>::type shared_memory_id;
-=======
-static unsigned char *shared_memory_ptr;
-static int shared_memory_id = 0;
 // Darwin by default has a very small limit on the maximum amount of shared
 // memory, which will quickly be exhausted by KLEE running its tests in
 // parallel. For now, we work around this by just requesting a smaller size --
@@ -539,7 +534,6 @@ static const unsigned shared_memory_size = 1<<16;
 #else
 static const unsigned shared_memory_size = 1<<20;
 #endif
->>>>>>> a07fbf0... [Solver] Tune down the shared memory region size on Darwin.
 
 static void stp_error_handler(const char* err_msg) {
   fprintf(stderr, "error: STP Error: %s\n", err_msg);
