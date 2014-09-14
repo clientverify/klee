@@ -43,7 +43,6 @@ extern llvm::cl::opt<bool> CoreSolverOptimizeDivides;
 // Command line options defined in lib/Core/Executor.cpp
 extern llvm::cl::opt<bool> DumpStatesOnHalt;
 extern llvm::cl::opt<bool> NoPreferCex;
-extern llvm::cl::opt<bool> UseAsmAddresses;
 extern llvm::cl::opt<bool> RandomizeFork;
 extern llvm::cl::opt<bool> AllowExternalSymCalls;
 extern llvm::cl::opt<bool> DebugPrintInstructions;

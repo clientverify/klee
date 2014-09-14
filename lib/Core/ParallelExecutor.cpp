@@ -135,7 +135,6 @@ __thread Executor::ExecutorContext*  g_executor_context = NULL;
 namespace klee {
   extern llvm::cl::opt<bool> DumpStatesOnHalt;
   extern llvm::cl::opt<bool> NoPreferCex;
-  extern llvm::cl::opt<bool> UseAsmAddresses;
   extern llvm::cl::opt<bool> RandomizeFork;
   extern llvm::cl::opt<bool> AllowExternalSymCalls;
   extern llvm::cl::opt<bool> DebugPrintInstructions;
