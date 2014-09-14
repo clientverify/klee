@@ -34,7 +34,6 @@
 #include "llvm/Instructions.h"
 #include "llvm/Module.h"
 #endif
-#include "llvm/Support/CFG.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 

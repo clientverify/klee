@@ -27,7 +27,6 @@
 
 #include "llvm/Linker.h"
 #include "llvm/Assembly/AssemblyAnnotationWriter.h"
-#include "llvm/Support/CFG.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/InstIterator.h"
 #include "llvm/Support/raw_ostream.h"
