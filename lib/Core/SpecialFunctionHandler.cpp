@@ -282,14 +282,7 @@ void SpecialFunctionHandler::handleAbort(ExecutionState &state,
                            KInstruction *target,
                            std::vector<ref<Expr> > &arguments) {
   assert(arguments.size()==0 && "invalid number of arguments to abort");
-
-  //XXX:DRE:TAINT
-  if(state.underConstrained) {
-    llvm::errs() << "TAINT: skipping abort fail\n";
-    executor.terminateState(state);
-  } else {
-    executor.terminateStateOnError(state, "abort failure", "abort.err");
-  }
+  executor.terminateStateOnError(state, "abort failure", "abort.err");
 }
 
 void SpecialFunctionHandler::handleExit(ExecutionState &state,
@@ -324,32 +317,18 @@ void SpecialFunctionHandler::handleAssert(ExecutionState &state,
                                           KInstruction *target,
                                           std::vector<ref<Expr> > &arguments) {
   assert(arguments.size()==3 && "invalid number of arguments to _assert");  
-  
-  //XXX:DRE:TAINT
-  if(state.underConstrained) {
-    llvm::errs() << "TAINT: skipping assertion:"
-                 << readStringAtAddress(state, arguments[0]) << "\n";
-    executor.terminateState(state);
-  } else
-    executor.terminateStateOnError(state, 
-                                   "ASSERTION FAIL: " + readStringAtAddress(state, arguments[0]),
-                                   "assert.err");
+  executor.terminateStateOnError(state,
+				 "ASSERTION FAIL: " + readStringAtAddress(state, arguments[0]),
+				 "assert.err");
 }
 
 void SpecialFunctionHandler::handleAssertFail(ExecutionState &state,
                                               KInstruction *target,
                                               std::vector<ref<Expr> > &arguments) {
   assert(arguments.size()==4 && "invalid number of arguments to __assert_fail");
-  
-  //XXX:DRE:TAINT
-  if(state.underConstrained) {
-    llvm::errs() << "TAINT: skipping assertion:"
-                 << readStringAtAddress(state, arguments[0]) << "\n";
-    executor.terminateState(state);
-  } else
-    executor.terminateStateOnError(state, 
-                                   "ASSERTION FAIL: " + readStringAtAddress(state, arguments[0]),
-                                   "assert.err");
+  executor.terminateStateOnError(state,
+				 "ASSERTION FAIL: " + readStringAtAddress(state, arguments[0]),
+				 "assert.err");
 }
 
 void SpecialFunctionHandler::handleReportError(ExecutionState &state,
@@ -358,17 +337,9 @@ void SpecialFunctionHandler::handleReportError(ExecutionState &state,
   assert(arguments.size()==4 && "invalid number of arguments to klee_report_error");
   
   // arguments[0], arguments[1] are file, line
-  
-  //XXX:DRE:TAINT
-  if(state.underConstrained) {
-    llvm::errs() << "TAINT: skipping klee_report_error:"
-                 << readStringAtAddress(state, arguments[2]) << ":"
-                 << readStringAtAddress(state, arguments[3]) << "\n";
-    executor.terminateState(state);
-  } else
-    executor.terminateStateOnError(state, 
-                                   readStringAtAddress(state, arguments[2]),
-                                   readStringAtAddress(state, arguments[3]).c_str());
+  executor.terminateStateOnError(state,
+				 readStringAtAddress(state, arguments[2]),
+				 readStringAtAddress(state, arguments[3]).c_str());
 }
 
 void SpecialFunctionHandler::handleMerge(ExecutionState &state,
@@ -921,4 +892,3 @@ void SpecialFunctionHandler::handleDebug(ExecutionState &state,
     return;
   }
 }
-
