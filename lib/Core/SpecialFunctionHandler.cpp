@@ -30,6 +30,7 @@
 #include "llvm/ADT/Twine.h"
 
 #include <errno.h>
+#include <iostream>
 
 using namespace llvm;
 using namespace klee;
@@ -85,6 +86,7 @@ static SpecialFunctionHandler::HandlerInfo handlerInfo[] = {
   add("klee_merge", handleMerge, false),
   add("klee_prefer_cex", handlePreferCex, false),
   add("klee_print_expr", handlePrintExpr, false),
+  add("klee_print_bytes", handlePrintBytes, false),
   add("klee_print_range", handlePrintRange, false),
   add("klee_set_forking", handleSetForking, false),
   add("klee_stack_trace", handleStackTrace, false),
@@ -448,17 +450,6 @@ void SpecialFunctionHandler::handleIsSymbolic(ExecutionState &state,
   ref<Expr> e = arguments[0];
   if (!isa<ConstantExpr>(arguments[0])) {
     e = state.constraints.simplifyExpr(arguments[0]);
-    if (isa<ConstantExpr>(e)) {
-      std::vector<const klee::Array*> symbolic_objects;
-      klee::findSymbolicObjects(arguments[0], symbolic_objects);
-      std::ostringstream info2;
-      for (unsigned i=0; i<symbolic_objects.size(); ++i) {
-        if (i > 0) info2 << ", ";
-        info2 << symbolic_objects[i]->name;
-      }
-      *klee::klee_warning_stream
-          << "simplified (" << info2.str() << ") to " << e << "\n";
-    }
   }
   executor.bindLocal(target, state, 
                      ConstantExpr::create(!isa<ConstantExpr>(e),
@@ -491,7 +482,46 @@ void SpecialFunctionHandler::handlePrintExpr(ExecutionState &state,
          "invalid number of arguments to klee_print_expr");
 
   std::string msg_str = readStringAtAddress(state, arguments[0]);
-  *klee::klee_warning_stream << msg_str << ":" << arguments[1] << "\n";
+  std::stringstream ss;
+  ss << msg_str << ":" << arguments[1];
+  klee_message(ss.str().c_str());
+}
+
+void SpecialFunctionHandler::handlePrintBytes(ExecutionState &state,
+                                  KInstruction *target,
+                                  std::vector<ref<Expr> > &arguments) {
+  assert(arguments.size()==3 &&
+         "invalid number of arguments to klee_print_bytes");
+
+  std::string msg_str = readStringAtAddress(state, arguments[0]);
+
+  std::stringstream ss;
+  ref<Expr> sizeExpr;
+  sizeExpr = executor.toUnique(state, arguments[2]);
+  ref<ConstantExpr> size = cast<ConstantExpr>(sizeExpr);
+  uint64_t sizeConcrete = size->getZExtValue();
+
+  ss << msg_str << " size:" << sizeConcrete << " bytes:";
+
+  ref<Expr> addressExpr;
+  addressExpr = executor.toUnique(state, arguments[1]);
+  ref<ConstantExpr> address = cast<ConstantExpr>(addressExpr);
+
+  ObjectPair op;
+  if (!state.addressSpace.resolveOne(address, op))
+    assert(0 && "XXX out of bounds / multiple resolution unhandled");
+  bool res;
+  const MemoryObject *mo = op.first;
+  const ObjectState *os = op.second;
+
+  uint64_t addressConcrete = address->getZExtValue();
+  assert(addressConcrete >= mo->address && "invalid address");
+  uint64_t i = 0;
+  uint64_t offset = addressConcrete - mo->address;
+  for (; i < sizeConcrete; i++) {
+    ss << os->read8(offset+i) << " ";
+  }
+  klee_message(ss.str().c_str());
 }
 
 void SpecialFunctionHandler::handleSetForking(ExecutionState &state,
@@ -513,7 +543,9 @@ void SpecialFunctionHandler::handleSetForking(ExecutionState &state,
 void SpecialFunctionHandler::handleStackTrace(ExecutionState &state,
                                               KInstruction *target,
                                               std::vector<ref<Expr> > &arguments) {
-  state.dumpStack(*klee_message_stream);
+  std::stringstream ss;
+  state.dumpStack(ss);
+  klee_message(ss.str().c_str());
 }
 
 void SpecialFunctionHandler::handleWarning(ExecutionState &state,
@@ -721,10 +753,10 @@ void SpecialFunctionHandler::handleMakeSymbolic(ExecutionState &state,
   // correct arguments.
   if (arguments.size() == 2) {
     name = "unnamed";
+  } else if (arguments.size() == 4) {
     // Extract the symbolic variables (if any) referenced by the 4th arg
     // and prepend these variable names to the name of this new symbolic
     // variable. This is to be used to track sym var flow.
-  } else if (arguments.size() == 4) {
     name = readStringAtAddress(state, arguments[2]);
     std::vector<const klee::Array*> symbolic_objects;
     klee::findSymbolicObjects(arguments[3], symbolic_objects);
@@ -733,9 +765,6 @@ void SpecialFunctionHandler::handleMakeSymbolic(ExecutionState &state,
     if (expr_name.size())
       expr_name += "_";
 
-    //if (symbolic_objects.size()) {
-    //  klee_warning("name: %s : %s", name.c_str(), expr_name.c_str());
-    //}
     name = expr_name + name;
   } else {
     // FIXME: Should be a user.err, not an assert.
