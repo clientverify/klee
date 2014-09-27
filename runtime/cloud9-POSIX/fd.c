@@ -156,7 +156,9 @@ static ssize_t _clean_read(int fd, void *buf, size_t count, off_t offset) {
       klee_warning("Setting length of symbolic read on stdin");
       static int stdin_index = -1;
       count = cliver_ktest_copy("stdin", stdin_index--, buf, count);
-#ifdef KTEST_STDIN_PLAYBACK
+      if (count == 0)
+        return count;
+#if KTEST_STDIN_PLAYBACK
       return count;
 #endif
     }
