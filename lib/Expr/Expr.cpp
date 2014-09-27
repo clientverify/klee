@@ -559,6 +559,8 @@ ref<Expr> ReadExpr::create(const UpdateList &ul, ref<Expr> index) {
 }
 
 int ReadExpr::compareContents(const Expr &b) const { 
+  const ReadExpr &rb = static_cast<const ReadExpr&>(b);
+  if (index != rb.index) return index < rb.index ? -1 : 1;
   return updates.compare(static_cast<const ReadExpr&>(b).updates);
 }
 
