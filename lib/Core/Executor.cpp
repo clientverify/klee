@@ -3560,6 +3560,56 @@ void Executor::getCoveredLines(const ExecutionState &state,
   res = state.coveredLines;
 }
 
+bool Executor::concretizeExpr(ref<Expr> e,
+                           std::map< ref<Expr>, ref<Expr> > &implied,
+                           ref<Expr> &result) {
+  result = e;
+  bool concretized = false;
+  if (!e.isNull() && !isa<ConstantExpr>(e)) {
+    // Fast check if this is a direct read
+    if (isa<ReadExpr>(e) && implied.find(e) != implied.end()) {
+      result = implied[e];
+      concretized = true;
+    } else {
+
+      // Attempt to concretize until we can no longer reduce
+      // the number of reads in the expr
+      unsigned lastCount = 0;
+      std::vector<ref<ReadExpr> > reads;
+      ref<Expr> simplifiedExpr = e;
+      findReads(simplifiedExpr, true, reads);
+
+      while (reads.size() != lastCount) {
+        lastCount = reads.size();
+        bool updateReads = false;
+        for (std::vector<ref<ReadExpr> >::iterator rit=reads.begin(),
+              rie=reads.end(); rit!=rie; ++rit) {
+          if (implied.find(*rit) != implied.end()) {
+            ConstraintManager cm;
+            cm.addConstraint(EqExpr::create(implied[*rit], *rit));
+            simplifiedExpr = cm.simplifyExpr(simplifiedExpr);
+            updateReads = true;
+          }
+        }
+        if (updateReads)
+          findReads(simplifiedExpr, true, reads);
+      }
+      if (simplifiedExpr != e) {
+        result = simplifiedExpr;
+        concretized = true;
+      }
+    }
+  }
+
+  if (DebugPrintConcretizations && concretized) {
+    std::ostringstream info;
+    info << "Concretized " << e << " into " << result;
+    klee_warning(info.str().c_str());
+  }
+
+  return concretized;
+}
+
 void Executor::doImpliedValueConcretization(ExecutionState &state,
                                             ref<Expr> e,
                                             ref<ConstantExpr> value) {
@@ -3572,37 +3622,67 @@ void Executor::doImpliedValueConcretization(ExecutionState &state,
   std::map< ref<Expr>, ref<Expr> > impliedReads;
   impliedReads.insert(results.begin(), results.end());
 
-  unsigned concretization_count = 0;
+  if (impliedReads.size() == 0)
+    return;
 
-  // Iterate over *entire* address space! FIXME: faster?
+  unsigned concretization_count = 0;
+  ref<Expr> result;
+
+  std::vector<const MemoryObject*> memoryObjects;
   for (MemoryMap::iterator it = state.addressSpace.objects.begin(),
         ie = state.addressSpace.objects.end(); it != ie; ++it) {
-    const MemoryObject *mo = it->first;
-    ObjectState *os = it->second;
-    for (unsigned i=0; i<os->size; i++) {
+    memoryObjects.push_back(it->first);
+  }
+
+  // Iterate over *entire* address space! FIXME: faster?
+  for (std::vector<const MemoryObject*>::iterator it=memoryObjects.begin(),
+        ie = memoryObjects.end(); it != ie; ++it) {
+    const MemoryObject *mo = *it;
+    const ObjectState *os = state.addressSpace.findObject(mo);
+    assert(os);
+    for (unsigned i=0; i<mo->size; i++) {
       ref<Expr> curr_read = os->read8(i);
-      if (!isa<ConstantExpr>(curr_read)) {
-        if (impliedReads.find(curr_read) != impliedReads.end()) {
+      if (concretizeExpr(curr_read, impliedReads, result)) {
+        // Concretize the ReadExpr
+        ObjectState *wos = state.addressSpace.getWriteable(mo, os);
+        wos->write(i, result);
+        // Update object for next byte
+        os = wos;
+        concretization_count++;
+      }
+    }
+  }
 
+  // Walk stack frames (needed?)
+  for (int i=0; i<state.stack.size(); ++i) {
+    StackFrame &sf = state.stack[i];
+    if (sf.locals != NULL && sf.kf != NULL) {
+      for (int j=0; j < sf.kf->numRegisters; ++j) {
+        if (concretizeExpr(sf.locals[j].value, impliedReads, result)) {
+          sf.locals[j].value = result;
           concretization_count++;
-
-          if (DebugPrintConcretizations) {
-            std::ostringstream info;
-            info << "Concretizing ";
-            ExprPPrinter::printSingleExpr(info, curr_read);
-            info << " = ";
-            ExprPPrinter::printSingleExpr(info, impliedReads[curr_read]);
-            klee_warning(info.str().c_str());
-          }
-
-          // Concretize the ReadExpr
-          ObjectState *wos = state.addressSpace.getWriteable(mo, os);
-          wos->write(i, impliedReads[curr_read]);
         }
       }
     }
   }
-  if (concretization_count)
+
+  // Check constraints (needed?)
+  std::set< ref<Expr> > impliedConstraints;
+  ConstraintManager &cm = state.constraints;
+  for (ConstraintManager::const_iterator it=cm.begin(),ie=cm.end();
+       it!=ie; ++it) {
+    if (concretizeExpr(*it, impliedReads, result)) {
+      impliedConstraints.insert(EqExpr::create(result, *it));
+    }
+  }
+
+  for (std::set<ref<Expr> >::iterator it=impliedConstraints.begin(),
+       ie=impliedConstraints.end(); it!=ie; ++it) {
+    state.addConstraint(*it);
+    concretization_count++;
+  }
+
+  if (DebugPrintConcretizations && concretization_count)
     klee_warning("Concretized %d symbolic reads", concretization_count);
 }
 

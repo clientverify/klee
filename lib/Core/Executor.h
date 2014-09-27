@@ -416,6 +416,10 @@ protected:
                          KInstruction *target, 
                          const std::vector<ref<Expr> > &arguments);
 
+  bool concretizeExpr(ref<Expr> e,
+                      std::map< ref<Expr>, ref<Expr> > &implied,
+                      ref<Expr> &result);
+
 public:
   void doImpliedValueConcretization(ExecutionState &state,
                                     ref<Expr> e,
