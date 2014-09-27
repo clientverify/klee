@@ -83,9 +83,10 @@ static void klee_vomessage(std::ostream* os, const char *pfx, const char *msg,
     return;
   }
 
-  // 1024 buf wasn't big enough
-  int buf_size = 1024*2;
+  // If 1024 buf wasn't big enough
+  int buf_size = 1024;
   while (true) {
+    buf_size *= 2;
     std::vector<char> heapbuf(buf_size);
 
     va_copy(ap_copy, ap);
