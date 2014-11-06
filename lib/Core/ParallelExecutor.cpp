@@ -34,7 +34,6 @@
 #include "klee/Common.h"
 #include "klee/util/Assignment.h"
 #include "klee/util/ExprPPrinter.h"
-#include "klee/util/ExprSMTLIBLetPrinter.h"
 #include "klee/util/ExprUtil.h"
 #include "klee/util/GetElementPtrTypeIterator.h"
 #include "klee/Config/Version.h"

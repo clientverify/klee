@@ -23,7 +23,6 @@
 #include "klee/Internal/Module/KModule.h"
 #include "klee/util/Assignment.h"
 #include "klee/util/ExprPPrinter.h"
-#include "klee/util/ExprSMTLIBLetPrinter.h"
 #include "klee/util/ExprUtil.h"
 
 #include <cassert>
