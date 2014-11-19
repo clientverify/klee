@@ -164,10 +164,12 @@ KTest *kTest_fromFile(const char *path) {
       goto error;
     if (!read_uint32(f, &o->numBytes))
       goto error;
-    if (!read_uint64(f, (uint64_t*)&o->timestamp.tv_sec))
-      goto error;
-    if (!read_uint64(f, (uint64_t*)&o->timestamp.tv_usec))
-      goto error;
+    if (res->version >= 4) { // Cliver-specific version 4
+      if (!read_uint64(f, (uint64_t*)&o->timestamp.tv_sec))
+	goto error;
+      if (!read_uint64(f, (uint64_t*)&o->timestamp.tv_usec))
+	goto error;
+    }
     o->bytes = (unsigned char*) malloc(o->numBytes);
     if (o->numBytes && fread(o->bytes, o->numBytes, 1, f)!=1)
       goto error;
