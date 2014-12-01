@@ -419,6 +419,12 @@ private:
                          KInstruction *target, 
                          const std::vector<ref<Expr> > &arguments);
 
+  bool concretizeExpr(ref<Expr> e,
+                      std::map< ref<Expr>, ref<Expr> > &implied,
+                      ref<Expr> &result);
+
+  virtual void executeEvent(ExecutionState &state, unsigned int type, long int value);
+
   void doImpliedValueConcretization(ExecutionState &state,
                                     ref<Expr> e,
                                     ref<ConstantExpr> value);

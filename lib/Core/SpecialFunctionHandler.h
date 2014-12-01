@@ -108,6 +108,7 @@ namespace klee {
     HANDLER(handleDelete);    
     HANDLER(handleDeleteArray);
     HANDLER(handleExit);
+    HANDLER(handleEvent);
     HANDLER(handleAliasFunction);
     HANDLER(handleFree);
     HANDLER(handleGetErrno);
