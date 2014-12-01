@@ -3686,6 +3686,9 @@ void Executor::doImpliedValueConcretization(ExecutionState &state,
     klee_warning("Concretized %d symbolic reads", concretization_count);
 }
 
+void Executor::executeEvent(ExecutionState &state, unsigned int type, long int value) {
+}
+
 Expr::Width Executor::getWidthForLLVMType(LLVM_TYPE_Q llvm::Type *type) const {
   return kmodule->targetData->getTypeSizeInBits(type);
 }

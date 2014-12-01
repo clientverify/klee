@@ -420,6 +420,8 @@ protected:
                       std::map< ref<Expr>, ref<Expr> > &implied,
                       ref<Expr> &result);
 
+  virtual void executeEvent(ExecutionState &state, unsigned int type, long int value);
+
 public:
   void doImpliedValueConcretization(ExecutionState &state,
                                     ref<Expr> e,

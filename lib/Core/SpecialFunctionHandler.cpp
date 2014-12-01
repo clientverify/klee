@@ -68,6 +68,7 @@ static SpecialFunctionHandler::HandlerInfo handlerInfo[] = {
   add("free", handleFree, false),
   add("klee_assume", handleAssume, false),
   add("klee_check_memory_access", handleCheckMemoryAccess, false),
+  add("klee_event", handleEvent, false),
   add("klee_get_valuef", handleGetValue, true),
   add("klee_get_valued", handleGetValue, true),
   add("klee_get_valuel", handleGetValue, true),
@@ -829,6 +830,25 @@ void SpecialFunctionHandler::handleMarkGlobal(ExecutionState &state,
 }
 
 // Cloud9 support
+
+void SpecialFunctionHandler::handleEvent(ExecutionState &state,
+                                         KInstruction *target,
+                                         std::vector<ref<Expr> > &arguments) {
+  assert(arguments.size() == 2 && "invalid number of arguments to klee_event");
+
+  if (!isa<ConstantExpr>(arguments[0]) || !isa<ConstantExpr>(arguments[1])) {
+    executor.terminateStateOnError(state, "klee_event requires a constant arg", "user.err");
+    return;
+  }
+
+  ref<ConstantExpr> type = cast<ConstantExpr>(arguments[0]);
+  ref<ConstantExpr> value = cast<ConstantExpr>(arguments[1]);
+
+  executor.executeEvent(state,
+                        (unsigned int)type->getZExtValue(),
+                        (long int)value->getZExtValue());
+}
+
 
 void SpecialFunctionHandler::handleMakeShared(ExecutionState &state,
                           KInstruction *target,

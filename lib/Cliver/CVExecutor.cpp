@@ -1070,6 +1070,15 @@ void CVExecutor::ktest_copy(CVExecutionState* state,
   }
 }
 
+void CVExecutor::executeEvent(klee::ExecutionState &state, unsigned int type,
+                            long int value) {
+  CVExecutionState *cvstate = static_cast<CVExecutionState*>(&state);
+  if (type == KLEE_EVENT_SYMBOLIC_MODEL) {
+    CVMESSAGE("SYMBOLIC MODEL EVENT");
+    cvstate->property()->symbolic_model = true;
+  }
+}
+
 ///
 
 } // end namespace cliver

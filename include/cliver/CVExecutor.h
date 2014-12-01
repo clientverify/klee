@@ -135,6 +135,9 @@ class CVExecutor : public klee::Executor {
                   std::string &name, int ktest_index, klee::ObjectState* os,
                   unsigned os_offset, unsigned len);
 
+  virtual void executeEvent(klee::ExecutionState &state, unsigned int type,
+                            long int value);
+
  private:
   ClientVerifier *cv_;
 	StateMerger *merger_;
