@@ -62,7 +62,9 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
   bool event_flag() { return event_flag_; }
   void set_event_flag(bool b) { event_flag_ = b; }
 
-  static int next_id() { return next_id_; }
+  static int next_id() { return next_id_.get(); }
+
+  std::string get_unique_array_name(const std::string &s);
 
   void erase_self();
   void erase_self_permanent();
@@ -70,16 +72,17 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
   unsigned get_current_basic_block();
 
  private:
-  int increment_id() { return next_id_++; }
+  int increment_id() { return next_id_.add_ref(); }
 
   int id_;
   bool event_flag_;
-  static int next_id_;
+  static klee::RefCount next_id_;
   CVContext* context_;
 	NetworkManager* network_manager_;
 	ExecutionStateProperty* property_;
   ClientVerifier *cv_;
   bool basic_block_tracking_;
+  std::map<std::string, uint64_t> array_name_index_map_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

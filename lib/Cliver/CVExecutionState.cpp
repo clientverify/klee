@@ -17,10 +17,13 @@
 #include "../Core/Common.h"
 #include "klee/Internal/Module/InstructionInfoTable.h"
 #include "klee/Internal/Module/KInstruction.h"
+#include "klee/util/RefCount.h"
+
+#include "llvm/ADT/StringExtras.h"
 
 namespace cliver {
 
-int CVExecutionState::next_id_ = 0;
+klee::RefCount CVExecutionState::next_id_ = 0;
 
 CVExecutionState::CVExecutionState(klee::KFunction *kF)
  : klee::ExecutionState(kF),
@@ -78,6 +81,8 @@ CVExecutionState* CVExecutionState::clone(ExecutionStateProperty* property) {
   if (property == NULL)
     cv_->notify_all(ExecutionEvent(CV_STATE_CLONE, cloned_state, this));
 
+  cloned_state->array_name_index_map_ = array_name_index_map_;
+
   return cloned_state;
 }
 
@@ -102,6 +107,11 @@ void CVExecutionState::erase_self_permanent() {
 
 unsigned CVExecutionState::get_current_basic_block() {
   return this->prevPC->kbb->id;
+}
+
+std::string CVExecutionState::get_unique_array_name(const std::string &s) {
+  // Look up unique name for this variable, incremented per variable name
+  return s + "_" + llvm::utostr(array_name_index_map_[s]++);
 }
 
 void CVExecutionState::print(std::ostream &os) const {
