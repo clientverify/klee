@@ -86,6 +86,8 @@ class CVExecutor : public klee::Executor {
   void add_constraint(CVExecutionState *state, 
 			klee::ref<klee::Expr> condition);
 
+  klee::TimingSolver* get_solver();
+
 	//void register_event(const CliverEventInfo& event_info);
 	//CliverEventInfo* lookup_event(llvm::Instruction *inst);
   

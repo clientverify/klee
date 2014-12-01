@@ -876,6 +876,10 @@ void CVExecutor::add_constraint(CVExecutionState *state,
 	addConstraint(*state, condition);
 }
 
+klee::TimingSolver* CVExecutor::get_solver() {
+  return solver.get();
+}
+
 void CVExecutor::register_function_call_event(const char **fname, 
                                               ExecutionEventType event_type) {
   llvm::Function* f = kmodule->module->getFunction(*fname);
