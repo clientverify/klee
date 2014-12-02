@@ -20,6 +20,9 @@
 
 #include "../Core/Executor.h"
 #include "../Core/Memory.h"
+#include "../Core/TimingSolver.h"
+#include "klee/Constants.h"
+#include "klee/util/ExprUtil.h"
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/Interpreter.h"
 
@@ -215,6 +218,55 @@ void ExternalHandler_ktest_copy(
                           ktest_name, ktest_index,
                           const_cast<klee::ObjectState*>(res.second),
                           object_offset, len);
+}
+
+void ExternalHandler_cliver_event(
+    klee::Executor* executor, klee::ExecutionState *state,
+    klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {
+  // cliver_event(EVENT_TYPE, PARAM_1<opt>, PARAM_2<opt>)
+  
+  int type = cast<klee::ConstantExpr>(arguments[0])->getZExtValue();
+  CVExecutionState* cv_state = static_cast<CVExecutionState*>(state);
+  CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
+
+  if (type == KLEE_EVENT_SYMBOLIC_MODEL) {
+    // Param1: address, Param2: bytecount
+    klee::ref<klee::ConstantExpr> address = cast<klee::ConstantExpr>(arguments[1]);
+    size_t length = cast<klee::ConstantExpr>(arguments[2])->getZExtValue();
+
+    klee::ObjectPair op;
+
+    if (!state->addressSpace.resolveOne(address, op))
+      assert(0 && "XXX out of bounds / multiple resolution unhandled");
+    bool res;
+    assert(cv_executor->get_solver()->mustBeTrue(*state, 
+                              klee::EqExpr::create(address, 
+                                                   op.first->getBaseExpr()),
+                                                   res) &&
+          res &&
+          "Symbolic Model Event: interior pointer unhandled");
+
+    const klee::MemoryObject *mo = op.first;
+    const klee::ObjectState *os = op.second;
+
+    std::vector<klee::ref<klee::Expr> > expr_bytes;
+    std::vector<const klee::Array*> arrays;
+
+    for (unsigned i=0; i<length; ++i) {
+      expr_bytes.push_back(os->read8(i));
+    }
+
+    klee::findSymbolicObjects(expr_bytes.begin(), expr_bytes.end(), arrays);
+
+    assert(arrays.size() && "SYMBOLIC EVENT: No arrays found!");
+
+    for (unsigned i=0; i<arrays.size(); ++i) {
+      CVMESSAGE("SYMBOLIC MODEL EVENT: " << arrays[i]->name << ", " << *cv_state);
+    }
+
+  }
+
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////
