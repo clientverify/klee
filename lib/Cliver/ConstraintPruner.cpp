@@ -44,10 +44,17 @@ DebugConstraintPruner("debug-constraint-pruner",llvm::cl::init(false));
 
 #endif
 
-
 ConstraintPruner::ConstraintPruner() {}
 
-void ConstraintPruner::prune_constraints(
+void ConstraintPruner::prune_independent_constraints(CVExecutionState &state) {
+  AddressSpaceGraph graph(&state);
+  prune_independent_constraints(state, graph);
+}
+
+/// Remove constraints from the constraint manager that are
+/// independent from the set of symbolic objects stored in
+/// the state's address space
+void ConstraintPruner::prune_independent_constraints(
 		CVExecutionState &state, AddressSpaceGraph &graph ) {
 
 	klee::IndependentElementSet array_set;

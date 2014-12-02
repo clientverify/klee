@@ -33,6 +33,8 @@ class StateMerger {
 	virtual void merge( ExecutionStateSet &state_set, 
 			ExecutionStateSet &merged_set);
 
+  ConstraintPruner* pruner() { return pruner_; }
+
  protected:
   bool callstacks_equal(CVExecutionState *state_a, CVExecutionState *state_b);
 
@@ -46,6 +48,7 @@ class StateMerger {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#if 0
 class SymbolicStateMerger : public StateMerger {
  public:
 	SymbolicStateMerger( ConstraintPruner *pruner, ClientVerifier *cv );
@@ -55,6 +58,7 @@ class SymbolicStateMerger : public StateMerger {
  private:
 	std::map<CVExecutionState*, MergeInfo> previous_states_;
 };
+#endif
 
 } // end namespace cliver
 #endif // STATE_MERGER_H

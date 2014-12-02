@@ -17,8 +17,9 @@ class CVExecutionState;
 class ConstraintPruner {
  public:
 	ConstraintPruner();
-	virtual void prune_constraints( CVExecutionState &state, AddressSpaceGraph &graph );
-
+	virtual void prune_independent_constraints(CVExecutionState &state);
+	virtual void prune_independent_constraints(CVExecutionState &state, 
+                                             AddressSpaceGraph &graph);
  private:
 
 };

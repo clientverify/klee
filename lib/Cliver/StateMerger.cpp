@@ -183,7 +183,7 @@ void StateMerger::merge(ExecutionStateSet &state_set,
 	foreach (CVExecutionState* state, state_set) {
 		AddressSpaceGraph *graph = new AddressSpaceGraph(state);
 		graph->build();
-		pruner_->prune_constraints(*state, *graph);
+		pruner_->prune_independent_constraints(*state, *graph);
 		merge_info[state].graph = graph;
 	}
 
@@ -239,6 +239,8 @@ void StateMerger::merge(ExecutionStateSet &state_set,
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// rac: symbolic merging not currently supported
+#if 0
 SymbolicStateMerger::SymbolicStateMerger(ConstraintPruner *pruner, 
                                          ClientVerifier *cv)
 	: StateMerger(pruner, cv) {}
@@ -256,7 +258,7 @@ void SymbolicStateMerger::merge(ExecutionStateSet &state_set,
 	foreach (CVExecutionState* state, state_set) {
 		AddressSpaceGraph *graph = new AddressSpaceGraph(state);
 		graph->build();
-		pruner_->prune_constraints(*state, *graph);
+		pruner_->prune_independent_constraints(*state, *graph);
 		merge_info[state].graph = graph;
 	}
 
@@ -375,5 +377,6 @@ void SymbolicStateMerger::merge(ExecutionStateSet &state_set,
 		delete (it->second).graph;
 	}
 }
+#endif
 
 } // end namespace cliver
