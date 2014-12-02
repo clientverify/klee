@@ -35,6 +35,7 @@
 
 #include "klee/CommandLine.h"
 #include "klee/Common.h"
+#include "klee/Constants.h"
 #include "klee/Config/config.h"
 #include "klee/ExecutionState.h"
 #include "klee/Expr.h"
