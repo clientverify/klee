@@ -55,8 +55,10 @@ class ExecutionStateProperty {
   int edit_distance; // edit distance 
   int symbolic_vars; // number of symbolic variables created for this round
 	bool recompute;
+	bool symbolic_model; // True if this state's execution path has hit a modelled func
   bool is_recv_processing;
-  size_t inst_count;
+  size_t inst_count; // number of instructions in this round from this state
+  int pass_count; // How many passes has this round been executed
 };
 
 inline std::ostream &operator<<(std::ostream &os, 
