@@ -167,11 +167,14 @@ class BasicStateCache
  : public boost::unordered_map<ExecutionStateProperty*, CVExecutionState*> {
 
  public:
+  BasicStateCache() : root_(NULL) {}
   void notify(ExecutionEvent ev) {}
   ExecutionStateProperty* rebuild_property() { return NULL; }
   void set_capacity(size_t c) {}
-  CVExecutionState* root_state() { return NULL; }
-  void set_root(CVExecutionState* root) {}
+  CVExecutionState* root_state() { return root_; }
+  void set_root(CVExecutionState* root) { root_ = root; }
+ private:
+  CVExecutionState* root_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
