@@ -34,6 +34,7 @@ namespace cliver {
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace stats {
+  // These are the statistics associated with each network event
 	extern klee::Statistic round_number;
 	extern klee::Statistic round_time;
 	extern klee::Statistic round_real_time;
@@ -63,6 +64,7 @@ namespace stats {
 	extern klee::Statistic socket_event_size;
 	extern klee::Statistic valid_path_instructions;
 	extern klee::Statistic symbolic_variable_count;
+	extern klee::Statistic pass_count;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -114,6 +114,7 @@ namespace stats {
 	klee::Statistic socket_event_size("SocketEventSize","SES");
 	klee::Statistic valid_path_instructions("ValidPathInstructions","VPI");
 	klee::Statistic symbolic_variable_count("SymbolicVariableCount","SVC");
+	klee::Statistic pass_count("PassCount","PassCnt");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -345,6 +346,10 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
         std::string obj_name(ktest->objects[i].name);
         if (obj_name == "s2c" || obj_name == "c2s")
           socket_events_.back()->push_back(new SocketEvent(ktest->objects[i]));
+        else
+          cv_message("Non-network log: %s, length: %d",
+                     ktest->objects[i].name,
+                     ktest->objects[i].numBytes);
 			}
 
 			cv_message("Opened socket log \"%s\" with %d objects",
@@ -435,6 +440,8 @@ void ClientVerifier::print_stat_labels() {
     << " " << stats::edit_distance.getShortName()
     << " " << stats::socket_event_size.getShortName()
     << " " << stats::valid_path_instructions.getShortName()
+    << " " << stats::symbolic_variable_count.getShortName()
+    << " " << stats::pass_count.getShortName()
     << "\n";
 }
 
@@ -484,6 +491,7 @@ void ClientVerifier::print_statistic_record(klee::StatisticRecord* sr,
     << " " << sr->getValue(stats::socket_event_size)
     << " " << sr->getValue(stats::valid_path_instructions)
     << " " << sr->getValue(stats::symbolic_variable_count)
+    << " " << sr->getValue(stats::pass_count)
     << " " << sr->getValue(klee::stats::queries)
     << " " << sr->getValue(klee::stats::queriesInvalid)
     << " " << sr->getValue(klee::stats::queriesValid)
@@ -495,8 +503,7 @@ void ClientVerifier::print_statistic_record(klee::StatisticRecord* sr,
 #ifdef GOOGLE_PROFILER
   if (ProfilerStartRoundNumber >= 0 
 			&& round_number_ > ProfilerStartRoundNumber) {
-    // XXX TBD: reimplement for set_round
-    cv_error("profiler-start-round not implemented");
+    CVMESSAGE("Flushing CPU Profiler");
 	  ProfilerFlush();
   }
 #endif
@@ -554,8 +561,6 @@ void ClientVerifier::set_round(int round) {
 
 #ifdef GOOGLE_PROFILER
   if (ProfilerStartRoundNumber >= 0) {
-    // XXX TBD: reimplement for set_round
-    cv_error("profiler-start-round not implemented");
 		if (round_number_ == ProfilerStartRoundNumber) {
       std::string profile_fn = getOutputFilename("cpu_profile.prof");
       CVMESSAGE("Starting CPU Profiler");
@@ -591,9 +596,6 @@ void ClientVerifier::set_round(int round) {
   stats::round_number = round_number_;
 
 	if (MaxRoundNumber && round_number_ > MaxRoundNumber) {
-    // XXX TBD: reimplement for set_round
-    cv_error("max-round not implemented");
-    CVMESSAGE("Exiting early, max round is " << MaxRoundNumber);
     executor_->setHaltExecution(true);
 	}
 }
