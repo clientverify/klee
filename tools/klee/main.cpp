@@ -1110,9 +1110,15 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, llvm::sys::Path li
   // versions are present in the module, make sure we don't create a
   // naming conflict.
   if (StripUclibcAsm64) {
+    std::vector<Function*> funcs;
     for (Module::iterator fi = mainModule->begin(), fe = mainModule->end();
         fi != fe; ++fi) {
-      Function *f = fi;
+      funcs.push_back(&*fi);
+    }
+
+    for (std::vector<Function*>::iterator fi = funcs.begin(), fe = funcs.end();
+        fi != fe; ++fi) {
+      Function *f = *fi;
       const std::string &name = f->getName();
       if (name[0]=='\01') {
         unsigned size = name.size();
