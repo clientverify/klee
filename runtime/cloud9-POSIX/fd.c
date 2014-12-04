@@ -182,6 +182,14 @@ static ssize_t _clean_write(int fd, const void *buf, size_t count, off_t offset)
   }
 
   if (fde->attr & FD_IS_FILE) {
+#if IGNORE_STD_WRITES
+    file_t* file = (file_t*)fde->io_object;
+    if (_file_is_concrete(file)) {
+      if (file->concrete_fd == 1 || file->concrete_fd == 2) {
+        return count;
+      }
+    }
+#endif
     return _write_file((file_t*)fde->io_object, buf, count, offset);
   } else if (fde->attr & FD_IS_PIPE) {
     return _write_pipe((pipe_end_t*)fde->io_object, buf, count);

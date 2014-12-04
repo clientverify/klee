@@ -268,3 +268,15 @@ DEFINE_MODEL(void, print_stuff, BIO *bio, SSL *s, int full) {
   // CALL_UNDERLYING(print_stuff, bio, s, full)
   return;
 }
+
+#if IGNORE_STD_WRITES
+// Hack: Can't use DEFINE_MODEL macro with variadic functions,
+// so we define it explicitly here.
+void __klee_model_printf(const char *format, ...) {
+  return;
+}
+
+int __klee_model_putchar(int c) {
+  return 1;
+}
+#endif
