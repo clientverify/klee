@@ -155,12 +155,20 @@ static ssize_t _clean_read(int fd, void *buf, size_t count, off_t offset) {
     if (((file_t*)fde->io_object)->storage == _fs.stdin_file) {
       klee_warning("Setting length of symbolic read on stdin");
       static int stdin_index = -1;
-      count = cliver_ktest_copy("stdin", stdin_index--, buf, count);
-      if (count == 0)
-        return count;
-#if KTEST_STDIN_PLAYBACK
-      return count;
+      int loglen = cliver_ktest_copy("stdin", stdin_index--, buf, count);
+
+      // Two options to support symbolic standard input:
+      // 1) Use copy_symbolic buffer and return immediately, or
+      // 2) fall through to readfile, but set 'count' equal to 'loglen'
+      //    and let the cloud9 symbolic buffer be stored into buf.
+      // We are using option (1) for now because it will create a new 
+      // symbolic allocation for each std input; this might be slower but
+      // allows for easier debugging and is more straightforward to 
+      // support with the current multipass implementation.
+#if !(KTEST_STDIN_PLAYBACK)
+      copy_symbolic_buffer(buf, loglen, "stdinsym", NULL);
 #endif
+      return loglen;
     }
     return _read_file((file_t*)fde->io_object, buf, count, offset);
   } else if (fde->attr & FD_IS_PIPE) {
@@ -186,7 +194,7 @@ static ssize_t _clean_write(int fd, const void *buf, size_t count, off_t offset)
     file_t* file = (file_t*)fde->io_object;
     if (_file_is_concrete(file)) {
       if (file->concrete_fd == 1 || file->concrete_fd == 2) {
-        return count;
+        return count; 
       }
     }
 #endif
