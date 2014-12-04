@@ -141,15 +141,12 @@ int cliver_training_start() {
 
 // Network capture for Cliver
 int __klee_model_ktest_connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
-  klee_warning("called __klee_model_ktest_connect()");
-
-  printf("connect() called on socket for TLS traffic (%d)\n", sockfd);
+  klee_warning("ktest_connect()");
   return 0;
 }
 
 ssize_t __klee_model_ktest_writesocket(int fd, const void *buf, size_t count) {
   unsigned i;
-  klee_warning("called __klee_model_ktest_writesocket()");
 
   // HACK NetworkManager doesn't support non-ObjectState aligned pointers
   //return cliver_socket_write(fd, buf, count, 0);
@@ -167,7 +164,6 @@ ssize_t __klee_model_ktest_writesocket(int fd, const void *buf, size_t count) {
 
 ssize_t __klee_model_ktest_readsocket(int fd, void *buf, size_t count) {
   unsigned i;
-  klee_warning("called __klee_model_ktest_readsocket()");
 
   // HACK NetworkManager doesn't support non-ObjectState aligned pointers
   //return cliver_socket_read(fd, buf, count, 0);
