@@ -31,22 +31,28 @@ static void* is_symbolic_buffer(const void* buf, int len) {
 }
 
 // Check if BIGNUM is symbolic
-static int is_symbolic_BIGNUM(BIGNUM* bn) {
-  return is_symbolic_buffer(bn->d, bn->dmax) || klee_is_symbolic(bn->neg);
+static void* is_symbolic_BIGNUM(BIGNUM* bn) {
+  void *retval = is_symbolic_buffer(bn->d, bn->dmax);
+  if (!retval)
+    retval = is_symbolic_buffer(&(bn->neg), sizeof(bn->neg));
+  return retval;
 }
 
 // Check if EC_POINT is symbolic
 static int is_symbolic_EC_POINT(EC_POINT* p) {
-  return is_symbolic_BIGNUM(&(p->X)) || 
-         is_symbolic_BIGNUM(&(p->Y)) || 
-         is_symbolic_BIGNUM(&(p->Y));
+  void *retval = is_symbolic_BIGNUM(&(p->X));
+  if (!retval)
+    retval = is_symbolic_BIGNUM(&(p->Y));
+  if (!retval)
+    retval = is_symbolic_BIGNUM(&(p->Z));
+  return retval;
 }
 
 // Allocate a temporary symbolic buffer and copy into buf; this is needed because
 // klee_make_symbolic looks up the allocated object for a buf pointer and will fail
 // on non-aligned pointers. If taint is non-null, it is used internally to track
 // the flow of symbolic data through modelled functions
-static void copy_symbolic_buffer(unsigned char* buf, int len, 
+void copy_symbolic_buffer(unsigned char* buf, int len,
     char* tag, void* taint) {
   if (buf) {
     unsigned char* symbolic_buf = (unsigned char*)malloc(len);
@@ -71,7 +77,7 @@ static void copy_symbolic_buffer(unsigned char* buf, int len,
   do { \
     void *ptr = is_symbolic_buffer(in, inlen); \
     if (ptr) { \
-      copy_symbolic_buffer(out, outlen, tag, NULL); \
+      copy_symbolic_buffer(out, outlen, tag, ptr); \
       return retval; \
     } \
   } while(0);
@@ -80,7 +86,7 @@ static void copy_symbolic_buffer(unsigned char* buf, int len,
   do { \
     void *ptr = is_symbolic_buffer(in, inlen); \
     if (ptr) { \
-      copy_symbolic_buffer(out, outlen, tag, NULL); \
+      copy_symbolic_buffer(out, outlen, tag, ptr); \
       return; \
     } \
   } while(0);
@@ -155,6 +161,7 @@ DEFINE_MODEL(int, EC_KEY_generate_key, EC_KEY *eckey) {
   return CALL_UNDERLYING(EC_KEY_generate_key, eckey);
 #endif
 
+  // Modeled to always execute symbolically
   DEBUG_PRINT("symbolic");
   BIGNUM *priv_key = eckey->priv_key;
   EC_POINT *pub_key = eckey->pub_key;
@@ -178,11 +185,15 @@ DEFINE_MODEL(int, ECDH_compute_key, void *out, size_t outlen,
     const EC_POINT *pub_key, EC_KEY *eckey, 
     void *(*KDF)(const void *in, size_t inlen, void *out, size_t *outlen)) {
 
-  if (is_symbolic_EC_POINT(pub_key) || 
-      is_symbolic_EC_POINT(eckey->pub_key) || 
-      is_symbolic_BIGNUM(eckey->priv_key)) {
+  void* symbyte = is_symbolic_EC_POINT(pub_key);
+  if (!symbyte)
+    symbyte = is_symbolic_EC_POINT(eckey->pub_key);
+  if (!symbyte)
+    symbyte = is_symbolic_BIGNUM(eckey->priv_key);
+
+  if (symbyte) {
     DEBUG_PRINT("symbolic");
-    copy_symbolic_buffer(out, outlen, "EDCH_compute_key_out", NULL);
+    copy_symbolic_buffer(out, outlen, "EDCH_compute_key_out", symbyte);
     return outlen;
   }
   DEBUG_PRINT("concrete");

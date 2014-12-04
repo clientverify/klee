@@ -20,7 +20,7 @@
 
 // Track symbolic data flow through modelled functions
 // see: copy_symbolic_buffer()
-#define OPENSSL_SYMBOLIC_TAINT 0
+#define OPENSSL_SYMBOLIC_TAINT 1
 
 // Ignore writes to stdout and stderr
 #define IGNORE_STD_WRITES 1
@@ -32,6 +32,8 @@
 #define KTEST_RAND_PLAYBACK 0
 #define KTEST_SELECT_PLAYBACK 0
 #define KTEST_STDIN_PLAYBACK 0
+
+void copy_symbolic_buffer(unsigned char* buf, int len, char* tag, void* taint);
 
 //DECLARE_MODEL(void*, memset, void *s, int c, size_t n)
 
