@@ -22,6 +22,9 @@
 // see: copy_symbolic_buffer()
 #define OPENSSL_SYMBOLIC_TAINT 0
 
+// Ignore writes to stdout and stderr
+#define IGNORE_STD_WRITES 1
+
 // Enable debug output
 #define DEBUG_OPENSSL_MODEL 1
 
