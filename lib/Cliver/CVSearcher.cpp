@@ -18,6 +18,8 @@
 #include "cliver/NetworkManager.h"
 #include "cliver/StateMerger.h"
 
+#include "klee/util/ExprUtil.h" // Needed for findSymbolicObjects()
+
 #include "CVCommon.h"
 
 #include "llvm/Support/CommandLine.h"
@@ -36,6 +38,9 @@ StateCacheSize("state-cache-size",llvm::cl::init(INT_MAX));
 
 llvm::cl::opt<unsigned>
 TrainingMaxPending("training-max-pending",llvm::cl::init(1));
+
+llvm::cl::opt<bool>
+DebugPrintConstraintVariables("debug-print-constraint-vars",llvm::cl::init(true));
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -247,13 +252,13 @@ SearcherStage* VerifySearcher::select_stage() {
       // rounds
       while (NULL == new_current_stage && new_current_round >= 0) {
 
-        // Walk backwards to priortize most recent stages for this round
+        // Walk backwards to prioritize most recent stages for this round
         reverse_foreach (SearcherStage* stage, *(new_stages_[new_current_round])) {
           if (!stage->empty()) {
             new_current_stage = stage;
             CVDEBUG("New Stage: Round: " << new_current_round <<
                     " State: " << *(stage->root_state()) <<
-                    " Assigments: " <<
+                    " Assignments: " <<
                     stage->root_state()->multi_pass_assignment());
             break;
           }
@@ -520,14 +525,67 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
       }
 
       case CV_SOCKET_ADVANCE: {
+
         ExecutionStateProperty* property = state->property();
         Socket* socket = state->network_manager()->socket();
 
-        if (socket->previous_event().type != SocketEvent::RECV)
-          property->is_recv_processing = false;
+        if (state->multi_pass_assignment().bindings.size()
+            && current_stage_ && current_stage_->root_state()) {
 
-        property->round++;
-        pending_states_.push_back(state);
+          CVDEBUG("Multi-pass: " << property->pass_count <<
+                  " Round: " << current_round_ <<
+                  " Assignments: " << state->multi_pass_assignment());
+
+          // Clone ExecutionStateProperty
+          ExecutionStateProperty* property_clone
+              = current_stage_->root_state()->property()->clone();
+
+          // Increment pass count
+          property_clone->pass_count++;
+          ++stats::pass_count;
+
+          // Clone the CVExecutionState at the root of the most recent round
+          // (we are re-executing)
+          CVExecutionState* new_state
+              = current_stage_->root_state()->clone(property_clone);
+
+          // Provide cloned root state with constraints and assignments
+          // concretized in the most recent pass
+          new_state->set_multi_pass_assignment( state->multi_pass_assignment());
+
+          // Add cloned root state to pending states list
+          pending_states_.push_back(new_state);
+
+        } else {
+
+          if (socket->previous_event().type != SocketEvent::RECV)
+            property->is_recv_processing = false;
+
+          // Reset pass count for the new state (root of next stage)
+          property->pass_count = 0;
+          property->round++;
+          pending_states_.push_back(state);
+        }
+
+        // Debug: Compute and print constraint variable counts
+        if (DebugPrintConstraintVariables) {
+          std::map<std::string,int> constraint_map;
+          foreach (klee::ref<klee::Expr> e, state->constraints) {
+            std::vector<const klee::Array*> arrays;
+            klee::findSymbolicObjects(e, arrays);
+            for (unsigned i=0; i<arrays.size(); ++i) {
+              constraint_map[arrays[i]->name]++;
+            }
+          }
+          typedef std::map<std::string,int> constraint_map_ty;
+
+          std::stringstream ss;
+          ss << "Debug: Constraint variables (" << constraint_map.size() << "): ";
+          foreach (constraint_map_ty::value_type v, constraint_map) {
+            ss << v.first << ":" << v.second << ", ";
+          }
+          CVMESSAGE(ss.str());
+        }
 
         result = true;
         break;
