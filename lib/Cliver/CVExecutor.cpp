@@ -660,21 +660,47 @@ void CVExecutor::executeMakeSymbolic(klee::ExecutionState &state,
 
   assert(!replayOut && "replayOut not supported by cliver");
 
-  // Create a new object state for the memory object (instead of a copy).
-	uint64_t id = cv_->next_array_id();
-  const klee::Array *array;
+  CVExecutionState *cvstate = static_cast<CVExecutionState*>(&state);
 
-  if (UseFullVariableNames)
-		array = new klee::Array(name + llvm::utostr(id), mo->size);
-  else
-		array = new klee::Array(std::string("mo") + llvm::utostr(id), mo->size);
+  // Create a new object state for the memory object (instead of a copy).
+  std::string array_name = cvstate->get_unique_array_name(name);
+
+  const klee::Array *array
+    = cvstate->multi_pass_assignment().getArray(array_name);
+
+  bool multipass = false;
+  if (array != NULL) {
+    CVDEBUG("Multi-pass concretization found for " << array_name);
+    multipass = true;
+  } else {
+    CVDEBUG("Multi-pass concretization not found for " << array_name);
+    array = new klee::Array(array_name, mo->size);
+  }
 
   bindObjectInState(state, mo, false, array);
-  state.addSymbolic(mo, array);
 
-  CVExecutionState *cvstate = static_cast<CVExecutionState*>(&state);
-  cvstate->property()->symbolic_vars++;
-  CVDEBUG("Created symbolic: " << array->name << " in " << *cvstate);
+  if (cvstate->property()->pass_count > 0 && multipass) {
+    const klee::ObjectState *os = state.addressSpace.findObject(mo);
+    klee::ObjectState *wos = state.addressSpace.getWriteable(mo, os);
+    assert(wos && "Writeable object is NULL!");
+    unsigned idx = 0;
+    std::vector<unsigned char> *bindings
+      = cvstate->multi_pass_assignment().getBindings(array_name);
+
+    assert(bindings && bindings->size() == mo->size);
+
+    foreach (unsigned char b, *bindings) {
+      wos->write8(idx, b);
+      idx++;
+    }
+
+    CVDEBUG("Bound variable:" << array->name << " in " << *cvstate
+            << " with concrete assignment");
+  } else {
+    CVDEBUG("Created symbolic: " << array->name << " in " << *cvstate);
+    state.addSymbolic(mo, array);
+    cvstate->property()->symbolic_vars++;
+  }
 }
 
 klee::Executor::StatePair 
