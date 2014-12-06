@@ -12,6 +12,7 @@
 #include "cliver/ClientVerifier.h"
 #include "cliver/CVExecutionState.h"
 #include "cliver/CVExecutor.h"
+#include "cliver/ConstraintPruner.h"
 #include "cliver/CVStream.h"
 #include "cliver/ExecutionTraceManager.h"
 #include "cliver/NetworkManager.h"
@@ -125,10 +126,16 @@ void VerifySearcher::process_unique_pending_states() {
   state_set.insert(pending_states_.begin(), pending_states_.end());
 
   // Don't attempt to merge a single state
-  if (state_set.size() == 1)
-    merged_set.insert(pending_states_.begin(), pending_states_.end());
-  else
+  if (state_set.size() == 1) {
+    CVExecutionState *state = *(state_set.begin());
+    // Only prune constraints on first pass or end of final pass
+    if (state->property()->pass_count == 0) {
+      merger_->pruner()->prune_independent_constraints(*state);
+      merged_set.insert(state);
+    }
+  } else {
     merger_->merge(state_set, merged_set);
+  }
 
   // Check if duplicate pending states exist
   if (pending_states_.size() > 1) {
