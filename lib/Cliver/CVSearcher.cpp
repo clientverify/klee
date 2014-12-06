@@ -224,14 +224,17 @@ SearcherStage* VerifySearcher::create_and_add_stage(CVExecutionState* state) {
 }
 
 SearcherStage* VerifySearcher::select_stage() {
+  bool pending_states_processed = false;
   if (!pending_states_.empty()) {
     process_unique_pending_states();
+    pending_states_processed = true;
   }
 
   // If we've exhausted all the states in the current stage or there is a newer
   // stage to search
   if (current_stage_->empty() ||
-      current_round_ < max_active_round_) {
+      current_round_ < max_active_round_ ||
+      pending_states_processed) {
 
     lock_.unlock();
     if (cv_->executor()->PauseExecution()) {
@@ -244,9 +247,14 @@ SearcherStage* VerifySearcher::select_stage() {
       // rounds
       while (NULL == new_current_stage && new_current_round >= 0) {
 
-        foreach (SearcherStage* stage, *(new_stages_[new_current_round])) {
+        // Walk backwards to priortize most recent stages for this round
+        reverse_foreach (SearcherStage* stage, *(new_stages_[new_current_round])) {
           if (!stage->empty()) {
             new_current_stage = stage;
+            CVDEBUG("New Stage: Round: " << new_current_round <<
+                    " State: " << *(stage->root_state()) <<
+                    " Assigments: " <<
+                    stage->root_state()->multi_pass_assignment());
             break;
           }
         }
@@ -324,7 +332,7 @@ klee::ExecutionState* VerifySearcher::trySelectState() {
 
   CVExecutionState *state = NULL;
 
-  if ((current_stage_ && current_stage_->size()) || pending_states_.size()) {
+  if (!empty()) {
     SearcherStage* stage = select_stage();
     if (stage) {
       state = current_stage_->next_state();
