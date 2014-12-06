@@ -10,6 +10,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "cliver/NetworkManager.h"
+#include "cliver/CVAssignment.h"
 #include "cliver/CVExecutor.h"
 #include "cliver/CVExecutionState.h"
 #include "cliver/CVStream.h"
@@ -35,6 +36,9 @@ namespace cliver {
 extern bool DebugSocketFlag;
 llvm::cl::opt<bool>
 DebugNetworkManager("debug-network-manager",llvm::cl::init(false));
+
+llvm::cl::opt<bool>
+UseInPlaceConcretization("in-place-concretization",llvm::cl::init(false));
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -187,12 +191,15 @@ Socket* NetworkManager::socket(int fd) {
 void NetworkManager::execute_open_socket(CVExecutor* executor,
 		klee::KInstruction *target, int domain, int type, int protocol) {
 
+  CVDEBUG("Opening first availible of " << sockets_.size() << " sockets");
   for (unsigned i = 0; i<sockets_.size(); ++i) {
 		Socket &socket = sockets_[i];
 		if (!socket.is_open()) {
 			socket.open();
 			RETURN_SUCCESS("open", socket.fd());
-		}
+		} else {
+      CVDEBUG("Socket " << i << " is not ready to be opened");
+    }
 	}
 
 	RETURN_FAILURE_NO_SOCKET("open", "no socket availible");
@@ -246,7 +253,9 @@ void NetworkManager::execute_write(CVExecutor* executor,
 
 	int bytes_read = 0;
 
+  std::stringstream bytes_ss;
 	while (socket.has_data() && bytes_read < len) {
+    bytes_ss << object->read8(bytes_read) << " ";
 		klee::ref<klee::Expr> condition
 			= klee::EqExpr::create(
 					object->read8(bytes_read++), 
@@ -265,10 +274,10 @@ void NetworkManager::execute_write(CVExecutor* executor,
 			RETURN_FAILURE_OBJ("send", "not valid (2) ");
 
     if (DebugNetworkManager) {
-      std::vector<const klee::Array*> symbolic_objects;
-      klee::findSymbolicObjects(write_condition, symbolic_objects);
+      std::vector<const klee::Array*> arrays;
+      klee::findSymbolicObjects(write_condition, arrays);
       std::ostringstream info;
-      foreach (const klee::Array *arr, symbolic_objects) {
+      foreach (const klee::Array *arr, arrays) {
         info << arr->name << ", ";
       }
       CVDEBUG("Symbolic objects at network send: " << info.str());
@@ -283,16 +292,31 @@ void NetworkManager::execute_write(CVExecutor* executor,
 		RETURN_FAILURE_OBJ("send", "no data left");
 	}
 
-  // FIXME duplicating work already done in doImpliedValueConcretization
-  klee::ImpliedValueList results;
-  klee::ImpliedValue::getImpliedValues(write_condition,
-                                 klee::ConstantExpr::alloc(1,klee::Expr::Bool),
-                                 results);
+  // Multi-pass: Clear old data
+  state_->multi_pass_assignment().clear();
 
-  if (results.size())
-    executor->doImpliedValueConcretization(*(static_cast<klee::ExecutionState*>(state_)),
-                                          write_condition,
-                                          klee::ConstantExpr::alloc(1,klee::Expr::Bool));
+  // Multi-pass: Find unique solutions for symbolic variables
+  state_->multi_pass_assignment().solveForBindings(
+      executor->get_solver()->solver, write_condition);
+
+  // Concretize variables now, explicitly, instead of implicitly
+  // using another execution pass
+  if (UseInPlaceConcretization) {
+    klee::ImpliedValueList results;
+    klee::ImpliedValue::getImpliedValues(
+        write_condition,
+        klee::ConstantExpr::alloc(1,klee::Expr::Bool),
+        results);
+
+    if (results.size()) {
+      executor->doImpliedValueConcretization(
+          *(static_cast<klee::ExecutionState*>(state_)),
+          write_condition,
+          klee::ConstantExpr::alloc(1,klee::Expr::Bool));
+    }
+  }
+
+  CVDEBUG("Network Bytes: " << bytes_ss.str());
 
 	executor->add_constraint(state_, write_condition);
 
