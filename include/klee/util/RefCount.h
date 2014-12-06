@@ -32,9 +32,7 @@ public:
   }
 
   RefCount operator++(int /*unused*/) {
-    unsigned fetch_count = get();
-    add_ref();
-    return RefCount(fetch_count);
+    return RefCount(add_ref());
   }
 
   RefCount& operator--() {
@@ -43,9 +41,7 @@ public:
   }
 
   RefCount operator--(int /*unused*/) {
-    unsigned fetch_count = get();
-    release();
-    return RefCount(fetch_count);
+    return RefCount(release());
   }
 
 #ifdef ENABLE_BOOST_ATOMIC
@@ -57,8 +53,8 @@ public:
     return count_.fetch_add(1, boost::memory_order_relaxed);
   }
 
-  void release() {
-    count_.fetch_sub(1, boost::memory_order_relaxed);
+  unsigned release() {
+    return count_.fetch_sub(1, boost::memory_order_relaxed);
   }
 
   template<class U>
@@ -76,12 +72,12 @@ public:
     return count_;
   }
 
-  void add_ref() {
-    ++count_;
+  unsigned add_ref() {
+    return count_++;
   }
 
-  void release() {
-    --count_;
+  unsigned release() {
+    return count_--;
   }
 
   template<class U>
