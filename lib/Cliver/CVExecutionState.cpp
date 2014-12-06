@@ -83,6 +83,8 @@ CVExecutionState* CVExecutionState::clone(ExecutionStateProperty* property) {
 
   cloned_state->array_name_index_map_ = array_name_index_map_;
 
+  cloned_state->multi_pass_assignment_ = multi_pass_assignment_;
+
   return cloned_state;
 }
 

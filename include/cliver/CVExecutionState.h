@@ -9,6 +9,7 @@
 #ifndef CLIVER_EXECUTION_STATE_H
 #define CLIVER_EXECUTION_STATE_H
 
+#include "cliver/CVAssignment.h"
 #include "cliver/ExecutionObserver.h"
 
 #include "klee/ExecutionState.h"
@@ -71,6 +72,14 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
 
   unsigned get_current_basic_block();
 
+  CVAssignment& multi_pass_assignment() { 
+    return multi_pass_assignment_; 
+  }
+
+  void set_multi_pass_assignment(CVAssignment &cva) { 
+    multi_pass_assignment_ = cva; 
+  }
+
  private:
   int increment_id() { return next_id_.add_ref(); }
 
@@ -83,6 +92,7 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
   ClientVerifier *cv_;
   bool basic_block_tracking_;
   std::map<std::string, uint64_t> array_name_index_map_;
+  CVAssignment multi_pass_assignment_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
