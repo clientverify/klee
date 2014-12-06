@@ -1076,22 +1076,27 @@ void CVExecutor::ktest_copy(CVExecutionState* state,
     for (unsigned i=0; i<ktest_obj->numBytes; i++) {
       os->write8(os_offset+i, ktest_obj->bytes[i]);
     }
+
     CVDEBUG("ktest_copy logname: " <<
               ktest_obj->name << ", argname: " <<
               name << ", index: " << ktest_index << ", loglen: " <<
               ktest_obj->numBytes << ", arglen: " << len << ", offset: " <<
-              os_offset);
+              os_offset << " State: " << *state );
+
     bindLocal(target, *state,
               klee::ConstantExpr::alloc(ktest_obj->numBytes,
                                         klee::Expr::Int32));
   } else {
     if (replay_objs && ktest_obj) {
-      CVMESSAGE("ktest_copy failed: logname: " <<
+      CVDEBUG("ktest_copy failed: logname: " <<
                 ktest_obj->name << ", argname: " <<
                 name << ", index: " << ktest_index << ", loglen: " <<
-                ktest_obj->numBytes << ", arglen: " << len);
+                ktest_obj->numBytes << ", arglen: " << len
+                << ", State: " << *state);
     } else {
-      CVMESSAGE("ktest_copy failed: null ktest obj");
+      CVDEBUG("ktest_copy failed: null ktest obj, argname: " <<
+                name << ", index: " << ktest_index << ",  arglen: " << len
+                << ", State: " << *state);
     }
     terminate_state(state);
   }
