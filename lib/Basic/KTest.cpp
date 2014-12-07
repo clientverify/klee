@@ -59,7 +59,7 @@ static int write_uint64(FILE *f, uint64_t value) {
   data[5] = value>>16;
   data[6] = value>> 8;
   data[7] = value>> 0;
-  return fwrite(data, 1, 4, f)==4;
+  return fwrite(data, 1, 8, f)==8;
 }
 
 static int read_string(FILE *f, char **value_out) {
