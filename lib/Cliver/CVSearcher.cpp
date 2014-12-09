@@ -39,9 +39,6 @@ StateCacheSize("state-cache-size",llvm::cl::init(INT_MAX));
 llvm::cl::opt<unsigned>
 TrainingMaxPending("training-max-pending",llvm::cl::init(1));
 
-llvm::cl::opt<bool>
-DebugPrintConstraintVariables("debug-print-constraint-vars",llvm::cl::init(true));
-
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef NDEBUG
@@ -568,7 +565,7 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
         }
 
         // Debug: Compute and print constraint variable counts
-        if (DebugPrintConstraintVariables) {
+        if (DebugSearcher) {
           std::map<std::string,int> constraint_map;
           foreach (klee::ref<klee::Expr> e, state->constraints) {
             std::vector<const klee::Array*> arrays;
@@ -584,7 +581,7 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
           foreach (constraint_map_ty::value_type v, constraint_map) {
             ss << v.first << ":" << v.second << ", ";
           }
-          CVMESSAGE(ss.str());
+          CVDEBUG(ss.str());
         }
 
         result = true;
