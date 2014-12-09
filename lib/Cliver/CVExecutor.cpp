@@ -670,32 +670,37 @@ void CVExecutor::executeMakeSymbolic(klee::ExecutionState &state,
 
   bool multipass = false;
   if (array != NULL) {
-    CVDEBUG("Multi-pass concretization found for " << array_name);
+    CVDEBUG("Multi-pass: Concretization found for " << array_name);
     multipass = true;
   } else {
-    CVDEBUG("Multi-pass concretization not found for " << array_name);
+    CVDEBUG("Multi-pass: Concretization not found for " << array_name);
     array = new klee::Array(array_name, mo->size);
   }
 
   bindObjectInState(state, mo, false, array);
 
+  std::vector<unsigned char> *bindings = NULL;
   if (cvstate->property()->pass_count > 0 && multipass) {
-    const klee::ObjectState *os = state.addressSpace.findObject(mo);
-    klee::ObjectState *wos = state.addressSpace.getWriteable(mo, os);
-    assert(wos && "Writeable object is NULL!");
-    unsigned idx = 0;
-    std::vector<unsigned char> *bindings
-      = cvstate->multi_pass_assignment().getBindings(array_name);
+    bindings = cvstate->multi_pass_assignment().getBindings(array_name);
 
-    assert(bindings && bindings->size() == mo->size);
+    CVDEBUG("Multi-pass: Binding variable:" << array->name 
+            << " with concrete assignment of length "
+            << mo->size << " with bindings size " 
+            << (bindings ? bindings->size() : 0));
 
-    foreach (unsigned char b, *bindings) {
-      wos->write8(idx, b);
-      idx++;
+    if (!bindings || bindings->size() != mo->size) {
+      CVDEBUG("Multi-pass: Terminating state, bindings mismatch");
+      terminateState(state);
+    } else {
+      const klee::ObjectState *os = state.addressSpace.findObject(mo);
+      klee::ObjectState *wos = state.addressSpace.getWriteable(mo, os);
+      assert(wos && "Writeable object is NULL!");
+      unsigned idx = 0;
+      foreach (unsigned char b, *bindings) {
+        wos->write8(idx, b);
+        idx++;
+      }
     }
-
-    CVDEBUG("Bound variable:" << array->name << " in " << *cvstate
-            << " with concrete assignment");
   } else {
     CVDEBUG("Created symbolic: " << array->name << " in " << *cvstate);
     state.addSymbolic(mo, array);
