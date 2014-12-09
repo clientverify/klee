@@ -10,7 +10,6 @@
 #define CLIVER_EXECUTION_STATE_H
 
 #include "cliver/CVAssignment.h"
-#include "cliver/ExecutionObserver.h"
 
 #include "klee/ExecutionState.h"
 
@@ -33,7 +32,7 @@ class NetworkManager;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
+class CVExecutionState : public klee::ExecutionState {
  public:
   CVExecutionState(klee::KFunction *kF);
   CVExecutionState(const std::vector< klee::ref<klee::Expr> > &assumptions);
@@ -50,8 +49,6 @@ class CVExecutionState : public klee::ExecutionState, public ExecutionObserver {
 	NetworkManager* network_manager() const { return network_manager_; }
 	ExecutionStateProperty* property() { return property_; }
 	void set_property(ExecutionStateProperty* property) { property_ = property; }
-
-  void notify(ExecutionEvent ev) {}
 
   void print(std::ostream &os) const;
 
