@@ -357,7 +357,7 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
 
       replay_objs_ = ktest;
 		} else {
-			cv_message("Error opening socket log \"%s\"", filename.c_str());
+			cv_error("Error opening socket log \"%s\"", filename.c_str());
 		}
 	}
 
