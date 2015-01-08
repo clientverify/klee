@@ -12,7 +12,8 @@
 #include "../../../openssl/include/openssl/sha.h"
 #include "../../../openssl/include/openssl/ec.h"
 #include "../../../openssl/include/openssl/ossl_typ.h"
-#include "../../../openssl/include/openssl/modes.h"
+// modes_lcl.h redfines objects included here
+//#include "../../../openssl/include/openssl/modes.h"
 #include "../../../openssl/crypto/ec/ec_lcl.h"
 #include "../../../openssl/crypto/modes/modes_lcl.h"
 #include "../../../openssl/crypto/aes/aes.h"
