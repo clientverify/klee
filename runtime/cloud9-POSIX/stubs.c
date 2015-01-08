@@ -23,6 +23,9 @@
 #include <sys/wait.h>
 #include <syslog.h>
 
+#include <sys/time.h>
+#include <sys/resource.h>
+
 #include "klee/Config/config.h"
 #include "common.h"
 
