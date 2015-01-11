@@ -3439,6 +3439,8 @@ void Executor::runFunctionAsMain(Function *f,
       }
     }
   }
+
+  totalThreadCount = UseThreads;
   
   initializeGlobals(*state);
 

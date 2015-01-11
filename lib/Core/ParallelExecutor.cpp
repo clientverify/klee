@@ -551,7 +551,6 @@ void Executor::parallelRun(ExecutionState &initialState) {
 
   searcher->update(0, states, std::set<ExecutionState*>());
 
-  totalThreadCount = UseThreads;
   threadBarrier = new Barrier(totalThreadCount);
 
   if (!empty()) {
