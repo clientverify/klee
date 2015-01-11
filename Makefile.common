@@ -22,7 +22,7 @@ endif
 # Required for Boost 
 LIBS += -lboost_serialization -lboost_regex -lboost_iostreams -lboost_system -lboost_thread -lboost_atomic
 CPPFLAGS += -Wno-deprecated
-CPPFLAGS += -DENABLE_BOOST_ATOMIC
+#CPPFLAGS += -DENABLE_BOOST_ATOMIC
 
 # (Optional) Use Boost.Timer rather than LLVM.Timer
 ifeq ($(ENABLE_BOOST_TIMER),1)

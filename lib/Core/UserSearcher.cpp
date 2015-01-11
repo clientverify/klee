@@ -65,7 +65,7 @@ namespace klee {
   cl::opt<unsigned>
   UseThreads("use-threads",
            cl::desc("Use multiple threads"),
-           cl::init(klee::GetHardwareConcurrency()));
+           cl::init(1));
 
   extern cl::opt<bool> UseProcessTree;
 }
