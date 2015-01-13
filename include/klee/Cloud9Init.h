@@ -41,13 +41,11 @@
 
 namespace llvm {
   class Module;
-  namespace sys {
-    class Path;
-  }
 }
 
 namespace klee {
-  llvm::Module* linkWithCloud9POSIX(llvm::Module *module, llvm::sys::Path* Path);
+  llvm::Module* linkWithCloud9POSIX(llvm::Module *module, 
+                                    const std::string &Path);
 }
 
 #endif /* CLOUD9_INIT_H_ */

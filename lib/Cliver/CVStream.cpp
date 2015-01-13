@@ -14,6 +14,7 @@
 
 #include "klee/Interpreter.h"
 
+#include "llvm/ADT/SmallString.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Path.h"
@@ -293,40 +294,43 @@ std::ostream *CVStream::openOutputFileInSubDirectory(
 void CVStream::initOutputDirectory() {
 
   if (output_dir_.empty() || output_dir_ == "") {
-    for (int i = 0; ; i++) {
-      std::ostringstream dir_name;
-      dir_name << "cliver-out-" << i;
+    int i = 0;
+    for (; i<INT_MAX; i++) {
 
-      llvm::sys::Path dir_path(OutputDirParent);
-      dir_path.appendComponent(dir_name.str());
+      llvm::SmallString<128> dir_path(OutputDirParent);
+      llvm::sys::path::append(dir_path, "cliver-out-");
+      llvm::raw_svector_ostream ds(dir_path); ds << i; ds.flush();
 
-      if (!dir_path.exists()) {
-        output_dir_ = dir_path.str();
+      // create directory and try to link 
+      if (mkdir(dir_path.c_str(), 0775) == 0) {
+        output_dir_ = std::string(dir_path.c_str());
+
+        llvm::SmallString<128> cliver_last(OutputDirParent);
+        llvm::sys::path::append(cliver_last, "cliver-last");
+
+        if (((unlink(cliver_last.c_str()) < 0) && (errno != ENOENT)) ||
+            symlink(output_dir_.c_str(), cliver_last.c_str()) < 0) {
+          klee::klee_warning("cannot create cliver-last symlink: %s", 
+                             strerror(errno));
+        }
         break;
       }
-    }    
 
-    llvm::sys::Path cliver_last(OutputDirParent);
-    cliver_last.appendComponent("cliver-last");
-
-    if ((unlink(cliver_last.c_str()) < 0) && (errno != ENOENT)) {
-      perror("Cannot unlink cliver-last");
-      exit(1);
+      // otherwise try again or exit on error
+      if (errno != EEXIST)
+        klee::klee_error("cannot create \"%s\": %s", 
+                        output_dir_.c_str(), strerror(errno));
     }
-
-    if (symlink(output_dir_.c_str(), cliver_last.c_str()) < 0) {
-      perror("Cannot make symlink");
-      exit(1);
+    if ( i == INT_MAX ) {
+      klee::klee_error("cannot create output directory: index out of range");
+    }
+  } else {
+    // Create output directory
+    if (mkdir(output_dir_.c_str(), 0775) < 0) {
+      klee::klee_error("cannot create \"%s\": %s", output_dir_.c_str(), 
+                      strerror(errno));
     }
   }
-
-  if (mkdir(output_dir_.c_str(), 0775) < 0) {
-    std::cerr << "CV: ERROR: Unable to make output directory: \"" 
-      << output_dir_ 
-      << "\", refusing to overwrite.\n";
-    exit(1);
-  }
-
 }
 
 static int cp(const char *to, const char *from)
@@ -405,19 +409,12 @@ void CVStream::getOutFiles(std::string path,
 
 void CVStream::getFiles(std::string path, std::string suffix, 
 		std::vector<std::string> &results) {
-  llvm::sys::Path p(path);
-  std::set<llvm::sys::Path> contents;
-  std::string error;
-  if (p.getDirectoryContents(contents, &error)) {
-    std::cerr << "ERROR: For getFiles( " 
-			<< path << ", " << suffix << ") : " << error << "\n";
-    exit(1);
-  }
-  for (std::set<llvm::sys::Path>::iterator it = contents.begin(),
-         ie = contents.end(); it != ie; ++it) {
-    std::string f = it->str();
-    if (f.substr(f.size()-suffix.size(), f.size()) == suffix) {
-      results.push_back(f);
+
+  llvm::error_code ec;
+  for (llvm::sys::fs::directory_iterator di(path, ec), de;
+       !ec && di != de; di = di.increment(ec)) {
+    if (suffix == llvm::sys::path::extension(di->path())) {
+      results.push_back(di->path());
     }
   }
 }
@@ -425,23 +422,11 @@ void CVStream::getFiles(std::string path, std::string suffix,
 void CVStream::getFilesRecursive(std::string path, 
                                  std::string suffix, 
                                  std::vector<std::string> &results) {
-  llvm::sys::Path p(path);
-  std::set<llvm::sys::Path> contents;
-  std::string error;
-  if (p.getDirectoryContents(contents, &error)) {
-    std::cerr << "ERROR: For getFilesRecursive( " 
-			<< path << ", " << suffix << ") : " << error << "\n";
-    exit(1);
-  }
-  for (std::set<llvm::sys::Path>::iterator it = contents.begin(),
-         ie = contents.end(); it != ie; ++it) {
-    std::string f = it->str();
-    if (it->isDirectory()) {
-      getFilesRecursive(f, suffix, results);
-    } else {
-      if (f.substr(f.size()-suffix.size(), f.size()) == suffix) {
-        results.push_back(f);
-      }
+  llvm::error_code ec;
+  for (llvm::sys::fs::recursive_directory_iterator di(path, ec), de;
+       !ec && di != de; di = di.increment(ec)) {
+    if (suffix == llvm::sys::path::extension(di->path())) {
+      results.push_back(di->path());
     }
   }
 }

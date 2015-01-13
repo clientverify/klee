@@ -30,45 +30,53 @@
 #include "klee/Interpreter.h"
 #include "klee/Statistics.h"
 
-#include "llvm/Bitcode/ReaderWriter.h"
+#if LLVM_VERSION_CODE > LLVM_VERSION(3, 2)
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Type.h"
+#include "llvm/IR/InstrTypes.h"
+#include "llvm/IR/Instruction.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/LLVMContext.h"
+#else
 #include "llvm/Constants.h"
+#include "llvm/Module.h"
+#include "llvm/Type.h"
 #include "llvm/InstrTypes.h"
 #include "llvm/Instruction.h"
 #include "llvm/Instructions.h"
 #include "llvm/LLVMContext.h"
-#include "llvm/Module.h"
+#include "llvm/Support/FileSystem.h"
+#endif
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Type.h"
 
-// FIXME: Ugh, this is gross. But otherwise our config.h conflicts with LLVMs.
-#undef PACKAGE_BUGREPORT
-#undef PACKAGE_NAME
-#undef PACKAGE_STRING
-#undef PACKAGE_TARNAME
-#undef PACKAGE_VERSION
 #if LLVM_VERSION_CODE < LLVM_VERSION(3, 0)
 #include "llvm/Target/TargetSelect.h"
 #else
 #include "llvm/Support/TargetSelect.h"
 #endif
 #include "llvm/Support/Signals.h"
+
+#if LLVM_VERSION_CODE < LLVM_VERSION(3, 5)
 #include "llvm/Support/system_error.h"
+#endif
 
-
-#include <cerrno>
 #include <dirent.h>
-#include <errno.h>
-#include <fstream>
-#include <iostream>
-#include <iterator>
 #include <signal.h>
-#include <sstream>
+#include <unistd.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+
+#include <cerrno>
+#include <fstream>
+#include <iomanip>
+#include <iterator>
+#include <sstream>
 
 namespace {
 

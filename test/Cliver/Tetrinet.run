@@ -1,3 +1,4 @@
+// REQUIRES: not-llvm-3.4
 // RUN: %klee -cliver -posix-runtime -libc=uclibc -client-model=tetrinet -socket-log "%S/game_0_0_1_1_10_p1_localhost.ktest" -no-output "%S/tetrinet.bc" -autostart -startingheight 0 -partialtype 1 -partialrate 1 -inputgenerationtype 64 -maxround 10 -seed 0 p1 localhost &> %t_cliver.log
 // RUN: grep -q "Verification complete" %t_cliver.log
 // RUN: mkdir -p %t_training.cliver.dir

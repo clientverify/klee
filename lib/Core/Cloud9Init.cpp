@@ -37,18 +37,36 @@
 #include "klee/Config/Version.h"
 
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Module.h"
-#include "llvm/Type.h"
-#include "llvm/Constants.h"
-#include "llvm/InstrTypes.h"
-#include "llvm/Instruction.h"
-#include "llvm/Instructions.h"
-#include "llvm/LLVMContext.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/system_error.h"
 #include "llvm/Bitcode/ReaderWriter.h"
+
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/Instruction.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/InstrTypes.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/ValueSymbolTable.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/Type.h"
+#else
+#include "llvm/Constants.h"
+#include "llvm/Instruction.h"
+#include "llvm/Instructions.h"
+#include "llvm/InstrTypes.h"
+#include "llvm/LLVMContext.h"
+#include "llvm/Module.h"
+#include "llvm/Type.h"
+#include "llvm/ValueSymbolTable.h"
+#if LLVM_VERSION_CODE <= LLVM_VERSION(3, 1)
+#include "llvm/Target/TargetData.h"
+#else
+#include "llvm/DataLayout.h"
+#endif
+#endif
 
 #include <iostream>
 #include <map>
@@ -68,7 +86,7 @@ namespace {
 
 namespace klee {
 
-static llvm::Module *linkWithPOSIX(llvm::Module *mainModule, llvm::sys::Path* Path) {
+static llvm::Module *linkWithPOSIX(llvm::Module *mainModule, const std::string &Path) {
   Function *mainFn = mainModule->getFunction("main");
   mainModule->getOrInsertFunction("__force_model_linkage",
       Type::getVoidTy(getGlobalContext()), NULL);
@@ -82,8 +100,8 @@ static llvm::Module *linkWithPOSIX(llvm::Module *mainModule, llvm::sys::Path* Pa
       Type::getVoidTy(getGlobalContext()),
       Type::getInt32Ty(getGlobalContext()), NULL);
 
-  klee_message("NOTE: Using model: %s", Path->c_str());
-  mainModule = klee::linkWithLibrary(mainModule, Path->c_str());
+  klee_message("NOTE: Using model: %s", Path.c_str());
+  mainModule = klee::linkWithLibrary(mainModule, Path.c_str());
   assert(mainModule && "unable to link with simple model");
 
   std::map<std::string, const GlobalValue*> underlyingFn;
@@ -243,7 +261,7 @@ static int patchLibcMain(Module *mainModule) {
   return 0;
 }
 
-llvm::Module* linkWithCloud9POSIX(llvm::Module* module, llvm::sys::Path* Path) {
+llvm::Module* linkWithCloud9POSIX(llvm::Module* module, const std::string &Path) {
   llvm::Module* mainModule = linkWithPOSIX(module, Path);
 
   if (mainModule) {

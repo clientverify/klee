@@ -160,6 +160,30 @@ exit_error:
   exit(1);
 }
 
+void add_fruit_to_basket(char* basket, size_t max_size) {
+  int fruit = abs(rand());
+
+  fruit = fruit % 5;
+
+  switch (fruit % 5) {
+    case 0: 
+      strncat(basket, "apple", max_size);
+      break;
+    case 1: 
+      strncat(basket, "orange", max_size);
+      break;
+    case 2: 
+      strncat(basket, "banana", max_size);
+      break;
+    case 3: 
+      strncat(basket, "grape", max_size);
+      break;
+    case 4: 
+      strncat(basket, "kiwi", max_size);
+      break;
+  }
+}
+
 void add_symbolic_fruit_to_basket(char* basket, size_t max_size) {
 #ifdef KLEE
   // length 4,5,6
@@ -196,30 +220,6 @@ void encrypt(char* s) {
 #endif
   while (*s) 
     *s = 0xAA ^ *s++;
-}
-
-void add_fruit_to_basket(char* basket, size_t max_size) {
-  int fruit = abs(rand());
-
-  fruit = fruit % 5;
-
-  switch (fruit % 5) {
-    case 0: 
-      strncat(basket, "apple", max_size);
-      break;
-    case 1: 
-      strncat(basket, "orange", max_size);
-      break;
-    case 2: 
-      strncat(basket, "banana", max_size);
-      break;
-    case 3: 
-      strncat(basket, "grape", max_size);
-      break;
-    case 4: 
-      strncat(basket, "kiwi", max_size);
-      break;
-  }
 }
 
 void client_run(int client_fd) {

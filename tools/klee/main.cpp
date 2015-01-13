@@ -1123,7 +1123,8 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
   }
   replaceOrRenameFunction(mainModule, "\01__isoc99_sscanf", "sscanf");
   
-  mainModule = klee::deterministicLinkWithLibrary(mainModule, uclibcBCA.c_str());
+  //mainModule = klee::deterministicLinkWithLibrary(mainModule, uclibcBCA.c_str());
+  mainModule = klee::linkWithLibrary(mainModule, uclibcBCA.c_str());
   assert(mainModule && "unable to link with uclibc");
 
 
@@ -1319,8 +1320,8 @@ int main(int argc, char **argv, char **envp) {
                                   /*CheckDivZero=*/CheckDivZero,
                                   /*CheckOvershift=*/CheckOvershift);
   if (WithPOSIXRuntime && cliver::EnableCliver) {
-    llvm::sys::Path Path(Opts.LibraryDir);
-    Path.appendComponent("libkleeRuntimePOSIX.bca");
+    SmallString<128> Path(Opts.LibraryDir);
+    llvm::sys::path::append(Path, "libkleeRuntimePOSIX.bca");
     klee_message("NOTE: Using model: %s", Path.c_str());
     mainModule = klee::linkWithLibrary(mainModule, Path.c_str());
     assert(mainModule && "unable to link with simple model");
@@ -1357,9 +1358,9 @@ int main(int argc, char **argv, char **envp) {
   }  
 
   if (WithCloud9POSIXRuntime) {
-    llvm::sys::Path Path(Opts.LibraryDir);
-    Path.appendComponent("libkleeRuntimeCloud9POSIX.bca");
-    mainModule = linkWithCloud9POSIX(mainModule, &Path);
+    SmallString<128> Path(Opts.LibraryDir);
+    llvm::sys::path::append(Path, "libkleeRuntimeCloud9POSIX.bca");
+    mainModule = linkWithCloud9POSIX(mainModule, Path.c_str());
   }
 
   // Get the desired main function.  klee_main initializes uClibc

@@ -1,3 +1,4 @@
+// REQUIRES: not-llvm-3.4
 // RUN: %llvmgcc %s -emit-llvm -g -c -o %t1.bc
 // RUN: rm -rf %t.cliver-out
 // RUN: %klee -output-dir=%t.cliver-out -cliver -libc=klee -posix-runtime -all-external-warnings %t1.bc > %t

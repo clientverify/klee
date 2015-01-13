@@ -6,6 +6,7 @@
 // License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
+#if 0 // temporary disable for llvm 3.4 support
 
 #include "klee/Internal/Support/ModuleUtil.h"
 #include "klee/Config/Version.h"
@@ -224,4 +225,6 @@ Module *klee::deterministicLinkWithLibrary(Module *module,
 
   return linker.releaseModule();
 }
+
+#endif
 
