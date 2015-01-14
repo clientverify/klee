@@ -409,7 +409,7 @@ void CVStream::getOutFiles(std::string path,
 
 void CVStream::getFiles(std::string path, std::string suffix, 
 		std::vector<std::string> &results) {
-
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
   llvm::error_code ec;
   for (llvm::sys::fs::directory_iterator di(path, ec), de;
        !ec && di != de; di = di.increment(ec)) {
@@ -417,11 +417,33 @@ void CVStream::getFiles(std::string path, std::string suffix,
       results.push_back(di->path());
     }
   }
+#else
+  llvm::sys::Path p(path);
+  std::set<llvm::sys::Path> contents;
+  std::string error;
+  if (p.getDirectoryContents(contents, &error)) {
+    std::cerr << "ERROR: For getFilesRecursive( " 
+			<< path << ", " << suffix << ") : " << error << "\n";
+    exit(1);
+  }
+  for (std::set<llvm::sys::Path>::iterator it = contents.begin(),
+         ie = contents.end(); it != ie; ++it) {
+    std::string f = it->str();
+    if (it->isDirectory()) {
+      getFilesRecursive(f, suffix, results);
+    } else {
+      if (f.substr(f.size()-suffix.size(), f.size()) == suffix) {
+        results.push_back(f);
+      }
+    }
+  }
+#endif
 }
 
 void CVStream::getFilesRecursive(std::string path, 
                                  std::string suffix, 
                                  std::vector<std::string> &results) {
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
   llvm::error_code ec;
   for (llvm::sys::fs::recursive_directory_iterator di(path, ec), de;
        !ec && di != de; di = di.increment(ec)) {
@@ -429,6 +451,23 @@ void CVStream::getFilesRecursive(std::string path,
       results.push_back(di->path());
     }
   }
+#else
+  llvm::sys::Path p(path);
+  std::set<llvm::sys::Path> contents;
+  std::string error;
+  if (p.getDirectoryContents(contents, &error)) {
+    std::cerr << "ERROR: For getFiles( " 
+			<< path << ", " << suffix << ") : " << error << "\n";
+    exit(1);
+  }
+  for (std::set<llvm::sys::Path>::iterator it = contents.begin(),
+         ie = contents.end(); it != ie; ++it) {
+    std::string f = it->str();
+    if (f.substr(f.size()-suffix.size(), f.size()) == suffix) {
+      results.push_back(f);
+    }
+  }
+#endif
 }
 
 void CVStream::init() {
