@@ -21,37 +21,37 @@ endif
 
 # Required for Boost 
 LIBS += -lboost_serialization -lboost_regex -lboost_iostreams -lboost_system -lboost_thread -lboost_atomic
-CPPFLAGS += -Wno-deprecated
-#CPPFLAGS += -DENABLE_BOOST_ATOMIC
+CXX.Flags += -Wno-deprecated
+CXX.Flags += -DENABLE_BOOST_ATOMIC
 
 # (Optional) Use Boost.Timer rather than LLVM.Timer
 ifeq ($(ENABLE_BOOST_TIMER),1)
   LIBS += -lboost_timer -lboost_chrono
-  CPPFLAGS += -DUSE_BOOST_TIMER
+  CXX.Flags += -DUSE_BOOST_TIMER
 endif
 
 # Disable TimerStatIncrementer for ultra-optimized builds
 ifeq ($(DISABLE_TIMER_STATS),1)
-  CPPFLAGS += -DDISABLE_TIMER_STATS
+  CXX.Flags += -DDISABLE_TIMER_STATS
 endif
 
-CPPFLAGS += -Wall
-CPPFLAGS += -pedantic
+CXX.Flags += -Wall
+CXX.Flags += -pedantic
 
 # Required for openmp 
-CPPFLAGS += -fopenmp 
+CXX.Flags += -fopenmp 
 LIBS += -fopenmp
 
 # (Optional) TCMalloc support
 ifeq ($(ENABLE_TCMALLOC),1)
   LIBS += -ltcmalloc
-  CPPFLAGS += -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free -DTCMALLOC
+  CXX.Flags += -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free -DTCMALLOC
 endif
 
 # (Optional) Use Google profiler, no performance hit unless enabled at runtime.
 ifeq ($(ENABLE_GOOGLE_PROFILER),1)
   LIBS += -lprofiler
-  CPPFLAGS += -DGOOGLE_PROFILER 
+  CXX.Flags += -DGOOGLE_PROFILER 
 endif
 
 include $(PROJ_SRC_ROOT)/Makefile.rules
