@@ -576,7 +576,10 @@ STPSolverImpl::STPSolverImpl(bool _useForkedSTP, bool _optimizeDivides)
 
 STPSolverImpl::~STPSolverImpl() {
   // Detach the memory region.
-  shmdt(*shared_memory_ptr);
+  // (rac) FIXME shmdt needs to be called by the same thread that created this instance
+  if (shared_memory_ptr.get()) {
+    shmdt(*shared_memory_ptr);
+  }
   shared_memory_ptr.release();
   shared_memory_id.release();
 
