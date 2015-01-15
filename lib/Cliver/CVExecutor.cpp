@@ -47,6 +47,7 @@
 #include "klee/Internal/Module/KModule.h"
 #include "klee/Internal/Support/FloatEvaluation.h"
 #include "klee/Internal/System/Time.h"
+#include "klee/Internal/System/MemoryUsage.h"
 #include "klee/Interpreter.h"
 #include "klee/TimerStatIncrementer.h"
 #include "klee/util/Assignment.h"
@@ -191,10 +192,6 @@ CVExecutor::CVExecutor(const InterpreterOptions &opts, klee::InterpreterHandler 
 : klee::Executor(opts, ih), 
   cv_(static_cast<ClientVerifier*>(ih)),
   memory_usage_mbs_(0) {
-  if (klee::UseThreads > 1) {
-    cv_warning("Multi-threaded support is currently disabled");
-    klee::UseThreads = 1;
-  }
 }
 
 CVExecutor::~CVExecutor() {}
@@ -446,11 +443,7 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
         if (klee::UseThreads > 1) {
           mbs = GetMemoryUsage() >> 20;
         } else {
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
-          mbs = llvm::sys::Process::GetMallocUsage() >> 20;
-#else
-          mbs = llvm::sys::Process::GetTotalMemoryUsage() >> 20;
-#endif
+          mbs = klee::util::GetTotalMallocUsage() >> 20;
         }
 
         if (mbs > klee::MaxMemory) {

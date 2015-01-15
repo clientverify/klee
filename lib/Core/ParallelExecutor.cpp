@@ -45,6 +45,7 @@
 #include "klee/Internal/Module/KModule.h"
 #include "klee/Internal/Support/FloatEvaluation.h"
 #include "klee/Internal/System/Time.h"
+#include "klee/Internal/System/MemoryUsage.h"
 
 #if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
 #include "llvm/IR/Function.h"
@@ -398,11 +399,7 @@ void Executor::execute(ExecutionState *initialState, MemoryManager *memory) {
         if (UseThreads > 1) {
           mbs = GetMemoryUsage() >> 20;
         } else {
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
-          mbs = sys::Process::GetMallocUsage() >> 20;
-#else
-          mbs = sys::Process::GetTotalMemoryUsage() >> 20;
-#endif
+          mbs = util::GetTotalMallocUsage() >> 20;
         }
 
         if (mbs > MaxMemory) {
