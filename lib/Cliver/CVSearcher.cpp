@@ -300,6 +300,8 @@ SearcherStage* VerifySearcher::select_stage() {
 CVExecutionState* VerifySearcher::check_state_property(
     SearcherStage* stage, CVExecutionState* state) {
 
+  if (!state) return NULL;
+
   CVExecutionState *updated_state = state;
 
   // should we increase k?
