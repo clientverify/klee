@@ -37,6 +37,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Process.h"
+#include "llvm/ADT/StringExtras.h"
 
 #ifdef GOOGLE_PROFILER
 #include <google/profiler.h>
@@ -313,9 +314,10 @@ void ClientVerifier::assign_basic_block_ids() {
     if (!it->isDeclaration()) {
       std::string function_name(it->getName());
       function_name += "_";
+      unsigned bb_count = 0;
       for (llvm::Function::iterator fit = it->begin(), fie = it->end();
            fit != fie; ++fit) {
-        std::string bb_name(function_name + fit->getName().str());
+        std::string bb_name(function_name + fit->getName().str() + "_" + llvm::utostr(++bb_count));
         basicblock_names.push_back(BBNamePair(bb_name, &(*fit)));
       }
     }

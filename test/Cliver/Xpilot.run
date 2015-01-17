@@ -1,4 +1,4 @@
-// REQUIRES: not-llvm-3.4
+// REQUIRES: llvm-3.4
 // RUN: %klee -cliver -posix-runtime -libc=uclibc -client-model=xpilot -load="libX11.so" -no-xwindows -socket-log "%S/xpilot_0.ktest" -no-output "%S/xpilot.bc" -join -texturedWalls no -texturedDecor no -texturedObjects no  -fullColor no -geometry 800x600+100+100 -keyTurnLeft a -keyTurnRight d -keyThrust w localhost &> %t_cliver.log
 // RUN: grep -q "Verification complete" %t_cliver.log
 // RUN: mkdir -p %t_training.cliver.dir
