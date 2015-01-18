@@ -12,6 +12,11 @@
 
 #ifdef ENABLE_BOOST_ATOMIC
 #include <boost/atomic.hpp>
+#else
+// Check for c++11 support
+#if __cplusplus > 199711L
+#include <atomic>
+#endif
 #endif
 
 namespace klee {
@@ -21,7 +26,12 @@ struct Atomic {
 #ifdef ENABLE_BOOST_ATOMIC
   typedef boost::atomic<T> type;
 #else
+// Check for c++11 support
+#if __cplusplus > 199711L
+  typedef std::atomic<T> type;
+#else
   typedef T type;
+#endif
 #endif
 };
 

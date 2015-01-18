@@ -20,9 +20,13 @@ override DEBUG_SYMBOLS := $(RUNTIME_DEBUG_SYMBOLS)
 endif
 
 # Required for Boost 
-LIBS += -lboost_serialization -lboost_regex -lboost_iostreams -lboost_system -lboost_thread -lboost_atomic
+LIBS += -lboost_serialization -lboost_regex -lboost_iostreams -lboost_system -lboost_thread
 CXX.Flags += -Wno-deprecated
-CXX.Flags += -DENABLE_BOOST_ATOMIC
+
+ifeq ($(ENABLE_BOOST_ATOMIC),1)
+  CXX.Flags += -DENABLE_BOOST_ATOMIC
+  LIBS += -lboost_atomic
+endif
 
 # (Optional) Use Boost.Timer rather than LLVM.Timer
 ifeq ($(ENABLE_BOOST_TIMER),1)
