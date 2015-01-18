@@ -24,9 +24,9 @@ include Makefile.tests
 ULIMIT = ulimit -t 3000 ; ulimit -d 512000 ;
 
 ifdef VERBOSE
-LIT_ARGS := -v
+LIT_ARGS := -v --time-tests
 else
-LIT_ARGS := -s -v
+LIT_ARGS := -s -v --time-tests
 endif
 
 ifdef TESTSUITE
