@@ -23,4 +23,10 @@ ifeq ($(ENABLE_POSIX_RUNTIME),1)
 PARALLEL_DIRS += klee-replay
 endif
 
+# we only support compiling klee and cliverstats with ThreadSanitizer
+ifeq ($(ENABLE_THREAD_SANITIZER),1)
+  PARALLEL_DIRS=klee cliverstats
+endif
+
+
 include $(LEVEL)/Makefile.common
