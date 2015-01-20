@@ -1,4 +1,4 @@
-//===-- tools/cliver/main.cpp -----------------------------------*- C++ -*-===//
+//===-- tools/cliverstats/main.cpp ------------------------------*- C++ -*-===//
 //
 // <insert license>
 //
@@ -12,6 +12,8 @@
 #if (LLVM_VERSION_MAJOR == 2 && LLVM_VERSION_MINOR < 7)
 #error
 #endif
+
+#include <ghmm/sequence.h>
 
 #include "../../lib/Core/Common.h"
 #include "../../lib/Cliver/CVCommon.h"
@@ -80,12 +82,13 @@
 
 namespace {
 
-enum StatsModeType { PathStats };
+enum StatsModeType { PathStats, HMMTest };
 llvm::cl::opt<StatsModeType>
 StatsMode("mode", 
     llvm::cl::desc("Select mode:"),
     llvm::cl::values(
       clEnumValN(PathStats, "path", "Path stats"),
+      clEnumValN(HMMTest, "hmmtest", "HMM test"),
       clEnumValEnd),
     llvm::cl::init(PathStats));
 
@@ -128,6 +131,25 @@ void DoPathStats()
   }
 }
 
+void sequence_alloc_print(void)
+{
+  ghmm_dseq* seq_array;
+  int i;
+
+  seq_array= ghmm_dseq_calloc(1);
+  seq_array->seq_len[0]=10;
+  seq_array->seq_id[0]=101.0;
+  seq_array->seq[0]=(int*)malloc(seq_array->seq_len[0]*sizeof(int));
+
+  for (i=0; i<seq_array->seq_len[0]; i++)
+    seq_array->seq[0][i]=1;
+
+  ghmm_dseq_print_xml(seq_array, stdout);
+
+  ghmm_dseq_free(&seq_array);
+}
+
+
 //===----------------------------------------------------------------------===//
 // main
 //===----------------------------------------------------------------------===//
@@ -148,8 +170,15 @@ int main(int argc, char **argv, char **envp) {
         DoPathStats();
         break;
       }
+    case HMMTest:
+      {
+        sequence_alloc_print();
+        break;
+      }
+
   }
 
   return 0;
+
 }
 
