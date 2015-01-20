@@ -58,6 +58,14 @@ ifeq ($(ENABLE_GOOGLE_PROFILER),1)
   CXX.Flags += -DGOOGLE_PROFILER 
 endif
 
+# (Optional) Use ThreadSanitizer to profile threads (for use with >= gcc-4.9)
+ifeq ($(ENABLE_THREAD_SANITIZER),1)
+  # -lpthread breaks ThreadSanitizer on gcc-4.9
+  LIBS = $(filter-out -lpthread,$(LIBS))   
+  LIBS += -ltsan -pie 
+  CXX.Flags += -fpie -fPIC -fsanitize=thread -g
+endif
+
 include $(PROJ_SRC_ROOT)/Makefile.rules
 
 # LLVMCC was added in 2.7.
