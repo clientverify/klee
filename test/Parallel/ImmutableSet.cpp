@@ -1,6 +1,6 @@
 // RUN: %llvmgxx -I../../../include -g -DMAX_ELEMENTS=3 -fno-exceptions -emit-llvm -c -o %t1.bc %s
 // RUN: rm -rf %t.klee-out
-// RUN: %klee   -use-threads=2 --output-dir=%t.klee-out --libc=klee --max-forks=25 --no-output --exit-on-error --optimize --disable-inlining --search=nurs:depth --use-cex-cache %t1.bc
+// RUN: %klee -use-threads=2  --use-call-paths=0 --output-dir=%t.klee-out --libc=klee --max-forks=25 --no-output --exit-on-error --optimize --disable-inlining --search=nurs:depth --use-cex-cache %t1.bc
 // UN: %klee --output-dir=%t.klee-out --libc=klee --max-forks=250 --no-output --exit-on-error --optimize --disable-inlining --search=nurs:depth --use-cex-cache %t1.bc
 
 #include "klee/klee.h"
