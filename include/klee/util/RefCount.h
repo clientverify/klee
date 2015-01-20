@@ -44,29 +44,28 @@ public:
     return RefCount(release());
   }
 
-#ifdef ENABLE_BOOST_ATOMIC
+#if defined (THREADSAFE_ATOMIC)
   unsigned get() const { 
-    return count_.load(boost::memory_order_relaxed);
+    return count_.load(atomic_ns::memory_order_relaxed);
   }
 
   unsigned add_ref() {
-    return count_.fetch_add(1, boost::memory_order_relaxed);
+    return count_.fetch_add(1, atomic_ns::memory_order_relaxed);
   }
 
   unsigned release() {
-    return count_.fetch_sub(1, boost::memory_order_relaxed);
+    return count_.fetch_sub(1, atomic_ns::memory_order_relaxed);
   }
 
   template<class U>
   bool release(U *ptr) {
-    if (count_.fetch_sub(1, boost::memory_order_release) == 1) {
-      boost::atomic_thread_fence(boost::memory_order_acquire);
+    if (count_.fetch_sub(1, atomic_ns::memory_order_release) == 1) {
+      atomic_ns::atomic_thread_fence(atomic_ns::memory_order_acquire);
       if (ptr) delete ptr;
       return true;
     }
     return false;
   }
-
 #else
   unsigned get() const { 
     return count_;
@@ -91,6 +90,7 @@ public:
 #endif
 
 };
+
 
 } // end namespace klee
 

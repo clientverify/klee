@@ -10,28 +10,19 @@
 #ifndef KLEE_ATOMIC_H
 #define KLEE_ATOMIC_H
 
-#ifdef ENABLE_BOOST_ATOMIC
-#include <boost/atomic.hpp>
-#else
-// Check for c++11 support
-#if __cplusplus > 199711L
+#if defined (THREADSAFE_ATOMIC)
 #include <atomic>
-#endif
+namespace atomic_ns = std;
 #endif
 
 namespace klee {
 
 template<class T>
 struct Atomic {
-#ifdef ENABLE_BOOST_ATOMIC
-  typedef boost::atomic<T> type;
-#else
-// Check for c++11 support
-#if __cplusplus > 199711L
+#if defined (THREADSAFE_ATOMIC)
   typedef std::atomic<T> type;
 #else
   typedef T type;
-#endif
 #endif
 };
 
