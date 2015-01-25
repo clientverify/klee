@@ -793,16 +793,18 @@ void AddressSpaceGraph::extract_pointers(klee::ObjectState *obj,
 void AddressSpaceGraph::extract_pointers_by_resolving(klee::ObjectState *obj,
                                                       PointerList &results) {
   // Attempt to resolve every 4 or 8 byte constant expr in the ObjectState
-  for (unsigned i = 0; i < obj->size; ++i) {
-    klee::ref<klee::Expr> pexpr = obj->read(i, pointer_width_);
-    if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(pexpr)) {
-      klee::ObjectPair object_pair;
-      if (state_->addressSpace.resolveOne(CE, object_pair)) {
-        PointerProperties p;
-        p.offset = i;
-        p.address = CE->getZExtValue(pointer_width_);
-        p.object = const_cast<klee::ObjectState*>(object_pair.second);
-        results.push_back(p);
+  if (pointer_width_/8 <= obj->size) {
+    for (unsigned i = 0; i <= (obj->size-(pointer_width_/8)); ++i) {
+      klee::ref<klee::Expr> pexpr = obj->read(i, pointer_width_);
+      if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(pexpr)) {
+        klee::ObjectPair object_pair;
+        if (state_->addressSpace.resolveOne(CE, object_pair)) {
+          PointerProperties p;
+          p.offset = i;
+          p.address = CE->getZExtValue(pointer_width_);
+          p.object = const_cast<klee::ObjectState*>(object_pair.second);
+          results.push_back(p);
+        }
       }
     }
   }
