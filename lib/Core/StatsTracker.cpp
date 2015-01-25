@@ -473,24 +473,24 @@ void StatsTracker::writeIStats() {
   unsigned nStats = sm.getNumStatistics();
 
   // Max is 13, sadly
-  istatsMask |= 1<<sm.getStatisticID("Queries");
-  istatsMask |= 1<<sm.getStatisticID("QueriesValid");
-  istatsMask |= 1<<sm.getStatisticID("QueriesInvalid");
-  istatsMask |= 1<<sm.getStatisticID("QueryTime");
-  istatsMask |= 1<<sm.getStatisticID("ResolveTime");
-  istatsMask |= 1<<sm.getStatisticID("Instructions");
-  istatsMask |= 1<<sm.getStatisticID("InstructionTimes");
-  istatsMask |= 1<<sm.getStatisticID("InstructionRealTimes");
-  istatsMask |= 1<<sm.getStatisticID("Forks");
-  istatsMask |= 1<<sm.getStatisticID("CoveredInstructions");
-  istatsMask |= 1<<sm.getStatisticID("UncoveredInstructions");
-  istatsMask |= 1<<sm.getStatisticID("States");
-  istatsMask |= 1<<sm.getStatisticID("MinDistToUncovered");
+  istatsMask |= (uint64_t)1<<sm.getStatisticID("Queries");
+  istatsMask |= (uint64_t)1<<sm.getStatisticID("QueriesValid");
+  istatsMask |= (uint64_t)1<<sm.getStatisticID("QueriesInvalid");
+  istatsMask |= (uint64_t)1<<sm.getStatisticID("QueryTime");
+  istatsMask |= (uint64_t)1<<sm.getStatisticID("ResolveTime");
+  istatsMask |= (uint64_t)1<<sm.getStatisticID("Instructions");
+  istatsMask |= (uint64_t)1<<sm.getStatisticID("InstructionTimes");
+  istatsMask |= (uint64_t)1<<sm.getStatisticID("InstructionRealTimes");
+  istatsMask |= (uint64_t)1<<sm.getStatisticID("Forks");
+  istatsMask |= (uint64_t)1<<sm.getStatisticID("CoveredInstructions");
+  istatsMask |= (uint64_t)1<<sm.getStatisticID("UncoveredInstructions");
+  istatsMask |= (uint64_t)1<<sm.getStatisticID("States");
+  istatsMask |= (uint64_t)1<<sm.getStatisticID("MinDistToUncovered");
 
   of << "positions: instr line\n";
 
   for (unsigned i=0; i<nStats; i++) {
-    if (istatsMask & (1<<i)) {
+    if (istatsMask & ((uint64_t)1<<i)) {
       Statistic &s = sm.getStatistic(i);
       of << "event: " << s.getShortName() << " : " 
          << s.getName() << "\n";
@@ -499,14 +499,14 @@ void StatsTracker::writeIStats() {
 
   of << "events: ";
   for (unsigned i=0; i<nStats; i++) {
-    if (istatsMask & (1<<i))
+    if (istatsMask & ((uint64_t)1<<i)) 
       of << sm.getStatistic(i).getShortName() << " ";
   }
   of << "\n";
   
   // set state counts, decremented after we process so that we don't
   // have to zero all records each time.
-  if (istatsMask & (1<<stats::states.getID()))
+  if (istatsMask & ((uint64_t)1<<stats::states.getID()))
     updateStateStatistics(1);
 
   std::string sourceFile = "";
@@ -544,7 +544,7 @@ void StatsTracker::writeIStats() {
           of << ii.assemblyLine << " ";
           of << ii.line << " ";
           for (unsigned i=0; i<nStats; i++)
-            if (istatsMask&(1<<i))
+            if (istatsMask&((uint64_t)1<<i))
               of << sm.getIndexedValue(sm.getStatistic(i), index) << " ";
           of << "\n";
 
@@ -570,7 +570,7 @@ void StatsTracker::writeIStats() {
                 of << ii.assemblyLine << " ";
                 of << ii.line << " ";
                 for (unsigned i=0; i<nStats; i++) {
-                  if (istatsMask&(1<<i)) {
+                  if (istatsMask&((uint64_t)1<<i)) {
                     Statistic &s = sm.getStatistic(i);
                     uint64_t value;
 
@@ -594,7 +594,7 @@ void StatsTracker::writeIStats() {
     }
   }
 
-  if (istatsMask & (1<<stats::states.getID()))
+  if (istatsMask & ((uint64_t)1<<stats::states.getID()))
     updateStateStatistics((uint64_t)-1);
   
   // Clear then end of the file if necessary (no truncate op?).
