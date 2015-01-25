@@ -97,7 +97,7 @@ class EditDistanceTable {
      costs_(0) {}
 
   ~EditDistanceTable() {
-    delete costs_;
+    delete [] costs_;
   }
 
   inline void update_row(const SequenceType &s, const SequenceType &t, 
@@ -205,7 +205,7 @@ class EditDistanceRow {
      costs_(0) {}
 
   ~EditDistanceRow() {
-    delete costs_;
+    delete[] costs_;
   }
 
   inline void update_row(const SequenceType &s, const SequenceType &t, 
@@ -279,7 +279,7 @@ class EditDistanceRowIt {
 
   ~EditDistanceRowIt() {
     if (costs_)
-      delete costs_;
+      delete [] costs_;
   }
 
   inline void update_row(typename SequenceType::const_iterator s_begin,
@@ -958,7 +958,7 @@ class EditDistanceFullUKK {
 
   ~EditDistanceFullUKK() {
     if (U_)
-      delete U_;
+      delete [] U_;
   }
 
   inline ValueType U(int i, int j) {
