@@ -65,6 +65,10 @@ ifeq ($(ENABLE_THREAD_SANITIZER),1)
   CXX.Flags += -fpie -fPIC -fsanitize=thread -g
 endif
 
+ifeq ($(ENABLE_ADDRESS_SANITIZER),1)
+  CXX.Flags += -fpie -fPIC -fsanitize=undefined -fsanitize=address -g
+endif
+
 include $(PROJ_SRC_ROOT)/Makefile.rules
 
 # LLVMCC was added in 2.7.
