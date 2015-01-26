@@ -2,6 +2,9 @@
 // small and large allocations (large allocations commonly use mmap(), which can
 // follow a separate path in the allocator and statistics reporting).
 
+// This test will fail when using address sanitizer because mallinfo always
+// returns zero, because the allocator is interposed
+
 // RUN: %llvmgcc -O0 -emit-llvm -DLITTLE_ALLOC -g -c %s -o %t.little.bc
 // RUN: rm -rf %t.klee-out
 // RUN: %klee --output-dir=%t.klee-out --max-memory=20 %t.little.bc > %t.little.log 2> %t.little.err
@@ -15,6 +18,7 @@
 // RUN: not grep -q "MALLOC FAILED" %t.big.log
 // RUN: not grep -q "DONE" %t.big.log
 // RUN: grep "WARNING: killing 1 states (over memory cap)" %t.big.err
+// REQUIRES: not-asan
 
 #include <stdlib.h>
 #include <stdio.h>

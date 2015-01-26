@@ -84,4 +84,6 @@ lit.site.cfg: lit.site.cfg.in
 	     -e "s#@ENABLE_POSIX_RUNTIME@#$(ENABLE_POSIX_RUNTIME)#g" \
 	     -e "s#@TARGET_TRIPLE@#$(TARGET_TRIPLE)#g" \
 	     -e "s#@HAVE_SELINUX@#$(HAVE_SELINUX)#g" \
+	     -e "s#@ENABLE_ADDRESS_SANITIZER@#$(ENABLE_ADDRESS_SANITIZER)#g" \
+	     -e "s#@ENABLE_THREAD_SANITIZER@#$(ENABLE_THREAD_SANITIZER)#g" \
 	     $(PROJ_SRC_DIR)/lit.site.cfg.in > $@
