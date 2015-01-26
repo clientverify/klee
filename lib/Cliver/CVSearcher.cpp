@@ -599,10 +599,17 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
             CVDEBUG("Removing state at xpilot merge event, wrong round. Socket: "
                     << *socket << ", State: " << *state);
 
+            // Remove from set
+            pending_events_.erase(state);
+
+            // Remove State from current stage
+            this->remove_state(state);
+            
             // Remove invalid state with unfinished network processing
             cv_->executor()->remove_state_internal(state);
 
-            result = true;
+            return true;
+
           } else {
             CVDEBUG("Incrementing xpilot client round ");
             property->client_round++;
