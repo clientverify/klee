@@ -1,6 +1,6 @@
 // RUN: %llvmgcc %s -emit-llvm -g -c -o %t1.bc
 // RUN: rm -rf %t.klee-out
-// RUN: %klee -use-threads=2 --output-dir=%t.klee-out --search=random-state --exit-on-error %t1.bc
+// RUN: %klee  --use-forked-solver=0 -output-istats=0 --use-call-paths=0 -use-threads=24 --output-dir=%t.klee-out --search=bfs --exit-on-error %t1.bc
 
 #include <assert.h>
 
