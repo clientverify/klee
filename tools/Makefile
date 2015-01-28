@@ -25,7 +25,7 @@ endif
 
 # we only support compiling klee and cliverstats with ThreadSanitizer
 ifeq ($(ENABLE_THREAD_SANITIZER),1)
-  PARALLEL_DIRS=klee cliverstats
+  PARALLEL_DIRS=klee kleaver cliverstats
 endif
 
 
