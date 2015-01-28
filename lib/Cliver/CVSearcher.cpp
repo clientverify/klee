@@ -336,7 +336,7 @@ klee::ExecutionState* VerifySearcher::trySelectState() {
 
   CVExecutionState *state = NULL;
 
-  if (!empty()) {
+  if (!is_empty()) {
     SearcherStage* stage = select_stage();
     if (stage) {
       state = current_stage_->next_state();
@@ -440,7 +440,12 @@ void VerifySearcher::update(klee::ExecutionState *current,
 }
 
 bool VerifySearcher::empty() {
-  
+  klee::LockGuard guard(lock_);
+  return is_empty();
+}
+
+bool VerifySearcher::is_empty() {
+
   if (current_stage_ && current_stage_->size() > 0)
     return false;
 

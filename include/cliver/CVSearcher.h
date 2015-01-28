@@ -418,6 +418,7 @@ class VerifySearcher : public CVSearcher {
   virtual CVExecutionState* check_state_property(SearcherStage*, CVExecutionState*);
 
   void remove_pending_duplicates();
+  bool is_empty();
   SearcherStage* create_and_add_stage(CVExecutionState* state);
 
   SearcherStage* current_stage_;
