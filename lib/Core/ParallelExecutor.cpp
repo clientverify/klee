@@ -349,9 +349,12 @@ void Executor::execute(ExecutionState *initialState, MemoryManager *memory) {
     if (statePtr != NULL) {
       ExecutionState &state = *statePtr;
       
+      {
+      LockGuard guard(state.stepInstructionLock);
       KInstruction *ki = state.pc;
       stepInstruction(state);
       executeInstruction(state, ki);
+      }
       processTimers(&state, MaxInstructionTime);
 
       // Update searcher with new states and get next state to execute

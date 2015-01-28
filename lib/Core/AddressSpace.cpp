@@ -14,22 +14,28 @@
 
 #include "klee/Expr.h"
 #include "klee/TimerStatIncrementer.h"
+#include "klee/util/Mutex.h"
 
 using namespace klee;
 
 ///
 
+RecursiveMutex g_mem_lock;
+
 void AddressSpace::bindObject(const MemoryObject *mo, ObjectState *os) {
+  RecursiveLockGuard guard(g_mem_lock);
   assert(os->copyOnWriteOwner==0 && "object already has owner");
   os->copyOnWriteOwner = cowKey;
   objects = objects.replace(std::make_pair(mo, os));
 }
 
 void AddressSpace::unbindObject(const MemoryObject *mo) {
+  RecursiveLockGuard guard(g_mem_lock);
   objects = objects.remove(mo);
 }
 
 const ObjectState *AddressSpace::findObject(const MemoryObject *mo) const {
+  RecursiveLockGuard guard(g_mem_lock);
   const MemoryMap::value_type *res = objects.lookup(mo);
   
   return res ? res->second : 0;
@@ -37,6 +43,7 @@ const ObjectState *AddressSpace::findObject(const MemoryObject *mo) const {
 
 ObjectState *AddressSpace::getWriteable(const MemoryObject *mo,
                                         const ObjectState *os) {
+  RecursiveLockGuard guard(g_mem_lock);
   assert(!os->readOnly);
 
   if (cowKey==os->copyOnWriteOwner) {
@@ -53,6 +60,7 @@ ObjectState *AddressSpace::getWriteable(const MemoryObject *mo,
 
 bool AddressSpace::resolveOne(const ref<ConstantExpr> &addr, 
                               ObjectPair &result) {
+  RecursiveLockGuard guard(g_mem_lock);
   uint64_t address = addr->getZExtValue();
   MemoryObject hack(address);
 
@@ -73,6 +81,7 @@ bool AddressSpace::resolveOne(ExecutionState &state,
                               ref<Expr> address,
                               ObjectPair &result,
                               bool &success) {
+  RecursiveLockGuard guard(g_mem_lock);
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(address)) {
     success = resolveOne(CE, result);
     return true;
@@ -164,6 +173,7 @@ bool AddressSpace::resolve(ExecutionState &state,
                            ResolutionList &rl, 
                            unsigned maxResolutions,
                            double timeout) {
+  RecursiveLockGuard guard(g_mem_lock);
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(p)) {
     ObjectPair res;
     if (resolveOne(CE, res))
@@ -290,6 +300,7 @@ bool AddressSpace::resolve(ExecutionState &state,
 // then its concrete cache byte isn't being used) but is just a hack.
 
 void AddressSpace::copyOutConcretes() {
+  RecursiveLockGuard guard(g_mem_lock);
   for (MemoryMap::iterator it = objects.begin(), ie = objects.end(); 
        it != ie; ++it) {
     const MemoryObject *mo = it->first;
@@ -305,6 +316,7 @@ void AddressSpace::copyOutConcretes() {
 }
 
 bool AddressSpace::copyInConcretes() {
+  RecursiveLockGuard guard(g_mem_lock);
   for (MemoryMap::iterator it = objects.begin(), ie = objects.end(); 
        it != ie; ++it) {
     const MemoryObject *mo = it->first;

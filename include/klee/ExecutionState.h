@@ -107,7 +107,10 @@ public:
   unsigned incomingBBIndex;
 
   /// Internal lock, held between Searcher::selectState and Searcher::update
-  SpinLock lock;
+  Mutex lock;
+
+  /// State can only be executed by one thread at a time
+  Mutex stepInstructionLock;
 
   std::string getFnAlias(std::string fn);
   void addFnAlias(std::string old_fn, std::string new_fn);
