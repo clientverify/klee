@@ -59,7 +59,7 @@ public:
 
   template<class U>
   bool release(U *ptr) {
-    if (count_.fetch_sub(1, atomic_ns::memory_order_release) == 1) {
+    if (count_.fetch_sub(1, atomic_ns::memory_order_acq_rel) == 1) {
       atomic_ns::atomic_thread_fence(atomic_ns::memory_order_acquire);
       if (ptr) delete ptr;
       return true;
