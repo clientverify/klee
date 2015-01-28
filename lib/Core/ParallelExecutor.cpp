@@ -180,8 +180,7 @@ namespace klee {
 }
 
 void Executor::initializePerThread(ExecutionState &state, MemoryManager* memory) {
-  static Mutex initializePerThreadLock;
-  LockGuard guard(initializePerThreadLock);
+  LockGuard guard(initializationLock);
 
   if (!this->solver.get()) {
     // Construct new Solver for this thread
