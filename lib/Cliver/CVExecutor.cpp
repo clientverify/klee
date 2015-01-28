@@ -191,7 +191,8 @@ klee::Solver *createCanonicalSolver(klee::Solver *_solver);
 CVExecutor::CVExecutor(const InterpreterOptions &opts, klee::InterpreterHandler *ih)
 : klee::Executor(opts, ih), 
   cv_(static_cast<ClientVerifier*>(ih)),
-  memory_usage_mbs_(0) {
+  memory_usage_mbs_(0),
+  searcher_init_flag_(ONCE_FLAG_INIT) {
 }
 
 CVExecutor::~CVExecutor() {}
@@ -349,7 +350,6 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
 void CVExecutor::execute(klee::ExecutionState *initialState,
                          klee::MemoryManager *memory) {
   klee::Mutex lock;
-  klee::Mutex memoryMutex;
 
   klee::UniqueLock guard(lock);
 
@@ -357,6 +357,17 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
   initializePerThread(*initialState, memory);
 
   // Wait until all threads have initialized
+  threadBarrier->wait();
+
+  // Only one thread needs to add state to searcher after init
+  call_once(searcher_init_flag_,
+            [](klee::Searcher *s, klee::ExecutionState *e) {
+              std::set<klee::ExecutionState*> sset;
+              sset.insert(e);
+              s->update(0, sset, std::set<klee::ExecutionState*>()); },
+            searcher, initialState);
+
+  // Now all states can execute
   threadBarrier->wait();
 
   klee::ExecutionState *statePtr = NULL;
@@ -433,7 +444,7 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
     // Check if we are running out of memory
     if (klee::MaxMemory) {
       // Note: Only one thread needs to check the memory situation
-      if ((klee::stats::instructions & 0xFFFF) == 0 && memoryMutex.try_lock()) {
+      if ((klee::stats::instructions & 0xFFFF) == 0 && memory_lock_.try_lock()) {
         klee::klee_message("checking memory (%d)", klee::GetThreadID());
 
         // We need to avoid calling GetMallocUsage() often because it
@@ -487,7 +498,7 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
           atMemoryLimit = false;
         }
 
-        memoryMutex.unlock();
+        memory_lock_.unlock();
       }
     }
   }
@@ -522,17 +533,12 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
     klee::klee_error("failed to create searcher");
   }
 
-  std::set<klee::ExecutionState*> initial_state_set;
-  initial_state_set.insert(&initialState);
-
-  // only want searcher to know about this state!
-  searcher->update(0, initial_state_set, std::set<klee::ExecutionState*>());
-
   threadBarrier = new klee::Barrier(klee::UseThreads);
 
   totalThreadCount = klee::UseThreads;
   if (!empty()) {
     if (klee::UseThreads <= 1) {
+      // Execute state in this thread
       execute(&initialState, NULL);
     } else {
       klee::ThreadGroup threadGroup;
@@ -542,6 +548,7 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
         threadGroup.add_thread(new klee::Thread(&cliver::CVExecutor::execute,
                                           this, &initialState, memoryManagers.back()));
       }
+
       // Wait for all threads to finish
       threadGroup.join_all();
     }

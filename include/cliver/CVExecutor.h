@@ -147,6 +147,9 @@ class CVExecutor : public klee::Executor {
   std::set<ExecutionStateProperty*> finished_states_;
 
   std::set<klee::ExecutionState*> states;
+
+  klee::Mutex memory_lock_;
+  klee::OnceFlag searcher_init_flag_;
 };
 
 } // end cliver namespace
