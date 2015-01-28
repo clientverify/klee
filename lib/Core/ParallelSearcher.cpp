@@ -10,6 +10,7 @@
 #include "Common.h"
 
 #include "Searcher.h"
+#include "ParallelSearcher.h"
 
 #include "CoreStats.h"
 #include "Executor.h"
@@ -377,4 +378,85 @@ bool ParallelWeightedRandomSearcher::empty() {
 
 ///
 
+static void ParallelBatchingSearcher_ExecutionState_Cleanup(ExecutionState* es) {}
+
+ParallelBatchingSearcher::ParallelBatchingSearcher(Searcher *_baseSearcher,
+                                   double _timeBudget,
+                                   unsigned _instructionBudget)
+  : baseSearcher(_baseSearcher),
+    initialTimeBudget(_timeBudget),
+    initialInstructionBudget(_instructionBudget),
+    // reset calls delete on state otherwise
+    lastState(ParallelBatchingSearcher_ExecutionState_Cleanup) {}
+
+ParallelBatchingSearcher::~ParallelBatchingSearcher() {
+  delete baseSearcher;
+}
+
+ExecutionState* ParallelBatchingSearcher::trySelectState() {
+  if (!lastStartTime.get() || !timeBudget.get() || !lastStartInstructions.get()) {
+
+    lastStartTime.reset(new util::TimePoint());
+    *lastStartTime = util::Clock::now();
+
+    timeBudget.reset(new double());
+    *timeBudget = 0;
+
+    lastStartInstructions.reset(new unsigned());
+    *lastStartInstructions = 0;
+  }
+
+  double delta = util::DurationToSeconds(util::Clock::now() - *lastStartTime).count();
+  if (!lastState.get()
+      || (delta > (*timeBudget)) )
+      /*|| (stats::instructions-lastStartInstructions)>instructionBudget)*/
+  {
+    if (lastState.get()) {
+      if (delta > ((*timeBudget) * 1.1)) {
+        //llvm::errs() << "KLEE: increased time budget from " << *timeBudget
+        //             << " to " << delta << "\n";
+        *timeBudget = delta;
+      }
+    } else {
+      lastState.reset(baseSearcher->trySelectState());
+    }
+
+    *lastStartTime = util::Clock::now();
+    //*lastStartInstructions = stats::instructions;
+  }
+  return lastState.get();
+}
+
+ExecutionState &ParallelBatchingSearcher::selectState() {
+  return *trySelectState();
+}
+
+bool ParallelBatchingSearcher::empty() {
+  if (lastState.get()) {
+    return false;
+  }
+  return baseSearcher->empty();
+}
+
+void ParallelBatchingSearcher::update(ExecutionState *current,
+                              const std::set<ExecutionState*> &addedStates,
+                              const std::set<ExecutionState*> &removedStates) {
+  if (addedStates.size() || removedStates.size()) {
+    lastState.reset(0);
+    baseSearcher->update(current, addedStates, removedStates);
+  }
+}
+
+ExecutionState* ParallelBatchingSearcher::updateAndTrySelectState(
+    ExecutionState *current,
+    const std::set<ExecutionState*> &addedStates,
+    const std::set<ExecutionState*> &removedStates) {
+
+  if (lastState.get() != current || addedStates.size() || removedStates.size()) {
+    lastState.reset(0);
+    baseSearcher->update(current, addedStates, removedStates);
+    return NULL;
+  }
+  return trySelectState();
+}
 

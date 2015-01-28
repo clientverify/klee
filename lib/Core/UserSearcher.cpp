@@ -12,6 +12,7 @@
 #include "UserSearcher.h"
 
 #include "Searcher.h"
+#include "ParallelSearcher.h"
 #include "Executor.h"
 
 #include "llvm/Support/CommandLine.h"
@@ -119,7 +120,7 @@ Searcher *getNewParallelSearcher(Searcher::CoreSearchType type, Executor &execut
 Searcher *klee::constructUserSearcher(Executor &executor) {
 
   // Check for invalid searcher configurations
-  if (UseBatchingSearch || UseMerge || UseBumpMerge) {
+  if (UseMerge || UseBumpMerge) {
     if (UseThreads > 1) {
       llvm::raw_ostream &os = executor.getHandler().getInfoStream();
       os << "Invalid configuration: multiple threads not supported this configuration. ";
@@ -159,7 +160,11 @@ Searcher *klee::constructUserSearcher(Executor &executor) {
   }
 
   if (UseBatchingSearch) {
-    searcher = new BatchingSearcher(searcher, BatchTime, BatchInstructions);
+    if (UseThreads > 1) {
+      searcher = new ParallelBatchingSearcher(searcher, BatchTime, BatchInstructions);
+    } else {
+      searcher = new BatchingSearcher(searcher, BatchTime, BatchInstructions);
+    }
   }
 
   // merge support is experimental
