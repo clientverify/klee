@@ -44,8 +44,10 @@ CXX.Flags += -Wall
 CXX.Flags += -pedantic
 
 # Required for openmp 
-CXX.Flags += -fopenmp 
-LIBS += -fopenmp
+ifneq ($(ENABLE_THREAD_SANITIZER),1)
+  CXX.Flags += -fopenmp
+  LIBS += -fopenmp
+endif
 
 # (Optional) TCMalloc support
 ifeq ($(ENABLE_TCMALLOC),1)
