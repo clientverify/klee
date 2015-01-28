@@ -21,7 +21,8 @@ include Makefile.tests
 #===------------------------------------------------------------------------===#
 # llvm-lit testing support
 #===------------------------------------------------------------------------===#
-ULIMIT = ulimit -t 3000 ; ulimit -d 512000 ;
+#ULIMIT = ulimit -t 3000 ; ulimit -d 512000 ;
+ULIMIT = ulimit -d 5120000 ;
 
 ifdef VERBOSE
 LIT_ARGS := -v --time-tests
