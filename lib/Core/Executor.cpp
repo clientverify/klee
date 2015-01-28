@@ -1007,6 +1007,47 @@ ref<klee::ConstantExpr> Executor::evalConstant(const Constant *c) {
     } else if (isa<ConstantPointerNull>(c)) {
       return Expr::createPointer(0);
     } else if (isa<UndefValue>(c) || isa<ConstantAggregateZero>(c)) {
+      if (llvm::VectorType *VTy = dyn_cast<llvm::VectorType>(c->getType())) {
+        std::vector<ref<Expr> > kids;
+        for (unsigned i = 0, e = VTy->getNumElements(); i != e; ++i) {
+          ref<Expr> kid = ConstantExpr::create(0, 
+            getWidthForLLVMType(VTy->getElementType()));
+          kids.push_back(kid);
+        }
+        ref<Expr> res = ConcatExpr::createN(kids.size(), kids.data());
+        return cast<ConstantExpr>(res);
+      } else if (llvm::StructType *STy = dyn_cast<llvm::StructType>(c->getType())) {
+        const StructLayout *sl = kmodule->targetData->getStructLayout(STy);
+        const llvm::UndefValue *uv = dyn_cast<const llvm::UndefValue>(c);
+        llvm::SmallVector<ref<Expr>, 4> kids;
+        for (unsigned i = STy->getNumElements(); i != 0; --i) {
+          unsigned op = i-1;
+          ref<Expr> kid = evalConstant(uv->getStructElement(op));
+
+          uint64_t thisOffset = sl->getElementOffsetInBits(op),
+                  nextOffset = (op == STy->getNumElements() - 1)
+                                ? sl->getSizeInBits()
+                                : sl->getElementOffsetInBits(op+1);
+          if (nextOffset-thisOffset > kid->getWidth()) {
+            uint64_t paddingWidth = nextOffset-thisOffset-kid->getWidth();
+            kids.push_back(ConstantExpr::create(0, paddingWidth));
+          }
+          kids.push_back(kid);
+        }
+        ref<Expr> res = ConcatExpr::createN(kids.size(), kids.data());
+        return cast<ConstantExpr>(res);
+      }
+      if (c->getType()->getTypeID() == llvm::Type::VectorTyID) {
+        llvm::VectorType *VTy = cast<llvm::VectorType>(c->getType());
+        std::vector<ref<Expr> > kids;
+        for (unsigned i = 0, e = VTy->getNumElements(); i != e; ++i) {
+          ref<Expr> kid = ConstantExpr::create(0, 
+            getWidthForLLVMType(VTy->getElementType()));
+          kids.push_back(kid);
+        }
+        ref<Expr> res = ConcatExpr::createN(kids.size(), kids.data());
+        return cast<ConstantExpr>(res);
+      }
       return ConstantExpr::create(0, getWidthForLLVMType(c->getType()));
 #if LLVM_VERSION_CODE >= LLVM_VERSION(3, 1)
     } else if (const ConstantDataSequential *cds =
