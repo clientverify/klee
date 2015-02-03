@@ -439,8 +439,14 @@ void VerifySearcher::update(klee::ExecutionState *current,
   }
 }
 
+klee::ExecutionState* VerifySearcher::updateAndTrySelectState(
+    klee::ExecutionState *current,
+    const std::set<klee::ExecutionState*> &addedStates,
+    const std::set<klee::ExecutionState*> &removedStates) {
+  update(current, addedStates, removedStates);
+  return trySelectState();
+}
 bool VerifySearcher::empty() {
-  klee::LockGuard guard(lock_);
   return is_empty();
 }
 
@@ -452,13 +458,13 @@ bool VerifySearcher::is_empty() {
   if (!pending_states_.empty())
     return false;
 
-  //XXX TODO THREAD SAFE BACKTRACKING
-  for (int i = new_stages_.size()-1; i >= 0; --i) {
-    foreach (SearcherStage* stage, *(new_stages_[i])) {
-      if (!stage->empty())
-        return false;
-    }
-  }
+  ////XXX TODO THREAD SAFE BACKTRACKING
+  //for (int i = new_stages_.size()-1; i >= 0; --i) {
+  //  foreach (SearcherStage* stage, *(new_stages_[i])) {
+  //    if (!stage->empty())
+  //      return false;
+  //  }
+  //}
 
   CVDEBUG("VerifySearcher is empty!");
   return true;
@@ -469,9 +475,9 @@ SearcherStage* VerifySearcher::get_new_stage(CVExecutionState* state) {
   CVExecutionState* next_state = stage->next_state();
 
   // Notify
-  lock_.unlock();
+  //lock_.unlock();
   cv_->notify_all(ExecutionEvent(CV_SEARCHER_NEW_STAGE, next_state, state));
-  lock_.lock();
+  //lock_.lock();
 
   // Reset property values
   next_state->property()->reset();

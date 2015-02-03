@@ -19,6 +19,7 @@
 
 #include "../Core/Searcher.h"
 #include "klee/util/Mutex.h"
+#include "klee/util/Atomic.h"
 
 #include <boost/unordered_map.hpp>
 #include <stack>
@@ -217,6 +218,8 @@ class SearcherStageThreadedImpl : public SearcherStage {
  public:
   SearcherStageThreadedImpl(CVExecutionState* root) {
 
+    size_ = 0;
+
     // Set new root state
     cache_.set_root(root);
 
@@ -246,7 +249,8 @@ class SearcherStageThreadedImpl : public SearcherStage {
   }
 
   size_t size() {
-    return collection_.size();
+    //assert(size_ == collection_.size());
+    return size_;
   }
 
   size_t cache_size() {
@@ -284,6 +288,7 @@ class SearcherStageThreadedImpl : public SearcherStage {
     {
       return NULL;
     }
+    --size_;
     ExecutionStateProperty* next = collection_.top();
     collection_.pop();
     live_set_.insert(next);
@@ -302,8 +307,10 @@ class SearcherStageThreadedImpl : public SearcherStage {
       cache_.insert(std::make_pair(state->property(),state));
     }
 
-    if (cache_.rebuild_property() == NULL)
+    if (cache_.rebuild_property() == NULL) {
       collection_.push(state->property());
+      ++size_;
+    }
   }
 
   // Remove the state from this stage permanently
@@ -322,6 +329,7 @@ class SearcherStageThreadedImpl : public SearcherStage {
     while (!collection_.empty()) {
       CVExecutionState* state = cache_[collection_.top()];
       cache_.erase(state->property());
+      --size_;
       collection_.pop();
       state->erase_self_permanent();
     }
@@ -333,6 +341,7 @@ class SearcherStageThreadedImpl : public SearcherStage {
     while (!collection_.empty()) {
       //assert(collection_.top()->edit_distance == INT_MAX);
       states.push_back(collection_.top());
+      --size_;
       collection_.pop();
     }
     assert(collection_.empty());
@@ -341,6 +350,7 @@ class SearcherStageThreadedImpl : public SearcherStage {
   void set_states(std::vector<ExecutionStateProperty*> &states) {
     for (unsigned i=0; i<states.size(); ++i) {
       collection_.push(states[i]);
+      ++size_;
     }
   }
 
@@ -348,6 +358,7 @@ class SearcherStageThreadedImpl : public SearcherStage {
   std::set<ExecutionStateProperty*> live_set_;
   StateCache cache_;
   Collection collection_;
+  klee::Atomic<size_t>::type size_;
 };
 
 
@@ -401,6 +412,11 @@ class VerifySearcher : public CVSearcher {
   virtual void update(klee::ExecutionState *current,
                       const std::set<klee::ExecutionState*> &addedStates,
                       const std::set<klee::ExecutionState*> &removedStates);
+  virtual klee::ExecutionState* updateAndTrySelectState(
+      klee::ExecutionState *current,
+      const std::set<klee::ExecutionState*> &addedStates,
+      const std::set<klee::ExecutionState*> &removedStates);
+
   virtual bool empty();
   virtual klee::ExecutionState* trySelectState();
   virtual void printName(std::ostream &os) { os << "VerifySearcher\n"; }
