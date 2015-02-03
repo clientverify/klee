@@ -264,11 +264,12 @@ void Executor::initializePerThread(ExecutionState &state, MemoryManager* memory)
 bool Executor::PauseExecution() {
   if (totalThreadCount > 1) {
     if (!haltExecution && pauseExecutionMutex.try_lock()) {
-      Mutex lock;
-      UniqueLock guard(lock);
 
       // Set pauseExecution condition
-      pauseExecution = true;
+      {
+        LockGuard searcherCondGuard(searcherCondLock);
+        pauseExecution = true;
+      }
 
       // Wake up all threads and wait at first barrier
       searcherCond.notify_all();

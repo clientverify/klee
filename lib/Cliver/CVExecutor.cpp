@@ -349,10 +349,6 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
 
 void CVExecutor::execute(klee::ExecutionState *initialState,
                          klee::MemoryManager *memory) {
-  klee::Mutex lock;
-
-  klee::UniqueLock guard(lock);
-
   // Initialize thread specific globals and objects
   initializePerThread(*initialState, memory);
 
@@ -371,7 +367,13 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
   threadBarrier->wait();
 
   klee::ExecutionState *statePtr = NULL;
+
+  threadInstCount.reset(new unsigned());
+  *threadInstCount = 0;
+
+  unsigned instCountBeforeUpdate = 0;
   while (!empty() && !haltExecution) {
+
 
     if (statePtr == NULL) {
       statePtr = searcher->trySelectState();
@@ -383,6 +385,7 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
       klee::KInstruction *ki = state.pc;
       stepInstruction(state);
       executeInstruction(state, ki);
+      ++(*threadInstCount);
 
       // XXX Process timers in cliver?
       //processTimers(&state, klee::MaxInstructionTime);
@@ -423,16 +426,18 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
     while (pauseExecution
            || (!statePtr && searcher->empty() && !empty() && !haltExecution)) {
 
-      if (statePtr) {
+      if (pauseExecution && statePtr) {
         searcher->update(statePtr,
                          std::set<klee::ExecutionState*>(),
                          std::set<klee::ExecutionState*>());
         statePtr = NULL;
       }
 
-      if (!pauseExecution) {
-        if (klee::UseThreads > 1)
-          searcherCond.wait(guard);
+      if (klee::UseThreads >= 1) {
+        klee::UniqueLock searcherCondGuard(searcherCondLock);
+        if (!pauseExecution) {
+          searcherCond.wait(searcherCondGuard);
+        }
       }
 
       if (pauseExecution) {
@@ -514,6 +519,10 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
   // Release TSS memory (i.e., don't destroy with thread); the memory manager
   // for this thread may still be needed in dumpState
   this->memory.release();
+
+  // Print per-thread stats
+  klee::LockGuard initializationLockGuard(initializationLock);
+  CVMESSAGE("Thread: " << klee::GetThreadID() << " executed " << *threadInstCount << " instructions");
 }
 
 #if 1

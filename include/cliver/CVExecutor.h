@@ -150,6 +150,8 @@ class CVExecutor : public klee::Executor {
 
   klee::Mutex memory_lock_;
   klee::OnceFlag searcher_init_flag_;
+
+  klee::ThreadSpecificPointer<unsigned>::type threadInstCount;
 };
 
 } // end cliver namespace

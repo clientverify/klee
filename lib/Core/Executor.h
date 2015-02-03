@@ -140,6 +140,7 @@ protected:
 
   /// Used to communicate to other threads when new states have been added
   ConditionVariable searcherCond;
+  Mutex searcherCondLock;
 
   /// Used to wait until all threads have been initialized before executing
   /// states
