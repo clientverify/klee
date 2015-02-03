@@ -441,7 +441,7 @@ bool ParallelBatchingSearcher::empty() {
 void ParallelBatchingSearcher::update(ExecutionState *current,
                               const std::set<ExecutionState*> &addedStates,
                               const std::set<ExecutionState*> &removedStates) {
-  if (addedStates.size() || removedStates.size()) {
+  if (lastState.get() != current || addedStates.size() || removedStates.size()) {
     lastState.reset(0);
     baseSearcher->update(current, addedStates, removedStates);
   }
