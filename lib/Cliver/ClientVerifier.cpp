@@ -24,6 +24,7 @@
 #include "ExternalHandlers.h"
 
 #include "klee/Internal/Module/KModule.h"
+#include "klee/util/Mutex.h"
 #include "../lib/Core/SpecialFunctionHandler.h"
 #include "../lib/Core/CoreStats.h"
 #include "../lib/Solver/SolverStats.h"
@@ -69,6 +70,9 @@ llvm::cl::opt<bool>
 CopyInputFilesToOutputDir("copy-input-files-to-output-dir", llvm::cl::init(false));
 
 llvm::cl::opt<bool> 
+BasicBlockEventFlag("basic-block-event-flag", llvm::cl::init(false));
+
+llvm::cl::opt<bool>
 RebuildSolvers("rebuild-solvers", llvm::cl::init(false));
 
 llvm::cl::opt<bool> 
@@ -378,8 +382,15 @@ void ClientVerifier::notify_all(ExecutionEvent ev) {
   foreach (ExecutionObserver* observer, observers_) {
     observer->notify(ev);
   }
-  if (ev.state)
-    ev.state->set_event_flag(true);
+  // We set the event flag if this event relates to a state
+  // To minimize the number of events, we don't set if the event_type
+  // is BASICBLOCK_ENTRY (unless this is explicitly disabled by
+  // BasicBlockEventFlag (false by default)
+  if (ev.state) {
+    if (ev.event_type != CV_BASICBLOCK_ENTRY || BasicBlockEventFlag) {
+      ev.state->set_event_flag(true);
+    }
+  }
 }
 
 CVSearcher* ClientVerifier::searcher() {
