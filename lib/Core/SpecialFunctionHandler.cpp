@@ -29,9 +29,16 @@
 #include "llvm/Module.h"
 #endif
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/CommandLine.h"
 
 #include <errno.h>
 #include <iostream>
+
+namespace klee {
+  extern llvm::cl::opt<bool> AlwaysOutputSeeds;
+  extern llvm::cl::opt<bool> OnlyOutputStatesCoveringNew;
+  extern llvm::cl::opt<bool> OutputIStats;
+}
 
 using namespace llvm;
 using namespace klee;
@@ -749,7 +756,13 @@ void SpecialFunctionHandler::handleMakeSymbolic(ExecutionState &state,
   for (Executor::ExactResolutionList::iterator it = rl.begin(), 
          ie = rl.end(); it != ie; ++it) {
     const MemoryObject *mo = it->first.first;
-    mo->setName(name);
+
+    // Only set memory object name if will be used by recording or replaying
+    // seed values, otherwise if the same memory object is declared symbolic
+    // multiple times, we will have an error where the name is overwritten
+    if (!OnlyOutputStatesCoveringNew || OutputIStats || AlwaysOutputSeeds ||
+        executor.usingSeeds || executor.replayOut != NULL)
+      mo->setName(name);
     
     const ObjectState *old = it->first.second;
     ExecutionState *s = it->second;
