@@ -28,7 +28,7 @@ static int read_uint32(FILE *f, unsigned *value_out) {
   unsigned char data[4];
   if (fread(data, 4, 1, f)!=1)
     return 0;
-  *value_out = (((((data[0]<<8) + data[1])<<8) + data[2])<<8) + data[3];
+  *value_out = ((((((uint64_t)data[0]<<8) + (uint64_t)data[1])<<8) + (uint64_t)data[2])<<8) + (uint64_t)data[3];
   return 1;
 }
 
@@ -45,7 +45,7 @@ static int read_uint64(FILE *f, uint64_t *value_out) {
   unsigned char data[8];
   if (fread(data, 8, 1, f)!=1)
     return 0;
-  *value_out = (((((((((((( (data[0]<<8) + data[1])<<8) + data[2])<<8) + data[3])<<8) + data[4])<<8) + data[5])<<8) + data[6])<<8) + data[7];
+  *value_out = (((((((((((( ((uint64_t)data[0]<<8) + (uint64_t)data[1])<<8) + (uint64_t)data[2])<<8) + (uint64_t)data[3])<<8) + (uint64_t)data[4])<<8) + (uint64_t)data[5])<<8) + (uint64_t)data[6])<<8) + (uint64_t)data[7];
   return 1;
 }
 
