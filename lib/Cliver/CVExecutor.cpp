@@ -382,6 +382,8 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
     if (statePtr != NULL && !haltExecution) {
       klee::ExecutionState &state = *statePtr;
 
+      static_cast<CVExecutionState*>(&state)->set_event_flag(false);
+
       klee::KInstruction *ki = state.pc;
       stepInstruction(state);
       executeInstruction(state, ki);
