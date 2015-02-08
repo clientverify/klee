@@ -67,17 +67,20 @@ public:
   // This is a module pass because it can add and delete module
   // variables (via intrinsic lowering).
 class IntrinsicCleanerPass : public llvm::ModulePass {
-  static char ID;
 #if LLVM_VERSION_CODE <= LLVM_VERSION(3, 1)
-  const llvm::TargetData &TargetData;
+  const llvm::TargetData *TargetData;
 #else
-  const llvm::DataLayout &DataLayout;
+  const llvm::DataLayout *DataLayout;
 #endif
   llvm::IntrinsicLowering *IL;
   bool LowerIntrinsics;
 
   bool runOnBasicBlock(llvm::BasicBlock &b, llvm::Module &M);
 public:
+  static char ID;
+  IntrinsicCleanerPass()
+    : llvm::ModulePass(ID), IL(0), LowerIntrinsics(false) {}
+
 #if LLVM_VERSION_CODE <= LLVM_VERSION(3, 1)
   IntrinsicCleanerPass(const llvm::TargetData &TD,
 #else
@@ -86,13 +89,13 @@ public:
                        bool LI=true)
     : llvm::ModulePass(ID),
 #if LLVM_VERSION_CODE <= LLVM_VERSION(3, 1)
-      TargetData(TD),
+      TargetData(&TD),
 #else
-      DataLayout(TD),
+      DataLayout(&TD),
 #endif
       IL(new llvm::IntrinsicLowering(TD)),
       LowerIntrinsics(LI) {}
-  ~IntrinsicCleanerPass() { delete IL; } 
+  ~IntrinsicCleanerPass() { if (IL) delete IL; }
   
   virtual bool runOnModule(llvm::Module &M);
 };
@@ -110,9 +113,9 @@ public:
   //    the transfer to execute the instructions in order instead
   //    of in two passes.
 class PhiCleanerPass : public llvm::FunctionPass {
+public:
   static char ID;
 
-public:
   PhiCleanerPass() : llvm::FunctionPass(ID) {}
   
   virtual bool runOnFunction(llvm::Function &f);

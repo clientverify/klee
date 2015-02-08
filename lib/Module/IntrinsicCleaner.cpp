@@ -55,6 +55,11 @@ namespace klee {
 char IntrinsicCleanerPass::ID;
 
 bool IntrinsicCleanerPass::runOnModule(Module &M) {
+#if LLVM_VERSION_CODE <= LLVM_VERSION(3, 1)
+  this->TargetData = new llvm::TargetData(&M);
+#else
+  this->DataLayout = new llvm::DataLayout(&M);
+#endif
   bool dirty = false;
   for (Module::iterator f = M.begin(), fe = M.end(); f != fe; ++f)
     for (Function::iterator b = f->begin(), be = f->end(); b != be; ++b)
@@ -68,9 +73,9 @@ bool IntrinsicCleanerPass::runOnBasicBlock(BasicBlock &b, Module &M) {
   bool dirty = false;
   
 #if LLVM_VERSION_CODE <= LLVM_VERSION(3, 1)
-  unsigned WordSize = TargetData.getPointerSizeInBits() / 8;
+  unsigned WordSize = TargetData->getPointerSizeInBits() / 8;
 #else
-  unsigned WordSize = DataLayout.getPointerSizeInBits() / 8;
+  unsigned WordSize = DataLayout->getPointerSizeInBits() / 8;
 #endif
   for (BasicBlock::iterator i = b.begin(), ie = b.end(); i != ie;) {     
     IntrinsicInst *ii = dyn_cast<IntrinsicInst>(&*i);
