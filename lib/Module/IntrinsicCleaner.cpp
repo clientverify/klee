@@ -166,7 +166,8 @@ bool IntrinsicCleanerPass::runOnBasicBlock(BasicBlock &b, Module &M) {
         F->setDoesNotThrow();
 
         CallInst::Create(F, Twine(), ii);
-        new UnreachableInst(getGlobalContext(), ii);
+        if (dyn_cast<UnreachableInst>(&*i) == NULL)
+          new UnreachableInst(getGlobalContext(), ii);
 
         ii->eraseFromParent();
 
