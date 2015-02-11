@@ -142,7 +142,6 @@ public:
   ViterbiDecoder(const std::vector<double>& priors,
 		 const std::vector<std::vector<double> >& trans,
 		 const std::vector<std::vector<double> >& emis);
-  ~ViterbiDecoder();
 
   // Add new observed emission
   void addEmission(int e);
@@ -154,6 +153,9 @@ public:
   std::vector<int> getDecoding() const; // output most likely state sequence
   std::vector<double> getFinalStateProbabilities() const; // P for each state
   std::vector<int> getEmissionHistory() const {return emission_sequence;}
+
+  // Self-test
+  static int test();
 
 private:
   std::vector<double> logp_priors; // initial log probabilities
@@ -170,7 +172,7 @@ private:
 template<class T>
 size_t max_element_in_column(const std::vector<std::vector<T> >& m, size_t col)
 {
-  T current_max = -std::numeric_limits<T>::lowest();
+  T current_max = std::numeric_limits<T>::lowest();
   size_t current_max_index = 0;
   for (size_t i = 0; i < m.size(); ++i) {
     if (m[i][col] > current_max) {
@@ -216,6 +218,20 @@ double logsum(std::vector<double> v)
   return log(sum) + max;
 }
 
+template<class T>
+void print_vector(const std::vector<T>& v)
+{
+  for (size_t i = 0; i < v.size(); ++i)
+    std::cout << v[i] << ' ';
+  std::cout << '\n';
+}
+
+template<class T>
+void print_matrix(const std::vector<std::vector<T> >& m)
+{
+  for (size_t i = 0; i < m.size(); ++i)
+    print_vector(m[i]);
+}
 
 ViterbiDecoder::ViterbiDecoder(const std::vector<double>& priors,
 			       const std::vector<std::vector<double> >& trans,
@@ -257,7 +273,7 @@ ViterbiDecoder::addEmission(int e)
     // j->i and the emission probability i->e.
     for (size_t j = 0; j < viterbi_table.size(); ++j) {
       candidate_logp.push_back(previous_logp[j] +
-			       logp_trans[j][i] +
+			       logp_trans[i][j] +
 			       logp_emis[i][e]);
     }
     int winner = max_element_in_vector(candidate_logp);
@@ -295,7 +311,7 @@ std::vector<int>
 ViterbiDecoder::getDecoding() const
 {
   std::vector<int> decoding;
-  size_t lastcol = viterbi_table.size()-1;
+  size_t lastcol = viterbi_table[0].size()-1;
   int winner = (int)max_element_in_column(viterbi_table, lastcol);
   decoding.push_back(winner);
   for (size_t col = lastcol; col > 0; --col) {
@@ -303,7 +319,66 @@ ViterbiDecoder::getDecoding() const
     decoding.push_back(winner);
   }
   std::reverse(decoding.begin(), decoding.end());
+  assert(decoding.size() == emission_sequence.size());
   return decoding;
+}
+
+// Replicate matlab example
+// trans = [0.95,0.05;
+//          0.10,0.90];
+// emis = [1/6 1/6 1/6 1/6 1/6 1/6;
+//    1/10 1/10 1/10 1/10 1/10 1/2];
+// [seq,states] = hmmgenerate(10,trans,emis);
+// estimatedStates = hmmviterbi(seq,trans,emis);
+int
+ViterbiDecoder::test()
+{
+  using namespace std;
+  using namespace cliver;
+  vector<vector<double> > trans, emis;
+  trans.push_back(vector<double>({0.95,0.05}));
+  trans.push_back(vector<double>({0.10,0.90}));
+  const double x = 1.0/6.0; //fair
+  emis.push_back(vector<double>({x,x,x,x,x,x}));
+  emis.push_back(vector<double>({0.01,0.01,0.01,0.01,0.01,0.95}));
+  vector<double> priors({1.0,0.0});
+  vector<int> seq({4,1,3,4,5,5,3,0,0,1,5,1,4,1,5,2,5,5,5,5});
+  vector<int> correct_states({0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1});
+
+  ViterbiDecoder vd(priors, trans, emis);
+  for (size_t i = 0; i < seq.size(); ++i)
+    vd.addEmission(seq[i]);
+  vector<int> estimated_states = vd.getDecoding();
+
+  cout << "Transition matrix:\n";
+  print_matrix(trans);
+  cout << "Emission matrix:\n";
+  print_matrix(emis);
+  cout << "Priors: ";
+  print_vector(priors);
+  cout << "Emission sequence: ";
+  print_vector(seq);
+  cout << "Correct states: ";
+  print_vector(correct_states);
+  cout << "Estimated states: ";
+  print_vector(estimated_states);
+  cout << "Viterbi table:\n";
+  print_matrix(vd.viterbi_table);
+  cout << "Backward links:\n";
+  print_matrix(vd.backward_links);
+  cout << "Final state probabilities: ";
+  print_vector(vd.getFinalStateProbabilities());
+
+  for (size_t i = 0; i < correct_states.size(); ++i) {
+    if (estimated_states[i] != correct_states[i]) {
+      cv_error("HMM self-test failed :-(\n");
+      return 2;
+    }
+  }
+
+  cout << "HMM self-test succeeded!\n";
+
+  return 0;
 }
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -361,7 +436,6 @@ void sequence_alloc_print(void)
   ghmm_dseq_free(&seq_array);
 }
 
-
 //===----------------------------------------------------------------------===//
 // main
 //===----------------------------------------------------------------------===//
@@ -380,7 +454,8 @@ int main(int argc, char **argv, char **envp) {
   {
     case HMMTest:
       {
-        sequence_alloc_print();
+	std::cout << "Running HMM self-test...\n";
+	ret += ViterbiDecoder::test();
         break;
       }
     case HMMTrain:
