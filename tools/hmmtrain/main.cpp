@@ -81,6 +81,7 @@
 #include <sstream>
 #include <limits>
 #include <cmath>
+#include <algorithm>
 
 namespace {
 
@@ -132,37 +133,27 @@ llvm::cl::list<std::string> InputEmissionMatrix("input-emis",
 
 cliver::CVStream *g_cvstream;
 
+///////////////////////////////////////////////////////////////////////////////
 // Viterbi Decoder where states and emissions are labeled by integers 0...(N-1)
 // Caveat: This decoder is 0-indexed whereas MATLAB is 1-indexed.
+///////////////////////////////////////////////////////////////////////////////
 class ViterbiDecoder {
 public:
   ViterbiDecoder(const std::vector<double>& priors,
 		 const std::vector<std::vector<double> >& trans,
-		 const std::vector<std::vector<double> >& emis) :
-    logp_priors(priors), logp_trans(trans), logp_emis(emis),
-    viterbi_table(trans.size(), std::vector<double>()),
-    backward_links(trans.size(), std::vector<int>())
-  {
-    for (size_t i = 0; i < logp_priors.size(); ++i)
-      logp_priors[i] = log(logp_priors[i]);
-
-    for (size_t i = 0; i < logp_trans.size(); ++i)
-      for (size_t j = 0; j < logp_trans[i].size(); ++j)
-	logp_trans[i][j] = log(logp_trans[i][j]);
-    
-    for (size_t i = 0; i < logp_emis.size(); ++i)
-      for (size_t j = 0; j < logp_emis[i].size(); ++j)
-	logp_emis[i][j] = log(logp_emis[i][j]);
-  }
+		 const std::vector<std::vector<double> >& emis);
   ~ViterbiDecoder();
 
   // Add new observed emission
   void addEmission(int e);
-  void addEmissionSequence(std::vector<int> ee);
   
-  // could change with future info
+  // Retrieve results (note that the optimal decoding will change as
+  // more emissions are added).
+  int getNumStates() const {return logp_trans.size();}
+  int getNumEmissions() const {return logp_emis[0].size();}
   std::vector<int> getDecoding() const; // output most likely state sequence
-  int getDecodingFinalState() const; // get final state of decoding only
+  std::vector<double> getFinalStateProbabilities() const; // P for each state
+  std::vector<int> getEmissionHistory() const {return emission_sequence;}
 
 private:
   std::vector<double> logp_priors; // initial log probabilities
@@ -171,13 +162,17 @@ private:
 
   std::vector<std::vector<double> > viterbi_table;
   std::vector<std::vector<int> > backward_links;
+  std::vector<int> emission_sequence; // history of emissions added
 };
-
-int max_element_in_column(const std::vector<std::vector<double> > m, int col)
+///////////////////////////////////////////////////////////////////////////////
+// Viterbi Decoder implementation
+///////////////////////////////////////////////////////////////////////////////
+template<class T>
+size_t max_element_in_column(const std::vector<std::vector<T> >& m, size_t col)
 {
-  double current_max = - std::numeric_limits<double>::max();
-  int current_max_index = 0;
-  for (int i = 0; i < (int)m.size(); ++i) {
+  T current_max = -std::numeric_limits<T>::lowest();
+  size_t current_max_index = 0;
+  for (size_t i = 0; i < m.size(); ++i) {
     if (m[i][col] > current_max) {
       current_max = m[i][col];
       current_max_index = i;
@@ -185,6 +180,133 @@ int max_element_in_column(const std::vector<std::vector<double> > m, int col)
   }
   return current_max_index;
 }
+
+template<class T>
+int max_element_in_vector(const std::vector<T>& v)
+{
+  return (int)std::distance(v.begin(), std::max_element(v.begin(), v.end()));
+}
+
+template<class T>
+std::vector<T> extract_column(const std::vector<std::vector<T> >& m, int col)
+{
+  std::vector<T> column;
+  for (size_t i = 0; i < m.size(); ++i)
+    column.push_back(m[i][col]);
+  return column;
+}
+
+static
+double safelog(double x)
+{
+  if (x <= 0.0)
+    return -1000000.0;
+  else
+    return log(x);
+}
+
+// Equivalent to log(sum(exp(vec))) without underflow problems.
+static
+double logsum(std::vector<double> v)
+{
+  double max = *std::max_element(v.begin(), v.end());
+  double sum = 0.0;
+  for (size_t i = 0; i < v.size(); ++i)
+    sum += exp(v[i] - max);
+  return log(sum) + max;
+}
+
+
+ViterbiDecoder::ViterbiDecoder(const std::vector<double>& priors,
+			       const std::vector<std::vector<double> >& trans,
+			       const std::vector<std::vector<double> >& emis) :
+  logp_priors(priors), logp_trans(trans), logp_emis(emis),
+  viterbi_table(trans.size(), std::vector<double>()),
+  backward_links(trans.size(), std::vector<int>())
+{
+  for (size_t i = 0; i < logp_priors.size(); ++i)
+    logp_priors[i] = safelog(logp_priors[i]);
+
+  for (size_t i = 0; i < logp_trans.size(); ++i)
+    for (size_t j = 0; j < logp_trans[i].size(); ++j)
+      logp_trans[i][j] = safelog(logp_trans[i][j]);
+    
+  for (size_t i = 0; i < logp_emis.size(); ++i)
+    for (size_t j = 0; j < logp_emis[i].size(); ++j)
+      logp_emis[i][j] = safelog(logp_emis[i][j]);
+}
+
+void
+ViterbiDecoder::addEmission(int e)
+{
+  assert(e < (int)logp_emis[0].size());
+  bool first_emission = emission_sequence.empty();
+  emission_sequence.push_back(e);
+
+  // Grab last column (or priors)
+  int lastcol = (int)viterbi_table[0].size()-1;
+  std::vector<double> previous_logp =
+    first_emission ? logp_priors : extract_column(viterbi_table, lastcol);
+  
+  // Add a column to the viterbi table (dynamic programming),
+  // while updating the backward links.
+  for (size_t i = 0; i < viterbi_table.size(); ++i) {
+    std::vector<double> candidate_logp;
+    // For each possible previous state 'j', compute the probability
+    // that the next state is 'i' based on the transition probability
+    // j->i and the emission probability i->e.
+    for (size_t j = 0; j < viterbi_table.size(); ++j) {
+      candidate_logp.push_back(previous_logp[j] +
+			       logp_trans[j][i] +
+			       logp_emis[i][e]);
+    }
+    int winner = max_element_in_vector(candidate_logp);
+    viterbi_table[i].push_back(candidate_logp[winner]);
+    backward_links[i].push_back(winner);
+  }
+  
+  return;
+}
+
+std::vector<double>
+ViterbiDecoder::getFinalStateProbabilities() const
+{
+  // Normalize and exponentiate log probabilities in the final column
+  std::vector<double> final_p;
+  // no input data
+  if (emission_sequence.empty()) {
+    for (size_t i = 0; i < logp_priors.size(); ++i) {
+      final_p.push_back(exp(logp_priors[i]));
+    }
+    return final_p;
+  }
+  // normal operation
+  std::vector<double> final_logp =
+    extract_column(viterbi_table, (int)viterbi_table[0].size()-1);
+  double sum_logp = logsum(final_logp);
+  for (size_t i = 0; i < final_logp.size(); ++i) {
+    double log_prob = final_logp[i] - sum_logp;
+    final_p.push_back(exp(log_prob));
+  }
+  return final_p;
+}
+
+std::vector<int>
+ViterbiDecoder::getDecoding() const
+{
+  std::vector<int> decoding;
+  size_t lastcol = viterbi_table.size()-1;
+  int winner = (int)max_element_in_column(viterbi_table, lastcol);
+  decoding.push_back(winner);
+  for (size_t col = lastcol; col > 0; --col) {
+    winner = backward_links[winner][col];
+    decoding.push_back(winner);
+  }
+  std::reverse(decoding.begin(), decoding.end());
+  return decoding;
+}
+///////////////////////////////////////////////////////////////////////////////
+
 
 int DoHMMPredict()
 {
@@ -217,6 +339,8 @@ int DoHMMPredict()
   //   CVMESSAGE(*tobj);
   //   CVMESSAGE("(" << tobj->name << ") " << tobj->trace);
   // }
+
+  return 0;
 }
 
 void sequence_alloc_print(void)
