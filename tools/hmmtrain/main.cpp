@@ -163,7 +163,7 @@ private:
   std::vector<std::vector<double> > logp_emis; // emission log probabilities
 
   std::vector<std::vector<double> > viterbi_table;
-  std::vector<std::vector<int> > backward_links;
+  std::vector<std::vector<int> > backward_links; // pointers to previous state
   std::vector<int> emission_sequence; // history of emissions added
 };
 ///////////////////////////////////////////////////////////////////////////////
@@ -259,26 +259,37 @@ ViterbiDecoder::addEmission(int e)
   bool first_emission = emission_sequence.empty();
   emission_sequence.push_back(e);
 
-  // Grab last column (or priors)
-  int lastcol = (int)viterbi_table[0].size()-1;
-  std::vector<double> previous_logp =
-    first_emission ? logp_priors : extract_column(viterbi_table, lastcol);
-  
-  // Add a column to the viterbi table (dynamic programming),
-  // while updating the backward links.
-  for (size_t i = 0; i < viterbi_table.size(); ++i) {
-    std::vector<double> candidate_logp;
-    // For each possible previous state 'j', compute the probability
-    // that the next state is 'i' based on the transition probability
-    // j->i and the emission probability i->e.
-    for (size_t j = 0; j < viterbi_table.size(); ++j) {
-      candidate_logp.push_back(previous_logp[j] +
-			       logp_trans[i][j] +
-			       logp_emis[i][e]);
+  if (first_emission) {
+    // Add first column to the viterbi table (dynamic programming).
+    // The probability of the first state being 'i' is the prior
+    // probability of starting in state 'i' times the emission
+    // probability i->e.
+    for (size_t i = 0; i < viterbi_table.size(); ++i) {
+      viterbi_table[i].push_back(logp_priors[i] + logp_emis[i][e]);
+      backward_links[i].push_back(-1); // start state has no previous state
     }
-    int winner = max_element_in_vector(candidate_logp);
-    viterbi_table[i].push_back(candidate_logp[winner]);
-    backward_links[i].push_back(winner);
+  }
+  else {
+    // Grab last column
+    int lastcol = (int)viterbi_table[0].size()-1;
+    std::vector<double> previous_logp = extract_column(viterbi_table, lastcol);
+  
+    // Add a column to the viterbi table (dynamic programming),
+    // while updating the backward links.
+    for (size_t i = 0; i < viterbi_table.size(); ++i) {
+      std::vector<double> candidate_logp;
+      // For each possible previous state 'j', compute the probability
+      // that the next state is 'i' based on the transition probability
+      // j->i and the emission probability i->e.
+      for (size_t j = 0; j < viterbi_table.size(); ++j) {
+	candidate_logp.push_back(previous_logp[j] +
+				 logp_trans[j][i] +
+				 logp_emis[i][e]);
+      }
+      int winner = max_element_in_vector(candidate_logp);
+      viterbi_table[i].push_back(candidate_logp[winner]);
+      backward_links[i].push_back(winner);
+    }
   }
   
   return;
@@ -341,7 +352,7 @@ ViterbiDecoder::test()
   const double x = 1.0/6.0; //fair
   emis.push_back(vector<double>({x,x,x,x,x,x}));
   emis.push_back(vector<double>({0.01,0.01,0.01,0.01,0.01,0.95}));
-  vector<double> priors({1.0,0.0});
+  vector<double> priors({0.4,0.6});
   vector<int> seq({4,1,3,4,5,5,3,0,0,1,5,1,4,1,5,2,5,5,5,5});
   vector<int> correct_states({0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1});
 
@@ -358,9 +369,9 @@ ViterbiDecoder::test()
   print_vector(priors);
   cout << "Emission sequence: ";
   print_vector(seq);
-  cout << "Correct states: ";
+  cout << "Correct states:    ";
   print_vector(correct_states);
-  cout << "Estimated states: ";
+  cout << "Estimated states:  ";
   print_vector(estimated_states);
   cout << "Viterbi table:\n";
   print_matrix(vd.viterbi_table);
@@ -369,15 +380,12 @@ ViterbiDecoder::test()
   cout << "Final state probabilities: ";
   print_vector(vd.getFinalStateProbabilities());
 
+  // Check answers
   for (size_t i = 0; i < correct_states.size(); ++i) {
     if (estimated_states[i] != correct_states[i]) {
-      cv_error("HMM self-test failed :-(\n");
       return 2;
     }
   }
-
-  cout << "HMM self-test succeeded!\n";
-
   return 0;
 }
 ///////////////////////////////////////////////////////////////////////////////
@@ -456,6 +464,8 @@ int main(int argc, char **argv, char **envp) {
       {
 	std::cout << "Running HMM self-test...\n";
 	ret += ViterbiDecoder::test();
+	std::cout << "HMM self-test " << (ret==0 ? "succeeded" : "failed")
+		  << "!\n";
         break;
       }
     case HMMTrain:
