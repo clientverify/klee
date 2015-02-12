@@ -245,7 +245,7 @@ class LevenshteinRadixTree
     update_suffix(suffix);
   }
 
-  virtual int min_distance() { return min_distance_; }
+  virtual double min_distance() { return (double) min_distance_; }
 
   virtual int row() { return row_; }
 
@@ -470,7 +470,7 @@ class KLevenshteinRadixTree
     }
   }
 
-  virtual int min_distance() { return min_prefix_distance_; }
+  virtual double min_distance() { return (double) min_prefix_distance_; }
 
   virtual int row() { return row_; }
 

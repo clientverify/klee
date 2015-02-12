@@ -90,7 +90,7 @@ class EditDistanceTreeEquivalenceTest
     }
   }
 
-  virtual int  min_distance() {
+  virtual double min_distance() {
     std::vector<int> results(impl_.size());
     bool all_equal = true;
     for (unsigned i=0; i<impl_.size(); ++i) {
@@ -107,7 +107,7 @@ class EditDistanceTreeEquivalenceTest
       cv_error("min_distance() implementations are not equivalent");
     }
     //CVMESSAGE("min_distance(): " << results[0] << ", " << results[1]);
-    return results[0];
+    return (double) results[0];
   }
 
   virtual int row() {
