@@ -16,11 +16,12 @@
 #include <ghmm/sequence.h>
 
 #include "../../lib/Core/Common.h"
-#include "../../lib/Cliver/CVCommon.h"
+// #include "../../lib/Cliver/CVCommon.h"
 #include "cliver/ClientVerifier.h"
 #include "cliver/CVExecutor.h"
 #include "cliver/CVStream.h"
 #include "cliver/Training.h"
+#include "cliver/JaccardTree.h"
 
 #include "klee/Config/config.h"
 #include "klee/ExecutionState.h"
@@ -449,6 +450,8 @@ void sequence_alloc_print(void)
 //===----------------------------------------------------------------------===//
 int main(int argc, char **argv, char **envp) {
   using namespace llvm;
+  using namespace cliver;
+  using namespace std;
 
   llvm::cl::ParseCommandLineOptions(argc, argv, " hmmtrain\n");
 
@@ -462,10 +465,18 @@ int main(int argc, char **argv, char **envp) {
   {
     case HMMTest:
       {
-	std::cout << "Running HMM self-test...\n";
-	ret += ViterbiDecoder::test();
-	std::cout << "HMM self-test " << (ret==0 ? "succeeded" : "failed")
-		  << "!\n";
+	int r;
+	cout << "Running HMM self-test...\n";
+	r = ViterbiDecoder::test();
+	ret += r;
+	cout << "HMM self-test " << (r==0 ? "succeeded" : "failed")
+	     << "!\n";
+
+	cout << "Running JaccardTree self-test...\n";
+	r = JaccardTree<vector<int>,int>::test();
+	ret += r;
+	cout << "JaccardTree self-test " << (r==0 ? "succeeded" : "failed")
+	     << "!\n";
         break;
       }
     case HMMTrain:
