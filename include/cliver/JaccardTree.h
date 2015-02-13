@@ -26,7 +26,7 @@ namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/// JaccardTree: Used to compute the edit distance from a single
+/// JaccardTree: Used to compute the Jaccard distance from a single
 /// sequence s to a collection of sequences stored.
 /// NOTA BENE: It's not actually a tree, but it implements the
 /// EditDistanceTree interface.
