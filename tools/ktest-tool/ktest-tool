@@ -89,6 +89,9 @@ def main(args):
     op.add_option('','--skip-data', dest='skipData', action='store_true',
                   default=False,
                   help='Don\'t print data')
+    op.add_option('','--one-line', dest='oneLine', action='store_true',
+                  default=False,
+                  help='print one line summary of each ktest object')
     
     opts,args = op.parse_args()
     if not args:
@@ -97,9 +100,10 @@ def main(args):
     for file in args:
         b = KTest.fromfile(file)
         pos = 0
-        print('ktest file : %r' % file)
-        print('args       : %r' % b.args)
-        print('num objects: %r' % len(b.objects))
+        if not opts.oneLine:
+            print('ktest file : %r' % file)
+            print('args       : %r' % b.args)
+            print('num objects: %r' % len(b.objects))
         delta = 0
         for i,(name,data,tv_sec,tv_usec) in enumerate(b.objects):
             if opts.trimZeros:
@@ -110,14 +114,17 @@ def main(args):
             if delta == 0:
                 delta = secs
 
-            print('object %4d: name: %r' % (i, name))
-            print('object %4d: delta (secs): %f' % (i, secs-delta))
-            print('object %4d: size: %r' % (i, len(data)))
-            if not opts.skipData:
-                if opts.writeInts and len(data) == 4: 
-                    print('object %4d: data: %r' % (i, struct.unpack('i',str)[0]))
-                else:
-                    print('object %4d: data: %r' % (i, str))
+            if opts.oneLine:
+                print('%8d %16r %8d %f' % (i, name, len(data), secs-delta))
+            else:
+                print('object %4d: name: %r' % (i, name))
+                print('object %4d: delta (secs): %f' % (i, secs-delta))
+                print('object %4d: size: %r' % (i, len(data)))
+                if not opts.skipData:
+                    if opts.writeInts and len(data) == 4:
+                        print('object %4d: data: %r' % (i, struct.unpack('i',str)[0]))
+                    else:
+                        print('object %4d: data: %r' % (i, str))
         if file != args[-1]:
             print()
 
