@@ -170,8 +170,8 @@ class KExtensionOptTree
     std::swap(min_prefix_distance_, new_min_prefix_distance_);
   }
 
-  virtual double min_distance() {
-    return (double) min_prefix_distance_;
+  virtual int min_distance() {
+    return min_prefix_distance_;
   }
 
   virtual int row() { return row_; }
@@ -555,8 +555,8 @@ class KExtensionTree
     //  std::cout << "min_prefix_dist = INT_MAX at row_ = " << row_ << "\n";
   }
 
-  virtual double min_distance() {
-    return (double) min_prefix_distance_;
+  virtual int min_distance() {
+    return min_prefix_distance_;
   }
 
   virtual int row() { return row_; }
