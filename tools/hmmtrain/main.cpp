@@ -144,16 +144,20 @@ public:
 		 const std::vector<std::vector<double> >& trans,
 		 const std::vector<std::vector<double> >& emis);
 
-  // Add new observed emission
+  // Add new observed emission to the sequence
   void addEmission(int e);
+  std::vector<int> getEmissionSequence() const {return emission_sequence;}
+  int getSequenceLength() const {return (int)emission_sequence.size();}
   
-  // Retrieve results (note that the optimal decoding will change as
-  // more emissions are added).
+  // Number of possible states
   int getNumStates() const {return logp_trans.size();}
+  // Number of possible emission types (not the length of the emission sequence)
   int getNumEmissions() const {return logp_emis[0].size();}
   std::vector<int> getDecoding() const; // output most likely state sequence
-  std::vector<double> getFinalStateProbabilities() const; // P for each state
-  std::vector<int> getEmissionHistory() const {return emission_sequence;}
+
+  // Probability of each state for a given zero-indxed round (default:
+  // most recent round)
+  std::vector<double> getStateProbabilities(int round=-1) const;
 
   // Self-test
   static int test();
@@ -297,7 +301,7 @@ ViterbiDecoder::addEmission(int e)
 }
 
 std::vector<double>
-ViterbiDecoder::getFinalStateProbabilities() const
+ViterbiDecoder::getStateProbabilities(int round) const
 {
   // Normalize and exponentiate log probabilities in the final column
   std::vector<double> final_p;
@@ -309,8 +313,10 @@ ViterbiDecoder::getFinalStateProbabilities() const
     return final_p;
   }
   // normal operation
-  std::vector<double> final_logp =
-    extract_column(viterbi_table, (int)viterbi_table[0].size()-1);
+  if (round == -1) { // default: most recent round
+    round = (int)viterbi_table[0].size()-1;
+  }
+  std::vector<double> final_logp = extract_column(viterbi_table, round);
   double sum_logp = logsum(final_logp);
   for (size_t i = 0; i < final_logp.size(); ++i) {
     double log_prob = final_logp[i] - sum_logp;
@@ -378,8 +384,12 @@ ViterbiDecoder::test()
   print_matrix(vd.viterbi_table);
   cout << "Backward links:\n";
   print_matrix(vd.backward_links);
-  cout << "Final state probabilities: ";
-  print_vector(vd.getFinalStateProbabilities());
+  for (size_t i = 0; i < vd.getSequenceLength(); ++i) {
+    cout << "State probabilities for round " << i << ": ";
+    print_vector(vd.getStateProbabilities((int)i));
+  }
+  cout << "State probabilities for final round: ";
+  print_vector(vd.getStateProbabilities());
 
   // Check answers
   for (size_t i = 0; i < correct_states.size(); ++i) {
@@ -470,13 +480,13 @@ int main(int argc, char **argv, char **envp) {
 	r = ViterbiDecoder::test();
 	ret += r;
 	cout << "HMM self-test " << (r==0 ? "succeeded" : "failed")
-	     << "!\n";
+	     << "!\n\n";
 
 	cout << "Running JaccardTree self-test...\n";
 	r = JaccardTree<vector<int>,int>::test();
 	ret += r;
 	cout << "JaccardTree self-test " << (r==0 ? "succeeded" : "failed")
-	     << "!\n";
+	     << "!\n\n";
         break;
       }
     case HMMTrain:
