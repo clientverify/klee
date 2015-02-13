@@ -399,8 +399,32 @@ ViterbiDecoder::test()
   }
   return 0;
 }
+
+///////////////////////////////////////////////////////////////////////////////
+// Guide Path Predictor
 ///////////////////////////////////////////////////////////////////////////////
 
+
+int DoHMMTest()
+{
+  using namespace std;
+  using namespace cliver;
+  int ret = 0;
+  int r;
+  cout << "Running HMM self-test...\n";
+  r = ViterbiDecoder::test();
+  ret += r;
+  cout << "HMM self-test " << (r==0 ? "succeeded" : "failed")
+       << "!\n\n";
+
+  cout << "Running JaccardTree self-test...\n";
+  r = JaccardTree<vector<int>,int>::test();
+  ret += r;
+  cout << "JaccardTree self-test " << (r==0 ? "succeeded" : "failed")
+       << "!\n\n";
+
+  return ret;
+}
 
 int DoHMMPredict()
 {
@@ -460,8 +484,6 @@ void sequence_alloc_print(void)
 //===----------------------------------------------------------------------===//
 int main(int argc, char **argv, char **envp) {
   using namespace llvm;
-  using namespace cliver;
-  using namespace std;
 
   llvm::cl::ParseCommandLineOptions(argc, argv, " hmmtrain\n");
 
@@ -475,18 +497,7 @@ int main(int argc, char **argv, char **envp) {
   {
     case HMMTest:
       {
-	int r;
-	cout << "Running HMM self-test...\n";
-	r = ViterbiDecoder::test();
-	ret += r;
-	cout << "HMM self-test " << (r==0 ? "succeeded" : "failed")
-	     << "!\n\n";
-
-	cout << "Running JaccardTree self-test...\n";
-	r = JaccardTree<vector<int>,int>::test();
-	ret += r;
-	cout << "JaccardTree self-test " << (r==0 ? "succeeded" : "failed")
-	     << "!\n\n";
+	ret = DoHMMTest();
         break;
       }
     case HMMTrain:

@@ -126,7 +126,10 @@ class JaccardTree
     update_suffix(suffix);
   }
 
-  virtual double min_distance() { return min_distance_; }
+  // NOTE: since we must return an integer, we scale the actual Jaccard
+  // distance from [0.0, 1.0] to a large range and embed into the integers.
+  virtual int min_distance() { return (int)(min_distance_ * SCALE_FACTOR); }
+  virtual double min_distance_noscale() { return min_distance_; }
 
   virtual int row() { return num_inserted; }
 
@@ -148,6 +151,7 @@ class JaccardTree
       return 1;
     int ret = 0;
     double TOL = 1e-6; // floating point tolerance
+    double d;
 
     string x, y;
     x = "hello"; jt.add_data(x); cout << "Added guide path: " << x << '\n';
@@ -155,30 +159,33 @@ class JaccardTree
     x = "foo"; jt.add_data(x); cout << "Added guide path: " << x << '\n';
     x = ""; jt.add_data(x); cout << "Added guide path: <empty string>\n";
 
-    y = ""; jt.update(y);
-    cout << "min_distance of <empty string>: " << jt.min_distance() << '\n';
-    if (jt.min_distance() != 0.0)
+    y = ""; jt.update(y); d = jt.min_distance_noscale();
+    cout << "min_distance of <empty string>: " << d << '\n';
+    if (d != 0.0)
       ret = 2;
 
-    y = "hello"; jt.update(y);
-    cout << "min_distance of " << y << ": " << jt.min_distance() << '\n';
-    if (jt.min_distance() != 0.0)
+    y = "hello"; jt.update(y); d = jt.min_distance_noscale();
+    cout << "min_distance of " << y << ": " << d << '\n';
+    if (d != 0.0)
       ret = 2;
 
-    y = "world"; jt.update(y);
-    cout << "min_distance of " << y << ": " << jt.min_distance() << '\n';
-    if (abs(jt.min_distance() - 1.0/6.0) > TOL)
+    y = "world"; jt.update(y); d = jt.min_distance_noscale();
+    cout << "min_distance of " << y << ": " << d << '\n';
+    if (abs(d - 1.0/6.0) > TOL)
       ret = 3;
 
-    y = "hello world!"; jt.update(y);
-    cout << "min_distance of " << y << ": " << jt.min_distance() << '\n';
-    if (abs(jt.min_distance() - 1.0/3.0) > TOL)
+    y = "hello world!"; jt.update(y); d = jt.min_distance_noscale();
+    cout << "min_distance of " << y << ": " << d << '\n';
+    if (abs(d - 1.0/3.0) > TOL)
       ret = 3;
 
-    y = "foobar"; jt.update(y);
-    cout << "min_distance of " << y << ": " << jt.min_distance() << '\n';
-    if (abs(jt.min_distance() - 3.0/5.0) > TOL)
+    y = "foobar"; jt.update(y); d = jt.min_distance_noscale();
+    cout << "min_distance of " << y << ": " << d << '\n';
+    if (abs(d - 3.0/5.0) > TOL)
       ret = 3;
+
+    cout << "min_distance (with scaling) of " << y << ": " <<
+      jt.min_distance() << '\n';
 
     return ret;
   }
@@ -200,6 +207,7 @@ class JaccardTree
   // Member variables
   //===-------------------------------------------------------------------===//
 
+  const double SCALE_FACTOR = 1e7; // since we must return an integer
   const double MAX_JACCARD_DISTANCE = 1.0;
   double min_distance_ = 1.0;
   int num_inserted = 0; // may exceed current_set.size() if there are repeats
