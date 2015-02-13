@@ -24,7 +24,7 @@ class EditDistanceTree {
   virtual void update(Sequence &s_update) = 0; // set the "growing" path
   virtual void update_suffix(Sequence &s) = 0; // add suffix to "growing" path
   virtual void update_element(Element e) = 0; // add one elt to "growing" path
-  virtual double min_distance() = 0; // minimum distance to any guide path
+  virtual int  min_distance() = 0; // minimum distance to any guide path
   virtual int  row() = 0; // internal dynamic programming table "size"
   virtual void delete_shared_data() = 0;
   // The following is a semi-deep copy; prefix will be shared between clones.
