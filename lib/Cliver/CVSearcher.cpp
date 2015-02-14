@@ -39,6 +39,9 @@ StateCacheSize("state-cache-size",llvm::cl::init(INT_MAX));
 llvm::cl::opt<unsigned>
 TrainingMaxPending("training-max-pending",llvm::cl::init(1));
 
+llvm::cl::opt<bool>
+LinkFirstPass("link-first-pass",llvm::cl::init(true));
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef NDEBUG
@@ -474,9 +477,50 @@ SearcherStage* VerifySearcher::get_new_stage(CVExecutionState* state) {
   SearcherStage* stage = SearcherStageFactory::create(merger_, state);
   CVExecutionState* next_state = stage->next_state();
 
+  // Common case: parent state is a leaf node of the current stage
+  CVExecutionState* parent_state = state;
+
+  if (current_stage_) {
+    // During multipass execution, the parent stage
+    // is the stage from the previous round, and the
+    // multipass parent is the previous multi-pass stage
+    if (state->multi_pass_assignment().size()) {
+      stage->multi_pass_parent = current_stage_;
+      SearcherStage* lookup_stage = current_stage_;
+      while (lookup_stage->multi_pass_parent != NULL) {
+        lookup_stage = lookup_stage->multi_pass_parent;
+      }
+      stage->parent = lookup_stage->parent;
+      parent_state = stage->multi_pass_parent->root_state();
+    } else {
+      stage->parent = current_stage_;
+    }
+
+    // If LinkFirstPass is enabled, and we just finished a
+    // multipass stage, we notify ExecutionTreeManager
+    // that the parent of the current stage is the first multipass
+    // stage, otherwise it is the last
+    if (LinkFirstPass &&
+        state->multi_pass_assignment().size() == 0 &&
+        current_stage_->multi_pass_parent) {
+
+      SearcherStage* lookup_stage = current_stage_->multi_pass_parent;
+      while (lookup_stage->multi_pass_parent != NULL) {
+        lookup_stage = lookup_stage->multi_pass_parent;
+      }
+
+      stage->parent = lookup_stage;
+
+      parent_state = stage->parent->leaf_states.back();
+
+      // Increment round for an early pass
+      parent_state->property()->round++;
+    }
+  }
+
   // Notify
   //lock_.unlock();
-  cv_->notify_all(ExecutionEvent(CV_SEARCHER_NEW_STAGE, next_state, state));
+  cv_->notify_all(ExecutionEvent(CV_SEARCHER_NEW_STAGE, next_state, parent_state));
   //lock_.lock();
 
   // Reset property values
@@ -539,6 +583,10 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
         ExecutionStateProperty* property = state->property();
         Socket* socket = state->network_manager()->socket();
 
+        // Record successful leaf state in stage
+        current_stage_->leaf_states.push_back(state);
+
+        // Handle multipass
         if (state->multi_pass_assignment().bindings.size()
             && current_stage_ && current_stage_->root_state()) {
 

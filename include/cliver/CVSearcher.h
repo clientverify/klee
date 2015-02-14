@@ -64,7 +64,7 @@ class CVSearcher : public klee::Searcher, public ExecutionObserver {
 
 class SearcherStage {
  public:
-  SearcherStage() {}
+  SearcherStage() : parent(0), multi_pass_parent(0) {}
   virtual ~SearcherStage() {}
   virtual CVExecutionState* next_state() = 0;
   virtual CVExecutionState* root_state() = 0;
@@ -79,6 +79,10 @@ class SearcherStage {
   virtual void get_states(std::vector<ExecutionStateProperty*> &states) = 0;
   virtual void set_states(std::vector<ExecutionStateProperty*> &states) = 0;
   virtual void set_capacity(size_t c) = 0;
+
+  SearcherStage *parent;
+  SearcherStage *multi_pass_parent;
+  std::vector<CVExecutionState*> leaf_states;
 };
 
 typedef std::list<SearcherStage*> SearcherStageList;
