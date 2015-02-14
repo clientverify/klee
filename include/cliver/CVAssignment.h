@@ -58,6 +58,10 @@ class CVAssignment : public klee::Assignment {
     name_bindings.clear();
   }
 
+  size_t size() {
+    return name_bindings.size();
+  }
+
   void print(std::ostream& os) const;
 
 };
