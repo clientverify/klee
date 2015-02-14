@@ -11,6 +11,7 @@
 #include "cliver/CVSearcher.h"
 #include "cliver/CVStream.h"
 #include "cliver/EditDistanceTree.h"
+#include "cliver/JaccardTree.h"
 #include "cliver/EditDistanceTreeTest.h"
 #include "cliver/ExecutionStateProperty.h"
 #include "cliver/ExecutionTrace.h"
@@ -42,6 +43,8 @@ llvm::cl::opt<RunModeType> RunMode("cliver-mode",
       "Verify using edit distance and training data with k-Prefix ptr hash table alg."),
     clEnumValN(VerifyEditDistanceKPrefixTest, "edit-dist-kprefix-test",
       "Verify using all k-Prefix to compare implementations."),
+    clEnumValN(VerifyJaccard, "jaccard",
+      "Verify using the Jaccard distance."),
   clEnumValEnd));
 
 ClientModelType ClientModelFlag;
@@ -73,6 +76,7 @@ CVSearcher* CVSearcherFactory::create(klee::Searcher* base_searcher,
                                       ClientVerifier* cv, StateMerger* merger) {
   switch (RunMode) {
     case VerifyNaive:
+    case VerifyJaccard:
     case VerifyEditDistanceRow:
     case VerifyEditDistanceKPrefixRow:
     case VerifyEditDistanceKPrefixHash:
@@ -93,6 +97,7 @@ CVSearcher* CVSearcherFactory::create(klee::Searcher* base_searcher,
 SearcherStage* SearcherStageFactory::create(StateMerger* merger, 
                                             CVExecutionState* state) {
   switch (RunMode) {
+    case VerifyJaccard:
     case VerifyEditDistanceRow:
     case VerifyEditDistanceKPrefixRow:
     case VerifyEditDistanceKPrefixHash:
@@ -157,6 +162,7 @@ ExecutionTraceManager* ExecutionTraceManagerFactory::create(ClientVerifier* cv) 
       return new ExecutionTraceManager(cv);
       break;
     }
+    case VerifyJaccard:
     case VerifyEditDistanceRow:
     case VerifyEditDistanceKPrefixRow:
     case VerifyEditDistanceKPrefixHash:
@@ -202,6 +208,9 @@ ExecutionTraceEditDistanceTree* EditDistanceTreeFactory::create() {
       return new EditDistanceTreeEquivalenceTest<ExecutionTrace, BasicBlockID>();
       break;
     }
+    case VerifyJaccard: {
+      return new JaccardTree<ExecutionTrace, BasicBlockID>();
+    }
 
     default: {
       cv_error("EditDistanceFactory called in non-editdistance mode");
@@ -219,6 +228,7 @@ ExecutionStateProperty* ExecutionStatePropertyFactory::create() {
     case VerifyNaive: {
       return new ExecutionStateProperty();
     }
+    case VerifyJaccard:
     case VerifyEditDistanceRow:
     case VerifyEditDistanceKPrefixRow:
     case VerifyEditDistanceKPrefixHash:
