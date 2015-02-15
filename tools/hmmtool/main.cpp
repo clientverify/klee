@@ -216,10 +216,10 @@ void sequence_alloc_print(void)
 int main(int argc, char **argv, char **envp) {
   using namespace llvm;
 
-  llvm::cl::ParseCommandLineOptions(argc, argv, " hmmtrain\n");
+  llvm::cl::ParseCommandLineOptions(argc, argv, " hmmtool\n");
 
   bool no_output = true;
-  std::string output_dir("./hmmtrain-out");
+  std::string output_dir("./hmmtool-out");
   g_cvstream = new cliver::CVStream(no_output, output_dir);
   g_cvstream->init();
   int ret = 0;

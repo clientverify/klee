@@ -8,7 +8,7 @@
 #===------------------------------------------------------------------------===#
 
 LEVEL=../..
-TOOLNAME = hmmtrain
+TOOLNAME = hmmtool
 
 include $(LEVEL)/Makefile.config
 
