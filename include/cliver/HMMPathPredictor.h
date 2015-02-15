@@ -57,7 +57,7 @@ public:
   // most recent round)
   std::vector<double> getStateProbabilities(int round=-1) const;
 
-  // Input/Output
+  // I/O for the HMM priors, transition, and emission matrices
   friend std::ostream& operator<<(std::ostream& os, const ViterbiDecoder& vd);
   friend std::istream& operator>>(std::istream& is, ViterbiDecoder& vd);
 
