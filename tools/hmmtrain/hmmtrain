@@ -1,1 +1,184 @@
-#!/usr/bin/env python
+#!/bin/bash
+
+# Cliver HMM trainer
+
+show_help () {
+    echo
+    echo "Cliver HMM trainer"
+    echo "Usage: $1 [-m metric] indir prefix nFrag nMsg tmpdir outhmm"
+    cat << EOF
+
+  Take as input a directory of tpath files, and create as output an
+  HMM training file.  The HMM training file will contain HMM matrix
+  coefficients, a list of tpath files representing guide paths
+  (fragment cluster medoids), and a list of tpath files representing
+  message cluster medoids.
+
+  Command line arguments
+  -----------------------
+  Inputs:
+  1. indir  = Directory of tpath files
+  2. prefix = Session prefix (*)
+  3. nFrag  = Number of fragment clusters
+  4. nMsg   = Number of message clusters
+  Outputs:
+  5. tmpdir = Directory to put intermediate, processed data
+  6. outhmm = HMM training file
+
+  Options:
+  -m  Change message metric: "Jaccard" (default) and "Ruzicka" supported
+
+  (*) prefix for top-level directory of an session, which must be
+      followed by an integer that uniquely identifies the
+      session. (default = 'cliver-out-')
+      Example acceptable path: 'foo/bar/cliver-out-9/round_0048/baz.tpath'
+EOF
+}
+
+
+###############################################################################
+# Parse command line arguments
+###############################################################################
+# A POSIX variable
+OPTIND=1         # Reset in case getopts has been used previously in the shell.
+
+# Parse optional arguments
+message_metric="Jaccard" # other option is "Ruzicka"
+verbose=0
+verbose_flag=
+while getopts "h?vm:" opt; do
+    case "$opt" in
+    h|\?)
+        show_help $0
+        exit 0
+        ;;
+    v)  verbose=1
+        verbose_flag="-v"
+        ;;
+    m)  message_metric=$OPTARG
+        ;;
+    esac
+done
+shift $((OPTIND-1))
+[ "$1" = "--" ] && shift
+
+# Parse required arguments
+if [ $# -ne 6 ]
+then
+    echo "Error: illegal number of arguments (6 required)."
+    show_help $0
+    exit 1
+else
+    input_dir=$1
+    session_prefix=$2
+    num_frag_clusters=$3
+    num_msg_clusters=$4
+    tmp_dir=$5      # for intermediate files
+    out_hmm_file=$6 # for final output
+
+    mkdir -p "${tmp_dir}"
+fi
+
+if [ $verbose -eq 1 ]
+then
+    echo "message_metric='$message_metric', arguments($#): $@"
+fi
+
+###############################################################################
+# Assemble training data from directory of tpath files
+###############################################################################
+if [ $verbose -eq 1 ]
+then
+    echo "Assembling training data from directory ${input_dir}"
+fi
+find -L "${input_dir}" -name '*.tpath' | sort -n > "${tmp_dir}/tpath_files.txt"
+cat "${tmp_dir}/tpath_files.txt" | \
+    extract_training.py $verbose_flag -r "${session_prefix}" > \
+    "${tmp_dir}/training.csv"
+cut -f1,2 -d, < "${tmp_dir}/training.csv" > "${tmp_dir}/sessions_and_rounds.csv"
+
+###############################################################################
+# Compute distance matrices for fragments and messages
+###############################################################################
+if [ $verbose -eq 1 ]
+then
+    echo "Computing distance matrix for fragments"
+fi
+distmtx.py $verbose_flag -f < "${tmp_dir}/training.csv" > \
+    "${tmp_dir}/distmtx_frag.csv"
+
+if [ $verbose -eq 1 ]
+then
+    echo "Computing distance matrix for messages"
+fi
+distmtx.py $verbose_flag -m "${message_metric}" < "${tmp_dir}/training.csv" > \
+    "${tmp_dir}/distmtx_msg.csv"
+
+###############################################################################
+# Compute clusters for fragments and messages
+###############################################################################
+# Output file csv formats:
+# cluster_ids_frag_msg.csv: fragClusterID, msgClusterID (both zero-indexed)
+# medoids_frag.txt: list of tpath files representing fragment medoids
+# medoids_msg.txt:  list of tpath files representing message medoids
+
+if [ $verbose -eq 1 ]
+then
+    echo "Computing clusters for fragments"
+fi
+hier_cluster.py $verbose_flag "${num_frag_clusters}" \
+    -m "${tmp_dir}/medoids_linenum_frag.txt" < \
+    "${tmp_dir}/distmtx_frag.csv" > "${tmp_dir}/cluster_ids_frag.csv"
+
+if [ $verbose -eq 1 ]
+then
+    echo "Computing clusters for messages"
+fi
+hier_cluster.py $verbose_flag "${num_msg_clusters}" \
+    -m "${tmp_dir}/medoids_linenum_msg.txt" < \
+    "${tmp_dir}/distmtx_msg.csv" > "${tmp_dir}/cluster_ids_msg.csv"
+
+if [ $verbose -eq 1 ]
+then
+    echo "Saving cluster IDs"
+fi
+paste -d, "${tmp_dir}/cluster_ids_frag.csv" "${tmp_dir}/cluster_ids_msg.csv" > \
+    "${tmp_dir}/cluster_ids_frag_msg.csv"
+
+if [ $verbose -eq 1 ]
+then
+    echo "Saving medoids"
+fi
+sed -n `awk '{printf $0 "p;"}' "${tmp_dir}/medoids_linenum_frag.txt"` \
+    "${tmp_dir}/tpath_files.txt" > "${tmp_dir}/medoids_frag.txt"
+sed -n `awk '{printf $0 "p;"}' "${tmp_dir}/medoids_linenum_msg.txt"` \
+    "${tmp_dir}/tpath_files.txt" > "${tmp_dir}/medoids_msg.txt"
+
+###############################################################################
+# Estimate HMM coefficients on the series of sessions
+###############################################################################
+
+if [ $verbose -eq 1 ]
+then
+    echo "Training HMM based on fragment and message sequences"
+fi
+hmm_estimate.py $verbose_flag "${num_frag_clusters}" "${num_msg_clusters}" \
+    -s "${tmp_dir}/sessions_and_rounds.csv" -t 1e-5 -e 1e-5 < \
+    "${tmp_dir}/cluster_ids_frag_msg.csv" > \
+    "${tmp_dir}/hmm_coefficients.txt"
+
+###############################################################################
+# Create HMM training file
+###############################################################################
+
+cat "${tmp_dir}/hmm_coefficients.txt" > "${out_hmm_file}"
+echo "FragmentMedoids:" >> "${out_hmm_file}"
+cat "${tmp_dir}/medoids_frag.txt" >> "${out_hmm_file}"
+echo "MessageMedoids:" >> "${out_hmm_file}"
+cat "${tmp_dir}/medoids_msg.txt" >> "${out_hmm_file}"
+
+if [ $verbose -eq 1 ]
+then
+    echo "Wrote HMM training file: ${out_hmm_file}"
+fi
+
