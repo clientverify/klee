@@ -9,16 +9,11 @@
 #ifndef CLIVER_HMM_PATH_PREDICTOR_H
 #define CLIVER_HMM_PATH_PREDICTOR_H
 
-#include "cliver/RadixTree.h"
-#include "cliver/EditDistanceTree.h"
-#include <limits.h>
-
 #include <vector>
-#include <algorithm>
-#include <memory>
-#include <exception>
-#include <iostream>
-#include <cmath>
+#include <string>
+
+#include "cliver/Training.h"
+#include "cliver/Socket.h"
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -26,34 +21,6 @@ namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-///////////////////////////////////////////////////////////////////////////////
-/// HMMPathPredictor: 
-///////////////////////////////////////////////////////////////////////////////
-template <class Sequence, class T>
-class HMMPathPredictor
-{
- public:
-
-  //===-------------------------------------------------------------------===//
-  // Extra methods, testing, utility
-  //===-------------------------------------------------------------------===//
-
-  static int test()
-  {
-    return 0;
-  }
-
- private:
-
-  //===-------------------------------------------------------------------===//
-  // Internal Methods
-  //===-------------------------------------------------------------------===//
-
-  //===-------------------------------------------------------------------===//
-  // Member variables
-  //===-------------------------------------------------------------------===//
-
-};
 
 ///////////////////////////////////////////////////////////////////////////////
 // Viterbi Decoder where states and emissions are labeled by integers 0...(N-1)
@@ -61,9 +28,19 @@ class HMMPathPredictor
 ///////////////////////////////////////////////////////////////////////////////
 class ViterbiDecoder {
 public:
+  ViterbiDecoder() {}
   ViterbiDecoder(const std::vector<double>& priors,
 		 const std::vector<std::vector<double> >& trans,
 		 const std::vector<std::vector<double> >& emis);
+
+  /*
+  // Constructor that trains its own transition and emission matrices.
+  ViterbiDecoder(int Nstate, int Nemis,
+                 const std::vector<int>& state_seq,
+                 const std::vector<int>& emis_seq,
+                 double pseudotr = 0.0,
+                 double pseudoem = 0.0);
+  */
 
   // Add new observed emission to the sequence
   void addEmission(int e);
@@ -76,11 +53,15 @@ public:
   int getNumEmissions() const {return logp_emis[0].size();}
   std::vector<int> getDecoding() const; // output most likely state sequence
 
-  // Probability of each state for a given zero-indxed round (default:
+  // Probability of each state for a given zero-indexed round (default:
   // most recent round)
   std::vector<double> getStateProbabilities(int round=-1) const;
 
-  // Self-test
+  // Input/Output
+  friend std::ostream& operator<<(std::ostream& os, const ViterbiDecoder& vd);
+  friend std::istream& operator>>(std::istream& is, ViterbiDecoder& vd);
+
+  // Self-test (returns 0 on success)
   static int test();
 
 private:
@@ -93,6 +74,41 @@ private:
   std::vector<int> emission_sequence; // history of emissions added
 };
 
+///////////////////////////////////////////////////////////////////////////////
+/// HMMPathPredictor: 
+///////////////////////////////////////////////////////////////////////////////
+class HMMPathPredictor
+{
+public:
+
+  HMMPathPredictor(const std::string& hmm_training_file) { }
+
+  HMMPathPredictor(const std::vector<std::string>& guide_path_files,
+                   const std::vector<std::string>& message_files,
+                   const std::string& hmm_data_file) { }
+
+  int rounds();
+
+  //===-------------------------------------------------------------------===//
+  // Extra methods, testing, utility
+  //===-------------------------------------------------------------------===//
+
+  static int test()
+  {
+    return 0;
+  }
+
+private:
+
+  //===-------------------------------------------------------------------===//
+  // Internal Methods
+  //===-------------------------------------------------------------------===//
+
+  //===-------------------------------------------------------------------===//
+  // Member variables
+  //===-------------------------------------------------------------------===//
+
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 

@@ -6,6 +6,13 @@
 
 #include "cliver/HMMPathPredictor.h"
 
+#include <limits>
+#include <algorithm>
+#include <iostream>
+#include <sstream>
+#include <cmath>
+#include <cassert>
+
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace cliver {
@@ -183,6 +190,87 @@ ViterbiDecoder::getDecoding() const
   return decoding;
 }
 
+std::ostream& operator<<(std::ostream& os, const ViterbiDecoder& vd)
+{
+  int num_states = vd.getNumStates();
+  int num_emis = vd.getNumEmissions();
+  os << "NumStates: " << num_states << "\n";
+  os << "NumEmissions: " << num_emis << "\n";
+  os << "Priors:\n";
+  for (size_t i = 0; i < vd.logp_priors.size(); ++i) {
+    os << exp(vd.logp_priors[i]) << " ";
+  }
+  os << "\n";
+  os << "TransitionMatrix:\n";
+  for (size_t i = 0; i < vd.logp_trans.size(); ++i) {
+    for (size_t j = 0; j < vd.logp_trans[i].size(); ++j) {
+      os << exp(vd.logp_trans[i][j]) << " ";
+    }
+    os << "\n";
+  }
+  os << "EmissionMatrix:\n";
+  for (size_t i = 0; i < vd.logp_emis.size(); ++i) {
+    for (size_t j = 0; j < vd.logp_emis[i].size(); ++j) {
+      os << exp(vd.logp_emis[i][j]) << " ";
+    }
+    os << "\n";
+  }
+  return os;
+}
+
+std::istream& operator>>(std::istream& is, ViterbiDecoder& vd)
+{
+  std::string marker;
+  int num_states, num_emis;
+  double p;
+  
+  is >> marker;
+  assert(marker == "NumStates:");
+  is >> num_states;
+  
+  is >> marker;
+  assert(marker == "NumEmissions:");
+  is >> num_emis;
+
+  is >> marker;
+  assert(marker == "Priors:");
+  vd.logp_priors.clear();
+  for (int i = 0; i < num_states; i++) {
+    is >> p;
+    vd.logp_priors.push_back(safelog(p));
+  }
+
+  is >> marker;
+  assert(marker == "TransitionMatrix:");
+  vd.logp_trans.clear();
+  for (int i = 0; i < num_states; i++) {
+    vd.logp_trans.push_back(std::vector<double>());
+    for (int j = 0; j < num_states; j++) {
+      is >> p;
+      vd.logp_trans[i].push_back(safelog(p));
+    }
+  }
+
+  is >> marker;
+  assert(marker == "EmissionMatrix:");
+  vd.logp_emis.clear();
+  for (int i = 0; i < num_states; i++) {
+    vd.logp_emis.push_back(std::vector<double>());
+    for (int j = 0; j < num_emis; j++) {
+      is >> p;
+      vd.logp_emis[i].push_back(safelog(p));
+    }
+  }
+
+  vd.emission_sequence.clear();
+  vd.viterbi_table =
+    std::vector<std::vector<double> >(num_states, std::vector<double>());
+  vd.backward_links =
+    std::vector<std::vector<int> >(num_states, std::vector<int>());
+
+  return is;
+}
+  
 // Replicate matlab example
 // trans = [0.95,0.05;
 //          0.10,0.90];
@@ -206,16 +294,18 @@ ViterbiDecoder::test()
   vector<int> correct_states({0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1});
 
   ViterbiDecoder vd(priors, trans, emis);
-  for (size_t i = 0; i < seq.size(); ++i)
+  ViterbiDecoder vd2;
+  ostringstream oss;
+  oss << vd;
+  istringstream iss(oss.str());
+  iss >> vd2;
+  for (size_t i = 0; i < seq.size(); ++i) {
     vd.addEmission(seq[i]);
+    vd2.addEmission(seq[i]);
+  }
   vector<int> estimated_states = vd.getDecoding();
 
-  cout << "Transition matrix:\n";
-  print_matrix(trans);
-  cout << "Emission matrix:\n";
-  print_matrix(emis);
-  cout << "Priors: ";
-  print_vector(priors);
+  cout << vd;
   cout << "Emission sequence: ";
   print_vector(seq);
   cout << "Correct states:    ";
@@ -226,12 +316,16 @@ ViterbiDecoder::test()
   print_matrix(vd.viterbi_table);
   cout << "Backward links:\n";
   print_matrix(vd.backward_links);
-  for (size_t i = 0; i < vd.getSequenceLength(); ++i) {
+  for (int i = 0; i < vd.getSequenceLength(); ++i) {
     cout << "State probabilities for round " << i << ": ";
-    print_vector(vd.getStateProbabilities((int)i));
+    print_vector(vd.getStateProbabilities(i));
   }
   cout << "State probabilities for final round: ";
   print_vector(vd.getStateProbabilities());
+
+  cout << "State probabilities for final round(vd2): ";
+  print_vector(vd2.getStateProbabilities());
+
 
   // Check answers
   for (size_t i = 0; i < correct_states.size(); ++i) {
@@ -239,8 +333,22 @@ ViterbiDecoder::test()
       return 2;
     }
   }
+  vector<double> pfinal = vd.getStateProbabilities();
+  vector<double> pfinal2 = vd2.getStateProbabilities();
+  for (size_t i = 0; i < pfinal.size(); ++i) {
+    if (abs(pfinal[i] - pfinal2[i]) > 1e-5) {
+      return 3;
+    }
+  }
+  
   return 0;
 }
+
+///////////////////////////////////////////////////////////////////////////////
+/// HMMPathPredictor Implementation
+///////////////////////////////////////////////////////////////////////////////
+
+
 
 ////////////////////////////////////////////////////////////////////////////////
 
