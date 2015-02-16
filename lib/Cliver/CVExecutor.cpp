@@ -336,6 +336,8 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
   delete processTree;
   processTree = 0;
 
+  cv_->print_all_stats();
+
   //// hack to clear memory objects
   //delete memory;
   //memory = new MemoryManager();
