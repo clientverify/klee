@@ -40,6 +40,9 @@ DebugNetworkManager("debug-network-manager",llvm::cl::init(false));
 llvm::cl::opt<bool>
 UseInPlaceConcretization("in-place-concretization",llvm::cl::init(false));
 
+llvm::cl::opt<bool>
+UseRecvProcessingFlag("use-recv-processing-flag",llvm::cl::init(false));
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef NDEBUG
@@ -418,7 +421,8 @@ void NetworkManagerXpilot::execute_read(CVExecutor* executor,
     state_->cv()->notify_all(ExecutionEvent(CV_SOCKET_ADVANCE, state_));
   }
 
-  state_->property()->is_recv_processing = true;
+  if (UseRecvProcessingFlag)
+    state_->property()->is_recv_processing = true;
   CVDEBUG("Currently recv processing");
 	RETURN_SUCCESS("read", bytes_written);
 }
