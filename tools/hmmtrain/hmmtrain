@@ -27,6 +27,7 @@ show_help () {
 
   Options:
   -m  Change message metric: "Jaccard" (default) and "Ruzicka" supported
+  -v  Verbose mode
 
   (*) prefix for top-level directory of a session, which must be
       followed by an integer that uniquely identifies the
