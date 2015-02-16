@@ -149,6 +149,9 @@ int EditDistanceExecutionStateProperty::compare(
 
   if (client_round != _b->client_round)
     return client_round - _b->client_round;
+
+  if (pass_count != _b->pass_count)
+		return pass_count - _b->pass_count;
   
   // Reversed for priority queue!
   if (_b->symbolic_vars != symbolic_vars)
