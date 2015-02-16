@@ -350,6 +350,161 @@ ViterbiDecoder::test()
 
 
 
+std::istream& operator>>(std::istream& is, HMMPathPredictor& hpp)
+{
+  using namespace std;
+  
+  string item;
+  vector<string> fragment_medoid_files;
+  vector<string> message_medoid_files;
+  std::vector<TrainingObject*> training_objects;
+  TrainingObjectSet dummy;// THIS IS A HACK!
+
+  // Read in HMM coefficients  
+  is >> hpp.vd;
+
+  // Read in fragment medoids (guide paths)
+  is >> item;
+  assert(item == "FragmentMedoids:");
+  for (int i = 0; i < hpp.vd.getNumStates(); ++i) {
+    is >> item;
+    fragment_medoid_files.push_back(item);
+  }
+  TrainingManager::read_files(fragment_medoid_files, dummy); //HACK!
+  TrainingManager::read_files_in_order(fragment_medoid_files, training_objects);
+  for (auto it = training_objects.begin();
+       it != training_objects.end(); ++it) {
+    hpp.fragment_medoids.push_back(shared_ptr<TrainingObject>(*it));
+  }
+
+  // Read in message medoids (for comparison to incoming message)
+  is >> item;
+  assert(item == "MessageMedoids:");
+  for (int i = 0; i < hpp.vd.getNumEmissions(); ++i) {
+    is >> item;
+    message_medoid_files.push_back(item);
+  }
+  training_objects.clear();
+  TrainingManager::read_files(message_medoid_files, dummy); //HACK!
+  TrainingManager::read_files_in_order(message_medoid_files, training_objects);
+  for (auto it = training_objects.begin();
+       it != training_objects.end(); ++it) {
+    shared_ptr<TrainingObject> tobj(*it);
+    hpp.message_medoids.push_back(tobj);
+    assert(tobj->socket_event_set.size() >= 1);
+    if (tobj->socket_event_set.size() > 1) {
+      cerr << "Warning: socket event set for "
+           << tobj->name << " has size " << tobj->socket_event_set.size()
+           << "\n";
+    }
+    SocketEvent *se = *(tobj->socket_event_set.begin());
+    hpp.messages.push_back(se);
+    set<uint8_t> message_as_set(se->data.begin(), se->data.end());
+    hpp.messages_as_sets.push_back(message_as_set);
+  }
+  
+  return is;
+}
+
+std::ostream& operator<<(std::ostream& os,const HMMPathPredictor& hpp)
+{
+  using namespace std;
+  os << hpp.vd;
+  os << "FragmentMedoids:\n";
+  for (size_t i = 0; i < hpp.fragment_medoids.size(); ++i) {
+    os << hpp.fragment_medoids[i]->name << "\n";
+  }
+  os << "MessageMedoids:\n";
+  for (size_t i = 0; i < hpp.message_medoids.size(); ++i) {
+    os << hpp.message_medoids[i]->name << "\n";
+  }
+  return os;
+}
+
+std::set<uint8_t>
+HMMPathPredictor::message_as_set(const SocketEvent& se) const
+{
+  return std::set<uint8_t>(se.data.begin(), se.data.end());
+}
+
+int
+HMMPathPredictor::message_direction(const SocketEvent& se) const
+{
+  return se.type;
+}
+
+double
+HMMPathPredictor::jaccard_distance(const std::set<uint8_t>& s1,
+                                   const std::set<uint8_t>& s2) const
+{
+  using namespace std;
+  set<uint8_t> intersect;
+  set_intersection(s1.begin(),s1.end(),s2.begin(),s2.end(),
+                   inserter(intersect,intersect.begin()));
+  set<uint8_t> unionset;
+  set_union(s1.begin(),s1.end(),s2.begin(),s2.end(),
+            inserter(unionset,unionset.begin()));
+  return 1.0 - (double)intersect.size()/(double)unionset.size();
+}
+
+int
+HMMPathPredictor::nearest_message_id(const SocketEvent& se) const
+{
+  using namespace std;
+  double min_distance = 2.0;
+  int min_index = -1;
+
+  set<uint8_t> query_set(message_as_set(se));
+  for (size_t i = 0; i < messages_as_sets.size(); ++i) {
+    double d = jaccard_distance(query_set, messages_as_sets[i]);
+    if (d < min_distance) {
+      min_distance = d;
+      min_index = (int)i;
+    }
+  }
+  return min_index;
+}
+
+void
+HMMPathPredictor::addMessage(const SocketEvent& se)
+{
+  int cluster_assignment = nearest_message_id(se);
+  vd.addEmission(cluster_assignment);
+}
+
+template <typename T>
+std::vector<size_t> sort_indices_reverse(const std::vector<T> &v) {
+  using namespace std;
+  
+  // initialize original index locations
+  vector<size_t> idx(v.size());
+  for (size_t i = 0; i != idx.size(); ++i) idx[i] = i;
+
+  // sort indices based on comparing values in v
+  sort(idx.begin(), idx.end(),
+       [&v](size_t i1, size_t i2) {return v[i1] > v[i2];});
+
+  return idx;
+}
+
+std::vector<std::pair<double,int> >
+HMMPathPredictor::predictPath(int round, double confidence) const
+{
+  using namespace std;
+  vector<pair<double,int> > output;
+  vector<double> pvec = vd.getStateProbabilities(round - 1);
+  vector<size_t> desc_ids = sort_indices_reverse(pvec);
+  double accumulated_confidence = 0.0;
+  for (size_t i = 0; i < pvec.size(); ++i) {
+    double probability = pvec[desc_ids[i]];
+    output.push_back(pair<double,int>(probability, desc_ids[i]));
+    accumulated_confidence += probability;
+    if (accumulated_confidence >= confidence)
+      break;
+  }
+  return output;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 } // end namespace cliver

@@ -13,6 +13,7 @@
 #include <string>
 
 #include "cliver/Training.h"
+#include "cliver/JaccardTree.h"
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -85,8 +86,9 @@ public:
                    const std::vector<std::string>& message_files,
                    const std::string& hmm_data_file);
   friend std::istream& operator>>(std::istream& is, HMMPathPredictor& hpp);
+  friend std::ostream& operator<<(std::ostream& os,const HMMPathPredictor& hpp);
 
-  int rounds() const; // number of rounds added
+  int rounds() const {return (int)messages_added.size();} // num rounds added
 
   // Add a message and update the probabilities
   void addMessage(const SocketEvent& se);
@@ -97,7 +99,8 @@ public:
   predictPath(int round, double confidence) const;
 
   // Vector of training objects, for which predictPath returns indices.
-  std::vector<std::shared_ptr<TrainingObject> > getAllTrainingObjects();
+  std::vector<std::shared_ptr<TrainingObject> > getAllTrainingObjects()
+  { return fragment_medoids; }
 
   //===-------------------------------------------------------------------===//
   // Extra methods, testing, utility
@@ -114,10 +117,23 @@ private:
   // Internal Methods
   //===-------------------------------------------------------------------===//
 
+  double jaccard_distance(const std::set<uint8_t>& s1,
+                          const std::set<uint8_t>& s2) const;
+  int nearest_message_id(const SocketEvent& se) const;
+  std::set<uint8_t> message_as_set(const SocketEvent& se) const;
+  int message_direction(const SocketEvent& se) const;
+
   //===-------------------------------------------------------------------===//
   // Member variables
   //===-------------------------------------------------------------------===//
 
+  ViterbiDecoder vd;
+  std::vector<std::shared_ptr<TrainingObject> > fragment_medoids;
+  std::vector<std::shared_ptr<TrainingObject> > message_medoids;
+  std::vector<std::set<uint8_t> > messages_as_sets; // training
+  std::vector<SocketEvent*> messages; // training
+
+  std::vector<SocketEvent> messages_added;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

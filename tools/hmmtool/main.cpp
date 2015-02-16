@@ -98,7 +98,7 @@ StatsMode("mode",
       clEnumValEnd),
     llvm::cl::init(HMMTest));
 
-llvm::cl::list<std::string> InputFileListing("input-tpaths",
+llvm::cl::list<std::string> HMMTrainingFiles("hmm-training",
     llvm::cl::Optional,
     llvm::cl::ValueRequired,
     llvm::cl::desc("Specify a file that lists training path files (.tpath)"), 
@@ -164,30 +164,43 @@ int DoHMMPredict()
   std::set<TrainingObject*> training_objects;
   std::vector<std::string> input_files;
 
-  // Read tpath files (cluster medoids)
-  if (InputFileListing.size() != 1) {
-    cv_error("HMMPredict requires an input file listing.\n");
-    return 2;
-  }
-  std::string input_file_listing = InputFileListing[0];
-  CVMESSAGE("Opening tpath file listing: " << input_file_listing);
-  std::ifstream infile(input_file_listing);
-  std::string single_path;
-  while (infile >> single_path) {
-    input_files.push_back(single_path);
-  }
-  CVMESSAGE("Found " << input_files.size() << " paths in "
-	    << input_file_listing);
+  // // Read tpath files (cluster medoids)
+  // if (InputFileListing.size() != 1) {
+  //   cv_error("HMMPredict requires an input file listing.\n");
+  //   return 2;
+  // }
+  // std::string input_file_listing = InputFileListing[0];
+  // CVMESSAGE("Opening tpath file listing: " << input_file_listing);
+  // std::ifstream infile(input_file_listing);
+  // std::string single_path;
+  // while (infile >> single_path) {
+  //   input_files.push_back(single_path);
+  // }
+  // CVMESSAGE("Found " << input_files.size() << " paths in "
+  //           << input_file_listing);
 
-  CVMESSAGE("Reading tpath files");
-  TrainingManager::read_files(input_files, training_objects); 
-  CVMESSAGE("Successfully read " << training_objects.size() << " files.");
+  // CVMESSAGE("Reading tpath files");
+  // TrainingManager::read_files(input_files, training_objects); 
+  // CVMESSAGE("Successfully read " << training_objects.size() << " files.");
+
+  
 
   // foreach (TrainingObject *tobj, training_objects)
   // {
   //   CVMESSAGE(*tobj);
   //   CVMESSAGE("(" << tobj->name << ") " << tobj->trace);
   // }
+
+  if (HMMTrainingFiles.size() != 1) {
+    cv_error("HMMPredict requires an HMM training file.\n");
+    return 2;
+  }
+  std::string hmm_training_file = HMMTrainingFiles[0];
+  CVMESSAGE("Opening HMM training file: " << hmm_training_file);
+  std::ifstream infile(hmm_training_file);
+  HMMPathPredictor hpp;
+  infile >> hpp;
+  std::cout << hpp;
 
   return 0;
 }
