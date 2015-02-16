@@ -74,6 +74,7 @@ class SearcherStage {
   virtual bool empty() = 0;
   virtual size_t cache_size() = 0;
   virtual size_t size() = 0;
+  virtual size_t live_count() = 0;
   virtual void clear() = 0;
   virtual bool rebuilding() = 0;
   virtual void get_states(std::vector<ExecutionStateProperty*> &states) = 0;
@@ -122,6 +123,10 @@ class SearcherStageImpl : public SearcherStage {
 
   size_t size() {
     return collection_.size();
+  }
+
+  size_t live_count() {
+    return live_ ? 1 : 0;
   }
 
   size_t cache_size() {
@@ -255,6 +260,10 @@ class SearcherStageThreadedImpl : public SearcherStage {
   size_t size() {
     //assert(size_ == collection_.size());
     return size_;
+  }
+
+  size_t live_count() {
+    return live_set_.size();
   }
 
   size_t cache_size() {
