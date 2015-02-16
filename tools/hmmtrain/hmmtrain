@@ -28,7 +28,7 @@ show_help () {
   Options:
   -m  Change message metric: "Jaccard" (default) and "Ruzicka" supported
 
-  (*) prefix for top-level directory of an session, which must be
+  (*) prefix for top-level directory of a session, which must be
       followed by an integer that uniquely identifies the
       session. (default = 'cliver-out-')
       Example acceptable path: 'foo/bar/cliver-out-9/round_0048/baz.tpath'

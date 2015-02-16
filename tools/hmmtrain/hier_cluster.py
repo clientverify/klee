@@ -1,7 +1,8 @@
 #!/usr/bin/python
 
 import argparse
-import sklearn
+import numpy as np
+import sklearn.cluster as skc
 import sys
 import doctest
 
@@ -18,7 +19,53 @@ def read_distmtx(f):
         raise EOFError("empty distance matrix")
     if len(distmtx) != len(distmtx[0]):
         raise Exception("non-square distance matrix")
-    return distmtx
+    return np.asarray(distmtx)
+
+def canonicalize_ids(cluster_ids):
+    """Relabel cluster ids in ascending order of first occurrence.
+
+    >>> canonicalize_ids([3,3,2,0,0,1])
+    array([0, 0, 1, 2, 2, 3])
+    """
+    canonical_cluster_ids = []
+    mapping = {} # old -> new
+    next_id = 0
+    for old_id in cluster_ids:
+        if old_id in mapping:
+            canonical_cluster_ids.append(mapping[old_id])
+        else:
+            mapping[old_id] = next_id
+            canonical_cluster_ids.append(next_id)
+            next_id += 1
+    return np.asarray(canonical_cluster_ids, dtype=int)
+
+def compute_cluster_medoid(dm, cluster_ids, id_of_interest):
+    """Example:
+
+    >>> def dist(a,b):
+    ...     return ((a[0]-b[0])**2.0 + (a[1]-b[1])**2.0)**0.5
+    >>> points = [(10,10),(11,9),(9,11),(-10,-10),(-11,-9),(-9,-11)]
+    >>> dm = np.asarray([[dist(x,y) for y in points] for x in points])
+    >>> ac = skc.AgglomerativeClustering(2,affinity="precomputed",linkage="complete")
+    >>> cluster_ids = ac.fit_predict(dm) # distance, not affinity matrix
+    >>> cluster_ids = canonicalize_ids(cluster_ids)
+    >>> print cluster_ids
+    [0 0 0 1 1 1]
+    >>> print compute_cluster_medoid(dm, cluster_ids, 0)
+    0
+    >>> print compute_cluster_medoid(dm, cluster_ids, 1)
+    3
+    """
+    members = np.argwhere(cluster_ids == id_of_interest).flatten()
+    sliced_dm = dm[members[:,np.newaxis], members]
+    mean_distances = np.mean(sliced_dm, axis=1)
+    medoid = members[np.argmin(mean_distances)]
+    assert cluster_ids[medoid] == id_of_interest
+    if args.verbose:
+        print >>sys.stderr, \
+            "Cluster %d\t(size = %d)\tavg distance to medoid = %f" % \
+            (id_of_interest, len(members), np.min(mean_distances))
+    return medoid
 
 ###############################################################################
 
@@ -55,16 +102,22 @@ def main():
             (args.nclusters, len(dm))
         args.nclusters = len(dm)
 
-    # FIXME: do actual clustering
+    # Hierarchical clustering with "complete" (max) linkage
+    ac = skc.AgglomerativeClustering(n_clusters=args.nclusters,
+                                     affinity="precomputed",
+                                     linkage="complete")
+    cluster_ids = ac.fit_predict(dm) # distance, not affinity matrix
+    cluster_ids = canonicalize_ids(cluster_ids)
     if args.verbose:
         print >>sys.stderr, "Clustering into %d clusters" % args.nclusters
-    for i in xrange(len(dm)):
-        print i % args.nclusters
+    assert len(cluster_ids) == len(dm)
+    for id in cluster_ids:
+        print id
     
-    # FIXME: compute and print actual medoid indices
+    # Compute and print medoid indices to file
     if args.medoids:
         for i in xrange(args.nclusters):
-            print >>args.medoids, i+1
+            print >>args.medoids, compute_cluster_medoid(dm,cluster_ids,i)+1
 
     return 0
 
