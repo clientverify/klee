@@ -105,6 +105,14 @@ llvm::cl::list<std::string> SelfTrainingPathDir("self-training-path-dir",
 	llvm::cl::desc("Specify directory containing .tpath files for the log we are verifying (debug)"),
 	llvm::cl::value_desc("tpath directory"));
 
+llvm::cl::opt<bool>
+UseHMM("use-hmm",llvm::cl::init(false));
+
+llvm::cl::opt<std::string>
+HMMTrainingFile("hmm-training-file",
+                llvm::cl::desc("Specify a HMM training file)"),
+                llvm::cl::init(""));
+
 #ifndef NDEBUG
 
 #undef CVDEBUG
@@ -401,7 +409,10 @@ void TrainingExecutionTraceManager::notify(ExecutionEvent ev) {
 ////////////////////////////////////////////////////////////////////////////////
 
 VerifyExecutionTraceManager::VerifyExecutionTraceManager(ClientVerifier* cv) 
-  : ExecutionTraceManager(cv), last_round_cleared_(0) {}
+  : ExecutionTraceManager(cv),
+    last_round_cleared_(0),
+    cluster_manager_(0),
+    hmm_(0) {}
 
 void VerifyExecutionTraceManager::initialize() {
   klee::LockGuard guard(lock_);
@@ -476,8 +487,20 @@ void VerifyExecutionTraceManager::initialize() {
 
   // ------------------------------------------------------------------------//
 
+  if (UseHMM && (UseClustering || UseClusteringHint || UseClusteringAll)) {
+    cv_error("-use-hmm and -use-clustering* are not compatible");
+  }
+
+  if (UseHMM && !llvm::sys::fs::exists(HMMTrainingFile)
+      || (!UseHMM && HMMTrainingFile != "")) {
+    cv_error("invalid usage of -use-hmm and -hmm-training-file");
+  }
+
   if (UseClustering || UseClusteringHint || UseClusteringAll)
     initialize_training_data();
+  else if (UseHMM) {
+    hmm_ = new HMMPathPredictor();
+  }
 }
 
 void VerifyExecutionTraceManager::initialize_training_data() {
@@ -603,7 +626,11 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
 
   TrainingFilter tf(state);
 
-  if (UseSelfTraining) {
+  if (UseHMM) {
+
+
+
+  } else if (UseSelfTraining) {
     if (self_training_data_map_.count(property->round) == 0) {
       CVDEBUG("No path in self training data for round " << property->round);
       return;

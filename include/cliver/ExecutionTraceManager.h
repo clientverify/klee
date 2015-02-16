@@ -12,6 +12,7 @@
 #include "cliver/ExecutionStateProperty.h"
 #include "cliver/ExecutionObserver.h"
 #include "cliver/ExecutionTrace.h"
+#include "cliver/HMMPathPredictor.h"
 #include "cliver/TrackingRadixTree.h"
 #include "cliver/LevenshteinRadixTree.h"
 #include "cliver/KExtensionTree.h"
@@ -156,6 +157,9 @@ class VerifyExecutionTraceManager : public ExecutionTraceManager {
   std::map<int, TrainingObject*> self_training_data_map_;
 
 	unsigned last_round_cleared_;
+
+  // Hidden Markov Model Path predictor (enabled via UseHMM)
+  HMMPathPredictor* hmm_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
