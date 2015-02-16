@@ -243,6 +243,33 @@ class TrainingManager {
     }
   }
 
+  template <class T>
+  static void
+  read_files_in_order(std::vector<std::string>& filename_list,
+                      std::vector<T*>& data)
+  {
+    for (size_t i=0; i<filename_list.size(); ++i) {
+      std::string filename = filename_list[i];
+
+      // Construct input file stream from filename
+      std::ifstream is(filename.c_str(), 
+                       std::ifstream::in | std::ifstream::binary );
+
+      // If opening the file was successful
+      if (is.is_open() && is.good()) {
+        TrainingObject* tobj = new TrainingObject();
+
+        // Read serialized TrainingObject
+        tobj->read(is);
+        tobj->parse_round();
+        data.push_back(tobj);
+      } else {
+        std::cerr << "Error opening: " << filename;
+      }
+      is.close();
+    }
+  }
+
 };
 
 ////////////////////////////////////////////////////////////////////////////////

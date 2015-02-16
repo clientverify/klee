@@ -13,6 +13,7 @@
 #include <string>
 
 #include "cliver/Training.h"
+#include "cliver/JaccardTree.h"
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -85,6 +86,7 @@ public:
                    const std::vector<std::string>& message_files,
                    const std::string& hmm_data_file);
   friend std::istream& operator>>(std::istream& is, HMMPathPredictor& hpp);
+  friend std::ostream& operator<<(std::ostream& os,const HMMPathPredictor& hpp);
 
   int rounds() const; // number of rounds added
 
@@ -114,10 +116,17 @@ private:
   // Internal Methods
   //===-------------------------------------------------------------------===//
 
+  double jaccard_msg_distance(const SocketEvent& s, const SocketEvent& t) const;
+
   //===-------------------------------------------------------------------===//
   // Member variables
   //===-------------------------------------------------------------------===//
 
+  ViterbiDecoder vd;
+  std::vector<std::shared_ptr<TrainingObject> > fragment_medoids;
+  std::vector<std::shared_ptr<TrainingObject> > message_medoids;
+  std::vector<std::set<uint8_t> > messages_as_sets;
+  std::vector<SocketEvent*> messages;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

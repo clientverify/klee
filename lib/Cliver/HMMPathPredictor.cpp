@@ -350,6 +350,77 @@ ViterbiDecoder::test()
 
 
 
+std::istream& operator>>(std::istream& is, HMMPathPredictor& hpp)
+{
+  using namespace std;
+  
+  string item;
+  vector<string> fragment_medoid_files;
+  vector<string> message_medoid_files;
+  std::vector<TrainingObject*> training_objects;
+  TrainingObjectSet dummy;// THIS IS A HACK!
+
+  // Read in HMM coefficients  
+  is >> hpp.vd;
+
+  // Read in fragment medoids (guide paths)
+  is >> item;
+  assert(item == "FragmentMedoids:");
+  for (int i = 0; i < hpp.vd.getNumStates(); ++i) {
+    is >> item;
+    fragment_medoid_files.push_back(item);
+  }
+  TrainingManager::read_files(fragment_medoid_files, dummy); //HACK!
+  TrainingManager::read_files_in_order(fragment_medoid_files, training_objects);
+  for (auto it = training_objects.begin();
+       it != training_objects.end(); ++it) {
+    hpp.fragment_medoids.push_back(shared_ptr<TrainingObject>(*it));
+  }
+
+  // Read in message medoids (for comparison to incoming message)
+  is >> item;
+  assert(item == "MessageMedoids:");
+  for (int i = 0; i < hpp.vd.getNumEmissions(); ++i) {
+    is >> item;
+    message_medoid_files.push_back(item);
+  }
+  training_objects.clear();
+  TrainingManager::read_files(message_medoid_files, dummy); //HACK!
+  TrainingManager::read_files_in_order(message_medoid_files, training_objects);
+  for (auto it = training_objects.begin();
+       it != training_objects.end(); ++it) {
+    shared_ptr<TrainingObject> tobj(*it);
+    hpp.message_medoids.push_back(tobj);
+    assert(tobj->socket_event_set.size() >= 1);
+    if (tobj->socket_event_set.size() > 1) {
+      cerr << "Warning: socket event set for "
+           << tobj->name << " has size " << tobj->socket_event_set.size()
+           << "\n";
+    }
+    SocketEvent *se = *(tobj->socket_event_set.begin());
+    hpp.messages.push_back(se);
+    set<uint8_t> message_as_set(se->data.begin(), se->data.end());
+    hpp.messages_as_sets.push_back(message_as_set);
+  }
+  
+  return is;
+}
+
+std::ostream& operator<<(std::ostream& os,const HMMPathPredictor& hpp)
+{
+  using namespace std;
+  os << hpp.vd;
+  os << "FragmentMedoids:\n";
+  for (size_t i = 0; i < hpp.fragment_medoids.size(); ++i) {
+    os << hpp.fragment_medoids[i]->name << "\n";
+  }
+  os << "MessageMedoids:\n";
+  for (size_t i = 0; i < hpp.message_medoids.size(); ++i) {
+    os << hpp.message_medoids[i]->name << "\n";
+  }
+  return os;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 } // end namespace cliver
