@@ -45,6 +45,10 @@
 #include <google/heap-checker.h>
 #endif
 
+namespace klee {
+extern llvm::cl::opt<unsigned> MaxMemory;
+}
+
 namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -352,10 +356,10 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
         std::string obj_name(ktest->objects[i].name);
         if (obj_name == "s2c" || obj_name == "c2s")
           socket_events_.back()->push_back(new SocketEvent(ktest->objects[i]));
-        else
-          cv_message("Non-network log: %s, length: %d",
-                     ktest->objects[i].name,
-                     ktest->objects[i].numBytes);
+        //else
+        //  cv_message("Non-network log: %s, length: %d",
+        //             ktest->objects[i].name,
+        //             ktest->objects[i].numBytes);
 			}
 
 			cv_message("Opened socket log \"%s\" with %d objects",
@@ -542,7 +546,7 @@ void ClientVerifier::print_current_stats_and_reset() {
   statistics_[round_number_] = new klee::StatisticRecord();
   klee::theStatisticManager->setCliverContext(statistics_[round_number_]);
 
-  stats::round_number += round_number_;
+  stats::round_number = round_number_;
 }
 
 void ClientVerifier::print_all_stats() {
@@ -558,7 +562,8 @@ void ClientVerifier::set_round(int round) {
 	update_time_statistics();
 
   // Recalculate memory usage
-  executor()->update_memory_usage();
+  if (klee::MaxMemory)
+    executor()->update_memory_usage();
 
   // Print current stats
   std::string prefix("STAGE");
