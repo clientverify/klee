@@ -62,6 +62,9 @@ BasicBlockDisabling("basicblock-disabling",llvm::cl::init(false));
 llvm::cl::opt<bool>
 DebugExecutionTree("debug-execution-tree",llvm::cl::init(false));
 
+llvm::cl::opt<bool>
+FinalDistance("final-distance",llvm::cl::init(false));
+
 llvm::cl::opt<unsigned>
 ClusterSize("cluster-size",llvm::cl::init(INT_MAX));
 
@@ -879,7 +882,8 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       stats::stage_count += 1;
 
       // Final edit distance 
-      if (stages_.count(parent_property) &&
+      if (FinalDistance &&
+          stages_.count(parent_property) &&
           stages_[parent_property]->ed_tree_map.count(parent_property)) {
         klee::WallTimer stat_timer;
 
