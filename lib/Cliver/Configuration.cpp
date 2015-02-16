@@ -81,11 +81,9 @@ CVSearcher* CVSearcherFactory::create(klee::Searcher* base_searcher,
     case VerifyEditDistanceKPrefixRow:
     case VerifyEditDistanceKPrefixHash:
     case VerifyEditDistanceKPrefixTest:
-    case VerifyEditDistanceKPrefixHashPointer: {
-      return new VerifySearcher(cv, merger);
-    }
+    case VerifyEditDistanceKPrefixHashPointer:
     case Training: {
-      return new TrainingSearcher(cv, merger);
+      return new VerifySearcher(cv, merger);
     }
   }
   cv_error("run mode not supported!");
