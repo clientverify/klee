@@ -153,7 +153,7 @@ static ssize_t _clean_read(int fd, void *buf, size_t count, off_t offset) {
   if (fde->attr & FD_IS_FILE) {
     // RAC: FIXME: Hack to set (recorded) length of stdin into 'count'
     if (((file_t*)fde->io_object)->storage == _fs.stdin_file) {
-      klee_warning("Setting length of symbolic read on stdin");
+      //klee_warning("Setting length of symbolic read on stdin");
       static int stdin_index = -1;
       int loglen = cliver_ktest_copy("stdin", stdin_index--, buf, count);
 
