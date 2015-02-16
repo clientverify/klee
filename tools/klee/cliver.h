@@ -122,6 +122,8 @@ void processKleeArgumentsForCliver(std::vector<std::string> &args) {
     name=val; klee_message("Changing default option: -%s=%s", name.ArgStr, #val);}
 	//SET_DEFAULT_OPT(WithPOSIXRuntime,true);
 	//SET_DEFAULT_OPT(Libc,UcLibc);
+	SET_DEFAULT_OPT(AlwaysOutputSeeds,false);
+	SET_DEFAULT_OPT(OnlyOutputStatesCoveringNew, true);
 	SET_DEFAULT_OPT(CheckDivZero,false);
 	SET_DEFAULT_OPT(CheckOvershift,false);
 	SET_DEFAULT_OPT(OptimizeModule,true);
@@ -141,7 +143,8 @@ void processKleeArgumentsForCliver(std::vector<std::string> &args) {
 	if (name != val) {klee_error("Unsupported cliver option: -%s=%s", name.ArgStr, #val);}
 	INVALID_CL_OPT(ZeroSeedExtension,false);
 	INVALID_CL_OPT(AllowSeedExtension,false);
-	INVALID_CL_OPT(AlwaysOutputSeeds,true);
+	INVALID_CL_OPT(AlwaysOutputSeeds,false);
+	INVALID_CL_OPT(OnlyOutputStatesCoveringNew, true);
 	INVALID_CL_OPT(OnlyReplaySeeds,false);
 	INVALID_CL_OPT(OnlySeed,false);
 	INVALID_CL_OPT(NamedSeedMatching,false);
