@@ -1,4 +1,4 @@
-#===-- tools/cliverstats/Makefile --------------------------*- Makefile -*--===#
+#===-- tools/klee-stats/Makefile -----------------------*- Makefile -*--===#
 #
 #                     The KLEE Symbolic Virtual Machine
 #
@@ -7,40 +7,54 @@
 #
 #===------------------------------------------------------------------------===#
 
-LEVEL=../..
-TOOLNAME = hmmtrain
+LEVEL = ../..
 
-include $(LEVEL)/Makefile.config
+TOOLSCRIPTNAME := hmmtrain
 
-USEDLIBS = Cliver.a CliverSerialization.a kleeCore.a kleeBasic.a kleeModule.a kleaverSolver.a kleaverExpr.a kleeSupport.a 
-LINK_COMPONENTS = jit bitreader bitwriter ipo linker engine 
+HELPER_SCRIPTS += distmtx.py
+HELPER_SCRIPTS += extract_training.py
+HELPER_SCRIPTS += levenshtein.py
+HELPER_SCRIPTS += message_features.py
+HELPER_SCRIPTS += hier_cluster.py
+HELPER_SCRIPTS += hmm_estimate.py
+HELPER_SCRIPTS_ABS = $(addprefix $(PROJ_SRC_DIR)/,$(HELPER_SCRIPTS))
 
-ifeq ($(shell echo "$(LLVM_VERSION_MAJOR).$(LLVM_VERSION_MINOR) >= 3.3" | bc), 1)
-LINK_COMPONENTS += irreader
-endif
+# Hack to prevent install trying to strip
+# symbols from a python script
+KEEP_SYMBOLS := 1
+
 include $(LEVEL)/Makefile.common
 
-LIBS += -lstp
+# FIXME: Move this stuff (to "build" a script) into Makefile.rules.
 
-ifeq ($(ENABLE_THREAD_SANITIZER),1)
-  # -lpthread breaks ThreadSanitizer on gcc-4.9
-  # so we filter it out of LIBS for klee linking
-  LIBS := $(filter-out -lpthread,$(LIBS))
-  LIBS += -ltsan -pie
-endif
+ToolBuildPath := $(ToolDir)/$(TOOLSCRIPTNAME)
 
+all-local:: $(ToolBuildPath)
 
-ifeq ($(ENABLE_METASMT),1)
-  include $(METASMT_ROOT)/share/metaSMT/metaSMT.makefile
-  LD.Flags += -L$(METASMT_ROOT)/../../deps/Z3-4.1/lib \
-              -L$(METASMT_ROOT)/../../deps/boolector-1.5.118/lib \
-              -L$(METASMT_ROOT)/../../deps/minisat-git/lib/ \
-              -L$(METASMT_ROOT)/../../deps/boost-1_52_0/lib 
-  CXX.Flags += -DBOOST_HAS_GCC_TR1
-  CXX.Flags := $(filter-out -fno-exceptions,$(CXX.Flags)) 
-  LIBS += -lrt -lgomp -lboost_iostreams -lboost_thread -lboost_system -lmetaSMT -lz3 -lboolector -lminisat_core
-endif
+$(ToolBuildPath): $(ToolDir)/.dir
 
-ifeq ($(STP_NEEDS_BOOST),1)
-	LIBS += $(UPSTREAM_STP_LINK_FLAGS)
+$(ToolBuildPath): $(PROJ_SRC_DIR)/$(TOOLSCRIPTNAME)
+	$(Echo) Copying $(BuildMode) script $(TOOLSCRIPTNAME)
+	$(Verb) $(CP) -f $(PROJ_SRC_DIR)/$(TOOLSCRIPTNAME) "$@"
+	$(Verb) chmod 0755 "$@"
+
+ifdef NO_INSTALL
+install-local::
+	$(Echo) Install circumvented with NO_INSTALL
+uninstall-local::
+	$(Echo) Uninstall circumvented with NO_INSTALL
+else
+DestTool = $(DESTDIR)$(PROJ_bindir)/$(TOOLSCRIPTNAME)
+DestHelpers = $(DESTDIR)$(PROJ_bindir)/
+
+install-local:: $(DestTool)
+
+$(DestTool): $(ToolBuildPath) $(DESTDIR)$(PROJ_bindir)
+	$(Echo) Installing $(BuildMode) $(DestTool)
+	$(Verb) $(ScriptInstall) $(ToolBuildPath) $(DestTool)
+	$(Verb) $(ScriptInstall) $(HELPER_SCRIPTS_ABS) $(DestHelpers)
+
+uninstall-local::
+	$(Echo) Uninstalling $(BuildMode) $(DestTool)
+	-$(Verb) $(RM) -f $(DestTool)
 endif
