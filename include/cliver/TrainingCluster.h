@@ -30,6 +30,7 @@
 #include "cliver/Cluster.h"
 #include "cliver/SocketEventMeasurement.h"
 #include "cliver/EditDistance.h"
+#include "cliver/KExtensionTree.h"
 #include "CVCommon.h"
 #include "CVStream.h"
 
@@ -40,9 +41,15 @@ class SocketEvent;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+extern llvm::cl::opt<unsigned> ClusterSize;
+extern llvm::cl::opt<unsigned> MaxKExtension;
+
+////////////////////////////////////////////////////////////////////////////////
+
 typedef Score<ExecutionTrace, BasicBlockID, int> ExecutionTraceScore;
 typedef EditDistanceRow<ExecutionTraceScore,ExecutionTrace,int> ExecutionTraceEDR;
 typedef LevenshteinRadixTree<ExecutionTrace, BasicBlockID> LevEdTree;
+typedef KExtensionTree<ExecutionTrace, BasicBlockID> KExtEdTree;
 
 class TrainingObjectDistanceMetric : public cliver::DistanceMetric<TrainingObject> {
  public:
@@ -61,8 +68,19 @@ class TrainingObjectDistanceMetric : public cliver::DistanceMetric<TrainingObjec
     }
 
     if (dist == -1) {
-      ExecutionTraceEDR edr(t1->trace, t2->trace);
-      dist = (double)edr.compute_editdistance();
+      // No need to compute distance if trace size difference is
+      // greater than MaxKExtension
+      if ((std::max(t1->trace.size(),t2->trace.size()) -
+          std::min(t1->trace.size(),t2->trace.size())) > MaxKExtension) {
+        dist = double(INT_MAX);
+      } else {
+          
+        KExtEdTree ked;
+        ked.add_data(*(const_cast<ExecutionTrace*>(&(t1->trace))));
+        ked.init(MaxKExtension);
+        ked.update_suffix(*(const_cast<ExecutionTrace*>(&(t2->trace))));
+        dist = (double)ked.min_distance();
+      }
 
       #pragma omp critical 
       { distance_map_[tobj_pair] = dist; }
@@ -87,27 +105,6 @@ class SimpleTrainingObjectDistanceMetric : public cliver::DistanceMetric<Trainin
  private:
 
 };
-
-//class TreeTrainingObjectDistanceMetric : public cliver::DistanceMetric<TrainingObject> {
-// public:
-//  void init(std::vector<TrainingObject*> &datalist) {
-//    ed_tree_ = new LevEdTree();
-//    foreach(TrainingObject* tobj, datalist) {
-//      ed_tree_->add_data(tobj);
-//    }
-//  }
-//
-//  double distance(const TrainingObject* t1, const TrainingObject* t2) {
-//
-//    ExecutionTraceEDR edr(t1->trace, t2->trace);
-//    double distance = (double)edr.compute_editdistance();
-//    return distance;
-//
-//  }
-// private:
-//  LevEdTree *ed_tree_;
-//
-//};
 
 // Needs to be fast
 class SocketEventDistanceMetric {

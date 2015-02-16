@@ -75,10 +75,18 @@ class KMeansClusterer: public GenericClusterer<Data, Metric> {
   void cluster(size_t cluster_count = INT_MAX) {
 
     // Resize cluster if data size is too small
-    if (data_.size() < cluster_count)
+    if (data_.size() <= cluster_count) {
       count_ = data_.size();
-    else
+      metric_->init(data_);
+      clusters_.resize(data_.size(), 0);
+      for (unsigned i=0; i < data_.size(); ++i) {
+        set_medoid(medoids_.size(), i);
+      }
+      assign_all();
+      return;
+    } else {
       count_ = cluster_count;
+    }
 
     // Initialize distance metric
     metric_->init(data_);
