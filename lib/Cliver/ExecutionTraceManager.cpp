@@ -66,7 +66,7 @@ llvm::cl::opt<bool>
 FinalDistance("final-distance",llvm::cl::init(false));
 
 llvm::cl::opt<unsigned>
-ClusterSize("cluster-size",llvm::cl::init(INT_MAX));
+ClusterSize("cluster-size",llvm::cl::init(256));
 
 llvm::cl::opt<unsigned>
 SocketEventClusterSize("socket-event-cluster-size",llvm::cl::init(10));
