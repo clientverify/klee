@@ -13,7 +13,6 @@
 #include <string>
 
 #include "cliver/Training.h"
-#include "cliver/Socket.h"
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -81,13 +80,24 @@ class HMMPathPredictor
 {
 public:
 
-  HMMPathPredictor(const std::string& hmm_training_file) { }
-
+  HMMPathPredictor() {}
   HMMPathPredictor(const std::vector<std::string>& guide_path_files,
                    const std::vector<std::string>& message_files,
-                   const std::string& hmm_data_file) { }
+                   const std::string& hmm_data_file);
+  friend std::istream& operator>>(std::istream& is, HMMPathPredictor& hpp);
 
-  int rounds();
+  int rounds() const; // number of rounds added
+
+  // Add a message and update the probabilities
+  void addMessage(const SocketEvent& se);
+
+  // Retrieve the current (or past) guide paths, with a list of likelihoods.
+  // Pair: (probability, index)
+  std::vector<std::pair<double,int> >
+  predictPath(int round, double confidence) const;
+
+  // Vector of training objects, for which predictPath returns indices.
+  std::vector<std::shared_ptr<TrainingObject> > getAllTrainingObjects();
 
   //===-------------------------------------------------------------------===//
   // Extra methods, testing, utility
