@@ -218,15 +218,20 @@ int DoHMMPredict()
     auto all_training_objects = hpp.getAllTrainingObjects();
 
     for (size_t i = 0; i < HMMTestMessages.size(); ++i) {
-      std::cout << "Adding " << HMMTestMessages[i] << "\n";
+      cout << "------------------------------------------------\n";
+      cout << "Adding message: " << HMMTestMessages[i] << "\n";
       TrainingObject* tobj = test_objects[i];
       SocketEvent* se = *(tobj->socket_event_set.begin());
       hpp.addMessage(*se);
+      const vector<int>& msg_cluster_ids = hpp.getAssignedMsgClusters();
+      cout << "Message assigned to cluster: " << msg_cluster_ids[i] << "\n";
       auto guide_paths = hpp.predictPath((int)i+1, 0.99);
       for (auto it = guide_paths.begin(); it != guide_paths.end(); ++it) {
         pair<double, int> entry(*it);
-        cout << entry.first << ": " << entry.second
-             << " : " << all_training_objects[entry.second]->name << "\n";
+        std::cout.precision(6);
+        std::cout.setf( std::ios::fixed, std:: ios::floatfield );
+        cout << "Prob = " << entry.first << " | guide_path " << entry.second
+             << " | " << all_training_objects[entry.second]->name << "\n";
       }
     }
 
