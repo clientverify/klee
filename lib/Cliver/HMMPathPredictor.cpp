@@ -456,7 +456,13 @@ HMMPathPredictor::nearest_message_id(const SocketEvent& se) const
 
   set<uint8_t> query_set(message_as_set(se));
   for (size_t i = 0; i < messages_as_sets.size(); ++i) {
-    double d = jaccard_distance(query_set, messages_as_sets[i]);
+    double d;
+    if (message_direction(se) != message_direction(*(messages[i]))) {
+      d = 1.0;
+    }
+    else {
+      d = jaccard_distance(query_set, messages_as_sets[i]);
+    }
     if (d < min_distance) {
       min_distance = d;
       min_index = (int)i;
@@ -469,6 +475,7 @@ void
 HMMPathPredictor::addMessage(const SocketEvent& se)
 {
   int cluster_assignment = nearest_message_id(se);
+  assigned_msg_cluster_ids.push_back(cluster_assignment);
   vd.addEmission(cluster_assignment);
 }
 

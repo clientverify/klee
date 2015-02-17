@@ -88,15 +88,20 @@ public:
   friend std::istream& operator>>(std::istream& is, HMMPathPredictor& hpp);
   friend std::ostream& operator<<(std::ostream& os,const HMMPathPredictor& hpp);
 
-  int rounds() const {return (int)messages_added.size();} // num rounds added
+  int rounds() const {return vd.getSequenceLength();} // num rounds added
 
   // Add a message and update the probabilities
   void addMessage(const SocketEvent& se);
 
   // Retrieve the current (or past) guide paths, with a list of likelihoods.
-  // Pair: (probability, index)
+  // Inputs: round (1-indexed), and confidence (0.99 suggested)
+  // Outputs: vector of pairs (probability, index of guide path)
   std::vector<std::pair<double,int> >
   predictPath(int round, double confidence) const;
+
+  // Get the sequence of assigned message cluster IDs
+  const std::vector<int>& getAssignedMsgClusters() const
+  { return assigned_msg_cluster_ids; }
 
   // Vector of training objects, for which predictPath returns indices.
   std::vector<std::shared_ptr<TrainingObject> > getAllTrainingObjects()
@@ -127,13 +132,13 @@ private:
   // Member variables
   //===-------------------------------------------------------------------===//
 
-  ViterbiDecoder vd;
-  std::vector<std::shared_ptr<TrainingObject> > fragment_medoids;
-  std::vector<std::shared_ptr<TrainingObject> > message_medoids;
+  ViterbiDecoder vd; // HMM training
+  std::vector<std::shared_ptr<TrainingObject> > fragment_medoids; // training
+  std::vector<std::shared_ptr<TrainingObject> > message_medoids; // training
   std::vector<std::set<uint8_t> > messages_as_sets; // training
   std::vector<SocketEvent*> messages; // training
 
-  std::vector<SocketEvent> messages_added;
+  std::vector<int> assigned_msg_cluster_ids;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

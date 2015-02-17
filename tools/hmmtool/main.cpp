@@ -101,8 +101,14 @@ StatsMode("mode",
 llvm::cl::list<std::string> HMMTrainingFiles("hmm-training",
     llvm::cl::Optional,
     llvm::cl::ValueRequired,
-    llvm::cl::desc("Specify a file that lists training path files (.tpath)"), 
-    llvm::cl::value_desc("tpath file listing"));
+    llvm::cl::desc("Specify an HMM training file"), 
+    llvm::cl::value_desc("HMM training file"));
+
+llvm::cl::list<std::string> HMMTestMessages("hmm-test-msg",
+    llvm::cl::ZeroOrMore,
+    llvm::cl::ValueRequired,
+    llvm::cl::desc("Specify tpath file that consists of test message"), 
+    llvm::cl::value_desc("tpath file with message to test"));
 
 llvm::cl::list<std::string> InputLabels("input-clusters",
     llvm::cl::ZeroOrMore,
@@ -160,6 +166,7 @@ int DoHMMTest()
 int DoHMMPredict()
 {
   using namespace cliver;
+  using namespace std;
 
   std::set<TrainingObject*> training_objects;
   std::vector<std::string> input_files;
@@ -201,6 +208,34 @@ int DoHMMPredict()
   HMMPathPredictor hpp;
   infile >> hpp;
   std::cout << hpp;
+  
+  if (HMMTestMessages.size() > 0) {
+    CVMESSAGE("Testing " << HMMTestMessages.size() << " message files");
+    TrainingObjectSet dummy;
+    std::vector<TrainingObject*> test_objects;
+    TrainingManager::read_files(HMMTestMessages, dummy); //HACK!
+    TrainingManager::read_files_in_order(HMMTestMessages, test_objects);
+    auto all_training_objects = hpp.getAllTrainingObjects();
+
+    for (size_t i = 0; i < HMMTestMessages.size(); ++i) {
+      cout << "------------------------------------------------\n";
+      cout << "Adding message: " << HMMTestMessages[i] << "\n";
+      TrainingObject* tobj = test_objects[i];
+      SocketEvent* se = *(tobj->socket_event_set.begin());
+      hpp.addMessage(*se);
+      const vector<int>& msg_cluster_ids = hpp.getAssignedMsgClusters();
+      cout << "Message assigned to cluster: " << msg_cluster_ids[i] << "\n";
+      auto guide_paths = hpp.predictPath((int)i+1, 0.99);
+      for (auto it = guide_paths.begin(); it != guide_paths.end(); ++it) {
+        pair<double, int> entry(*it);
+        std::cout.precision(6);
+        std::cout.setf( std::ios::fixed, std:: ios::floatfield );
+        cout << "Prob = " << entry.first << " | guide_path " << entry.second
+             << " | " << all_training_objects[entry.second]->name << "\n";
+      }
+    }
+
+  }
 
   return 0;
 }
