@@ -19,9 +19,6 @@ override ENABLE_COVERAGE := $(RUNTIME_ENABLE_COVERAGE)
 override DEBUG_SYMBOLS := $(RUNTIME_DEBUG_SYMBOLS)
 endif
 
-# HMM libs
-LIBS += -lghmm
-
 # Required for Boost 
 LIBS += -lboost_serialization -lboost_regex -lboost_iostreams -lboost_system -lboost_thread
 CXX.Flags += -Wno-deprecated
