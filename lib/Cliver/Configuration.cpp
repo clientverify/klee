@@ -43,7 +43,7 @@ llvm::cl::opt<RunModeType> RunMode("cliver-mode",
       "Verify using edit distance and training data with k-Prefix ptr hash table alg."),
     clEnumValN(VerifyEditDistanceKPrefixTest, "edit-dist-kprefix-test",
       "Verify using all k-Prefix to compare implementations."),
-    clEnumValN(Jaccard, "jaccard",
+    clEnumValN(VerifyJaccard, "jaccard",
       "Verify using jaccard metric with training data."),
   clEnumValEnd));
 
@@ -76,7 +76,7 @@ CVSearcher* CVSearcherFactory::create(klee::Searcher* base_searcher,
                                       ClientVerifier* cv, StateMerger* merger) {
   switch (RunMode) {
     case VerifyNaive:
-    case Jaccard:
+    case VerifyJaccard:
     case VerifyEditDistanceRow:
     case VerifyEditDistanceKPrefixRow:
     case VerifyEditDistanceKPrefixHash:
@@ -95,7 +95,7 @@ CVSearcher* CVSearcherFactory::create(klee::Searcher* base_searcher,
 SearcherStage* SearcherStageFactory::create(StateMerger* merger, 
                                             CVExecutionState* state) {
   switch (RunMode) {
-    case Jaccard:
+    case VerifyJaccard:
     case VerifyEditDistanceRow:
     case VerifyEditDistanceKPrefixRow:
     case VerifyEditDistanceKPrefixHash:
@@ -160,7 +160,7 @@ ExecutionTraceManager* ExecutionTraceManagerFactory::create(ClientVerifier* cv) 
       return new ExecutionTraceManager(cv);
       break;
     }
-    case Jaccard:
+    case VerifyJaccard:
     case VerifyEditDistanceRow:
     case VerifyEditDistanceKPrefixRow:
     case VerifyEditDistanceKPrefixHash:
@@ -206,12 +206,9 @@ ExecutionTraceEditDistanceTree* EditDistanceTreeFactory::create() {
       return new EditDistanceTreeEquivalenceTest<ExecutionTrace, BasicBlockID>();
       break;
     }
-
-    case Jaccard: {
+    case VerifyJaccard: {
       return new JaccardTree<ExecutionTrace, BasicBlockID>();
-      break;
     }
-
 
     default: {
       cv_error("EditDistanceFactory called in non-editdistance mode");
@@ -229,7 +226,7 @@ ExecutionStateProperty* ExecutionStatePropertyFactory::create() {
     case VerifyNaive: {
       return new ExecutionStateProperty();
     }
-    case Jaccard:
+    case VerifyJaccard:
     case VerifyEditDistanceRow:
     case VerifyEditDistanceKPrefixRow:
     case VerifyEditDistanceKPrefixHash:
