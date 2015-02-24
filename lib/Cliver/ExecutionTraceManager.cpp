@@ -113,6 +113,12 @@ HMMTrainingFile("hmm-training-file",
                 llvm::cl::desc("Specify a HMM training file)"),
                 llvm::cl::init(""));
 
+llvm::cl::opt<double>
+HMMConfidence("hmm-confidence",
+              llvm::cl::desc("Specify a HMM path prediction confidence level (default=0.9))"),
+              llvm::cl::init(0.9));
+
+
 #ifndef NDEBUG
 
 #undef CVDEBUG
@@ -361,6 +367,7 @@ void TrainingExecutionTraceManager::notify(ExecutionEvent ev) {
         CVDEBUG("New Stage (parent): " << parent_property << ": " << *parent_property);
 
         new_stage->parent_stage = stages_[parent_property];
+        assert(new_stage->parent_stage != NULL);
 
         // Set the SocketEvent of the previous stage
         Socket* socket = parent->network_manager()->socket();
@@ -496,10 +503,17 @@ void VerifyExecutionTraceManager::initialize() {
     cv_error("invalid usage of -use-hmm and -hmm-training-file");
   }
 
-  if (UseClustering || UseClusteringHint || UseClusteringAll)
+  if (UseClustering || UseClusteringHint || UseClusteringAll) {
     initialize_training_data();
-  else if (UseHMM) {
+  } else if (UseHMM) {
     hmm_ = new HMMPathPredictor();
+    std::ifstream HMMTrainingFileIS(HMMTrainingFile.c_str(),
+                                    std::ifstream::in | std::ifstream::binary );
+    CVMESSAGE("HMM: loading " << HMMTrainingFile);
+    HMMTrainingFileIS >> *hmm_;
+
+    hmm_training_objs_ = hmm_->getAllTrainingObjects();
+    CVMESSAGE("HMM: Retreived " << hmm_training_objs_.size() << " training objects");
   }
 }
 
@@ -627,8 +641,18 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
   TrainingFilter tf(state);
 
   if (UseHMM) {
+    if (hmm_->rounds() < property->round) {
+      hmm_->addMessage(*socket_event);
+    }
 
+    auto guidePaths = hmm_->predictPath(property->round, HMMConfidence);
 
+    stage->root_ed_tree = EditDistanceTreeFactory::create();
+    for (auto it : guidePaths) {
+      auto training_object = hmm_training_objs_[it.second];
+      CVMESSAGE("HMM: Adding path: " << training_object->name);
+      stage->root_ed_tree->add_data(training_object->trace);
+    }
 
   } else if (UseSelfTraining) {
     if (self_training_data_map_.count(property->round) == 0) {
@@ -695,6 +719,7 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
     } else if (UseClustering || UseClusteringAll) {
 
       TrainingObjectScoreList sorted_clusters;
+      CVDEBUG("Selecting clusters...");
       cluster_manager_->sorted_clusters(socket_event, tf,
                                         sorted_clusters, *similarity_measure_);
       // Create a new root edit distance
@@ -713,6 +738,9 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
       // Stats
       stats::edit_distance_socket_event_first_medoid = sorted_clusters[0].first;
       stats::edit_distance_socket_event_last_medoid = sorted_clusters[i-1].first;
+
+      CVDEBUG("Medoids: " << sorted_clusters[0].first
+              << ", " << sorted_clusters[i-1].first);
 
       if (UseClusteringAll && self_training_data_map_.count(property->round)) {
 

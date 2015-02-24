@@ -160,6 +160,9 @@ class VerifyExecutionTraceManager : public ExecutionTraceManager {
 
   // Hidden Markov Model Path predictor (enabled via UseHMM)
   HMMPathPredictor* hmm_;
+
+  // HMM training objects
+  std::vector<std::shared_ptr<TrainingObject> > hmm_training_objs_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
