@@ -450,6 +450,7 @@ klee::ExecutionState* VerifySearcher::updateAndTrySelectState(
   return trySelectState();
 }
 bool VerifySearcher::empty() {
+  klee::LockGuard guard(lock_);
   return is_empty();
 }
 
