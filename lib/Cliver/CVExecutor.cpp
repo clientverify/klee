@@ -437,7 +437,7 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
         statePtr = NULL;
       }
 
-      if (klee::UseThreads >= 1) {
+      if (klee::UseThreads > 1) {
         klee::UniqueLock searcherCondGuard(searcherCondLock);
         if (!pauseExecution) {
           searcherCond.wait(searcherCondGuard);
