@@ -4,8 +4,6 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// TODO Print name for each stats column when we start
-// TODO CVContext needed?
 //
 //===----------------------------------------------------------------------===//
 
@@ -37,7 +35,6 @@
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/Process.h"
 #include "llvm/ADT/StringExtras.h"
 
 #ifdef GOOGLE_PROFILER
@@ -92,42 +89,6 @@ HeapCheckRoundNumber("heap-check-round", llvm::cl::init(-1));
 
 ////////////////////////////////////////////////////////////////////////////////
 
-namespace stats {
-	klee::Statistic round_number("RoundNumber", "Rn");
-	klee::Statistic merged_states("MergedStates", "MSts");
-	klee::Statistic round_time("RoundTime", "RTm");
-	klee::Statistic round_real_time("RoundRTime", "RRTm");
-	klee::Statistic round_sys_time("RoundSTime", "RSTm");
-	klee::Statistic merge_time("MergingTime", "MTm");
-	klee::Statistic searcher_time("SearcherTime", "STm");
-	klee::Statistic fork_time("ForkTime", "FTm");
-	klee::Statistic round_instructions("RoundInsts", "RInsts");
-	klee::Statistic recv_round_instructions("RecvRoundInsts", "RRInsts");
-	klee::Statistic rebuild_time("RebuildTime", "RBTime");
-	klee::Statistic execution_tree_time("ExecutionTreeTime", "ETTime");
-	klee::Statistic edit_distance_time("EditDistanceTime","EDTm");
-	klee::Statistic edit_distance_build_time("EditDistanceBuildTime","EDBdTm");
-	klee::Statistic edit_distance_hint_time("EditDistanceHintTime","EDHtTm");
-	klee::Statistic edit_distance_stat_time("EditDistanceStatTime","EDStTm");
-	klee::Statistic stage_count("StageCount","StgCnt");
-	klee::Statistic state_clone_count("StateCloneCount","StClnCnt");
-	klee::Statistic state_remove_count("StateRemoveCount","StRemCnt");
-	klee::Statistic edit_distance("EditDistance","ED");
-	klee::Statistic edit_distance_k("EditDistanceK","EDK");
-	klee::Statistic edit_distance_medoid_count("EditDistanceMedoidCount","EDMedCnt");
-	klee::Statistic edit_distance_self_first_medoid("EditDistanceSelfFirstMedoid","EDSFMed");
-	klee::Statistic edit_distance_self_last_medoid("EditDistanceSelfLastMedoid","EDSLMed");
-	klee::Statistic edit_distance_self_socket_event("EditDistanceSelfSocketEvent","EDSLSE");
-	klee::Statistic edit_distance_socket_event_first_medoid("EditDistanceSocketEventFirstMedoid","EDSEFMed");
-	klee::Statistic edit_distance_socket_event_last_medoid("EditDistanceSocketEventLastMedoid","EDSELMed");
-	klee::Statistic socket_event_size("SocketEventSize","SES");
-	klee::Statistic valid_path_instructions("ValidPathInstructions","VPI");
-	klee::Statistic symbolic_variable_count("SymbolicVariableCount","SVC");
-	klee::Statistic pass_count("PassCount","PassCnt");
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct ExternalHandlerInfo {
 	const char* name;
 	klee::SpecialFunctionHandler::ExternalHandler handler;
@@ -179,7 +140,6 @@ ClientVerifier::ClientVerifier(std::string &input_file, bool no_output, std::str
     std::string dest_name("input.bc");
     cvstream_->copyFileToOutputDirectory(input_file, dest_name);
   }
-
 }
 
 ClientVerifier::~ClientVerifier() {
@@ -283,18 +243,10 @@ void ClientVerifier::initialize() {
     hook(execution_trace_manager_);
   }
 
-  print_stat_labels();
-
-  // Initialize time stats
-	update_time_statistics();
-
-  // Create and enable new StatisticRecord
-	statistics_.push_back(new klee::StatisticRecord());
-  klee::theStatisticManager->setCliverContext(statistics_[round_number_]);
+  // Initialize the statistics manager
+  statistics_manager_.initialize();
 
   // Rebuild solvers
-  
-  CVMESSAGE("Building solver chain");
   executor_->rebuild_solvers();
 }
 
@@ -356,10 +308,6 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
         std::string obj_name(ktest->objects[i].name);
         if (obj_name == "s2c" || obj_name == "c2s")
           socket_events_.back()->push_back(new SocketEvent(ktest->objects[i]));
-        //else
-        //  cv_message("Non-network log: %s, length: %d",
-        //             ktest->objects[i].name,
-        //             ktest->objects[i].numBytes);
 			}
 
 			cv_message("Opened socket log \"%s\" with %d objects",
@@ -412,170 +360,40 @@ ExecutionTraceManager* ClientVerifier::execution_trace_manager() {
 	return execution_trace_manager_;
 }
 
-void ClientVerifier::update_time_statistics() {
-  static llvm::sys::TimeValue lastNowTime(0,0),lastUserTime(0,0),lastSysTime(0,0);
-
-  if (lastUserTime.seconds()==0 && lastUserTime.nanoseconds()==0) {
-		llvm::sys::Process::GetTimeUsage(lastNowTime,lastUserTime,lastSysTime);
-  } else {
-		llvm::sys::TimeValue now(0,0),user(0,0),sys(0,0);
-		llvm::sys::Process::GetTimeUsage(now,user,sys);
-		llvm::sys::TimeValue delta = user - lastUserTime;
-		llvm::sys::TimeValue deltaNow = now - lastNowTime;
-		llvm::sys::TimeValue deltaSys = sys - lastSysTime;
-    stats::round_time += delta.usec();
-    stats::round_real_time += deltaNow.usec();
-    stats::round_sys_time += deltaSys.usec();
-    lastUserTime = user;
-    lastNowTime = now;
-    lastSysTime = sys;
-  }
-}
-
-void ClientVerifier::print_stat_labels() {
-*cv_message_stream << "KEY" 
-    << " " << "Rnd"
-    << " " << stats::round_time.getShortName()
-    << " " << stats::round_real_time.getShortName()
-    << " " << stats::round_sys_time.getShortName()
-    << " " << klee::stats::solverTime.getShortName()
-    << " " << stats::searcher_time.getShortName()
-    << " " << stats::execution_tree_time.getShortName()
-    << " " << stats::edit_distance_time.getShortName()
-    << " " << stats::edit_distance_build_time.getShortName()
-    << " " << stats::edit_distance_hint_time.getShortName()
-    << " " << stats::edit_distance_stat_time.getShortName()
-    << " " << stats::merge_time.getShortName()
-    << " " << stats::rebuild_time.getShortName()
-    << " " << stats::round_instructions.getShortName()
-    << " " << stats::recv_round_instructions.getShortName()
-    << " " << stats::stage_count.getShortName()
-    << " " << stats::merged_states.getShortName()
-    << " " << "StSz"
-    << " " << "StSzTot"
-    << " " << "AllcMm"
-    << " " << stats::edit_distance.getShortName()
-    << " " << stats::socket_event_size.getShortName()
-    << " " << stats::valid_path_instructions.getShortName()
-    << " " << stats::symbolic_variable_count.getShortName()
-    << " " << stats::pass_count.getShortName()
-    << "\n";
-}
-
-void ClientVerifier::print_current_statistics(std::string prefix) {
-	klee::StatisticRecord *sr = statistics_[round_number_];
-  this->print_statistic_record(sr, prefix);
-}
-
-void ClientVerifier::print_statistic_record(klee::StatisticRecord* sr,
-                                            std::string &prefix) {
-  double time_scale = 1.0; // 100000.
-  *cv_message_stream << prefix 
-    << " " << sr->getValue(stats::round_number)
-    << " " << sr->getValue(stats::round_time)               /// time_scale
-    << " " << sr->getValue(stats::round_real_time)          /// time_scale
-    << " " << sr->getValue(stats::round_sys_time)           /// time_scale
-    << " " << sr->getValue(klee::stats::solverTime)         /// time_scale
-    << " " << sr->getValue(stats::searcher_time)            /// time_scale
-    << " " << sr->getValue(klee::stats::queryTime)          /// time_scale
-    << " " << sr->getValue(klee::stats::cexCacheTime)       /// time_scale
-    << " " << sr->getValue(klee::stats::queryConstructTime) /// time_scale
-    << " " << sr->getValue(klee::stats::resolveTime)        /// time_scale
-    << " " << sr->getValue(stats::execution_tree_time)      /// time_scale
-    << " " << sr->getValue(stats::edit_distance_time)       /// time_scale
-    << " " << sr->getValue(stats::edit_distance_build_time) /// time_scale
-    << " " << sr->getValue(stats::edit_distance_hint_time) /// time_scale
-    << " " << sr->getValue(stats::edit_distance_stat_time) /// time_scale
-    << " " << sr->getValue(stats::merge_time)               /// time_scale
-    << " " << sr->getValue(stats::rebuild_time)             /// time_scale
-    << " " << sr->getValue(stats::round_instructions)
-    << " " << sr->getValue(stats::recv_round_instructions)
-    << " " << sr->getValue(stats::stage_count)
-    << " " << sr->getValue(stats::state_clone_count)
-    << " " << sr->getValue(stats::state_remove_count)
-    << " " << sr->getValue(stats::merged_states)
-    << " " << executor()->states_size()
-    << " " << CVExecutionState::next_id()
-    << " " << executor()->memory_usage()
-    << " " << sr->getValue(stats::edit_distance) 
-    << " " << sr->getValue(stats::edit_distance_k) 
-    << " " << sr->getValue(stats::edit_distance_medoid_count) 
-    << " " << sr->getValue(stats::edit_distance_self_first_medoid) 
-    << " " << sr->getValue(stats::edit_distance_self_last_medoid) 
-    << " " << sr->getValue(stats::edit_distance_self_socket_event) 
-    << " " << sr->getValue(stats::edit_distance_socket_event_first_medoid) 
-    << " " << sr->getValue(stats::edit_distance_socket_event_last_medoid) 
-    << " " << sr->getValue(stats::socket_event_size)
-    << " " << sr->getValue(stats::valid_path_instructions)
-    << " " << sr->getValue(stats::symbolic_variable_count)
-    << " " << sr->getValue(stats::pass_count)
-    << " " << sr->getValue(klee::stats::queries)
-    << " " << sr->getValue(klee::stats::queriesInvalid)
-    << " " << sr->getValue(klee::stats::queriesValid)
-    << " " << sr->getValue(klee::stats::queryCacheHits)
-    << " " << sr->getValue(klee::stats::queryCacheMisses)
-    << " " << sr->getValue(klee::stats::queryConstructs)
-    << "\n";
-
-#ifdef GOOGLE_PROFILER
-  if (ProfilerStartRoundNumber >= 0 
-			&& round_number_ > ProfilerStartRoundNumber) {
-    CVMESSAGE("Flushing CPU Profiler");
-	  ProfilerFlush();
-  }
-#endif
-}
-
-void ClientVerifier::print_current_stats_and_reset() {
-  // Update clocks with time spent in most recent round
-	update_time_statistics();
-
-  // Recalculate memory usage
-  executor()->update_memory_usage();
-
-  // Rebuild solvers each round change to keep caches fresh.
-  if (RebuildSolvers)
-    executor_->rebuild_solvers();
-
-  // Print current statistics
-  std::string prefix("STATS");
-  this->print_statistic_record(statistics_[round_number_], prefix);
-
-  // Delete current StatisticRecord and create a new one
-  delete statistics_[round_number_];
-  statistics_[round_number_] = new klee::StatisticRecord();
-  klee::theStatisticManager->setCliverContext(statistics_[round_number_]);
-
-  stats::round_number = round_number_;
-}
-
 void ClientVerifier::print_all_stats() {
-  std::string prefix("STATS");
 
-  foreach (klee::StatisticRecord* sr, statistics_) {
-    print_statistic_record(sr, prefix);
+  std::ostream* stats_csv = cvstream_->openOutputFile("cliver.stats");
+
+  if (stats_csv) {
+
+    statistics_manager_.print_names(*stats_csv, ",");
+    statistics_manager_.print_all_rounds(*stats_csv, ",");
+
+    delete stats_csv;
+  } else {
+    cv_error("failed to print cliver.stats");
   }
 }
 
 void ClientVerifier::set_round(int round) {
-  // Update clocks with time spent in most recent round
-	update_time_statistics();
 
-  // Recalculate memory usage
+  // Update statistic manager with new round number
+  statistics_manager_.set_context(round);
+
+  // Recalculate memory usage if we are tracking it
   if (klee::MaxMemory)
     executor()->update_memory_usage();
 
-  // Print current stats
-  std::string prefix("STAGE");
-  this->print_current_statistics(prefix);
+  // Print stats from round we just finished
+  statistics_manager_.print_round_with_short_name(*cv_message_stream, round_number_, " ");
 
   // Set new round number
   round_number_ = round;
+  stats::round_number = round;
 
   // Rebuild solvers each round change to keep caches fresh.
   if (RebuildSolvers)
     executor_->rebuild_solvers();
-
 
 #ifdef GOOGLE_PROFILER
   if (ProfilerStartRoundNumber >= 0) {
@@ -604,15 +422,7 @@ void ClientVerifier::set_round(int round) {
   }
 #endif
 
-  assert(round_number_ <= statistics_.size());
-
-  if (round_number_ == statistics_.size()) {
-    statistics_.push_back(new klee::StatisticRecord());
-  }
-
-  klee::theStatisticManager->setCliverContext(statistics_[round_number_]);
-  stats::round_number = round_number_;
-
+  // Check if we should halt based on command line flag
 	if (MaxRoundNumber && round_number_ > MaxRoundNumber) {
     executor_->setHaltExecution(true);
 	}

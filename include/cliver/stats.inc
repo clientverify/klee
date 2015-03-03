@@ -1,0 +1,44 @@
+//===-- stats.inc -----------------------------------------------*- C++ -*-===//
+//
+// <insert license>
+//
+//===----------------------------------------------------------------------===//
+//
+// This file contains the statistics that are used in cliver. A statistic is
+// defined by a variable name, full name and short name. The full name and
+// short name are stored as strings. See cliver/Statistics.h for example usage.
+//
+//===----------------------------------------------------------------------===//
+
+XSTAT( round_number,                             RoundNumber,                    Rn       ) 
+XSTAT( round_time,                               RoundTime,                      RTm      ) 
+XSTAT( round_real_time,                          RoundRTime,                     RRTm     ) 
+XSTAT( round_sys_time,                           RoundSTime,                     RSTm     ) 
+XSTAT( merged_states,                            MergedStates,                   MSts     ) 
+XSTAT( merge_time,                               MergingTime,                    MTm      ) 
+XSTAT( searcher_time,                            SearcherTime,                   STm      ) 
+XSTAT( fork_time,                                ForkTime,                       FTm      ) 
+XSTAT( round_instructions,                       RoundInsts,                     RInsts   ) 
+XSTAT( recv_round_instructions,                  RecvRoundInsts,                 RRInsts  ) 
+XSTAT( rebuild_time,                             RebuildTime,                    RBTm     ) 
+XSTAT( execution_tree_time,                      ExecutionTreeTime,              ETTm     ) 
+XSTAT( edit_distance_time,                       EditDistTime,                   EDTm     ) 
+XSTAT( edit_distance_build_time,                 EditDistBuildTime,              EDBdTm   ) 
+XSTAT( edit_distance_hint_time,                  EditDistHintTime,               EDHtTm   ) 
+XSTAT( edit_distance_stat_time,                  EditDistStatTime,               EDStTm   ) 
+XSTAT( stage_count,                              StageCount,                     StgCnt   ) 
+XSTAT( state_clone_count,                        StateCloneCount,                StClnCnt ) 
+XSTAT( state_remove_count,                       StateRemoveCount,               StRemCnt ) 
+XSTAT( socket_event_size,                        SocketEventSize,                SESz     ) 
+XSTAT( valid_path_instructions,                  ValidPathInstructions,          VPI      ) 
+XSTAT( symbolic_variable_count,                  SymbolicVariableCount,          SVCnt    ) 
+XSTAT( pass_count,                               PassCount,                      PassCnt  ) 
+XSTAT( edit_distance,                            EditDist,                       EDist    ) 
+XSTAT( edit_distance_k,                          EditDistK,                      EDK      ) 
+XSTAT( edit_distance_medoid_count,               EditDistMedoidCount,            EDMedCnt ) 
+XSTAT( edit_distance_self_first_medoid,          EditDistSelfFirstMedoid,        EDSFMed  ) 
+XSTAT( edit_distance_self_last_medoid,           EditDistSelfLastMedoid,         EDSLMed  ) 
+XSTAT( edit_distance_self_socket_event,          EditDistSelfSocketEvent,        EDSLSE   ) 
+XSTAT( edit_distance_socket_event_first_medoid,  EditDistSocketEventFirstMedoid, EDSEFMed ) 
+XSTAT( edit_distance_socket_event_last_medoid,   EditDistSocketEventLastMedoid,  EDSELMed ) 
+

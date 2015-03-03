@@ -14,8 +14,9 @@
 #include <vector>
 #include <list>
 
-#include "cliver/Socket.h" // For SocketEventList typedef
 #include "cliver/ExecutionObserver.h"
+#include "cliver/Socket.h" // For SocketEventList typedef
+#include "cliver/Statistics.h"
 
 #include "klee/Interpreter.h"
 #include "klee/Statistic.h"
@@ -30,42 +31,6 @@ namespace klee {
 }
 
 namespace cliver {
-
-////////////////////////////////////////////////////////////////////////////////
-
-namespace stats {
-  // These are the statistics associated with each network event
-	extern klee::Statistic round_number;
-	extern klee::Statistic round_time;
-	extern klee::Statistic round_real_time;
-	extern klee::Statistic round_sys_time;
-	extern klee::Statistic merge_time;
-	extern klee::Statistic searcher_time;
-	extern klee::Statistic rebuild_time;
-	extern klee::Statistic execution_tree_time;
-	extern klee::Statistic edit_distance_time;
-	extern klee::Statistic edit_distance_build_time;
-	extern klee::Statistic edit_distance_hint_time;
-	extern klee::Statistic edit_distance_stat_time;
-	extern klee::Statistic round_instructions;
-	extern klee::Statistic recv_round_instructions;
-	extern klee::Statistic merged_states;
-	extern klee::Statistic stage_count;
-	extern klee::Statistic state_clone_count;
-	extern klee::Statistic state_remove_count;
-	extern klee::Statistic edit_distance;
-	extern klee::Statistic edit_distance_k;
-	extern klee::Statistic edit_distance_medoid_count;
-	extern klee::Statistic edit_distance_self_first_medoid;
-	extern klee::Statistic edit_distance_self_last_medoid;
-	extern klee::Statistic edit_distance_self_socket_event;
-	extern klee::Statistic edit_distance_socket_event_first_medoid;
-	extern klee::Statistic edit_distance_socket_event_last_medoid;
-	extern klee::Statistic socket_event_size;
-	extern klee::Statistic valid_path_instructions;
-	extern klee::Statistic symbolic_variable_count;
-	extern klee::Statistic pass_count;
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -166,15 +131,12 @@ class ClientVerifier : public klee::InterpreterHandler {
 	CVExecutor* executor();
   ExecutionTraceManager* execution_trace_manager();
 
-	// Stats
-	void update_time_statistics();
-	void print_current_statistics(std::string prefix);
-  void print_statistic_record(klee::StatisticRecord* sr,
-                              std::string &prefix);
-	void print_stat_labels();
-  void print_current_stats_and_reset();
-	void print_all_stats();
-	void set_round(int round);
+  // Write all stats to file
+  void print_all_stats();
+
+  // Set global context (round)
+  void set_round(int round);
+
   int round() { return round_number_; }
 
 	// Arrays
@@ -210,6 +172,8 @@ class ClientVerifier : public klee::InterpreterHandler {
   std::string client_name_;
 
   KTest* replay_objs_;
+
+  CVStatisticsManager statistics_manager_;
 };
 
 
