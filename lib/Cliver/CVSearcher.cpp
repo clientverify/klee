@@ -130,14 +130,11 @@ void VerifySearcher::process_unique_pending_states() {
   ExecutionStateSet state_set, merged_set;
   state_set.insert(pending_states_.begin(), pending_states_.end());
 
-  // Don't attempt to merge a single state
+  // Don't attempt to merge a single state, just prune constraints
   if (state_set.size() == 1) {
     CVExecutionState *state = *(state_set.begin());
-    // Only prune constraints on first pass or end of final pass
-    if (state->property()->pass_count == 0) {
-      merger_->pruner()->prune_independent_constraints(*state);
-      merged_set.insert(state);
-    }
+    merger_->pruner()->prune_independent_constraints(*state);
+    merged_set.insert(state);
   } else {
     merger_->merge(state_set, merged_set);
   }
