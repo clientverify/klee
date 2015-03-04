@@ -27,7 +27,7 @@ using namespace klee;
 MemoryManager::MemoryManager() : activeObjects(0) {}
 
 MemoryManager::~MemoryManager() { 
-#ifndef NDEBUG
+#if defined(MEMORY_MANAGER_OBJECT_TRACKING)
   while (!objects.empty()) {
     MemoryObject *mo = *objects.begin();
     if (!mo->isFixed)
@@ -56,7 +56,7 @@ MemoryObject *MemoryManager::allocate(uint64_t size, bool isLocal,
   ++activeObjects;
   MemoryObject *res = new MemoryObject(address, size, isLocal, isGlobal, false,
                                        allocSite, this);
-#ifndef NDEBUG
+#if defined(MEMORY_MANAGER_OBJECT_TRACKING)
   objectsLock.lock();
   objects.insert(res);
   objectsLock.unlock();
@@ -66,7 +66,7 @@ MemoryObject *MemoryManager::allocate(uint64_t size, bool isLocal,
 
 MemoryObject *MemoryManager::allocateFixed(uint64_t address, uint64_t size,
                                            const llvm::Value *allocSite) {
-#ifndef NDEBUG
+#if defined(MEMORY_MANAGER_OBJECT_TRACKING)
   objectsLock.lock();
   for (objects_ty::iterator it = objects.begin(), ie = objects.end();
        it != ie; ++it) {
@@ -81,7 +81,7 @@ MemoryObject *MemoryManager::allocateFixed(uint64_t address, uint64_t size,
   ++activeObjects;
   MemoryObject *res = new MemoryObject(address, size, false, true, true,
                                        allocSite, this);
-#ifndef NDEBUG
+#if defined(MEMORY_MANAGER_OBJECT_TRACKING)
   objectsLock.lock();
   objects.insert(res);
   objectsLock.unlock();
@@ -96,7 +96,7 @@ void MemoryManager::deallocate(const MemoryObject *mo) {
 void MemoryManager::markFreed(MemoryObject *mo) {
   --activeObjects;
 
-#ifndef NDEBUG
+#if defined(MEMORY_MANAGER_OBJECT_TRACKING)
   objectsLock.lock();
   if (objects.find(mo) != objects.end())
   {

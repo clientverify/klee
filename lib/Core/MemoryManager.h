@@ -6,6 +6,10 @@
 // License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
+//
+// Define MEMORY_MANAGER_OBJECT_TRACKING to prevent memory leaks at exit
+//
+//===----------------------------------------------------------------------===//
 
 #ifndef KLEE_MEMORYMANAGER_H
 #define KLEE_MEMORYMANAGER_H
@@ -25,7 +29,8 @@ namespace klee {
   class MemoryManager {
   private:
     Atomic<unsigned>::type activeObjects;
-#ifndef NDEBUG
+
+#if defined(MEMORY_MANAGER_OBJECT_TRACKING)
     typedef std::set<MemoryObject*> objects_ty;
     objects_ty objects;
     SpinLock objectsLock;
