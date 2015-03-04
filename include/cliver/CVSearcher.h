@@ -465,19 +465,6 @@ class VerifySearcher : public CVSearcher {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TrainingSearcher : public VerifySearcher {
- public:
-  TrainingSearcher(ClientVerifier *cv, StateMerger* merger);
-  klee::ExecutionState &selectState();
-  klee::ExecutionState* trySelectState();
-  void printName(std::ostream &os) { os << "TrainingSearcher\n"; }
-
- protected:
-  virtual SearcherStage* select_stage();
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 class SearcherStageFactory {
  public:
   static SearcherStage* create(StateMerger* merger, CVExecutionState* state);
