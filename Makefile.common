@@ -49,7 +49,7 @@ endif
 # (Optional) TCMalloc support
 ifeq ($(ENABLE_TCMALLOC),1)
   LIBS += -ltcmalloc
-  CXX.Flags += -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free -DTCMALLOC
+  CXX.Flags += -DTCMALLOC
 endif
 
 # (Optional) Use Google profiler, no performance hit unless enabled at runtime.
