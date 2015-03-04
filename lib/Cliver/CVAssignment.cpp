@@ -72,28 +72,30 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
   solver->getInitialValues(query, arrays, initial_values);
 
   // Print implied values
-  for (unsigned i=0; i<arrays.size(); ++i) {
-    std::ostringstream info;
-    info << "IV: ARRAY(" << initial_values[i].size() << ") "
-         << arrays[i]->name << " = ";
+	if (DebugCVAssignment) {
+    for (unsigned i=0; i<arrays.size(); ++i) {
+      std::ostringstream info;
+      info << "IV: ARRAY(" << initial_values[i].size() << ") "
+          << arrays[i]->name << " = ";
 
-    bool isASCII = true;
-    for (unsigned j=0; j<initial_values[i].size()-1; ++j) {
-      if (initial_values[i][j] > 128)
-        isASCII = false;
-    }
-
-    if (isASCII) {
-      info << std::string(initial_values[i].begin(), initial_values[i].end());
-    } else {
-      info << "0x";
-      for (unsigned j=0; j<initial_values[i].size(); ++j) {
-        unsigned c = initial_values[i][j];
-        info << std::hex << c << std::dec;
+      bool isASCII = true;
+      for (unsigned j=0; j<initial_values[i].size()-1; ++j) {
+        if (initial_values[i][j] > 128)
+          isASCII = false;
       }
-    }
 
-    CVDEBUG(info.str());
+      if (isASCII) {
+        info << std::string(initial_values[i].begin(), initial_values[i].end());
+      } else {
+        info << "0x";
+        for (unsigned j=0; j<initial_values[i].size(); ++j) {
+          unsigned c = initial_values[i][j];
+          info << std::hex << c << std::dec;
+        }
+      }
+
+      CVDEBUG(info.str());
+    }
   }
 
   klee::ref<klee::Expr> value_disjunction
@@ -130,10 +132,10 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
       klee::ConstantExpr::alloc(0, klee::Expr::Bool)), result);
 
     if (result) {
+      //TODO Handle this case!
       CVDEBUG("INVALID solver concretization!");
     } else {
-      //TODO test this path
-      cv_warning("CVAssignement: TODO verify logic for this path ");
+      //TODO Test this path
       CVDEBUG("VALID solver concretization!");
       addBindings(arrays, initial_values);
     }
