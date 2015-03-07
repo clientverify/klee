@@ -365,13 +365,20 @@ void ClientVerifier::print_all_stats() {
   std::ostream* stats_csv = cvstream_->openOutputFile("cliver.stats");
 
   if (stats_csv) {
-
     statistics_manager_.print_names(*stats_csv, ",");
     statistics_manager_.print_all_rounds(*stats_csv, ",");
-
     delete stats_csv;
   } else {
     cv_error("failed to print cliver.stats");
+  }
+
+  std::ostream* summary_csv = cvstream_->openOutputFile("cliver.stats.summary");
+
+  if (summary_csv) {
+    statistics_manager_.print_all_summary(*summary_csv, ",");
+    delete summary_csv;
+  } else {
+    cv_error("failed to print cliver.stats.summary");
   }
 }
 

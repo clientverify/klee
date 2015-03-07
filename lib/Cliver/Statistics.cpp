@@ -12,6 +12,7 @@
 #include "../lib/Core/CoreStats.h"
 
 #include <ostream>
+#include <iomanip>
 
 namespace stats {
   #define XSTAT(X,NAME,SHORTNAME) klee::Statistic X( #NAME, #SHORTNAME );
@@ -143,5 +144,34 @@ void CVStatisticsManager::print_short_names(std::ostream &os, std::string sep) {
     os << (*it)->getShortName() << (it != it_last ? sep : "");
   os << "\n";
 }
+
+// Print summary (min, max, sum, average) of a given klee::Statistic
+void CVStatisticsManager::print_summary(std::ostream &os,
+  klee::Statistic* s, std::string sep) {
+  unsigned stat_count = statistic_records_.size();
+
+  // Compute stats from contexts
+  uint64_t sum = 0, min = 0;
+  uint64_t max = statistic_records_[0]->getValue(*s);
+
+  for (auto sr : statistic_records_) {
+    uint64_t val = sr->getValue(*s);
+    sum += val;
+    min = std::min(min, val);
+    max = std::max(max, val);
+  }
+
+  double average = ((double)sum) / stat_count;
+  os << s->getName() << sep << min << sep << max << sep << sum << sep;
+  os << std::fixed << std::setprecision(6) << average << "\n";
+}
+
+// Round Statistics Summary - (name, minimum, maximum, sum, average)
+void CVStatisticsManager::print_all_summary(std::ostream &os, std::string sep) {
+  for (auto s : statistics_) {
+    print_summary(os, s, sep);
+  }
+}
+
 
 // end Statistics.cpp

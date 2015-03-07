@@ -32,6 +32,8 @@ class CVStatisticsManager {
   void print_all_rounds(std::ostream &os, std::string sep);
   void print_names(std::ostream &os, std::string sep);
   void print_short_names(std::ostream &os, std::string sep);
+  void print_all_summary(std::ostream &os, std::string sep);
+  void print_summary(std::ostream &os, klee::Statistic* s, std::string sep);
   void update_context_timers();
 
  private:
