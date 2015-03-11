@@ -630,6 +630,7 @@ TYPED_TEST(EditDistanceTreeTest, Compute) {
   }
 }
 
+#if 0
 TYPED_TEST(EditDistanceTreeTest, TestUpdate) {
   this->InsertDictionary();
   this->InsertDictionary(this->alt_rt_);
@@ -666,6 +667,7 @@ TYPED_TEST(EditDistanceTreeTest, TestUpdate) {
     rstr += (char)((rand() % 26) + 'a');
   }
 }
+#endif
 
 //////////////////////////////////////////////////////////////////////////////////
 

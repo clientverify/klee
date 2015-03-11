@@ -2,7 +2,7 @@
 
 LEVEL = ..
 
-include $(LEVEL)/Makefile.config
+include $(LEVEL)/Makefile.common
 
 LIBRARYNAME = UnitTestMain
 BUILD_ARCHIVE = 1

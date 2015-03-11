@@ -16,8 +16,8 @@
 #include "cliver/CVStream.h"
 
 #include "llvm/Analysis/Trace.h"
-#include "llvm/BasicBlock.h"
-#include "llvm/LLVMContext.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/LLVMContext.h"
 
 #include <string>
 #include <iostream>

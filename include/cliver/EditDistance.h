@@ -97,7 +97,8 @@ class EditDistanceTable {
      costs_(0) {}
 
   ~EditDistanceTable() {
-    delete [] costs_;
+    if (costs_)
+      delete costs_;
   }
 
   inline void update_row(const SequenceType &s, const SequenceType &t, 
@@ -205,7 +206,8 @@ class EditDistanceRow {
      costs_(0) {}
 
   ~EditDistanceRow() {
-    delete[] costs_;
+    if (costs_)
+      delete [] costs_;
   }
 
   inline void update_row(const SequenceType &s, const SequenceType &t, 
