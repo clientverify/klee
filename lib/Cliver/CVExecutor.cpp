@@ -691,7 +691,7 @@ void CVExecutor::executeMakeSymbolic(klee::ExecutionState &state,
     multipass = true;
   } else {
     CVDEBUG("Multi-pass: Concretization not found for " << array_name);
-    array = new klee::Array(array_name, mo->size);
+    array = klee::Array::CreateArray(array_name, mo->size);
   }
 
   bindObjectInState(state, mo, false, array);

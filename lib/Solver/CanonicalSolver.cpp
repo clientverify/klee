@@ -76,7 +76,7 @@ class CanonicalVisitor : public ExprVisitor {
             // Create new array
             std::string arrayName = "c_" + llvm::utostr(sz) 
                 + "_" + llvm::utostr(canonicalArrayMap[sz].size() + 1);
-            array = new Array(arrayName, sz);
+            array = Array::CreateArray(arrayName, sz);
 
             // Insert into data structures
             canonicalArrayMap[sz].push_back(array);
