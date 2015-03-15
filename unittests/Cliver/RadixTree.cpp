@@ -584,7 +584,8 @@ TEST_P(KPrefixEditDistanceTreeEquivalenceTest, UpdateSuffixWithInExactMatches) {
 }
 
 INSTANTIATE_TEST_CASE_P(KPrefixValues, KPrefixEditDistanceTreeEquivalenceTest,
-                        ::testing::Values(128,32,16,8,4,2));
+                        ::testing::Values(2));
+                        //::testing::Values(128,32,16,8,4,2));
 
 //TEST_F(KPrefixEditDistanceTreeEquivalenceTest, Init) {
 //  this->InsertDictionaryForAll();

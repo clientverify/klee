@@ -160,7 +160,7 @@ TYPED_TEST(ClustererTest, DoCluster) {
   //this->c_->init(25, &metric);
   this->InsertDictionary();
   this->c_->cluster(50);
-  this->c_->print_clusters();
+  //this->c_->print_clusters();
 }
 
 //INSTANTIATE_TEST_CASE_P(ClusterSizes, PClustererTest,
