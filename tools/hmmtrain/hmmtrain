@@ -2,6 +2,9 @@
 
 # Cliver HMM trainer
 
+SCRIPT_DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
+export PATH="${SCRIPT_DIR}:$PATH"
+
 show_help () {
     echo
     echo "Cliver HMM trainer"
@@ -31,7 +34,7 @@ show_help () {
 
   (*) prefix for top-level directory of a session, which must be
       followed by an integer that uniquely identifies the
-      session. (default = 'cliver-out-')
+      session. (example: 'cliver-out-')
       Example acceptable path: 'foo/bar/cliver-out-9/round_0048/baz.tpath'
 EOF
 }
