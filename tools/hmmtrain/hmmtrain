@@ -8,7 +8,7 @@ export PATH="${SCRIPT_DIR}:$PATH"
 show_help () {
     echo
     echo "Cliver HMM trainer"
-    echo "Usage: $1 [-m metric] indir prefix nFrag nMsg tmpdir outhmm"
+    echo "Usage: $1 [-m metric] [-t metric] indir prefix nFrag nMsg tmpdir outhmm"
     cat << EOF
 
   Take as input a directory of tpath files, and create as output an
@@ -30,6 +30,7 @@ show_help () {
 
   Options:
   -m  Change message metric: "Jaccard" (default) and "Ruzicka" supported
+  -t  Change trace metric: "Jaccard" (default) and "mJaccard" supported
   -v  Verbose mode
 
   (*) prefix for top-level directory of a session, which must be
@@ -52,9 +53,10 @@ OPTIND=1         # Reset in case getopts has been used previously in the shell.
 
 # Parse optional arguments
 message_metric="Jaccard" # other option is "Ruzicka"
+trace_metric="Jaccard" # other option is "mJaccard"
 verbose=0
 verbose_flag=
-while getopts "h?vm:" opt; do
+while getopts "h?vm:t:" opt; do
     case "$opt" in
     h|\?)
         show_help $0
@@ -64,6 +66,8 @@ while getopts "h?vm:" opt; do
         verbose_flag="-v"
         ;;
     m)  message_metric=$OPTARG
+        ;;
+    t)  trace_metric=$OPTARG
         ;;
     esac
 done
@@ -89,7 +93,8 @@ fi
 
 if [ $verbose -eq 1 ]
 then
-    echo "message_metric='$message_metric', arguments($#): $@"
+    printf "message_metric='$message_metric', trace_metric='$trace_metric', "
+    printf "arguments($#): $@\n"
 fi
 
 ###############################################################################
@@ -112,7 +117,7 @@ if [ $verbose -eq 1 ]
 then
     echo "Computing distance matrix for fragments"
 fi
-distmtx.py $verbose_flag -f < "${tmp_dir}/training.csv" > \
+distmtx.py $verbose_flag -f -m "${trace_metric}" < "${tmp_dir}/training.csv" > \
     "${tmp_dir}/distmtx_frag.csv"
 
 if [ $verbose -eq 1 ]

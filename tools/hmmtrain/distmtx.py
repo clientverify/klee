@@ -12,6 +12,7 @@ import time
 import doctest
 from levenshtein import *
 from message_features import weighted_histogram
+from collections import defaultdict
 
 ###############################################################################
 
@@ -117,6 +118,23 @@ def ruzicka(s1, s2):
     else:
         return 1.0 - float(numerator)/float(denominator)
 
+def trace_ruzicka(h1, h2):
+    hh1 = defaultdict(int)
+    for k,v in h1.iteritems():
+        hh1[k] = v
+    hh2 = defaultdict(int)
+    for k,v in h2.iteritems():
+        hh2[k] = v
+    numerator = 0
+    denominator = 0
+    for k in (set(hh1.keys()) | set(hh2.keys())):
+        numerator += min(hh1[k], hh2[k])
+        denominator += max(hh1[k], hh2[k])
+    if denominator == 0:
+        return 0.0
+    else:
+        return 1.0 - float(numerator)/float(denominator)
+
 def msg_ruzicka(m1, m2):
     if m1[0] != m2[0]:
         return 1.0
@@ -133,6 +151,12 @@ def quickdiff(s1, s2):
     s = difflib.SequenceMatcher(None,s1,s2)
     return 1.0 - s.quick_ratio()
 
+def build_histogram(seq): # map: element -> count
+    histogram = defaultdict(int)
+    for s in seq:
+        histogram[s] += 1
+    return histogram
+
 ###############################################################################
 
 def compute_distance_row(work_item, distFunc):
@@ -141,6 +165,9 @@ def compute_distance_row(work_item, distFunc):
 
 def compute_distance_row_jaccard(work_item):
     return compute_distance_row(work_item, jaccard)
+
+def compute_distance_row_ruzicka(work_item):
+    return compute_distance_row(work_item, trace_ruzicka)
 
 def compute_msg_distance_row_jaccard(work_item):
     return compute_distance_row(work_item, msg_jaccard)
@@ -197,7 +224,8 @@ def main():
                         help="""compute distance matrix on execution fragments
                                 (default: messages)""")
     parser.add_argument('-m', '--metric', metavar='M', default='Jaccard',
-                        choices = ['Jaccard', 'Levenshtein', 'Ruzicka'],
+                        choices = ['Jaccard', 'mJaccard',
+                                   'Levenshtein', 'Ruzicka'],
                         help="""Use metric %(metavar)s. Choices: %(choices)s.
                                 (default: %(default)s)""")
     parser.add_argument('-l', '--headerlen', metavar='L', type=int, default=40,
@@ -233,8 +261,9 @@ def main():
 
     t0 = time.time()
     if args.verbose:
-        print >>sys.stderr, "Computing %d x %d %s distance matrix" % \
-            (len(data), len(data), distance_matrix_type)
+        print >>sys.stderr, \
+            "Computing %d x %d %s distance matrix using %d processors" % \
+            (len(data), len(data), distance_matrix_type, num_workers)
         if args.metric == "Ruzicka":
             print >>sys.stderr, "Ruzicka: using estimated header length of %d" \
                 % args.headerlen
@@ -243,6 +272,10 @@ def main():
         traces = [set(x[3]) for x in data]
         global_point_vector = traces
         dist_func = compute_distance_row_jaccard
+    elif args.fragment and args.metric == 'mJaccard': # Frag multiset Jaccard
+        traces = [build_histogram(x[3]) for x in data]
+        global_point_vector = traces
+        dist_func = compute_distance_row_ruzicka
     elif args.fragment and args.metric == 'Levenshtein': # Fragment Levenshtein
         traces = [x[3] for x in data]
         global_point_vector = traces
