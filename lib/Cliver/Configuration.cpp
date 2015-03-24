@@ -45,6 +45,8 @@ llvm::cl::opt<RunModeType> RunMode("cliver-mode",
       "Verify using all k-Prefix to compare implementations."),
     clEnumValN(VerifyJaccard, "jaccard",
       "Verify using jaccard metric with training data."),
+    clEnumValN(VerifyMultiSetJaccard, "mjaccard",
+      "Verify using multi-set jaccard metric with training data."),
   clEnumValEnd));
 
 ClientModelType ClientModelFlag;
@@ -77,6 +79,7 @@ CVSearcher* CVSearcherFactory::create(klee::Searcher* base_searcher,
   switch (RunMode) {
     case VerifyNaive:
     case VerifyJaccard:
+    case VerifyMultiSetJaccard:
     case VerifyEditDistanceRow:
     case VerifyEditDistanceKPrefixRow:
     case VerifyEditDistanceKPrefixHash:
@@ -96,6 +99,7 @@ SearcherStage* SearcherStageFactory::create(StateMerger* merger,
                                             CVExecutionState* state) {
   switch (RunMode) {
     case VerifyJaccard:
+    case VerifyMultiSetJaccard:
     case VerifyEditDistanceRow:
     case VerifyEditDistanceKPrefixRow:
     case VerifyEditDistanceKPrefixHash:
@@ -161,6 +165,7 @@ ExecutionTraceManager* ExecutionTraceManagerFactory::create(ClientVerifier* cv) 
       break;
     }
     case VerifyJaccard:
+    case VerifyMultiSetJaccard:
     case VerifyEditDistanceRow:
     case VerifyEditDistanceKPrefixRow:
     case VerifyEditDistanceKPrefixHash:
@@ -208,6 +213,11 @@ ExecutionTraceEditDistanceTree* EditDistanceTreeFactory::create() {
     }
     case VerifyJaccard: {
       return new JaccardTree<ExecutionTrace, BasicBlockID>();
+      break;
+    }
+    case VerifyMultiSetJaccard: {
+      return new MultiSetJaccardTree<ExecutionTrace, BasicBlockID>();
+      break;
     }
 
     default: {
@@ -227,6 +237,7 @@ ExecutionStateProperty* ExecutionStatePropertyFactory::create() {
       return new ExecutionStateProperty();
     }
     case VerifyJaccard:
+    case VerifyMultiSetJaccard:
     case VerifyEditDistanceRow:
     case VerifyEditDistanceKPrefixRow:
     case VerifyEditDistanceKPrefixHash:

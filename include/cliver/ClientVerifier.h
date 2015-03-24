@@ -63,7 +63,8 @@ enum RunModeType {
   VerifyEditDistanceKPrefixHash,
   VerifyEditDistanceKPrefixHashPointer,
   VerifyEditDistanceKPrefixTest,
-  VerifyJaccard
+  VerifyJaccard,
+  VerifyMultiSetJaccard
 };
 
 enum ClientModelType {
