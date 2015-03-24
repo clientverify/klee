@@ -102,10 +102,10 @@ def main():
             (args.nclusters, len(dm))
         args.nclusters = len(dm)
 
-    # Hierarchical clustering with "complete" (max) linkage
+    # Hierarchical clustering with "average" linkage
     ac = skc.AgglomerativeClustering(n_clusters=args.nclusters,
                                      affinity="precomputed",
-                                     linkage="complete")
+                                     linkage="average")
     cluster_ids = ac.fit_predict(dm) # distance, not affinity matrix
     cluster_ids = canonicalize_ids(cluster_ids)
     if args.verbose:
