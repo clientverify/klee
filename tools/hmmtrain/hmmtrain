@@ -20,7 +20,7 @@ show_help () {
   Command line arguments
   -----------------------
   Inputs:
-  1. indir  = Directory of tpath files
+  1. input  = Directory of tpath files or TXT list of tpath file paths
   2. prefix = Session prefix (*)
   3. nFrag  = Number of fragment clusters
   4. nMsg   = Number of message clusters
@@ -102,9 +102,37 @@ fi
 ###############################################################################
 if [ $verbose -eq 1 ]
 then
-    echo "Assembling training data from directory ${input_dir}"
+    echo "Assembling training data from ${input_dir}"
 fi
-find -L "${input_dir}" -name '*.tpath' | sort -n > "${tmp_dir}/tpath_files.txt"
+
+if [[ -d ${input_dir} ]]
+then
+    find -L "${input_dir}" -name '*.tpath' | sort -n > "${tmp_dir}/tpath_files.txt"
+elif [[ -f ${input_dir} ]]
+then
+    sort -n ${input_dir} > "${tmp_dir}/tpath_files.txt"
+else
+    echo "${input_dir} is not file or directory!"
+    exit 1
+fi
+
+tpath_count=0
+if [[ -e "${tmp_dir}/tpath_files.txt"  ]]
+then
+    tpath_count=$(wc -l "${tmp_dir}/tpath_files.txt" | awk '{print $1}')
+fi 
+
+if [[ $tpath_count -eq 0 ]]
+then
+    echo "${input_dir} is empty or invalid"
+    exit 1
+fi
+
+if [ $verbose -eq 1 ]
+then
+    echo "Using ${tpath_count} tpath files"
+fi
+
 cat "${tmp_dir}/tpath_files.txt" | \
     extract_training.py $verbose_flag -r "${session_prefix}" > \
     "${tmp_dir}/training.csv"
