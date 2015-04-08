@@ -164,6 +164,12 @@ int DoHMMTest()
   cout << "MultiSetJaccardTree self-test " << (r==0 ? "succeeded" : "failed")
        << "!\n\n";
 
+  cout << "Running MultiSetJaccardPrefixTree self-test...\n";
+  r = MultiSetJaccardPrefixTree<vector<int>,int>::test();
+  ret += r;
+  cout << "MultiSetJaccardPrefixTree self-test "
+       << (r==0 ? "succeeded" : "failed") << "!\n\n";
+
   return ret;
 }
 
