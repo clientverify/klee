@@ -47,6 +47,8 @@ llvm::cl::opt<RunModeType> RunMode("cliver-mode",
       "Verify using jaccard metric with training data."),
     clEnumValN(VerifyMultiSetJaccard, "mjaccard",
       "Verify using multi-set jaccard metric with training data."),
+    clEnumValN(VerifyMultiSetJaccardPrefix, "mjaccard-kprefix",
+      "Verify using k-Prefix multi-set jaccard metric with training data."),
   clEnumValEnd));
 
 ClientModelType ClientModelFlag;
@@ -80,6 +82,7 @@ CVSearcher* CVSearcherFactory::create(klee::Searcher* base_searcher,
     case VerifyNaive:
     case VerifyJaccard:
     case VerifyMultiSetJaccard:
+    case VerifyMultiSetJaccardPrefix:
     case VerifyEditDistanceRow:
     case VerifyEditDistanceKPrefixRow:
     case VerifyEditDistanceKPrefixHash:
@@ -100,6 +103,7 @@ SearcherStage* SearcherStageFactory::create(StateMerger* merger,
   switch (RunMode) {
     case VerifyJaccard:
     case VerifyMultiSetJaccard:
+    case VerifyMultiSetJaccardPrefix:
     case VerifyEditDistanceRow:
     case VerifyEditDistanceKPrefixRow:
     case VerifyEditDistanceKPrefixHash:
@@ -166,6 +170,7 @@ ExecutionTraceManager* ExecutionTraceManagerFactory::create(ClientVerifier* cv) 
     }
     case VerifyJaccard:
     case VerifyMultiSetJaccard:
+    case VerifyMultiSetJaccardPrefix:
     case VerifyEditDistanceRow:
     case VerifyEditDistanceKPrefixRow:
     case VerifyEditDistanceKPrefixHash:
@@ -219,6 +224,10 @@ ExecutionTraceEditDistanceTree* EditDistanceTreeFactory::create() {
       return new MultiSetJaccardTree<ExecutionTrace, BasicBlockID>();
       break;
     }
+    case VerifyMultiSetJaccardPrefix: {
+      return new MultiSetJaccardPrefixTree<ExecutionTrace, BasicBlockID>();
+      break;
+    }
 
     default: {
       cv_error("EditDistanceFactory called in non-editdistance mode");
@@ -238,6 +247,7 @@ ExecutionStateProperty* ExecutionStatePropertyFactory::create() {
     }
     case VerifyJaccard:
     case VerifyMultiSetJaccard:
+    case VerifyMultiSetJaccardPrefix:
     case VerifyEditDistanceRow:
     case VerifyEditDistanceKPrefixRow:
     case VerifyEditDistanceKPrefixHash:
