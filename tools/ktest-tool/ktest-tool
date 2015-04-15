@@ -54,7 +54,7 @@ class KTest:
         # Augment with extra filename field
         b.filename = path
         return b
-    
+
     def __init__(self, version, args, symArgvs, symArgvLen, objects):
         self.version = version
         self.symArgvs = symArgvs
@@ -70,7 +70,35 @@ class KTest:
         #if program_name.endswith('.bc'):
         #  program_name = program_name[:-3]
         #self.programName = program_name
-        
+
+    def tofile(self, path):
+        f = open(path, 'wb')
+        hdr = 'KTEST'
+        f.write(hdr)
+        f.write(struct.pack('>i', self.version))
+        f.write(struct.pack('>i', len(self.args)))
+        for arg in self.args:
+            f.write(struct.pack('>i', len(arg)))
+            f.write(arg)
+
+        if self.version >= 2:
+            f.write(struct.pack('>i', self.symArgvs))
+            f.write(struct.pack('>i', self.symArgvLen))
+
+        f.write(struct.pack('>i', len(self.objects)))
+        for obj in self.objects:
+            obj_name = obj[0]
+            obj_bytes = obj[1]
+            obj_tv_sec = obj[2]
+            obj_tv_usec = obj[3]
+            f.write(struct.pack('>i', len(obj_name)))
+            f.write(obj_name)
+            f.write(struct.pack('>q', obj_tv_sec))
+            f.write(struct.pack('>q', obj_tv_usec))
+            f.write(struct.pack('>i', len(obj_bytes)))
+            f.write(obj_bytes)
+        f.close()
+
 def trimZeros(str):
     for i in range(len(str))[::-1]:
         if str[i] != '\x00':
@@ -92,10 +120,14 @@ def main(args):
     op.add_option('','--one-line', dest='oneLine', action='store_true',
                   default=False,
                   help='print one line summary of each ktest object')
+    op.add_option('','--out-file', dest='outFile',
+                  help='path to output ktest file')
     
     opts,args = op.parse_args()
     if not args:
         op.error("incorrect number of arguments")
+    if opts.outFile and len(args) != 1:
+        op.error("only one input ktest file allowed when output requested")
 
     for file in args:
         b = KTest.fromfile(file)
@@ -127,6 +159,9 @@ def main(args):
                         print('object %4d: data: %r' % (i, str))
         if file != args[-1]:
             print()
+        if opts.outFile:
+            print('Writing output to %s' % opts.outFile)
+            b.tofile(opts.outFile)
 
 if __name__=='__main__':
     main(sys.argv)
