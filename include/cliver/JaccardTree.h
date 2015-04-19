@@ -479,8 +479,7 @@ class MultiSetJaccardPrefixTree
 
  public:
   MultiSetJaccardPrefixTree() :
-    guide_paths(std::make_shared<std::vector<Sequence> >()),
-    guide_multisets(std::make_shared<std::vector<std::map<T,int> > >())
+    guide_paths(std::make_shared<std::vector<Sequence> >())
   {}
 
   //===-------------------------------------------------------------------===//
@@ -496,7 +495,7 @@ class MultiSetJaccardPrefixTree
       std::cerr << "Error: too late to add more guide paths.\n";
       return;
     }
-    guide_multisets->push_back(std::map<T,int>());
+    guide_multisets.push_back(std::map<T,int>());
     guide_paths->push_back(s);
     intersection_counts.push_back(0);
     union_counts.push_back(0);
@@ -514,7 +513,7 @@ class MultiSetJaccardPrefixTree
     num_inserted = 0;
     min_distance_ = MAX_JACCARD_DISTANCE;
     for (size_t i = 0; i < intersection_counts.size(); ++i) {
-      (*guide_multisets)[i].clear();
+      guide_multisets[i].clear();
       intersection_counts[i] = 0;
       union_counts[i] = 0;
       distances[i] = compute_jaccard(intersection_counts[i], union_counts[i]);
@@ -537,8 +536,8 @@ class MultiSetJaccardPrefixTree
       auto elt = *it;
 
       // ... add one more element to each guide path prefix (if possible) ...
-      for (size_t i = 0; i < guide_multisets->size(); ++i) {
-        std::map<T,int>& guide_multiset = (*guide_multisets)[i];
+      for (size_t i = 0; i < guide_multisets.size(); ++i) {
+        std::map<T,int>& guide_multiset = guide_multisets[i];
         Sequence& guide_path = (*guide_paths)[i];
         if (num_inserted < (int)guide_path.size()) {
           add_and_update_counts(guide_multiset,
@@ -552,8 +551,8 @@ class MultiSetJaccardPrefixTree
       // ... and update the counts and distance to each guide path.
       add_to_histogram(current_multiset, elt);
       min_distance_ = MAX_JACCARD_DISTANCE;
-      for (size_t i = 0; i < guide_multisets->size(); ++i) {
-        if (histogram_getdefault((*guide_multisets)[i], elt, 0) >=
+      for (size_t i = 0; i < guide_multisets.size(); ++i) {
+        if (histogram_getdefault(guide_multisets[i], elt, 0) >=
             current_multiset[elt]) {
 	  // new elt already in guide set: union unchanged, intersection++
 	  intersection_counts[i] += 1;
@@ -730,7 +729,7 @@ class MultiSetJaccardPrefixTree
   std::shared_ptr<std::vector<Sequence> > guide_paths;
 
   // multisets corresponding to  prefixes of length 'num_inserted'
-  std::shared_ptr<std::vector<std::map<T,int> > > guide_multisets;
+  std::vector<std::map<T,int> > guide_multisets;
 
   bool guide_paths_immutable = false;
 };
