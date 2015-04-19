@@ -373,6 +373,7 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
   threadInstCount.reset(new unsigned());
   *threadInstCount = 0;
 
+  Executor::ExecutorContext& context = getContext();
   unsigned instCountBeforeUpdate = 0;
   while (!empty() && !haltExecution) {
 
@@ -401,27 +402,27 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
         ++stats::recv_round_instructions;
 
       // Handle post execution events if state wasn't removed
-      if (getContext().removedStates.find(&state) == getContext().removedStates.end()) {
+      if (context.removedStates.find(&state) == context.removedStates.end()) {
         handle_post_execution_events(state);
       }
 
       // Handle post execution events for each newly added state
-      foreach (klee::ExecutionState* astate, getContext().addedStates) {
+      foreach (klee::ExecutionState* astate, context.addedStates) {
         handle_post_execution_events(*astate);
       }
 
       // Notify all if a state was removed
-      foreach (klee::ExecutionState* rstate, getContext().removedStates) {
+      foreach (klee::ExecutionState* rstate, context.removedStates) {
         cv_->notify_all(ExecutionEvent(CV_STATE_REMOVED, rstate));
       }
 
       // Update searcher with new states and get next state to execute
       if (static_cast<CVExecutionState*>(&state)->event_flag()
-          || !getContext().removedStates.empty()
-          || !getContext().addedStates.empty()) {
+          || !context.removedStates.empty()
+          || !context.addedStates.empty()) {
         statePtr = searcher->updateAndTrySelectState(&state,
-                                                     getContext().addedStates,
-                                                     getContext().removedStates);
+                                                     context.addedStates,
+                                                     context.removedStates);
         // Update Executor state tracking
         parallelUpdateStates(&state);
       }
