@@ -11,6 +11,7 @@
 #define __COMMON_KTEST_H__
 
 #include <sys/time.h>
+#include <stdio.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -54,6 +55,9 @@ extern "C" {
   
   /* returns total number of object bytes */
   unsigned kTest_numBytes(KTest *);
+
+  /* print kTest in human-readable form */
+  void kTest_print(FILE *f, KTest *);
 
   void  kTest_free(KTest *);
 

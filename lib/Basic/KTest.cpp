@@ -14,6 +14,8 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <sys/time.h>
+#include <ctype.h>
+#include <time.h>
 
 #define KTEST_VERSION 4 // Cliver-specific (incompatible with normal klee)
 #define KTEST_MAGIC_SIZE 5
@@ -82,6 +84,42 @@ static int write_string(FILE *f, const char *value) {
   if (fwrite(value, len, 1, f)!=1)
     return 0;
   return 1;
+}
+
+static void timeval2str(char *out, int outlen, const struct timeval *tv) {
+  time_t nowtime;
+  struct tm *nowtm;
+  char tmbuf[64];
+
+  nowtime = tv->tv_sec;
+  nowtm = localtime(&nowtime);
+  strftime(tmbuf, sizeof tmbuf, "%Y-%m-%d %H:%M:%S", nowtm);
+  snprintf(out, outlen, "%s.%06ld", tmbuf, tv->tv_usec);
+}
+
+// Print hex and ascii side-by-side
+static void KTO_print(FILE *f, const KTestObject *o) {
+  unsigned int i, j;
+  const unsigned int WIDTH = 16;
+  char timebuf[64];
+
+  timeval2str(timebuf, sizeof(timebuf), &o->timestamp);
+  fprintf(f, "%s | ", timebuf);
+  fprintf(f, "%s [%u]\n", o->name, o->numBytes);
+  for (i = 0; WIDTH*i <  o->numBytes; i++) {
+    for (j = 0; j < 16 && WIDTH*i+j < o->numBytes; j++) {
+      fprintf(f, " %2.2x", o->bytes[WIDTH*i+j]);
+    }
+    for (; j < 17; j++) {
+      fprintf(f, "   ");
+    }
+    for (j = 0; j < 16 && WIDTH*i+j < o->numBytes; j++) {
+      unsigned char c = o->bytes[WIDTH*i+j];
+      fprintf(f, "%c", isprint(c)?c:'.');
+    }
+    fprintf(f, "\n");
+  }
+  fprintf(f, "\n");
 }
 
 /***/
@@ -259,6 +297,14 @@ unsigned kTest_numBytes(KTest *bo) {
   return res;
 }
 
+void kTest_print(FILE *f, KTest *k) {
+  unsigned int i;
+  for (i = 0; i < k->numObjects; i++) {
+    fprintf(f, "%u: ", i);
+    KTO_print(f, &k->objects[i]);
+  }
+}
+
 void kTest_free(KTest *bo) {
   unsigned i;
   for (i=0; i<bo->numArgs; i++)
@@ -271,3 +317,4 @@ void kTest_free(KTest *bo) {
   free(bo->objects);
   free(bo);
 }
+
