@@ -495,7 +495,7 @@ std::vector<size_t> sort_indices_reverse(const std::vector<T> &v) {
 }
 
 std::vector<std::pair<double,int> >
-HMMPathPredictor::predictPath(int round, double confidence) const
+HMMPathPredictor::predictPath(int round, BasicBlockID bb, double confidence) const
 {
   using namespace std;
   vector<pair<double,int> > output;

@@ -94,10 +94,10 @@ public:
   void addMessage(const SocketEvent& se);
 
   // Retrieve the current (or past) guide paths, with a list of likelihoods.
-  // Inputs: round (1-indexed), and confidence (0.99 suggested)
+  // Inputs: round (1-indexed), initial BasicBlock id and confidence (0.99 suggested)
   // Outputs: vector of pairs (probability, index of guide path)
   std::vector<std::pair<double,int> >
-  predictPath(int round, double confidence) const;
+  predictPath(int round, BasicBlockID bb, double confidence) const;
 
   // Get the sequence of assigned message cluster IDs
   const std::vector<int>& getAssignedMsgClusters() const

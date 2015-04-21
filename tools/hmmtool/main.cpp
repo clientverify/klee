@@ -235,7 +235,7 @@ int DoHMMPredict()
       hpp.addMessage(*se);
       const vector<int>& msg_cluster_ids = hpp.getAssignedMsgClusters();
       cout << "Message assigned to cluster: " << msg_cluster_ids[i] << "\n";
-      auto guide_paths = hpp.predictPath((int)i+1, 0.99);
+      auto guide_paths = hpp.predictPath((int)i+1, 0, 0.99);
       for (auto it = guide_paths.begin(); it != guide_paths.end(); ++it) {
         pair<double, int> entry(*it);
         std::cout.precision(6);

@@ -645,7 +645,9 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
       hmm_->addMessage(*socket_event);
     }
 
-    auto guidePaths = hmm_->predictPath(property->round, HMMConfidence);
+    auto guidePaths = hmm_->predictPath(property->round,
+                                        tf.initial_basic_block_id,
+                                        HMMConfidence);
 
     stage->root_ed_tree = EditDistanceTreeFactory::create();
     for (auto it : guidePaths) {
@@ -653,6 +655,7 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
       CVMESSAGE("HMM: Adding path: " << training_object->name);
       stage->root_ed_tree->add_data(training_object->trace);
     }
+    stats::edit_distance_medoid_count = guidePaths.size();
 
   } else if (UseSelfTraining) {
     if (self_training_data_map_.count(property->round) == 0) {
