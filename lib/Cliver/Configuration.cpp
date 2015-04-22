@@ -49,6 +49,8 @@ llvm::cl::opt<RunModeType> RunMode("cliver-mode",
       "Verify using multi-set jaccard metric with training data."),
     clEnumValN(VerifyMultiSetJaccardPrefix, "mjaccard-kprefix",
       "Verify using k-Prefix multi-set jaccard metric with training data."),
+    clEnumValN(VerifyApproxEditDistance, "approx-edit-dist",
+      "Verify using approximate prefix edit distance with training data."),
   clEnumValEnd));
 
 ClientModelType ClientModelFlag;
@@ -83,6 +85,7 @@ CVSearcher* CVSearcherFactory::create(klee::Searcher* base_searcher,
     case VerifyJaccard:
     case VerifyMultiSetJaccard:
     case VerifyMultiSetJaccardPrefix:
+    case VerifyApproxEditDistance:
     case VerifyEditDistanceRow:
     case VerifyEditDistanceKPrefixRow:
     case VerifyEditDistanceKPrefixHash:
@@ -104,6 +107,7 @@ SearcherStage* SearcherStageFactory::create(StateMerger* merger,
     case VerifyJaccard:
     case VerifyMultiSetJaccard:
     case VerifyMultiSetJaccardPrefix:
+    case VerifyApproxEditDistance:
     case VerifyEditDistanceRow:
     case VerifyEditDistanceKPrefixRow:
     case VerifyEditDistanceKPrefixHash:
@@ -171,6 +175,7 @@ ExecutionTraceManager* ExecutionTraceManagerFactory::create(ClientVerifier* cv) 
     case VerifyJaccard:
     case VerifyMultiSetJaccard:
     case VerifyMultiSetJaccardPrefix:
+    case VerifyApproxEditDistance:
     case VerifyEditDistanceRow:
     case VerifyEditDistanceKPrefixRow:
     case VerifyEditDistanceKPrefixHash:
@@ -228,6 +233,10 @@ ExecutionTraceEditDistanceTree* EditDistanceTreeFactory::create() {
       return new MultiSetJaccardPrefixTree<ExecutionTrace, BasicBlockID>();
       break;
     }
+    case VerifyApproxEditDistance: {
+      return new ApproxEditDistanceTree<ExecutionTrace, BasicBlockID>();
+      break;
+    }
 
     default: {
       cv_error("EditDistanceFactory called in non-editdistance mode");
@@ -248,6 +257,7 @@ ExecutionStateProperty* ExecutionStatePropertyFactory::create() {
     case VerifyJaccard:
     case VerifyMultiSetJaccard:
     case VerifyMultiSetJaccardPrefix:
+    case VerifyApproxEditDistance:
     case VerifyEditDistanceRow:
     case VerifyEditDistanceKPrefixRow:
     case VerifyEditDistanceKPrefixHash:
