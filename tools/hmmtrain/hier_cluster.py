@@ -63,8 +63,8 @@ def compute_cluster_medoid(dm, cluster_ids, id_of_interest):
     assert cluster_ids[medoid] == id_of_interest
     if args.verbose:
         print >>sys.stderr, \
-            "Cluster %d\t(size = %d)\tavg distance to medoid = %f" % \
-            (id_of_interest, len(members), np.min(mean_distances))
+            "Cluster %d\t(size = %d)\tavg distance to medoid = %s" % \
+            (id_of_interest, len(members), str(np.min(mean_distances)))
     return medoid
 
 ###############################################################################
@@ -111,13 +111,28 @@ def main():
     if args.verbose:
         print >>sys.stderr, "Clustering into %d clusters" % args.nclusters
     assert len(cluster_ids) == len(dm)
-    for id in cluster_ids:
-        print id
     
     # Compute and print medoid indices to file
+    medoid_indices = []
     if args.medoids:
         for i in xrange(args.nclusters):
-            print >>args.medoids, compute_cluster_medoid(dm,cluster_ids,i)+1
+            medoid_index = compute_cluster_medoid(dm,cluster_ids,i)
+            medoid_indices.append(medoid_index)
+            print >>args.medoids, medoid_index + 1 # 1-indexed in output file
+
+    # "Re-assign" every data point to nearest medoid
+    distances_to_medoids = dm[medoid_indices,:]
+    cluster_reassignments = np.argmin(distances_to_medoids, axis=0)
+    for c in cluster_reassignments:
+        print c
+
+    if args.verbose:
+        num_reassigned = 0
+        for i in xrange(len(cluster_ids)):
+            if cluster_ids[i] != cluster_reassignments[i]:
+                num_reassigned += 1
+        print >>sys.stderr, "%d out of %d reassigned to different cluster" % \
+            (num_reassigned, len(cluster_ids))
 
     return 0
 
