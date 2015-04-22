@@ -40,6 +40,7 @@ class SocketEvent {
 	int client_round;
 	unsigned length;
 	unsigned header_length;
+	uint64_t timestamp;
 	std::vector<uint8_t> data;
 
 	void print(std::ostream &os) const;
@@ -65,6 +66,7 @@ class SocketEvent {
 		ar & client_round;
 		ar & length;
 		ar & header_length;
+		ar & timestamp;
 		ar & data;
 	}
 };

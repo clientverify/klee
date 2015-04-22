@@ -30,6 +30,7 @@ XSTAT( stage_count,                              StageCount,                    
 XSTAT( state_clone_count,                        StateCloneCount,                StClnCnt ) 
 XSTAT( state_remove_count,                       StateRemoveCount,               StRemCnt ) 
 XSTAT( socket_event_size,                        SocketEventSize,                SESz     ) 
+XSTAT( socket_event_timestamp,                   SocketEventTimestamp,           SETm     )
 XSTAT( valid_path_instructions,                  ValidPathInstructionCount,      VPICnt   ) 
 XSTAT( symbolic_variable_count,                  SymbolicVariableCount,          SVCnt    ) 
 XSTAT( pass_count,                               PassCount,                      PassCnt  ) 

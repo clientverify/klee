@@ -33,6 +33,11 @@ SocketEvent::SocketEvent(const KTestObject &object) {
   init(object.bytes, object.numBytes);
   set_type(object.name);
   set_header_length();
+
+  // Extract timestamp
+  timestamp =
+      (1000000)*((uint64_t)object.timestamp.tv_sec)
+      + (uint64_t)object.timestamp.tv_usec;
 }
 
 SocketEvent::SocketEvent(const unsigned char* buf, unsigned len) {
