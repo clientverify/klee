@@ -29,6 +29,7 @@ show_help () {
   6. outhmm = HMM training file
 
   Options:
+  -f  Use faster but less accurate clustering method
   -m  Change message metric: "Jaccard" (default) and "Ruzicka" supported
   -t  Change trace metric: "Jaccard" (default) and "mJaccard" supported
   -v  Verbose mode
@@ -56,7 +57,9 @@ message_metric="Jaccard" # other option is "Ruzicka"
 trace_metric="Jaccard" # other option is "mJaccard"
 verbose=0
 verbose_flag=
-while getopts "h?vm:t:" opt; do
+fast_cluster=0
+fast_cluster_flag=
+while getopts "h?vm:t:f" opt; do
     case "$opt" in
     h|\?)
         show_help $0
@@ -64,6 +67,9 @@ while getopts "h?vm:t:" opt; do
         ;;
     v)  verbose=1
         verbose_flag="-v"
+        ;;
+    f)  fast_cluster=1
+        fast_cluster_flag="-f"
         ;;
     m)  message_metric=$OPTARG
         ;;
@@ -167,7 +173,7 @@ if [ $verbose -eq 1 ]
 then
     echo "Computing clusters for fragments"
 fi
-hier_cluster.py $verbose_flag "${num_frag_clusters}" \
+hier_cluster.py $verbose_flag $fast_cluster_flag "${num_frag_clusters}" \
     -m "${tmp_dir}/medoids_linenum_frag.txt" < \
     "${tmp_dir}/distmtx_frag.csv" > "${tmp_dir}/cluster_ids_frag.csv"
 
@@ -175,7 +181,7 @@ if [ $verbose -eq 1 ]
 then
     echo "Computing clusters for messages"
 fi
-hier_cluster.py $verbose_flag "${num_msg_clusters}" \
+hier_cluster.py $verbose_flag $fast_cluster_flag "${num_msg_clusters}" \
     -m "${tmp_dir}/medoids_linenum_msg.txt" < \
     "${tmp_dir}/distmtx_msg.csv" > "${tmp_dir}/cluster_ids_msg.csv"
 

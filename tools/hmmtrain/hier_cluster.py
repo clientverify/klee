@@ -3,8 +3,11 @@
 import argparse
 import numpy as np
 import sklearn.cluster as skc
+import scipy.sparse
 import sys
 import doctest
+import math
+import time
 
 ###############################################################################
 
@@ -67,6 +70,21 @@ def compute_cluster_medoid(dm, cluster_ids, id_of_interest):
             (id_of_interest, len(members), str(np.min(mean_distances)))
     return medoid
 
+def find_threshold(dm):
+    """Find the theoretical threshold of the graph represented by
+    distance matrix dm that still retains a single connected component
+    with high probability, i.e. approximately n log n edges"""
+    distances = []
+    for i in xrange(len(dm)):
+        for j in xrange(i):
+            distances.append(dm[i,j])
+    distances.sort()
+    n = float(len(dm))
+    idx = int(round(2.0 * n * math.log(n)))
+    if idx >= len(distances):
+        idx = len(distances) - 1
+    return distances[idx]
+
 ###############################################################################
 
 def main():
@@ -85,6 +103,8 @@ def main():
     parser.add_argument('-m', '--medoids', metavar='M',
                         type=argparse.FileType('w'),
                         help="write medoid indices (1-indexed) to file M")
+    parser.add_argument('-f', '--fast', action='store_true',
+                        help="trade off some accuracy to cluster quickly")
     parser.add_argument('-s', '--selftest', action='store_true',
                         help="Run self-tests")
     global args
@@ -103,15 +123,32 @@ def main():
         args.nclusters = len(dm)
 
     # Hierarchical clustering with "average" linkage
-    ac = skc.AgglomerativeClustering(n_clusters=args.nclusters,
-                                     affinity="precomputed",
-                                     linkage="average")
-    cluster_ids = ac.fit_predict(dm) # distance, not affinity matrix
-    cluster_ids = canonicalize_ids(cluster_ids)
+    t0 = time.time()
     if args.verbose:
         print >>sys.stderr, "Clustering into %d clusters" % args.nclusters
+    if args.fast:
+        print >>sys.stderr, "Using faster (less accurate) clustering method"
+        thresh = find_threshold(dm)
+        print >>sys.stderr, "Thresholding at max distance", thresh
+        conn_graph = (dm <= thresh).astype(int)
+        def distance_func(x,y):
+            return dm[x[0], y[0]]
+        ac = skc.AgglomerativeClustering(n_clusters=args.nclusters,
+                                         connectivity=conn_graph,
+                                         affinity=distance_func,
+                                         linkage="average")
+        cluster_ids = ac.fit_predict(np.arange(len(dm)).reshape(len(dm),1))
+    else:
+        ac = skc.AgglomerativeClustering(n_clusters=args.nclusters,
+                                         affinity="precomputed",
+                                         linkage="average")
+        cluster_ids = ac.fit_predict(dm) # distance, not affinity matrix
+    cluster_ids = canonicalize_ids(cluster_ids)
     assert len(cluster_ids) == len(dm)
-    
+    t1 = time.time()
+    if args.verbose:
+        print >>sys.stderr, "Clustering completed in %f seconds." % (t1-t0)
+
     # Compute and print medoid indices to file
     medoid_indices = []
     if args.medoids:
