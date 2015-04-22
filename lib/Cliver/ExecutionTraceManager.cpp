@@ -230,6 +230,8 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
             = state->network_manager()->socket()->event().length;
         stats::socket_event_timestamp
             = state->network_manager()->socket()->event().timestamp;
+        stats::socket_event_type
+            = state->network_manager()->socket()->event().type;
         CVDEBUG("Next Socket Event: " << state->network_manager()->socket()->event());
       }
 
@@ -982,6 +984,8 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
             = state->network_manager()->socket()->event().length;
         stats::socket_event_timestamp
             = state->network_manager()->socket()->event().timestamp;
+        stats::socket_event_type
+            = state->network_manager()->socket()->event().type;
         CVDEBUG("Next Socket Event: " << state->network_manager()->socket()->event());
       }
 

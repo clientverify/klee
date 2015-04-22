@@ -29,6 +29,7 @@ XSTAT( edit_distance_stat_time,                  EditDistStatTime,              
 XSTAT( stage_count,                              StageCount,                     StgCnt   ) 
 XSTAT( state_clone_count,                        StateCloneCount,                StClnCnt ) 
 XSTAT( state_remove_count,                       StateRemoveCount,               StRemCnt ) 
+XSTAT( socket_event_type,                        SocketEventType,                SETy     )
 XSTAT( socket_event_size,                        SocketEventSize,                SESz     ) 
 XSTAT( socket_event_timestamp,                   SocketEventTimestamp,           SETm     )
 XSTAT( valid_path_instructions,                  ValidPathInstructionCount,      VPICnt   ) 
