@@ -170,6 +170,12 @@ int DoHMMTest()
   cout << "MultiSetJaccardPrefixTree self-test "
        << (r==0 ? "succeeded" : "failed") << "!\n\n";
 
+  cout << "Running ApproxEditDistanceTree self-test...\n";
+  r = ApproxEditDistanceTree<vector<int>,int>::test();
+  ret += r;
+  cout << "ApproxEditDistanceTree self-test "
+       << (r==0 ? "succeeded" : "failed") << "!\n\n";
+
   return ret;
 }
 

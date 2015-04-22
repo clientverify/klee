@@ -19,6 +19,7 @@
 #include <exception>
 #include <iostream>
 #include <cmath>
+#include <limits>
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -721,19 +722,115 @@ class MultiSetJaccardPrefixTree
   double min_distance_ = 1.0;
   int num_inserted = 0; // may exceed current_multiset.size() if repeats
   std::map<T,int> current_multiset;
+public:
   std::vector<int> intersection_counts;
   std::vector<int> union_counts;
+private:
   std::vector<double> distances;
 
   // considered immutable after all add_data() calls complete
   std::shared_ptr<std::vector<Sequence> > guide_paths;
 
-  // multisets corresponding to  prefixes of length 'num_inserted'
+  // multisets corresponding to prefixes of length 'num_inserted'
   std::vector<std::map<T,int> > guide_multisets;
 
   bool guide_paths_immutable = false;
 };
 
+///////////////////////////////////////////////////////////////////////////////
+
+/// ApproxEditDistanceTree: Use multi-set Jaccard machinery to
+/// estimate edit distance.  NOTA BENE: It's not actually a tree, but
+/// it implements the EditDistanceTree interface.
+
+template <class Sequence, class T>
+class ApproxEditDistanceTree: public EditDistanceTree<Sequence,T> {
+public:
+
+  virtual void init(int k) { }
+
+  virtual void add_data(Sequence &s) { msjp_tree.add_data(s); }
+
+  virtual void update(Sequence &s) { msjp_tree.update(s); }
+
+  virtual void update_suffix(Sequence &s) { msjp_tree.update_suffix(s); }
+
+  virtual void update_element(T t) { msjp_tree.update_element(t); }
+
+  virtual int min_distance() {
+    int min_dist = std::numeric_limits<int>::max();
+    for (size_t i = 0; i < msjp_tree.intersection_counts.size(); ++i) {
+      min_dist = std::min(min_dist,
+                          msjp_tree.union_counts[i] -
+                          msjp_tree.intersection_counts[i]);
+    }
+    return min_dist;
+  }
+
+  virtual int row() { return msjp_tree.row(); }
+
+  virtual void delete_shared_data() {} // unnecessary
+
+  virtual EditDistanceTree<Sequence,T>* clone_edit_distance_tree() {
+    // use default copy constructor
+    return new ApproxEditDistanceTree<Sequence,T>(*this);
+  }
+
+  //===-------------------------------------------------------------------===//
+  // Extra methods, testing, utility
+  //===-------------------------------------------------------------------===//
+
+  static int test()
+  {
+    using namespace std;
+    auto aedt = ApproxEditDistanceTree<string,char>();
+    if (aedt.row() != 0)
+      return 1;
+    int ret = 0;
+    int d;
+
+    string x, y;
+    x = "hello"; aedt.add_data(x); cout << "Added guide path: " << x << '\n';
+    x = "world!"; aedt.add_data(x); cout << "Added guide path: " << x << '\n';
+    x = "foo"; aedt.add_data(x); cout << "Added guide path: " << x << '\n';
+    x = ""; aedt.add_data(x); cout << "Added guide path: <empty string>\n";
+
+    y = ""; aedt.update(y); d = aedt.min_distance();
+    cout << "min_distance of <empty string>: " << d << '\n';
+    if (d != 0)
+      ret = 2;
+
+    y = "olleh"; aedt.update(y); d = aedt.min_distance();
+    cout << "min_distance of " << y << ": " << d << '\n';
+    if (d != 0)
+      ret = 2;
+
+    y = "world"; aedt.update(y); d = aedt.min_distance();
+    cout << "min_distance of " << y << ": " << d << '\n';
+    if (d != 0)
+      ret = 3;
+
+    y = "hello world!"; aedt.update(y); d = aedt.min_distance();
+    cout << "min_distance of " << y << ": " << d << '\n';
+    if (d != 6)
+      ret = 3;
+
+    y = "fobarf"; aedt.update(y); d = aedt.min_distance();
+    cout << "min_distance of " << y << ": " << d << '\n';
+    if (d != 5)
+      ret = 3;
+
+    y = "foofood"; aedt.update(y); d = aedt.min_distance();
+    cout << "min_distance of " << y << ": " << d << '\n';
+    if (d != 4)
+      ret = 3;
+
+    return ret;
+  }
+
+private:
+  MultiSetJaccardPrefixTree<Sequence,T> msjp_tree;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
