@@ -53,6 +53,11 @@ namespace cliver {
 llvm::cl::opt<int>
 MaxRoundNumber("max-round", llvm::cl::init(0));
 
+llvm::cl::opt<int>
+OnlyVerifyFirstS2C("only-verify-first-s2c",
+  llvm::cl::desc("Verify only the first N server to client messages (default=-1, i.e., all server to client messages)"),
+  llvm::cl::init(-1));
+
 llvm::cl::list<std::string> 
 SocketLogFile("socket-log",
   llvm::cl::ZeroOrMore,
@@ -303,15 +308,30 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
 	foreach (std::string filename, logs) {
 		KTest *ktest = kTest_fromFile(filename.c_str());
 		if (ktest) {
+
 			socket_events_.push_back(new SocketEventList());
+      unsigned s2c_count = 0;
 			for (unsigned i=0; i<ktest->numObjects; ++i) {
         std::string obj_name(ktest->objects[i].name);
-        if (obj_name == "s2c" || obj_name == "c2s")
-          socket_events_.back()->push_back(new SocketEvent(ktest->objects[i]));
+        if (obj_name == "s2c") {
+          s2c_count++;
+          if (OnlyVerifyFirstS2C == -1 || s2c_count <= OnlyVerifyFirstS2C) {
+            socket_events_.back()->push_back(
+                new SocketEvent(ktest->objects[i]));
+          }
+        }
+        if (obj_name == "c2s")
+          socket_events_.back()->push_back(
+              new SocketEvent(ktest->objects[i]));
 			}
 
 			cv_message("Opened socket log \"%s\" with %d objects",
 					filename.c_str(), ktest->numObjects);
+      if (OnlyVerifyFirstS2C != -1) {
+        cv_message("Skipped %d server to client messages after first %d",
+                   s2c_count - (int)OnlyVerifyFirstS2C,
+                   (int)OnlyVerifyFirstS2C);
+      }
 
       replay_objs_ = ktest;
 		} else {
