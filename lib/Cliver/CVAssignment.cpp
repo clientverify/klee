@@ -9,8 +9,11 @@
 
 #include "cliver/CVAssignment.h"
 #include "cliver/CVStream.h"
+#include "cliver/Statistics.h"
 
 #include "klee/util/ExprUtil.h"
+#include "klee/TimerStatIncrementer.h"
+#include "klee/util/ExprPPrinter.h"
 #include "klee/Constraints.h"
 #include "../Core/ImpliedValue.h"
 #include "../Core/Common.h"
@@ -61,6 +64,7 @@ void CVAssignment::addBindings(std::vector<const klee::Array*> &objects,
 
 void CVAssignment::solveForBindings(klee::Solver* solver, 
                                     klee::ref<klee::Expr> &expr) {
+  klee::TimerStatIncrementer timer(stats::bindings_solve_time);
   std::vector<const klee::Array*> arrays;
   std::vector< std::vector<unsigned char> > initial_values;
 
