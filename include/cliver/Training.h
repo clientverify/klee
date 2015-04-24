@@ -163,7 +163,7 @@ class TrainingManager {
                                        TrainingObjectScoreList &scorelist,
                                        SocketEventSimilarity &measure) {
     // Iterate over all of the TrainingObjects and compare their similarity
-    for (int i=0; i<scorelist.size(); ++i) {
+    for (size_t i=0; i<scorelist.size(); ++i) {
       int min = INT_MAX;
       std::set<SocketEvent*>::iterator 
           it = scorelist[i].second->socket_event_set.begin(),
@@ -201,7 +201,7 @@ class TrainingManager {
   static void read_files(std::vector<std::string> &filename_list,
                          TrainingObjectSetType &data) {
     
-    for (int i=0; i<filename_list.size(); ++i) {
+    for (size_t i=0; i<filename_list.size(); ++i) {
       std::string filename = filename_list[i];
       CVMESSAGE("Reading: " << filename);
 
