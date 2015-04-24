@@ -23,6 +23,9 @@
 
 using namespace klee;
 
+llvm::cl::opt<bool>
+RewriteEqualities("rewrite-equalities",llvm::cl::init(false));
+
 class ExprReplaceVisitor : public ExprVisitor {
 private:
   ref<Expr> src, dst;
@@ -141,10 +144,12 @@ void ConstraintManager::addConstraintInternal(ref<Expr> e) {
   }
 
   case Expr::Eq: {
-    BinaryExpr *be = cast<BinaryExpr>(e);
-    if (isa<ConstantExpr>(be->left)) {
-      ExprReplaceVisitor visitor(be->right, be->left);
-      rewriteConstraints(visitor);
+    if (RewriteEqualities) {
+      BinaryExpr *be = cast<BinaryExpr>(e);
+      if (isa<ConstantExpr>(be->left)) {
+        ExprReplaceVisitor visitor(be->right, be->left);
+        rewriteConstraints(visitor);
+      }
     }
     constraints.push_back(e);
     break;
