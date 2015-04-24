@@ -8,6 +8,7 @@ import sys
 import doctest
 import math
 import time
+import igraph
 
 ###############################################################################
 
@@ -70,20 +71,43 @@ def compute_cluster_medoid(dm, cluster_ids, id_of_interest):
             (id_of_interest, len(members), str(np.min(mean_distances)))
     return medoid
 
-def find_threshold(dm):
+def find_threshold(am, max_components=1):
     """Find the theoretical threshold of the graph represented by
-    distance matrix dm that still retains a single connected component
+    affinity matrix am that still retains a single connected component
     with high probability, i.e. approximately n log n edges"""
-    distances = []
-    for i in xrange(len(dm)):
-        for j in xrange(i):
-            distances.append(dm[i,j])
-    distances.sort()
-    n = float(len(dm))
-    idx = int(round(2.0 * n * math.log(n)))
-    if idx >= len(distances):
-        idx = len(distances) - 1
-    return distances[idx]
+    am_as_list = am.tolist()
+    affinities = am.flatten().tolist()
+    affinities.sort()
+    affinities.reverse()
+    n = float(len(am))
+    idx = int(round(n * math.log(n)))
+    old_thresh = None
+    while True:
+        if idx >= len(affinities) - 1:
+            break
+        binsearch_idx = int(math.ceil((idx + len(affinities)) / 2.0))
+        expgrowth_idx = int(round(float(idx) * 1.5))
+        idx = min(binsearch_idx, expgrowth_idx, len(affinities)-1)
+        thresh = affinities[idx]
+        if old_thresh == thresh:
+            continue
+        else:
+            old_thresh = thresh
+        g = igraph.Graph.Weighted_Adjacency(am_as_list,
+                                            mode=igraph.ADJ_UNDIRECTED,
+                                            loops=False)
+        g.delete_edges(x[0] for x in enumerate(g.es["weight"]) if x[1] < thresh)
+        num_components = len(g.components())
+        if args.verbose:
+            print >>sys.stderr, "At threshold", thresh,
+            print >>sys.stderr, "(index %d of %d):" % (idx, len(affinities)-1),
+            print >>sys.stderr, "%d nodes, %d edges, and %d components" % \
+                (g.vcount(), g.ecount(), num_components)
+        if num_components <= max_components:
+            break
+    if idx >= len(affinities):
+        idx = len(affinities) - 1
+    return affinities[idx]
 
 ###############################################################################
 
@@ -105,6 +129,8 @@ def main():
                         help="write medoid indices (1-indexed) to file M")
     parser.add_argument('-f', '--fast', action='store_true',
                         help="trade off some accuracy to cluster quickly")
+    parser.add_argument('-p', '--plot', action='store_true',
+                        help="pop-up a plot of the graph (--fast only)")
     parser.add_argument('-s', '--selftest', action='store_true',
                         help="Run self-tests")
     global args
@@ -112,10 +138,12 @@ def main():
     if args.selftest:
         sys.exit(doctest.testmod(verbose=True)[0])
 
+    td0 = time.time()
     dm = read_distmtx(sys.stdin)
+    td1 = time.time()
     if args.verbose:
-        print >>sys.stderr, "Loaded %dx%d distance matrix" % \
-            (len(dm), len(dm[0]))
+        print >>sys.stderr, "Loaded %dx%d distance matrix in %f seconds" % \
+            (len(dm), len(dm[0]), td1-td0)
     if args.nclusters > len(dm):
         print >>sys.stderr, \
             "Warning: nclusters (%d) exceeds number of data points (%d)" % \
@@ -127,17 +155,25 @@ def main():
     if args.verbose:
         print >>sys.stderr, "Clustering into %d clusters" % args.nclusters
     if args.fast:
-        print >>sys.stderr, "Using faster (less accurate) clustering method"
-        thresh = find_threshold(dm)
-        print >>sys.stderr, "Thresholding at max distance", thresh
-        conn_graph = (dm <= thresh).astype(int)
-        def distance_func(x,y):
-            return dm[x[0], y[0]]
-        ac = skc.AgglomerativeClustering(n_clusters=args.nclusters,
-                                         connectivity=conn_graph,
-                                         affinity=distance_func,
-                                         linkage="average")
-        cluster_ids = ac.fit_predict(np.arange(len(dm)).reshape(len(dm),1))
+        if args.verbose:
+            print >>sys.stderr, "Using faster (less accurate) clustering method"
+        am = np.max(dm) - dm
+        thresh = find_threshold(am, args.nclusters)
+        if args.verbose:
+            print >>sys.stderr, "Deleting all edges with affinity <", thresh
+        g = igraph.Graph.Weighted_Adjacency(am.tolist(),
+                                            mode=igraph.ADJ_UNDIRECTED,
+                                            loops=False)
+        g.delete_edges(x[0] for x in enumerate(g.es["weight"]) if x[1] < thresh)
+        if args.verbose:
+            print >>sys.stderr, "Graph contains %d edges in %d components" % \
+                (g.ecount(), len(g.components()))
+        vdendro = g.community_fastgreedy(weights="weight")
+        vclust = vdendro.as_clustering(args.nclusters)
+        cluster_ids = vclust.membership
+        if args.plot:
+            layout = g.layout_fruchterman_reingold(weights="weight")
+            igraph.plot(g, layout=layout)
     else:
         ac = skc.AgglomerativeClustering(n_clusters=args.nclusters,
                                          affinity="precomputed",
@@ -145,9 +181,6 @@ def main():
         cluster_ids = ac.fit_predict(dm) # distance, not affinity matrix
     cluster_ids = canonicalize_ids(cluster_ids)
     assert len(cluster_ids) == len(dm)
-    t1 = time.time()
-    if args.verbose:
-        print >>sys.stderr, "Clustering completed in %f seconds." % (t1-t0)
 
     # Compute and print medoid indices to file
     medoid_indices = []
@@ -160,6 +193,9 @@ def main():
     # "Re-assign" every data point to nearest medoid
     distances_to_medoids = dm[medoid_indices,:]
     cluster_reassignments = np.argmin(distances_to_medoids, axis=0)
+    # medoids should not be reassigned!!
+    for i,medoid_index in enumerate(medoid_indices):
+        cluster_reassignments[medoid_index] = i
     for c in cluster_reassignments:
         print c
 
@@ -170,6 +206,14 @@ def main():
                 num_reassigned += 1
         print >>sys.stderr, "%d out of %d reassigned to different cluster" % \
             (num_reassigned, len(cluster_ids))
+        if num_reassigned > 0:
+            print >>sys.stderr, "Computing new cluster statistics..."
+            for i in xrange(args.nclusters):
+                compute_cluster_medoid(dm, cluster_reassignments, i)
+
+    t1 = time.time()
+    if args.verbose:
+        print >>sys.stderr, "Clustering completed in %f seconds." % (t1-t0)
 
     return 0
 
