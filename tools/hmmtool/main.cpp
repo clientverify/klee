@@ -240,8 +240,11 @@ int DoHMMPredict()
       SocketEvent* se = *(tobj->socket_event_set.begin());
       hpp.addMessage(*se);
       const vector<int>& msg_cluster_ids = hpp.getAssignedMsgClusters();
-      cout << "Message assigned to cluster: " << msg_cluster_ids[i] << "\n";
-      auto guide_paths = hpp.predictPath((int)i+1, 0, 0.99);
+      cout << "Message assigned to message cluster: "
+           << msg_cluster_ids[i] << "\n";
+      BasicBlockID first_bb = tobj->trace[0];
+      cout << "First basic block in the true path: " << first_bb << "\n";
+      auto guide_paths = hpp.predictPath((int)i+1, first_bb, 0.99);
       for (auto it = guide_paths.begin(); it != guide_paths.end(); ++it) {
         pair<double, int> entry(*it);
         std::cout.precision(6);

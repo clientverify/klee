@@ -502,9 +502,34 @@ HMMPathPredictor::predictPath(int round, BasicBlockID bb, double confidence) con
   vector<double> pvec = vd.getStateProbabilities(round - 1);
   vector<size_t> desc_ids = sort_indices_reverse(pvec);
   double accumulated_confidence = 0.0;
-  for (size_t i = 0; i < pvec.size(); ++i) {
-    double probability = pvec[desc_ids[i]];
-    output.push_back(pair<double,int>(probability, desc_ids[i]));
+
+  // restrict to guide paths with initial basic block = bb
+  // compute total probability
+  int num_matches = 0;
+  double match_probability_total = 0.0;
+  for (size_t i = 0; i < fragment_medoids.size(); ++i) {
+    shared_ptr<TrainingObject> frag_med = fragment_medoids[i];
+    if (frag_med->trace.size() > 0 && frag_med->trace[0] == bb) {
+      num_matches++;
+      match_probability_total += pvec[i];
+    }
+  }
+  // if no guide paths match, return empty output
+  if (num_matches == 0) {
+    return output;
+  }
+
+  // rescale confidence threshold
+  confidence *= match_probability_total;
+
+  for (size_t i = 0; i < desc_ids.size(); ++i) {
+    // skip if bb does not match initial basic block
+    size_t medoid_id = desc_ids[i];
+    shared_ptr<TrainingObject> frag_med = fragment_medoids[medoid_id];
+    if (frag_med->trace.size() == 0 || frag_med->trace[0] != bb)
+      continue;
+    double probability = pvec[medoid_id];
+    output.push_back(pair<double,int>(probability, medoid_id));
     accumulated_confidence += probability;
     if (accumulated_confidence >= confidence)
       break;
