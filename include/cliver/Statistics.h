@@ -27,6 +27,7 @@ class CVStatisticsManager {
   CVStatisticsManager();
   void initialize();
   void set_context(unsigned index);
+  uint64_t get_context_statistic_value(unsigned index, const klee::Statistic& s);
   void print_round(std::ostream &os, unsigned index, std::string sep);
   void print_round_with_short_name(std::ostream &os, unsigned index, std::string sep);
   void print_all_rounds(std::ostream &os, std::string sep);

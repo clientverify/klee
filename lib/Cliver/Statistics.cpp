@@ -50,10 +50,12 @@ void CVStatisticsManager::initialize() {
   set_context(0);
 }
 
-void CVStatisticsManager::set_context(unsigned index) {
+uint64_t CVStatisticsManager::get_context_statistic_value(unsigned index,
+                                                          const klee::Statistic& s) {
+    return statistic_records_[index]->getValue(s);
+}
 
-  // Increment context timers before we switch to new context
-  update_context_timers();
+void CVStatisticsManager::set_context(unsigned index) {
 
   // Allocate new StatisticRecord if this a new round
   klee::StatisticRecord *sr = NULL;

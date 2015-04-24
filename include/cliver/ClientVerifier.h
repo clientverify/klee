@@ -153,10 +153,11 @@ class ClientVerifier : public klee::InterpreterHandler {
 
   CVStream* get_cvstream() { return cvstream_; }
 
+  uint64_t get_round_statistic_value(int round, const klee::Statistic &stat);
+
  private:
   CVStream *cvstream_;
 	int paths_explored_;
-	std::vector<klee::StatisticRecord*> statistics_;
   std::map<int,klee::KBasicBlock*> basicblock_map_;
 
   CVExecutor *executor_;

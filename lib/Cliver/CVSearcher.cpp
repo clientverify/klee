@@ -594,6 +594,9 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
 
           CVDEBUG("Multi-pass: " << property->pass_count <<
                   " Round: " << current_round_ <<
+                  " Instructions: " <<
+                  cv_->get_round_statistic_value(current_round_,
+                                                 stats::round_instructions) <<
                   " Assignments: " << state->multi_pass_assignment());
 
           // Clone ExecutionStateProperty
@@ -621,6 +624,9 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
           if (socket->previous_event().type != SocketEvent::RECV)
             property->is_recv_processing = false;
 
+          // Increment pass_count if this is the last one
+          if (property->pass_count != 0)
+            ++stats::pass_count;
           // Reset pass count for the new state (root of next stage)
           property->pass_count = 0;
           property->round++;

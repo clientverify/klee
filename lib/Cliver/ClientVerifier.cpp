@@ -382,7 +382,26 @@ void ClientVerifier::print_all_stats() {
   }
 }
 
+uint64_t ClientVerifier::get_round_statistic_value(int round,
+                                                   const klee::Statistic& s) {
+  return statistics_manager_.get_context_statistic_value(round, s);
+}
+
 void ClientVerifier::set_round(int round) {
+
+  // Increment context timers before we switch to new context
+  statistics_manager_.update_context_timers();
+
+  if (statistics_manager_.get_context_statistic_value(round_number_,
+                                                      stats::pass_count) == 1) {
+    stats::round_instructions_pass_one +=
+      statistics_manager_.get_context_statistic_value(round_number_,
+                                                      stats::round_instructions);
+
+    stats::round_real_time_pass_one +=
+      statistics_manager_.get_context_statistic_value(round_number_,
+                                                      stats::round_real_time);
+  }
 
   // Update statistic manager with new round number
   statistics_manager_.set_context(round);
