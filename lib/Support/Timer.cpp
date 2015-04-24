@@ -10,7 +10,7 @@
 #include "klee/Config/Version.h"
 #include "klee/Internal/Support/Timer.h"
 
-#include "llvm/Support/Process.h"
+#include "klee/Internal/System/Time.h"
 
 using namespace klee;
 using namespace llvm;
@@ -19,9 +19,7 @@ WallTimer::WallTimer() {
 #ifdef USE_BOOST_TIMER
 
 #else
-  sys::TimeValue now(0,0),user(0,0),sys(0,0);
-  sys::Process::GetTimeUsage(now,user,sys);
-  startMicroseconds = now.usec();
+  startMicroseconds = util::getWallTimeVal().usec();
 #endif
 }
 
@@ -32,8 +30,6 @@ uint64_t WallTimer::check() {
   //return ((check_times.system + check_times.user) / 1000);
   return ((check_times.wall) / 1000);
 #else
-  sys::TimeValue now(0,0),user(0,0),sys(0,0);
-  sys::Process::GetTimeUsage(now,user,sys);
-  return now.usec() - startMicroseconds;
+  return util::getWallTimeVal().usec() - startMicroseconds;
 #endif
 }
