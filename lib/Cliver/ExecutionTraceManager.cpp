@@ -226,13 +226,15 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
 
       // Socket event size
       if (is_socket_active) {
-        stats::socket_event_size
-            = state->network_manager()->socket()->event().length;
-        stats::socket_event_timestamp
-            = state->network_manager()->socket()->event().timestamp;
-        stats::socket_event_type
-            = state->network_manager()->socket()->event().type;
-        CVDEBUG("Next Socket Event: " << state->network_manager()->socket()->event());
+        if (state->network_manager()->socket()->index() > 0) {
+          stats::socket_event_size
+              = state->network_manager()->socket()->previous_event().length;
+          stats::socket_event_timestamp
+              = state->network_manager()->socket()->previous_event().timestamp;
+          stats::socket_event_type
+              = state->network_manager()->socket()->previous_event().type;
+        }
+        CVMESSAGE("Next Socket Event: " << state->network_manager()->socket()->event());
       }
 
       // Symbolic variables
@@ -980,13 +982,15 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
 
       // Socket event size
       if (is_socket_active) {
-        stats::socket_event_size
-            = state->network_manager()->socket()->event().length;
-        stats::socket_event_timestamp
-            = state->network_manager()->socket()->event().timestamp;
-        stats::socket_event_type
-            = state->network_manager()->socket()->event().type;
-        CVDEBUG("Next Socket Event: " << state->network_manager()->socket()->event());
+        if (state->network_manager()->socket()->index() > 0) {
+          stats::socket_event_size
+              = state->network_manager()->socket()->previous_event().length;
+          stats::socket_event_timestamp
+              = state->network_manager()->socket()->previous_event().timestamp;
+          stats::socket_event_type
+              = state->network_manager()->socket()->previous_event().type;
+        }
+        CVMESSAGE("Next Socket Event: " << state->network_manager()->socket()->event());
       }
 
       // Symbolic variables

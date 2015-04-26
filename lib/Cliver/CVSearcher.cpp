@@ -538,6 +538,7 @@ void VerifySearcher::add_state(CVExecutionState* state) {
   if (current_stage_ == NULL) {
     CVMESSAGE("Creating stage from add_state() " << *state);
     current_stage_ = create_and_add_stage(state);
+    cv_->set_round(0);
   } else {
     if (!check_pending(state))
       current_stage_->add_state(state);
