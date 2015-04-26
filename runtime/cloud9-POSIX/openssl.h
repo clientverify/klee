@@ -8,6 +8,7 @@
 
 // FIXME: need internal openssl data types
 #include "../../../openssl/include/openssl/ssl.h"
+#include "../../../openssl/include/openssl/evp.h"
 #include "../../../openssl/include/openssl/ssl3.h"
 #include "../../../openssl/include/openssl/sha.h"
 #include "../../../openssl/include/openssl/ec.h"
@@ -70,6 +71,7 @@ DECLARE_MODEL(void, AES_encrypt, const unsigned char *in, unsigned char *out, co
 DECLARE_MODEL(void, gcm_ghash_4bit, u64 Xi[2], const u128 Htable[16], const u8 *inp,size_t len)
 
 // EVP Cipher
+DECLARE_MODEL(int, EVP_PKEY_verify, EVP_PKEY_CTX *ctx, const unsigned char *sig, size_t siglen, const unsigned char *tbs, size_t tbslen);
 //DECLARE_MODEL(int, EVP_CIPHER_CTX_ctrl, EVP_CIPHER_CTX *ctx, int type, int arg, void *ptr)
 //DECLARE_MODEL(int, EVP_CipherInit, EVP_CIPHER_CTX *ctx, const EVP_CIPHER *cipher, const unsigned char *key, const unsigned char *iv, int enc)
 //DECLARE_MODEL(int, EVP_CipherInit_ex, EVP_CIPHER_CTX *ctx, const EVP_CIPHER *cipher, ENGINE *impl, const unsigned char *key, const unsigned char *iv, int enc)

@@ -1,6 +1,15 @@
+
+#include "openssl.h"
+
 ////////////////////////////////////////////////////////////////////////////////
 // EVP Cipher
 ////////////////////////////////////////////////////////////////////////////////
+
+DEFINE_MODEL(int, EVP_PKEY_verify, EVP_PKEY_CTX *ctx,
+             const unsigned char *sig, size_t siglen,
+             const unsigned char *tbs, size_t tbslen) {
+  return 1;
+}
 
 #if 0
 DEFINE_MODEL(int, EVP_CIPHER_CTX_ctrl, EVP_CIPHER_CTX *ctx, int type, int arg, void *ptr) {
