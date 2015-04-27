@@ -9,6 +9,7 @@
 
 #include "ExternalDispatcher.h"
 #include "klee/Config/Version.h"
+#include "klee/CommandLine.h"
 
 // Ugh.
 #undef PACKAGE_BUGREPORT
@@ -54,6 +55,8 @@ using namespace llvm;
 using namespace klee;
 
 /***/
+
+cl::opt<bool> ExternalCallSigHandler("ext-call-sig-handler", cl::init(false));
 
 static jmp_buf escapeCallJmpBuf;
 
@@ -175,20 +178,27 @@ bool ExternalDispatcher::runProtectedCall(Function *f, uint64_t *args) {
   std::vector<GenericValue> gvArgs;
   gTheArgsP = args;
 
-  segvAction.sa_handler = 0;
-  memset(&segvAction.sa_mask, 0, sizeof(segvAction.sa_mask));
-  segvAction.sa_flags = SA_SIGINFO;
-  segvAction.sa_sigaction = ::sigsegv_handler;
-  sigaction(SIGSEGV, &segvAction, &segvActionOld);
+  if (ExternalCallSigHandler) {
+    segvAction.sa_handler = 0;
+    memset(&segvAction.sa_mask, 0, sizeof(segvAction.sa_mask));
+    segvAction.sa_flags = SA_SIGINFO;
+    segvAction.sa_sigaction = ::sigsegv_handler;
+    sigaction(SIGSEGV, &segvAction, &segvActionOld);
+  }
 
-  if (setjmp(escapeCallJmpBuf)) {
-    res = false;
+  if (ExternalCallSigHandler) {
+    if (setjmp(escapeCallJmpBuf)) {
+      res = false;
+    } else {
+      executionEngine->runFunction(f, gvArgs);
+      res = true;
+    }
+    sigaction(SIGSEGV, &segvActionOld, 0);
   } else {
     executionEngine->runFunction(f, gvArgs);
     res = true;
   }
 
-  sigaction(SIGSEGV, &segvActionOld, 0);
   return res;
 }
 

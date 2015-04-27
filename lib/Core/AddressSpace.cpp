@@ -15,6 +15,8 @@
 #include "klee/Expr.h"
 #include "klee/TimerStatIncrementer.h"
 #include "klee/util/Mutex.h"
+#include "klee/util/Mutex.h"
+#include "cliver/CliverStats.h"
 
 using namespace klee;
 
@@ -300,6 +302,7 @@ bool AddressSpace::resolve(ExecutionState &state,
 // then its concrete cache byte isn't being used) but is just a hack.
 
 void AddressSpace::copyOutConcretes() {
+  TimerStatIncrementer timer(::stats::concretes_copy_time);
   RecursiveLockGuard guard(g_mem_lock);
   for (MemoryMap::iterator it = objects.begin(), ie = objects.end(); 
        it != ie; ++it) {
@@ -316,6 +319,7 @@ void AddressSpace::copyOutConcretes() {
 }
 
 bool AddressSpace::copyInConcretes() {
+  TimerStatIncrementer timer(::stats::concretes_copy_time);
   RecursiveLockGuard guard(g_mem_lock);
   for (MemoryMap::iterator it = objects.begin(), ie = objects.end(); 
        it != ie; ++it) {

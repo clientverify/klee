@@ -160,6 +160,10 @@ NoXWindows("no-xwindows",
            llvm::cl::desc("Do not allow external XWindows function calls"), 
            llvm::cl::init(false));
  
+llvm::cl::opt<bool>
+NativeAES("native-aes",
+           llvm::cl::init(false));
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef NDEBUG
@@ -209,6 +213,14 @@ void CVExecutor::executeCall(klee::ExecutionState &state,
   std::string XWidgetStr("Widget_");
   if (NoXWindows && f->getName().substr(0,XWidgetStr.size()) == XWidgetStr) {
     CVMESSAGE("Skipping function call to " << f->getName().str());
+    return;
+  }
+
+  if (NativeAES && (f->getName() == "AES_encrypt"
+      || f->getName() == "_x86_64_AES_encrypt"
+      || f->getName() == "asm_AES_encrypt")) {
+    //CVMESSAGE("Forcing external call to " << f->getName().str());
+    callExternalFunction(state, ki, f, arguments);
     return;
   }
 
