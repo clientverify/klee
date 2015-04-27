@@ -234,7 +234,7 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
           stats::socket_event_type
               = state->network_manager()->socket()->previous_event().type;
         }
-        CVMESSAGE("Next Socket Event: " << state->network_manager()->socket()->event());
+        CVDEBUG("Next Socket Event: " << state->network_manager()->socket()->event());
       }
 
       // Symbolic variables
@@ -990,7 +990,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
           stats::socket_event_type
               = state->network_manager()->socket()->previous_event().type;
         }
-        CVMESSAGE("Next Socket Event: " << state->network_manager()->socket()->event());
+        CVDEBUG("Next Socket Event: " << state->network_manager()->socket()->event());
       }
 
       // Symbolic variables
