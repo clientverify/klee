@@ -24,6 +24,7 @@ XSTAT( round_instructions_pass_one,              InstructionCountPassOne,       
 XSTAT( recv_round_instructions,                  RecvInstructionCount,           RCnt     ) 
 XSTAT( rebuild_time,                             RebuildTime,                    RBTm     ) 
 XSTAT( bindings_solve_time,                      BindingsSolveTime,              BSTm     )
+XSTAT( concretes_copy_time,                      ConcretesCopyTime,              CCTm     )
 XSTAT( execution_tree_time,                      ExecTreeTime,                   ETTm     ) 
 XSTAT( edit_distance_time,                       EditDistTime,                   EDTm     ) 
 XSTAT( edit_distance_build_time,                 EditDistBuildTime,              EDBdTm   ) 

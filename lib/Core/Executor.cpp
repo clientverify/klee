@@ -2945,7 +2945,38 @@ void Executor::callExternalFunction(ExecutionState &state,
   static Mutex externalCallMutex;
   LockGuard guard(externalCallMutex);
 
-  state.addressSpace.copyOutConcretes();
+  ObjectPair inOP, outOP, keyOP;
+  if (function->getName() == "AES_encrypt") {
+    ref<ConstantExpr> in = cast<ConstantExpr>(arguments[0]);
+    ref<ConstantExpr> key = cast<ConstantExpr>(arguments[2]);
+
+    state.addressSpace.resolveOne(in, inOP);
+    state.addressSpace.resolveOne(key, keyOP);
+
+    ObjectPair op;
+    {
+      op = inOP;
+      const MemoryObject *mo = op.first;
+      const ObjectState *os = op.second;
+
+      uint8_t *address = (uint8_t*) (unsigned long) mo->address;
+
+      if (!os->readOnly)
+        memcpy(address, os->concreteStore, mo->size);
+    }
+    {
+      op = keyOP;
+      const MemoryObject *mo = op.first;
+      const ObjectState *os = op.second;
+
+      uint8_t *address = (uint8_t*) (unsigned long) mo->address;
+
+      if (!os->readOnly)
+        memcpy(address, os->concreteStore, mo->size);
+    }
+  } else {
+    state.addressSpace.copyOutConcretes();
+  }
   if (!SuppressExternalWarnings) {
 
     std::string TmpStr;
@@ -2971,10 +3002,50 @@ void Executor::callExternalFunction(ExecutionState &state,
     return;
   }
 
+  if (function->getName() == "AES_encrypt") {
+    ref<ConstantExpr> out = cast<ConstantExpr>(arguments[1]);
+    ref<ConstantExpr> key = cast<ConstantExpr>(arguments[2]);
+    state.addressSpace.resolveOne(out, outOP);
+    state.addressSpace.resolveOne(key, keyOP);
+
+    ObjectPair op;
+    {
+      op = outOP;
+      const MemoryObject *mo = op.first;
+      const ObjectState *os = op.second;
+
+      uint8_t *address = (uint8_t*) (unsigned long) mo->address;
+
+      if (memcmp(address, os->concreteStore, mo->size)!=0) {
+        if (os->readOnly) {
+        } else {
+          ObjectState *wos = state.addressSpace.getWriteable(mo, os);
+          memcpy(wos->concreteStore, address, mo->size);
+        }
+      }
+    }
+    {
+      op = keyOP;
+      const MemoryObject *mo = op.first;
+      const ObjectState *os = op.second;
+
+      uint8_t *address = (uint8_t*) (unsigned long) mo->address;
+
+      if (memcmp(address, os->concreteStore, mo->size)!=0) {
+        if (os->readOnly) {
+        } else {
+          ObjectState *wos = state.addressSpace.getWriteable(mo, os);
+          memcpy(wos->concreteStore, address, mo->size);
+        }
+      }
+    }
+
+  } else {
   if (!state.addressSpace.copyInConcretes()) {
     terminateStateOnError(state, "external modified read-only object",
                           "external.err");
     return;
+  }
   }
 
   LLVM_TYPE_Q Type *resultType = target->inst->getType();
