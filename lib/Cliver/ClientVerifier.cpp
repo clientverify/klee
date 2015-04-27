@@ -81,6 +81,9 @@ BasicBlockEventFlag("basic-block-event-flag", llvm::cl::init(false));
 llvm::cl::opt<bool>
 RebuildSolvers("rebuild-solvers", llvm::cl::init(false));
 
+llvm::cl::opt<bool>
+PrintStats("print-stats", llvm::cl::init(true));
+
 llvm::cl::opt<bool> 
 DebugPrintExecutionEvents("debug-print-execution-events", llvm::cl::init(false));
 
@@ -431,7 +434,8 @@ void ClientVerifier::set_round(int round) {
     executor()->update_memory_usage();
 
   // Print stats from round we just finished
-  statistics_manager_.print_round_with_short_name(*cv_message_stream, round_number_, " ");
+  if (PrintStats)
+    statistics_manager_.print_round_with_short_name(*cv_message_stream, round_number_, " ");
 
   // Set new round number
   round_number_ = round;
