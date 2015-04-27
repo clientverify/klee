@@ -103,6 +103,8 @@ static SpecialFunctionHandler::HandlerInfo handlerInfo[] = {
   add("klee_warning_once", handleWarningOnce, false),
   add("klee_alias_function", handleAliasFunction, false),
   add("malloc", handleMalloc, true),
+  add("klee_memset", handleMemset, true),
+  add("klee_memcpy", handleMemcpy, true),
   add("realloc", handleRealloc, true),
 
   // operator delete[](void*)
@@ -403,6 +405,117 @@ void SpecialFunctionHandler::handleMalloc(ExecutionState &state,
   // XXX should type check args
   assert(arguments.size()==1 && "invalid number of arguments to malloc");
   executor.executeAlloc(state, arguments[0], false, target);
+}
+
+void SpecialFunctionHandler::handleMemcpy(ExecutionState &state,
+                                  KInstruction *target,
+                                  std::vector<ref<Expr> > &arguments) {
+  assert(arguments.size()==3 && "invalid number of arguments to memcpy");
+
+  size_t len = cast<ConstantExpr>(arguments[2])->getZExtValue();
+
+  ObjectPair op_dst;
+  bool success_dst;
+  state.addressSpace.resolveOne(state, executor.solver.get(),
+                                arguments[0], op_dst, success_dst);
+
+  ObjectPair op_src;
+  bool success_src;
+  state.addressSpace.resolveOne(state, executor.solver.get(),
+                                arguments[1], op_src, success_src);
+
+  if (success_src && success_dst) {
+
+    const MemoryObject *mo_dst = op_dst.first;
+    const ObjectState *os_dst = op_dst.second;
+    ref<Expr> offset_dst = mo_dst->getOffsetExpr(arguments[0]);
+
+    const MemoryObject *mo_src = op_src.first;
+    const ObjectState *os_src = op_src.second;
+    ref<Expr> offset_src = mo_src->getOffsetExpr(arguments[1]);
+
+    ConstantExpr *offset_src_CE= dyn_cast<ConstantExpr>(offset_src);
+    ConstantExpr *offset_dst_CE= dyn_cast<ConstantExpr>(offset_dst);
+    if (offset_src_CE && offset_dst_CE) {
+      uint64_t offset_src_constant  = offset_src_CE->getZExtValue();
+      uint64_t offset_dst_constant  = offset_dst_CE->getZExtValue();
+
+      ObjectState *wos_dst = state.addressSpace.getWriteable(mo_dst, os_dst);
+
+      for (unsigned i=0; i<len; ++i) {
+        wos_dst->write(offset_dst_constant+i,
+                       os_src->read8(offset_src_constant+i));
+      }
+
+    } else {
+      success_src = success_dst = false;
+    }
+  }
+
+  if (!success_src || !success_dst) {
+    executor.terminateStateOnError(state,
+          "memcpy failure: symbolic parameters (disable klee_memcpy recommended)",
+          "memcpy.err");
+    return;
+  }
+
+  executor.bindLocal(target, state, arguments[0]);
+}
+
+void SpecialFunctionHandler::handleMemset(ExecutionState &state,
+                                          KInstruction *target,
+                                          std::vector<ref<Expr> > &arguments) {
+  assert(arguments.size()==3 && "invalid number of arguments to memset");
+
+  ref<Expr> address = arguments[0];
+  ref<Expr> c = arguments[1];
+
+  // Fail if count is non-constant
+  size_t count = 0;
+  if (ConstantExpr *AE = dyn_cast<ConstantExpr>(arguments[2])) {
+    count = AE->getZExtValue();
+  } else {
+    executor.terminateStateOnError(state,
+          "memset failure: symbolic parameters (disable klee_memset recommended)",
+          "memset.err");
+    return;
+  }
+
+  bool constant_fill = isa<ConstantExpr>(c);
+  uint8_t fill = constant_fill ? (uint8_t)cast<ConstantExpr>(c)->getZExtValue(8) : 0;
+
+  ObjectPair op;
+  bool success;
+  if (state.addressSpace.resolveOne(state,
+                                    executor.solver.get(),
+                                    address, op, success)) {
+    const MemoryObject *mo = op.first;
+    const ObjectState *os = op.second;
+
+    ref<Expr> offset_expr = mo->getOffsetExpr(address);
+    if (ConstantExpr *offset_CE= dyn_cast<ConstantExpr>(offset_expr)) {
+      uint64_t offset = offset_CE->getZExtValue();
+      ObjectState *wos = state.addressSpace.getWriteable(mo, os);
+      for (size_t i=0; i<count; ++i) {
+        if (constant_fill)
+          wos->write8(i+offset, fill);
+        else
+          wos->write(i+offset, arguments[1]);
+      }
+    } else {
+      success = false;
+    }
+  }
+
+  if (!success) {
+    for (unsigned i=0; i<count; ++i) {
+      ref<Expr> addressOffset = AddExpr::create(arguments[0], ConstantExpr::create(i, 64));
+      executor.executeMemoryOperation(state, false, addressOffset, arguments[1], 0);
+    }
+  }
+
+  executor.bindLocal(target, state, arguments[0]);
+
 }
 
 void SpecialFunctionHandler::handleAssume(ExecutionState &state,
