@@ -150,6 +150,7 @@ public:
 class ObjectState {
 private:
   friend class AddressSpace;
+  friend class Executor;
   unsigned copyOnWriteOwner; // exclusively for AddressSpace
 
   friend class ObjectHolder;
