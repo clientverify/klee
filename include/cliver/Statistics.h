@@ -14,13 +14,7 @@
 
 #include "llvm/Support/Process.h"
 
-namespace stats {
-
-#define XSTAT(X,NAME,SHORTNAME) extern klee::Statistic X;
-#include "cliver/stats.inc"
-#undef XSTAT
-
-}
+#include "cliver/CliverStats.h"
 
 class CVStatisticsManager {
  public:
