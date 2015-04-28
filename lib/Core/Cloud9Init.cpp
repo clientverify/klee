@@ -82,6 +82,13 @@ namespace {
   DebugModelPatches("debug-model-patches",
                    cl::desc("Shows information about the patching of modeled library functions."));
 
+  cl::list<std::string>
+  DisabledFunctionModels("disable-fn-model",
+    cl::ZeroOrMore,
+    cl::ValueRequired,
+    cl::desc("Disable modeled functions"));
+
+
 }
 
 namespace klee {
@@ -114,6 +121,20 @@ static llvm::Module *linkWithPOSIX(llvm::Module *mainModule, const std::string &
       continue;
 
     StringRef modelledName = modelName.substr(strlen("__klee_model_"), modelName.size());
+
+    bool modelDisabled = false;
+    for (auto disabledFnModel : DisabledFunctionModels) {
+      if (modelledName == disabledFnModel) {
+        modelDisabled = true;
+        break;
+      }
+    }
+    if (modelDisabled) {
+      if (DebugModelPatches) {
+        klee_message("Disabled patching %s", modelName.data());
+      }
+      continue;
+    }
 
     const GlobalValue *modelledFunction = mainModule->getNamedValue(modelledName);
 
