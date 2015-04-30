@@ -399,8 +399,12 @@ std::istream& operator>>(std::istream& is, HMMPathPredictor& hpp)
     }
     SocketEvent *se = *(tobj->socket_event_set.begin());
     hpp.messages.push_back(se);
-    set<uint8_t> message_as_set(se->data.begin(), se->data.end());
-    hpp.messages_as_sets.push_back(message_as_set);
+
+    // preprocess for Jaccard
+    hpp.messages_as_sets.push_back(hpp.message_as_set(*se));
+
+    // preprocess for Ruzicka
+    hpp.messages_as_hist.push_back(hpp.message_as_hist(*se));
   }
   
   return is;
@@ -427,6 +431,21 @@ HMMPathPredictor::message_as_set(const SocketEvent& se) const
   return std::set<uint8_t>(se.data.begin(), se.data.end());
 }
 
+std::map<uint8_t,double>
+HMMPathPredictor::message_as_hist(const SocketEvent& se) const
+{
+  std::map<uint8_t,double> h;
+  double decay_rate;
+  decay_rate = (header_length>0) ? std::pow(0.5, 1.0/header_length) : 1.0;
+  double weight = 1.0;
+  for (auto it = se.data.begin(); it != se.data.end(); ++it) {
+    h[*it] += weight;
+    weight *= decay_rate;
+  }
+  return h;
+}
+
+
 int
 HMMPathPredictor::message_direction(const SocketEvent& se) const
 {
@@ -447,6 +466,48 @@ HMMPathPredictor::jaccard_distance(const std::set<uint8_t>& s1,
   return 1.0 - (double)intersect.size()/(double)unionset.size();
 }
 
+double
+HMMPathPredictor::ruzicka_distance(const std::map<uint8_t, double>& s1,
+                                   const std::map<uint8_t, double>& s2) const
+{
+  std::set<uint8_t> s_union;
+  std::set<uint8_t> s_intersection;
+  double numerator = 0.0;
+  double denominator = 0.0;
+  for (auto i1 = s1.begin(); i1 != s1.end(); ++i1) {
+    s_union.insert(i1->first);
+  }
+  for (auto i2 = s2.begin(); i2 != s2.end(); ++i2) {
+    auto result = s_union.insert(i2->first);
+    if (!result.second) { // already exists
+      s_intersection.insert(i2->first);
+    }
+  }
+  for (auto it = s_intersection.begin(); it != s_intersection.end(); ++it) {
+    const auto s1_it = s1.find(*it);
+    const auto s2_it = s2.find(*it);
+    numerator += std::min(s1_it->second, s2_it->second);
+  }
+  for (auto it = s_union.begin(); it != s_union.end(); ++it) {
+    double x = 0.0;
+    const auto s1_it = s1.find(*it);
+    if (s1_it != s1.end()) {
+      x = std::max(x, s1_it->second);
+    }
+    const auto s2_it = s2.find(*it);
+    if (s2_it != s2.end()) {
+      x = std::max(x, s2_it->second);
+    }
+    denominator += x;
+  }
+  if (denominator == 0.0) {
+    return 0.0;
+  }
+  else {
+    return 1.0 - numerator/denominator;
+  }
+}
+
 int
 HMMPathPredictor::nearest_message_id(const SocketEvent& se) const
 {
@@ -455,13 +516,19 @@ HMMPathPredictor::nearest_message_id(const SocketEvent& se) const
   int min_index = -1;
 
   set<uint8_t> query_set(message_as_set(se));
+  map<uint8_t,double> query_hist(message_as_hist(se));
   for (size_t i = 0; i < messages_as_sets.size(); ++i) {
     double d;
     if (message_direction(se) != message_direction(*(messages[i]))) {
       d = 1.0;
     }
     else {
-      d = jaccard_distance(query_set, messages_as_sets[i]);
+      if (metric == JACCARD) {
+        d = jaccard_distance(query_set, messages_as_sets[i]);
+      }
+      else { // MJACCARD and RUZICKA can use the same function
+        d = ruzicka_distance(query_hist, messages_as_hist[i]);
+      }
     }
     if (d < min_distance) {
       min_distance = d;

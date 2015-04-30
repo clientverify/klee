@@ -11,6 +11,7 @@
 
 #include <vector>
 #include <string>
+#include <cmath>
 
 #include "cliver/Training.h"
 #include "cliver/JaccardTree.h"
@@ -81,10 +82,19 @@ class HMMPathPredictor
 {
 public:
 
-  HMMPathPredictor() {}
-  HMMPathPredictor(const std::vector<std::string>& guide_path_files,
-                   const std::vector<std::string>& message_files,
-                   const std::string& hmm_data_file);
+  enum MessageMetric {
+    JACCARD,
+    MJACCARD,
+    RUZICKA
+  };
+
+  HMMPathPredictor(MessageMetric m=RUZICKA, int hlen=40) :
+    header_length(hlen), metric(m)
+  {
+    if (m == MJACCARD) {
+      header_length = 0; // don't use exponentially decaying weights
+    }
+  }
   friend std::istream& operator>>(std::istream& is, HMMPathPredictor& hpp);
   friend std::ostream& operator<<(std::ostream& os,const HMMPathPredictor& hpp);
 
@@ -113,6 +123,53 @@ public:
 
   static int test()
   {
+    HMMPathPredictor hpp;
+    double TOL = 1e-6;
+    double d;
+
+    std::set<uint8_t> set1, set2;
+    set1.insert(1);
+    set1.insert(2);
+    set2.insert(2);
+    set2.insert(3);
+    set2.insert(4);
+    d = hpp.jaccard_distance(set1, set2);
+    std::cout << "Jaccard({1,2},{2,3,4}) = " << d << "\n";
+    if (fabs(d - 3.0/4.0) > TOL)
+      return 1;
+
+    std::map<uint8_t,double> s1, s2;
+    s1[1] = 2.0;
+    s1[2] = 3.0;
+    s2[2] = 6.0;
+    s2[3] = 1.0;
+    d = hpp.ruzicka_distance(s1, s2);
+    std::cout << "Ruzicka({1:2.0, 2:3.0}, {2:6.0, 3:1.0}) = " << d << "\n";
+    if (fabs(d - 6.0/9.0) > TOL)
+      return 2;
+
+    const char *x = "hello";
+    const char *y = "xello";
+    SocketEvent xx((const unsigned char*)x, strlen(x));
+    SocketEvent yy((const unsigned char*)y, strlen(y));
+    std::map<uint8_t,double> x_hist = hpp.message_as_hist(xx);
+    std::map<uint8_t,double> y_hist = hpp.message_as_hist(yy);
+    d = hpp.ruzicka_distance(x_hist, y_hist);
+    std::cout << "Ruzicka('hello', 'xello') = " << d << "\n";
+    double r = std::pow(0.5, 1.0/40);
+    double expected_union = 2.0 + r*(1.0 - std::pow(r,4))/(1.0-r);
+    if (fabs(d - 2.0/expected_union) > TOL)
+      return 3;
+
+    y = "hella";
+    yy = SocketEvent((const unsigned char*)y, strlen(y));
+    y_hist = hpp.message_as_hist(yy);
+    d = hpp.ruzicka_distance(x_hist, y_hist);
+    std::cout << "Ruzicka('hello', 'hella') = " << d << "\n";
+    expected_union = (1.0 - std::pow(r,5))/(1.0 - r) + std::pow(r,4);
+    if (fabs(d - 2.0*std::pow(r,4)/expected_union) > TOL)
+      return 4;
+
     return 0;
   }
 
@@ -124,18 +181,25 @@ private:
 
   double jaccard_distance(const std::set<uint8_t>& s1,
                           const std::set<uint8_t>& s2) const;
+  double ruzicka_distance(const std::map<uint8_t,double>& s1,
+                          const std::map<uint8_t,double>& s2) const;
   int nearest_message_id(const SocketEvent& se) const;
   std::set<uint8_t> message_as_set(const SocketEvent& se) const;
+  std::map<uint8_t,double> message_as_hist(const SocketEvent& se) const;
   int message_direction(const SocketEvent& se) const;
 
   //===-------------------------------------------------------------------===//
   // Member variables
   //===-------------------------------------------------------------------===//
 
+  int header_length = 40; // estimated header length for weighted histogram
+  MessageMetric metric = RUZICKA; // metric to use for message clustering
+
   ViterbiDecoder vd; // HMM training
   std::vector<std::shared_ptr<TrainingObject> > fragment_medoids; // training
   std::vector<std::shared_ptr<TrainingObject> > message_medoids; // training
   std::vector<std::set<uint8_t> > messages_as_sets; // training
+  std::vector<std::map<uint8_t,double> > messages_as_hist; // training
   std::vector<SocketEvent*> messages; // training
 
   std::vector<int> assigned_msg_cluster_ids;

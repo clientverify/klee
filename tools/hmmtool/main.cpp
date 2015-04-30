@@ -176,6 +176,12 @@ int DoHMMTest()
   cout << "ApproxEditDistanceTree self-test "
        << (r==0 ? "succeeded" : "failed") << "!\n\n";
 
+  cout << "Running HMMPathPredictor self-test...\n";
+  r = HMMPathPredictor::test();
+  ret += r;
+  cout << "HMMPathPredictor self-test "
+       << (r==0 ? "succeeded" : "failed") << "!\n\n";
+
   return ret;
 }
 

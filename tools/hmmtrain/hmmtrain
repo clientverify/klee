@@ -30,7 +30,7 @@ show_help () {
 
   Options:
   -f  Use faster but less accurate clustering method
-  -m  Change message metric: "Jaccard" (default) and "Ruzicka" supported
+  -m  Change message metric: "Ruzicka" (default) and "Jaccard" supported
   -t  Change trace metric: "Jaccard" (default) and "mJaccard" supported
   -v  Verbose mode
 
@@ -53,7 +53,7 @@ EOF
 OPTIND=1         # Reset in case getopts has been used previously in the shell.
 
 # Parse optional arguments
-message_metric="Jaccard" # other option is "Ruzicka"
+message_metric="Ruzicka" # other option is "Jaccard"
 trace_metric="Jaccard" # other option is "mJaccard"
 verbose=0
 verbose_flag=
