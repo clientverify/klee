@@ -175,22 +175,22 @@ class JaccardTree
 
     y = "world"; jt.update(y); d = jt.min_distance_noscale();
     cout << "min_distance of " << y << ": " << d << '\n';
-    if (abs(d - 1.0/6.0) > TOL)
+    if (fabs(d - 1.0/6.0) > TOL)
       ret = 3;
 
     y = "hello world!"; jt.update(y); d = jt.min_distance_noscale();
     cout << "min_distance of " << y << ": " << d << '\n';
-    if (abs(d - 1.0/3.0) > TOL)
+    if (fabs(d - 1.0/3.0) > TOL)
       ret = 3;
 
     y = "foobar"; jt.update(y); d = jt.min_distance_noscale();
     cout << "min_distance of " << y << ": " << d << '\n';
-    if (abs(d - 3.0/5.0) > TOL)
+    if (fabs(d - 3.0/5.0) > TOL)
       ret = 3;
 
     y = "foofood"; jt.update(y); d = jt.min_distance_noscale();
     cout << "min_distance of " << y << ": " << d << '\n';
-    if (abs(d - 1.0/3.0) > TOL)
+    if (fabs(d - 1.0/3.0) > TOL)
       ret = 3;
 
     cout << "min_distance (with scaling) of " << y << ": " <<
@@ -372,22 +372,22 @@ class MultiSetJaccardTree
 
     y = "world"; jt.update(y); d = jt.min_distance_noscale();
     cout << "min_distance of " << y << ": " << d << '\n';
-    if (abs(d - 1.0/6.0) > TOL)
+    if (fabs(d - 1.0/6.0) > TOL)
       ret = 3;
 
     y = "hello world!"; jt.update(y); d = jt.min_distance_noscale();
     cout << "min_distance of " << y << ": " << d << '\n';
-    if (abs(d - 1.0/2.0) > TOL)
+    if (fabs(d - 1.0/2.0) > TOL)
       ret = 3;
 
     y = "fobarf"; jt.update(y); d = jt.min_distance_noscale();
     cout << "min_distance of " << y << ": " << d << '\n';
-    if (abs(d - 5.0/7.0) > TOL)
+    if (fabs(d - 5.0/7.0) > TOL)
       ret = 3;
 
     y = "foofood"; jt.update(y); d = jt.min_distance_noscale();
     cout << "min_distance of " << y << ": " << d << '\n';
-    if (abs(d - 4.0/7.0) > TOL)
+    if (fabs(d - 4.0/7.0) > TOL)
       ret = 3;
 
     cout << "min_distance (with scaling) of " << y << ": " <<
@@ -622,22 +622,22 @@ class MultiSetJaccardPrefixTree
 
     y = "world"; jt.update(y); d = jt.min_distance_noscale();
     cout << "min_distance of " << y << ": " << d << '\n';
-    if (abs(d - 0.0) > TOL)
+    if (fabs(d - 0.0) > TOL)
       ret = 3;
 
     y = "hello world!"; jt.update(y); d = jt.min_distance_noscale();
     cout << "min_distance of " << y << ": " << d << '\n';
-    if (abs(d - 1.0/2.0) > TOL)
+    if (fabs(d - 1.0/2.0) > TOL)
       ret = 3;
 
     y = "fobarf"; jt.update(y); d = jt.min_distance_noscale();
     cout << "min_distance of " << y << ": " << d << '\n';
-    if (abs(d - 5.0/7.0) > TOL)
+    if (fabs(d - 5.0/7.0) > TOL)
       ret = 3;
 
     y = "foofood"; jt.update(y); d = jt.min_distance_noscale();
     cout << "min_distance of " << y << ": " << d << '\n';
-    if (abs(d - 4.0/7.0) > TOL)
+    if (fabs(d - 4.0/7.0) > TOL)
       ret = 3;
 
     cout << "min_distance (with scaling) of " << y << ": " <<
