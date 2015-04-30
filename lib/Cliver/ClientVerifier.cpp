@@ -424,6 +424,10 @@ void ClientVerifier::set_round(int round) {
     stats::round_real_time_pass_one +=
       statistics_manager_.get_context_statistic_value(round_number_,
                                                       stats::round_real_time);
+
+    stats::valid_path_instructions_pass_one +=
+      statistics_manager_.get_context_statistic_value(round_number_,
+                                                      stats::valid_path_instructions);
   }
 
   // Update statistic manager with new round number

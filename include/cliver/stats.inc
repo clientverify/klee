@@ -36,6 +36,7 @@ XSTAT( socket_event_type,                        SocketEventType,               
 XSTAT( socket_event_size,                        SocketEventSize,                SESz     ) 
 XSTAT( socket_event_timestamp,                   SocketEventTimestamp,           SETm     )
 XSTAT( valid_path_instructions,                  ValidPathInstructionCount,      VPICnt   ) 
+XSTAT( valid_path_instructions_pass_one,         ValidPathInstructionCountPassOne,VPICntP1   )
 XSTAT( symbolic_variable_count,                  SymbolicVariableCount,          SVCnt    ) 
 XSTAT( pass_count,                               PassCount,                      PassCnt  ) 
 XSTAT( edit_distance,                            EditDist,                       EDist    ) 
