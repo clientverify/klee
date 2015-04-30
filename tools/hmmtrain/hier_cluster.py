@@ -9,6 +9,7 @@ import doctest
 import math
 import time
 import igraph
+import gc
 
 ###############################################################################
 
@@ -140,6 +141,7 @@ def main():
 
     td0 = time.time()
     dm = read_distmtx(sys.stdin)
+    gc.collect()
     td1 = time.time()
     if args.verbose:
         print >>sys.stderr, "Loaded %dx%d distance matrix in %f seconds" % \
@@ -159,11 +161,14 @@ def main():
             print >>sys.stderr, "Using faster (less accurate) clustering method"
         am = np.max(dm) - dm
         thresh = find_threshold(am, args.nclusters)
+        gc.collect()
         if args.verbose:
             print >>sys.stderr, "Deleting all edges with affinity <", thresh
         g = igraph.Graph.Weighted_Adjacency(am.tolist(),
                                             mode=igraph.ADJ_UNDIRECTED,
                                             loops=False)
+        del am
+        gc.collect()
         g.delete_edges(x[0] for x in enumerate(g.es["weight"]) if x[1] < thresh)
         if args.verbose:
             print >>sys.stderr, "Graph contains %d edges in %d components" % \
