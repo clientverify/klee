@@ -98,7 +98,7 @@ def jaccard(s1, s2):
     y = set(s2)
     return 1.0 - 1.0*len(x&y)/len(x|y)
 
-def msg_jaccard(m1, m2):
+def dir_jaccard(m1, m2):
     if m1[0] != m2[0]:
         return 1.0
     else:
@@ -135,13 +135,13 @@ def trace_ruzicka(h1, h2):
     else:
         return 1.0 - float(numerator)/float(denominator)
 
-def msg_ruzicka(m1, m2):
+def dir_ruzicka(m1, m2):
     if m1[0] != m2[0]:
         return 1.0
     else:
         return ruzicka(m1[1], m2[1])
 
-def msg_levenshtein(m1, m2, maxdist=MAX_DIST_VALUE):
+def dir_levenshtein(m1, m2, maxdist=MAX_DIST_VALUE):
     if m1[0] != m2[0]:
         return maxdist
     else:
@@ -164,22 +164,22 @@ def compute_distance_row(work_item, distFunc):
     return [distFunc(x, y) for y in global_point_vector]
 
 def compute_distance_row_jaccard(work_item):
-    return compute_distance_row(work_item, jaccard)
+    return compute_distance_row(work_item, dir_jaccard)
 
 def compute_distance_row_ruzicka(work_item):
     return compute_distance_row(work_item, trace_ruzicka)
 
 def compute_msg_distance_row_jaccard(work_item):
-    return compute_distance_row(work_item, msg_jaccard)
+    return compute_distance_row(work_item, dir_jaccard)
 
 def compute_distance_row_levenshtein(work_item):
     return compute_distance_row(work_item, quick_levenshtein)
 
 def compute_msg_distance_row_levenshtein(work_item):
-    return compute_distance_row(work_item, msg_levenshtein)
+    return compute_distance_row(work_item, dir_levenshtein)
 
 def compute_msg_distance_row_ruzicka(work_item):
-    return compute_distance_row(work_item, msg_ruzicka)
+    return compute_distance_row(work_item, dir_ruzicka)
 
 def compute_distance_row_quickdiff(work_item):
     return compute_distance_row(work_item, quickdiff)
@@ -269,7 +269,7 @@ def main():
                 % args.headerlen
 
     if args.fragment and args.metric == 'Jaccard': # Fragment Jaccard
-        traces = [set(x[3]) for x in data]
+        traces = [ [x[2], set(x[3])] for x in data]
         global_point_vector = traces
         dist_func = compute_distance_row_jaccard
     elif args.fragment and args.metric == 'mJaccard': # Frag multiset Jaccard
