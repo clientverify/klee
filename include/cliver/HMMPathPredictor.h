@@ -65,7 +65,7 @@ public:
   // Self-test (returns 0 on success)
   static int test();
 
-private:
+public:
   std::vector<double> logp_priors; // initial log probabilities
   std::vector<std::vector<double> > logp_trans; // transition log probabilities
   std::vector<std::vector<double> > logp_emis; // emission log probabilities

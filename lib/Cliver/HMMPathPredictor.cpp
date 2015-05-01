@@ -541,9 +541,20 @@ HMMPathPredictor::nearest_message_id(const SocketEvent& se) const
 void
 HMMPathPredictor::addMessage(const SocketEvent& se)
 {
+  using namespace std;
   int cluster_assignment = nearest_message_id(se);
   assigned_msg_cluster_ids.push_back(cluster_assignment);
   vd.addEmission(cluster_assignment);
+  cout << "Emssion sequence:\n";
+  print_vector(vd.emission_sequence);
+  cout << "Viterbi table:\n";
+  print_matrix(vd.viterbi_table);
+  cout << "Backward links:\n";
+  print_matrix(vd.backward_links);
+  for (int i = 0; i < vd.getSequenceLength(); ++i) {
+    cout << "State probabilities for round " << i << ": ";
+    print_vector(vd.getStateProbabilities(i));
+  }
 }
 
 template <typename T>
