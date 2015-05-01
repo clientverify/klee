@@ -228,7 +228,7 @@ then
     echo "--------------------------------------------------------------------"
 fi
 hmm_estimate.py $verbose_flag "${num_frag_clusters}" "${num_msg_clusters}" \
-    -s "${tmp_dir}/sessions_and_rounds.csv" < \
+    -s "${tmp_dir}/sessions_and_rounds.csv" -t 1e-5 -e 1e-5 < \
     "${tmp_dir}/cluster_ids_frag_msg.csv" > \
     "${tmp_dir}/hmm_coefficients.txt"
 
