@@ -59,10 +59,13 @@ def count_transitions(sessions, num_states, num_emis):
 def normalize_rows(x):
     if x.ndim == 1:
         s = np.sum(x)
+        if s == 0.0:
+            s = 1.0
         norm_x = x.astype(float) / s
         return np.nan_to_num(norm_x)
     elif x.ndim == 2:
         s = np.sum(x, axis=1)
+        s[s == 0.0] = 1.0
         norm_x = x.astype(float) / s[:, None]
         return np.nan_to_num(norm_x)
     else:
