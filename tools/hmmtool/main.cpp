@@ -228,16 +228,44 @@ int DoHMMPredict()
   CVMESSAGE("Opening HMM training file: " << hmm_training_file);
   std::ifstream infile(hmm_training_file);
   HMMPathPredictor hpp;
+
+  // Self-test
   infile >> hpp;
+  infile.close();
   std::cout << hpp;
-  
+  auto all_training_objects = hpp.getAllTrainingObjects();
+  cout << "--------------------------------------------------------------\n";
+  cout << "Self-test on training paths\n";
+  cout << "--------------------------------------------------------------\n";
+  for (size_t i = 0; i < all_training_objects.size(); ++i) {
+    std::shared_ptr<TrainingObject> tobj = all_training_objects[i];
+    cout << "Adding message " << i << ": " << tobj->name << "\n";
+    SocketEvent* se = *(tobj->socket_event_set.begin());
+    hpp.addMessage(*se);
+    const vector<int>& msg_cluster_ids = hpp.getAssignedMsgClusters();
+    cout << "Message assigned to message cluster: "
+         << msg_cluster_ids[i] << "\n";
+    BasicBlockID first_bb = tobj->trace[0];
+    cout << "First basic block in the true path: " << first_bb << "\n";
+    auto guide_paths = hpp.predictPath((int)i+1, first_bb, 0.99);
+    for (auto it = guide_paths.begin(); it != guide_paths.end(); ++it) {
+      pair<double, int> entry(*it);
+      std::cout.precision(6);
+      std::cout.setf( std::ios::fixed, std:: ios::floatfield );
+      cout << "Prob = " << entry.first << " | guide_path " << entry.second
+           << " | " << all_training_objects[entry.second]->name << "\n";
+    }
+  }
+
+  std::ifstream infile2(hmm_training_file);
+  infile2 >> hpp;
+  all_training_objects = hpp.getAllTrainingObjects();
   if (HMMTestMessages.size() > 0) {
     CVMESSAGE("Testing " << HMMTestMessages.size() << " message files");
-    TrainingObjectSet dummy;
+    //TrainingObjectSet dummy;
     std::vector<TrainingObject*> test_objects;
-    TrainingManager::read_files(HMMTestMessages, dummy); //HACK!
+    //TrainingManager::read_files(HMMTestMessages, dummy); //HACK!
     TrainingManager::read_files_in_order(HMMTestMessages, test_objects);
-    auto all_training_objects = hpp.getAllTrainingObjects();
 
     for (size_t i = 0; i < HMMTestMessages.size(); ++i) {
       cout << "------------------------------------------------\n";
