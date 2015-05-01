@@ -265,6 +265,10 @@ class TrainingManager {
         data.push_back(tobj);
       } else {
         std::cerr << "Error opening: " << filename;
+        std::cerr << "Index = " << i << "\n";
+        std::cerr << "filename_list.size() == " << filename_list.size() << "\n";
+        if (i < filename_list.size())
+          std::cerr << "filename_list[i] = " << filename_list[i] << "\n";
       }
       is.close();
     }
