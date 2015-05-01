@@ -184,6 +184,7 @@ fi
 hier_cluster.py $verbose_flag $fast_cluster_flag "${num_frag_clusters}" \
     -m "${tmp_dir}/medoids_linenum_frag.txt" < \
     "${tmp_dir}/distmtx_frag.csv" > "${tmp_dir}/cluster_ids_frag.csv"
+num_frag_clusters=$(cat "${tmp_dir}/cluster_ids_frag.csv" | wc -l)
 
 if [ $verbose -eq 1 ]
 then
@@ -194,6 +195,7 @@ fi
 hier_cluster.py $verbose_flag $fast_cluster_flag "${num_msg_clusters}" \
     -m "${tmp_dir}/medoids_linenum_msg.txt" < \
     "${tmp_dir}/distmtx_msg.csv" > "${tmp_dir}/cluster_ids_msg.csv"
+num_msg_clusters=$(cat "${tmp_dir}/cluster_ids_msg.csv" | wc -l)
 
 if [ $verbose -eq 1 ]
 then
