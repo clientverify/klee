@@ -258,7 +258,9 @@ void NetworkManager::execute_write(CVExecutor* executor,
 
   std::stringstream bytes_ss;
 	while (socket.has_data() && bytes_read < len) {
-    bytes_ss << object->read8(bytes_read) << " ";
+    if (DebugNetworkManager) {
+      bytes_ss << object->read8(bytes_read) << " ";
+    }
 		klee::ref<klee::Expr> condition
 			= klee::EqExpr::create(
 					object->read8(bytes_read++), 
@@ -299,8 +301,9 @@ void NetworkManager::execute_write(CVExecutor* executor,
   state_->multi_pass_assignment().clear();
 
   // Multi-pass: Find unique solutions for symbolic variables
-  state_->multi_pass_assignment().solveForBindings(
-      executor->get_solver()->solver, write_condition);
+  if (!isa<klee::ConstantExpr>(write_condition))
+    state_->multi_pass_assignment().solveForBindings(
+        executor->get_solver()->solver, write_condition);
 
   // Concretize variables now, explicitly, instead of implicitly
   // using another execution pass
