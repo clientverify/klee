@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "cliver/HMMPathPredictor.h"
+#include "cliver/CVStream.h"
 
 #include <limits>
 #include <algorithm>
@@ -76,8 +77,8 @@ template<class T>
 void print_vector(const std::vector<T>& v)
 {
   for (size_t i = 0; i < v.size(); ++i)
-    std::cout << v[i] << ' ';
-  std::cout << '\n';
+    *cv_message_stream << v[i] << ' ';
+  *cv_message_stream << '\n';
 }
 
 template<class T>
@@ -308,25 +309,25 @@ ViterbiDecoder::test()
   }
   vector<int> estimated_states = vd.getDecoding();
 
-  cout << vd;
-  cout << "Emission sequence: ";
+  *cv_message_stream << vd;
+  *cv_message_stream << "Emission sequence: ";
   print_vector(seq);
-  cout << "Correct states:    ";
+  *cv_message_stream << "Correct states:    ";
   print_vector(correct_states);
-  cout << "Estimated states:  ";
+  *cv_message_stream << "Estimated states:  ";
   print_vector(estimated_states);
-  cout << "Viterbi table:\n";
+  *cv_message_stream << "Viterbi table:\n";
   print_matrix(vd.viterbi_table);
-  cout << "Backward links:\n";
+  *cv_message_stream << "Backward links:\n";
   print_matrix(vd.backward_links);
   for (int i = 0; i < vd.getSequenceLength(); ++i) {
-    cout << "State probabilities for round " << i << ": ";
+    *cv_message_stream << "State probabilities for round " << i << ": ";
     print_vector(vd.getStateProbabilities(i));
   }
-  cout << "State probabilities for final round: ";
+  *cv_message_stream << "State probabilities for final round: ";
   print_vector(vd.getStateProbabilities());
 
-  cout << "State probabilities for final round(vd2): ";
+  *cv_message_stream << "State probabilities for final round(vd2): ";
   print_vector(vd2.getStateProbabilities());
 
 
@@ -565,14 +566,14 @@ HMMPathPredictor::addMessage(const SocketEvent& se)
   assigned_msg_cluster_ids.push_back(cluster_assignment);
   directions.push_back(se.type);
   vd.addEmission(cluster_assignment);
-  cout << "Emission sequence:\n";
+  *cv_message_stream << "Emission sequence:\n";
   print_vector(vd.emission_sequence);
-  // cout << "Viterbi table:\n";
+  // *cv_message_stream << "Viterbi table:\n";
   // print_matrix(vd.viterbi_table);
-  // cout << "Backward links:\n";
+  // *cv_message_stream << "Backward links:\n";
   // print_matrix(vd.backward_links);
   int i = vd.getSequenceLength() - 1;
-  cout << "State probabilities for round " << i << ": ";
+  *cv_message_stream << "State probabilities for round " << i << ": ";
   print_vector(vd.getStateProbabilities(i));
 }
 
@@ -619,9 +620,9 @@ HMMPathPredictor::predictPath(int round, BasicBlockID bb, double confidence) con
     return output;
   }
 
-  cout << "Num matches (w/ first basic block): " << num_matches << "\n";
-  cout << "Total match probability: " << match_probability_total << "\n";
-  // cout << "Descending ids (" << desc_ids.size() << "):\n";
+  *cv_message_stream << "Num matches (w/ first basic block): " << num_matches << "\n";
+  *cv_message_stream << "Total match probability: " << match_probability_total << "\n";
+  // *cv_message_stream << "Descending ids (" << desc_ids.size() << "):\n";
   // print_vector(desc_ids);
 
   // rescale confidence threshold
