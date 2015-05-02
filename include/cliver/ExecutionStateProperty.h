@@ -52,6 +52,7 @@ class ExecutionStateProperty {
 
   int round; // current socket id
   int client_round; // client specific round number
+  int hmm_round; // client specific round number
   int edit_distance; // edit distance 
   int symbolic_vars; // number of symbolic variables created for this round
 	bool recompute;

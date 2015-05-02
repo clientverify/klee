@@ -24,7 +24,7 @@ bool ExecutionStatePropertyLT::operator()(const ExecutionStateProperty* a,
 //////////////////////////////////////////////////////////////////////////////
 
 ExecutionStateProperty::ExecutionStateProperty()
-	: round(0), client_round(0), edit_distance(0), 
+	: round(0), client_round(0), hmm_round(0), edit_distance(0),
     symbolic_vars(0), symbolic_model(false), 
     recompute(true), is_recv_processing(false),
     inst_count(0), pass_count(0) {}
@@ -32,6 +32,7 @@ ExecutionStateProperty::ExecutionStateProperty()
 void ExecutionStateProperty::clone_helper(ExecutionStateProperty* p) { 
   p->round = round;
   p->client_round = client_round;
+  p->hmm_round = hmm_round;
   p->edit_distance = edit_distance;
   p->symbolic_vars = symbolic_vars;
   p->symbolic_model = symbolic_model;
@@ -84,6 +85,8 @@ void ExecutionStateProperty::print(std::ostream &os) const {
 	os << "[rd: " << round << "]";
   if (client_round > 0)
     os << "[clrd: " << client_round << "]";
+  if (hmm_round > 0)
+    os << "[hmmrd: " << hmm_round << "]";
   if (edit_distance >= 0)
 	  os << "[ed: " << edit_distance << "]";
   if (symbolic_vars >= 0)
@@ -101,6 +104,7 @@ void ExecutionStateProperty::print(std::ostream &os) const {
 ExecutionStateProperty& ExecutionStateProperty::operator=(const ExecutionStateProperty& esp) {
   round = esp.round;
   client_round = esp.client_round;
+  hmm_round = esp.hmm_round;
   edit_distance = esp.edit_distance;
   symbolic_vars = esp.symbolic_vars;
   recompute = esp.recompute;

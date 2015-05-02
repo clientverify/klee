@@ -647,7 +647,8 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
   TrainingFilter tf(state);
 
   if (UseHMM) {
-    if (hmm_->rounds() < property->round) {
+    property->hmm_round++;
+    if (hmm_->rounds() < property->hmm_round) {
       hmm_->addMessage(*socket_event);
     }
 
