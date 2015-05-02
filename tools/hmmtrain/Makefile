@@ -11,6 +11,7 @@ LEVEL = ../..
 
 TOOLSCRIPTNAME := hmmtrain
 
+HELPER_SCRIPTS += dedupe.py
 HELPER_SCRIPTS += distmtx.py
 HELPER_SCRIPTS += extract_training.py
 HELPER_SCRIPTS += levenshtein.py
