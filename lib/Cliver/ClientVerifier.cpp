@@ -85,7 +85,7 @@ llvm::cl::opt<bool>
 PrintStats("print-stats", llvm::cl::init(true));
 
 llvm::cl::opt<bool> 
-DebugPrintExecutionEvents("debug-print-execution-events", llvm::cl::init(false));
+PrintExecutionEvents("print-execution-events", llvm::cl::init(false));
 
 #ifdef GOOGLE_PROFILER
 llvm::cl::opt<int> 
@@ -236,7 +236,7 @@ void ClientVerifier::initialize() {
 
   assign_basic_block_ids();
 
-  if (DebugPrintExecutionEvents)
+  if (PrintExecutionEvents)
     hook(new ExecutionObserverPrinter());
 
   pruner_ = new ConstraintPruner();

@@ -56,11 +56,11 @@ void ExecutionObserverPrinter::notify(ExecutionEvent ev) {
   switch(ev.event_type) {
 #define X(x) case x : { \
   if (ev.state && ev.parent) {\
-    CVDEBUG( #x << " " << *ev.state << " parent: " << *ev.parent );\
+    CVMESSAGE( #x << " " << *ev.state << " parent: " << *ev.parent );\
   } else if (ev.state) {\
-    CVDEBUG( #x << " " << *ev.state );\
+    CVMESSAGE( #x << " " << *ev.state );\
   } else {\
-    CVDEBUG( #x );\
+    CVMESSAGE( #x );\
   } break; }
 
     CV_EXECUTION_EVENT_TYPES
