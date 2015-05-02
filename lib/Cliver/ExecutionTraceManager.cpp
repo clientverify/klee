@@ -652,7 +652,7 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
       hmm_->addMessage(*socket_event);
     }
 
-    auto guidePaths = hmm_->predictPath(property->round,
+    auto guidePaths = hmm_->predictPath(property->hmm_round,
                                         tf.initial_basic_block_id,
                                         HMMConfidence);
 
