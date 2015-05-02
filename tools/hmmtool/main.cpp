@@ -239,8 +239,9 @@ int DoHMMPredict()
   for (size_t i = 0; i < all_training_objects.size(); ++i) {
     std::shared_ptr<TrainingObject> tobj = all_training_objects[i];
     cout << "------------------------------------------------\n";
-    cout << "Adding message " << i << ": " << tobj->name << "\n";
     SocketEvent* se = *(tobj->socket_event_set.begin());
+    cout << "Adding message " << i << ": " << tobj->name
+         << " | " << *se << "\n";
     hpp.addMessage(*se);
     const vector<int>& msg_cluster_ids = hpp.getAssignedMsgClusters();
     cout << "Message assigned to message cluster: "
@@ -252,8 +253,11 @@ int DoHMMPredict()
       pair<double, int> entry(*it);
       std::cout.precision(6);
       std::cout.setf( std::ios::fixed, std:: ios::floatfield );
+      SocketEvent *s = *(all_training_objects[entry.second]->
+                         socket_event_set.begin());
       cout << "Prob = " << entry.first << " | guide_path " << entry.second
-           << " | " << all_training_objects[entry.second]->name << "\n";
+           << " | " << all_training_objects[entry.second]->name
+           << " | " << *s << "\n";
     }
   }
 
@@ -272,6 +276,7 @@ int DoHMMPredict()
       cout << "Adding message: " << HMMTestMessages[i] << "\n";
       TrainingObject* tobj = test_objects[i];
       SocketEvent* se = *(tobj->socket_event_set.begin());
+      cout << *se << "\n";
       hpp.addMessage(*se);
       const vector<int>& msg_cluster_ids = hpp.getAssignedMsgClusters();
       cout << "Message assigned to message cluster: "
@@ -283,8 +288,11 @@ int DoHMMPredict()
         pair<double, int> entry(*it);
         std::cout.precision(6);
         std::cout.setf( std::ios::fixed, std:: ios::floatfield );
+        SocketEvent *s = *(all_training_objects[entry.second]->
+                           socket_event_set.begin());
         cout << "Prob = " << entry.first << " | guide_path " << entry.second
-             << " | " << all_training_objects[entry.second]->name << "\n";
+             << " | " << all_training_objects[entry.second]->name
+             << " | " << *s << "\n";
       }
     }
 
