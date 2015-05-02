@@ -202,7 +202,9 @@ private:
   std::vector<std::map<uint8_t,double> > messages_as_hist; // training
   std::vector<SocketEvent*> messages; // training
 
+  // observations
   std::vector<int> assigned_msg_cluster_ids;
+  std::vector<SocketEvent::Type> directions;
 
   // debug
   std::vector<std::string> fragment_medoid_files;

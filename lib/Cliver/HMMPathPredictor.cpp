@@ -422,7 +422,10 @@ std::istream& operator>>(std::istream& is, HMMPathPredictor& hpp)
     // preprocess for Ruzicka
     hpp.messages_as_hist.push_back(hpp.message_as_hist(*se));
   }
-  
+
+  hpp.assigned_msg_cluster_ids.clear();
+  hpp.directions.clear();
+
   return is;
 }
 
@@ -560,6 +563,7 @@ HMMPathPredictor::addMessage(const SocketEvent& se)
   using namespace std;
   int cluster_assignment = nearest_message_id(se);
   assigned_msg_cluster_ids.push_back(cluster_assignment);
+  directions.push_back(se.type);
   vd.addEmission(cluster_assignment);
   cout << "Emission sequence:\n";
   print_vector(vd.emission_sequence);
@@ -593,16 +597,19 @@ HMMPathPredictor::predictPath(int round, BasicBlockID bb, double confidence) con
   using namespace std;
   vector<pair<double,int> > output;
   vector<double> pvec = vd.getStateProbabilities(round - 1);
+  SocketEvent::Type direction = directions[round - 1];
   vector<size_t> desc_ids = sort_indices_reverse(pvec);
   double accumulated_confidence = 0.0;
 
-  // restrict to guide paths with initial basic block = bb
-  // compute total probability
+  // Restricting to guide paths with initial basic block = bb and correct
+  // direction, compute total probability.
   int num_matches = 0;
   double match_probability_total = 0.0;
   for (size_t i = 0; i < fragment_medoids.size(); ++i) {
     shared_ptr<TrainingObject> frag_med = fragment_medoids[i];
-    if (frag_med->trace.size() > 0 && frag_med->trace[0] == bb) {
+    SocketEvent::Type thistype = (*(frag_med->socket_event_set.begin()))->type;
+    if (frag_med->trace.size() > 0 && frag_med->trace[0] == bb &&
+        direction == thistype) {
       num_matches++;
       match_probability_total += pvec[i];
     }
@@ -621,10 +628,13 @@ HMMPathPredictor::predictPath(int round, BasicBlockID bb, double confidence) con
   confidence *= match_probability_total;
 
   for (size_t i = 0; i < desc_ids.size(); ++i) {
-    // skip if bb does not match initial basic block
+    // skip if bb does not match initial basic block, or if incorrect
+    // direction
     size_t medoid_id = desc_ids[i];
     shared_ptr<TrainingObject> frag_med = fragment_medoids[medoid_id];
-    if (frag_med->trace.size() == 0 || frag_med->trace[0] != bb)
+    SocketEvent::Type thistype = (*(frag_med->socket_event_set.begin()))->type;
+    if (frag_med->trace.size() == 0 || frag_med->trace[0] != bb ||
+        direction != thistype)
       continue;
     double probability = pvec[medoid_id];
     output.push_back(pair<double,int>(probability, medoid_id));
