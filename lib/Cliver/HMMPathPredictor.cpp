@@ -258,6 +258,9 @@ std::istream& operator>>(std::istream& is, ViterbiDecoder& vd)
     vd.logp_emis.push_back(std::vector<double>());
     for (int j = 0; j < num_emis; j++) {
       is >> p;
+      if (!is.good()) {
+        std::cerr << "There were problems loading the Emission Matrix!\n";
+      }
       vd.logp_emis[i].push_back(safelog(p));
     }
   }
@@ -358,10 +361,12 @@ std::istream& operator>>(std::istream& is, HMMPathPredictor& hpp)
   vector<string> fragment_medoid_files;
   vector<string> message_medoid_files;
   std::vector<TrainingObject*> training_objects;
-  TrainingObjectSet dummy;// THIS IS A HACK!
 
   // Read in HMM coefficients  
   is >> hpp.vd;
+  if (!is.good()) {
+    cerr << "Error reading HMM matrices.\n";
+  }
 
   // Read in fragment medoids (guide paths)
   is >> item;
@@ -370,11 +375,17 @@ std::istream& operator>>(std::istream& is, HMMPathPredictor& hpp)
     is >> item;
     fragment_medoid_files.push_back(item);
   }
-  TrainingManager::read_files(fragment_medoid_files, dummy); //HACK!
+  hpp.fragment_medoid_files = fragment_medoid_files;
+  hpp.fragment_medoids.clear();
   TrainingManager::read_files_in_order(fragment_medoid_files, training_objects);
   for (auto it = training_objects.begin();
        it != training_objects.end(); ++it) {
-    hpp.fragment_medoids.push_back(shared_ptr<TrainingObject>(*it));
+    shared_ptr<TrainingObject> p;
+    p.reset(*it);
+    if (*it == NULL) {
+      cerr << "Problem: training object NULL\n";
+    }
+    hpp.fragment_medoids.push_back(p);
   }
 
   // Read in message medoids (for comparison to incoming message)
@@ -384,12 +395,17 @@ std::istream& operator>>(std::istream& is, HMMPathPredictor& hpp)
     is >> item;
     message_medoid_files.push_back(item);
   }
+  hpp.message_medoid_files = message_medoid_files;
+  hpp.message_medoids.clear();
+  hpp.messages.clear();
+  hpp.messages_as_sets.clear();
+  hpp.messages_as_hist.clear();
   training_objects.clear();
-  TrainingManager::read_files(message_medoid_files, dummy); //HACK!
   TrainingManager::read_files_in_order(message_medoid_files, training_objects);
   for (auto it = training_objects.begin();
        it != training_objects.end(); ++it) {
-    shared_ptr<TrainingObject> tobj(*it);
+    shared_ptr<TrainingObject> tobj;
+    tobj.reset(*it);
     hpp.message_medoids.push_back(tobj);
     assert(tobj->socket_event_set.size() >= 1);
     if (tobj->socket_event_set.size() > 1) {
@@ -545,16 +561,15 @@ HMMPathPredictor::addMessage(const SocketEvent& se)
   int cluster_assignment = nearest_message_id(se);
   assigned_msg_cluster_ids.push_back(cluster_assignment);
   vd.addEmission(cluster_assignment);
-  cout << "Emssion sequence:\n";
+  cout << "Emission sequence:\n";
   print_vector(vd.emission_sequence);
-  cout << "Viterbi table:\n";
-  print_matrix(vd.viterbi_table);
-  cout << "Backward links:\n";
-  print_matrix(vd.backward_links);
-  for (int i = 0; i < vd.getSequenceLength(); ++i) {
-    cout << "State probabilities for round " << i << ": ";
-    print_vector(vd.getStateProbabilities(i));
-  }
+  // cout << "Viterbi table:\n";
+  // print_matrix(vd.viterbi_table);
+  // cout << "Backward links:\n";
+  // print_matrix(vd.backward_links);
+  int i = vd.getSequenceLength() - 1;
+  cout << "State probabilities for round " << i << ": ";
+  print_vector(vd.getStateProbabilities(i));
 }
 
 template <typename T>
@@ -596,6 +611,11 @@ HMMPathPredictor::predictPath(int round, BasicBlockID bb, double confidence) con
   if (num_matches == 0) {
     return output;
   }
+
+  cout << "Num matches (w/ first basic block): " << num_matches << "\n";
+  cout << "Total match probability: " << match_probability_total << "\n";
+  // cout << "Descending ids (" << desc_ids.size() << "):\n";
+  // print_vector(desc_ids);
 
   // rescale confidence threshold
   confidence *= match_probability_total;

@@ -203,6 +203,10 @@ private:
   std::vector<SocketEvent*> messages; // training
 
   std::vector<int> assigned_msg_cluster_ids;
+
+  // debug
+  std::vector<std::string> fragment_medoid_files;
+  std::vector<std::string> message_medoid_files;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -232,13 +232,13 @@ int DoHMMPredict()
   // Self-test
   infile >> hpp;
   infile.close();
-  std::cout << hpp;
   auto all_training_objects = hpp.getAllTrainingObjects();
   cout << "--------------------------------------------------------------\n";
   cout << "Self-test on training paths\n";
   cout << "--------------------------------------------------------------\n";
   for (size_t i = 0; i < all_training_objects.size(); ++i) {
     std::shared_ptr<TrainingObject> tobj = all_training_objects[i];
+    cout << "------------------------------------------------\n";
     cout << "Adding message " << i << ": " << tobj->name << "\n";
     SocketEvent* se = *(tobj->socket_event_set.begin());
     hpp.addMessage(*se);
