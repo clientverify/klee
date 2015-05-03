@@ -147,6 +147,34 @@ cat "${tmp_dir}/tpath_files.txt" | \
 cut -f1,2 -d, < "${tmp_dir}/training.csv" > "${tmp_dir}/sessions_and_rounds.csv"
 
 ###############################################################################
+# Deduplicate fragments and messages
+###############################################################################
+if [ $verbose -eq 1 ]
+then
+    echo "--------------------------------------------------------------------"
+    echo "Deduplicating fragments"
+    echo "--------------------------------------------------------------------"
+fi
+
+dedupe.py $verbose_flag -t fragment -m Jaccard "${tmp_dir}/training.csv" \
+    "${tmp_dir}/training_deduped_frag.csv" "${tmp_dir}/dupemap_frag.csv"
+extract_canonical_lines.py $verbose_flag "${tmp_dir}/dupemap_frag.csv" \
+    "${tmp_dir}/tpath_files.txt" > "${tmp_dir}/tpath_files_frag.txt"
+
+if [ $verbose -eq 1 ]
+then
+    echo "--------------------------------------------------------------------"
+    echo "Deduplicating messages"
+    echo "--------------------------------------------------------------------"
+fi
+
+dedupe.py $verbose_flag -t message -r "${tmp_dir}/training.csv" \
+    "${tmp_dir}/training_deduped_msg.csv" "${tmp_dir}/dupemap_msg.csv"
+extract_canonical_lines.py $verbose_flag "${tmp_dir}/dupemap_msg.csv" \
+    "${tmp_dir}/tpath_files.txt" > "${tmp_dir}/tpath_files_msg.txt"
+
+
+###############################################################################
 # Compute distance matrices for fragments and messages
 ###############################################################################
 if [ $verbose -eq 1 ]
@@ -155,7 +183,8 @@ then
     echo "Computing distance matrix for fragments"
     echo "--------------------------------------------------------------------"
 fi
-distmtx.py $verbose_flag -f -m "${trace_metric}" < "${tmp_dir}/training.csv" > \
+distmtx.py $verbose_flag -f -m "${trace_metric}" < \
+    "${tmp_dir}/training_deduped_frag.csv" > \
     "${tmp_dir}/distmtx_frag.csv"
 
 if [ $verbose -eq 1 ]
@@ -164,7 +193,8 @@ then
     echo "Computing distance matrix for messages"
     echo "--------------------------------------------------------------------"
 fi
-distmtx.py $verbose_flag -m "${message_metric}" < "${tmp_dir}/training.csv" > \
+distmtx.py $verbose_flag -m "${message_metric}" < \
+    "${tmp_dir}/training_deduped_msg.csv" > \
     "${tmp_dir}/distmtx_msg.csv"
 
 ###############################################################################
@@ -199,11 +229,25 @@ num_msg_clusters=$(( $(sort -rn "${tmp_dir}/cluster_ids_msg.csv" | head -n1) + 1
 if [ $verbose -eq 1 ]
 then
     echo "--------------------------------------------------------------------"
-    echo "Saving cluster IDs"
+    echo "Applying fragment cluster IDs to original training data"
     echo "--------------------------------------------------------------------"
 fi
-paste -d, "${tmp_dir}/cluster_ids_frag.csv" "${tmp_dir}/cluster_ids_msg.csv" > \
-    "${tmp_dir}/cluster_ids_frag_msg.csv"
+apply_clusterids.py $verbose_flag "${tmp_dir}/cluster_ids_frag.csv" \
+    "${tmp_dir}/dupemap_frag.csv" > "${tmp_dir}/cluster_ids_orig_frag.csv"
+
+if [ $verbose -eq 1 ]
+then
+    echo "--------------------------------------------------------------------"
+    echo "Applying message cluster IDs to original training data"
+    echo "--------------------------------------------------------------------"
+fi
+apply_clusterids.py $verbose_flag "${tmp_dir}/cluster_ids_msg.csv" \
+    "${tmp_dir}/dupemap_msg.csv" > "${tmp_dir}/cluster_ids_orig_msg.csv"
+
+# Combine into one file
+paste -d, "${tmp_dir}/cluster_ids_orig_frag.csv" \
+    "${tmp_dir}/cluster_ids_orig_msg.csv" > \
+    "${tmp_dir}/cluster_ids_orig_frag_msg.csv"
 
 if [ $verbose -eq 1 ]
 then
@@ -212,9 +256,9 @@ then
     echo "--------------------------------------------------------------------"
 fi
 sed -n `awk '{printf $0 "p;"}' "${tmp_dir}/medoids_linenum_frag.txt"` \
-    "${tmp_dir}/tpath_files.txt" > "${tmp_dir}/medoids_frag.txt"
+    "${tmp_dir}/tpath_files_frag.txt" > "${tmp_dir}/medoids_frag.txt"
 sed -n `awk '{printf $0 "p;"}' "${tmp_dir}/medoids_linenum_msg.txt"` \
-    "${tmp_dir}/tpath_files.txt" > "${tmp_dir}/medoids_msg.txt"
+    "${tmp_dir}/tpath_files_msg.txt" > "${tmp_dir}/medoids_msg.txt"
 
 ###############################################################################
 # Estimate HMM coefficients on the series of sessions
@@ -230,7 +274,7 @@ then
 fi
 hmm_estimate.py $verbose_flag "${num_frag_clusters}" "${num_msg_clusters}" \
     -s "${tmp_dir}/sessions_and_rounds.csv" -t 1e-5 -e 1e-5 < \
-    "${tmp_dir}/cluster_ids_frag_msg.csv" > \
+    "${tmp_dir}/cluster_ids_orig_frag_msg.csv" > \
     "${tmp_dir}/hmm_coefficients.txt"
 
 ###############################################################################

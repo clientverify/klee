@@ -14,9 +14,11 @@ TOOLSCRIPTNAME := hmmtrain
 HELPER_SCRIPTS += dedupe.py
 HELPER_SCRIPTS += distmtx.py
 HELPER_SCRIPTS += extract_training.py
+HELPER_SCRIPTS += extract_canonical_lines.py
 HELPER_SCRIPTS += levenshtein.py
 HELPER_SCRIPTS += message_features.py
 HELPER_SCRIPTS += hier_cluster.py
+HELPER_SCRIPTS += apply_clusterids.py
 HELPER_SCRIPTS += hmm_estimate.py
 HELPER_SCRIPTS_ABS = $(addprefix $(PROJ_SRC_DIR)/,$(HELPER_SCRIPTS))
 
