@@ -32,6 +32,7 @@ show_help () {
   -f  Use faster but less accurate clustering method
   -m  Change message metric: "Ruzicka" (default) and "Jaccard" supported
   -t  Change trace metric: "Jaccard" (default) and "mJaccard" supported
+  -x  Omit xpilot headers (default: false)
   -v  Verbose mode
 
   (*) prefix for top-level directory of a session, which must be
@@ -59,7 +60,9 @@ verbose=0
 verbose_flag=
 fast_cluster=0
 fast_cluster_flag=
-while getopts "h?vm:t:f" opt; do
+omit_xpilot_header=0
+omit_xpilot_header_flag=
+while getopts "h?vm:t:fx" opt; do
     case "$opt" in
     h|\?)
         show_help $0
@@ -74,6 +77,9 @@ while getopts "h?vm:t:f" opt; do
     m)  message_metric=$OPTARG
         ;;
     t)  trace_metric=$OPTARG
+        ;;
+    x)  omit_xpilot_header=1
+        omit_xpilot_header_flag="-x"
         ;;
     esac
 done
@@ -142,7 +148,8 @@ then
 fi
 
 cat "${tmp_dir}/tpath_files.txt" | \
-    extract_training.py $verbose_flag -r "${session_prefix}" > \
+    extract_training.py $verbose_flag $omit_xpilot_header_flag \
+    -r "${session_prefix}" > \
     "${tmp_dir}/training.csv"
 cut -f1,2 -d, < "${tmp_dir}/training.csv" > "${tmp_dir}/sessions_and_rounds.csv"
 
