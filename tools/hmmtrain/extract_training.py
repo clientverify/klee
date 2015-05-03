@@ -24,6 +24,10 @@ def main():
                                 which must be followed by an integer that
                                 uniquely identifies the execution.
                                 (default = 'cliver-out-')""")
+    parser.add_argument('--omit-xpilot-headers', dest='omit_xpilot_headers',
+                        action='store_true', default=False,
+                        help="""Omit processing of message headers
+                                (assuming XPilot client model )""")
     global args
     args = parser.parse_args()
 
@@ -52,8 +56,13 @@ def main():
 
 def dump_cliverstats(path):
     """Dump cliverstats output as a single string"""
-    return subprocess.check_output(["cliverstats", "-debug-socket", "-input",
-                                    path])
+    if args.omit_xpilot_headers:
+      print "omitting"
+      return subprocess.check_output(["cliverstats", "-debug-socket",
+                                      "-client-model=xpilot",
+                                      "-print-omit-headers", "-input", path])
+    else:
+      return subprocess.check_output(["cliverstats", "-debug-socket", "-input", path])
 
 def parse_cliverstats(d):
     """Given cliverstats output d, extract the direction

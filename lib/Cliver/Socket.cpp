@@ -27,6 +27,11 @@ DebugSocket("debug-socket",
 llvm::cl::opt<bool>
 PrintAsciiSocket("print-ascii-socket",llvm::cl::init(false));
 
+llvm::cl::opt<bool>
+PrintOmitHeaders( "print-omit-headers",
+  llvm::cl::desc("Print socket events without headers (default=false)"),
+  llvm::cl::init(false));
+
 int Socket::NextFileDescriptor = 10;
 
 SocketEvent::SocketEvent(const KTestObject &object) {
@@ -110,7 +115,8 @@ void SocketEvent::print(std::ostream &os) const {
       os << "(ascii) " << s << ", (hex) ";
     }
     os << std::hex;
-    for (unsigned i=0; i<length; ++i)
+    unsigned i = PrintOmitHeaders ? header_length : 0;
+    for (; i<length; ++i)
       os << (int)data[i] << ':';
     os << std::dec;
   }

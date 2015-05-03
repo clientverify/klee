@@ -7,6 +7,8 @@
 #include "cliver/HMMPathPredictor.h"
 #include "cliver/CVStream.h"
 
+#include "llvm/Support/CommandLine.h"
+
 #include <limits>
 #include <algorithm>
 #include <iostream>
@@ -20,6 +22,10 @@ namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+llvm::cl::opt<bool>
+HMMOmitMessageHeaders("-hmm-omit-headers",
+  llvm::cl::desc("Omit headers for HMM message clustering (default=false)"),
+  llvm::cl::init(false));
 
 ///////////////////////////////////////////////////////////////////////////////
 // Viterbi Decoder implementation
@@ -448,7 +454,10 @@ std::ostream& operator<<(std::ostream& os,const HMMPathPredictor& hpp)
 std::set<uint8_t>
 HMMPathPredictor::message_as_set(const SocketEvent& se) const
 {
-  return std::set<uint8_t>(se.data.begin(), se.data.end());
+  auto it = se.data.begin();
+  if (HMMOmitMessageHeaders)
+    std::advance(it, se.header_length);
+  return std::set<uint8_t>(it, se.data.end());
 }
 
 std::map<uint8_t,double>
@@ -458,7 +467,10 @@ HMMPathPredictor::message_as_hist(const SocketEvent& se) const
   double decay_rate;
   decay_rate = (header_length>0) ? std::pow(0.5, 1.0/header_length) : 1.0;
   double weight = 1.0;
-  for (auto it = se.data.begin(); it != se.data.end(); ++it) {
+  auto it = se.data.begin();
+  if (HMMOmitMessageHeaders)
+    std::advance(it, se.header_length);
+  for (;it != se.data.end(); ++it) {
     h[*it] += weight;
     weight *= decay_rate;
   }
