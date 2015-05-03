@@ -149,6 +149,7 @@ class CVExecutor : public klee::Executor {
   std::set<klee::ExecutionState*> states;
 
   klee::Mutex memory_lock_;
+  klee::Mutex symbolic_array_lock_;
   klee::OnceFlag searcher_init_flag_;
 
   klee::ThreadSpecificPointer<unsigned>::type threadInstCount;

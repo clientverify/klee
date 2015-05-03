@@ -704,6 +704,7 @@ void CVExecutor::executeMakeSymbolic(klee::ExecutionState &state,
     multipass = true;
   } else {
     CVDEBUG("Multi-pass: Concretization not found for " << array_name);
+    klee::LockGuard symbolicArrayLockGuard(symbolic_array_lock_);
     array = klee::Array::CreateArray(array_name, mo->size);
   }
 
