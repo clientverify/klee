@@ -57,7 +57,7 @@ def main():
 def dump_cliverstats(path):
     """Dump cliverstats output as a single string"""
     if args.omit_xpilot_headers:
-      print "omitting"
+      print >>sys.stderr, "Omitting xpilot headers for:", path
       return subprocess.check_output(["cliverstats", "-debug-socket",
                                       "-client-model=xpilot",
                                       "-print-omit-headers", "-input", path])
