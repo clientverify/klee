@@ -67,7 +67,7 @@ omit_xpilot_header=0
 omit_xpilot_header_flag=
 plots=0
 plots_flag=
-while getopts "h?vm:t:fxp" opt; do
+while getopts "h?vm:t:d:fxp" opt; do
     case "$opt" in
     h|\?)
         show_help $0
@@ -82,6 +82,8 @@ while getopts "h?vm:t:fxp" opt; do
     m)  message_metric=$OPTARG
         ;;
     t)  trace_metric=$OPTARG
+        ;;
+    d)  trace_dedupe_metric=$OPTARG
         ;;
     x)  omit_xpilot_header=1
         omit_xpilot_header_flag="-x"
