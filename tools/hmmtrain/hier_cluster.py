@@ -150,6 +150,7 @@ def main():
         print >>sys.stderr, \
             "Warning: nclusters (%d) exceeds number of data points (%d)" % \
             (args.nclusters, len(dm))
+        print >>sys.stderr, "Setting nclusters to %d" % len(dm)
         args.nclusters = len(dm)
 
     # Hierarchical clustering with "average" linkage
@@ -170,9 +171,16 @@ def main():
         del am
         gc.collect()
         g.delete_edges(x[0] for x in enumerate(g.es["weight"]) if x[1] < thresh)
+        num_components = len(g.components())
         if args.verbose:
             print >>sys.stderr, "Graph contains %d edges in %d components" % \
-                (g.ecount(), len(g.components()))
+                (g.ecount(), num_components)
+        if num_components > args.nclusters:
+            print >>sys.stderr, \
+                "Warning: number of components (%d) exceeds nclusters (%d)" % \
+                (num_components, args.nclusters)
+            print >>sys.stderr, "Setting nclusters to %d" % num_components
+            args.nclusters = num_components
         vdendro = g.community_fastgreedy(weights="weight")
         vclust = vdendro.as_clustering(args.nclusters)
         cluster_ids = vclust.membership

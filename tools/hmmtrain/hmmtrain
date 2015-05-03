@@ -33,6 +33,7 @@ show_help () {
   -m  Change message metric: "Ruzicka" (default) and "Jaccard" supported
   -t  Change trace metric: "Jaccard" (default) and "mJaccard" supported
   -x  Omit xpilot headers (default: false)
+  -p  Generate plots of fragment and message clusters (pauses execution)
   -v  Verbose mode
 
   (*) prefix for top-level directory of a session, which must be
@@ -62,7 +63,9 @@ fast_cluster=0
 fast_cluster_flag=
 omit_xpilot_header=0
 omit_xpilot_header_flag=
-while getopts "h?vm:t:fx" opt; do
+plots=0
+plots_flag=
+while getopts "h?vm:t:fxp" opt; do
     case "$opt" in
     h|\?)
         show_help $0
@@ -80,6 +83,9 @@ while getopts "h?vm:t:fx" opt; do
         ;;
     x)  omit_xpilot_header=1
         omit_xpilot_header_flag="-x"
+        ;;
+    p)  plots=1
+        plots_flag="-p"
         ;;
     esac
 done
@@ -218,7 +224,8 @@ then
     echo "Computing clusters for fragments"
     echo "--------------------------------------------------------------------"
 fi
-hier_cluster.py $verbose_flag $fast_cluster_flag "${num_frag_clusters}" \
+hier_cluster.py $verbose_flag $plots_flag $fast_cluster_flag \
+    "${num_frag_clusters}" \
     -m "${tmp_dir}/medoids_linenum_frag.txt" < \
     "${tmp_dir}/distmtx_frag.csv" > "${tmp_dir}/cluster_ids_frag.csv"
 num_frag_clusters=$(( $(sort -rn "${tmp_dir}/cluster_ids_frag.csv" | head -n1) + 1 ))
@@ -228,7 +235,8 @@ then
     echo "Computing clusters for messages"
     echo "--------------------------------------------------------------------"
 fi
-hier_cluster.py $verbose_flag $fast_cluster_flag "${num_msg_clusters}" \
+hier_cluster.py $verbose_flag $plots_flag $fast_cluster_flag \
+    "${num_msg_clusters}" \
     -m "${tmp_dir}/medoids_linenum_msg.txt" < \
     "${tmp_dir}/distmtx_msg.csv" > "${tmp_dir}/cluster_ids_msg.csv"
 num_msg_clusters=$(( $(sort -rn "${tmp_dir}/cluster_ids_msg.csv" | head -n1) + 1 ))
