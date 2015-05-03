@@ -32,6 +32,7 @@ show_help () {
   -f  Use faster but less accurate clustering method
   -m  Change message metric: "Ruzicka" (default) and "Jaccard" supported
   -t  Change trace metric: "Jaccard" (default) and "mJaccard" supported
+  -d  Change trace dedupe metric: "Jaccard" (default) and "exact" supported
   -x  Omit xpilot headers (default: false)
   -p  Generate plots of fragment and message clusters (pauses execution)
   -v  Verbose mode
@@ -56,7 +57,8 @@ OPTIND=1         # Reset in case getopts has been used previously in the shell.
 
 # Parse optional arguments
 message_metric="Ruzicka" # other option is "Jaccard"
-trace_metric="Jaccard" # other option is "mJaccard"
+trace_metric="Jaccard"   # other option is "mJaccard"
+trace_dedupe_metric="Jaccard"  # other option is "exact"
 verbose=0
 verbose_flag=
 fast_cluster=0
@@ -169,7 +171,8 @@ then
     echo "--------------------------------------------------------------------"
 fi
 
-dedupe.py $verbose_flag -t fragment -m Jaccard "${tmp_dir}/training.csv" \
+dedupe.py $verbose_flag -t fragment -m $trace_dedupe_metric \
+    "${tmp_dir}/training.csv" \
     "${tmp_dir}/training_deduped_frag.csv" "${tmp_dir}/dupemap_frag.csv"
 extract_canonical_lines.py $verbose_flag "${tmp_dir}/dupemap_frag.csv" \
     "${tmp_dir}/tpath_files.txt" > "${tmp_dir}/tpath_files_frag.txt"
