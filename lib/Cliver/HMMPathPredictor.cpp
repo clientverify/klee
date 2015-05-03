@@ -23,7 +23,7 @@ namespace cliver {
 ////////////////////////////////////////////////////////////////////////////////
 
 llvm::cl::opt<bool>
-HMMOmitMessageHeaders("-hmm-omit-headers",
+HMMOmitMessageHeaders("hmm-omit-headers",
   llvm::cl::desc("Omit headers for HMM message clustering (default=false)"),
   llvm::cl::init(false));
 
