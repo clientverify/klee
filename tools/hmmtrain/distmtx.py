@@ -98,6 +98,14 @@ def jaccard(s1, s2):
     y = set(s2)
     return 1.0 - 1.0*len(x&y)/len(x|y)
 
+def trace_jaccard(t1, t2):
+    """Traces must share the same direction the same first basic
+    block.  Otherwise they are considered 'maximum distance' of 1.0"""
+    if t1[0] != t2[0] or t1[1] != t2[1]:
+        return 1.0
+    else:
+        return jaccard(t1[2], t2[2])
+
 def dir_jaccard(m1, m2):
     if m1[0] != m2[0]:
         return 1.0
@@ -164,7 +172,7 @@ def compute_distance_row(work_item, distFunc):
     return [distFunc(x, y) for y in global_point_vector]
 
 def compute_distance_row_jaccard(work_item):
-    return compute_distance_row(work_item, dir_jaccard)
+    return compute_distance_row(work_item, trace_jaccard)
 
 def compute_distance_row_ruzicka(work_item):
     return compute_distance_row(work_item, trace_ruzicka)
@@ -269,7 +277,7 @@ def main():
                 % args.headerlen
 
     if args.fragment and args.metric == 'Jaccard': # Fragment Jaccard
-        traces = [ [x[2], set(x[3])] for x in data]
+        traces = [ [x[2], x[3][0], set(x[3])] for x in data]
         global_point_vector = traces
         dist_func = compute_distance_row_jaccard
     elif args.fragment and args.metric == 'mJaccard': # Frag multiset Jaccard
