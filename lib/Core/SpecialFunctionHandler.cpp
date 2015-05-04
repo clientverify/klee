@@ -482,7 +482,7 @@ void SpecialFunctionHandler::handleMemset(ExecutionState &state,
   }
 
   bool constant_fill = isa<ConstantExpr>(c);
-  uint8_t fill = constant_fill ? (uint8_t)cast<ConstantExpr>(c)->getZExtValue(8) : 0;
+  int fill = constant_fill ? cast<ConstantExpr>(c)->getZExtValue() : 0;
 
   ObjectPair op;
   bool success;
