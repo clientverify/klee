@@ -106,11 +106,11 @@ def trace_jaccard(t1, t2):
     else:
         return jaccard(t1[2], t2[2])
 
-def dir_jaccard(m1, m2):
-    if m1[0] != m2[0]:
+def msg_jaccard(m1, m2):
+    if m1[0] != m2[0] or m1[1] != m2[1]:
         return 1.0
     else:
-        return jaccard(m1[1], m2[1])
+        return jaccard(m1[2], m2[2])
 
 def ruzicka(s1, s2):
     """
@@ -151,17 +151,17 @@ def trace_ruzicka(t1, t2):
     else:
         return 1.0 - float(numerator)/float(denominator)
 
-def dir_ruzicka(m1, m2):
-    if m1[0] != m2[0]:
+def msg_ruzicka(m1, m2):
+    if m1[0] != m2[0] or m1[1] != m2[1]:
         return 1.0
     else:
-        return ruzicka(m1[1], m2[1])
+        return ruzicka(m1[2], m2[2])
 
-def dir_levenshtein(m1, m2, maxdist=MAX_DIST_VALUE):
-    if m1[0] != m2[0]:
+def msg_levenshtein(m1, m2, maxdist=MAX_DIST_VALUE):
+    if m1[0] != m2[0] or m1[1] != m2[1]:
         return maxdist
     else:
-        return quick_levenshtein(m1[1], m2[1], maxdist)
+        return quick_levenshtein(m1[2], m2[2], maxdist)
 
 def quickdiff(s1, s2):
     s = difflib.SequenceMatcher(None,s1,s2)
@@ -186,16 +186,16 @@ def compute_distance_row_ruzicka(work_item):
     return compute_distance_row(work_item, trace_ruzicka)
 
 def compute_msg_distance_row_jaccard(work_item):
-    return compute_distance_row(work_item, dir_jaccard)
+    return compute_distance_row(work_item, msg_jaccard)
 
 def compute_distance_row_levenshtein(work_item):
     return compute_distance_row(work_item, quick_levenshtein)
 
 def compute_msg_distance_row_levenshtein(work_item):
-    return compute_distance_row(work_item, dir_levenshtein)
+    return compute_distance_row(work_item, msg_levenshtein)
 
 def compute_msg_distance_row_ruzicka(work_item):
-    return compute_distance_row(work_item, dir_ruzicka)
+    return compute_distance_row(work_item, msg_ruzicka)
 
 def compute_distance_row_quickdiff(work_item):
     return compute_distance_row(work_item, quickdiff)
@@ -297,15 +297,16 @@ def main():
         global_point_vector = traces
         dist_func = compute_distance_row_levenshtein
     elif not args.fragment and args.metric == 'Jaccard': # Message Jaccard
-        msgs = [ [x[2], set(x[4])] for x in data]
+        msgs = [ [x[2], x[3][0], set(x[4])] for x in data]
         global_point_vector = msgs
         dist_func = compute_msg_distance_row_jaccard
     elif not args.fragment and args.metric == 'Levenshtein': # Message Lev
-        msgs = [ [x[2], x[4]] for x in data]
+        msgs = [ [x[2], x[3][0], x[4]] for x in data]
         global_point_vector = msgs
         dist_func = compute_msg_distance_row_levenshtein
     elif not args.fragment and args.metric == 'Ruzicka': # Message Ruzicka
-        msgs = [ [x[2], weighted_histogram(x[4],args.headerlen)] for x in data]
+        msgs = [ [x[2], x[3][0],
+                  weighted_histogram(x[4],args.headerlen)] for x in data]
         global_point_vector = msgs
         dist_func = compute_msg_distance_row_ruzicka
 
