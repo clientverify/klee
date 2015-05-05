@@ -126,7 +126,15 @@ def ruzicka(s1, s2):
     else:
         return 1.0 - float(numerator)/float(denominator)
 
-def trace_ruzicka(h1, h2):
+def trace_ruzicka(t1, t2):
+    dir1 = t1[0]
+    dir2 = t2[0]
+    bb1 = t1[1]
+    bb2 = t2[1]
+    h1 = t1[2]
+    h2 = t2[2]
+    if dir1 != dir2 or bb1 != bb2:
+        return 1.0
     hh1 = defaultdict(int)
     for k,v in h1.iteritems():
         hh1[k] = v
@@ -281,7 +289,7 @@ def main():
         global_point_vector = traces
         dist_func = compute_distance_row_jaccard
     elif args.fragment and args.metric == 'mJaccard': # Frag multiset Jaccard
-        traces = [build_histogram(x[3]) for x in data]
+        traces = [ [x[2], x[3][0], build_histogram(x[3])] for x in data]
         global_point_vector = traces
         dist_func = compute_distance_row_ruzicka
     elif args.fragment and args.metric == 'Levenshtein': # Fragment Levenshtein
