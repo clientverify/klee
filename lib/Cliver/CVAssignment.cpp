@@ -73,6 +73,14 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
   cm.addConstraint(expr);
 
   klee::Query query(cm, klee::ConstantExpr::alloc(0, klee::Expr::Bool));
+
+  if (DebugCVAssignment) {
+    llvm::errs() << " CVAssignment: ";
+    klee::ExprPPrinter::printQuery(llvm::errs(), cm,
+                             klee::ConstantExpr::alloc(0, klee::Expr::Bool));
+    llvm::errs() << "\n";
+  }
+
   solver->getInitialValues(query, arrays, initial_values);
 
   // Print implied values
