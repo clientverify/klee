@@ -149,7 +149,6 @@ void ExecutionTraceManager::initialize() {
 }
 
 void ExecutionTraceManager::notify(ExecutionEvent ev) {
-  klee::LockGuard guard(lock_);
   if (cv_->executor()->replay_path())
     return;
 
@@ -179,6 +178,7 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
     }
 
     case CV_BASICBLOCK_ENTRY: {
+      klee::LockGuard guard(lock_);
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
       ExecutionStage* stage = stages_[property];
 
@@ -190,6 +190,7 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
     break;
 
     case CV_STATE_REMOVED: {
+      klee::LockGuard guard(lock_);
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
       CVDEBUG("Removing state: " << *state );
       ExecutionStage* stage = stages_[property];
@@ -201,6 +202,7 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
     break;
 
     case CV_STATE_CLONE: {
+      klee::LockGuard guard(lock_);
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
       CVDEBUG("Cloned state: " << *state);
       ExecutionStage* stage = stages_[parent_property];
@@ -212,6 +214,7 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
     break;
 
     case CV_SEARCHER_NEW_STAGE: {
+      klee::LockGuard guard(lock_);
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
 
       ExecutionStage *new_stage = new ExecutionStage();
