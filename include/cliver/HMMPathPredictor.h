@@ -101,7 +101,7 @@ public:
   int rounds() const {return vd.getSequenceLength();} // num rounds added
 
   // Add a message and update the probabilities
-  void addMessage(const SocketEvent& se);
+  void addMessage(const SocketEvent& se, BasicBlockID bb);
 
   // Retrieve the current (or past) guide paths, with a list of likelihoods.
   // Inputs: round (1-indexed), initial BasicBlock id and confidence (0.99 suggested)
@@ -183,7 +183,7 @@ private:
                           const std::set<uint8_t>& s2) const;
   double ruzicka_distance(const std::map<uint8_t,double>& s1,
                           const std::map<uint8_t,double>& s2) const;
-  int nearest_message_id(const SocketEvent& se) const;
+  int nearest_message_id(const SocketEvent& se, BasicBlockID bb) const;
   std::set<uint8_t> message_as_set(const SocketEvent& se) const;
   std::map<uint8_t,double> message_as_hist(const SocketEvent& se) const;
   int message_direction(const SocketEvent& se) const;

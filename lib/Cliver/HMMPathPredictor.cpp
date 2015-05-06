@@ -541,7 +541,7 @@ HMMPathPredictor::ruzicka_distance(const std::map<uint8_t, double>& s1,
 }
 
 int
-HMMPathPredictor::nearest_message_id(const SocketEvent& se) const
+HMMPathPredictor::nearest_message_id(const SocketEvent& se, BasicBlockID bb) const
 {
   using namespace std;
   double min_distance = 2.0;
@@ -549,9 +549,23 @@ HMMPathPredictor::nearest_message_id(const SocketEvent& se) const
 
   set<uint8_t> query_set(message_as_set(se));
   map<uint8_t,double> query_hist(message_as_hist(se));
+
   for (size_t i = 0; i < messages_as_sets.size(); ++i) {
+
     double d;
+
+    // Hard requirement: the message MUST be assigned to a medoid with
+    // the same direction.
     if (message_direction(se) != message_direction(*(messages[i]))) {
+      continue;
+    }
+
+    // Soft requirement: the message SHOULD be assigned to a medoid
+    // whose corresponding trace matches on its first basic block.
+    // This may not always be true for RECV messages if we have
+    // dropped a bunch from training.
+    shared_ptr<TrainingObject> tobj = message_medoids[i];
+    if (tobj->trace.size() == 0 || tobj->trace[0] != bb) {
       d = 1.0;
     }
     else {
@@ -571,10 +585,10 @@ HMMPathPredictor::nearest_message_id(const SocketEvent& se) const
 }
 
 void
-HMMPathPredictor::addMessage(const SocketEvent& se)
+HMMPathPredictor::addMessage(const SocketEvent& se, BasicBlockID bb)
 {
   using namespace std;
-  int cluster_assignment = nearest_message_id(se);
+  int cluster_assignment = nearest_message_id(se, bb);
   assigned_msg_cluster_ids.push_back(cluster_assignment);
   directions.push_back(se.type);
   vd.addEmission(cluster_assignment);

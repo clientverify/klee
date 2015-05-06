@@ -242,7 +242,7 @@ int DoHMMPredict()
     SocketEvent* se = *(tobj->socket_event_set.begin());
     cout << "Adding message " << i << ": " << tobj->name
          << " | " << *se << "\n";
-    hpp.addMessage(*se);
+    hpp.addMessage(*se, tobj->trace[0]);
     const vector<int>& msg_cluster_ids = hpp.getAssignedMsgClusters();
     cout << "Message assigned to message cluster: "
          << msg_cluster_ids[i] << "\n";
@@ -277,7 +277,7 @@ int DoHMMPredict()
       TrainingObject* tobj = test_objects[i];
       SocketEvent* se = *(tobj->socket_event_set.begin());
       cout << *se << "\n";
-      hpp.addMessage(*se);
+      hpp.addMessage(*se, tobj->trace[0]);
       const vector<int>& msg_cluster_ids = hpp.getAssignedMsgClusters();
       cout << "Message assigned to message cluster: "
            << msg_cluster_ids[i] << "\n";
