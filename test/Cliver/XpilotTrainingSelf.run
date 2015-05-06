@@ -2,7 +2,7 @@
 // RUN: %klee %xpilotcliverparams -cliver-mode=training -socket-log "%S/xpilot_0.ktest" -output-dir="%t.training.dir" "%S/%xpilotbc" %xpilotparams &> %t.log
 // RUN: grep -q "Verification complete" %t.log
 // RUN: rm -rf %t.dir
-// RUN: %klee %singlethreadxpilotcliverparams -output-dir=%t.dir -use-clustering -cliver-mode=edit-dist-kprefix-row -use-self-training -socket-log "%S/xpilot_0.ktest" -self-training-path-dir="%t.training.dir" "%S/%xpilotbc" %xpilotparams &> %t.ed.log
+// RUN: %klee %singlethreadxpilotcliverparams -output-dir=%t.dir -use-clustering -cliver-mode=edit-dist-kprefix-row -use-self-training -check-self-training -socket-log "%S/xpilot_0.ktest" -self-training-path-dir="%t.training.dir" "%S/%xpilotbc" %xpilotparams &> %t.ed.log
 // RUN: grep -q "Verification complete" %t.ed.log
 //// Check that we did not execute more instructions than necessary
 // RUN: awk -F, '{total[$1]=$4} END { x=total["InstructionCount"]-total["ValidPathInstructionCount"]; exit !(x < 1000) }' %t.dir/cliver.stats.summary
