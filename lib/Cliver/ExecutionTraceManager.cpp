@@ -526,6 +526,15 @@ void VerifyExecutionTraceManager::initialize() {
 
     hmm_training_objs_ = hmm_->getAllTrainingObjects();
     CVMESSAGE("HMM: Retreived " << hmm_training_objs_.size() << " training objects");
+    int i = 0;
+    for (auto t : hmm_training_objs_) {
+      CVMESSAGE("HMM: " << i++ << " " << t->name);
+      if (FinalDistance) {
+        auto dist_tree = EditDistanceTreeFactory::create();
+        dist_tree->add_data(t->trace);
+        hmm_training_obj_dist_trees_.push_back(dist_tree);
+      }
+    }
   }
 }
 
@@ -655,24 +664,57 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
   if (UseHMM) {
     property->hmm_round++;
     if (hmm_->rounds() < property->hmm_round) {
+      CVDEBUG("Adding socket event to HMM "
+                << tf.initial_basic_block_id << ", "
+                << property->hmm_round << ", "<< *socket_event);
       hmm_->addMessage(*socket_event, tf.initial_basic_block_id);
     }
+
+    CVDEBUG("HMM: Current State -"
+              << " SE: " << *socket_event
+              << " BB: " << tf.initial_basic_block_id
+              << " Inst: " <<
+              *(cv_->LookupBasicBlockID(tf.initial_basic_block_id)->kinst));
+
 
     auto guidePaths = hmm_->predictPath(property->hmm_round,
                                         tf.initial_basic_block_id,
                                         HMMConfidence);
-
-    stage->root_ed_tree = EditDistanceTreeFactory::create();
-    for (auto it : guidePaths) {
-      auto training_object = hmm_training_objs_[it.second];
-      CVMESSAGE("HMM: Adding path: " << training_object->name);
-      stage->root_ed_tree->add_data(training_object->trace);
+    if (MaxMedoids && (MaxMedoids < guidePaths.size())) {
+      CVMESSAGE("Resizing guidePaths from "
+                << guidePaths.size() << " elements to " << MaxMedoids);
+      guidePaths.resize(MaxMedoids);
     }
-    stats::edit_distance_medoid_count = guidePaths.size();
+
+    if (FinalDistance) {
+      stage->guide_paths.insert(stage->guide_paths.begin(),
+                                guidePaths.begin(), guidePaths.end());
+    }
+
+    if (state->property()->round >= 1) {
+      stage->root_ed_tree = EditDistanceTreeFactory::create();
+      for (auto it : guidePaths) {
+        auto training_object = hmm_training_objs_[it.second];
+
+        CVDEBUG("HMM: GuidePath     -"
+                << " Prob: " << it.first
+                << " SE: " << **(training_object->socket_event_set.begin())
+                << " BB: " << training_object->trace[0]
+                << " Inst: " << *(cv_->LookupBasicBlockID(training_object->trace[0])->kinst)
+                << " Id: " << it.second
+                << " Name: " << training_object->name);
+
+        stage->root_ed_tree->add_data(training_object->trace);
+      }
+      stats::edit_distance_medoid_count = guidePaths.size();
+    } else {
+      CVMESSAGE("skipping HMM guidance for first round");
+      return;
+    }
 
   } else if (UseSelfTraining) {
     if (self_training_data_map_.count(property->round) == 0) {
-      CVDEBUG("No path in self training data for round " << property->round);
+      CVMESSAGE("No path in self training data for round " << property->round);
       return;
     } else {
       TrainingObject* matching_tobj = self_training_data_map_[property->round];
@@ -734,6 +776,9 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
 
     } else if (UseClustering || UseClusteringAll) {
 
+      if (state->property()->round <= 1) {
+        return;
+      }
       TrainingObjectScoreList sorted_clusters;
       CVDEBUG("Selecting clusters...");
       cluster_manager_->sorted_clusters(socket_event, tf,
@@ -969,6 +1014,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
         int ed = ed_tree->min_distance();
 
         if (ed == INT_MAX) {
+          CVMESSAGE("Slow recompute of final edit distance");
           ed_tree->init(10000000);
           ed_tree->update(etrace);
           ed = ed_tree->min_distance();
@@ -976,8 +1022,45 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
 
         assert(ed != INT_MAX);
         
+        CVMESSAGE("Final Distance: " << ed);
         stats::edit_distance = ed;
         stats::edit_distance_stat_time += stat_timer.check();
+
+        if (UseHMM) {
+          unsigned dist_tree_index = 0;
+          unsigned min_dist_index = 0;
+          int min_dist;
+          for (auto dist_tree : hmm_training_obj_dist_trees_) {
+            dist_tree->update(etrace);
+            auto dist = dist_tree->min_distance();
+            if (dist_tree_index == 0) {
+              min_dist = dist;
+            } else {
+              if (dist < min_dist) {
+                min_dist = dist;
+                min_dist_index = dist_tree_index;
+              }
+            }
+            dist_tree_index++;
+          }
+
+          bool correct_guide_path = false;
+          for (auto t : stage->guide_paths) {
+            if (min_dist_index == t.second) {
+              correct_guide_path = true;
+              stats::correct_guide_path = 1;
+              CVMESSAGE("Correct Guide Path selected, Dist: " << min_dist
+                        << ", " << *(hmm_training_objs_[min_dist_index]));
+              break;
+            }
+          }
+          if (!correct_guide_path) {
+              stats::correct_guide_path = 0;
+              CVMESSAGE("Wrong Guide Path selected, Correct: dist: " << min_dist
+                        << ", " << *(hmm_training_objs_[min_dist_index]));
+          }
+        }
+
       }
 
       // Final kprefix

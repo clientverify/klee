@@ -93,7 +93,7 @@ struct ExecutionStage {
   ExecutionTraceEditDistanceTree*  root_ed_tree;
   int                              current_k;
   StatePropertyEditDistanceTreeMap ed_tree_map;
-
+  std::vector<std::pair<double,int> > guide_paths;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -167,6 +167,7 @@ class VerifyExecutionTraceManager : public ExecutionTraceManager {
 
   // HMM training objects
   std::vector<std::shared_ptr<TrainingObject> > hmm_training_objs_;
+  std::vector<ExecutionTraceEditDistanceTree* > hmm_training_obj_dist_trees_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

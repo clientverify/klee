@@ -40,6 +40,8 @@ XSTAT( valid_path_instructions_pass_one,         ValidPathInstructionCountPassOn
 XSTAT( symbolic_variable_count,                  SymbolicVariableCount,          SVCnt    ) 
 XSTAT( pass_count,                               PassCount,                      PassCnt  ) 
 XSTAT( edit_distance,                            EditDist,                       EDist    ) 
+XSTAT( correct_guide_path,                       CorrectGuidePath,               CGP     )
+XSTAT( correct_guide_path_distance,              CorrectGuidePathDist,           CGPDist )
 XSTAT( edit_distance_k,                          EditDistK,                      EDK      ) 
 XSTAT( edit_distance_medoid_count,               EditDistMedoidCount,            EDMedCnt ) 
 XSTAT( edit_distance_self_first_medoid,          EditDistSelfFirstMedoid,        EDSFMed  ) 
