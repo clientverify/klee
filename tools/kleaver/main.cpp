@@ -73,7 +73,8 @@ namespace {
     PrintTokens,
     PrintAST,
     PrintSMTLIBv2,
-    Evaluate
+    Evaluate,
+    XorOpt
   };
 
   static llvm::cl::opt<ToolActions> 
@@ -88,6 +89,8 @@ namespace {
                         "Print parsed AST nodes from the input file."),
              clEnumValN(Evaluate, "evaluate",
                         "Print parsed AST nodes from the input file."),
+             clEnumValN(XorOpt, "xor",
+                        "Test Xor optimization."),
              clEnumValEnd));
 
 
@@ -376,6 +379,12 @@ static bool EvaluateInputAST(const char *Filename,
   return success;
 }
 
+static bool EvaluateInputASTWithXOR(const char *Filename,
+                             const MemoryBuffer *MB,
+                             ExprBuilder *Builder) {
+  return EvaluateInputAST(Filename, MB, Builder);
+}
+
 static bool printInputAsSMTLIBv2(const char *Filename,
                              const MemoryBuffer *MB,
                              ExprBuilder *Builder)
@@ -502,6 +511,10 @@ int main(int argc, char **argv) {
     break;
   case PrintSMTLIBv2:
     success = printInputAsSMTLIBv2(InputFile=="-"? "<stdin>" : InputFile.c_str(), MB.get(),Builder);
+    break;
+  case XorOpt:
+    success = EvaluateInputASTWithXOR(InputFile=="-" ? "<stdin>" : InputFile.c_str(),
+                               MB.get(), Builder);
     break;
   default:
     llvm::errs() << argv[0] << ": error: Unknown program action!\n";
