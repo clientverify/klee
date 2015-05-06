@@ -59,6 +59,9 @@ EditDistanceAtCloneOnly("edit-distance-at-clone-only",llvm::cl::init(true));
 llvm::cl::opt<bool>
 BasicBlockDisabling("basicblock-disabling",llvm::cl::init(false));
 
+llvm::cl::opt<unsigned>
+BasicBlockRecomputeCount("basicblock-recompute-count",llvm::cl::init(0));
+
 llvm::cl::opt<bool>
 DebugExecutionTree("debug-execution-tree",llvm::cl::init(false));
 
@@ -121,6 +124,11 @@ HMMConfidence("hmm-confidence",
               llvm::cl::desc("Specify a HMM path prediction confidence level (default=0.9))"),
               llvm::cl::init(0.9));
 
+llvm::cl::opt<unsigned>
+GuideBudgetSeconds("guide-budget-secs",
+                   llvm::cl::desc("Specify a time in seconds use the path distance guidance,"
+                                  "before falling back to depth-limited DFS (naive)"),
+                   llvm::cl::init(0));
 
 #ifndef NDEBUG
 
@@ -431,7 +439,8 @@ VerifyExecutionTraceManager::VerifyExecutionTraceManager(ClientVerifier* cv)
   : ExecutionTraceManager(cv),
     last_round_cleared_(0),
     cluster_manager_(0),
-    hmm_(0) {}
+    hmm_(0),
+    naive_fallback_(false) {}
 
 void VerifyExecutionTraceManager::initialize() {
   klee::LockGuard guard(lock_);
@@ -551,6 +560,18 @@ void VerifyExecutionTraceManager::update_edit_distance(
     ExecutionStateProperty* property,
     CVExecutionState* state) {
 
+  if (naive_fallback_) {
+    return;
+  } else if (GuideBudgetSeconds
+             && round_time_->check() > GuideBudgetSeconds*1000000) {
+    naive_fallback_ = true;
+    property->edit_distance = MAX_DISTANCE;
+    state->set_event_flag(true);
+    stats::naive_fallback = 1;
+    CVMESSAGE("Guidance budget exhausted, falling back to naive search");
+    return;
+  }
+
   ExecutionStage* stage = stages_[property];
   assert(stage);
 
@@ -587,9 +608,15 @@ void VerifyExecutionTraceManager::update_edit_distance(
   //  stage->ed_tree_map[property]->update(etrace);
   //}
   
+  auto previous_ed = property->edit_distance;
   property->edit_distance = stage->ed_tree_map[property]->min_distance();
   CVDEBUG("Updated edit distance: " << property << ": " << *property << " etrace.size = " 
           << etrace.size() << ", row = " << stage->ed_tree_map[property]->row());
+
+  if (previous_ed != property->edit_distance) {
+    // Reinsert state into heap with new distance
+    state->set_event_flag(true);
+  }
 
   // We should never differ by more than one basic block
   if (UseSelfTraining && CheckSelfTraining && property->edit_distance > 1) {
@@ -663,6 +690,7 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
 
   if (UseHMM) {
     property->hmm_round++;
+
     if (hmm_->rounds() < property->hmm_round) {
       CVDEBUG("Adding socket event to HMM "
                 << tf.initial_basic_block_id << ", "
@@ -835,7 +863,7 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state) {
   stage->root_ed_tree->init(stage->current_k);
 
   // Set initial values for edit distance
-  property->edit_distance = INT_MAX-1;
+  property->edit_distance = MAX_DISTANCE;
   property->recompute = true;
 
   stage->ed_tree_map[property] = stage->root_ed_tree->clone_edit_distance_tree();
@@ -888,6 +916,16 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       ExecutionStage* stage = stages_[property];
 
       if (!property->is_recv_processing) {
+        property->bb_count++;
+
+        if (BasicBlockRecomputeCount
+            && !naive_fallback_
+            && property->bb_count >= BasicBlockRecomputeCount) {
+          CVDEBUG("Recomputing at BBCount=" << property->bb_count);
+          state->set_event_flag(true);
+          property->recompute = true;
+          property->bb_count=0;
+        }
 
         // Check if this is the first basic block of the stage
         // that needs an edit distance tree
@@ -1108,6 +1146,9 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
         CVMESSAGE("Verification complete");
         cv_->executor()->setHaltExecution(true);
       }
+
+      round_time_.reset(new klee::WallTimer());
+      naive_fallback_ = false;
     }
     break;
 

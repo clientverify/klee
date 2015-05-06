@@ -22,6 +22,7 @@
 #include "klee/Solver.h"
 #include "klee/Internal/Module/KModule.h"
 #include "klee/util/Mutex.h"
+#include "klee/Internal/Support/Timer.h"
 
 #include "llvm/Analysis/Trace.h"
 
@@ -168,6 +169,11 @@ class VerifyExecutionTraceManager : public ExecutionTraceManager {
   // HMM training objects
   std::vector<std::shared_ptr<TrainingObject> > hmm_training_objs_;
   std::vector<ExecutionTraceEditDistanceTree* > hmm_training_obj_dist_trees_;
+
+  // Round timer
+  std::shared_ptr<klee::WallTimer> round_time_;
+  uint64_t basic_block_count_;
+  bool naive_fallback_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -49,4 +49,5 @@ XSTAT( edit_distance_self_last_medoid,           EditDistSelfLastMedoid,        
 XSTAT( edit_distance_self_socket_event,          EditDistSelfSocketEvent,        EDSLSE   ) 
 XSTAT( edit_distance_socket_event_first_medoid,  EditDistSocketEventFirstMedoid, EDSEFMed ) 
 XSTAT( edit_distance_socket_event_last_medoid,   EditDistSocketEventLastMedoid,  EDSELMed ) 
+XSTAT( naive_fallback,                           NaiveFallback,                  NFb      )
 
