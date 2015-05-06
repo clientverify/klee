@@ -47,7 +47,7 @@ static std::string getExprVarStr(ref<Expr> expr) {
 
 bool TimingSolver::evaluate(const ExecutionState& state, ref<Expr> expr,
                             Solver::Validity &result) {
-  RecursiveLockGuard guard(solverMutex);
+  //RecursiveLockGuard guard(solverMutex);
   // Fast path, to avoid timer and OS overhead.
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(expr)) {
     result = CE->isTrue() ? Solver::True : Solver::False;
@@ -75,7 +75,7 @@ bool TimingSolver::evaluate(const ExecutionState& state, ref<Expr> expr,
 
 bool TimingSolver::mustBeTrue(const ExecutionState& state, ref<Expr> expr, 
                               bool &result) {
-  RecursiveLockGuard guard(solverMutex);
+  //RecursiveLockGuard guard(solverMutex);
   // Fast path, to avoid timer and OS overhead.
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(expr)) {
     result = CE->isTrue() ? true : false;
@@ -107,13 +107,13 @@ bool TimingSolver::mustBeTrue(const ExecutionState& state, ref<Expr> expr,
 
 bool TimingSolver::mustBeFalse(const ExecutionState& state, ref<Expr> expr,
                                bool &result) {
-  RecursiveLockGuard guard(solverMutex);
+  //RecursiveLockGuard guard(solverMutex);
   return mustBeTrue(state, Expr::createIsZero(expr), result);
 }
 
 bool TimingSolver::mayBeTrue(const ExecutionState& state, ref<Expr> expr, 
                              bool &result) {
-  RecursiveLockGuard guard(solverMutex);
+  //RecursiveLockGuard guard(solverMutex);
   bool res;
   if (!mustBeFalse(state, expr, res))
     return false;
@@ -123,7 +123,7 @@ bool TimingSolver::mayBeTrue(const ExecutionState& state, ref<Expr> expr,
 
 bool TimingSolver::mayBeFalse(const ExecutionState& state, ref<Expr> expr, 
                               bool &result) {
-  RecursiveLockGuard guard(solverMutex);
+  //RecursiveLockGuard guard(solverMutex);
   bool res;
   if (!mustBeTrue(state, expr, res))
     return false;
@@ -133,7 +133,7 @@ bool TimingSolver::mayBeFalse(const ExecutionState& state, ref<Expr> expr,
 
 bool TimingSolver::getValue(const ExecutionState& state, ref<Expr> expr, 
                             ref<ConstantExpr> &result) {
-  RecursiveLockGuard guard(solverMutex);
+  //RecursiveLockGuard guard(solverMutex);
   // Fast path, to avoid timer and OS overhead.
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(expr)) {
     result = CE;
@@ -173,7 +173,7 @@ TimingSolver::getInitialValues(const ExecutionState& state,
                                  &objects,
                                std::vector< std::vector<unsigned char> >
                                  &result) {
-  RecursiveLockGuard guard(solverMutex);
+  //RecursiveLockGuard guard(solverMutex);
   if (objects.empty())
     return true;
 
@@ -190,6 +190,6 @@ TimingSolver::getInitialValues(const ExecutionState& state,
 
 std::pair< ref<Expr>, ref<Expr> >
 TimingSolver::getRange(const ExecutionState& state, ref<Expr> expr) {
-  RecursiveLockGuard guard(solverMutex);
+  //RecursiveLockGuard guard(solverMutex);
   return solver->getRange(Query(state.constraints, expr));
 }
