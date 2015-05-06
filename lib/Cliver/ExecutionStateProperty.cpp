@@ -27,7 +27,7 @@ ExecutionStateProperty::ExecutionStateProperty()
 	: round(0), client_round(0), hmm_round(0), edit_distance(0),
     symbolic_vars(0), symbolic_model(false), 
     recompute(true), is_recv_processing(false),
-    inst_count(0), pass_count(0) {}
+    inst_count(0), pass_count(0), bb_count(0) {}
 
 void ExecutionStateProperty::clone_helper(ExecutionStateProperty* p) { 
   p->round = round;
@@ -40,12 +40,15 @@ void ExecutionStateProperty::clone_helper(ExecutionStateProperty* p) {
   p->is_recv_processing = is_recv_processing;
   p->inst_count = inst_count;
   p->pass_count = pass_count;
+  p->bb_count = bb_count;
 }
 
 ExecutionStateProperty* ExecutionStateProperty::clone() { 
   ExecutionStateProperty* esp = new ExecutionStateProperty();
   clone_helper(esp);
   esp->recompute = true;
+  esp->bb_count = 0;
+  bb_count = 0;
   return esp;
 }
 
@@ -54,6 +57,7 @@ void ExecutionStateProperty::reset() {
   edit_distance = 0;
   inst_count = 0;
   symbolic_model = false;
+  bb_count = 0;
 
   //if (is_recv_processing) {
   //  CVMESSAGE("Resetting is_recv_processing");
@@ -99,6 +103,7 @@ void ExecutionStateProperty::print(std::ostream &os) const {
 	  os << "[Sym]";
   os << "[IC: " << inst_count << "]";
   os << "[PC: " << pass_count << "]";
+  os << "[BBC: " << bb_count << "]";
 }
 
 ExecutionStateProperty& ExecutionStateProperty::operator=(const ExecutionStateProperty& esp) {
