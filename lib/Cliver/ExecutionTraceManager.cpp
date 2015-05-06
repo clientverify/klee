@@ -83,6 +83,9 @@ UseClusteringHint("use-clustering-hint",llvm::cl::init(false));
 llvm::cl::opt<bool>
 UseSelfTraining("use-self-training",llvm::cl::init(false));
 
+llvm::cl::opt<bool>
+CheckSelfTraining("check-self-training",llvm::cl::init(false));
+
 llvm::cl::list<std::string> TrainingPathFile("training-path-file",
 	llvm::cl::ZeroOrMore,
 	llvm::cl::ValueRequired,
@@ -580,7 +583,7 @@ void VerifyExecutionTraceManager::update_edit_distance(
           << etrace.size() << ", row = " << stage->ed_tree_map[property]->row());
 
   // We should never differ by more than one basic block
-  if (UseSelfTraining && property->edit_distance > 1) {
+  if (UseSelfTraining && CheckSelfTraining && property->edit_distance > 1) {
     TrainingObject* matching_tobj = self_training_data_map_[property->round];
     if (matching_tobj) {
       int curr_bb_id = state->pc->kbb->id;
