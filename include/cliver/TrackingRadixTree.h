@@ -23,11 +23,13 @@ template <class Sequence, class Element, class TrackingObject>
 class TrackingRadixTree 
 : public RadixTree<Sequence, Element> {
 
+ public:
   typedef RadixTree<Sequence, Element> This;
   typedef typename This::Node Node;
   typedef typename This::Edge Edge;
   typedef typename This::EdgeMapIterator EdgeMapIterator;
 
+ private:
   typedef boost::unordered_set<TrackingObject*> TrackingObjectSet;
   typedef boost::unordered_map<TrackingObject*, Node*> TrackingObjectMap;
   typedef boost::unordered_map< Node*, TrackingObjectSet > NodeMap;
@@ -221,11 +223,12 @@ class TrackingRadixTree
     return node_map_.count(tracker) ? true : false;
   }
 
- private:
 
   inline Node* get_node(TrackingObject *tracker) {
     return node_map_[tracker];
   }
+
+ private:
 
   inline void set_node(TrackingObject *tracker, Node* node) {
     node_map_[tracker] = node;

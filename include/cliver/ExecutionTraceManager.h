@@ -52,6 +52,10 @@ struct ExecutionStage;
 typedef boost::unordered_map<ExecutionStateProperty*, ExecutionStage*> 
     StatePropertyStageMap;
 
+// Maps into internal nodes of ExecutionTraceTree for thread safe operations
+typedef boost::unordered_map<ExecutionStateProperty*, ExecutionTraceTree::Node*>
+    ExecutionTraceTreeNodeMap;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 //typedef KMedoidsClusterer<SocketEvent, 
