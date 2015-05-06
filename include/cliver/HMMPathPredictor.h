@@ -192,7 +192,7 @@ private:
   // Member variables
   //===-------------------------------------------------------------------===//
 
-  int header_length = 40; // estimated header length for weighted histogram
+  int header_length = 16; // estimated header length for weighted histogram
   MessageMetric metric = RUZICKA; // metric to use for message clustering
 
   ViterbiDecoder vd; // HMM training

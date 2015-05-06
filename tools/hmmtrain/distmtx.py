@@ -244,7 +244,7 @@ def main():
                                    'Levenshtein', 'Ruzicka'],
                         help="""Use metric %(metavar)s. Choices: %(choices)s.
                                 (default: %(default)s)""")
-    parser.add_argument('-l', '--headerlen', metavar='L', type=int, default=40,
+    parser.add_argument('-l', '--headerlen', metavar='L', type=int, default=16,
                         help="""[Ruzicka] weighted histogram is biased
                                 toward the first %(metavar)s bytes (default:
                                 %(default)s)""")
