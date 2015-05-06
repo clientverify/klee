@@ -564,6 +564,21 @@ HMMPathPredictor::ruzicka_distance(const std::map<uint8_t, double>& s1,
   }
 }
 
+template <typename T>
+std::vector<size_t> sort_indices_reverse(const std::vector<T> &v) {
+  using namespace std;
+  
+  // initialize original index locations
+  vector<size_t> idx(v.size());
+  for (size_t i = 0; i != idx.size(); ++i) idx[i] = i;
+
+  // sort indices based on comparing values in v
+  sort(idx.begin(), idx.end(),
+       [&v](size_t i1, size_t i2) {return v[i1] > v[i2];});
+
+  return idx;
+}
+
 int
 HMMPathPredictor::nearest_message_id(const SocketEvent& se, BasicBlockID bb) const
 {
@@ -571,6 +586,8 @@ HMMPathPredictor::nearest_message_id(const SocketEvent& se, BasicBlockID bb) con
   double min_distance = 2.0;
   int min_index = -1;
 
+  vector<size_t> indices;
+  vector<double> message_distances;
   set<uint8_t> query_set(message_as_set(se));
   map<uint8_t,double> query_hist(message_as_hist(se));
 
@@ -583,6 +600,7 @@ HMMPathPredictor::nearest_message_id(const SocketEvent& se, BasicBlockID bb) con
     if (message_direction(se) != message_direction(*(messages[i]))) {
       continue;
     }
+    indices.push_back(i);
 
     // Soft requirement: the message SHOULD be assigned to a medoid
     // whose corresponding trace matches on its first basic block.
@@ -600,11 +618,31 @@ HMMPathPredictor::nearest_message_id(const SocketEvent& se, BasicBlockID bb) con
         d = ruzicka_distance(query_hist, messages_as_hist[i]);
       }
     }
+    message_distances.push_back(d);
     if (d < min_distance) {
       min_distance = d;
       min_index = (int)i;
     }
   }
+  // Debug printing of socket events with equal distance
+  if (se.type == SocketEvent::SEND) {
+    auto sorted_vec = sort_indices_reverse(message_distances);
+    for (unsigned i=sorted_vec.size()-1; i!=0; --i) {
+      unsigned sorted_index = sorted_vec[i];
+      unsigned index = indices[sorted_index];
+      auto tobj = message_medoids[index];
+      if (message_distances[index] == min_distance) {
+        *cv_message_stream << "Message " << index << " "
+            << message_distances[sorted_index] << " "
+            << tobj->name << ", "
+            << **(tobj->socket_event_set.begin())
+            << "\n";
+      } else {
+        break;
+      }
+    }
+  }
+
   return min_index;
 }
 
@@ -625,21 +663,6 @@ HMMPathPredictor::addMessage(const SocketEvent& se, BasicBlockID bb)
   int i = vd.getSequenceLength() - 1;
   *cv_message_stream << "State probabilities for round " << i << ": ";
   print_vector(vd.getStateProbabilities(i));
-}
-
-template <typename T>
-std::vector<size_t> sort_indices_reverse(const std::vector<T> &v) {
-  using namespace std;
-  
-  // initialize original index locations
-  vector<size_t> idx(v.size());
-  for (size_t i = 0; i != idx.size(); ++i) idx[i] = i;
-
-  // sort indices based on comparing values in v
-  sort(idx.begin(), idx.end(),
-       [&v](size_t i1, size_t i2) {return v[i1] > v[i2];});
-
-  return idx;
 }
 
 std::vector<std::pair<double,int> >
