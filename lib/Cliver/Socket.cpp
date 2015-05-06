@@ -32,6 +32,14 @@ PrintOmitHeaders( "print-omit-headers",
   llvm::cl::desc("Print socket events without headers (default=false)"),
   llvm::cl::init(false));
 
+llvm::cl::opt<bool>
+XpilotKeyboardHeader("xpilot-keyboard-header",
+  llvm::cl::desc("Print XPilot socket events without sequence numbers "
+                 "in keyboard packets"),
+  llvm::cl::init(false));
+
+#define PKT_KEYBOARD 24 // Xpilot keyboard packet type
+
 int Socket::NextFileDescriptor = 10;
 
 SocketEvent::SocketEvent(const KTestObject &object) {
@@ -116,6 +124,15 @@ void SocketEvent::print(std::ostream &os) const {
     }
     os << std::hex;
     unsigned i = PrintOmitHeaders ? header_length : 0;
+    if (ClientModelFlag == XPilot &&
+        XpilotKeyboardHeader && data[i] == PKT_KEYBOARD) {
+      os << (int)data[i] << ':';
+      i += 9;
+      for (; i<length; ++i) {
+        os << (int)data[i] << ':';
+      }
+      os << std::dec;
+    }
     for (; i<length; ++i)
       os << (int)data[i] << ':';
     os << std::dec;

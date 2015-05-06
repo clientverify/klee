@@ -16,6 +16,7 @@
 #include <cmath>
 #include <cassert>
 
+
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace cliver {
@@ -26,6 +27,15 @@ llvm::cl::opt<bool>
 HMMOmitMessageHeaders("hmm-omit-headers",
   llvm::cl::desc("Omit headers for HMM message clustering (default=false)"),
   llvm::cl::init(false));
+
+llvm::cl::opt<bool>
+HMMXpilotKeyboardHeaders("hmm-xpilot-keyboard-headers",
+  llvm::cl::desc("Zero out sequence numbers in xpilot c2s keyboard msgs"),
+  llvm::cl::init(false));
+
+#define PKT_KEYBOARD 24 // Xpilot keyboard packet type
+
+///////////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////////
 // Viterbi Decoder implementation
@@ -457,6 +467,14 @@ HMMPathPredictor::message_as_set(const SocketEvent& se) const
   auto it = se.data.begin();
   if (HMMOmitMessageHeaders)
     std::advance(it, se.header_length);
+  if (HMMXpilotKeyboardHeaders && HMMOmitMessageHeaders &&
+      se.type == SocketEvent::SEND && *it == PKT_KEYBOARD) {
+    std::set<uint8_t> s;
+    s.insert(*it);
+    std::advance(it, 9);
+    s.insert(it, se.data.end());
+    return s;
+  }
   return std::set<uint8_t>(it, se.data.end());
 }
 
@@ -470,6 +488,12 @@ HMMPathPredictor::message_as_hist(const SocketEvent& se) const
   auto it = se.data.begin();
   if (HMMOmitMessageHeaders)
     std::advance(it, se.header_length);
+  if (HMMXpilotKeyboardHeaders && HMMOmitMessageHeaders &&
+      se.type == SocketEvent::SEND && *it == PKT_KEYBOARD) {
+    h[*it] += weight;
+    weight *= decay_rate;
+    std::advance(it, 9);
+  }
   for (;it != se.data.end(); ++it) {
     h[*it] += weight;
     weight *= decay_rate;
