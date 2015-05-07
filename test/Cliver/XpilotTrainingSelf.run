@@ -7,3 +7,4 @@
 //// Check that we did not execute more instructions than necessary
 // RUN: awk -F, '{total[$1]=$4} END { x=total["InstructionCount"]-total["ValidPathInstructionCount"]; exit !(x < 1000) }' %t.dir/cliver.stats.summary
 // RUN: not grep -q "Self Training Data Mismatch" %t.ed.log
+// REQUIRES: threads

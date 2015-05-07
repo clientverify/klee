@@ -1,4 +1,5 @@
 // RUN: rm -rf %t.cliver-out
 // RUN: %klee -output-dir=%t.cliver-out %xpilotcliverparams -socket-log "%S/xpilot_0.ktest" "%S/%xpilotbc" %xpilotparams &> %t.log
 // RUN: grep -q "Verification complete" %t.log
+// REQUIRES: threads
 

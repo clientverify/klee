@@ -14,6 +14,7 @@
 // UN: %klee -cliver -use-clustering -cliver-mode=edit-dist-kprefix-row -optimize=0 -posix-runtime -libc=uclibc -output-dir=%t3.cliver-out -training-path-dir=%t2.cliver-out -socket-log=%t1.ktest %t1.bc &> %t3.cliver.log
 // UN: not grep -q "Recomputed kprefix" %t3.cliver.log
 // UN: grep -q "CLIENT: success" %t3.cliver.log
+// REQUIRES: threads
 
 #include <errno.h>
 #include <stdio.h>

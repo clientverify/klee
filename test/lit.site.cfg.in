@@ -20,6 +20,7 @@ config.enable_posix_runtime = True if @ENABLE_POSIX_RUNTIME@ == 1 else False
 config.have_selinux = True if @HAVE_SELINUX@ == 1 else False
 config.enable_asan = True if "@ENABLE_ADDRESS_SANITIZER@" == "1" else False
 config.enable_tsan = True if "@ENABLE_THREAD_SANITIZER@" == "1" else False
+config.disable_threads = True if "@DISABLE_THREADS@" == "1" else False
 
 # Current target
 config.target_triple = "@TARGET_TRIPLE@"

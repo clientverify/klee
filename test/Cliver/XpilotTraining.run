@@ -4,3 +4,4 @@
 // RUN: rm -rf %t.cliver-out
 // RUN: %klee %xpilotcliverparams -output-dir=%t.cliver-out -use-clustering -cliver-mode=edit-dist-kprefix-row -socket-log "%S/xpilot_0.ktest" -training-path-dir="%t_training.cliver-out" "%S/%xpilotbc" %xpilotparams &> %t.ed.log
 // RUN: grep -q "Verification complete" %t.ed.log
+// REQUIRES: threads

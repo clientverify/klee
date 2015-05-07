@@ -87,4 +87,5 @@ lit.site.cfg: lit.site.cfg.in
 	     -e "s#@HAVE_SELINUX@#$(HAVE_SELINUX)#g" \
 	     -e "s#@ENABLE_ADDRESS_SANITIZER@#$(ENABLE_ADDRESS_SANITIZER)#g" \
 	     -e "s#@ENABLE_THREAD_SANITIZER@#$(ENABLE_THREAD_SANITIZER)#g" \
+	     -e "s#@DISABLE_THREADS@#$(DISABLE_THREADS)#g" \
 	     $(PROJ_SRC_DIR)/lit.site.cfg.in > $@
