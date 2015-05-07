@@ -35,7 +35,9 @@ ifeq ($(DISABLE_TIMER_STATS),1)
 endif
 
 # Use std::atomic
-CXX.Flags += -DTHREADSAFE_ATOMIC
+ifneq ($(DISABLE_THREADS),1)
+  CXX.Flags += -DTHREADSAFE_ATOMIC
+endif
 
 CXX.Flags += -Wall
 CXX.Flags += -pedantic

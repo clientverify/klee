@@ -155,6 +155,9 @@ void processKleeArgumentsForCliver(std::vector<std::string> &args) {
 	INVALID_CL_OPT(UseBatchingSearch,false);
 	INVALID_CL_OPT(MaxCoreSolverTime,0.0);
 	INVALID_CL_OPT(SwitchType,eSwitchTypeSimple);
+#if !defined(THREADSAFE_ATOMIC)
+	INVALID_CL_OPT(UseThreads,1);
+#endif
 #undef INVALID_CL_OPT
 }
 
