@@ -634,6 +634,8 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
           pending_states_.push_back(state);
         }
 
+        stats::valid_path_instructions = property->inst_count;
+
         // Debug: Compute and print constraint variable counts
         if (DebugSearcher) {
           std::map<std::string,int> constraint_map;

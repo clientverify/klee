@@ -227,9 +227,6 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
       // Increment stat counter
       stats::stage_count += 1;
 
-      // Valid path instructions count
-      stats::valid_path_instructions = parent_property->inst_count;
-
       // Socket event size
       if (is_socket_active) {
         if (state->network_manager()->socket()->index() > 0) {
@@ -983,9 +980,6 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       // Final kprefix
       if (stages_.count(parent_property))
         stats::edit_distance_k = stages_[parent_property]->current_k;
-
-      // Valid path instructions count
-      stats::valid_path_instructions = parent_property->inst_count;
 
       // Socket event size
       if (is_socket_active) {
