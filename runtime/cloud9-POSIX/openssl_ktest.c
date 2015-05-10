@@ -154,20 +154,20 @@ DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_
   for (i = 0; i <= mask_count; ++i) {
     if (in_readfds.fds_bits[i] != 0) {
       fd_mask symbolic_mask;
-      klee_make_symbolic(&symbolic_mask, sizeof(fd_mask), "select_readfds");
+      klee_make_symbolic(&symbolic_mask, sizeof(fd_mask));
       readfds->fds_bits[i] = in_readfds.fds_bits[i] & symbolic_mask;
       all_bits_or |= readfds->fds_bits[i];
     }
 
     if (in_writefds.fds_bits[i] != 0) {
       fd_mask symbolic_mask;
-      klee_make_symbolic(&symbolic_mask, sizeof(fd_mask), "select_writefds");
+      klee_make_symbolic(&symbolic_mask, sizeof(fd_mask));
       writefds->fds_bits[i] = in_writefds.fds_bits[i] & symbolic_mask;
       all_bits_or |= writefds->fds_bits[i];
     }
   }
 
-  klee_make_symbolic(&retval, sizeof(retval), "select_retval");
+  klee_make_symbolic(&retval, sizeof(retval));
   
   // Model assumes select does not fail
   if (timeout == NULL) {
