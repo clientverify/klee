@@ -27,7 +27,8 @@ klee::RefCount CVExecutionState::next_id_ = 0;
 
 CVExecutionState::CVExecutionState(klee::KFunction *kF)
  : klee::ExecutionState(kF),
-	 id_(increment_id()), property_(0), basic_block_tracking_(true) {}
+	 id_(increment_id()), property_(0), basic_block_tracking_(true),
+   multi_pass_clone_(NULL) {}
 
 CVExecutionState::CVExecutionState(
     const std::vector< klee::ref<klee::Expr> > &assumptions)
@@ -59,6 +60,7 @@ void CVExecutionState::initialize(ClientVerifier *cv) {
   coveredLines.clear();
 	network_manager_ = NetworkManagerFactory::create(this,cv);
 	property_ = ExecutionStatePropertyFactory::create();
+  multi_pass_clone_ = NULL;
 }
 
 CVExecutionState* CVExecutionState::clone(ExecutionStateProperty* property) {
@@ -70,10 +72,13 @@ CVExecutionState* CVExecutionState::clone(ExecutionStateProperty* property) {
   cloned_state->network_manager_ 
 		= network_manager_->clone(cloned_state); 
 
-  if (property != NULL)
+  if (property != NULL) {
     cloned_state->property_ = property;
-  else
+    cloned_state->multi_pass_clone_ = NULL;
+  } else {
     cloned_state->property_ = property_->clone();
+    cloned_state->multi_pass_clone_ = multi_pass_clone_;
+  }
 
   cloned_state->cv_ = cv_;
   cloned_state->basic_block_tracking_ = basic_block_tracking_;

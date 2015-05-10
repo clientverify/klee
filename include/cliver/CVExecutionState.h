@@ -77,6 +77,7 @@ class CVExecutionState : public klee::ExecutionState {
     multi_pass_assignment_ = cva; 
   }
 
+  CVExecutionState* multi_pass_clone_;
  private:
   int increment_id() { return next_id_.add_ref(); }
 

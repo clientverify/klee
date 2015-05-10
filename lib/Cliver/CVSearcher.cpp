@@ -600,9 +600,10 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
                                                  stats::round_instructions) <<
                   " Assignments: " << state->multi_pass_assignment());
 
+          assert(state->multi_pass_clone_ != NULL);
+
           // Clone ExecutionStateProperty
-          ExecutionStateProperty* property_clone
-              = current_stage_->root_state()->property()->clone();
+          ExecutionStateProperty* property_clone = state->multi_pass_clone_->property();
 
           // Increment pass count
           property_clone->pass_count++;
@@ -610,8 +611,9 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
 
           // Clone the CVExecutionState at the root of the most recent round
           // (we are re-executing)
-          CVExecutionState* new_state
-              = current_stage_->root_state()->clone(property_clone);
+          CVExecutionState* new_state = state->multi_pass_clone_;
+
+          state->multi_pass_clone_ = NULL;
 
           // Provide cloned root state with constraints and assignments
           // concretized in the most recent pass

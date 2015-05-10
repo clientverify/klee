@@ -290,6 +290,15 @@ void NetworkManager::execute_write(CVExecutor* executor,
 	}
 
 	if (!socket.has_data()) {
+    // Multi-pass: Clear old data
+    state_->multi_pass_assignment().clear();
+
+    // Multi-pass: Find unique solutions for symbolic variables
+    if (!isa<klee::ConstantExpr>(write_condition))
+      state_->multi_pass_assignment().solveForBindings(
+          executor->get_solver()->solver, write_condition);
+
+
 		socket.advance();
     state_->cv()->notify_all(ExecutionEvent(CV_SOCKET_ADVANCE, state_));
 	} else {
@@ -324,7 +333,8 @@ void NetworkManager::execute_write(CVExecutor* executor,
 
   CVDEBUG("Network Bytes: " << bytes_ss.str());
 
-	executor->add_constraint(state_, write_condition);
+  if (!state_->multi_pass_assignment().bindings.size())
+    executor->add_constraint(state_, write_condition);
 
 	RETURN_SUCCESS("send", bytes_read);
 }

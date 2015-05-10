@@ -692,18 +692,30 @@ void CVExecutor::executeMakeSymbolic(klee::ExecutionState &state,
 
   CVExecutionState *cvstate = static_cast<CVExecutionState*>(&state);
 
+  bool unnamed = (name == "unnamed") ? true : false;
+
+  if (!unnamed && cvstate->multi_pass_clone_ == NULL) {
+    CVDEBUG("cloning first state before symbolic event");
+    cvstate->multi_pass_clone_ = cvstate->clone(cvstate->property()->clone());
+    // Roll back one instruction
+    cvstate->multi_pass_clone_->pc = cvstate->multi_pass_clone_->prevPC;
+  }
+
   // Create a new object state for the memory object (instead of a copy).
   std::string array_name = cvstate->get_unique_array_name(name);
 
-  const klee::Array *array
-    = cvstate->multi_pass_assignment().getArray(array_name);
+  const klee::Array *array = NULL;
+  if (!unnamed)
+    array = cvstate->multi_pass_assignment().getArray(array_name);
 
   bool multipass = false;
   if (array != NULL) {
     CVDEBUG("Multi-pass: Concretization found for " << array_name);
     multipass = true;
   } else {
-    CVDEBUG("Multi-pass: Concretization not found for " << array_name);
+    if (!unnamed) {
+      CVDEBUG("Multi-pass: Concretization not found for " << array_name);
+    }
     klee::LockGuard symbolicArrayLockGuard(symbolic_array_lock_);
     array = klee::Array::CreateArray(array_name, mo->size);
   }
