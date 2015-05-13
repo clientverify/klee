@@ -201,8 +201,14 @@ public:
   typedef llvm::DenseSet<std::pair<const Expr *, const Expr *> > ExprEquivSet;
   int compare(const Expr &b, ExprEquivSet &equivs) const;
   int compare(const Expr &b) const {
+#if defined (THREADSAFE_ATOMIC)
     ExprEquivSet equivs;
     int r = compare(b, equivs);
+#else
+    static ExprEquivSet equivs;
+    int r = compare(b, equivs);
+    ExprEquivSet equivs;
+#endif
     return r;
   }
   virtual int compareContents(const Expr &b) const { return 0; }
