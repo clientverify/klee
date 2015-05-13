@@ -316,6 +316,34 @@ void AddressSpace::copyOutConcretes() {
   }
 }
 
+void AddressSpace::copyOutConcrete(ObjectPair &op) {
+  //RecursiveLockGuard guard(g_mem_lock);
+  const MemoryObject *mo = op.first;
+
+  if (!mo->isUserSpecified) {
+    const ObjectState *os = op.second;
+    uint8_t *address = (uint8_t*) (unsigned long) mo->address;
+    if (!os->readOnly) {
+      memcpy(address, os->concreteStore, mo->size);
+    }
+  }
+}
+
+void AddressSpace::copyOutConcreteOffset(ObjectPair &op,
+                                         ref<ConstantExpr> &ptr,
+                                         size_t len) {
+  //RecursiveLockGuard guard(g_mem_lock);
+  const MemoryObject *mo = op.first;
+  const ObjectState *os = op.second;
+
+  if (!mo->isUserSpecified && !os->readOnly) {
+    uint8_t* address = (uint8_t*)ptr->getZExtValue();
+    uint8_t *base_address = (uint8_t*) (unsigned long) mo->address;
+    size_t offset = (size_t)(address - base_address);
+    memcpy(address, (os->concreteStore)+offset, len);
+  }
+}
+
 bool AddressSpace::copyInConcretes() {
   //RecursiveLockGuard guard(g_mem_lock);
   for (MemoryMap::iterator it = objects.begin(), ie = objects.end(); 
@@ -337,6 +365,49 @@ bool AddressSpace::copyInConcretes() {
     }
   }
 
+  return true;
+}
+bool AddressSpace::copyInConcrete(ObjectPair &op) {
+  //RecursiveLockGuard guard(g_mem_lock);
+  const MemoryObject *mo = op.first;
+
+  if (!mo->isUserSpecified) {
+    const ObjectState *os = op.second;
+    uint8_t *address = (uint8_t*) (unsigned long) mo->address;
+
+    if (memcmp(address, os->concreteStore, mo->size)!=0) {
+      if (os->readOnly) {
+        return false;
+      } else {
+        ObjectState *wos = getWriteable(mo, os);
+        memcpy(wos->concreteStore, address, mo->size);
+      }
+    }
+  }
+  return true;
+}
+
+bool AddressSpace::copyInConcreteOffset(ObjectPair &op,
+                                         ref<ConstantExpr> &ptr,
+                                         size_t len) {
+  //RecursiveLockGuard guard(g_mem_lock);
+  const MemoryObject *mo = op.first;
+  const ObjectState *os = op.second;
+
+  if (!mo->isUserSpecified) {
+    if (os->readOnly) {
+      return false;
+    } else {
+      uint8_t* address = (uint8_t*)ptr->getZExtValue();
+      uint8_t *base_address = (uint8_t*) (unsigned long) mo->address;
+      size_t offset = (size_t)(address - base_address);
+
+      if (memcmp(address, (os->concreteStore)+offset, len)!=0) {
+        ObjectState *wos = getWriteable(mo, os);
+        memcpy((wos->concreteStore)+offset, address, len);
+      }
+    }
+  }
   return true;
 }
 
