@@ -88,6 +88,7 @@ static SpecialFunctionHandler::HandlerInfo handlerInfo[] = {
   add("klee_get_errno", handleGetErrno, true),
   add("klee_get_wlist", handleGetWList, true),
   add("klee_is_symbolic", handleIsSymbolic, true),
+  add("klee_is_symbolic_buffer", handleIsSymbolicBuffer, true),
   add("klee_make_symbolic", handleMakeSymbolic, false),
   add("klee_make_shared", handleMakeShared, false),
   add("klee_debug", handleDebug, false),
@@ -538,6 +539,39 @@ void SpecialFunctionHandler::handleAssume(ExecutionState &state,
   } else {
     executor.addConstraint(state, e);
   }
+}
+void SpecialFunctionHandler::handleIsSymbolicBuffer(ExecutionState &state,
+                                KInstruction *target,
+                                std::vector<ref<Expr> > &arguments) {
+  assert(arguments.size()==2 && "invalid number of arguments to klee_is_symbolic_addr");
+  // arg 1 ptr, arg 2 len
+
+  int is_symbolic = 0;
+  if (!isa<ConstantExpr>(arguments[0]) || !isa<ConstantExpr>(arguments[1])) {
+    is_symbolic = 1;
+  } else {
+    ref<ConstantExpr> addressExpr = cast<ConstantExpr>(arguments[0]);
+    ObjectPair op;
+    state.addressSpace.resolveOne(addressExpr, op);
+    const ObjectState *os = op.second;
+    const MemoryObject *mo = op.first;
+
+    uint8_t* address = (uint8_t*) addressExpr->getZExtValue();
+    uint8_t *base_address = (uint8_t*) (unsigned long) mo->address;
+    size_t offset = (size_t)(address - base_address);
+    size_t len = (size_t)cast<ConstantExpr>(arguments[1])->getZExtValue();
+
+    if (!os->isConcrete()) {
+      for (unsigned i=0; i<len; ++i) {
+        if (!isa<ConstantExpr>(os->read8(offset+i))) {
+          is_symbolic = 1;
+          break;
+        }
+      }
+    }
+  }
+
+  executor.bindLocal(target, state, ConstantExpr::create(is_symbolic,Expr::Int32));
 }
 
 void SpecialFunctionHandler::handleIsSymbolic(ExecutionState &state,

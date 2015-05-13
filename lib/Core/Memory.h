@@ -223,7 +223,9 @@ public:
   void print_diff(std::vector<ObjectState*> &_ovec, std::ostream &os) const;
   void print_diff(std::vector<ObjectState*> &_ovec, llvm::raw_ostream &os) const;
   void print(); 
- 
+
+  bool isConcrete() const { return !concreteMask; }
+
 private:
   const UpdateList &getUpdates() const;
 
