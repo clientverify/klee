@@ -217,9 +217,8 @@ void CVExecutor::executeCall(klee::ExecutionState &state,
   }
 
   if (NativeAES && (f->getName() == "AES_encrypt"
-      || f->getName() == "_x86_64_AES_encrypt"
-      || f->getName() == "asm_AES_encrypt")) {
-    //CVMESSAGE("Forcing external call to " << f->getName().str());
+      || f->getName() == "gcm_gmult_4bit"
+      || f->getName() == "gcm_ghash_4bit")) {
     callExternalFunction(state, ki, f, arguments);
     return;
   }
