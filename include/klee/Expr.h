@@ -207,7 +207,7 @@ public:
 #else
     static ExprEquivSet equivs;
     int r = compare(b, equivs);
-    ExprEquivSet equivs;
+    equivs.clear();
 #endif
     return r;
   }
