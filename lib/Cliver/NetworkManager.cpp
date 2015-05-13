@@ -306,14 +306,6 @@ void NetworkManager::execute_write(CVExecutor* executor,
 		RETURN_FAILURE_OBJ("send", "no data left");
 	}
 
-  // Multi-pass: Clear old data
-  state_->multi_pass_assignment().clear();
-
-  // Multi-pass: Find unique solutions for symbolic variables
-  if (!isa<klee::ConstantExpr>(write_condition))
-    state_->multi_pass_assignment().solveForBindings(
-        executor->get_solver()->solver, write_condition);
-
   // Concretize variables now, explicitly, instead of implicitly
   // using another execution pass
   if (UseInPlaceConcretization) {
