@@ -2946,34 +2946,41 @@ void Executor::callExternalFunction(ExecutionState &state,
   LockGuard guard(externalCallMutex);
 
   ObjectPair inOP, outOP, keyOP;
-  if (function->getName() == "AES_encrypt") {
+  if (function->getName() == "AES_encrypt" ||
+      function->getName() == "AES_decrypt") {
     ref<ConstantExpr> in = cast<ConstantExpr>(arguments[0]);
     ref<ConstantExpr> key = cast<ConstantExpr>(arguments[2]);
 
     state.addressSpace.resolveOne(in, inOP);
+    state.addressSpace.copyOutConcreteOffset(inOP, in, 16);
+
     state.addressSpace.resolveOne(key, keyOP);
+    state.addressSpace.copyOutConcreteOffset(keyOP, key, 244);
 
-    ObjectPair op;
-    {
-      op = inOP;
-      const MemoryObject *mo = op.first;
-      const ObjectState *os = op.second;
+  } else if (function->getName() == "gcm_gmult_4bit") {
+    ref<ConstantExpr> out = cast<ConstantExpr>(arguments[0]); // Xi: 16 bytes
+    ref<ConstantExpr> key = cast<ConstantExpr>(arguments[1]); // Htable:256 bytes
 
-      uint8_t *address = (uint8_t*) (unsigned long) mo->address;
+    state.addressSpace.resolveOne(out, outOP);
+    state.addressSpace.copyOutConcreteOffset(outOP, out, 16);
 
-      if (!os->readOnly)
-        memcpy(address, os->concreteStore, mo->size);
-    }
-    {
-      op = keyOP;
-      const MemoryObject *mo = op.first;
-      const ObjectState *os = op.second;
+    state.addressSpace.resolveOne(key, keyOP);
+    state.addressSpace.copyOutConcreteOffset(keyOP, key, 256);
 
-      uint8_t *address = (uint8_t*) (unsigned long) mo->address;
+  } else if (function->getName() == "gcm_ghash_4bit") {
+    ref<ConstantExpr> out = cast<ConstantExpr>(arguments[0]); // Xi: 16 bytes
+    ref<ConstantExpr> key = cast<ConstantExpr>(arguments[1]); // Htable: 256 bytes
+    ref<ConstantExpr> in = cast<ConstantExpr>(arguments[2]); // inp: len bytes
+    size_t len = cast<ConstantExpr>(arguments[3])->getZExtValue(); // len
 
-      if (!os->readOnly)
-        memcpy(address, os->concreteStore, mo->size);
-    }
+    state.addressSpace.resolveOne(out, outOP);
+    state.addressSpace.copyOutConcreteOffset(outOP, out, 16);
+
+    state.addressSpace.resolveOne(key, keyOP);
+    state.addressSpace.copyOutConcreteOffset(keyOP, key, 256);
+
+    state.addressSpace.resolveOne(in, inOP);
+    state.addressSpace.copyOutConcreteOffset(inOP, in, len);
   } else {
     state.addressSpace.copyOutConcretes();
   }
@@ -3002,43 +3009,41 @@ void Executor::callExternalFunction(ExecutionState &state,
     return;
   }
 
-  if (function->getName() == "AES_encrypt") {
+  if (function->getName() == "AES_encrypt" ||
+      function->getName() == "AES_decrypt") {
     ref<ConstantExpr> out = cast<ConstantExpr>(arguments[1]);
     ref<ConstantExpr> key = cast<ConstantExpr>(arguments[2]);
+
     state.addressSpace.resolveOne(out, outOP);
+    state.addressSpace.copyInConcreteOffset(outOP, out, 16);
+
     state.addressSpace.resolveOne(key, keyOP);
+    state.addressSpace.copyInConcreteOffset(keyOP, key, 244);
 
-    ObjectPair op;
-    {
-      op = outOP;
-      const MemoryObject *mo = op.first;
-      const ObjectState *os = op.second;
+  } else if (function->getName() == "gcm_gmult_4bit") {
+    ref<ConstantExpr> out = cast<ConstantExpr>(arguments[0]);
+    ref<ConstantExpr> key = cast<ConstantExpr>(arguments[1]);
 
-      uint8_t *address = (uint8_t*) (unsigned long) mo->address;
+    state.addressSpace.resolveOne(out, outOP);
+    state.addressSpace.copyInConcreteOffset(outOP, out, 16);
 
-      if (memcmp(address, os->concreteStore, mo->size)!=0) {
-        if (os->readOnly) {
-        } else {
-          ObjectState *wos = state.addressSpace.getWriteable(mo, os);
-          memcpy(wos->concreteStore, address, mo->size);
-        }
-      }
-    }
-    {
-      op = keyOP;
-      const MemoryObject *mo = op.first;
-      const ObjectState *os = op.second;
+    state.addressSpace.resolveOne(key, keyOP);
+    state.addressSpace.copyInConcreteOffset(keyOP, key, 256);
 
-      uint8_t *address = (uint8_t*) (unsigned long) mo->address;
+  } else if (function->getName() == "gcm_ghash_4bit") {
+    ref<ConstantExpr> out = cast<ConstantExpr>(arguments[0]);
+    ref<ConstantExpr> key = cast<ConstantExpr>(arguments[1]);
+    ref<ConstantExpr> in = cast<ConstantExpr>(arguments[2]);
+    size_t len = cast<ConstantExpr>(arguments[3])->getZExtValue(); // len
 
-      if (memcmp(address, os->concreteStore, mo->size)!=0) {
-        if (os->readOnly) {
-        } else {
-          ObjectState *wos = state.addressSpace.getWriteable(mo, os);
-          memcpy(wos->concreteStore, address, mo->size);
-        }
-      }
-    }
+    state.addressSpace.resolveOne(out, outOP);
+    state.addressSpace.copyInConcreteOffset(outOP, out, 16);
+
+    state.addressSpace.resolveOne(key, keyOP);
+    state.addressSpace.copyInConcreteOffset(keyOP, key, 256);
+
+    state.addressSpace.resolveOne(in, inOP);
+    state.addressSpace.copyOutConcreteOffset(inOP, in, len);
 
   } else {
   if (!state.addressSpace.copyInConcretes()) {
