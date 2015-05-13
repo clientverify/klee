@@ -20,14 +20,17 @@
 
 // Check if buffer is symbolic
 static void* is_symbolic_buffer(const void* buf, int len) {
+#if OPENSSL_SYMBOLIC_TAINT
   unsigned i;
   for (i=0; i<len; ++i) {
-    //FIXME check with a single call, rather than byte by byte
     if (klee_is_symbolic(*((unsigned char*)(buf)+i))) {
       return (unsigned char*)(buf)+i;
     }
   }
   return 0;
+#else
+  return klee_is_symbolic_buffer(buf, len);
+#endif
 }
 
 // Check if BIGNUM is symbolic
