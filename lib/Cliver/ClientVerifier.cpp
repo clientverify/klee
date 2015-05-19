@@ -58,6 +58,12 @@ OnlyVerifyFirstS2C("only-verify-first-s2c",
   llvm::cl::desc("Verify only the first N server to client messages (default=-1, i.e., all server to client messages)"),
   llvm::cl::init(-1));
 
+llvm::cl::opt<int>
+OnlyVerifyFirstC2S("only-verify-first-c2s",
+  llvm::cl::desc("Verify only the first N client to server  messages (default=-1, i.e., all client to server messages)"),
+  llvm::cl::init(-1));
+
+
 llvm::cl::list<std::string> 
 SocketLogFile("socket-log",
   llvm::cl::ZeroOrMore,
@@ -306,14 +312,74 @@ klee::KBasicBlock* ClientVerifier::LookupBasicBlockID(int id) {
   return basicblock_map_[id];
 }
 
+static KTestObject* KTestObject_merge(KTestObject* dst,
+                                      KTestObject* kto1,
+                                      KTestObject* kto2) {
+  assert(std::string(kto1->name) == std::string(kto2->name));
+  dst->name = (char*)malloc(strlen(kto1->name)+1);
+  strcpy(dst->name, kto1->name);
+  dst->timestamp = kto1->timestamp;
+  dst->numBytes = kto1->numBytes + kto2->numBytes;
+  dst->bytes = (unsigned char*)malloc(dst->numBytes);
+  memcpy(dst->bytes, kto1->bytes, kto1->numBytes);
+  memcpy((dst->bytes)+(kto1->numBytes), kto2->bytes, kto2->numBytes);
+}
+
+static void KTestObject_copy(KTestObject* dst, KTestObject* src) {
+  dst->name = (char*)malloc(strlen(src->name)+1);
+  memcpy(dst->name, src->name, strlen(src->name)+1);
+  dst->timestamp = src->timestamp;
+  dst->numBytes = src->numBytes;
+  dst->bytes = (unsigned char*)malloc(dst->numBytes);
+  memcpy(dst->bytes, src->bytes, dst->numBytes);
+}
+
+static KTest* merge_openssl_s2c(KTest* ktest) {
+  int merge_count = 0;
+  KTest* merged_ktest = new KTest();
+  merged_ktest->version = ktest->version;
+  merged_ktest->numArgs = 0;
+  merged_ktest->symArgvs = 0;
+  merged_ktest->symArgvLen = 0;
+  unsigned len = ktest->numObjects;
+  merged_ktest->numObjects = len;
+  merged_ktest->objects = (KTestObject*)malloc(len*sizeof(KTestObject));
+  unsigned index = 0;
+  for (unsigned i=0; i<len; ++i) {
+    std::string obj_name(ktest->objects[i].name);
+    KTestObject* src1 = &(ktest->objects[i]);
+    KTestObject* src2 = (i<(len-1)) ? &(ktest->objects[i+1]) : NULL;
+    KTestObject* dst = &(merged_ktest->objects[index]);
+
+    if (obj_name == "s2c" && src1->numBytes == 5
+        && src2 && std::string(src2->name) == "s2c") {
+      CVMESSAGE("Merging " << i << " " << src1->numBytes << " " << src2->numBytes);
+      KTestObject_merge(dst, src1, src2);
+      i++;
+      merged_ktest->numObjects--;
+    } else {
+      KTestObject_copy(dst, src1);
+    }
+    index++;
+  }
+  // Shrink size of objects array after merging
+  merged_ktest->objects
+      = (KTestObject*)realloc((void*)merged_ktest->objects,
+                              merged_ktest->numObjects*sizeof(KTestObject));
+  kTest_free(ktest);
+  return merged_ktest;
+}
+
 int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
 
 	foreach (std::string filename, logs) {
 		KTest *ktest = kTest_fromFile(filename.c_str());
+    ktest = merge_openssl_s2c(ktest);
 		if (ktest) {
 
 			socket_events_.push_back(new SocketEventList());
       unsigned s2c_count = 0;
+      unsigned c2s_count = 0;
 			for (unsigned i=0; i<ktest->numObjects; ++i) {
         std::string obj_name(ktest->objects[i].name);
         if (obj_name == "s2c") {
@@ -321,11 +387,17 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
           if (OnlyVerifyFirstS2C == -1 || s2c_count <= OnlyVerifyFirstS2C) {
             socket_events_.back()->push_back(
                 new SocketEvent(ktest->objects[i]));
+            CVMESSAGE("Added s2c: " << *(socket_events_.back()->back()));
           }
         }
-        if (obj_name == "c2s")
-          socket_events_.back()->push_back(
-              new SocketEvent(ktest->objects[i]));
+        if (obj_name == "c2s") {
+          c2s_count++;
+          if (OnlyVerifyFirstC2S == -1 || c2s_count <= OnlyVerifyFirstC2S) {
+            socket_events_.back()->push_back(
+                new SocketEvent(ktest->objects[i]));
+            CVMESSAGE("Added c2s: " << i << ", " << *(socket_events_.back()->back()));
+          }
+        }
 			}
 
 			cv_message("Opened socket log \"%s\" with %d objects",
@@ -335,6 +407,13 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
                    s2c_count - (int)OnlyVerifyFirstS2C,
                    (int)OnlyVerifyFirstS2C);
       }
+
+      if (OnlyVerifyFirstC2S != -1) {
+        cv_message("Skipped %d client to server messages after first %d",
+                   c2s_count - (int)OnlyVerifyFirstC2S,
+                   (int)OnlyVerifyFirstC2S);
+      }
+
 
       replay_objs_ = ktest;
 		} else {

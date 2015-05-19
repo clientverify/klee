@@ -634,6 +634,13 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
           property->pass_count = 0;
           property->round++;
           pending_states_.push_back(state);
+
+          if (state->network_manager() &&
+              state->network_manager()->socket() &&
+              !state->network_manager()->socket()->is_open()) {
+            CVMESSAGE("Finished state: " << *state);
+            cv_->executor()->add_finished_state(state);
+          }
         }
 
         stats::valid_path_instructions = property->inst_count;

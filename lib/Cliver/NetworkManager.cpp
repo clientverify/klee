@@ -371,14 +371,20 @@ void NetworkManager::execute_read(CVExecutor* executor,
 		object->write8(bytes_written++, socket.next_byte());
 	}
 
-	if (socket.has_data())
-		RETURN_FAILURE("read", "bytes remain len=" << len);
-
-	socket.advance();
-  state_->cv()->notify_all(ExecutionEvent(CV_SOCKET_ADVANCE, state_));
-
-  //state_->property()->is_recv_processing = true;
+	if (!socket.has_data()) {
+    socket.advance();
+    state_->cv()->notify_all(ExecutionEvent(CV_SOCKET_ADVANCE, state_));
+  }
 	RETURN_SUCCESS("read", bytes_written);
+
+	//if (socket.has_data())
+	//	RETURN_FAILURE("read", "bytes remain len=" << len);
+
+	//socket.advance();
+  //state_->cv()->notify_all(ExecutionEvent(CV_SOCKET_ADVANCE, state_));
+
+  ////state_->property()->is_recv_processing = true;
+	//RETURN_SUCCESS("read", bytes_written);
 }
 
 void NetworkManager::execute_shutdown(CVExecutor* executor,

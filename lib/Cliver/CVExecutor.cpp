@@ -1123,6 +1123,7 @@ void CVExecutor::ktest_copy(CVExecutionState* state,
     // Enforce rule that a stdin event can only be processed in a round that
     // ends in a SEND event
     if (name == "stdin" &&
+        state->network_manager()->socket()->is_open() &&
         state->network_manager()->socket()->event().type == SocketEvent::RECV) {
       CVDEBUG("Early stdin read, terminating state.");
       terminate_state(state);
