@@ -9,6 +9,8 @@
 
 #include "klee/Internal/Module/KModule.h"
 #include "klee/ExecutionState.h"
+#include "klee/util/Thread.h"
+#include "klee/Internal/ADT/RNG.h"
 
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/ADT/OwningPtr.h"
@@ -25,6 +27,7 @@
 #include <thread>
 
 #include "../../lib/Core/Searcher.h"
+#include "../../lib/Core/ParallelSearcher.h"
 
 using namespace klee;
 using namespace llvm;
@@ -47,7 +50,94 @@ class SearcherTest : public ::testing::Test {
 
   void AddStates(Searcher *s) {
     for (int i=0; i<40; ++i)
-      s->addState(new ExecutionState(KF));
+      s->addState(GetNewState());
+  }
+
+  enum SimulationEvent {
+    INSTRUCTION = 0,
+    BRANCH = 1
+  };
+
+  int checkCDF(double lookup, double cdf[], int len) {
+    assert(lookup < cdf[len-1] || lookup < cdf[0]);
+    for (int i=0; i<len; ++i) {
+      if (lookup < cdf[i]) {
+        return i;
+      }
+    }
+  }
+
+  ExecutionState* GetNewState() {
+    return new ExecutionState(KF);
+  }
+
+  void SimulateStateForks(Searcher *s) {
+    if (!theRNG.get()) {
+      theRNG.reset(new RNG());
+      theRNG->seed(std::hash<std::thread::id>()(std::this_thread::get_id()));
+    }
+
+    std::set<ExecutionState*> added_states;
+    std::set<ExecutionState*> removed_states;
+
+    ExecutionState* state = GetNewState();
+    s->update(state, added_states, removed_states);
+
+    int instruction_count = 0;
+    int add_count = 0;
+    int remove_count = 0;
+    while (instruction_count < 100000) {
+      SimulationEvent ev = (SimulationEvent)(theRNG->getInt32() % 2);
+      instruction_count++;
+      double branchCDF[] = {0.7,0.82,0.9,1.0};
+
+      switch (ev) {
+        case INSTRUCTION:
+          {
+            // execute instruction
+            s->update(state, added_states, removed_states);
+          }
+          break;
+        case BRANCH:
+          {
+            // Branch Types:
+            // 0: Branch is concrete
+            // 1: Branch is symbolic (add state)
+            // 2: Branch is not sat (remove state)
+            // 3: Branch is crazy! (add and reemove state)
+            int branch_type = checkCDF(theRNG->getDouble(),
+                                      branchCDF, 4);
+            switch (branch_type) {
+              case 0:
+                s->update(state, added_states, removed_states);
+                break;
+              case 1:
+                add_count++;
+                added_states.insert(GetNewState());
+                s->update(state, added_states, removed_states);
+                added_states.clear();
+                break;
+              case 2:
+                remove_count++;
+                removed_states.insert(state);
+                s->update(state, added_states, removed_states);
+                removed_states.clear();
+                break;
+              case 3:
+                add_count++;
+                remove_count++;
+                removed_states.insert(state);
+                added_states.insert(GetNewState());
+                s->update(state, added_states, removed_states);
+                removed_states.clear();
+                added_states.clear();
+                break;
+            }
+          }
+          break;
+      }
+    }
+    //std::cout << "Add: " << add_count << ", Remove: " << remove_count <<"\n";
   }
 
  protected:
@@ -80,6 +170,7 @@ class SearcherTest : public ::testing::Test {
   KFunction* KF;
   KModule* KM;
   std::vector<ExecutionState*> states;
+  ThreadSpecificPointer<RNG>::type theRNG;
 };
 
 TEST_F(SearcherTest, BasicConstruction) {
@@ -110,6 +201,55 @@ TEST_F(SearcherTest, BasicConstructionParallel) {
 
   delete s;
 }
+
+TEST_F(SearcherTest, SimulateStateForksParallelBFS) {
+  Searcher* s = new ParallelSearcher(new BFSSearcher());
+  ASSERT_TRUE(s);
+
+  ThreadGroup threadGroup;
+  //for (auto es : this->states) {
+  for (int i=0; i<5; ++i) {
+    threadGroup.add_thread(new Thread(&SearcherTest::SimulateStateForks,
+                           this, s));
+  }
+  threadGroup.join_all();
+
+  delete s;
+}
+
+TEST_F(SearcherTest, SimulateStateForksParallelDFS) {
+  Searcher* s = new ParallelDFSSearcher();
+  ASSERT_TRUE(s);
+
+  ThreadGroup threadGroup;
+  //for (auto es : this->states) {
+  for (int i=0; i<5; ++i) {
+    threadGroup.add_thread(new Thread(&SearcherTest::SimulateStateForks,
+                           this, s));
+  }
+  threadGroup.join_all();
+
+  delete s;
+}
+
+
+
+//TEST_F(SearcherTest, SimulateStateForksParallel) {
+//  Searcher* s = new ParallelDFSSearcher();
+//  ASSERT_TRUE(s);
+//  std::vector<std::thread*> threads;
+//
+//  for (auto es : this->states) {
+//    std::thread *t = new std::thread(&SearcherTest::SimulateStateForks,
+//                                     this, s);
+//    threads.push_back(t);
+//  }
+//
+//  for (auto t : threads)
+//    t->join();
+//
+//  delete s;
+//}
 
 }
 
