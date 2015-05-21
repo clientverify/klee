@@ -9,14 +9,14 @@
 
 #include "Common.h"
 
+#include "Searcher.h"
 
 #include "CoreStats.h"
+#include "Executor.h"
 #include "PTree.h"
 #include "StatsTracker.h"
 
-#include "Executor.h"
 #include "klee/ExecutionState.h"
-#include "Searcher.h"
 #include "klee/Statistics.h"
 #include "klee/Internal/Module/InstructionInfoTable.h"
 #include "klee/Internal/Module/KInstruction.h"
@@ -35,7 +35,6 @@
 #include "llvm/Module.h"
 #endif
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/raw_ostream.h"
 
 #if LLVM_VERSION_CODE < LLVM_VERSION(3, 5)
 #include "llvm/Support/CallSite.h"
@@ -259,25 +258,20 @@ RandomPathSearcher::~RandomPathSearcher() {
 
 ExecutionState &RandomPathSearcher::selectState() {
   unsigned flips=0, bits=0;
-  PTree::Node *n = NULL;
+  PTree::Node *n = executor.processTree->root;
   
-  // Acquire lock on processTree externally
-  PTree::Guard guard(*executor.processTree);
-  while (n == NULL || states.count(n->data) == 0) {
-    n = executor.processTree->root;
-    while (!n->data) {
-      if (!n->left) {
-        n = n->right;
-      } else if (!n->right) {
-        n = n->left;
-      } else {
-        if (bits==0) {
-          flips = theRNG->getInt32();
-          bits = 32;
-        }
-        --bits;
-        n = (flips&(1<<bits)) ? n->left : n->right;
+  while (!n->data) {
+    if (!n->left) {
+      n = n->right;
+    } else if (!n->right) {
+      n = n->left;
+    } else {
+      if (bits==0) {
+        flips = theRNG->getInt32();
+        bits = 32;
       }
+      --bits;
+      n = (flips&(1<<bits)) ? n->left : n->right;
     }
   }
 
@@ -287,17 +281,10 @@ ExecutionState &RandomPathSearcher::selectState() {
 void RandomPathSearcher::update(ExecutionState *current,
                                 const std::set<ExecutionState*> &addedStates,
                                 const std::set<ExecutionState*> &removedStates) {
-  states.insert(addedStates.begin(), addedStates.end());
-  for (std::set<ExecutionState*>::const_iterator it = removedStates.begin(),
-         ie = removedStates.end(); it != ie; ++it) {
-    states.erase(*it);
-  }
 }
 
-
-
 bool RandomPathSearcher::empty() { 
-  return states.empty(); 
+  return executor.states.empty();
 }
 
 ///

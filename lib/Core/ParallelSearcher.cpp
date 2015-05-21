@@ -194,31 +194,6 @@ ExecutionState* ParallelSearcher::trySelectState() {
   return NULL;
 }
 
-std::set<ExecutionState*> ParallelSearcher::states() {
-  std::stack<ExecutionState*> stack;
-  std::set<ExecutionState*> states;
-
-  RecursiveLockGuard guard(lock);
-
-  // Remove states from searcher
-  while (ExecutionState* es = trySelectState()) {
-    stack.push(es);
-    states.insert(es);
-  }
-
-  // Add them back into searcher
-  std::set<ExecutionState*> tmp;
-  while (!stack.empty()) {
-    tmp.insert(stack.top());
-    stack.pop();
-    update(0, tmp, std::set<ExecutionState*>());
-    tmp.clear();
-  }
-  return states;
-}
-
-///
-
 // ParallelWeightedRandomSearcher is currently slow in parallel because
 // 1) we don't attempt to pin states to cores, so there isn't cache
 // coherency between execution of states and 2) we repeatedly query the
@@ -374,6 +349,56 @@ void ParallelWeightedRandomSearcher::update(ExecutionState *current,
 
 bool ParallelWeightedRandomSearcher::empty() { 
   return (stateCount - activeStateCount) == 0;
+}
+
+///
+
+ParallelRandomPathSearcher::ParallelRandomPathSearcher(Executor &_executor)
+  : executor(_executor) {
+}
+
+ParallelRandomPathSearcher::~ParallelRandomPathSearcher() {
+}
+
+ExecutionState &ParallelRandomPathSearcher::selectState() {
+  unsigned flips=0, bits=0;
+  PTree::Node *n = NULL;
+
+  // Acquire lock on processTree externally
+  PTree::Guard guard(*executor.processTree);
+  while (n == NULL || states.count(n->data) == 0) {
+    n = executor.processTree->root;
+    while (!n->data) {
+      if (!n->left) {
+        n = n->right;
+      } else if (!n->right) {
+        n = n->left;
+      } else {
+        if (bits==0) {
+          flips = theRNG->getInt32();
+          bits = 32;
+        }
+        --bits;
+        n = (flips&(1<<bits)) ? n->left : n->right;
+      }
+    }
+  }
+
+  return *n->data;
+}
+
+void ParallelRandomPathSearcher::update(ExecutionState *current,
+                                const std::set<ExecutionState*> &addedStates,
+                                const std::set<ExecutionState*> &removedStates) {
+  states.insert(addedStates.begin(), addedStates.end());
+  for (std::set<ExecutionState*>::const_iterator it = removedStates.begin(),
+         ie = removedStates.end(); it != ie; ++it) {
+    states.erase(*it);
+  }
+}
+
+bool ParallelRandomPathSearcher::empty() {
+  return states.empty();
 }
 
 ///

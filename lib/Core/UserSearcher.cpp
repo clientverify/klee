@@ -105,7 +105,7 @@ Searcher *getNewParallelSearcher(Searcher::CoreSearchType type, Executor &execut
   case Searcher::DFS: searcher = new ParallelDFSSearcher(); break;
   case Searcher::BFS: searcher = new ParallelSearcher(new BFSSearcher()); break;
   case Searcher::RandomState: searcher = new ParallelSearcher(new RandomSearcher()); break;
-  case Searcher::RandomPath: searcher = new ParallelSearcher(new RandomPathSearcher(executor)); break;
+  case Searcher::RandomPath: searcher = new ParallelRandomPathSearcher(executor); break;
   case Searcher::NURS_CovNew: searcher = new ParallelWeightedRandomSearcher(executor, ParallelWeightedRandomSearcher::CoveringNew); break;
   case Searcher::NURS_MD2U: searcher = new ParallelWeightedRandomSearcher(executor, ParallelWeightedRandomSearcher::MinDistToUncovered); break;
   case Searcher::NURS_Depth: searcher = new ParallelWeightedRandomSearcher(executor, ParallelWeightedRandomSearcher::Depth); break;
