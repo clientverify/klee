@@ -10,7 +10,7 @@ CPP.Flags += -I$(LLVM_SRC_ROOT)/utils/unittest/googletest/include/
 CPP.Flags += -Wno-variadic-macros
 
 # FIXME: Parallel dirs is broken?
-DIRS = Expr Solver Ref Cliver Searcher Basic
+DIRS = Expr Solver Ref Cliver Searcher
 
 include $(LEVEL)/Makefile.common
 
