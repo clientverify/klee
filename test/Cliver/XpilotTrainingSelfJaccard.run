@@ -5,4 +5,5 @@
 // RUN: %klee %xpilotcliverparams -output-dir=%t.cliver-out -use-clustering -cliver-mode=jaccard -use-self-training -check-self-training -socket-log "%S/xpilot_0.ktest" -self-training-path-dir="%t_training.cliver-out" "%S/%xpilotbc" %xpilotparams &> %t.ed.log
 // RUN: grep -q "Verification complete" %t.ed.log
 // RUN: not grep -q "Self Training Data Mismatch" %t.ed.log
+// XFAIL: *
 // REQUIRES: threads
