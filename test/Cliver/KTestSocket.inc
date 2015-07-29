@@ -15,8 +15,7 @@ void ktest_finish() {
 
 #else
 
-/* HACK */
-#include "../../lib/Basic/KTest.cpp"
+// Requires compilation with lib/Basic/KTest.cpp
 
 KTestObject* ktest_objects = NULL;
 int num_ktest_objects = -1;
