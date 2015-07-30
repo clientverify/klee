@@ -11,6 +11,12 @@
 #include <unistd.h>
 #include <time.h> 
 
+#ifdef KTEST
+char* ktest_file = KTEST;
+#else
+char* ktest_file = "clientserver.ktest";
+#endif
+
 #include "klee/Internal/ADT/KTest.h"
 #include "KTestSocket.inc"
 
@@ -237,7 +243,7 @@ int main(int argc, char* argv[]) {
   int mode=FORK_MODE;
 #endif
 
-  while ((c = getopt(argc, argv, "csfp:m:b:e")) != -1) {
+  while ((c = getopt(argc, argv, "csfp:m:b:ek:")) != -1) {
     switch (c) {
       case 'c':
         mode=CLIENT_MODE;
@@ -250,6 +256,10 @@ int main(int argc, char* argv[]) {
         break;
       case 'e':
         ENCRYPT_ENABLED=1;
+        break;
+      case 'k':
+        ktest_file=(char*)malloc(strlen(optarg)+1);
+        memcpy(ktest_file,(char*)optarg,strlen(optarg)+1);
         break;
       case 'p':
         port = (int)atoi(optarg);

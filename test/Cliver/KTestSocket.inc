@@ -1,5 +1,5 @@
 
-#ifndef KTEST
+#ifdef KLEE
 
 ssize_t ktest_send(int fd, const void *buf, size_t count) {
   return send(fd, buf, count, MSG_NOSIGNAL);
@@ -82,7 +82,7 @@ void ktest_finish() {
   //  printf("\n");
   //}
 
-  int result = kTest_toFile(&ktest, KTEST);
+  int result = kTest_toFile(&ktest, ktest_file);
 
   if (!result) {
     perror("ktest_finish error");
