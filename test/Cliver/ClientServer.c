@@ -243,7 +243,7 @@ int main(int argc, char* argv[]) {
   int mode=FORK_MODE;
 #endif
 
-  while ((c = getopt(argc, argv, "csfp:m:b:ek:")) != -1) {
+  while ((c = getopt(argc, argv, "csfp:m:b:e:k:")) != -1) {
     switch (c) {
       case 'c':
         mode=CLIENT_MODE;
@@ -255,7 +255,7 @@ int main(int argc, char* argv[]) {
         mode=FORK_MODE;
         break;
       case 'e':
-        ENCRYPT_ENABLED=1;
+        ENCRYPT_ENABLED=(int)atoi(optarg);
         break;
       case 'k':
         ktest_file=(char*)malloc(strlen(optarg)+1);
