@@ -85,6 +85,8 @@ void server_init(int *port, int *fd) {
 
   *port = ntohs(server_address.sin_port);
 
+  printf("SERVER: binding on port %d\n", *port);
+
   return;
   
 exit_error:
@@ -131,6 +133,8 @@ exit_error:
 void client_init(int port, int *client_fd) {
   char* ip_address = "127.0.0.1";
   struct sockaddr_in server_address;
+
+  printf("CLIENT: connecting to localhost:%d\n", port);
 
   srand(time(NULL));
 
@@ -248,7 +252,7 @@ int main(int argc, char* argv[]) {
         ENCRYPT_ENABLED=1;
         break;
       case 'p':
-        port = (int)*optarg;
+        port = (int)atoi(optarg);
         break;
      case 'm':
         MESSAGE_COUNT=(int)atoi(optarg);
@@ -279,3 +283,4 @@ int main(int argc, char* argv[]) {
   }
   return 0;
 }
+
