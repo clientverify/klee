@@ -1114,16 +1114,18 @@ void Executor::bindLocal(KInstruction *target, ExecutionState &state,
                          TaintSet taint ) {
   Cell& cell = getDestCell(state, target);
   cell.value = value;
+  cell.taint = taint;
   if (interpreterOpts.TaintConfig >1)
-      cell.taint = taint | state.getPCTaint();
+      cell.taint |= state.getPCTaint();
 }
 
 void Executor::bindArgument(KFunction *kf, unsigned index, 
                             ExecutionState &state, ref<Expr> value, TaintSet  taint) {
   Cell& cell = getArgumentCell(state, kf, index);
   cell.value = value;
+  cell.taint = taint;
   if (interpreterOpts.TaintConfig >1)
-      cell.taint = taint | state.getPCTaint();
+      cell.taint |= state.getPCTaint();
 }
 
 ref<Expr> Executor::toUnique(const ExecutionState &state, 
@@ -2147,10 +2149,12 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   }
 
   case Instruction::Load: {
+    llvm::errs() << "LOAD " << eval(ki, 0, state).value << " Taints " << eval(ki, 0, state).taint  <<"\n";
     executeMemoryOperation(state, false, eval(ki, 0, state).value, 0, ki, eval(ki, 0, state).taint, 0);
     break;
   }
   case Instruction::Store: {
+    llvm::errs() << "STORE " << eval(ki, 1, state).value <<" <- " << eval(ki, 0, state).value << "Taints " << eval(ki, 1, state).taint << " "<<  eval(ki, 0, state).taint <<"\n";
     executeMemoryOperation(state, true, eval(ki, 1, state).value, eval(ki, 0, state).value, ki, eval(ki, 1, state).taint, eval(ki, 0, state).taint);
     break;
   }
@@ -3431,10 +3435,12 @@ void Executor::executeMemoryOperation(ExecutionState &state,
         } else {
           ObjectState *wos = state.addressSpace.getWriteable(mo, os);
           wos->write(offset, value);
-	  unsigned offset_cnt;
-	  toConstant(state, offset, "taint symbolic offset not impl")->toMemory(&offset_cnt);
-	  for(unsigned j=0;j<type/8;j++)
-	    wos->writeByteTaint(offset_cnt+j,taintw|taintr);
+
+	      unsigned offset_cnt;
+	      toConstant(state, offset, "write taint symbolic offset not impl")->toMemory(&offset_cnt);
+	      for(unsigned j=0;j<type/8;j++)
+            wos->writeByteTaint(offset_cnt+j,taintw|taintr);
+
         }
       } else {
         TaintSet taint = taintr | taintw;
@@ -3444,7 +3450,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
         {
         unsigned offset_cnt;
         unsigned int bytes = type/8;
-        toConstant(state, offset, "taint symbolic ffset not impl")->toMemory(&offset_cnt);
+        toConstant(state, offset, "read taint symbolic offset not impl")->toMemory(&offset_cnt);
         for(unsigned j=0;j<bytes;j++)
             taint |= os->readByteTaint(offset_cnt+j);
         }
