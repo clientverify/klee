@@ -24,6 +24,8 @@ char* ktest_file = "clientserver.ktest";
 int MESSAGE_COUNT = 2;
 int BASKET_SIZE = 2;
 int ENCRYPT_ENABLED = 0;
+int EXTRA_WORK = 0;
+int CHEAT_MODE = 0; 
 
 enum mode_type {CLIENT_MODE, SERVER_MODE, FORK_MODE};
 
@@ -165,6 +167,11 @@ exit_error:
 
 void add_fruit_to_basket(char* basket, size_t max_size) {
   int fruit = abs(rand());
+  
+  if (CHEAT_MODE) {
+    strncat(basket, "cheat", max_size);
+    return;
+  }
 
   fruit = fruit % 5;
   switch (fruit % 5) {
@@ -199,14 +206,35 @@ void client_run(int client_fd) {
     send_buffer[0] = '\0';
 
     // Build random fruit string
-    for (i=0; i<BASKET_SIZE; ++i)
+    for (i=0; i<BASKET_SIZE; ++i) {
       add_fruit_to_basket(send_buffer, BUFFER_SIZE);
+    }
+
+    {
+      if (EXTRA_WORK > 0) {
+        int j, a=0, b=1, c=0;
+        int K = 7919;
+        // calculate Nth fibonacci (N = EXTRA_WORK) modulo K
+        for (j=0; j<EXTRA_WORK; j++) {
+        //for (j=0; j<(EXTRA_WORK/((BASKET_SIZE - i)*2)); j++) {
+          if (j <= 1) {
+            c = j;
+          } else {
+            c = (a + b) % K;
+            a = b;
+            b = c;
+          }
+        }
+        printf("EXTRA WORK: %d\n", c);
+      }
+    }
 
     if (ENCRYPT_ENABLED)
       encrypt(send_buffer);
 
     // Send fruit basket 
     printf("CLIENT: send: %s\n", send_buffer);
+    
     if (send(client_fd, send_buffer, strnlen(send_buffer,BUFFER_SIZE)+1, 0) < 0)
       goto exit_error;
 
@@ -243,13 +271,19 @@ int main(int argc, char* argv[]) {
   int mode=FORK_MODE;
 #endif
 
-  while ((c = getopt(argc, argv, "csfp:m:b:e:k:")) != -1) {
+  while ((c = getopt(argc, argv, "csfp:m:b:e:k:w:x")) != -1) {
     switch (c) {
+      case 'x':
+        CHEAT_MODE=1;
+        break;
       case 'c':
         mode=CLIENT_MODE;
         break;
       case 's':
         mode=SERVER_MODE;
+        break;
+      case 'w':
+        EXTRA_WORK = (int)atoi(optarg);
         break;
       case 'f':
         mode=FORK_MODE;
