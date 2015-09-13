@@ -21,46 +21,13 @@
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/shared_mutex.hpp>
 #include <boost/thread/recursive_mutex.hpp>
+#include <boost/smart_ptr/detail/spinlock.hpp>
 
 namespace boost { void throw_exception(std::exception const& e); }
 
 namespace klee {
 
-class SpinLock {
-private:
-  Atomic<bool>::type state;
-public:
-  SpinLock() : state(false) {}
-  void lock() {
-#ifdef ENABLE_BOOST_ATOMIC
-    while (state.exchange(true, boost::memory_order_acquire) == true)
-        ;
-#else
-    while (state == true)
-        ;
-    state = true;
-#endif
-  }
-  void unlock() {
-#ifdef ENABLE_BOOST_ATOMIC
-    state.store(false, boost::memory_order_release);
-#else
-    state = false;
-#endif
-  }
-  bool try_lock() {
-#ifdef ENABLE_BOOST_ATOMIC
-    return !state.exchange(true, boost::memory_order_acquire);
-#else
-    if (state == true) {
-      return false;
-    } else {
-      state = true;
-      return true;
-    }
-#endif
-  }
-};
+typedef boost::detail::spinlock SpinLock;
 
 typedef boost::mutex Mutex;
 typedef boost::shared_mutex SharedMutex;

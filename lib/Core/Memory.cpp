@@ -123,6 +123,7 @@ ObjectState::ObjectState(const MemoryObject *mo)
     updates = UpdateList(array, 0);
   }
   memset(concreteStore, 0, size);
+  updatesLock = {0};
 }
 
 
@@ -141,6 +142,7 @@ ObjectState::ObjectState(const MemoryObject *mo, const Array *array)
   mo->refCount++;
   makeSymbolic();
   memset(concreteStore, 0, size);
+  updatesLock = {0};
 }
 
 ObjectState::ObjectState(const ObjectState &os) 
@@ -166,6 +168,7 @@ ObjectState::ObjectState(const ObjectState &os)
   }
 
   memcpy(concreteStore, os.concreteStore, size*sizeof(*concreteStore));
+  updatesLock = {0};
 }
 
 ObjectState::~ObjectState() {
