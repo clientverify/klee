@@ -34,6 +34,7 @@ namespace cliver {
 extern std::ostream* cv_warning_stream;
 extern std::ostream* cv_message_stream;
 extern std::ostream* cv_debug_stream;
+extern klee::Mutex*  cv_stream_lock;
 
 // TODO FIXME make output thread safe
 
@@ -45,8 +46,9 @@ extern std::ostream* cv_debug_stream;
   time(&rawtime); \
   timeinfo = localtime(&rawtime); \
   strftime(timebuff, sizeof(timebuff), "%Y-%m-%d %H:%M:%S", timeinfo); \
+  { klee::LockGuard cv_message_guard(*cv_stream_lock); \
   *cv_message_stream << timebuff << " | "; \
-  *cv_message_stream <<"CV: "<< __x << "\n"; \
+  *cv_message_stream <<"CV: "<< __x << "\n";} \
   }
 
 #ifndef NDEBUG

@@ -70,6 +70,8 @@ std::ostream* cv_warning_stream = NULL;
 std::ostream* cv_message_stream = NULL;
 std::ostream* cv_debug_stream   = NULL;
 
+klee::Mutex*  cv_stream_lock = NULL;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class teebuf: public std::streambuf {
@@ -181,9 +183,13 @@ CVStream::CVStream(bool no_output, std::string &output_dir)
     debug_file_stream_(NULL),
     message_file_stream_(NULL),
     warning_file_stream_(NULL) {
+  cv_stream_lock = new klee::Mutex();
 }
 
 CVStream::~CVStream() {
+  if (cv_stream_lock)
+    delete cv_stream_lock;
+
   if (info_file_stream_) {
     delete info_file_stream_;
     info_file_stream_ = NULL;
@@ -554,7 +560,6 @@ void CVStream::init() {
   cv_debug_stream   = debug_stream_;
 
   raw_info_stream_ = new llvm::raw_os_ostream(*info_stream_);
-
   initialized_ = true;
 }
 
