@@ -19,7 +19,7 @@
 #include <boost/lexical_cast.hpp>
 
 #define ONCE_FLAG_INIT BOOST_ONCE_INIT 
-#define call_once boost::call_once
+#define thread_call_once boost::call_once
 
 namespace klee {
 
