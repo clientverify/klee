@@ -101,6 +101,11 @@ endif
 # For STP.
 CXX.Flags += -DEXT_HASH_MAP
 
+# For Folly
+CXX.Flags := $(filter-out -fno-exceptions,$(CXX.Flags))
+CXX.Flags += -DUSE_FOLLY
+LIBS += -lfolly -lglog
+
 # For metaSMT
 ifeq ($(ENABLE_METASMT),1)
   include $(METASMT_ROOT)/share/metaSMT/metaSMT.makefile

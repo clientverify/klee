@@ -13,13 +13,13 @@
 #include "Statistic.h"
 
 #include "klee/util/Atomic.h"
+#include "klee/StatisticDataType.h"
 
 #include <vector>
 #include <string>
 #include <string.h>
 
 namespace klee {
-  typedef Atomic<uint64_t>::type StatisticDataType;
 
   class Statistic;
   class StatisticRecord {
@@ -121,7 +121,9 @@ namespace klee {
   }
 
   inline void StatisticRecord::zero() {
-    ::memset(data, 0, sizeof(*data)*theStatisticManager->getNumStatistics());
+    unsigned nStats = theStatisticManager->getNumStatistics();
+    for (unsigned i=0; i<nStats; i++)
+      data[i] = 0;
   }
 
   inline StatisticRecord::StatisticRecord() 
@@ -131,13 +133,15 @@ namespace klee {
 
   inline StatisticRecord::StatisticRecord(const StatisticRecord &s) 
     : data(new StatisticDataType[theStatisticManager->getNumStatistics()]) {
-    ::memcpy(data, s.data, 
-             sizeof(*data)*theStatisticManager->getNumStatistics());
+    unsigned nStats = theStatisticManager->getNumStatistics();
+    for (unsigned i=0; i<nStats; i++)
+      data[i] = s.data[i].get();
   }
 
   inline StatisticRecord &StatisticRecord::operator=(const StatisticRecord &s) {
-    ::memcpy(data, s.data, 
-             sizeof(*data)*theStatisticManager->getNumStatistics());
+    unsigned nStats = theStatisticManager->getNumStatistics();
+    for (unsigned i=0; i<nStats; i++)
+      data[i] = s.data[i].get();
     return *this;
   }
 
@@ -145,20 +149,21 @@ namespace klee {
                                               uint64_t addend) const {
     data[s.id] += addend;
   }
+
   inline uint64_t StatisticRecord::getValue(const Statistic &s) const { 
-    return data[s.id]; 
+    return data[s.id].get();
   }
 
   inline StatisticRecord &
   StatisticRecord::operator +=(const StatisticRecord &sr) {
     unsigned nStats = theStatisticManager->getNumStatistics();
     for (unsigned i=0; i<nStats; i++)
-      data[i] += sr.data[i];
+      data[i] += sr.data[i].get();
     return *this;
   }
 
   inline uint64_t StatisticManager::getValue(const Statistic &s) const {
-    return globalStats[s.id];
+    return globalStats[s.id].get();
   }
 
   inline void StatisticManager::incrementIndexedValue(const Statistic &s, 
@@ -169,7 +174,7 @@ namespace klee {
 
   inline uint64_t StatisticManager::getIndexedValue(const Statistic &s, 
                                                     unsigned index) const {
-    return indexedStats[index*stats.size() + s.id];
+    return indexedStats[index*stats.size() + s.id].get();
   }
 
   inline void StatisticManager::setIndexedValue(const Statistic &s, 
