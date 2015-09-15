@@ -164,6 +164,10 @@ llvm::cl::opt<bool>
 NativeAES("native-aes",
            llvm::cl::init(false));
 
+llvm::cl::opt<bool>
+SkipPrintf("skip-printf",
+           llvm::cl::init(false));
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef NDEBUG
@@ -231,7 +235,13 @@ void CVExecutor::callExternalFunction(klee::ExecutionState &state,
                                       klee::KInstruction *target,
                                       llvm::Function *function,
                                       std::vector< klee::ref<klee::Expr> > &arguments) {
-  
+
+
+  if (SkipPrintf && function->getName().str() == "printf") {
+    //CVMESSAGE("Skipping function call to " << function->getName().str());
+    return;
+  }
+
   if (NoXWindows && function->getName()[0] == 'X') { 
     if (function->getName().str() == "XParseGeometry" ||
         function->getName().str() == "XStringToKeysym") {
