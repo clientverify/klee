@@ -24,6 +24,7 @@
 namespace cliver {
 
 extern llvm::cl::opt<size_t> StateCacheSize;
+extern llvm::cl::opt<bool> EnableStateRebuilding;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -34,8 +35,12 @@ class StateRebuilder : public ExecutionObserver {
   typedef TrackingRadixTree< UCharForkList, unsigned char, ExecutionStateProperty> 
       ForkTree;
 
-  StateRebuilder() : 
-      root_(NULL), rebuild_state_(NULL), rebuild_property_(NULL), executor_(NULL) {}
+  StateRebuilder()
+    : root_(NULL), rebuild_state_(NULL), rebuild_property_(NULL), executor_(NULL) {
+    if (!EnableStateRebuilding) {
+      cv_error("State Rebuilding is not enabled. (cl-opt: state-rebuilding)");
+    }
+  }
 
   ~StateRebuilder() {
     if (root_)

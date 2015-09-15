@@ -168,6 +168,11 @@ llvm::cl::opt<bool>
 SkipPrintf("skip-printf",
            llvm::cl::init(false));
 
+llvm::cl::opt<bool>
+EnableStateRebuilding("state-rebuilding",
+                       llvm::cl::desc("Enable state rebuilding (default=0)"),
+                       llvm::cl::init(false));
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef NDEBUG
@@ -808,14 +813,14 @@ CVExecutor::fork(klee::ExecutionState &current,
  
   if (res == klee::Solver::True) {
 
-    if (!replayPath)
+    if (EnableStateRebuilding && !replayPath)
       cv_->notify_all(ExecutionEvent(CV_STATE_FORK_TRUE, &current));
 
     return StatePair(&current, 0);
 
   } else if (res == klee::Solver::False) {
 
-    if (!replayPath)
+    if (EnableStateRebuilding && !replayPath)
       cv_->notify_all(ExecutionEvent(CV_STATE_FORK_FALSE, &current));
 
     return StatePair(0, &current);
@@ -831,7 +836,7 @@ CVExecutor::fork(klee::ExecutionState &current,
     addConstraint(*trueState, condition);
     addConstraint(*falseState, klee::Expr::createIsZero(condition));
 
-    if (!replayPath) {
+    if (EnableStateRebuilding && !replayPath) {
       cv_->notify_all(ExecutionEvent(CV_STATE_FORK_FALSE, falseState));
       cv_->notify_all(ExecutionEvent(CV_STATE_FORK_TRUE, trueState));
     }
