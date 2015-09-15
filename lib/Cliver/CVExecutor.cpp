@@ -459,6 +459,11 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
         statePtr = NULL;
       }
 
+      // Call empty update to flush buffered searcher
+      searcher->update(NULL,
+                       std::set<klee::ExecutionState*>(),
+                       std::set<klee::ExecutionState*>());
+
       if (klee::UseThreads > 1) {
         klee::UniqueLock searcherCondGuard(searcherCondLock);
         if (!pauseExecution) {
