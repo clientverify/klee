@@ -694,7 +694,8 @@ void CVExecutor::stepInstruction(klee::ExecutionState &state) {
   state.prevPC = state.pc;
   ++state.pc;
 
-  if (klee::stats::instructions==klee::StopAfterNInstructions)
+  if (klee::StopAfterNInstructions &&
+      klee::stats::instructions==klee::StopAfterNInstructions)
     haltExecution = true;
 }
 
