@@ -386,9 +386,11 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
   // Only one thread needs to add state to searcher after init
   thread_call_once(searcher_init_flag_,
             [](klee::Searcher *s, klee::ExecutionState *e) {
-              std::set<klee::ExecutionState*> sset;
+              std::set<klee::ExecutionState*> sset, empty_set;
               sset.insert(e);
-              s->update(0, sset, std::set<klee::ExecutionState*>()); },
+              s->update(0, sset, empty_set); // Add state
+              s->update(0, empty_set, empty_set); // Force flush
+              },
             searcher, initialState);
 
   // Now all states can execute
