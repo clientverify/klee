@@ -261,13 +261,22 @@ void CVExecutor::callExternalFunction(klee::ExecutionState &state,
   Executor::callExternalFunction(state, target, function, arguments);
 }
 
+/// CVExecutor::parallelUpdateStates differs from
+/// Executor::parallelUpdateStates and Executor::updatesStates by not
+/// maintaining the global std::set of ExecutionStates
 void CVExecutor::parallelUpdateStates(klee::ExecutionState *current) {
-  unsigned addedCount = getContext().addedStates.size();
-  stateCount += addedCount;
+  // Retrieve state counts for this thread
+  int addedCount = getContext().addedStates.size();
+  int removedCount = getContext().removedStates.size();
 
+  // update atomic stateCount
+  stateCount += (addedCount - removedCount);
+
+  // Clear thread local state sets
   getContext().removedStates.clear();
   getContext().addedStates.clear();
 
+  // Wake up sleeping threads
   if (addedCount == 1) {
     searcherCond.notify_one();
   } else if (addedCount > 1) {
