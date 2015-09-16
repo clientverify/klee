@@ -16,14 +16,8 @@
 #include "klee/Internal/Support/Debug.h"
 #include "klee/Internal/Support/ModuleUtil.h"
 #include "klee/Internal/System/Time.h"
+#include "klee/Internal/Support/PrintVersion.h"
 #include "klee/util/Atomic.h"
-
-// FIXME: Ugh, this is gross. But otherwise our config.h conflicts with LLVMs.
-#undef PACKAGE_BUGREPORT
-#undef PACKAGE_NAME
-#undef PACKAGE_STRING
-#undef PACKAGE_TARNAME
-#undef PACKAGE_VERSION
 
 #if LLVM_VERSION_CODE > LLVM_VERSION(3, 2)
 #include "llvm/IR/Constants.h"
@@ -242,6 +236,7 @@ private:
   llvm::raw_ostream *m_infoFile;
 
   SmallString<128> m_outputDirectory;
+  
   Atomic<unsigned>::type m_testIndex;  // number of tests written so far
   Atomic<unsigned>::type m_pathsExplored; // number of paths explored so far
 
@@ -609,7 +604,6 @@ std::string KleeHandler::getRunTimeLibraryPath(const char *argv0) {
       llvm::sys::Path::GetMainExecutable(argv0, MainExecAddr).str()
       #endif
       );
-
   // Strip off executable so we have a directory path
   llvm::sys::path::remove_filename(toolRoot);
 
@@ -619,7 +613,7 @@ std::string KleeHandler::getRunTimeLibraryPath(const char *argv0) {
   {
     KLEE_DEBUG_WITH_TYPE("klee_runtime", llvm::dbgs() <<
                          "Using installed KLEE library runtime: ");
-    libDir = KLEE_INSTALL_LIB_DIR ;
+    libDir = KLEE_INSTALL_RUNTIME_DIR ;
   }
   else
   {
@@ -638,10 +632,6 @@ std::string KleeHandler::getRunTimeLibraryPath(const char *argv0) {
 //===----------------------------------------------------------------------===//
 // main Driver function
 //
-#if ENABLE_STPLOG == 1
-extern "C" void STPLOG_init(const char *);
-#endif
-
 static std::string strip(std::string &in) {
   unsigned len = in.size();
   unsigned lead = 0, trail = len;
@@ -653,6 +643,7 @@ static std::string strip(std::string &in) {
 }
 
 static void parseArguments(int argc, char **argv) {
+  cl::SetVersionPrinter(klee::printVersion);
 #if LLVM_VERSION_CODE >= LLVM_VERSION(3, 2)
   // This version always reads response files
   cl::ParseCommandLineOptions(argc, (const char**) argv, " klee\n");
@@ -1136,6 +1127,8 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
   replaceOrRenameFunction(mainModule, "__libc_fcntl", "fcntl");
   replaceOrRenameFunction(mainModule, "__libc_lseek", "lseek");
 
+  // Take care of fortified functions
+  replaceOrRenameFunction(mainModule, "__fprintf_chk", "fprintf");
 
   // XXX we need to rearchitect so this can also be used with
   // programs externally linked with uclibc.
@@ -1187,11 +1180,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 }
 #endif
 
-int main(int argc, char **argv, char **envp) {  
-#if ENABLE_STPLOG == 1
-  STPLOG_init("stplog.c");
-#endif
-
+int main(int argc, char **argv, char **envp) {
   atexit(llvm_shutdown);  // Call llvm_shutdown() on exit.
 
   llvm::InitializeNativeTarget();
@@ -1609,6 +1598,7 @@ int main(int argc, char **argv, char **envp) {
   stats << "\n";
   stats << "KLEE: done: total instructions = " 
         << instructions << "\n";
+  // Happy Tuesday: Is the static_cast below safe even in Cliver mode?
   stats << "KLEE: done: completed paths = " 
         << static_cast<KleeHandler*>(handler)->getNumPathsExplored() << "\n";
   stats << "KLEE: done: generated tests = " 

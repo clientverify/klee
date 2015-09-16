@@ -20,7 +20,7 @@ LINK_COMPONENTS += irreader
 endif
 include $(LEVEL)/Makefile.common
 
-LIBS += -lstp
+LIBS += $(STP_LDFLAGS)
 
 ifeq ($(ENABLE_THREAD_SANITIZER),1)
   # -lpthread breaks ThreadSanitizer on gcc-4.9

@@ -264,8 +264,10 @@ namespace klee {
   
   cl::opt<unsigned>
   MaxMemory("max-memory",
+//Happy Tuesday BEGIN: should we leave the default at 2000?
             cl::desc("Refuse to fork when above this amount of memory (in MB, default=0)"),
             cl::init(0));
+//Happy tuesday END
 
   cl::opt<bool>
   MaxMemoryInhibit("max-memory-inhibit",
@@ -395,6 +397,7 @@ const Module *Executor::setModule(llvm::Module *module,
 }
 
 Executor::~Executor() {
+// Happy Tuesday BEGIN: our code removed a 'delete memory;' here. END
   delete externalDispatcher;
   if (processTree)
     delete processTree;
@@ -402,6 +405,7 @@ Executor::~Executor() {
     delete specialFunctionHandler;
   if (statsTracker)
     delete statsTracker;
+// Happy Tuesday BEGIN: our code removed a 'delete solver;' here. END
   delete kmodule;
   while(!timers.empty()) {
     delete timers.back();
@@ -537,6 +541,7 @@ void Executor::initializeGlobals(ExecutionState &state) {
                     384 * sizeof **upper_addr, true);
   addExternalObject(state, upper_addr, sizeof(*upper_addr), true);
 
+//Happy Tuesday BEGIN: we don't know why you've put this here
 	ObjectPair addr_obj;
 	ObjectPair lower_addr_obj;
 	ObjectPair upper_addr_obj;
@@ -551,6 +556,7 @@ void Executor::initializeGlobals(ExecutionState &state) {
 		const_cast<ObjectState*>(upper_addr_obj.second)->markBytePointer(i);
 	}
 
+//Happy Tuesday END
 #endif
 #endif
 #endif
@@ -674,6 +680,8 @@ void Executor::branch(ExecutionState &state,
       ExecutionState *ns = es->branch();
       getContext().addedStates.insert(ns);
       result.push_back(ns);
+//Happy Tuesday why did we get rid of this here:
+// es->ptreeNode->data = 0;
       std::pair<PTree::Node*,PTree::Node*> res = 
         processTree->split(es->ptreeNode, ns, es);
       ns->ptreeNode = res.first;
@@ -928,6 +936,8 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
       }
     }
 
+//Happy Tuesday: Why did we remove this here?
+//  current.ptreeNode->data = 0;
     std::pair<PTree::Node*, PTree::Node*> res =
       processTree->split(current.ptreeNode, falseState, trueState);
     falseState->ptreeNode = res.first;
@@ -1007,6 +1017,7 @@ ref<klee::ConstantExpr> Executor::evalConstant(const Constant *c) {
     } else if (isa<ConstantPointerNull>(c)) {
       return Expr::createPointer(0);
     } else if (isa<UndefValue>(c) || isa<ConstantAggregateZero>(c)) {
+//Happy Tuesday BEGIN: we also wondered about this...
       if (llvm::VectorType *VTy = dyn_cast<llvm::VectorType>(c->getType())) {
         std::vector<ref<Expr> > kids;
         for (unsigned i = 0, e = VTy->getNumElements(); i != e; ++i) {
@@ -1048,6 +1059,7 @@ ref<klee::ConstantExpr> Executor::evalConstant(const Constant *c) {
         ref<Expr> res = ConcatExpr::createN(kids.size(), kids.data());
         return cast<ConstantExpr>(res);
       }
+//Happy Tuesday end
       return ConstantExpr::create(0, getWidthForLLVMType(c->getType()));
 #if LLVM_VERSION_CODE >= LLVM_VERSION(3, 1)
     } else if (const ConstantDataSequential *cds =
@@ -1099,6 +1111,7 @@ ref<klee::ConstantExpr> Executor::evalConstant(const Constant *c) {
       ref<Expr> res = ConcatExpr::createN(kids.size(), kids.data());
       return cast<ConstantExpr>(res);
     } else {
+      // Constant{Vector}
       llvm::report_fatal_error("invalid argument to evalConstant()");
     }
   }
@@ -3009,6 +3022,7 @@ void Executor::callExternalFunction(ExecutionState &state,
     return;
   }
 
+//Happy Tuesday AES
   if (function->getName() == "AES_encrypt" ||
       function->getName() == "AES_decrypt") {
     ref<ConstantExpr> out = cast<ConstantExpr>(arguments[1]);
@@ -3045,6 +3059,7 @@ void Executor::callExternalFunction(ExecutionState &state,
     state.addressSpace.resolveOne(in, inOP);
     state.addressSpace.copyOutConcreteOffset(inOP, in, len);
 
+//Happy Tuesday END
   } else {
   if (!state.addressSpace.copyInConcretes()) {
     terminateStateOnError(state, "external modified read-only object",
@@ -3641,21 +3656,38 @@ bool Executor::getSymbolicSolution(const ExecutionState &state,
   solver->setTimeout(coreSolverTimeout);
 
   ExecutionState tmp(state);
+//Happy Tuesday Begin: they removed   "if (!NoPreferCex) {"
+
+  // Go through each byte in every test case and attempt to restrict
+  // it to the constraints contained in cexPreferences.  (Note:
+  // usually this means trying to make it an ASCII character (0-127)
+  // and therefore human readable. It is also possible to customize
+  // the preferred constraints.  See test/Features/PreferCex.c for
+  // an example) While this process can be very expensive, it can
+  // also make understanding individual test cases much easier.
   if (!NoPreferCex) {
-    for (unsigned i = 0; i != state.symbolics.size(); ++i) {
-      const MemoryObject *mo = state.symbolics[i].first;
-      std::vector< ref<Expr> >::const_iterator pi = 
-        mo->cexPreferences.begin(), pie = mo->cexPreferences.end();
-      for (; pi != pie; ++pi) {
-        bool mustBeTrue;
-        bool success = solver->mustBeTrue(tmp, Expr::createIsZero(*pi), 
-                                          mustBeTrue);
-        if (!success) break;
-        if (!mustBeTrue) tmp.addConstraint(*pi);
-      }
-      if (pi!=pie) break;
+  for (unsigned i = 0; i != state.symbolics.size(); ++i) {
+    const MemoryObject *mo = state.symbolics[i].first;
+    std::vector< ref<Expr> >::const_iterator pi = 
+      mo->cexPreferences.begin(), pie = mo->cexPreferences.end();
+    for (; pi != pie; ++pi) {
+      bool mustBeTrue;
+      // Attempt to bound byte to constraints held in cexPreferences
+      bool success = solver->mustBeTrue(tmp, Expr::createIsZero(*pi), 
+					mustBeTrue);
+      // If it isn't possible to constrain this particular byte in the desired
+      // way (normally this would mean that the byte can't be constrained to
+      // be between 0 and 127 without making the entire constraint list UNSAT)
+      // then just continue on to the next byte.
+      if (!success) break;
+      // If the particular constraint operated on in this iteration through
+      // the loop isn't implied then add it to the list of constraints.
+      if (!mustBeTrue) tmp.addConstraint(*pi);
     }
+    if (pi!=pie) break;
   }
+  }
+//Happy Tuesday END
 
   std::vector< std::vector<unsigned char> > values;
   std::vector<const Array*> objects;

@@ -17,7 +17,7 @@ using namespace llvm;
 
 WallTimer::WallTimer() {
 #ifdef USE_BOOST_TIMER
-
+  // Happy Tuesday - Why is this empty?
 #else
   startMicroseconds = util::getWallTimeVal().usec();
 #endif

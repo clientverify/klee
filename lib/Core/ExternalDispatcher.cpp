@@ -11,13 +11,6 @@
 #include "klee/Config/Version.h"
 #include "klee/CommandLine.h"
 
-// Ugh.
-#undef PACKAGE_BUGREPORT
-#undef PACKAGE_NAME
-#undef PACKAGE_STRING
-#undef PACKAGE_TARNAME
-#undef PACKAGE_VERSION
-
 #if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Constants.h"

@@ -13,9 +13,15 @@
 
 #include <chrono>
 
+#include <llvm/Support/TimeValue.h>
+
 namespace klee {
   namespace util {
+
+    /// Seconds spent by this process in user mode.
     double getUserTime();
+
+    /// Wall time in seconds.
     double getWallTime();
 
     /// Wall time as TimeValue object.

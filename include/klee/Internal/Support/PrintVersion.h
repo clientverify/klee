@@ -1,4 +1,4 @@
-//===-- klee_int.c --------------------------------------------------------===//
+//===-- Version.h -----------------------------------------------*- C++ -*-===//
 //
 //                     The KLEE Symbolic Virtual Machine
 //
@@ -7,11 +7,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <assert.h>
-#include "klee/klee.h"
+#ifndef KLEE_PRINT_VERSION_H
+#define KLEE_PRINT_VERSION_H
 
-int klee_int(const char *name) {
-  int x;
-  klee_make_symbolic(&x, sizeof x, name);
-  return x;
+namespace klee {
+  void printVersion();
 }
+
+#endif

@@ -14,12 +14,14 @@
 #include "klee/ExecutionState.h"
 #include "klee/Solver.h"
 #include "klee/Statistics.h"
+#include "klee/Internal/System/Time.h"
 #include "klee/TimerStatIncrementer.h"
 
 #include "klee/util/ExprUtil.h"
 
 #include "CoreStats.h"
 
+#include "llvm/Support/TimeValue.h"
 #include "llvm/Support/Process.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_os_ostream.h"
@@ -53,6 +55,8 @@ bool TimingSolver::evaluate(const ExecutionState& state, ref<Expr> expr,
     result = CE->isTrue() ? Solver::True : Solver::False;
     return true;
   }
+//Happy Tuesday Begin: they switched to wallclock time, what are we using?
+//Theirs: sys::TimeValue now = util::getWallTimeVal();
   TimerStatIncrementer timer(stats::solverTime);
 
   if (simplifyExprs)
@@ -68,6 +72,11 @@ bool TimingSolver::evaluate(const ExecutionState& state, ref<Expr> expr,
 
   bool success = solver->evaluate(Query(state.constraints, expr), result);
 
+//  sys::TimeValue delta = util::getWallTimeVal();
+//  delta -= now;
+//  stats::solverTime += delta.usec();
+//  state.queryCost += delta.usec()/1000000.;
+//Happy Tuesday END
   state.queryCost += timer.check()/1000000.;
 
   return success;

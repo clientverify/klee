@@ -11,13 +11,12 @@
 #define KLEE_SEARCHER_H
 
 #include "llvm/Support/raw_ostream.h"
-
 #include "klee/util/Mutex.h"
-
 #include <vector>
 #include <set>
 #include <map>
 #include <queue>
+
 
 namespace llvm {
   class BasicBlock;

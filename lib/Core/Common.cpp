@@ -49,9 +49,8 @@ static bool shouldSetColor(const char* pfx, const char* msg, const char* prefixT
 
 static void klee_vfmessage(FILE *fp, const char *pfx, const char *msg,
                            va_list ap) {
-  if (!fp) {
+  if (!fp)
     return;
-  }
 
   char timebuff[20];
   time_t rawtime;
