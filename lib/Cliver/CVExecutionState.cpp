@@ -102,6 +102,13 @@ CVExecutionState* CVExecutionState::branch() {
   return branched_state;
 }
 
+void CVExecutionState::addSymbolic(const klee::MemoryObject *mo,
+                                   const klee::Array *array) {
+  // cliver doesn't need to track symbolics, which just adds
+  // reference counting overhead, so this function overloads
+  // ExecutionState::addSymbolic and does nothing.
+}
+
 void CVExecutionState::erase_self() {
   set_property(NULL);
   cv_->executor()->remove_state_internal_without_notify(this);

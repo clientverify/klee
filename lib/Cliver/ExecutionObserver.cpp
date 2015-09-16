@@ -35,6 +35,14 @@ ExecutionEvent::ExecutionEvent(ExecutionEventType t)
 ExecutionEvent::ExecutionEvent()
   : event_type(CV_NULL_EVENT), state(NULL), parent(NULL) {}
 
+std::string& ExecutionEvent::GetString() const {
+#define X(x) #x,
+	static std::string execution_event_types[] = { CV_EXECUTION_EVENT_TYPES };
+#undef X
+  return execution_event_types[event_type];
+}
+
+
 ///////////////////////////////////////////////////////////////////////////////
 
 void ExecutionObserverPrinter::notify(ExecutionEvent ev) {

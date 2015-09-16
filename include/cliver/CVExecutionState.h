@@ -40,6 +40,8 @@ class CVExecutionState : public klee::ExecutionState {
   CVExecutionState(const std::vector< klee::ref<klee::Expr> > &assumptions);
   ~CVExecutionState();
   virtual CVExecutionState *branch();
+  virtual void addSymbolic(const klee::MemoryObject *mo,
+                           const klee::Array *array);
   CVExecutionState *clone(ExecutionStateProperty* property = NULL);
 
 	int compare(const CVExecutionState& b) const;

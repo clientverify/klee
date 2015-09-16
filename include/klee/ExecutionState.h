@@ -135,7 +135,7 @@ public:
   void pushFrame(KInstIterator caller, KFunction *kf);
   void popFrame();
 
-  void addSymbolic(const MemoryObject *mo, const Array *array);
+  virtual void addSymbolic(const MemoryObject *mo, const Array *array);
   void addConstraint(ref<Expr> e) { 
     constraints.addConstraint(e); 
   }

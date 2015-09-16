@@ -10,6 +10,7 @@
 #define CLIVER_EXECUTION_OBSERVER_H
 
 #include <cstddef>
+#include <string>
 
 namespace klee {
 class ExecutionState;
@@ -50,10 +51,11 @@ class CVExecutionState;
   X(CV_CLEAR_CACHES)             \
   X(CV_FINISH)                   \
   X(CV_SELECT_EVENT)             \
+  X(CV_NULL_EVENT)               \
 
 #define X(x) x,
 enum ExecutionEventType {
-  CV_EXECUTION_EVENT_TYPES CV_NULL_EVENT
+  CV_EXECUTION_EVENT_TYPES
 };
 #undef X
 
@@ -71,6 +73,7 @@ class ExecutionEvent {
 
   ExecutionEvent(ExecutionEventType t);
   ExecutionEvent();
+  std::string& GetString() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
