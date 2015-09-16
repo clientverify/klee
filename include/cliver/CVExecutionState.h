@@ -45,7 +45,7 @@ class CVExecutionState : public klee::ExecutionState {
 	int compare(const CVExecutionState& b) const;
 
   void initialize(ClientVerifier *cv);
-  int id() const { return id_; }
+  unsigned id() const { return id_; }
   const CVContext* context() { return context_; }
 
 	NetworkManager* network_manager() const { return network_manager_; }
@@ -62,7 +62,7 @@ class CVExecutionState : public klee::ExecutionState {
   bool event_flag() { return event_flag_; }
   void set_event_flag(bool b) { event_flag_ = b; }
 
-  static int next_id() { return next_id_.get(); }
+  static unsigned next_id() { return next_id_.load(); }
 
   std::string get_unique_array_name(const std::string &s);
 
@@ -81,9 +81,9 @@ class CVExecutionState : public klee::ExecutionState {
 
   CVExecutionState* multi_pass_clone_;
  private:
-  int increment_id() { return next_id_.add_ref(); }
+  unsigned increment_id() { return next_id_++; }
 
-  int id_;
+  unsigned id_;
   bool event_flag_;
   CVContext* context_;
 	NetworkManager* network_manager_;
