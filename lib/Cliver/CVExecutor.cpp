@@ -260,7 +260,21 @@ void CVExecutor::callExternalFunction(klee::ExecutionState &state,
   // Call base Executor implementation
   Executor::callExternalFunction(state, target, function, arguments);
 }
- 
+
+void CVExecutor::parallelUpdateStates(klee::ExecutionState *current) {
+  unsigned addedCount = getContext().addedStates.size();
+  stateCount += addedCount;
+
+  getContext().removedStates.clear();
+  getContext().addedStates.clear();
+
+  if (addedCount == 1) {
+    searcherCond.notify_one();
+  } else if (addedCount > 1) {
+    searcherCond.notify_all();
+  }
+}
+
 void CVExecutor::runFunctionAsMain(llvm::Function *f,
 				 int argc,
 				 char **argv,
