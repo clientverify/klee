@@ -35,14 +35,16 @@ public:
     return RefCount(add_ref());
   }
 
-  RefCount& operator--() {
-    release();
-    return *this;
-  }
+  // Disabled because '--refcount' idiom may result in user-after-free.
 
-  RefCount operator--(int /*unused*/) {
-    return RefCount(release());
-  }
+  // RefCount& operator--() {
+  //   release();
+  //   return *this;
+  // }
+
+  // RefCount operator--(int /*unused*/) {
+  //   return RefCount(release());
+  // }
 
 #if defined (THREADSAFE_ATOMIC)
   unsigned get() const { 
