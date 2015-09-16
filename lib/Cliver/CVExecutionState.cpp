@@ -17,13 +17,12 @@
 #include "../Core/Common.h"
 #include "klee/Internal/Module/InstructionInfoTable.h"
 #include "klee/Internal/Module/KInstruction.h"
-#include "klee/util/RefCount.h"
 
 #include "llvm/ADT/StringExtras.h"
 
 namespace cliver {
 
-klee::RefCount CVExecutionState::next_id_ = 0;
+klee::Atomic<unsigned>::type CVExecutionState::next_id_;
 
 CVExecutionState::CVExecutionState(klee::KFunction *kF)
  : klee::ExecutionState(kF),

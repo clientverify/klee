@@ -33,6 +33,8 @@ class NetworkManager;
 ////////////////////////////////////////////////////////////////////////////////
 
 class CVExecutionState : public klee::ExecutionState {
+  static klee::Atomic<unsigned>::type  next_id_;
+
  public:
   CVExecutionState(klee::KFunction *kF);
   CVExecutionState(const std::vector< klee::ref<klee::Expr> > &assumptions);
@@ -83,7 +85,6 @@ class CVExecutionState : public klee::ExecutionState {
 
   int id_;
   bool event_flag_;
-  static klee::RefCount next_id_;
   CVContext* context_;
 	NetworkManager* network_manager_;
 	ExecutionStateProperty* property_;
