@@ -4,7 +4,10 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// TODO: use boost::unordered_map for transition maps
+// The RadixTree class is *not* thread-safe for general usage. There is a per
+// node mutex that is locked on access to it's own EdgeMap to make inserts
+// and lookups thread safe for a specific access pattern where only
+// one thread at a time can extend an edge. Deletion is not thread-safe.
 //
 //===----------------------------------------------------------------------===//
 #ifndef CLIVER_RADIXTREE_H
@@ -17,13 +20,15 @@
 #include <string>
 #include "assert.h"
 
-////////////////////////////////////////////////////////////////////////////////
+#include "klee/util/Mutex.h"
 
 #include <boost/graph/adjacency_list.hpp>
 #ifdef USE_GRAPHVIZ
 #include <boost/graph/graphviz.hpp>
 #endif
 #include <boost/lexical_cast.hpp>
+
+////////////////////////////////////////////////////////////////////////////////
 
 // For writing RadixTree to dot file
 struct dot_vertex { 
@@ -82,7 +87,6 @@ class DefaultSequenceComparator {
 //===----------------------------------------------------------------------===//
 template <class Sequence, class Element, 
           class Compare = DefaultSequenceComparator<Sequence> >
-//template <class Sequence, class Element, 
 class RadixTree {
  public: 
   typedef Sequence sequence_type;
@@ -280,6 +284,7 @@ class RadixTree {
 
     // Lookup the edge associated the seqeuence element at 'it'
     Edge* get_edge(SequenceIterator it) {
+      klee::LockGuard guard(lock_);
       if (edge_map_.find(*it) != edge_map_.end()) {
         return edge_map_[*it];
       }
@@ -288,6 +293,7 @@ class RadixTree {
 
     // Lookup the edge associated the seqeuence element at 'it'
     Edge* get_edge(Element e) {
+      klee::LockGuard guard(lock_);
       if (edge_map_.find(e) != edge_map_.end()) {
         return edge_map_[e];
       }
@@ -298,6 +304,7 @@ class RadixTree {
     // node and return the node that the new edge points to
     Node* add_edge(SequenceIterator begin,
                    SequenceIterator end) {
+      klee::LockGuard guard(lock_);
       Node *node = new Node();
       Edge *edge = new Edge(this, node, begin, end);
       node->set_parent_edge(edge);
@@ -315,6 +322,7 @@ class RadixTree {
     // Create and add an edge to this node that contains the element e and
     // return the node that the new edge points to
     Node* add_edge(Element e) {
+      klee::LockGuard guard(lock_);
       Node *node = new Node();
       Edge *edge = new Edge(this, node, e);
       node->set_parent_edge(edge);
@@ -336,7 +344,6 @@ class RadixTree {
 
     // Split an edge keyed on e at pos
     Node* split_edge(Element e, int pos) {
-
       // Lookup edge
       Edge *edge = this->get_edge(e);
 
@@ -385,6 +392,7 @@ class RadixTree {
   protected:
     Edge* parent_edge_;
     EdgeMap edge_map_;
+    klee::Mutex lock_;
   };
 
  public:
