@@ -739,13 +739,14 @@ static SolverImpl::SolverRunStatus runAndGetCexForked(::VC vc,
         }
         int status;
         int exit_pid = wait(&status);
+        int exitcode = WEXITSTATUS(status);
         if (exit_pid == query_pid)
           kill(timeout_pid, SIGKILL);
         else
           kill(query_pid, SIGKILL);
 
         wait(NULL);
-        _exit(status);
+        _exit(exitcode);
       }
     }
     unsigned res = vc_query(vc, q);
