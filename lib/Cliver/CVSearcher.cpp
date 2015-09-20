@@ -66,30 +66,10 @@ LinkFirstPass("link-first-pass",llvm::cl::init(true));
 
 ////////////////////////////////////////////////////////////////////////////////
 
-CVSearcher::CVSearcher(klee::Searcher* base_searcher, ClientVerifier *cv,
-                       StateMerger* merger) 
-	: base_searcher_(base_searcher), cv_(cv), merger_(merger) { }
-
-klee::ExecutionState &CVSearcher::selectState() {
-	//klee::TimerStatIncrementer timer(stats::searcher_time);
-	return base_searcher_->selectState();
-}
-
-void CVSearcher::update(klee::ExecutionState *current,
-						const std::set<klee::ExecutionState*> &addedStates,
-						const std::set<klee::ExecutionState*> &removedStates) {
-	//klee::TimerStatIncrementer timer(stats::searcher_time);
-	base_searcher_->update(current, addedStates, removedStates);
-}
-
-bool CVSearcher::empty() {
-	return base_searcher_->empty();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 VerifySearcher::VerifySearcher(ClientVerifier* cv, StateMerger* merger)
-  : CVSearcher(NULL, cv, merger), 
+  : cv_(cv),
+    merger_(merger),
+    parent_searcher_(NULL),
     current_stage_(NULL), 
     last_stage_cleared_(NULL), 
     current_round_(0),
@@ -241,6 +221,9 @@ SearcherStage* VerifySearcher::select_stage() {
     lock_.unlock();
     if (cv_->executor()->PauseExecution()) {
       lock_.lock();
+      if (parent_searcher_ != NULL)
+        parent_searcher_->flush();
+
       // Start looking for a non-empty stage in greatest round seen so far
       SearcherStage* new_current_stage = NULL;
       int new_current_round = max_active_round_;

@@ -21,59 +21,74 @@
 #include "klee/util/Mutex.h"
 #include "klee/util/Atomic.h"
 
-#include <boost/unordered_map.hpp>
-#include <stack>
-#include <queue>
-
 namespace cliver {
 class CVExecutionState;
 class StateMerger;
 
 ////////////////////////////////////////////////////////////////////////////////
+// CVSearcher:
+// Abstract class which extends klee::Searcher with notify() and flush()
+////////////////////////////////////////////////////////////////////////////////
 
 class CVSearcher : public klee::Searcher, public ExecutionObserver {
  public:
-	CVSearcher(klee::Searcher* base_searcher, ClientVerifier* cv, 
-             StateMerger* merger);
+  virtual ~CVSearcher() {}
 
-	virtual klee::ExecutionState &selectState();
+  virtual klee::ExecutionState &selectState() = 0;
 
-	virtual void update(klee::ExecutionState *current,
-							const std::set<klee::ExecutionState*> &addedStates,
-							const std::set<klee::ExecutionState*> &removedStates);
+  virtual void update(klee::ExecutionState *current,
+              const std::set<klee::ExecutionState*> &addedStates,
+              const std::set<klee::ExecutionState*> &removedStates) = 0;
 
-	virtual bool empty();
+  virtual bool empty() = 0;
 
-	virtual void printName(std::ostream &os) { os << "CVSearcher\n"; }
+  virtual void printName(llvm::raw_ostream &os) { os << "CVSearcher\n"; }
 
-  virtual void notify(ExecutionEvent ev) {}
+  virtual klee::ExecutionState* updateAndTrySelectState(
+      klee::ExecutionState *current,
+      const std::set<klee::ExecutionState*> &addedStates,
+      const std::set<klee::ExecutionState*> &removedStates) = 0;
 
- protected:
-	klee::Searcher* base_searcher_;
-  ClientVerifier* cv_;
-	StateMerger* merger_;
-  klee::Mutex lock_;
+  virtual klee::ExecutionState* trySelectState() = 0;
+
+  virtual void notify(ExecutionEvent ev) = 0;
+
+  virtual void flush() = 0;
+
+  virtual void set_parent_searcher(CVSearcher* parent) = 0;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+// VerifySearcher: implements CVSearcher interface and is the base cliver
+// searcher
 ////////////////////////////////////////////////////////////////////////////////
 
 class VerifySearcher : public CVSearcher {
  public:
   VerifySearcher(ClientVerifier *cv, StateMerger* merger);
+
   virtual klee::ExecutionState &selectState();
+
   virtual void update(klee::ExecutionState *current,
                       const std::set<klee::ExecutionState*> &addedStates,
                       const std::set<klee::ExecutionState*> &removedStates);
+
   virtual klee::ExecutionState* updateAndTrySelectState(
       klee::ExecutionState *current,
       const std::set<klee::ExecutionState*> &addedStates,
       const std::set<klee::ExecutionState*> &removedStates);
 
-  virtual bool empty();
   virtual klee::ExecutionState* trySelectState();
-  virtual void printName(std::ostream &os) { os << "VerifySearcher\n"; }
+
+  virtual bool empty();
+
+  virtual void printName(llvm::raw_ostream &os) { os << "VerifySearcher\n"; }
 
   virtual void notify(ExecutionEvent ev);
+
+  virtual void flush () { }
+
+  virtual void set_parent_searcher(CVSearcher* parent) { parent_searcher_ = parent; }
 
  protected:
   virtual SearcherStage* get_new_stage(CVExecutionState* state);
@@ -89,6 +104,9 @@ class VerifySearcher : public CVSearcher {
   bool is_empty();
   SearcherStage* create_and_add_stage(CVExecutionState* state);
 
+  ClientVerifier* cv_;
+  StateMerger* merger_;
+  CVSearcher* parent_searcher_;
   SearcherStage* current_stage_;
   SearcherStage* last_stage_cleared_;
   unsigned current_round_;
@@ -96,10 +114,12 @@ class VerifySearcher : public CVSearcher {
   bool at_kprefix_max_;
   ExecutionStateProperty *prev_property_;
   bool prev_property_removed_;
+
   SearcherStageList stages_;
   std::vector<CVExecutionState*> pending_states_;
   std::map<CVExecutionState*, ExecutionEvent> pending_events_;
   std::vector<SearcherStageList*> new_stages_;
+  klee::Mutex lock_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -120,4 +140,5 @@ class CVSearcherFactory {
 ////////////////////////////////////////////////////////////////////////////////
 
 } // end namespace cliver
+
 #endif // CV_SEARCHER_H
