@@ -508,6 +508,12 @@ class RadixTree {
 #endif
   }
 
+  // Returns if tree contains an edge such that |edge| > 0
+  bool empty() {
+    if (root_ && root_->degree()) return true;
+    return false;
+  }
+
   // Returns the number of elements in the tree, i.e. sum over |edges|
   size_t element_count() {
     size_t count = 0; 
