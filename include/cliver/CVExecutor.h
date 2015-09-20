@@ -155,6 +155,8 @@ class CVExecutor : public klee::Executor {
   klee::OnceFlag searcher_init_flag_;
 
   klee::ThreadSpecificPointer<unsigned>::type threadInstCount;
+
+  klee::Atomic<size_t>::type live_threads_; // # of threads not waiting
 };
 
 } // end cliver namespace

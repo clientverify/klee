@@ -423,6 +423,7 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
 
   threadInstCount.reset(new unsigned());
   *threadInstCount = 0;
+  ++live_threads_;
 
   Executor::ExecutorContext& context = getContext();
   unsigned instCountBeforeUpdate = 0;
@@ -494,16 +495,18 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
                        std::set<klee::ExecutionState*>(),
                        std::set<klee::ExecutionState*>());
 
-      if (klee::UseThreads > 1) {
-        klee::UniqueLock searcherCondGuard(searcherCondLock);
-        if (!pauseExecution) {
-          searcherCond.wait(searcherCondGuard);
-        }
-      }
-
       if (pauseExecution) {
         threadBarrier->wait();
         threadBarrier->wait();
+      }
+
+      if (klee::UseThreads > 1) {
+        klee::UniqueLock searcherCondGuard(searcherCondLock);
+        if (!pauseExecution && live_threads_ > 1) {
+          --live_threads_;
+          searcherCond.wait(searcherCondGuard);
+          ++live_threads_;
+        }
       }
     }
 
@@ -604,6 +607,9 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
   }
 
   threadBarrier = new klee::Barrier(klee::UseThreads);
+
+
+  live_threads_ = 0;
 
   totalThreadCount = klee::UseThreads;
   if (!empty()) {
