@@ -157,7 +157,7 @@ class ClientVerifier : public klee::InterpreterHandler {
 
  private:
   CVStream *cvstream_;
-	int paths_explored_;
+  klee::Atomic<int>::type paths_explored_;
   std::map<int,klee::KBasicBlock*> basicblock_map_;
 
   CVExecutor *executor_;
