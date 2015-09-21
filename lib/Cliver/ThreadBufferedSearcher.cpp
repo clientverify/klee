@@ -19,7 +19,7 @@ BufferedSearcherSize("buffered-searcher-size",llvm::cl::init(0));
 ////////////////////////////////////////////////////////////////////////////////
 
 ThreadBufferedSearcher::ThreadBufferedSearcher(CVSearcher* searcher)
-  : CVSearcher(NULL, NULL, NULL), searcher_(searcher) {}
+  : searcher_(searcher) {}
 
 SearcherStage* ThreadBufferedSearcher::get_local_states() {
   auto local_states = local_states_.get();
@@ -50,7 +50,7 @@ klee::ExecutionState* ThreadBufferedSearcher::trySelectState() {
   klee::ExecutionState *es = NULL;
 
   if (local_states->cache_size() > BufferedSearcherSize) {
-    flush_states();
+    flush();
   }
  
   return get_next_state();
@@ -62,7 +62,7 @@ void ThreadBufferedSearcher::update(klee::ExecutionState *current,
 
   // Called with no parameters, flush buffers
   if (!current && !addedStates.size() && !removedStates.size()) {
-    flush_states();
+    flush();
     return;
   }
 
@@ -79,7 +79,7 @@ void ThreadBufferedSearcher::update(klee::ExecutionState *current,
 
   if ((local_states->cache_size() > BufferedSearcherSize) ||
       (current && static_cast<CVExecutionState*>(current)->event_flag())) {
-    flush_states();
+    flush();
   }
 }
 
@@ -111,7 +111,7 @@ klee::ExecutionState* ThreadBufferedSearcher::get_next_state() {
   klee::ExecutionState *es = NULL;
 
   if (local_states->empty()) {
-    flush_states();
+    flush();
     es = searcher_->trySelectState();
     if (es) {
       local_states->add_state(static_cast<CVExecutionState*>(es));
@@ -123,7 +123,7 @@ klee::ExecutionState* ThreadBufferedSearcher::get_next_state() {
   return es;
 }
 
-void ThreadBufferedSearcher::flush_states() {
+void ThreadBufferedSearcher::flush() {
 
   auto local_states = get_local_states();
   auto shared_states = get_shared_states();

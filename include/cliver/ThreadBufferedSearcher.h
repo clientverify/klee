@@ -33,11 +33,12 @@ class ThreadBufferedSearcher : public CVSearcher {
   virtual void notify(ExecutionEvent ev);
   virtual klee::ExecutionState* trySelectState();
   virtual void printName(std::ostream &os) { os << "ThreadBufferedSearcher\n"; }
+  virtual inline void flush();
+  virtual void set_parent_searcher(CVSearcher* s) {}
 
  private:
   inline SearcherStage* get_local_states();
   inline std::set<klee::ExecutionState*>* get_shared_states();
-  inline void flush_states();
   inline klee::ExecutionState* get_next_state();
 
   CVSearcher* searcher_;
