@@ -56,12 +56,6 @@ struct LockFreeStack {
   typedef boost::lockfree::stack<T> type;
 };
 
-template<class T>
-struct LockFreeQueue {
-  typedef boost::lockfree::queue<T> type;
-};
-
-
 } // end namespace klee
 
 #endif /* KLEE_MUTEX_H */
