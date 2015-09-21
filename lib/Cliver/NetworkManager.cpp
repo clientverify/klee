@@ -248,6 +248,9 @@ void NetworkManager::execute_write(CVExecutor* executor,
 	if (socket.state() != Socket::IDLE)
 		RETURN_FAILURE_OBJ("send", "wrong state");
 
+	if (!socket.has_data() && len > 0)
+		RETURN_FAILURE_OBJ("send", "no socket data");
+
 	if ((int)socket.length() != len)
 		RETURN_FAILURE_OBJ("send", "wrong length" << " " << socket.length() << " != " << len);
 
