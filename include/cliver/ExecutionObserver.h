@@ -50,6 +50,7 @@ class CVExecutionState;
   X(CV_MERGE)                    \
   X(CV_CLEAR_CACHES)             \
   X(CV_FINISH)                   \
+  X(CV_HALT_EXECUTION)           \
   X(CV_SELECT_EVENT)             \
   X(CV_NULL_EVENT)               \
 
