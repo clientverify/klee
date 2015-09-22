@@ -1,8 +1,7 @@
-Release/
-Release+Asserts/
-Debug/
-Debug+Asserts/
-Output/
+**Release/
+**Release\+*
+**Debug/
+**Debug\+*
 
 cscope.*
 *~
@@ -21,3 +20,4 @@ site.exp
 lit.site.cfg
 
 TAGS
+tags
