@@ -26,6 +26,7 @@ class KTest:
         version, = struct.unpack('>i', f.read(4))
         if version > version_no:
             raise KTestError('unrecognized version')
+        print("version: %d" % (version))
         numArgs, = struct.unpack('>i', f.read(4))
         args = []
         for i in range(numArgs):
@@ -45,8 +46,12 @@ class KTest:
         for i in range(numObjects):
             size, = struct.unpack('>i', f.read(4))
             name = f.read(size)
-            tv_sec, = struct.unpack('>q', f.read(8))
-            tv_usec, = struct.unpack('>q', f.read(8))
+            if version >= 4:
+                tv_sec, = struct.unpack('>q', f.read(8))
+                tv_usec, = struct.unpack('>q', f.read(8))
+            else:
+                tv_sec = 0
+                tv_usec = 0
             size, = struct.unpack('>i', f.read(4))
             bytes = f.read(size)
             objects.append( (name,bytes,tv_sec,tv_usec) )
@@ -101,6 +106,24 @@ class KTest:
             f.write(obj_bytes)
         f.close()
 
+    def add_ndss2013_timestamps(self, csvpath):
+        # update version number
+        self.version = version_no
+
+        # read timestamps output by client
+        timestamp_info = read_ndss2013_timestamp_file(csvpath)
+        # adjust timestamps
+        for i, obj in enumerate(self.objects):
+            obj_name = obj[0]
+            ts_obj_name = timestamp_info[i][1]
+            assert (obj_name == ts_obj_name), "mismatch line %d: %s %s" % (i, obj_name, ts_obj_name)
+            #obj_sz = len(obj[1])
+            #ts_obj_sz = timestamp_info[i][2]
+            #assert (obj_sz == ts_obj_sz), "mismatch line %d: %d %d" % (i, obj_sz, ts_obj_sz)
+            tv_sec, tv_usec = convert_to_timeval(timestamp_info[i][0])
+            self.objects[i] = (obj[0], obj[1], tv_sec, tv_usec)
+
+
     def fix_timestamps(self, csvpath):
         # read reference timestamps extracted from tcpdump
         timestamp_info = read_timestamp_file(csvpath)
@@ -150,6 +173,24 @@ def read_timestamp_file(path):
             frac = float(fields[7])
             time_list.append((timestamp, direction, packetsize, frac))
     return time_list
+
+def read_ndss2013_timestamp_file(path):
+    """Expected fields in file:
+    MSGINFO timestamp direction len1 len2
+
+    Returns: timestamp,direction,len1,len2
+    """
+    time_list = []
+    with open(path) as f:
+        for line in f:
+            fields = line.strip().split(" ")
+            timestamp = float(fields[1])
+            direction = fields[2]
+            len1 = int(fields[3])
+            len2 = int(fields[4])
+            time_list.append((timestamp, direction, len1, len2))
+    return time_list
+
 
 def find_closest_time(name, frac, timestamp_info):
     if name == 'c2s' or name == 's2c':
@@ -206,6 +247,8 @@ def main(args):
                   help='path to output ktest file')
     op.add_option('','--timestamps', dest='tFile',
                   help='rewrite ktest timestamps using tFile')
+    op.add_option('','--ndss2013timestamps', dest='tFileNDSS',
+                  help='rewrite ktest timestamps using tFile from NDSS2013 ')
     
     opts,args = op.parse_args()
     if not args:
@@ -224,6 +267,8 @@ def main(args):
             print('args       : %r' % b.args)
             print('num objects: %r' % len(b.objects))
         delta = 0
+        if opts.tFileNDSS:
+            b.add_ndss2013_timestamps(opts.tFileNDSS)
         for i,(name,data,tv_sec,tv_usec) in enumerate(b.objects):
             if opts.trimZeros:
                 str = trimZeros(data)
