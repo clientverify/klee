@@ -277,6 +277,12 @@ void CVExecutor::parallelUpdateStates(klee::ExecutionState *current) {
   // update atomic stateCount
   stateCount += (addedCount - removedCount);
 
+  // Delete removed states
+  auto& removedStates = getContext().removedStates;
+  for (auto es : removedStates) {
+    delete es;
+  }
+
   // Clear thread local state sets
   getContext().removedStates.clear();
   getContext().addedStates.clear();
