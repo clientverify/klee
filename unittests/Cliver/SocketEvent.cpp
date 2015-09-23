@@ -61,8 +61,8 @@ class SocketEventMeasurementTest : public ::testing::Test {
   }
 
   virtual void TearDown() {
-    delete tetrinet_ktest_;
-    delete xpilot_ktest_;
+    free(tetrinet_ktest_);
+    free(xpilot_ktest_);
   }
 
   //static void SetUpTestCase() {}
@@ -87,7 +87,7 @@ TEST_F(SocketEventMeasurementTest, Ktest) {
   KTest *ktest = kTest_fromFile(dir.c_str());
   ASSERT_TRUE(ktest != NULL);
   ASSERT_EQ(ktest->numObjects, 13);
-  delete ktest;
+  free(ktest);
 }
 
 TEST_F(SocketEventMeasurementTest, XPilot) {

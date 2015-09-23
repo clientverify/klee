@@ -65,11 +65,6 @@ typedef TrackingRadixTree<std::string, char, TrackingObject>       StringTrackin
 typedef TrackingRadixTree<std::vector<char>, char, TrackingObject> VectorTrackingRadixTree;
 typedef TrackingRadixTree<std::list<char>, char, TrackingObject>   ListTrackingRadixTree;
 
-//typedef EdgeTrackingRadixTree<std::string, char, TrackingObject>       StringEdgeTrackingRadixTree;
-//typedef EdgeTrackingRadixTree<std::vector<char>, char, TrackingObject> VectorEdgeTrackingRadixTree;
-//typedef EdgeTrackingRadixTree<std::list<char>, char, TrackingObject>   ListEdgeTrackingRadixTree;
-
-
 // Tested in EditDistanceTreeTest
 typedef LevenshteinRadixTree<std::string, char>  StringLevenshteinRadixTree;
 typedef KLevenshteinRadixTree<std::string, char> StringKLevenshteinRadixTree;
