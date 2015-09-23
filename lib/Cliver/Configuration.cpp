@@ -9,7 +9,6 @@
 
 #include "cliver/ClientVerifier.h"
 #include "cliver/CVSearcher.h"
-#include "cliver/ThreadBufferedSearcher.h"
 #include "cliver/CVStream.h"
 #include "cliver/EditDistanceTree.h"
 #include "cliver/JaccardTree.h"
@@ -23,9 +22,9 @@
 
 #include "llvm/Support/CommandLine.h"
 
-namespace cliver {
+////////////////////////////////////////////////////////////////////////////////
 
-extern llvm::cl::opt<unsigned> BufferedSearcherSize;
+namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -95,11 +94,7 @@ CVSearcher* CVSearcherFactory::create(klee::Searcher* base_searcher,
     case VerifyEditDistanceKPrefixTest:
     case VerifyEditDistanceKPrefixHashPointer:
     case Training: {
-      auto verify_searcher = new VerifySearcher(cv, merger);
-      if (BufferedSearcherSize > 0)
-        return new ThreadBufferedSearcher(verify_searcher);
-      else
-        return verify_searcher;
+      return new VerifySearcher(cv, merger);
     }
   }
   cv_error("run mode not supported!");
