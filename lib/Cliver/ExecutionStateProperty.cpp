@@ -27,7 +27,9 @@ ExecutionStateProperty::ExecutionStateProperty()
 	: round(0), client_round(0), hmm_round(0), edit_distance(0),
     symbolic_vars(0), symbolic_model(false), 
     recompute(true), is_recv_processing(false),
-    inst_count(0), pass_count(0), bb_count(0) {}
+    inst_count(0), pass_count(0), bb_count(0),
+    tracker_node(NULL), tracker_cloned(false),
+    execution_stage(NULL), ed_tree(NULL) {}
 
 void ExecutionStateProperty::clone_helper(ExecutionStateProperty* p) { 
   p->round = round;
@@ -41,6 +43,11 @@ void ExecutionStateProperty::clone_helper(ExecutionStateProperty* p) {
   p->inst_count = inst_count;
   p->pass_count = pass_count;
   p->bb_count = bb_count;
+
+  p->tracker_node = NULL;
+  p->tracker_cloned = false;
+  p->execution_stage = NULL;
+  p->ed_tree = NULL;
 }
 
 ExecutionStateProperty* ExecutionStateProperty::clone() { 

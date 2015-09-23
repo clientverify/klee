@@ -9,6 +9,7 @@
 #define CLIVER_EXECUTION_STATE_PROPERTY_H
 
 #include "cliver/CVExecutionState.h"
+#include "cliver/ExecutionTraceTree.h"
 
 #include <llvm/ADT/PriorityQueue.h>
 
@@ -21,6 +22,8 @@
 //}
 
 namespace cliver {
+
+class ExecutionStage;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -61,6 +64,12 @@ class ExecutionStateProperty {
   size_t inst_count; // number of instructions in this round from this state
   int pass_count; // How many passes has this round been executed
   int bb_count; // how many basic blocks has this path executed since last recompute
+
+  // For concurent processing of events in ExecutionTraceManager
+  ExecutionTraceTreeNode* tracker_node; // used by TrackingRadixTreeExt
+  klee::Atomic<bool>::type tracker_cloned; // used by TrackingRadixTreeExt
+  ExecutionStage* execution_stage; // used ExecutionTraceManager
+  ExecutionTraceEditDistanceTree* ed_tree; // used by VerifyTraceManager
 };
 
 inline std::ostream &operator<<(std::ostream &os, 
