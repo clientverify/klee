@@ -12,8 +12,8 @@
 #include "cliver/ExecutionStateProperty.h"
 #include "cliver/ExecutionObserver.h"
 #include "cliver/ExecutionTrace.h"
+#include "cliver/ExecutionTraceTree.h"
 #include "cliver/HMMPathPredictor.h"
-#include "cliver/TrackingRadixTree.h"
 #include "cliver/LevenshteinRadixTree.h"
 #include "cliver/KExtensionTree.h"
 #include "cliver/Training.h"
@@ -25,6 +25,8 @@
 
 #include "llvm/Analysis/Trace.h"
 
+#include "folly/ThreadLocal.h"
+
 #include <set>
 #include <list>
 #include <map>
@@ -35,16 +37,6 @@ namespace cliver {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-extern unsigned RepeatExecutionAtRoundFlag;
-
-////////////////////////////////////////////////////////////////////////////////
-
-typedef TrackingRadixTree< ExecutionTrace, BasicBlockID, ExecutionStateProperty> 
-    ExecutionTraceTree;
-
-typedef EditDistanceTree<ExecutionTrace, BasicBlockID> 
-    ExecutionTraceEditDistanceTree;
-
 typedef boost::unordered_map<ExecutionStateProperty*, ExecutionTraceEditDistanceTree*>
     StatePropertyEditDistanceTreeMap;
 
@@ -52,9 +44,11 @@ struct ExecutionStage;
 typedef boost::unordered_map<ExecutionStateProperty*, ExecutionStage*> 
     StatePropertyStageMap;
 
-// Maps into internal nodes of ExecutionTraceTree for thread safe operations
-typedef boost::unordered_map<ExecutionStateProperty*, ExecutionTraceTree::Node*>
-    ExecutionTraceTreeNodeMap;
+typedef std::pair<ExecutionStateProperty*,ExecutionTraceTree::Node*> RemovedTracker;
+typedef std::list< RemovedTracker > RemovedTrackerList;
+typedef boost::unordered_map<ExecutionStage*, RemovedTrackerList >
+    StageRemovedTrackerListMap;
+
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -101,22 +95,32 @@ struct ExecutionStage {
 class ExecutionTraceManager : public ExecutionObserver {
  public:
   ExecutionTraceManager(ClientVerifier *cv);
-  virtual void initialize();
+  virtual void initialize() {}
   virtual void notify(ExecutionEvent ev);
   virtual void process_all_states(std::vector<ExecutionStateProperty*> &states) {}
   virtual bool ready_process_all_states(ExecutionStateProperty* property) { return false; }
 
+  virtual void set_stage(ExecutionStateProperty* p, ExecutionStage *s);
+  virtual ExecutionStage* get_stage(ExecutionStateProperty* p);
+  virtual void remove_from_stage(ExecutionStateProperty* p);
+
+  virtual bool remove_property(ExecutionStateProperty* p);
+  virtual void lazy_property_removals();
+
  protected:
-  std::vector< ExecutionTraceTree* > tree_list_;
   ClientVerifier *cv_;
+  //StatePropertyStageMap stages_private_;
   StatePropertyStageMap stages_;
   klee::Mutex lock_;
+  klee::Mutex ed_tree_lock_;
+
+  class ETMTag; // segments global folly::ThreadLocal mutex
+  folly::ThreadLocal< StageRemovedTrackerListMap, ETMTag > removed_trackers_;
 };
 
 class TrainingExecutionTraceManager : public ExecutionTraceManager {
  public:
   TrainingExecutionTraceManager(ClientVerifier *cv);
-  void initialize();
   void notify(ExecutionEvent ev);
 
  protected:
@@ -144,7 +148,19 @@ class VerifyExecutionTraceManager : public ExecutionTraceManager {
   void compute_self_training_stats(CVExecutionState* state,
                                    std::vector<TrainingObject*> &selected);
 
-  ExecutionTraceEditDistanceTree* get_ed_tree(ExecutionStateProperty *property);
+  ExecutionTraceEditDistanceTree* get_ed_tree(
+      ExecutionStage* stage,
+      ExecutionStateProperty *property);
+
+  void delete_ed_tree(
+      ExecutionStage* stage,
+      ExecutionStateProperty *property);
+
+  void set_ed_tree(
+    ExecutionStage* stage,
+    ExecutionStateProperty* property, 
+    ExecutionTraceEditDistanceTree* ed_tree);
+
   ExecutionTraceEditDistanceTree* clone_ed_tree(ExecutionStateProperty *property);
 
   TrainingObjectSet training_data_;
