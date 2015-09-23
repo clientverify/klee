@@ -168,8 +168,14 @@ class KMeansClusterer: public GenericClusterer<Data, Metric> {
  private:
 
   void assign_all() {
-    for (unsigned i=0; i<data_.size(); ++i)
-      assign_to_cluster(i);
+    #pragma omp parallel for schedule(dynamic)
+    for (unsigned i=0; i<data_.size(); ++i) {
+      unsigned closest_cluster = find_closest_cluster(i).second;
+      #pragma omp critical
+      {
+        clusters_[i] = closest_cluster;
+      }
+    }
   }
 
   std::pair<int, unsigned> find_closest_cluster(unsigned index) {
