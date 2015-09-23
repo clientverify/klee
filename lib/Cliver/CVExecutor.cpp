@@ -591,6 +591,8 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
   // Alert threads to wake up if there are no more states to execute
   searcherCond.notify_all();
 
+  cv_->notify_all(ExecutionEvent(CV_HALT_EXECUTION));
+
   // Release TSS memory (i.e., don't destroy with thread); the memory manager
   // for this thread may still be needed in dumpState
   this->memory.release();
