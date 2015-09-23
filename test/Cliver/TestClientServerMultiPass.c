@@ -1,4 +1,4 @@
-// RUN: %llvmgcc -B/usr/lib/x86_64-linux-gnu %s "../../lib/Basic/KTest.cpp" -DKTEST=\"%t1.ktest\" -o %t1
+// RUN: %llvmgcc -B/usr/lib/x86_64-linux-gnu %s "%srcroot/lib/Basic/KTest.cpp" -DKTEST=\"%t1.ktest\" -o %t1
 // RUN: %llvmgcc %s -DKLEE -DCLIENT -emit-llvm -g -c -o %t1.bc 
 // RUN: %t1 -e 1 > %t1.log
 // RUN: grep -q "CLIENT: success" %t1.log

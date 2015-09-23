@@ -12,6 +12,9 @@
 
 #include "klee/Internal/ADT/KTest.h"
 
+#include "llvm/Support/Path.h"
+#include "llvm/ADT/SmallString.h"
+
 #include <vector>
 
 //////////////////////////////////////////////////////////////////////////////////
@@ -30,7 +33,10 @@ class SocketEventMeasurementTest : public ::testing::Test {
 
   virtual void SetUp() {
     ClientModelFlag = Tetrinet;
-    tetrinet_ktest_ = kTest_fromFile("tetrinet.ktest");
+    llvm::SmallString<128> dir;
+    dir = KLEE_UNITTEST_KTEST_DIR;
+    llvm::sys::path::append(dir,"tetrinet.ktest");
+    tetrinet_ktest_ = kTest_fromFile(dir.c_str());
     ASSERT_TRUE(tetrinet_ktest_ != NULL);
     ASSERT_EQ(tetrinet_ktest_->numObjects, 13);
 
@@ -41,7 +47,9 @@ class SocketEventMeasurementTest : public ::testing::Test {
     }
 
     ClientModelFlag = XPilot;
-    xpilot_ktest_ = kTest_fromFile("xpilot1.ktest");
+    dir = KLEE_UNITTEST_KTEST_DIR;
+    llvm::sys::path::append(dir,"xpilot1.ktest");
+    xpilot_ktest_ = kTest_fromFile(dir.c_str());
     ASSERT_TRUE(xpilot_ktest_ != NULL);
     //ASSERT_EQ(xpilot_ktest_->numObjects, 266);
 
@@ -73,7 +81,10 @@ class SocketEventMeasurementTest : public ::testing::Test {
 namespace {
 
 TEST_F(SocketEventMeasurementTest, Ktest) {
-  KTest *ktest = kTest_fromFile("tetrinet.ktest");
+  llvm::SmallString<128> dir;
+  dir = KLEE_UNITTEST_KTEST_DIR;
+  llvm::sys::path::append(dir,"tetrinet.ktest");
+  KTest *ktest = kTest_fromFile(dir.c_str());
   ASSERT_TRUE(ktest != NULL);
   ASSERT_EQ(ktest->numObjects, 13);
   delete ktest;

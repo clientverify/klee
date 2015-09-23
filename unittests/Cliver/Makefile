@@ -11,4 +11,6 @@ include $(LLVM_SRC_ROOT)/unittests/Makefile.unittest
 
 CPP.Flags += -DGTEST_PRINT_TIME=1
 
+CPP.Flags += -DKLEE_UNITTEST_KTEST_DIR=\"$(PROJ_SRC_ROOT)/unittests/Cliver/\"
+
 LIBS += -lstp
