@@ -64,7 +64,7 @@ class CVExecutionState : public klee::ExecutionState {
   bool event_flag() { return event_flag_; }
   void set_event_flag(bool b) { event_flag_ = b; }
 
-  static unsigned next_id() { return next_id_.load(); }
+  static unsigned next_id() { return next_id_; }
 
   std::string get_unique_array_name(const std::string &s);
 
