@@ -734,9 +734,15 @@ void CVExecutor::handle_post_execution_events(klee::ExecutionState &state) {
   // Trigger event when a new BasicBlock is entered
   klee::KFunction *kf = state.stack.back().kf;
   llvm::BasicBlock *basic_block = ki->inst->getParent();
-  unsigned basic_block_id = kf->basicBlockEntry[basic_block];
-  if (ki == kf->instructions[basic_block_id]) {
-    cv_->notify_all(ExecutionEvent(CV_BASICBLOCK_ENTRY, &state));
+  //unsigned basic_block_id = kf->basicBlockEntry[basic_block];
+
+  auto bb_entry_it = kf->basicBlockEntry.find(basic_block);
+  if (bb_entry_it != kf->basicBlockEntry.end()) {
+    unsigned basic_block_id = bb_entry_it->second;
+
+    if (ki == kf->instructions[basic_block_id]) {
+      cv_->notify_all(ExecutionEvent(CV_BASICBLOCK_ENTRY, &state));
+    }
   }
 
 }
