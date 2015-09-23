@@ -5,9 +5,12 @@
 //===----------------------------------------------------------------------===//
 //
 // The RadixTree class is *not* thread-safe for general usage. There is a per
-// node mutex that is locked on access to it's own EdgeMap to make inserts
+// node that is locked on access to it's own EdgeMap to make inserts
 // and lookups thread safe for a specific access pattern where only
-// one thread at a time can extend an edge. Deletion is not thread-safe.
+// one thread at a time can extend an edge. There is also a per Edge mutex
+// that makes edge splits thread safe. Deletion is not thread-safe. Mutexes
+// are not used by default, NullLock is the default template parameter.
+// See TrackingRadixTreeExt  for special case concurrent access pattern.
 //
 //===----------------------------------------------------------------------===//
 #ifndef CLIVER_RADIXTREE_H
@@ -81,12 +84,24 @@ class DefaultSequenceComparator {
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-            
+
+class NullLock {
+ public:
+  explicit NullLock() {}
+  ~NullLock() {}
+  void lock() {}
+  void unlock() {}
+  bool try_lock() { return true; }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 //===----------------------------------------------------------------------===//
 // RadixTree
 //===----------------------------------------------------------------------===//
 template <class Sequence, class Element, 
-          class Compare = DefaultSequenceComparator<Sequence> >
+          class Compare = DefaultSequenceComparator<Sequence>,
+          class Lock = NullLock >
 class RadixTree {
  public: 
   typedef Sequence sequence_type;
@@ -98,14 +113,13 @@ class RadixTree {
   typedef typename Sequence::iterator SequenceIterator;
   typedef std::map<Element, Edge*> EdgeMap;
   typedef typename EdgeMap::iterator EdgeMapIterator;
+  typedef typename klee::Guard<Lock>::type LockGuard;
 
   //===-------------------------------------------------------------------===//
   // Class Edge: Represents an edge between two nodes, holds sequence data
   //===-------------------------------------------------------------------===//
   class Edge {
    public:
-
-    //Edge() : from_(NULL), to_(NULL) {}
 
     Edge(Node* from, Node* to, Sequence& s) 
     : from_(from), to_(to), seq_(s) {}
@@ -125,25 +139,36 @@ class RadixTree {
     void set_to(Node* to) { to_ = to; }
 
     void extend(SequenceIterator _begin, SequenceIterator _end) {
+      LockGuard guard(lock_);
       seq_.insert(seq_.end(), _begin, _end);
     }
 
     void extend(Element e) {
+      LockGuard guard(lock_);
       seq_.insert(seq_.end(), e);
     }
 
     void erase(SequenceIterator _begin, 
               SequenceIterator _end) {
+      LockGuard guard(lock_);
       seq_.erase(_begin, _end);
     }
 
-    inline SequenceIterator begin() { return seq_.begin(); }
-    inline SequenceIterator end() { return seq_.end(); }
+    inline SequenceIterator begin()
+      { LockGuard guard(lock_); return seq_.begin(); }
+    inline SequenceIterator end()
+      { LockGuard guard(lock_); return seq_.end(); }
 
-    inline Element& key() { return *(seq_.begin()); }
-    inline Element& back() { return *(seq_.begin()+(seq_.size()-1)); }
+    inline Element& key()
+      { LockGuard guard(lock_); return *(seq_.begin()); }
+    inline Element& back()
+      { LockGuard guard(lock_); return *(seq_.begin()+(seq_.size()-1)); }
 
-    inline size_t size() { return seq_.size(); }
+    inline size_t size()
+      { LockGuard guard(lock_); return seq_.size(); }
+
+    void lock() { lock_.lock(); }
+    void unlock() { lock_.unlock(); }
 
     Sequence& seq() { return seq_; }
 
@@ -151,6 +176,7 @@ class RadixTree {
     Node *from_;
     Node *to_;
     Sequence seq_;
+    Lock lock_;
   };
 
   //===-------------------------------------------------------------------===//
@@ -284,7 +310,7 @@ class RadixTree {
 
     // Lookup the edge associated the seqeuence element at 'it'
     Edge* get_edge(SequenceIterator it) {
-      klee::LockGuard guard(lock_);
+      LockGuard guard(lock_);
       if (edge_map_.find(*it) != edge_map_.end()) {
         return edge_map_[*it];
       }
@@ -293,7 +319,7 @@ class RadixTree {
 
     // Lookup the edge associated the seqeuence element at 'it'
     Edge* get_edge(Element e) {
-      klee::LockGuard guard(lock_);
+      LockGuard guard(lock_);
       if (edge_map_.find(e) != edge_map_.end()) {
         return edge_map_[e];
       }
@@ -304,7 +330,7 @@ class RadixTree {
     // node and return the node that the new edge points to
     Node* add_edge(SequenceIterator begin,
                    SequenceIterator end) {
-      klee::LockGuard guard(lock_);
+      LockGuard guard(lock_);
       Node *node = new Node();
       Edge *edge = new Edge(this, node, begin, end);
       node->set_parent_edge(edge);
@@ -322,7 +348,7 @@ class RadixTree {
     // Create and add an edge to this node that contains the element e and
     // return the node that the new edge points to
     Node* add_edge(Element e) {
-      klee::LockGuard guard(lock_);
+      LockGuard guard(lock_);
       Node *node = new Node();
       Edge *edge = new Edge(this, node, e);
       node->set_parent_edge(edge);
@@ -344,27 +370,46 @@ class RadixTree {
 
     // Split an edge keyed on e at pos
     Node* split_edge(Element e, int pos) {
+      // Lock this node
+      LockGuard guard(lock_);
+
       // Lookup edge
-      Edge *edge = this->get_edge(e);
+      Edge *edge = NULL;
+      if (edge_map_.find(e) != edge_map_.end()) {
+        edge = edge_map_[e];
+      }
 
       // Return NULL if not found
       if (edge == NULL)
         return NULL;
 
-      SequenceIterator edge_begin_pos = edge->begin();
+      // Lock this edge
+      edge->lock();
+
+      // Get sequence after locking
+      Sequence& edge_seq = edge->seq();
+
+      SequenceIterator edge_begin_pos = edge_seq.begin();
       std::advance(edge_begin_pos, pos);
 
       // Split existing edge
-      Node *split_node = this->add_edge(edge->begin(), edge_begin_pos);
+      Node *split_node = new Node();
+      Edge *split_edge = new Edge(this, split_node,
+                                  edge_seq.begin(), edge_begin_pos);
+      split_node->set_parent_edge(split_edge);
+      edge_map_[*(edge_seq.begin())] = split_edge;
 
       // Erase top of old edge that was just copied
-      edge->erase(edge->begin(), edge_begin_pos);
+      edge_seq.erase(edge_seq.begin(), edge_begin_pos);
 
       // Update parent to new node
       edge->set_from(split_node);
 
-      // Update edge map for newly created node
-      split_node->edge_map_[edge->key()] = edge;
+      // Update edge map for newly created node (with new key)
+      split_node->edge_map_[*(edge_seq.begin())] = edge;
+
+      // Unlock edge
+      edge->unlock();
 
       return split_node;
     }
@@ -392,7 +437,7 @@ class RadixTree {
   protected:
     Edge* parent_edge_;
     EdgeMap edge_map_;
-    klee::Mutex lock_;
+    Lock lock_;
   };
 
  public:
