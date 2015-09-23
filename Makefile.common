@@ -17,6 +17,29 @@ override DISABLE_ASSERTIONS := $(RUNTIME_DISABLE_ASSERTIONS)
 override ENABLE_PROFILING := $(RUNTIME_ENABLE_PROFILING)
 override ENABLE_COVERAGE := $(RUNTIME_ENABLE_COVERAGE)
 override DEBUG_SYMBOLS := $(RUNTIME_DEBUG_SYMBOLS)
+override ENABLE_THREAD_SANITIZER := 0
+override ENABLE_ADDRESS_SANITIZER := 0
+override ENABLE_TCMALLOC := 0
+override DISABLE_THREADS := 0
+endif
+
+#ifeq ($(SHARED_LIBRARY), 1)
+  #override ENABLE_THREAD_SANITIZER := 0
+  #override ENABLE_ADDRESS_SANITIZER := 0
+#endif
+
+ifeq ($(LOADABLE_MODULE), 1)
+  override ENABLE_THREAD_SANITIZER := 0
+  override ENABLE_ADDRESS_SANITIZER := 0
+endif
+
+# Check other settings if sanitizer is enabled
+ifeq (1,$(findstring 1,$(ENABLE_THREAD_SANITIZER) ($(ENABLE_ADDRESS_SANITIZER))))
+
+  ifeq ($(ENABLE_THREAD_SANITIZER),$(ENABLE_ADDRESS_SANITIZER))
+    $(error "Thread and Address Sanitizers cannot be enabled together")
+  endif
+  override TC_MALLOC := 0
 endif
 
 # Required for Boost 
@@ -43,10 +66,7 @@ CXX.Flags += -Wall
 CXX.Flags += -pedantic
 
 # Required for openmp 
-ifneq ($(ENABLE_THREAD_SANITIZER),1)
-  CXX.Flags += -fopenmp
-  LIBS += -fopenmp
-endif
+CXX.Flags += -fopenmp
 
 # (Optional) TCMalloc support
 ifeq ($(ENABLE_TCMALLOC),1)
@@ -60,17 +80,20 @@ ifeq ($(ENABLE_GOOGLE_PROFILER),1)
   CXX.Flags += -DGOOGLE_PROFILER 
 endif
 
-# (Optional) Use ThreadSanitizer to profile threads (for use with >= gcc-4.9)
-# see also tools/klee/Makefile for additional tsan configuration
-ifeq ($(ENABLE_THREAD_SANITIZER),1)
-  CXX.Flags += -fpie -fPIC -fsanitize=thread -g
-endif
-
-ifeq ($(ENABLE_ADDRESS_SANITIZER),1)
-  CXX.Flags += -fpie -fPIC -fsanitize=undefined -fsanitize=address -g
-endif
-
 include $(PROJ_SRC_ROOT)/Makefile.rules
+
+ifneq ($(SHARED_LIBRARY), 1)
+# (Optional) Thread Sanitizer and Address Sanitizer (use gcc-5)
+ifeq ($(ENABLE_THREAD_SANITIZER),1)
+  CXX.Flags := $(filter-out -fopenmp,$(CXX.Flags)) # turn off openmp
+  CXX.Flags += -fpie -fPIC -fsanitize=thread -g
+  LIBS += -ltsan -pie
+endif
+ifeq ($(ENABLE_ADDRESS_SANITIZER),1)
+  CXX.Flags += -fpie -fPIC -fsanitize=address -g
+  C.Flags += -fpie -fPIC -fsanitize=address -g
+endif
+endif
 
 # LLVMCC was added in 2.7.
 ifeq ($(LLVMCC),)

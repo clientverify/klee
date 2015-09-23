@@ -23,12 +23,8 @@ include $(LEVEL)/Makefile.common
 LIBS += -lstp
 
 ifeq ($(ENABLE_THREAD_SANITIZER),1)
-  # -lpthread breaks ThreadSanitizer on gcc-4.9
-  # so we filter it out of LIBS for klee linking
-  LIBS := $(filter-out -lpthread,$(LIBS))
   LIBS += -ltsan -pie
 endif
-
 
 ifeq ($(ENABLE_METASMT),1)
   include $(METASMT_ROOT)/share/metaSMT/metaSMT.makefile
