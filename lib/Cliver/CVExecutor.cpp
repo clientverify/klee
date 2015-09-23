@@ -15,6 +15,8 @@
 #include "cliver/ExecutionObserver.h"
 #include "cliver/NetworkManager.h"
 #include "cliver/StateMerger.h"
+#include "cliver/LockFreeVerifySearcher.h"
+#include "cliver/ThreadBufferedSearcher.h"
 #include "CVCommon.h"
 
 #include "../Core/Common.h"
@@ -156,10 +158,10 @@ PrintFunctionCalls("print-function-calls",
                    llvm::cl::init(false));
 
 llvm::cl::opt<bool> 
-NoXWindows("no-xwindows", 
-           llvm::cl::desc("Do not allow external XWindows function calls"), 
+NoXWindows("no-xwindows",
+           llvm::cl::desc("Do not allow external XWindows function calls"),
            llvm::cl::init(false));
- 
+
 llvm::cl::opt<bool>
 NativeAES("native-aes",
            llvm::cl::init(false));
@@ -172,6 +174,9 @@ llvm::cl::opt<bool>
 EnableStateRebuilding("state-rebuilding",
                        llvm::cl::desc("Enable state rebuilding (default=0)"),
                        llvm::cl::init(false));
+
+extern llvm::cl::opt<bool> EnableLockFreeSearcher;
+extern llvm::cl::opt<unsigned> BufferedSearcherSize;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -600,7 +605,16 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
   states.insert(&initialState);
   ++stateCount;
 
-	searcher = cv_->searcher();
+  CVSearcher* cv_searcher = cv_->searcher();
+  LockFreeVerifySearcher* lfvs = NULL;
+
+  if (EnableLockFreeSearcher)
+    cv_searcher = lfvs = new LockFreeVerifySearcher(cv_searcher);
+
+  if (BufferedSearcherSize > 0)
+    cv_searcher = new ThreadBufferedSearcher(cv_searcher);
+
+	searcher = cv_searcher;
 
   if (!searcher) {
     klee::klee_error("failed to create searcher");
@@ -608,6 +622,11 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
 
   threadBarrier = new klee::Barrier(klee::UseThreads);
 
+  if (klee::UseThreads > 1 && EnableLockFreeSearcher) {
+    lfvs->threadBarrier = threadBarrier;
+    lfvs->searcherCond = &searcherCond;
+    lfvs->searcherCondLock = &searcherCondLock;
+  }
 
   live_threads_ = 0;
 
@@ -618,8 +637,13 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
       execute(&initialState, NULL);
     } else {
       klee::ThreadGroup threadGroup;
-      for (unsigned i=0; i<klee::UseThreads; ++i) {
-        // Initialize MemoryManager outside of thread
+      int worker_count = klee::UseThreads;
+      if (EnableLockFreeSearcher) {
+        worker_count--;
+        threadGroup.add_thread(
+            new klee::Thread(&cliver::LockFreeVerifySearcher::Worker, lfvs));
+      }
+      for (unsigned i=0; i<worker_count; ++i) {
         memoryManagers.push_back(new klee::MemoryManager());
         threadGroup.add_thread(new klee::Thread(&cliver::CVExecutor::execute,
                                           this, &initialState, memoryManagers.back()));
