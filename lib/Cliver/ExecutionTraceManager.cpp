@@ -54,7 +54,10 @@ llvm::cl::opt<double>
 MedoidSelectRate("medoid-select-rate",llvm::cl::init(1.25));
 
 llvm::cl::opt<bool>
-EditDistanceAtCloneOnly("edit-distance-at-clone-only",llvm::cl::init(true));
+EditDistanceAtCloneOnly("edit-distance-at-clone-only",llvm::cl::init(false));
+
+llvm::cl::opt<bool>
+EditDistanceAtEveryBasicBlock("edit-distance-at-every-basicblock",llvm::cl::init(false));
 
 llvm::cl::opt<bool>
 BasicBlockDisabling("basicblock-disabling",llvm::cl::init(false));
@@ -1089,15 +1092,15 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
         }
 
         if (!EditDistanceAtCloneOnly) {
-        if (property->recompute) {
-          if (EditDistanceAtCloneOnly) {
-            CVDEBUG("Setting recompute to false");
-            property->recompute = false;
-          }
+          if (property->recompute) {
+            if (!EditDistanceAtEveryBasicBlock) {
+              CVDEBUG("Setting recompute to false");
+              property->recompute = false;
+            }
 
-          klee::TimerStatIncrementer timer(stats::edit_distance_time);
-          update_edit_distance(property, state);
-        }
+            klee::TimerStatIncrementer timer(stats::edit_distance_time);
+            update_edit_distance(property, state);
+          }
         }
       }
     }
@@ -1133,7 +1136,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
       //ExecutionStage* stage = stages_[parent_property];
       ExecutionStage* stage = get_stage(parent_property);
 
-      if (!property->is_recv_processing && EditDistanceAtCloneOnly) {
+      if (!property->is_recv_processing) {
         klee::TimerStatIncrementer timer(stats::edit_distance_time);
         update_edit_distance(parent_property, parent);
       }
