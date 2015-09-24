@@ -87,6 +87,9 @@ llvm::cl::opt<bool>
 CheckSelfTraining("check-self-training",llvm::cl::init(false));
 
 llvm::cl::opt<bool>
+PrintSelfTrainingEditDistance("print-self-training-edit-distance",llvm::cl::init(false));
+
+llvm::cl::opt<bool>
 UseExternalStage("external-stage",llvm::cl::init(false));
 
 llvm::cl::list<std::string> TrainingPathFile("training-path-file",
@@ -238,7 +241,6 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
       CVDEBUG("SELECT EVENT: " << *state);
       property->is_recv_processing = false;
     }
-    break;
 
     case CV_BASICBLOCK_ENTRY: {
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
@@ -740,7 +742,7 @@ void VerifyExecutionTraceManager::update_edit_distance(
   //  }
   //}
   if (get_ed_tree(stage, property) == NULL) {
-    CVMESSAGE("Cloning ed tree in update_edit_distance");
+    CVDEBUG("Cloning ed tree in update_edit_distance");
     set_ed_tree(stage, property, stage->root_ed_tree->clone_edit_distance_tree());
   }
 
@@ -773,7 +775,8 @@ void VerifyExecutionTraceManager::update_edit_distance(
     TrainingObject* matching_tobj = self_training_data_map_[property->round];
     if (matching_tobj) {
       int curr_bb_id = state->pc->kbb->id;
-      int self_bb_id = matching_tobj->trace[etrace.size()-1];
+      int self_idx  = std::min(etrace.size()-1, matching_tobj->trace.size()-1);
+      int self_bb_id = matching_tobj->trace[self_idx];
       if (curr_bb_id != self_bb_id) {
         CVMESSAGE("Self Training Data Mismatch!!");
         if (DebugExecutionTree) {
@@ -781,6 +784,16 @@ void VerifyExecutionTraceManager::update_edit_distance(
           klee::KBasicBlock *self_kbb = cv_->LookupBasicBlockID(self_bb_id);
           CVDEBUG("Curr BasicBlock: [BB: " << curr_bb_id << "] " << *curr_kbb->kinst );
           CVDEBUG("Self BasicBlock: [BB: " << self_bb_id << "] " << *self_kbb->kinst );
+        }
+        if (PrintSelfTrainingEditDistance) {
+          auto self_ed_tree = stage->root_ed_tree->clone_edit_distance_tree();
+          ExecutionTrace self_etrace(matching_tobj->trace.begin(), matching_tobj->trace.begin() + self_idx);
+          self_ed_tree->update(self_etrace);
+
+          CVMESSAGE("Self edit distance: "
+              << etrace.size() << ", row = " << self_ed_tree->row() << " ed: " << self_ed_tree->min_distance()
+              << " curr ed: " << property->edit_distance);
+          delete self_ed_tree;
         }
       }
     }
@@ -1021,13 +1034,15 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
 
     case CV_SELECT_EVENT: {
       CVDEBUG("SELECT EVENT: " << *state);
+      property->recompute = true;
       property->is_recv_processing = false;
     }
-    break;
 
     case CV_BASICBLOCK_ENTRY: {
       //klee::LockGuard guard(lock_);
 
+      if (property->edit_distance == INT_MAX)
+        return;
       ExecutionStage* stage = get_stage(property);
 
       if (!property->is_recv_processing) {
@@ -1073,6 +1088,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
           //}
         }
 
+        if (!EditDistanceAtCloneOnly) {
         if (property->recompute) {
           if (EditDistanceAtCloneOnly) {
             CVDEBUG("Setting recompute to false");
@@ -1081,6 +1097,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
 
           klee::TimerStatIncrementer timer(stats::edit_distance_time);
           update_edit_distance(property, state);
+        }
         }
       }
     }
@@ -1196,6 +1213,15 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
         
         stats::edit_distance = ed;
         stats::edit_distance_stat_time += stat_timer.check();
+      } else {
+        if (FinalDistance) {
+          stats::edit_distance = 8008;
+        } else if (stage != NULL && get_ed_tree(stage, parent_property) != NULL) {
+          auto ed_tree = get_ed_tree(stage, parent_property);
+          stats::edit_distance = ed_tree->min_distance();
+        } else {
+          stats::edit_distance = 4004;
+        }
       }
 
       // Final kprefix
