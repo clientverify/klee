@@ -265,9 +265,11 @@ ExecutionStateProperty* ExecutionStatePropertyFactory::create() {
     case VerifyEditDistanceKPrefixHash:
     case VerifyEditDistanceKPrefixTest:
     case VerifyEditDistanceKPrefixHashPointer: {
-      return new EditDistanceExecutionStateProperty();
+      if (ClientModel == XPilot)
+        return new XPilotEditDistanceExecutionStateProperty();
+      else
+        return new EditDistanceExecutionStateProperty();
     }
-
     case Training: {
       return new ExecutionStateProperty();
     }

@@ -176,6 +176,46 @@ int EditDistanceExecutionStateProperty::compare(
   return 0;
 }
 
+//////////////////////////////////////////////////////////////////////////////
+
+XPilotEditDistanceExecutionStateProperty::XPilotEditDistanceExecutionStateProperty() {}
+
+ExecutionStateProperty* XPilotEditDistanceExecutionStateProperty::clone() {
+  ExecutionStateProperty* esp = new XPilotEditDistanceExecutionStateProperty();
+  clone_helper(esp);
+  esp->recompute = true;
+  return esp;
+}
+
+int XPilotEditDistanceExecutionStateProperty::compare(
+    const ExecutionStateProperty *b) const {
+
+	const XPilotEditDistanceExecutionStateProperty *_b
+      = static_cast<const XPilotEditDistanceExecutionStateProperty*>(b);
+
+  // Prioritize state that is currently recv_processing
+	if (_b->is_recv_processing != is_recv_processing)
+    return (char)_b->is_recv_processing - (char)is_recv_processing;
+
+  // Reversed for priority queue!
+  if (_b->edit_distance != edit_distance)
+    return _b->edit_distance - edit_distance;
+
+  if (round != _b->round)
+    return round - _b->round;
+
+  if (client_round != _b->client_round)
+    return client_round - _b->client_round;
+
+  if (pass_count != _b->pass_count)
+		return pass_count - _b->pass_count;
+
+  // Ignore symbolic_var count for XPilot
+
+  return 0;
+}
+
+
 ////////////////////////////////////////////////////////////////////////////////
 
 } // End cliver namespace

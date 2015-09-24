@@ -91,6 +91,23 @@ inline std::ostream &operator<<(std::ostream &os,
   return os;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+class XPilotEditDistanceExecutionStateProperty : public ExecutionStateProperty {
+ public:
+  XPilotEditDistanceExecutionStateProperty();
+	virtual int compare(const ExecutionStateProperty *p) const;
+	virtual ExecutionStateProperty* clone();
+};
+
+inline std::ostream &operator<<(std::ostream &os,
+		const XPilotEditDistanceExecutionStateProperty &p) {
+  p.print(os);
+  return os;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct ExecutionStatePropertyFactory {
 	static ExecutionStateProperty* create();
 };
