@@ -93,7 +93,7 @@ llvm::cl::opt<bool>
 PrintSelfTrainingEditDistance("print-self-training-edit-distance",llvm::cl::init(false));
 
 llvm::cl::opt<bool>
-UseExternalStage("external-stage",llvm::cl::init(false));
+UseExternalStage("external-stage",llvm::cl::init(true));
 
 llvm::cl::list<std::string> TrainingPathFile("training-path-file",
 	llvm::cl::ZeroOrMore,
