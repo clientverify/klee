@@ -273,6 +273,19 @@ DEFINE_MODEL(void, gcm_ghash_4bit, u64 Xi[2], const u128 Htable[16],const u8 *in
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Private key for client authentication
+////////////////////////////////////////////////////////////////////////////////
+DEFINE_MODEL(EVP_PKEY *, load_key, BIO *err, const char *file, int format, int maybe_stdin, const char *pass, ENGINE *e, const char *key_descrip) {
+  EVP_PKEY *pkey = NULL;
+  pkey = CALL_UNDERLYING(load_key, err, file, format, maybe_stdin,
+      pass, e, key_descrip);
+  make_BN_symbolic(pkey->pkey.dh->priv_key);
+  //make_BN_symbolic(pkey->pkey.dh->pub_key);
+  return pkey;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
 // Irrelevant output
 ////////////////////////////////////////////////////////////////////////////////
 

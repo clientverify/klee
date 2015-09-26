@@ -79,6 +79,9 @@ DECLARE_MODEL(int, EVP_PKEY_verify, EVP_PKEY_CTX *ctx, const unsigned char *sig,
 //DECLARE_MODEL(int, EVP_CipherUpdate, EVP_CIPHER_CTX *ctx, unsigned char *out, int *outl, const unsigned char *in, int inl)
 //DECLARE_MODEL(int, EVP_CipherFinal, EVP_CIPHER_CTX *ctx, unsigned char *outm, int *outl)
 
+// Private key for client authentication
+DECLARE_MODEL(EVP_PKEY *, load_key, BIO *err, const char *file, int format, int maybe_stdin, const char *pass, ENGINE *e, const char *key_descrip)
+
 // Irrelevant output
 DECLARE_MODEL(void, print_stuff, BIO *bio, SSL *s, int full)
 
