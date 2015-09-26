@@ -106,6 +106,7 @@ endif
 KLEE_UCLIBC_BCA_NAME="klee-uclibc.bca"
 
 LD.Flags += $(STP_LDFLAGS)
+LIBS += $(STP_LDFLAGS)  # hack to address -lstp -lminisat issue
 CXX.Flags += $(STP_CFLAGS)
 CXX.Flags += -DKLEE_DIR=\"$(PROJ_OBJ_ROOT)\" -DKLEE_INSTALL_BIN_DIR=\"$(PROJ_bindir)\"
 CXX.Flags += -DKLEE_INSTALL_RUNTIME_DIR=\"$(BYTECODE_DESTINATION)\"
