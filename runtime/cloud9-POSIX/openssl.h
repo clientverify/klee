@@ -81,6 +81,7 @@ DECLARE_MODEL(int, EVP_PKEY_verify, EVP_PKEY_CTX *ctx, const unsigned char *sig,
 
 // Private key for client authentication
 DECLARE_MODEL(EVP_PKEY *, load_key, BIO *err, const char *file, int format, int maybe_stdin, const char *pass, ENGINE *e, const char *key_descrip)
+DECLARE_MODEL(int, DH_compute_key, unsigned char *key, const BIGNUM *pub_key, DH *dh)
 
 // Irrelevant output
 DECLARE_MODEL(void, print_stuff, BIO *bio, SSL *s, int full)

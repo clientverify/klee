@@ -284,6 +284,24 @@ DEFINE_MODEL(EVP_PKEY *, load_key, BIO *err, const char *file, int format, int m
   return pkey;
 }
 
+DEFINE_MODEL(int, DH_compute_key, unsigned char *key, const BIGNUM *pub_key, DH *dh)
+{
+  // This function is a bit weird in that it seems to have no protection
+  // against overflowing the output buffer 'key', for example if the
+  // Diffie-Hellman parameters are enormous.  To minimize risk, we therefore
+  // assume that there exists at least one byte available in 'key' and write a
+  // single symbolic byte to it.  This should be enough to trigger our
+  // "prohibitive function" handling.
+  void *symbyte = is_symbolic_BIGNUM(dh->priv_key);
+  if (symbyte) {
+    DEBUG_PRINT("DH_compute_key(): symbolic DH private key");
+    int outlen = 1; // one byte
+    copy_symbolic_buffer(key, outlen, "DH_compute_key_out", symbyte);
+    return outlen;
+  }
+  DEBUG_PRINT("DH_compute_key(): concrete DH private key");
+  return CALL_UNDERLYING(DH_compute_key, key, pub_key, dh);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Irrelevant output
