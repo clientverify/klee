@@ -194,7 +194,7 @@ Socket* NetworkManager::socket(int fd) {
 void NetworkManager::execute_open_socket(CVExecutor* executor,
 		klee::KInstruction *target, int domain, int type, int protocol) {
 
-  CVDEBUG("Opening first availible of " << sockets_.size() << " sockets");
+  CVDEBUG("Opening first available of " << sockets_.size() << " sockets");
   for (unsigned i = 0; i<sockets_.size(); ++i) {
 		Socket &socket = sockets_[i];
 		if (!socket.is_open()) {
@@ -205,7 +205,7 @@ void NetworkManager::execute_open_socket(CVExecutor* executor,
     }
 	}
 
-	RETURN_FAILURE_NO_SOCKET("open", "no socket availible");
+	RETURN_FAILURE_NO_SOCKET("open", "no socket available");
 }
 
 std::string NetworkManager::get_byte_string(klee::ObjectState *obj, int len) {
