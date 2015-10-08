@@ -21,3 +21,6 @@ site.exp
 lit.site.cfg
 
 TAGS
+
+# configure output
+include/klee/Config/CompileTimeInfo.h
