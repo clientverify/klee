@@ -31,7 +31,7 @@
 #define DEBUG_OPENSSL_MODEL 0
 
 // Enable for fully concrete model (requires ktest)
-#define KTEST_RAND_PLAYBACK 1
+#define KTEST_RAND_PLAYBACK 0
 #define KTEST_SELECT_PLAYBACK 0
 #define KTEST_STDIN_PLAYBACK 0
 
@@ -78,6 +78,9 @@ DECLARE_MODEL(int, EVP_PKEY_verify, EVP_PKEY_CTX *ctx, const unsigned char *sig,
 //DECLARE_MODEL(int, EVP_Cipher, EVP_CIPHER_CTX *ctx, unsigned char *out, const unsigned char *in, unsigned int inl)
 //DECLARE_MODEL(int, EVP_CipherUpdate, EVP_CIPHER_CTX *ctx, unsigned char *out, int *outl, const unsigned char *in, int inl)
 //DECLARE_MODEL(int, EVP_CipherFinal, EVP_CIPHER_CTX *ctx, unsigned char *outm, int *outl)
+DECLARE_MODEL( int, BN_mod_exp_mont, BIGNUM *rr, const BIGNUM *a, const BIGNUM *p,
+                    const BIGNUM *m, BN_CTX *ctx, BN_MONT_CTX *in_mont)
+
 
 // Irrelevant output
 DECLARE_MODEL(void, print_stuff, BIO *bio, SSL *s, int full)

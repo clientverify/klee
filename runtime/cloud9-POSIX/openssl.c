@@ -272,6 +272,28 @@ DEFINE_MODEL(void, gcm_ghash_4bit, u64 Xi[2], const u128 Htable[16],const u8 *in
   CALL_UNDERLYING(gcm_ghash_4bit, Xi, Htable, inp, len);
 }
 
+
+////////////////////////////////////////////////////////////////////////////////
+// Inserted because we had Private ephemeral DH to make computed public key symbolic
+////////////////////////////////////////////////////////////////////////////////
+DEFINE_MODEL( int, BN_mod_exp_mont, BIGNUM *rr, const BIGNUM *a, const BIGNUM *p,
+                    const BIGNUM *m, BN_CTX *ctx, BN_MONT_CTX *in_mont){
+  void *symbyte_a = is_symbolic_BIGNUM(a);
+  void *symbyte_p = is_symbolic_BIGNUM(p);
+  void *symbyte_m = is_symbolic_BIGNUM(m);
+  if (symbyte_a || symbyte_p || symbyte_m) {
+    DEBUG_PRINT("BN_mod_exp_mont(): symbolic input, returning symbolic pub_key");
+    make_BN_symbolic(rr);
+    int success = 0;
+    return success;
+  }
+  DEBUG_PRINT("BN_mod_exp_mont(): concrete");
+  return CALL_UNDERLYING(BN_mod_exp_mont, rr, a, p, m, ctx, in_mont); //is return good?
+}
+
+
+
+
 ////////////////////////////////////////////////////////////////////////////////
 // Irrelevant output
 ////////////////////////////////////////////////////////////////////////////////
