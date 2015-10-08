@@ -378,3 +378,8 @@ void ExecutionState::dumpStack(llvm::raw_ostream &out) const {
     target = sf.caller;
   }
 }
+
+// Provide for a standalone dumpStack() for convenience inside gdb.
+void ExecutionState::dumpStack() const {
+  dumpStack(llvm::errs());
+}
