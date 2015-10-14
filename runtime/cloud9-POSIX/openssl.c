@@ -117,6 +117,10 @@ static void make_BN_symbolic(BIGNUM* bn) {
   int neg;
   klee_make_symbolic(&neg, sizeof(neg), "BN_neg");
   bn->neg = neg;
+
+  int top;
+  klee_make_symbolic(&top, sizeof(top), "BN_top");
+  bn->top = top;
 }
 
 // Make EC_POINT symbolic 
