@@ -288,7 +288,7 @@ DEFINE_MODEL( int, BN_mod_exp_mont, BIGNUM *rr, const BIGNUM *a, const BIGNUM *p
   if (symbyte_a || symbyte_p || symbyte_m) {
     DEBUG_PRINT("BN_mod_exp_mont(): symbolic input, returning symbolic pub_key");
     make_BN_symbolic(rr);
-    int success = 0;
+    int success = 1;
     return success;
   }
   DEBUG_PRINT("BN_mod_exp_mont(): concrete");
