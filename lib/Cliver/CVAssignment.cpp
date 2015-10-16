@@ -129,6 +129,9 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
     }
   }
 
+  // This may be a null-op how this interaction works needst to be better
+  // understood
+  // XXX FIXME also the failing cases below need to actually FAIL!
   value_disjunction = cm.simplifyExpr(value_disjunction);
 
   if (value_disjunction->getKind() == klee::Expr::Constant

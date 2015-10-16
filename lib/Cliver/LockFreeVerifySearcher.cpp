@@ -10,6 +10,7 @@
 #include "cliver/LockFreeVerifySearcher.h"
 
 #include "cliver/CVSearcher.h"
+#include "cliver/CVExecutor.h"
 #include "cliver/ClientVerifier.h"
 #include "cliver/CVExecutionState.h"
 #include "cliver/CVStream.h"
@@ -34,11 +35,12 @@ EnableLockFreeSearcher("lock-free-searcher",
                        llvm::cl::desc("Enable lock free searcer."), 
                        llvm::cl::init(false));
 
-LockFreeVerifySearcher::LockFreeVerifySearcher(CVSearcher *s)
+LockFreeVerifySearcher::LockFreeVerifySearcher(CVSearcher *s, CVExecutor *executor)
   : searcher_(s), 
     ready_size_(0),
     halt_execution_(false),
-    sleeping_(false) {
+    sleeping_(false),
+    executor_(executor) {
   searcher_->set_parent_searcher(this);
 }
 
@@ -90,10 +92,10 @@ bool LockFreeVerifySearcher::empty() {
     return false;
   }
 
-  if (searcher_->empty()) {
-    //CVMESSAGE("searcher empty");
-    return true;
-  }
+  //if (searcher_->empty()) {
+  //  //CVMESSAGE("searcher empty");
+  //  return true;
+  //}
   return true;
 }
 
@@ -115,6 +117,7 @@ klee::ExecutionState* LockFreeVerifySearcher::get_next_state(bool blocking) {
 
 void LockFreeVerifySearcher::add_state(klee::ExecutionState* es) {
   added_queue_.push(es, true);
+  //workerCond.notify_one();
 }
 
 void LockFreeVerifySearcher::add_ready_state(klee::ExecutionState* es) {
@@ -123,22 +126,30 @@ void LockFreeVerifySearcher::add_ready_state(klee::ExecutionState* es) {
 }
 
 void LockFreeVerifySearcher::add_states(const std::set<klee::ExecutionState*> &states) {
-  for (auto es : states)
+  for (auto es : states) {
     added_queue_.push(es, true);
+  }
+  //if (states.size())
+    //workerCond.notify_one();
 }
 
 void LockFreeVerifySearcher::remove_state(klee::ExecutionState* es) {
   removed_queue_.push(es, true);
+  //workerCond.notify_one();
 }
 
 void LockFreeVerifySearcher::remove_states(const std::set<klee::ExecutionState*> &states) {
   for (auto es : states)
     removed_queue_.push(es, true);
+  //if (states.size())
+  //  workerCond.notify_one();
 }
 
 void LockFreeVerifySearcher::notify(ExecutionEvent ev) {
-  if (ev.event_type == CV_HALT_EXECUTION)
+  if (ev.event_type == CV_HALT_EXECUTION) {
     halt_execution_ = true;
+    CVMESSAGE("LockFreeSearcher: HALT");
+  }
   return searcher_->notify(ev);
 }
 
@@ -162,6 +173,10 @@ void LockFreeVerifySearcher::flush_updates() {
   if (added_states.size() || removed_states.size()) {
     searcher_->update(NULL, added_states, removed_states);
     added_states.clear();
+    // Lazy State delete
+    for (auto r : removed_states) {
+      delete r;
+    }
     removed_states.clear();
   }
 }
@@ -187,26 +202,32 @@ void LockFreeVerifySearcher::Worker() {
 
     flush_updates();
 
-    if (ready_size_ < (klee::UseThreads*4) && !searcher_->empty()) {
+    if (ready_size_ < (klee::UseThreads - executor_->live_threads_ - 1) 
+    //if (ready_size_ == 0 // < (klee::UseThreads - executor_->live_threads_ - 1) 
+    //if (ready_size_ < (klee::UseThreads)
+        && !searcher_->empty()) {
       klee::ExecutionState *es = searcher_->trySelectState();
       if (es) {
         ready_stack_.push(es);
         ++ready_size_;
-        searcherCond->notify_one();
+        //searcherCond->notify_one();
+        searcherCond->notify_all();
       }
-    } else if (searcher_->empty()) {
+    //} else if (searcher_->empty()) {
       //CVMESSAGE("Searcher is empty! no ready states");
     }
 
-    //if (ready_size_ == klee::UseThreads) {
-    //  klee::WallTimer wt;
+    //{
+    ////if (ready_size_ >= (klee::UseThreads - executor_->live_threads_) 
+    ////if (ready_size_ == klee::UseThreads) {
+    //  //klee::WallTimer wt;
     //  //CVMESSAGE("Worker Thread " << klee::GetThreadID() << " sleeping.");
     //  klee::UniqueLock workerGuard(workerCondLock);
-    //  sleeping_ = true;
+    //  //sleeping_ = true;
     //  workerCond.wait(workerGuard);
     //  //CVMESSAGE("Worker Thread " << klee::GetThreadID() << " slept for " 
     //  //        << wt.check()/1000.0f << " ms" );
-    //  sleeping_ = false;
+    //  //sleeping_ = false;
     //}
   }
   CVMESSAGE("Stopping LockFreeVerifySearcher::Worker");

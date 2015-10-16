@@ -293,4 +293,9 @@ void __klee_model_printf(const char *format, ...) {
 int __klee_model_putchar(int c) {
   return 1;
 }
+
+int __klee_model_putchar_unlocked(int c) {
+  return 1;
+}
+
 #endif

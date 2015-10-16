@@ -140,6 +140,8 @@ class CVExecutor : public klee::Executor {
   virtual void executeEvent(klee::ExecutionState &state, unsigned int type,
                             long int value);
 
+ public:
+  //klee::Atomic<size_t>::type live_threads_; // # of threads not waiting
  private:
   ClientVerifier *cv_;
 	StateMerger *merger_;
@@ -156,7 +158,6 @@ class CVExecutor : public klee::Executor {
 
   klee::ThreadSpecificPointer<unsigned>::type threadInstCount;
 
-  klee::Atomic<size_t>::type live_threads_; // # of threads not waiting
 };
 
 } // end cliver namespace

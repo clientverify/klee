@@ -57,101 +57,95 @@ namespace klee {
   extern ThreadSpecificPointer<RNG>::type theRNG;
 }
 
-ParallelDFSSearcher::ParallelDFSSearcher() {
-  queue = new LockFreeStack<ExecutionState*>::type(2048);
-  queueSize = 0;
-  removedStatesCount = 0;
-}
-
-bool ParallelDFSSearcher::checkStateRemoved(ExecutionState* state) {
-  if (removedStatesCount > 0) {
-    SpinLockGuard guard(removedStatesLock);
-    if (removedStatesSet.count(state)) {
-      --removedStatesCount;
-      removedStatesSet.erase(state);
-      return true;
-    }
-  }
-  return false;
-}
-
 ExecutionState &ParallelDFSSearcher::selectState() {
   ExecutionState* state = NULL;
-  while (!queue->pop(state) || checkStateRemoved(state))
-     ;
-
-  --queueSize;
+  stack.pop(state, true);
   return *state;
 }
 
 ExecutionState* ParallelDFSSearcher::trySelectState() {
   ExecutionState* state = NULL;
-  while (queueSize > 0 && (!queue->pop(state) || checkStateRemoved(state)))
-     ;
-
-  if (state != NULL) 
-    --queueSize;
+  stack.pop(state);
   return state;
 }
 
 void ParallelDFSSearcher::update(ExecutionState *current,
                             const std::set<ExecutionState*> &addedStates,
                             const std::set<ExecutionState*> &removedStates) {
-  if (updateAndTrySelectState(current, addedStates, removedStates) && current) {
-    while (!queue->push(current))
-      ;
-
-    ++queueSize;
+  if (current && removedStates.count(current) == 0)
+    stack.push(current, true);
+  if (addedStates.size()) {
+    for (auto es : addedStates) {
+      stack.push(es, true);
+    }
   }
 }
 
 ExecutionState* ParallelDFSSearcher::updateAndTrySelectState(ExecutionState *current,
                             const std::set<ExecutionState*> &addedStates,
                             const std::set<ExecutionState*> &removedStates) {
-  if (addedStates.size()) {
-    for (std::set<ExecutionState*>::const_iterator it = addedStates.begin(),
-          ie = addedStates.end(); it != ie; ++it) {
-      ExecutionState *es = *it;
-
-      while (!queue->push(es))
-          ;
-
-      ++queueSize;
-    }
-  }
-
-  bool isCurrentRemoved = false;
-  if (removedStates.size()) {
-    for (std::set<ExecutionState*>::const_iterator it = removedStates.begin(),
-          ie = removedStates.end(); it != ie; ++it) {
-      if (*it != current) {
-        {
-          SpinLockGuard guard(removedStatesLock);
-          removedStatesSet.insert(*it);
-        }
-        ++removedStatesCount;
-        --queueSize;
-      } else {
-        isCurrentRemoved = true;
-      }
-    }
-  }
-
-  if (isCurrentRemoved)
-    return NULL;
-
-  return current;
+  update(current, addedStates, removedStates);
+  return trySelectState();
 }
 
 bool ParallelDFSSearcher::empty() {
-  return queueSize == 0;
+  return stack.size() == 0;
 }
 
 void ParallelDFSSearcher::printName(llvm::raw_ostream &os) {
   os << "ParallelDFSSearcher\n";
 }
 
+/// 
+
+// Note parallel DFS and BFS differ from single threaded impl in Searcher.cpp.
+// the parallel implementations pop and push current, where the single threaded
+// versions maintain a static stack or queue, to better match, the st version,
+// DFS should push_back current, and BFS should push_front current
+
+ExecutionState &ParallelBFSSearcher::selectState() {
+  ExecutionState* state = NULL;
+  queue.pop(state, true);
+  return *state;
+}
+
+ExecutionState* ParallelBFSSearcher::trySelectState() {
+  ExecutionState* state = NULL;
+  queue.pop(state);
+  return state;
+}
+
+void ParallelBFSSearcher::update(ExecutionState *current,
+                            const std::set<ExecutionState*> &addedStates,
+                            const std::set<ExecutionState*> &removedStates) {
+  if (addedStates.size()) {
+    for (auto es : addedStates) {
+      queue.push(es, true);
+    }
+  }
+  if (current && removedStates.count(current) == 0)
+    queue.push(current, true);
+}
+
+ExecutionState* ParallelBFSSearcher::updateAndTrySelectState(
+    ExecutionState *current,
+    const std::set<ExecutionState*> &addedStates,
+    const std::set<ExecutionState*> &removedStates) {
+
+  update(current, addedStates, removedStates);
+  return trySelectState();
+}
+
+bool ParallelBFSSearcher::empty() {
+  return queue.size() == 0;
+}
+
+void ParallelBFSSearcher::printName(llvm::raw_ostream &os) {
+  os << "ParallelBFSSearcher\n";
+}
+
 ///
+
 
 ParallelSearcher::ParallelSearcher(Searcher *internalSearcher) 
   : searcher(internalSearcher) {
@@ -400,19 +394,20 @@ void ParallelRandomPathSearcher::update(ExecutionState *current,
 bool ParallelRandomPathSearcher::empty() {
   return states.empty();
 }
-
 ///
 
 static void ParallelBatchingSearcher_ExecutionState_Cleanup(ExecutionState* es) {}
 
+__thread ExecutionState* lastState = NULL;
 ParallelBatchingSearcher::ParallelBatchingSearcher(Searcher *_baseSearcher,
                                    double _timeBudget,
                                    unsigned _instructionBudget)
   : baseSearcher(_baseSearcher),
     initialTimeBudget(_timeBudget),
-    initialInstructionBudget(_instructionBudget),
+    initialInstructionBudget(_instructionBudget) {}
+    //initialInstructionBudget(_instructionBudget),
     // reset calls delete on state otherwise
-    lastState(ParallelBatchingSearcher_ExecutionState_Cleanup) {}
+    //lastState(ParallelBatchingSearcher_ExecutionState_Cleanup) {}
 
 ParallelBatchingSearcher::~ParallelBatchingSearcher() {
   delete baseSearcher;
@@ -421,35 +416,55 @@ ParallelBatchingSearcher::~ParallelBatchingSearcher() {
 ExecutionState* ParallelBatchingSearcher::trySelectState() {
   if (!lastStartTime.get() || !timeBudget.get() || !lastStartInstructions.get()) {
 
-    lastStartTime.reset(new util::TimePoint());
-    *lastStartTime = util::Clock::now();
+    lastStartTime.reset(new llvm::sys::TimeValue());
+    *lastStartTime = llvm::sys::TimeValue::now();
 
     timeBudget.reset(new double());
-    *timeBudget = 0;
+    *timeBudget = initialTimeBudget;
 
     lastStartInstructions.reset(new unsigned());
-    *lastStartInstructions = 0;
+    *lastStartInstructions = initialInstructionBudget;
   }
 
-  double delta = util::DurationToSeconds(util::Clock::now() - *lastStartTime).count();
-  if (!lastState.get()
+  double delta = (double)(llvm::sys::TimeValue::now() - *lastStartTime).seconds();
+  //double delta = util::DurationToSeconds(util::Clock::now() - *lastStartTime).count();
+  //if (!lastState.get()
+  //    || (delta > (*timeBudget)) )
+  //    /*|| (stats::instructions-lastStartInstructions)>instructionBudget)*/
+  //{
+  //  if (lastState.get()) {
+  //    if (delta > ((*timeBudget) * 1.1)) {
+  //      //llvm::errs() << "KLEE: increased time budget from " << *timeBudget
+  //      //             << " to " << delta << "\n";
+  //      *timeBudget = delta;
+  //    }
+  //  } else {
+  //    lastState.reset(baseSearcher->trySelectState());
+  //  }
+
+  //  *lastStartTime = util::Clock::now();
+  //  //*lastStartInstructions = stats::instructions;
+  //}
+  //return lastState.get();
+  
+  if (!lastState
       || (delta > (*timeBudget)) )
       /*|| (stats::instructions-lastStartInstructions)>instructionBudget)*/
   {
-    if (lastState.get()) {
-      if (delta > ((*timeBudget) * 1.1)) {
-        //llvm::errs() << "KLEE: increased time budget from " << *timeBudget
-        //             << " to " << delta << "\n";
-        *timeBudget = delta;
-      }
+    if (lastState) {
+      //if (delta > ((*timeBudget) * 1.1)) {
+      //  llvm::errs() << "KLEE: increased time budget from " << *timeBudget
+      //               << " to " << delta << "\n";
+      //  *timeBudget = delta;
+      //}
     } else {
-      lastState.reset(baseSearcher->trySelectState());
+      lastState = baseSearcher->trySelectState();
     }
 
-    *lastStartTime = util::Clock::now();
+    *lastStartTime = llvm::sys::TimeValue::now();
     //*lastStartInstructions = stats::instructions;
   }
-  return lastState.get();
+  return lastState;
 }
 
 ExecutionState &ParallelBatchingSearcher::selectState() {
@@ -457,7 +472,8 @@ ExecutionState &ParallelBatchingSearcher::selectState() {
 }
 
 bool ParallelBatchingSearcher::empty() {
-  if (lastState.get()) {
+  //if (lastState.get()) {
+  if (lastState) {
     return false;
   }
   return baseSearcher->empty();
@@ -466,8 +482,10 @@ bool ParallelBatchingSearcher::empty() {
 void ParallelBatchingSearcher::update(ExecutionState *current,
                               const std::set<ExecutionState*> &addedStates,
                               const std::set<ExecutionState*> &removedStates) {
-  if (lastState.get() != current || addedStates.size() || removedStates.size()) {
-    lastState.reset(0);
+  //if (lastState.get() != current || addedStates.size() || removedStates.size()) {
+  if (lastState != current || addedStates.size() || removedStates.size()) {
+    //lastState.reset(0);
+    lastState = 0;
     baseSearcher->update(current, addedStates, removedStates);
   }
 }
@@ -477,8 +495,10 @@ ExecutionState* ParallelBatchingSearcher::updateAndTrySelectState(
     const std::set<ExecutionState*> &addedStates,
     const std::set<ExecutionState*> &removedStates) {
 
-  if (lastState.get() != current || addedStates.size() || removedStates.size()) {
-    lastState.reset(0);
+  //if (lastState.get() != current || addedStates.size() || removedStates.size()) {
+  if (lastState != current || addedStates.size() || removedStates.size()) {
+    //lastState.reset(0);
+    lastState = 0;
     baseSearcher->update(current, addedStates, removedStates);
     return NULL;
   }

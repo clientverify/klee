@@ -12,8 +12,12 @@
 #include "cliver/CVStream.h"
 #include "CVCommon.h"
 
+#include <algorithm>
+
 namespace cliver {
 	
+extern llvm::cl::opt<unsigned> MaxKExtension;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 bool ExecutionStatePropertyLT::operator()(const ExecutionStateProperty* a, 
@@ -155,10 +159,18 @@ int EditDistanceExecutionStateProperty::compare(
   //    return _b->edit_distance - edit_distance;
   //  }
   //}
+  //
+  
+  //// Reversed for priority queue!
+  //if (_b->edit_distance != edit_distance)
+  //  return _b->edit_distance - edit_distance;
 
-  // Reversed for priority queue!
-  if (_b->edit_distance != edit_distance)
-    return _b->edit_distance - edit_distance;
+  int maxK = MaxKExtension;
+  int ed = std::min(edit_distance, maxK);
+  int ed_b = std::min(_b->edit_distance, maxK);
+
+  if (ed_b != ed)
+    return ed_b - ed;
 
   if (round != _b->round)
     return round - _b->round;
@@ -197,9 +209,9 @@ int XPilotEditDistanceExecutionStateProperty::compare(
 	if (_b->is_recv_processing != is_recv_processing)
     return (char)_b->is_recv_processing - (char)is_recv_processing;
 
-  // Reversed for priority queue!
-  if (_b->edit_distance != edit_distance)
-    return _b->edit_distance - edit_distance;
+  //// Reversed for priority queue!
+  //if (_b->edit_distance != edit_distance)
+  //  return _b->edit_distance - edit_distance;
 
   if (round != _b->round)
     return round - _b->round;
@@ -211,6 +223,17 @@ int XPilotEditDistanceExecutionStateProperty::compare(
 		return pass_count - _b->pass_count;
 
   // Ignore symbolic_var count for XPilot
+  // Reversed for priority queue!
+  if (_b->symbolic_vars != symbolic_vars)
+    return _b->symbolic_vars - symbolic_vars;
+
+  int maxK = MaxKExtension;
+  int ed = std::min(edit_distance, maxK);
+  int ed_b = std::min(_b->edit_distance, maxK);
+
+  if (ed_b != ed)
+    return ed_b - ed;
+
 
   return 0;
 }

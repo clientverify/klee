@@ -255,9 +255,9 @@ void CVExecutor::callExternalFunction(klee::ExecutionState &state,
   if (NoXWindows && function->getName()[0] == 'X') { 
     if (function->getName().str() == "XParseGeometry" ||
         function->getName().str() == "XStringToKeysym") {
-      CVMESSAGE("Calling X function: " << function->getName().str());
+      CVDEBUG("Calling X function: " << function->getName().str());
     } else {
-      CVMESSAGE("Skipping function call to " << function->getName().str());
+      CVDEBUG("Skipping function call to " << function->getName().str());
       return;
     }
   }
@@ -277,21 +277,26 @@ void CVExecutor::parallelUpdateStates(klee::ExecutionState *current) {
   // update atomic stateCount
   stateCount += (addedCount - removedCount);
 
-  // Delete removed states
-  auto& removedStates = getContext().removedStates;
-  for (auto es : removedStates) {
-    delete es;
+  if (!EnableLockFreeSearcher) {
+    // Delete removed states 
+    // TODO move all state delete into cvsearcher
+    auto& removedStates = getContext().removedStates;
+    for (auto es : removedStates) {
+      delete es;
+    }
   }
 
   // Clear thread local state sets
   getContext().removedStates.clear();
   getContext().addedStates.clear();
 
+  if (!EnableLockFreeSearcher) {
   // Wake up sleeping threads
   if (addedCount == 1) {
     searcherCond.notify_one();
   } else if (addedCount > 1) {
     searcherCond.notify_all();
+  }
   }
 }
 
@@ -506,11 +511,7 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
                        std::set<klee::ExecutionState*>(),
                        std::set<klee::ExecutionState*>());
 
-      if (pauseExecution) {
-        threadBarrier->wait();
-        threadBarrier->wait();
-      }
-
+#if 1
       if (klee::UseThreads > 1) {
         klee::UniqueLock searcherCondGuard(searcherCondLock);
         if (!pauseExecution && live_threads_ > 1) {
@@ -519,6 +520,28 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
           ++live_threads_;
         }
       }
+
+      if (pauseExecution) {
+        threadBarrier->wait();
+        threadBarrier->wait();
+      }
+
+
+#endif
+
+#if 0
+      {
+        //if (!pauseExecution && live_threads_ > 1) {
+          --live_threads_;
+          {
+          klee::UniqueLock searcherCondGuard(searcherCondLock);
+          searcherCond.wait(searcherCondGuard);
+          }
+          ++live_threads_;
+        //}
+      }
+#endif
+
     }
 
     // Check if we are running out of memory
@@ -617,7 +640,7 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
   LockFreeVerifySearcher* lfvs = NULL;
 
   if (EnableLockFreeSearcher)
-    cv_searcher = lfvs = new LockFreeVerifySearcher(cv_searcher);
+    cv_searcher = lfvs = new LockFreeVerifySearcher(cv_searcher, this);
 
   if (BufferedSearcherSize > 0)
     cv_searcher = new ThreadBufferedSearcher(cv_searcher);
@@ -627,6 +650,8 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
   if (!searcher) {
     klee::klee_error("failed to create searcher");
   }
+
+  cv_->hook(cv_searcher);
 
   threadBarrier = new klee::Barrier(klee::UseThreads);
 

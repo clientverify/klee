@@ -119,6 +119,7 @@ public:
 
   typedef std::pair<ExecutionState*,ExecutionState*> StatePair;
 
+  Atomic<int>::type live_threads_;
 protected:
   class TimerInfo;
 
@@ -505,6 +506,7 @@ public:
   
   virtual void setHaltExecution(bool value) {
     haltExecution = value;
+    searcherCond.notify_all();
   }
 
   virtual void setInhibitForking(bool value) {

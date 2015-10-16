@@ -137,6 +137,10 @@ using namespace metaSMT::solver;
 // Not used if USE_BOOST_THREAD_SPECIFIC_PTR
 __thread Executor::ExecutorContext*  g_executor_context = NULL;
 
+namespace cliver {
+extern llvm::cl::opt<bool> EnableLockFreeSearcher;
+}
+
 namespace klee {
   extern llvm::cl::opt<bool> DumpStatesOnHalt;
   extern llvm::cl::opt<bool> NoPreferCex;
@@ -259,6 +263,7 @@ void Executor::initializePerThread(ExecutionState &state, MemoryManager* memory)
 #endif
 }
 
+#if 1
 /// Caller will force all other threads to finish execution current instruction
 /// and wait for UnPauseExecution()
 bool Executor::PauseExecution() {
@@ -290,6 +295,49 @@ void Executor::UnPauseExecution() {
     pauseExecutionMutex.unlock();
   }
 }
+#endif
+
+
+#if 0
+/// Caller will force all other threads to finish execution current instruction
+/// and wait for UnPauseExecution()
+bool Executor::PauseExecution() {
+  if (totalThreadCount > 1) {
+    if (!haltExecution && pauseExecutionMutex.try_lock()) {
+
+      // Set pauseExecution condition
+      {
+        //LockGuard searcherCondGuard(searcherCondLock);
+        pauseExecution = true;
+      }
+
+      //// Wake up all threads and wait at first barrier
+      //searcherCond.notify_all();
+      //threadBarrier->wait();
+
+      if (cliver::EnableLockFreeSearcher)  {
+        while (live_threads_ > 0) {}
+      } else {
+        while (live_threads_ > 1) {}
+      }
+
+      return true;
+    }
+    return false;
+  }
+  // Pausing always "succeeds" when there is just 1 thread
+  return true;
+}
+
+void Executor::UnPauseExecution() {
+  if (totalThreadCount > 1) {
+    pauseExecution = false;
+    pauseExecutionMutex.unlock();
+    searcherCond.notify_one();
+    //threadBarrier->wait();
+  }
+}
+#endif
 
 void Executor::parallelUpdateStates(ExecutionState *current) {
   unsigned addedCount = getContext().addedStates.size();
@@ -329,6 +377,7 @@ void Executor::parallelUpdateStates(ExecutionState *current) {
   }
 }
 
+ThreadSpecificPointer<unsigned>::type ktInstCount;
 void Executor::execute(ExecutionState *initialState, MemoryManager *memory) {
   Mutex lock;
   Mutex memoryMutex;
@@ -341,6 +390,9 @@ void Executor::execute(ExecutionState *initialState, MemoryManager *memory) {
   // Wait until all threads have initialized
   threadBarrier->wait();
 
+  ktInstCount.reset(new unsigned());
+  *ktInstCount = 0;
+
   ExecutionState *statePtr = NULL;
   while (!empty() && !haltExecution) {
 
@@ -350,12 +402,13 @@ void Executor::execute(ExecutionState *initialState, MemoryManager *memory) {
     if (statePtr != NULL) {
       ExecutionState &state = *statePtr;
       
-      {
-      LockGuard guard(state.stepInstructionLock);
       KInstruction *ki = state.pc;
-      stepInstruction(state);
-      executeInstruction(state, ki);
+      {
+        //LockGuard guard(state.stepInstructionLock);
+        stepInstruction(state);
       }
+      executeInstruction(state, ki);
+      ++(*ktInstCount);
       processTimers(&state, MaxInstructionTime);
 
       // Update searcher with new states and get next state to execute
@@ -368,7 +421,7 @@ void Executor::execute(ExecutionState *initialState, MemoryManager *memory) {
     }
 
     while (pauseExecution
-           || (searcher->empty() && !empty() && !haltExecution)) {
+           || (!statePtr && searcher->empty() && !empty() && !haltExecution)) {
 
       if (statePtr) {
         searcher->update(statePtr,
@@ -461,6 +514,8 @@ void Executor::execute(ExecutionState *initialState, MemoryManager *memory) {
   // Release TSS memory (i.e., don't destroy with thread); the memory manager
   // for this thread may still be needed in dumpState
   this->memory.release();
+  klee_warning("Thread: %d executed %d instructions", 
+               GetThreadID(), *ktInstCount);
 }
 
 void Executor::parallelRun(ExecutionState &initialState) {
@@ -558,9 +613,10 @@ void Executor::parallelRun(ExecutionState &initialState) {
   threadBarrier = new Barrier(totalThreadCount);
 
   if (!empty()) {
-    if (totalThreadCount == 1) {
-      execute(&initialState, NULL);
-    } else {
+    //if (totalThreadCount == 1) {
+    //  execute(&initialState, NULL);
+    //} else {
+    {
       ThreadGroup threadGroup;
       for (unsigned i=0; i<totalThreadCount; ++i) {
         // Initialize MemoryManager outside of thread

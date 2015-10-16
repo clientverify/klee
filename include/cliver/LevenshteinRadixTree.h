@@ -534,6 +534,7 @@ class KLevenshteinRadixTree
   //===-------------------------------------------------------------------===//
   // Extra methods, testing, utility
   //===-------------------------------------------------------------------===//
+  int current_k() { return k_; }
   
   int min_edit_distance() { return min_distance_; }
 
@@ -580,6 +581,8 @@ class KLevenshteinRadixTree
   }
 
   KLevenshteinRadixTree* clone_internal() {
+    //static klee::Mutex clone_lock;
+    //klee::LockGuard guard(clone_lock);
     KLevenshteinRadixTree *lrt 
       = new KLevenshteinRadixTree(this->clone_node(this->root_));
     lrt->row_ = this->row_;

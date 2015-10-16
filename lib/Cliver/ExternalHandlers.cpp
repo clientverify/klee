@@ -36,7 +36,7 @@ llvm::cl::opt<bool>
 XEventOptimization("xevent-optimization", llvm::cl::init(false));
 
 llvm::cl::opt<unsigned>
-QUEUE_SIZE("queue-size", llvm::cl::init(3));
+QUEUE_SIZE("queue-size", llvm::cl::init(5));
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -138,6 +138,7 @@ void ExternalHandler_XEventsQueued(
       && cv_state->network_manager()->socket()->type() != SocketEvent::SEND) {
       cv_executor->bind_local(target, cv_state, 0);
   } else {
+    CVMESSAGE("QUEUE set to " << QUEUE_SIZE);
     cv_executor->bind_local(target, cv_state, QUEUE_SIZE);
   }
 }

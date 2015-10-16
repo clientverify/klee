@@ -47,4 +47,10 @@ XSTAT( edit_distance_self_last_medoid,           EditDistSelfLastMedoid,        
 XSTAT( edit_distance_self_socket_event,          EditDistSelfSocketEvent,        EDSLSE   ) 
 XSTAT( edit_distance_socket_event_first_medoid,  EditDistSocketEventFirstMedoid, EDSEFMed ) 
 XSTAT( edit_distance_socket_event_last_medoid,   EditDistSocketEventLastMedoid,  EDSELMed ) 
+XSTAT( backtrack_count,                          BackTrackCount,                 BTCnt) 
+XSTAT( rewrite_time,                             RewriteTime,                    RWTm     ) 
+XSTAT( simplify_expr_time,                       SimplifyExprTime,               SiETm    ) 
+XSTAT( simplify_expr_time_v2,                    SimplifyExprTimeV2,             SiETmV2  ) 
+XSTAT( simplify_expr_time_v3,                    SimplifyExprTimeV3,             SiETmV3  ) 
+XSTAT( simplify_expr_time_v4,                    SimplifyExprTimeV4,             SiETmV4  ) 
 

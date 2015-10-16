@@ -11,6 +11,9 @@
 #define KLEE_CONSTRAINTS_H
 
 #include "klee/Expr.h"
+#include "klee/util/ExprHashMap.h"
+
+#include <unordered_map>
 
 // FIXME: Currently we use ConstraintManager for two things: to pass
 // sets of constraints around, and to optimize constraints. We should
@@ -30,10 +33,13 @@ public:
 
   // create from constraints with no optimization
   explicit
-  ConstraintManager(const std::vector< ref<Expr> > &_constraints) :
-    constraints(_constraints) {}
+  //ConstraintManager(const std::vector< ref<Expr> > &_constraints) :
+  //  constraints(_constraints) {}
 
-  ConstraintManager(const ConstraintManager &cs) : constraints(cs.constraints) {}
+  //ConstraintManager(const ConstraintManager &cs) : constraints(cs.constraints) {}
+  ConstraintManager(const std::vector< ref<Expr> > &_constraints);
+
+  ConstraintManager(const ConstraintManager &cs);
 
   typedef std::vector< ref<Expr> >::const_iterator constraint_iterator;
   typedef std::vector< ref<Expr> >::iterator nonconst_constraint_iterator;
@@ -43,6 +49,9 @@ public:
   void simplifyForValidConstraint(ref<Expr> e);
 
   ref<Expr> simplifyExpr(ref<Expr> e) const;
+  ref<Expr> simplifyExprV2(ref<Expr> e) const;
+  ref<Expr> simplifyExprV3(ref<Expr> e) const;
+  ref<Expr> simplifyExprV4(ref<Expr> e) const;
 
   void addConstraint(ref<Expr> e);
   
@@ -81,11 +90,17 @@ public:
   
 private:
   std::vector< ref<Expr> > constraints;
+  ExprHashMap< ref<Expr> > equalities_hash_map;
+  std::map< ref<Expr>, ref<Expr> > equalities_map;
+  std::unordered_map< unsigned, std::pair< ref<Expr>, ref<Expr> > > equalities_hashval_map;
+  //ExprHashMap< ref<Expr> > equalities_hash_map;;
+
 
   // returns true iff the constraints were modified
   bool rewriteConstraints(ExprVisitor &visitor);
 
   void addConstraintInternal(ref<Expr> e);
+  void addToEqualitiesMap(ref<Expr> e);
 };
 
 }

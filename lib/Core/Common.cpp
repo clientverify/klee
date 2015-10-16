@@ -47,6 +47,22 @@ static bool shouldSetColor(const char* pfx, const char* msg, const char* prefixT
   return false;
 }
 
+#if 0
+static void klee_vfmessage(FILE *fp, const char *pfx, const char *msg,
+                           va_list ap) {}
+static void klee_vomessage_write(std::ostream* os, const char *pfx, const char* buf) {}
+static void klee_vomessage(std::ostream* os, const char *pfx, const char *msg, 
+                           va_list ap) {}
+static void klee_vmessage(const char *pfx, bool onlyToFile, const char *msg, 
+                          va_list ap) {}
+void klee::klee_message(const char *msg, ...) {}
+void klee::klee_message_to_file(const char *msg, ...) {}
+void klee::klee_error(const char *msg, ...) {}
+void klee::klee_warning(const char *msg, ...) {}
+void klee::klee_warning_once(const void *id, const char *msg, ...) {}
+#endif
+#if 1
+
 static void klee_vfmessage(FILE *fp, const char *pfx, const char *msg,
                            va_list ap) {
   if (!fp) {
@@ -242,3 +258,4 @@ void klee::klee_warning_once(const void *id, const char *msg, ...) {
     va_end(ap);
   }
 }
+#endif

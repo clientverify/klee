@@ -51,11 +51,6 @@ struct Guard {
 typedef boost::barrier Barrier;
 typedef boost::condition_variable ConditionVariable;
 
-template<class T>
-struct LockFreeStack {
-  typedef boost::lockfree::stack<T> type;
-};
-
 } // end namespace klee
 
 #endif /* KLEE_MUTEX_H */

@@ -13,8 +13,11 @@
 #include "Searcher.h"
 
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/TimeValue.h"
 
 #include "klee/Internal/System/Time.h"
+#include "klee/Internal/Support/Timer.h"
+#include "klee/Internal/ADT/LockFreeQueue.h"
 #include "klee/util/Mutex.h"
 #include "klee/util/Thread.h"
 
@@ -40,18 +43,8 @@ namespace klee {
   };
 
   class ParallelDFSSearcher : public Searcher {
-    LockFreeStack<ExecutionState*>::type* queue;
-    std::set<ExecutionState*> removedStatesSet;
-    SpinLock removedStatesLock;
-    SharedMutex statesMutex;
-
-    Atomic<int>::type queueSize;
-    Atomic<int>::type removedStatesCount;
-
-  private:
-    bool checkStateRemoved(ExecutionState* state);
+    LockFreeStack<ExecutionState*> stack;
   public:
-    ParallelDFSSearcher();
     ExecutionState &selectState();
     ExecutionState* trySelectState();
     void update(ExecutionState *current,
@@ -63,6 +56,22 @@ namespace klee {
     bool empty();
     void printName(llvm::raw_ostream &os);
   };
+
+  class ParallelBFSSearcher : public Searcher {
+    LockFreeQueue<ExecutionState*> queue;
+  public:
+    ExecutionState &selectState();
+    ExecutionState* trySelectState();
+    void update(ExecutionState *current,
+                const std::set<ExecutionState*> &addedStates,
+                const std::set<ExecutionState*> &removedStates);
+    ExecutionState* updateAndTrySelectState(ExecutionState *current,
+                    const std::set<ExecutionState*> &addedStates,
+                    const std::set<ExecutionState*> &removedStates);
+    bool empty();
+    void printName(llvm::raw_ostream &os);
+  };
+
 
   class ParallelWeightedRandomSearcher : public Searcher {
   public:
@@ -134,9 +143,10 @@ namespace klee {
     const unsigned initialInstructionBudget;
     const double initialTimeBudget;
 
-    ThreadSpecificPointer<ExecutionState>::type  lastState;
+    //ThreadSpecificPointer<ExecutionState>::type  lastState;
     ThreadSpecificPointer<double>::type          timeBudget;
-    ThreadSpecificPointer<util::TimePoint>::type lastStartTime;
+  //  ThreadSpecificPointer<util::TimePoint>::type lastStartTime;
+    ThreadSpecificPointer<llvm::sys::TimeValue>::type lastStartTime;
     ThreadSpecificPointer<unsigned>::type        lastStartInstructions;
 
   public:

@@ -235,7 +235,13 @@ int nuklear_XEventsQueued(Display *display, int mode) {
   //g_event_count = event_count;
   //return g_event_count;
   //g_event_count = MAX_EVENT_COUNT;
-  g_event_count = klee_nuklear_XEventsQueued();
+  
+  //g_event_count = klee_nuklear_XEventsQueued();
+  //return g_event_count;
+
+  int event_count;
+  klee_make_symbolic(&event_count, sizeof(int), "XEventsQueued_count");
+  g_event_count = event_count;
   return g_event_count;
 }
 

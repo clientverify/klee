@@ -220,9 +220,10 @@ SearcherStage* VerifySearcher::select_stage() {
 
     lock_.unlock();
     if (cv_->executor()->PauseExecution()) {
-      lock_.lock();
       if (parent_searcher_ != NULL)
         parent_searcher_->flush();
+
+      lock_.lock();
 
       // Start looking for a non-empty stage in greatest round seen so far
       SearcherStage* new_current_stage = NULL;

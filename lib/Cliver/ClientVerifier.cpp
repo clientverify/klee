@@ -243,7 +243,7 @@ void ClientVerifier::initialize() {
   merger_ = new StateMerger(pruner_, this);
 
   searcher_ = CVSearcherFactory::create(NULL, this, merger_);
-  hook(searcher_);
+  //hook(searcher_); // now done in CVExecutor, hack or OK?
   
   execution_trace_manager_ = ExecutionTraceManagerFactory::create(this);
   if (execution_trace_manager_) {
@@ -444,6 +444,7 @@ void ClientVerifier::set_round(int round) {
   // Set new round number
   round_number_ = round;
   stats::round_number = round;
+  ++stats::backtrack_count;
 
   // Rebuild solvers each round change to keep caches fresh.
   if (RebuildSolvers)

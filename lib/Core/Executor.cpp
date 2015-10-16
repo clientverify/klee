@@ -8,6 +8,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "Common.h"
+#include "cliver/CliverStats.h"
+#include "klee/Internal/Support/Timer.h"
 #include "Executor.h"
 #include "Context.h"
 #include "CoreStats.h"
@@ -1175,7 +1177,7 @@ Executor::toConstant(ExecutionState &state,
      << (*(state.pc)).info->line << ")";
 
   if (AllExternalWarnings)
-    klee_warning(reason, os.str().c_str());
+    klee_warning("%s", os.str().c_str());
   else
     klee_warning_once(reason, "%s", os.str().c_str());
 
@@ -1241,7 +1243,7 @@ void Executor::stepInstruction(ExecutionState &state) {
   state.prevPC = state.pc;
   ++state.pc;
 
-  if (stats::instructions==StopAfterNInstructions)
+  if (StopAfterNInstructions && stats::instructions==StopAfterNInstructions)
     haltExecution = true;
 }
 
@@ -3573,10 +3575,10 @@ void Executor::runFunctionAsMain(Function *f,
 
   processTree = new PTree(state);
   state->ptreeNode = processTree->root;
-  if (UseThreads > 1)
+  //if (UseThreads > 1)
     parallelRun(*state);
-  else
-    run(*state);
+  //else
+  //  run(*state);
   delete processTree;
   processTree = 0;
 

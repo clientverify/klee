@@ -56,6 +56,11 @@ namespace klee {
 
 
   cl::opt<bool>
+  ForceParallel("force-parallel-searcher",
+           cl::desc("Force the usage of parallel searcher impl when single-threaded"), cl::init(false));
+ 
+
+  cl::opt<bool>
   UseMerge("use-merge", 
            cl::desc("Enable support for klee_merge() (experimental)"));
  
@@ -103,7 +108,7 @@ Searcher *getNewParallelSearcher(Searcher::CoreSearchType type, Executor &execut
   Searcher *searcher = NULL;
   switch (type) {
   case Searcher::DFS: searcher = new ParallelDFSSearcher(); break;
-  case Searcher::BFS: searcher = new ParallelSearcher(new BFSSearcher()); break;
+  case Searcher::BFS: searcher = new ParallelBFSSearcher(); break;
   case Searcher::RandomState: searcher = new ParallelSearcher(new RandomSearcher()); break;
   case Searcher::RandomPath: searcher = new ParallelRandomPathSearcher(executor); break;
   case Searcher::NURS_CovNew: searcher = new ParallelWeightedRandomSearcher(executor, ParallelWeightedRandomSearcher::CoveringNew); break;
@@ -121,7 +126,7 @@ Searcher *klee::constructUserSearcher(Executor &executor) {
 
   // Check for invalid searcher configurations
   if (UseMerge || UseBumpMerge) {
-    if (UseThreads > 1) {
+    if (UseThreads > 1 || ForceParallel) {
       llvm::raw_ostream &os = executor.getHandler().getInfoStream();
       os << "Invalid configuration: multiple threads not supported this configuration. ";
       os << "Setting thread count to 1\n";
@@ -144,7 +149,7 @@ Searcher *klee::constructUserSearcher(Executor &executor) {
   }
 
   Searcher *searcher = NULL;
-  if (UseThreads > 1 && CoreSearch.size() == 1)
+  if ((UseThreads > 1 || ForceParallel) && CoreSearch.size() == 1)
     searcher = getNewParallelSearcher(CoreSearch[0], executor);
   else
     searcher = getNewSearcher(CoreSearch[0], executor);
@@ -160,7 +165,7 @@ Searcher *klee::constructUserSearcher(Executor &executor) {
   }
 
   if (UseBatchingSearch) {
-    if (UseThreads > 1) {
+    if (UseThreads > 1 || ForceParallel) {
       searcher = new ParallelBatchingSearcher(searcher, BatchTime, BatchInstructions);
     } else {
       searcher = new BatchingSearcher(searcher, BatchTime, BatchInstructions);
@@ -180,7 +185,7 @@ Searcher *klee::constructUserSearcher(Executor &executor) {
     searcher = new IterativeDeepeningTimeSearcher(searcher);
   }
 
-  if (UseThreads > 1 && CoreSearch.size() > 1) {
+  if ((UseThreads > 1 || ForceParallel)  && CoreSearch.size() > 1) {
     searcher = new ParallelSearcher(searcher);
   }
 

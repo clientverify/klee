@@ -15,9 +15,11 @@
 
 namespace cliver {
 
+class CVExecutor;
+
 class LockFreeVerifySearcher : public CVSearcher {
  public:
-  LockFreeVerifySearcher(CVSearcher *s);
+  LockFreeVerifySearcher(CVSearcher *s, CVExecutor* executor);
 
   virtual klee::ExecutionState &selectState();
 
@@ -70,6 +72,7 @@ class LockFreeVerifySearcher : public CVSearcher {
   klee::Mutex workerCondLock;
 
   CVSearcher* searcher_;
+  CVExecutor* executor_; //hack for live_threads_
 }; 
 
 } // end namespace cliver

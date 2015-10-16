@@ -302,6 +302,7 @@ void StatsTracker::stepInstruction(ExecutionState &es) {
     if (es.instsSinceCovNew)
       ++es.instsSinceCovNew;
 
+    // FIXME getIndexedValue is slow! we need to use cached value, not Fullget
     if (sf.kf->trackCoverage && instructionIsCoverable(inst)) {
       if (!theStatisticManager->getIndexedValue(stats::coveredInstructions, ii.id)) {
         // Checking for actual stoppoints avoids inconsistencies due
@@ -867,26 +868,26 @@ void StatsTracker::computeReachableUncovered() {
     }
   } while (changed);
 
-  LockGuard statesGuard(executor.statesMutex);
-  for (std::set<ExecutionState*>::iterator it = executor.states.begin(),
-         ie = executor.states.end(); it != ie; ++it) {
-    ExecutionState *es = *it;
-    uint64_t currentFrameMinDist = 0;
-    for (ExecutionState::stack_ty::iterator sfIt = es->stack.begin(),
-           sf_ie = es->stack.end(); sfIt != sf_ie; ++sfIt) {
-      ExecutionState::stack_ty::iterator next = sfIt + 1;
-      KInstIterator kii;
+  //LockGuard statesGuard(executor.statesMutex);
+  //for (std::set<ExecutionState*>::iterator it = executor.states.begin(),
+  //       ie = executor.states.end(); it != ie; ++it) {
+  //  ExecutionState *es = *it;
+  //  uint64_t currentFrameMinDist = 0;
+  //  for (ExecutionState::stack_ty::iterator sfIt = es->stack.begin(),
+  //         sf_ie = es->stack.end(); sfIt != sf_ie; ++sfIt) {
+  //    ExecutionState::stack_ty::iterator next = sfIt + 1;
+  //    KInstIterator kii;
 
-      if (next==es->stack.end()) {
-        kii = es->pc;
-      } else {
-        kii = next->caller;
-        ++kii;
-      }
-      
-      sfIt->minDistToUncoveredOnReturn = currentFrameMinDist;
-      
-      currentFrameMinDist = computeMinDistToUncovered(kii, currentFrameMinDist);
-    }
-  }
+  //    if (next==es->stack.end()) {
+  //      kii = es->pc;
+  //    } else {
+  //      kii = next->caller;
+  //      ++kii;
+  //    }
+  //    
+  //    sfIt->minDistToUncoveredOnReturn = currentFrameMinDist;
+  //    
+  //    currentFrameMinDist = computeMinDistToUncovered(kii, currentFrameMinDist);
+  //  }
+  //}
 }

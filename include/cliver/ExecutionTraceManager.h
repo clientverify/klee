@@ -74,6 +74,8 @@ struct ExecutionStage {
         etrace_tree(NULL), 
         socket_event(NULL),
         root_ed_tree(NULL),
+        ed_tree_init(false),
+        ed_tree_ready(false),
         current_k(2) {}
 
   ExecutionStateProperty*          root_property;
@@ -88,6 +90,8 @@ struct ExecutionStage {
   int                              current_k;
   StatePropertyEditDistanceTreeMap ed_tree_map;
 
+  klee::Atomic<bool>::type ed_tree_init;
+  klee::Atomic<bool>::type ed_tree_ready;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -143,10 +147,17 @@ class VerifyExecutionTraceManager : public ExecutionTraceManager {
   void recompute_property(ExecutionStateProperty *property);
   void update_edit_distance(ExecutionStateProperty *property, CVExecutionState *state);
 
-  void create_ed_tree(CVExecutionState* state);
+  void create_ed_tree(CVExecutionState* state,
+                             ExecutionStage* stage,
+                             TrainingFilter tf,
+                             const SocketEvent* socket_event);
 
   void compute_self_training_stats(CVExecutionState* state,
                                    std::vector<TrainingObject*> &selected);
+
+  //create_ed_tree_future(CVExecutionState* state);
+  void
+  create_ed_tree_future(CVExecutionState* state);
 
   ExecutionTraceEditDistanceTree* get_ed_tree(
       ExecutionStage* stage,
@@ -160,6 +171,8 @@ class VerifyExecutionTraceManager : public ExecutionTraceManager {
     ExecutionStage* stage,
     ExecutionStateProperty* property, 
     ExecutionTraceEditDistanceTree* ed_tree);
+
+  ExecutionTraceEditDistanceTree* get_root_ed_tree(ExecutionStage* stage);
 
   ExecutionTraceEditDistanceTree* clone_ed_tree(ExecutionStateProperty *property);
 

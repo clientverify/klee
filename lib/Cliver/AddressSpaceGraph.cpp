@@ -755,7 +755,7 @@ void AddressSpaceGraph::extract_pointers(klee::ObjectState *obj,
     if (obj->isBytePointer(i)) {
       for (unsigned j = 0; j < pointer_width_/8; ++j) {
         if (!obj->isBytePointer(i+j)) {
-          CVMESSAGE("Unsupported Comparison: invalid pointer length: " << j-1);
+          //CVMESSAGE("Unsupported Comparison: invalid pointer length: " << j-1);
           unsupported_comparison_ = true;
         }
       }
@@ -780,7 +780,7 @@ void AddressSpaceGraph::extract_pointers(klee::ObjectState *obj,
           }
         } else {
           CVDEBUG_S(cv_state_->id(), "Non-concrete pointer");
-          CVMESSAGE("Unsupported Comparison: non-concrete pointer");
+          //CVMESSAGE("Unsupported Comparison: non-concrete pointer");
           unsupported_comparison_ = true;
         }
       }
