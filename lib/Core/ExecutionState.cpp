@@ -354,7 +354,7 @@ void ExecutionState::dumpStack(llvm::raw_ostream &out) const {
     const StackFrame &sf = *it;
     Function *f = sf.kf->function;
     const InstructionInfo &ii = *target->info;
-    out << "\t#" << idx++;
+    out << "\t#" << idx++ << " ";
     std::stringstream AssStream;
     AssStream << std::setw(8) << std::setfill('0') << ii.assemblyLine;
     out << AssStream.str();
