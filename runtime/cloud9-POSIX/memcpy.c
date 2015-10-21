@@ -10,7 +10,7 @@
 #include <stdlib.h>
 #include "models.h"
 
-#ifdef HAVE_MEMORY_FUNCTION_INTRINSICS
+#if HAVE_MEMORY_FUNCTION_INTRINSICS
 DEFINE_MODEL(void*, memcpy, void *dst, void const *src, size_t len) {
   return klee_memcpy(dst, src, len);
 }
