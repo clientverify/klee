@@ -107,7 +107,7 @@ DECLARE_MODEL(int, select, int nfds, fd_set *readfds, fd_set *writefds,
 
 DECLARE_MODEL(char *, dlerror);
 
-#ifdef HAVE_MEMORY_FUNCTION_INTRINSICS
+#if HAVE_MEMORY_FUNCTION_INTRINSICS
 DECLARE_MODEL(void*, memcpy, void *dst, void const *src, size_t len);
 DECLARE_MODEL(void*, memset, void *dst, int s, size_t count);
 #endif
