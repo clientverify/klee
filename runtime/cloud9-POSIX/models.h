@@ -43,6 +43,7 @@
 #include <fcntl.h>
 #include <ctype.h>
 #include <signal.h>
+#include <pwd.h>
 
 DECLARE_MODEL(int, stat, const char *path, struct stat *buf);
 DECLARE_MODEL(int, fstat, int fd, struct stat *buf);
@@ -111,5 +112,7 @@ DECLARE_MODEL(char *, dlerror);
 DECLARE_MODEL(void*, memcpy, void *dst, void const *src, size_t len);
 DECLARE_MODEL(void*, memset, void *dst, int s, size_t count);
 #endif
+
+DECLARE_MODEL(struct passwd *, getpwuid, uid_t uid);
 
 #endif /* UNDERLYING_H_ */
