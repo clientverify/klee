@@ -45,6 +45,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <sys/syscall.h>
+#include <pwd.h>
 
 #include "common.h"
 #include "models.h"
@@ -818,6 +819,39 @@ DEFINE_MODEL(int, lchown, const char *pathname, uid_t owner, gid_t group) {
 
 DEFINE_MODEL(int, chdir, const char *pathname) {
   _WRAP_FILE_SYSCALL_ERROR(chdir);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// /etc/passwd file management
+////////////////////////////////////////////////////////////////////////////////
+
+// Assumption on (undefined) behavior of external getpwuid(): either getpwuid()
+// returns the same pointer every time, or it allocates a new struct passwd
+// every time.  If it's more complicated, then this code is not guaranteed to
+// work correctly with KLEE.
+DEFINE_MODEL(struct passwd *, getpwuid, uid_t uid) {
+  static struct passwd *pw_previous_call = NULL;
+
+  // NOTE: returned pointer address is undefined in the bitcode address space.
+  struct passwd *pw = CALL_UNDERLYING(getpwuid, uid);
+
+  // Import pw pointer and children into the bitcode address space.
+  if (pw != NULL && pw_previous_call != pw) {
+    pw_previous_call = pw;
+    klee_copy_in_fixed_object(pw, sizeof(*pw));
+    if (pw->pw_name)
+      klee_copy_in_fixed_string(pw->pw_name);
+    if (pw->pw_passwd)
+      klee_copy_in_fixed_string(pw->pw_passwd);
+    if (pw->pw_gecos)
+      klee_copy_in_fixed_string(pw->pw_gecos);
+    if (pw->pw_dir)
+      klee_copy_in_fixed_string(pw->pw_dir);
+    if (pw->pw_shell)
+      klee_copy_in_fixed_string(pw->pw_shell);
+  }
+
+  return pw;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
