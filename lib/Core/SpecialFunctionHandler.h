@@ -120,6 +120,8 @@ namespace klee {
     HANDLER(handleCheckMemoryAccess);
     HANDLER(handleDebug);
     HANDLER(handleDefineFixedObject);
+    HANDLER(handleCopyInFixedObject);
+    HANDLER(handleCopyInFixedString);
     HANDLER(handleDelete);    
     HANDLER(handleDeleteArray);
     HANDLER(handleExit);

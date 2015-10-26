@@ -85,6 +85,8 @@ static SpecialFunctionHandler::HandlerInfo handlerInfo[] = {
   add("klee_get_value_i32", handleGetValue, true),
   add("klee_get_value_i64", handleGetValue, true),
   add("klee_define_fixed_object", handleDefineFixedObject, false),
+  add("klee_copy_in_fixed_object", handleCopyInFixedObject, false),
+  add("klee_copy_in_fixed_string", handleCopyInFixedString, false),
   add("klee_get_obj_size", handleGetObjSize, true),
   add("klee_get_errno", handleGetErrno, true),
   add("klee_get_wlist", handleGetWList, true),
@@ -878,6 +880,41 @@ void SpecialFunctionHandler::handleDefineFixedObject(ExecutionState &state,
   uint64_t size = cast<ConstantExpr>(arguments[1])->getZExtValue();
   MemoryObject *mo = executor.memory->allocateFixed(address, size, state.prevPC->inst);
   executor.bindObjectInState(state, mo, false);
+  mo->isUserSpecified = true; // XXX hack;
+}
+
+
+void SpecialFunctionHandler::handleCopyInFixedObject(ExecutionState &state,
+                                                     KInstruction *target,
+                                                     std::vector<ref<Expr> > &arguments) {
+  assert(arguments.size()==2 &&
+         "invalid number of arguments to klee_copy_in_fixed_object");
+  assert(isa<ConstantExpr>(arguments[0]) &&
+         "expect constant address argument to klee_copy_in_fixed_object");
+  assert(isa<ConstantExpr>(arguments[1]) &&
+         "expect constant size argument to klee_copy_in_fixed_object");
+
+  uint64_t address = cast<ConstantExpr>(arguments[0])->getZExtValue();
+  uint64_t size = cast<ConstantExpr>(arguments[1])->getZExtValue();
+  MemoryObject *mo = executor.memory->allocateFixed(address, size, state.prevPC->inst);
+  ObjectState *os = executor.bindObjectInState(state, mo, false);
+  os->initializeToBuffer((void *)address, size);
+  mo->isUserSpecified = true; // XXX hack;
+}
+
+void SpecialFunctionHandler::handleCopyInFixedString(ExecutionState &state,
+                                                     KInstruction *target,
+                                                     std::vector<ref<Expr> > &arguments) {
+  assert(arguments.size()==1 &&
+         "invalid number of arguments to klee_copy_in_fixed_string");
+  assert(isa<ConstantExpr>(arguments[0]) &&
+         "expect constant address argument to klee_copy_in_fixed_string");
+
+  uint64_t address = cast<ConstantExpr>(arguments[0])->getZExtValue();
+  uint64_t size = strlen((const char *)address) + 1;
+  MemoryObject *mo = executor.memory->allocateFixed(address, size, state.prevPC->inst);
+  ObjectState *os = executor.bindObjectInState(state, mo, false);
+  os->initializeToBuffer((void *)address, size);
   mo->isUserSpecified = true; // XXX hack;
 }
 

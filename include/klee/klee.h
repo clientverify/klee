@@ -24,14 +24,43 @@ extern "C" {
      calls. */
   void klee_define_fixed_object(void *addr, size_t nbytes);
 
-  /// klee_make_symbolic - Make the contents of the object pointer to by \arg
-  /// addr symbolic. 
-  ///
-  /// \arg addr - The start of the object.
-  /// \arg nbytes - The number of bytes to make symbolic; currently this *must*
-  /// be the entire contents of the object.
-  /// \arg name - An optional name, used for identifying the object in messages,
-  /// output files, etc.
+  /* NOTE: the previous function, klee_define_fixed_object, defines a memory
+   * object at a user-specified location, but regardless of what actually
+   * resides at that address (in the outer address space), the bitcode address
+   * space sees that block of memory as zero-filled (concrete).
+   *
+   * Some external calls (e.g., getpwuid()) return a pointer to a struct not
+   * allocated by the caller.  This is problematic for KLEE because such a
+   * pointer would be undefined in the bitcode address space.  We add two
+   * special functions called klee_copy_in_fixed_object() and
+   * klee_copy_in_fixed_string(), to facilitate the handling of such external
+   * calls.  These functions explicitly copy blocks of memory from the external
+   * address space into the bitcode address space.
+  */
+
+  /* klee_copy_in_fixed_object - Copies an external object into the inner
+   * address space.  This acts like klee_define_fixed_object but additionally
+   * requires the pointer to be valid in the external address space.
+   */
+  void klee_copy_in_fixed_object(void *addr, size_t nbytes);
+
+  /* klee_copy_in_fixed_string - Copies an external string into the inner
+   * address space.  This acts just like klee_copy_in_fixed_object but
+   * additionally requires the pointer to point to a C-style null-terminated
+   * string in the external address space.
+   */
+  void klee_copy_in_fixed_string(void *addr);
+
+  /* klee_make_symbolic - Make the contents of the object pointer to by \arg
+   * addr symbolic.
+   *
+   * \arg addr - The start of the object.
+   * \arg nbytes - The number of bytes to make symbolic; currently this *must*
+   * be the entire contents of the object.
+   * \arg name - An optional name, used for identifying the object in messages,
+   * output files, etc.
+   */
+
   void klee_make_symbolic(void *addr, size_t nbytes, const char *name);
 
   /// klee_range - Construct a symbolic value in the signed interval
