@@ -199,6 +199,8 @@ public:
   void initializeToZero();
   // make contents all concrete and random
   void initializeToRandom();
+  // make contents all concrete and equal to src buffer
+  void initializeToBuffer(void *src, unsigned len);
 
   ref<Expr> read(ref<Expr> offset, Expr::Width width) const;
   ref<Expr> read(unsigned offset, Expr::Width width) const;

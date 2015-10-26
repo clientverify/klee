@@ -271,6 +271,12 @@ void ObjectState::initializeToRandom() {
   }
 }
 
+void ObjectState::initializeToBuffer(void *src, unsigned len) {
+  assert(len == size && "initializeToBuffer: buffer/memory object size mismatch");
+  makeConcrete();
+  memcpy(concreteStore, src, len);
+}
+
 /*
 Cache Invariants
 --
