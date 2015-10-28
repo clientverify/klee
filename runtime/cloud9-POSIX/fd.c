@@ -166,8 +166,64 @@ static ssize_t _clean_read(int fd, void *buf, size_t count, off_t offset) {
       // allows for easier debugging and is more straightforward to 
       // support with the current multipass implementation.
 #if !(KTEST_STDIN_PLAYBACK)
+#if KTEST_STDIN_FAKE_PADDING
+      int fakepadlen = 0; // Note that there is actually no padding
+      klee_make_symbolic(&fakepadlen, sizeof(fakepadlen), "fakepadlen");
+      klee_assume(fakepadlen >= 0);
+      klee_assume(fakepadlen < 16);
+      klee_assume(fakepadlen < loglen);
+      switch (fakepadlen) {
+        case 0:
+          break;
+        case 1:
+          loglen -= 1;
+          break;
+        case 2:
+          loglen -= 2;
+          break;
+        case 3:
+          loglen -= 3;
+          break;
+        case 4:
+          loglen -= 4;
+          break;
+        case 5:
+          loglen -= 5;
+          break;
+        case 6:
+          loglen -= 6;
+          break;
+        case 7:
+          loglen -= 7;
+          break;
+        case 8:
+          loglen -= 8;
+          break;
+        case 9:
+          loglen -= 9;
+          break;
+        case 10:
+          loglen -= 10;
+          break;
+        case 11:
+          loglen -= 11;
+          break;
+        case 12:
+          loglen -= 12;
+          break;
+        case 13:
+          loglen -= 13;
+          break;
+        case 14:
+          loglen -= 14;
+          break;
+        case 15:
+          loglen -= 15;
+          break;
+      }
+#endif // KTEST_STDIN_FAKE_PADDING
       copy_symbolic_buffer(buf, loglen, "stdinsym", NULL);
-#endif
+#endif // !(KTEST_STDIN_PLAYBACK)
       return loglen;
     }
     return _read_file((file_t*)fde->io_object, buf, count, offset);
