@@ -170,7 +170,7 @@ static ssize_t _clean_read(int fd, void *buf, size_t count, off_t offset) {
       int fakepadlen = 0; // Note that there is actually no padding
       klee_make_symbolic(&fakepadlen, sizeof(fakepadlen), "fakepadlen");
       klee_assume(fakepadlen >= 0);
-      klee_assume(fakepadlen < 4);
+      klee_assume(fakepadlen < 2);
       klee_assume(fakepadlen < loglen);
       switch (fakepadlen) {
         case 0:
@@ -178,13 +178,13 @@ static ssize_t _clean_read(int fd, void *buf, size_t count, off_t offset) {
         case 1:
           loglen -= 1;
           break;
+        /*
         case 2:
           loglen -= 2;
           break;
         case 3:
           loglen -= 3;
           break;
-        /*
         case 4:
           loglen -= 4;
           break;
