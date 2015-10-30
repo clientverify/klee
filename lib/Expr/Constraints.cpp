@@ -9,7 +9,7 @@
 
 #include "../Core/Common.h"
 #include "klee/Constraints.h"
-#include "cliver/CliverStats.h"
+//#include "cliver/CliverStats.h"
 
 #include "klee/util/Mutex.h"
 #include "klee/util/ExprPPrinter.h"
@@ -146,7 +146,7 @@ bool ConstraintManager::rewriteConstraints(ExprVisitor &visitor) {
     }
   }
 
-  stats::rewrite_time += timer.check();
+  //stats::rewrite_time += timer.check();
   return changed;
 }
 
@@ -238,7 +238,7 @@ ref<Expr> ConstraintManager::simplifyExprV3(ref<Expr> e) const {
     }
   }
 
-  stats::simplify_expr_time_v3 += timer.check();
+  //stats::simplify_expr_time_v3 += timer.check();
   return res;
 }
 
@@ -275,7 +275,7 @@ ref<Expr> ConstraintManager::simplifyExprV2(ref<Expr> e) const {
     }
   }
 
-  stats::simplify_expr_time_v2 += timer.check();
+  //stats::simplify_expr_time_v2 += timer.check();
   return res;
 }
 
@@ -314,7 +314,7 @@ ref<Expr> ConstraintManager::simplifyExpr(ref<Expr> e) const {
   //return ExprReplaceVisitor2(equalities).visit(e);
   res = ExprReplaceVisitor2(equalities).visit(e);
 
-  stats::simplify_expr_time += timer.check();
+  //stats::simplify_expr_time += timer.check();
 
   static Mutex lock;
   //if (did_simplify) {
@@ -422,7 +422,7 @@ ref<Expr> ConstraintManager::simplifyExpr(ref<Expr> e) const {
 
   //return ExprReplaceVisitor2(equalities).visit(e);
   res2 = ExprReplaceVisitor2(equalities).visit(e);
-  stats::simplify_expr_time += timer.check();
+  //stats::simplify_expr_time += timer.check();
   bool did_simplify = false;
   if (res2 != e) {
     did_simplify = true;
