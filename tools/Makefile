@@ -15,7 +15,7 @@ LEVEL=..
 #
 # List all of the subdirectories that we will compile.
 #
-#PARALLEL_DIRS=klee kleaver ktest-tool gen-random-bout klee-stats cliverstats hmmtool hmmtrain
+PARALLEL_DIRS=klee kleaver ktest-tool gen-random-bout klee-stats cliverstats hmmtool hmmtrain
 
 include $(LEVEL)/Makefile.config
 
@@ -23,11 +23,11 @@ ifeq ($(ENABLE_POSIX_RUNTIME),1)
 PARALLEL_DIRS += klee-replay
 endif
 
-# we only support compiling klee, cliverstats, and hmmtool with ThreadSanitizer
-ifeq ($(ENABLE_THREAD_SANITIZER),1)
-  PARALLEL_DIRS=klee kleaver cliverstats hmmtool
-endif
-
-PARALLEL_DIRS=klee 
+## we only support compiling klee, cliverstats, and hmmtool with ThreadSanitizer
+#ifeq ($(ENABLE_THREAD_SANITIZER),1)
+#  PARALLEL_DIRS=klee kleaver cliverstats hmmtool
+#endif
+#
+#PARALLEL_DIRS=klee 
 
 include $(LEVEL)/Makefile.common
