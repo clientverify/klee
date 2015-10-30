@@ -42,6 +42,9 @@ TrainingMaxPending("training-max-pending",llvm::cl::init(1));
 llvm::cl::opt<bool>
 LinkFirstPass("link-first-pass",llvm::cl::init(true));
 
+llvm::cl::opt<bool>
+FinishAfterLastMessage("finish-after-last-message",llvm::cl::init(false));
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef NDEBUG
@@ -640,6 +643,16 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
             ss << v.first << ":" << v.second << ", ";
           }
           CVDEBUG(ss.str());
+        }
+
+        if (FinishAfterLastMessage) {
+          if (!state->network_manager()->socket()->end_of_log())  {
+            ExecutionStateProperty* property = state->property();
+            CVMESSAGE("Finish Event - Last Message - Socket: " 
+                      << *(state->network_manager()->socket())
+                      << " state: " << *state);
+            cv_->executor()->add_finished_state(state);
+          }
         }
 
         result = true;
