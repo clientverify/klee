@@ -51,7 +51,7 @@ llvm::cl::opt<unsigned>
 MaxMedoids("max-medoids",llvm::cl::init(8));
 
 llvm::cl::opt<bool>
-AsyncCreateEDTree("async-create-ed-tree",llvm::cl::init(true));
+AsyncCreateEDTree("async-create-ed-tree",llvm::cl::init(false));
 
 llvm::cl::opt<double>
 MedoidSelectRate("medoid-select-rate",llvm::cl::init(1.25));
@@ -727,20 +727,24 @@ void VerifyExecutionTraceManager::create_ed_tree_future(CVExecutionState* state)
   TrainingFilter tf(state);
 
   // Pre-check the socket filter (no need to create a thread on RECV rounds)
-  if (cluster_manager_->check_filter(tf)) {
+  if (cluster_manager_->check_filter(tf) || UseHMM || UseSelfTraining) {
     if (AsyncCreateEDTree) {
       
       //std::thread([=]{
       //  this->create_ed_tree(state,tf,socket_event);
       //}).detach();
 
+      CVDEBUG("Creating ED Tree (asynchronous)");
       klee::Thread thr(&cliver::VerifyExecutionTraceManager::create_ed_tree,
                        this, state, stage, tf, socket_event);
       thr.detach();
     
-    }else{
+    } else {
+      CVDEBUG("Creating ED Tree");
       this->create_ed_tree(state,stage,tf,socket_event);
     }
+  } else {
+    CVDEBUG("Not Creating ED Tree: No filter match");
   }
 }
 
