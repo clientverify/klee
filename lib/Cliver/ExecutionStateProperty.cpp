@@ -213,6 +213,13 @@ int XPilotEditDistanceExecutionStateProperty::compare(
   //if (_b->edit_distance != edit_distance)
   //  return _b->edit_distance - edit_distance;
 
+  int maxK = MaxKExtension;
+  int ed = std::min(edit_distance, maxK+1);
+  int ed_b = std::min(_b->edit_distance, maxK+1);
+
+  if (ed_b != ed)
+    return ed_b - ed;
+
   if (round != _b->round)
     return round - _b->round;
 
@@ -226,13 +233,6 @@ int XPilotEditDistanceExecutionStateProperty::compare(
   // Reversed for priority queue!
   if (_b->symbolic_vars != symbolic_vars)
     return _b->symbolic_vars - symbolic_vars;
-
-  int maxK = MaxKExtension;
-  int ed = std::min(edit_distance, maxK);
-  int ed_b = std::min(_b->edit_distance, maxK);
-
-  if (ed_b != ed)
-    return ed_b - ed;
 
 
   return 0;
