@@ -27,6 +27,9 @@
 
 namespace cliver {
 
+llvm::cl::opt<unsigned>
+MaxTrainingObjectLength("max-training-object-length",llvm::cl::init(0));
+
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Write Training object to file in cliver's output directory

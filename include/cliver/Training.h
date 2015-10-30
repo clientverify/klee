@@ -13,6 +13,8 @@
 #include "cliver/ExecutionTrace.h"
 #include "cliver/SocketEventMeasurement.h"
 
+#include "llvm/Support/CommandLine.h"
+
 #include <iostream>
 #include <fstream>
 #include <set>
@@ -31,6 +33,8 @@ class CVExecutionState;
 class ExecutionStateProperty;
 class SocketEvent;
 class ClientVerifier;
+
+extern llvm::cl::opt<unsigned> MaxTrainingObjectLength;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -217,7 +221,8 @@ class TrainingManager {
         tobj->read(is);
         tobj->parse_round();
 
-        if (tobj->round >= 0) {
+        if (tobj->round >= 0 && (MaxTrainingObjectLength == 0
+             || tobj->trace.size() < MaxTrainingObjectLength)) {
 
           // Check for duplicates with other TrainingObjects
           typename TrainingObjectSetType::iterator it = data.find(tobj);
@@ -233,6 +238,7 @@ class TrainingManager {
           }
 
         } else {
+          CVMESSAGE("Training: Not using: " << filename);
           delete tobj;
         }
       } else {
