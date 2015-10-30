@@ -14,7 +14,7 @@
 // RUN: %klee -cliver -use-clustering -cliver-mode=edit-dist-kprefix-row -optimize=0 -posix-runtime -libc=uclibc -output-dir=%t3.dir -training-path-dir=%t2.dir -socket-log=%t1.ktest %t1.bc &> %t3.log
 // RUN: not grep -q "Recomputed kprefix" %t3.log
 // RUN: grep -q "CLIENT: success" %t3.log
-// RUN: %klee -use-self-training  -basic-block-event-flag=1 --use-threads=1 -cliver -use-clustering -cliver-mode=edit-dist-kprefix-row -optimize=0 -posix-runtime -libc=uclibc -output-dir=%t4.dir -self-training-path-dir=%t2.dir -socket-log=%t1.ktest %t1.bc &> %t4.log
+// RUN: %klee -use-self-training  -basic-block-event-flag=1 -edit-distance-at-every-basicblock=1 --use-threads=1 -cliver -use-clustering -cliver-mode=edit-dist-kprefix-row -optimize=0 -posix-runtime -libc=uclibc -output-dir=%t4.dir -self-training-path-dir=%t2.dir -socket-log=%t1.ktest %t1.bc &> %t4.log
 //// Check that we did not execute more instructions than necessary (less than 0.5% extra instructions)
 // RUN: awk -F, '{total[$1]=$4} END { y=total["InstructionCount"]; x=total["ValidPathInstructionCount"]; exit !(0.01 > (y-x)/y);  }' %t4.dir/cliver.stats.summary
 // RUN: not grep -q "Self Training Data Mismatch" %t4.log
