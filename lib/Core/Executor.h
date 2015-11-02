@@ -509,6 +509,10 @@ public:
     searcherCond.notify_all();
   }
 
+  virtual bool getHaltExecution() {
+    return haltExecution;
+  }
+
   virtual void setInhibitForking(bool value) {
     inhibitForking = value;
   }

@@ -1553,7 +1553,13 @@ int main(int argc, char **argv, char **envp) {
       seeds.pop_back();
     }
   }
-      
+
+  int ret_status = 0;
+
+  if (cliver::EnableCliver) {
+    ret_status = static_cast<cliver::ClientVerifier*>(handler)->status();
+  }
+
   t[1] = time(NULL);
   strftime(buf, sizeof(buf), "Finished: %Y-%m-%d %H:%M:%S\n", localtime(&t[1]));
   infoFile << buf;
@@ -1599,12 +1605,6 @@ int main(int argc, char **argv, char **envp) {
     << "KLEE: done: invalid queries = " << queriesInvalid << "\n"
     << "KLEE: done: query cex = " << queryCounterexamples << "\n";
 
-  if (cliver::EnableCliver) {
-    BufferPtr.take();
-    delete handler;
-    return 0;
-  }
-
   std::stringstream stats;
   stats << "\n";
   stats << "KLEE: done: total instructions = " 
@@ -1635,5 +1635,5 @@ int main(int argc, char **argv, char **envp) {
 #endif
   delete handler;
 
-  return 0;
+  return ret_status;
 }

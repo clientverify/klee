@@ -155,6 +155,10 @@ class ClientVerifier : public klee::InterpreterHandler {
 
   uint64_t get_round_statistic_value(int round, const klee::Statistic &stat);
 
+  // Return status of verifier: 0 == we've found a state consistent with the
+  // socket log, non-zero otherwise
+  int status();
+
  private:
   CVStream *cvstream_;
   klee::Atomic<int>::type paths_explored_;

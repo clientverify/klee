@@ -119,6 +119,7 @@ class CVExecutor : public klee::Executor {
   klee::KModule* get_kmodule() { return kmodule; }
 
   size_t states_size() { return states.size(); }
+  int state_count() { return stateCount; }
 
   std::string get_string_at_address(CVExecutionState* state, 
                                     klee::ref<klee::Expr> address_expr);

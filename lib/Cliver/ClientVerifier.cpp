@@ -54,6 +54,9 @@ llvm::cl::opt<int>
 MaxRoundNumber("max-round", llvm::cl::init(0));
 
 llvm::cl::opt<int>
+MaxPassCount("max-pass-count", llvm::cl::init(0));
+
+llvm::cl::opt<int>
 OnlyVerifyFirstS2C("only-verify-first-s2c",
   llvm::cl::desc("Verify only the first N server to client messages (default=-1, i.e., all server to client messages)"),
   llvm::cl::init(-1));
@@ -86,6 +89,10 @@ PrintStats("print-stats", llvm::cl::init(true));
 
 llvm::cl::opt<bool> 
 PrintExecutionEvents("print-execution-events", llvm::cl::init(false));
+
+// Assume socket log is legitimate by default
+llvm::cl::opt<bool>
+LegitimateSocketLog("legitimate-socket-log", llvm::cl::init(true));
 
 #ifdef GOOGLE_PROFILER
 llvm::cl::opt<int> 
@@ -415,8 +422,10 @@ void ClientVerifier::set_round(int round) {
   // Increment context timers before we switch to new context
   statistics_manager_.update_context_timers();
 
-  if (statistics_manager_.get_context_statistic_value(round_number_,
-                                                      stats::pass_count) == 1) {
+  int pass_count = statistics_manager_.get_context_statistic_value(
+      round_number_, stats::pass_count);
+
+  if (pass_count == 1) {
     stats::round_instructions_pass_one +=
       statistics_manager_.get_context_statistic_value(round_number_,
                                                       stats::round_instructions);
@@ -428,6 +437,11 @@ void ClientVerifier::set_round(int round) {
     stats::valid_path_instructions_pass_one +=
       statistics_manager_.get_context_statistic_value(round_number_,
                                                       stats::valid_path_instructions);
+  }
+
+  if (pass_count > MaxPassCount) {
+    CVMESSAGE("Error: invalid pass count value: " << pass_count);
+    executor_->setHaltExecution(true);
   }
 
   // Update statistic manager with new round number
@@ -481,6 +495,45 @@ void ClientVerifier::set_round(int round) {
 	if (MaxRoundNumber && round_number_ > MaxRoundNumber) {
     executor_->setHaltExecution(true);
 	}
+}
+
+int ClientVerifier::status() {
+  int status = 1;
+  // socket log is valid if we've found a finished state
+  bool is_valid = (executor_->finished_states().size() > 0 ? true : false);
+  if (executor_->getHaltExecution()) {
+
+    // valid path found for legitimate log: success
+    if (is_valid && LegitimateSocketLog) {
+      CVMESSAGE("Verifier Result: success (0): " <<
+                "valid path found for legitimate log");
+      status = 0;
+    }
+
+    // no valid path found for non-legitimate log: success
+    if (!is_valid && !LegitimateSocketLog) {
+      CVMESSAGE("Verifier Result: success (0): " <<
+                "no valid path found for non-legitimate log");
+      status = 0;
+    }
+
+    // always return success when max round number is used
+    if (MaxRoundNumber != 0) {
+      CVMESSAGE("Verifier Result: success (0): " <<
+                "Maximum round reached");
+      status = 0;
+    }
+  } else if (executor_->state_count() == 0) {
+    if (!is_valid && !LegitimateSocketLog) {
+      CVMESSAGE("Verifier Result: success (0): " <<
+                "no valid path found for non-legitimate log");
+      status = 0;
+    }
+  }
+  if (status != 0) {
+    CVMESSAGE("Verifier Result: failure (1) ");
+  }
+  return status;
 }
 
 klee::Interpreter *ClientVerifier::create_interpreter(const klee::Interpreter::InterpreterOptions &opts,
