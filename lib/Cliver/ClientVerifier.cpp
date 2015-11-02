@@ -91,7 +91,7 @@ llvm::cl::opt<bool>
 PrintExecutionEvents("print-execution-events", llvm::cl::init(false));
 
 // Assume socket log is legitimate by default
-llvm::cl::opt<bool>
+llvm::cl::opt<bool> 
 LegitimateSocketLog("legitimate-socket-log", llvm::cl::init(true));
 
 #ifdef GOOGLE_PROFILER
@@ -530,6 +530,14 @@ int ClientVerifier::status() {
       status = 0;
     }
   }
+
+  // Return success if there was no log to verify
+  if (SocketLogFile.size() == 0) {
+    CVMESSAGE("Verifier Result: success (0): " <<
+              "no socket log provided");
+    status = 0;
+  }
+
   if (status != 0) {
     CVMESSAGE("Verifier Result: failure (1) ");
   }
