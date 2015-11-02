@@ -594,7 +594,7 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
 
           // Increment pass count
           property_clone->pass_count++;
-          ++stats::pass_count;
+          stats::pass_count = property_clone->pass_count;
 
           // Clone the CVExecutionState at the root of the most recent round
           // (we are re-executing)
@@ -614,9 +614,10 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
           if (socket->previous_event().type != SocketEvent::RECV)
             property->is_recv_processing = false;
 
-          // Increment pass_count if this is the last one
-          if (property->pass_count != 0)
-            ++stats::pass_count;
+          // Set pass count if this round was multipass
+          if (property->pass_count != 0) {
+            stats::pass_count = property->pass_count;
+          }
           // Reset pass count for the new state (root of next stage)
           property->pass_count = 0;
           property->round++;
