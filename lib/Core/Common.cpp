@@ -191,6 +191,8 @@ static void klee_vomessage(std::ostream* os, const char *pfx, const char *msg,
 */
 static void klee_vmessage(const char *pfx, bool onlyToFile, const char *msg, 
                           va_list ap) {
+  static Mutex lock;
+  LockGuard guard(lock);
   if (klee_warning_stream && klee_message_stream) {
     klee_vomessage(pfx ? klee_warning_stream : klee_message_stream, pfx, msg, ap);
   } else {
