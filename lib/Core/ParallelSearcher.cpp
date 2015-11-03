@@ -65,8 +65,10 @@ ExecutionState &ParallelDFSSearcher::selectState() {
 
 ExecutionState* ParallelDFSSearcher::trySelectState() {
   ExecutionState* state = NULL;
-  stack.pop(state);
-  return state;
+  if (stack.pop(state)) {
+    return state;
+  }
+  return NULL;
 }
 
 void ParallelDFSSearcher::update(ExecutionState *current,
@@ -111,8 +113,10 @@ ExecutionState &ParallelBFSSearcher::selectState() {
 
 ExecutionState* ParallelBFSSearcher::trySelectState() {
   ExecutionState* state = NULL;
-  queue.pop(state);
-  return state;
+  if (queue.pop(state)) {
+    return state;
+  }
+  return NULL;
 }
 
 void ParallelBFSSearcher::update(ExecutionState *current,

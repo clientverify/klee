@@ -42,6 +42,7 @@ class LockFreeQueue {
     return false;
   }
 
+  // Note: ret may be set, but only thread-safe to use if bool=true
   bool pop(T & ret, bool blocking=false) {
     if (blocking) {
       while(!queue_.pop(ret))
@@ -90,6 +91,7 @@ class LockFreeStack {
     return false;
   }
 
+  // Note: ret may be set, but only thread-safe to use if bool=true
   bool pop(T & ret, bool blocking=false) {
     if (blocking) {
       while(!stack_.pop(ret))
