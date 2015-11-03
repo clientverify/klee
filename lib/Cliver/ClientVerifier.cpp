@@ -439,7 +439,7 @@ void ClientVerifier::set_round(int round) {
                                                       stats::valid_path_instructions);
   }
 
-  if (pass_count > MaxPassCount) {
+  if (MaxPassCount > 0 && pass_count > MaxPassCount) {
     CVMESSAGE("Error: invalid pass count value: " << pass_count);
     executor_->setHaltExecution(true);
   }
