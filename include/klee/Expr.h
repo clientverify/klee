@@ -661,6 +661,7 @@ private:
   /// cached solutions are missed because the two Array instances
   /// aren't recognized as the same.
   static std::map < unsigned, std::vector < const Array * > * > symbolicArraySingletonMap;
+  static Mutex symbolicArraySingletonMapLock;
 
   // This shouldn't be allowed since it is a singleton class
   Array(const Array& array);
