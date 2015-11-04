@@ -267,11 +267,18 @@ namespace klee {
   Solver *createFastCexSolver(Solver *s);
 
   /// createIndependentSolver - Create a solver which will eliminate any
-  /// unnecessary constraints before propogating the query to the underlying
+  /// unnecessary constraints before propagating the query to the underlying
   /// solver.
   ///
+  /// Legacy mode reverts to older behavior where the expressions are not as
+  /// aggressively factorized. This mode sends fewer but more complex queries
+  /// to the underlying solver.  In cases where large expressions are sent but
+  /// few subexpressions are common across queries, this may perform better
+  /// than the newer mode.
+  ///
   /// \param s - The underlying solver to use.
-  Solver *createIndependentSolver(Solver *s);
+  /// \param legacy_mode - Use older, less agressive factorization.
+  Solver *createIndependentSolver(Solver *s, bool legacy_mode=false);
   
   /// createPCLoggingSolver - Create a solver which will forward all queries
   /// after writing them to the given path in .pc format.

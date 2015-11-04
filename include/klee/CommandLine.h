@@ -21,6 +21,8 @@ extern llvm::cl::opt<bool> UseCanonicalization;
 
 extern llvm::cl::opt<bool> UseIndependentSolver; 
 
+extern llvm::cl::opt<bool> UseLegacyIndependentSolver;
+
 extern llvm::cl::opt<bool> DebugValidateSolver;
   
 extern llvm::cl::opt<int> MinQueryTimeToLog;

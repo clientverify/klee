@@ -383,10 +383,11 @@ void calculateArrayReferences(const IndependentElementSet & ie,
 class IndependentSolver : public SolverImpl {
 private:
   Solver *solver;
+  bool legacy_mode;
 
 public:
-  IndependentSolver(Solver *_solver) 
-    : solver(_solver) {}
+  IndependentSolver(Solver *_solver, bool _legacy_mode=false)
+    : solver(_solver), legacy_mode(_legacy_mode) {}
   ~IndependentSolver() { delete solver; }
 
   bool computeTruth(const Query&, bool &isValid);
@@ -453,6 +454,10 @@ bool IndependentSolver::computeInitialValues(const Query& query,
                                              const std::vector<const Array*> &objects,
                                              std::vector< std::vector<unsigned char> > &values,
                                              bool &hasSolution){
+  if (legacy_mode) {
+    return solver->impl->computeInitialValues(query, objects, values, hasSolution);
+  }
+
   std::list<IndependentElementSet> * factors = new std::list<IndependentElementSet>;
 
   // We assume the query has a solution except proven differently
@@ -534,6 +539,6 @@ void IndependentSolver::setCoreSolverTimeout(double timeout) {
   solver->impl->setCoreSolverTimeout(timeout);
 }
 
-Solver *klee::createIndependentSolver(Solver *s) {
-  return new Solver(new IndependentSolver(s));
+Solver *klee::createIndependentSolver(Solver *s, bool legacy_mode) {
+  return new Solver(new IndependentSolver(s, legacy_mode));
 }

@@ -55,7 +55,7 @@ namespace klee
 		solver = createCanonicalSolver(solver);
 
 	  if (UseIndependentSolver)
-		solver = createIndependentSolver(solver);
+		solver = createIndependentSolver(solver, UseLegacyIndependentSolver);
 
 	  if (DebugValidateSolver)
 		solver = createValidatingSolver(solver, coreSolver);
