@@ -130,6 +130,15 @@ void klee_init_env(int argc, char **argv) {
 
       k++;
       __add_symfs_file(&fid, SYMBOLIC, argv[k++]);
+#ifdef STDIN_FAKE_PADDING
+    } else if (__streq(argv[k], "--fake-padding") ||
+               __streq(argv[k], "-fake-padding")) {
+      const char *errmsg = "--fake-padding expects integer argument <max-pad>";
+      if (++k == argc)
+        __emit_error(errmsg);
+
+      fake_padding_max = __str_to_int(argv[k++], msg);
+#endif // STDIN_FAKE_PADDING
     } else if (__streq(argv[k], "--con-file") || __streq(argv[k], "-con-file")) {
       if (k+1 >= argc)
         __emit_error(msg);
@@ -204,6 +213,11 @@ void klee_process_args(int* argcPtr, char*** argvPtr) {
       k+=3;
     } else if (__streq(argv[k], "--sym-file") || __streq(argv[k], "-sym-file")) {
       k+=2;
+#ifdef STDIN_FAKE_PADDING
+    } else if (__streq(argv[k], "--fake-padding") ||
+               __streq(argv[k], "-fake-padding")) {
+      k+=2;
+#endif // STDIN_FAKE_PADDING
     } else if (__streq(argv[k], "--con-file") || __streq(argv[k], "-con-file")) {
       k+=2;
     } else if (__streq(argv[k], "--unsafe") || __streq(argv[k], "-unsafe")) {

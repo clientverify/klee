@@ -58,6 +58,9 @@
 
 #include <klee/klee.h>
 
+#ifdef STDIN_FAKE_PADDING
+int fake_padding_max = 0; // global, configurable via --fake-padding N
+#endif
 
 // For multiplexing multiple syscalls into a single _read/_write op. set
 #define _IO_TYPE_SCATTER_GATHER  0x1
@@ -166,62 +169,51 @@ static ssize_t _clean_read(int fd, void *buf, size_t count, off_t offset) {
       // allows for easier debugging and is more straightforward to 
       // support with the current multipass implementation.
 #if !(KTEST_STDIN_PLAYBACK)
-#if KTEST_STDIN_FAKE_PADDING
-      int fakepadlen = 0; // Note that there is actually no padding
-      klee_make_symbolic(&fakepadlen, sizeof(fakepadlen), "fakepadlen");
-      klee_assume(fakepadlen >= 0);
-      klee_assume(fakepadlen < 16);
-      klee_assume(fakepadlen <= loglen);
-      switch (fakepadlen) {
-        case 0:
-          break;
-        case 1:
-          loglen -= 1;
-          break;
-        case 2:
-          loglen -= 2;
-          break;
-        case 3:
-          loglen -= 3;
-          break;
-        case 4:
-          loglen -= 4;
-          break;
-        case 5:
-          loglen -= 5;
-          break;
-        case 6:
-          loglen -= 6;
-          break;
-        case 7:
-          loglen -= 7;
-          break;
-        case 8:
-          loglen -= 8;
-          break;
-        case 9:
-          loglen -= 9;
-          break;
-        case 10:
-          loglen -= 10;
-          break;
-        case 11:
-          loglen -= 11;
-          break;
-        case 12:
-          loglen -= 12;
-          break;
-        case 13:
-          loglen -= 13;
-          break;
-        case 14:
-          loglen -= 14;
-          break;
-        case 15:
-          loglen -= 15;
-          break;
+#ifdef STDIN_FAKE_PADDING
+      if (fake_padding_max != 0) {
+        int i;
+        int fakepadlen = 0; // Note that there is actually no padding
+        klee_make_symbolic(&fakepadlen, sizeof(fakepadlen), "fakepadlen");
+        klee_assume(fakepadlen >= 0);
+        klee_assume(fakepadlen <= loglen);
+        klee_assume(fakepadlen <= fake_padding_max);
+
+        /* We create a loop that is equivalent to the following code. The
+         * important point is that loglen must be concrete at the end of this
+         * fake padding operation so that copy_symbolic_buffer has a concrete
+         * length to work with.
+
+        switch (fakepadlen) {
+          case 0:
+            break;
+          case 1:
+            loglen -= 1;
+            break;
+          case 2:
+            loglen -= 2;
+            break;
+          // ...
+          case 15:
+            loglen -= 15;
+            break;
+        }
+        */
+        for (i = fake_padding_max; i >= 0; --i) {
+
+          // The following block is dead code, but ironically, if you remove
+          // it, the optimizer actually ends up creating a symbolic loglen.
+          if (klee_is_symbolic(i)) {
+            klee_warning("symbolic i for fake_padding_max loop");
+          }
+
+          // Pretend last i bytes of stdin were padding.
+          if (fakepadlen == i) {
+            loglen -= i;
+            break;
+          }
+        }
       }
-#endif // KTEST_STDIN_FAKE_PADDING
+#endif // STDIN_FAKE_PADDING
       copy_symbolic_buffer(buf, loglen, "stdinsym", NULL);
 #endif // !(KTEST_STDIN_PLAYBACK)
       return loglen;
