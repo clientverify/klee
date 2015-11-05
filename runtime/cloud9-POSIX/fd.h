@@ -37,6 +37,11 @@
 
 #include <sys/uio.h>
 
+#define STDIN_FAKE_PADDING
+#ifdef STDIN_FAKE_PADDING
+extern int fake_padding_max;
+#endif
+
 #define FD_IS_FILE          (1 << 3)    // The fd points to a disk file
 #define FD_IS_SOCKET        (1 << 4)    // The fd points to a socket
 #define FD_IS_PIPE          (1 << 5)    // The fd points to a pipe
@@ -72,6 +77,5 @@ ssize_t _gather_write(int fd, const struct iovec *iov, int iovcnt);
 int __get_concrete_fd(int symfd);
 
 void klee_init_fdt(void);
-
 
 #endif /* FD_H_ */

@@ -35,9 +35,6 @@
 #define KTEST_SELECT_PLAYBACK 0
 #define KTEST_STDIN_PLAYBACK 0
 
-// Enable for exercising fake padding
-#define KTEST_STDIN_FAKE_PADDING 0
-
 void copy_symbolic_buffer(unsigned char* buf, int len, char* tag, void* taint);
 
 //DECLARE_MODEL(void*, memset, void *s, int c, size_t n)
