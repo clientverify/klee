@@ -137,6 +137,8 @@ DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_
 DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout) {
   //DEBUG_PRINT("symbolic");
 
+  // OPENSSL: Assumption: no sockets ready for reading on the first call to select
+  static int first_select = 1;
   int i, retval, ret;
   fd_set in_readfds, in_writefds;
 
@@ -152,11 +154,13 @@ DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_
   fd_mask all_bits_or = 0;
 
   for (i = 0; i <= mask_count; ++i) {
-    if (in_readfds.fds_bits[i] != 0) {
-      fd_mask symbolic_mask;
-      klee_make_symbolic(&symbolic_mask, sizeof(fd_mask));
-      readfds->fds_bits[i] = in_readfds.fds_bits[i] & symbolic_mask;
-      all_bits_or |= readfds->fds_bits[i];
+    if (first_select == 0) {
+      if (in_readfds.fds_bits[i] != 0) {
+        fd_mask symbolic_mask;
+        klee_make_symbolic(&symbolic_mask, sizeof(fd_mask));
+        readfds->fds_bits[i] = in_readfds.fds_bits[i] & symbolic_mask;
+        all_bits_or |= readfds->fds_bits[i];
+      }
     }
 
     if (in_writefds.fds_bits[i] != 0) {
@@ -165,6 +169,11 @@ DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_
       writefds->fds_bits[i] = in_writefds.fds_bits[i] & symbolic_mask;
       all_bits_or |= writefds->fds_bits[i];
     }
+  }
+
+  // Set after first call to select
+  if (first_select == 1) {
+    first_select = 0;
   }
 
   klee_make_symbolic(&retval, sizeof(retval));
