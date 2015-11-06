@@ -45,6 +45,7 @@ class SearcherStage {
   SearcherStage *parent;
   SearcherStage *multi_pass_parent;
   std::vector<CVExecutionState*> leaf_states;
+  std::vector<SearcherStage*> leaf_stages;
 };
 
 typedef std::list<SearcherStage*> SearcherStageList;
@@ -66,6 +67,9 @@ class SearcherStageImpl : public SearcherStage {
 
     assert(property_clone != root->property());
     CVExecutionState* root_clone = root->clone(property_clone);
+
+    // Set searcher stage in root clone
+    root_clone->set_searcher_stage(this);
 
     // Hack: add cloned state to the internal states set in Executor
     root->cv()->executor()->add_state_internal(root_clone);
@@ -198,6 +202,9 @@ class SearcherStageThreadedImpl : public SearcherStage {
 
       assert(property_clone != root->property());
       CVExecutionState* root_clone = root->clone(property_clone);
+
+      // Set searcher stage in root clone
+      root_clone->set_searcher_stage(this);
 
       // Hack: add cloned state to the internal states set in Executor
       //root->cv()->executor()->add_state_internal(root_clone);

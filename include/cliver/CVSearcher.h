@@ -90,6 +90,8 @@ class VerifySearcher : public CVSearcher {
 
   virtual void set_parent_searcher(CVSearcher* parent) { parent_searcher_ = parent; }
 
+  void WriteSearcherStageGraph(std::ostream* os);
+
  protected:
   virtual SearcherStage* get_new_stage(CVExecutionState* state);
   virtual void add_state(CVExecutionState* state);

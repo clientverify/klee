@@ -63,13 +63,14 @@ void CVExecutionState::initialize(ClientVerifier *cv) {
 }
 
 CVExecutionState* CVExecutionState::clone(ExecutionStateProperty* property) {
-  stats::state_clone_count += 1;
+  ++stats::state_clone_count;
   assert(cv_->executor()->replay_path() == NULL);
   CVExecutionState *cloned_state = new CVExecutionState(*this);
   cloned_state->id_ = increment_id();
   cloned_state->event_flag_ = event_flag_;
   cloned_state->network_manager_ 
 		= network_manager_->clone(cloned_state); 
+  cloned_state->searcher_stage_ = searcher_stage_;
 
   if (property != NULL) {
     cloned_state->property_ = property;

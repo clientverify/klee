@@ -24,6 +24,10 @@
 
 #include "llvm/Support/CommandLine.h"
 
+#if defined(USE_BOOST_GRAPHVIZ)
+#include <boost/graph/graphviz.hpp>
+#endif
+
 namespace klee {
 extern llvm::cl::opt<unsigned> MaxMemory;
 }
@@ -461,10 +465,13 @@ bool VerifySearcher::is_empty() {
   CVDEBUG("VerifySearcher is empty!");
   return true;
 }
-
 SearcherStage* VerifySearcher::get_new_stage(CVExecutionState* state) {
   SearcherStage* stage = SearcherStageFactory::create(merger_, state);
   CVExecutionState* next_state = stage->next_state();
+
+  if (state->searcher_stage() != NULL) {
+    state->searcher_stage()->leaf_stages.push_back(stage);
+  }
 
   // Common case: parent state is a leaf node of the current stage
   CVExecutionState* parent_state = state;
@@ -726,6 +733,104 @@ void VerifySearcher::notify(ExecutionEvent ev) {
     default:
       break;
   }
+}
+
+#if defined(USE_BOOST_GRAPHVIZ)
+void add_stage_vertex(SearcherStage *s,
+                      std::map<SearcherStage *, dot_vertex_desc> &v_map,
+                      dot_graph & graph) {
+  if (v_map.count(s) == 0) {
+    std::string v_name;
+    std::stringstream v_ss;
+    v_ss << s->root_state()
+         << " Rd: " << s->root_state()->property()->round
+         << " Sz: " << s->size();
+    v_name = v_ss.str();
+
+    dot_vertex v(v_name);
+
+    v_map[s] = boost::add_vertex(v, graph);
+  }
+}
+
+void add_stage_edge(SearcherStage *from, SearcherStage *to,
+                    std::string label,
+                    std::map<SearcherStage *, dot_vertex_desc> &v_map,
+                    dot_graph &graph) {
+    add_stage_vertex(from, v_map, graph);
+    add_stage_vertex(to, v_map, graph);
+    dot_edge edge(label);
+    boost::add_edge(v_map[from], v_map[to], edge, graph);
+}
+#endif
+
+void VerifySearcher::WriteSearcherStageGraph(std::ostream *os) {
+
+#if defined(USE_BOOST_GRAPHVIZ)
+  CVMESSAGE("Generating SearcherStage graph file");
+  SearcherStage *root = SearcherStageFactory::create(
+      merger_, new_stages_[0]->front()->root_state());
+
+  //for (auto stage : *(new_stages_[0])) {
+  //  CVMESSAGE("Root Stage: " << stage << " " << stage->root_state());
+  //  root->leaf_stages.push_back(stage);
+  //}
+
+  std::map<SearcherStage *, dot_vertex_desc> v_map;
+  std::set<std::pair<SearcherStage*, SearcherStage*> > edge_set;
+  std::set<SearcherStage*> stage_set;
+
+  dot_graph graph;
+  std::stack<SearcherStage *> worklist;
+  worklist.push(root);
+  while (!worklist.empty()) {
+
+    SearcherStage *parent = worklist.top();
+    worklist.pop();
+    stage_set.insert(parent);
+
+    add_stage_vertex(parent, v_map, graph);
+
+    //CVMESSAGE("Parent: " << parent << " " << parent->root_state());
+    //for (auto child : parent->leaf_stages) {
+    //  CVMESSAGE("\tChild: " << child << " " << child->root_state());
+    //}
+
+    for (auto child : parent->leaf_stages) {
+      //CVMESSAGE("Stage: " << child << " " << child->root_state());
+
+      auto pair = std::make_pair(parent, child);
+      if (edge_set.count(pair) == 0) {
+        std::stringstream ss;
+        int pass_count = child->root_state()->property()->pass_count;
+        ss << "Pass=" << pass_count;
+        ss << "\nICnt=" << child->root_state()->property()->inst_count;
+        ss << "\nSVars=" << child->root_state()->property()->symbolic_vars;
+        if (pass_count > 0) {
+          ss << "\nVars=" << child->root_state()->multi_pass_assignment();
+        }
+        add_stage_edge(pair.first, pair.second, ss.str(), v_map, graph);
+        worklist.push(child);
+        edge_set.insert(pair);
+      }
+
+      if (child->multi_pass_parent != NULL) {
+        if (child->parent) {
+          add_stage_edge(child->parent, child,
+                        "MultiPass", v_map, graph);
+        }
+
+      }
+    }
+  }
+
+  boost::write_graphviz(
+      *os, graph,
+      boost::make_label_writer(boost::get(&dot_vertex::name, graph)),
+      boost::make_label_writer(boost::get(&dot_edge::name, graph)));
+#else
+  CVMESSAGE("boost::graphviz disabled, not generating SearcherStage graph file");
+#endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -29,6 +29,7 @@ class CVExecutor;
 class ClientVerifier;
 class ExecutionStateProperty;
 class NetworkManager;
+class SearcherStage;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -64,6 +65,9 @@ class CVExecutionState : public klee::ExecutionState {
   bool event_flag() { return event_flag_; }
   void set_event_flag(bool b) { event_flag_ = b; }
 
+  SearcherStage* searcher_stage() { return searcher_stage_; }
+  void set_searcher_stage(SearcherStage* s) { searcher_stage_ = s; }
+
   static unsigned next_id() { return next_id_; }
 
   std::string get_unique_array_name(const std::string &s);
@@ -94,6 +98,7 @@ class CVExecutionState : public klee::ExecutionState {
   bool basic_block_tracking_;
   std::map<std::string, uint64_t> array_name_index_map_;
   CVAssignment multi_pass_assignment_;
+  SearcherStage *searcher_stage_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
