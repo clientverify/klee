@@ -58,6 +58,9 @@
 
 #include <klee/klee.h>
 
+#ifdef STDIN_FAKE_PADDING
+int fake_padding_max = 0; // global, configurable via --fake-padding N
+#endif
 
 // For multiplexing multiple syscalls into a single _read/_write op. set
 #define _IO_TYPE_SCATTER_GATHER  0x1
@@ -166,8 +169,53 @@ static ssize_t _clean_read(int fd, void *buf, size_t count, off_t offset) {
       // allows for easier debugging and is more straightforward to 
       // support with the current multipass implementation.
 #if !(KTEST_STDIN_PLAYBACK)
+#ifdef STDIN_FAKE_PADDING
+      if (fake_padding_max != 0) {
+        int i;
+        int fakepadlen = 0; // Note that there is actually no padding
+        klee_make_symbolic(&fakepadlen, sizeof(fakepadlen), "fakepadlen");
+        klee_assume(fakepadlen >= 0);
+        klee_assume(fakepadlen <= loglen);
+        klee_assume(fakepadlen <= fake_padding_max);
+
+        /* We create a loop that is equivalent to the following code. The
+         * important point is that loglen must be concrete at the end of this
+         * fake padding operation so that copy_symbolic_buffer has a concrete
+         * length to work with.
+
+        switch (fakepadlen) {
+          case 0:
+            break;
+          case 1:
+            loglen -= 1;
+            break;
+          case 2:
+            loglen -= 2;
+            break;
+          // ...
+          case 15:
+            loglen -= 15;
+            break;
+        }
+        */
+        for (i = fake_padding_max; i >= 0; --i) {
+
+          // The following block is dead code, but ironically, if you remove
+          // it, the optimizer actually ends up creating a symbolic loglen.
+          if (klee_is_symbolic(i)) {
+            klee_warning("symbolic i for fake_padding_max loop");
+          }
+
+          // Pretend last i bytes of stdin were padding.
+          if (fakepadlen == i) {
+            loglen -= i;
+            break;
+          }
+        }
+      }
+#endif // STDIN_FAKE_PADDING
       copy_symbolic_buffer(buf, loglen, "stdinsym", NULL);
-#endif
+#endif // !(KTEST_STDIN_PLAYBACK)
       return loglen;
     }
     return _read_file((file_t*)fde->io_object, buf, count, offset);
