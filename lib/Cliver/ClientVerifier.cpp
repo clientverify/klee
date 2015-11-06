@@ -390,9 +390,14 @@ ExecutionTraceManager* ClientVerifier::execution_trace_manager() {
 	return execution_trace_manager_;
 }
 
-void ClientVerifier::print_all_stats() {
+void ClientVerifier::print_current_round_stats() {
+  statistics_manager_.print_round_with_short_name(*cv_message_stream,
+                                                  round_number_, " ");
+}
 
-  std::ostream* stats_csv = cvstream_->openOutputFile("cliver.stats");
+void ClientVerifier::write_all_stats() {
+
+  std::ostream *stats_csv = cvstream_->openOutputFile("cliver.stats");
 
   if (stats_csv) {
     statistics_manager_.print_names(*stats_csv, ",");
@@ -402,7 +407,7 @@ void ClientVerifier::print_all_stats() {
     cv_error("failed to print cliver.stats");
   }
 
-  std::ostream* summary_csv = cvstream_->openOutputFile("cliver.stats.summary");
+  std::ostream *summary_csv = cvstream_->openOutputFile("cliver.stats.summary");
 
   if (summary_csv) {
     statistics_manager_.print_all_summary(*summary_csv, ",");
@@ -453,7 +458,7 @@ void ClientVerifier::set_round(int round) {
 
   // Print stats from round we just finished
   if (PrintStats)
-    statistics_manager_.print_round_with_short_name(*cv_message_stream, round_number_, " ");
+    print_current_round_stats();
 
   // Set new round number
   round_number_ = round;
@@ -505,36 +510,36 @@ int ClientVerifier::status() {
 
     // valid path found for legitimate log: success
     if (is_valid && LegitimateSocketLog) {
-      CVMESSAGE("Verifier Result: success (0): " <<
-                "valid path found for legitimate log");
+      CVMESSAGE("Verifier Result: success (0): "
+                << "valid path found for legitimate log");
       status = 0;
     }
 
     // no valid path found for non-legitimate log: success
     if (!is_valid && !LegitimateSocketLog) {
-      CVMESSAGE("Verifier Result: success (0): " <<
-                "no valid path found for non-legitimate log");
+      CVMESSAGE("Verifier Result: success (0): "
+                << "no valid path found for non-legitimate log");
       status = 0;
     }
 
     // always return success when max round number is used
     if (MaxRoundNumber != 0) {
-      CVMESSAGE("Verifier Result: success (0): " <<
-                "Maximum round reached");
+      CVMESSAGE("Verifier Result: success (0): "
+                << "Maximum round reached");
       status = 0;
     }
   } else if (executor_->state_count() == 0) {
     if (!is_valid && !LegitimateSocketLog) {
-      CVMESSAGE("Verifier Result: success (0): " <<
-                "no valid path found for non-legitimate log");
+      CVMESSAGE("Verifier Result: success (0): "
+                << "no valid path found for non-legitimate log");
       status = 0;
     }
   }
 
   // Return success if there was no log to verify
   if (SocketLogFile.size() == 0) {
-    CVMESSAGE("Verifier Result: success (0): " <<
-              "no socket log provided");
+    CVMESSAGE("Verifier Result: success (0): "
+              << "no socket log provided");
     status = 0;
   }
 
@@ -544,8 +549,9 @@ int ClientVerifier::status() {
   return status;
 }
 
-klee::Interpreter *ClientVerifier::create_interpreter(const klee::Interpreter::InterpreterOptions &opts,
-                                 klee::InterpreterHandler *ih) {
+klee::Interpreter *ClientVerifier::create_interpreter(
+    const klee::Interpreter::InterpreterOptions &opts,
+    klee::InterpreterHandler *ih) {
   return new CVExecutor(opts, ih);
 }
 

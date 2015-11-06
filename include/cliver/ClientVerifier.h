@@ -135,7 +135,10 @@ class ClientVerifier : public klee::InterpreterHandler {
   ExecutionTraceManager* execution_trace_manager();
 
   // Write all stats to file
-  void print_all_stats();
+  void write_all_stats();
+
+  // Print the stats for the current round
+  void print_current_round_stats();
 
   // Set global context (round)
   void set_round(int round);
