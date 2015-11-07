@@ -27,7 +27,7 @@ klee::Atomic<unsigned>::type CVExecutionState::next_id_;
 CVExecutionState::CVExecutionState(klee::KFunction *kF)
  : klee::ExecutionState(kF),
 	 id_(increment_id()), property_(0), basic_block_tracking_(true),
-   multi_pass_clone_(NULL) {}
+   multi_pass_clone_(NULL), searcher_stage_(NULL) {}
 
 CVExecutionState::CVExecutionState(
     const std::vector< klee::ref<klee::Expr> > &assumptions)
@@ -59,6 +59,7 @@ void CVExecutionState::initialize(ClientVerifier *cv) {
   coveredLines.clear();
 	network_manager_ = NetworkManagerFactory::create(this,cv);
 	property_ = ExecutionStatePropertyFactory::create();
+  searcher_stage_ = NULL;
   multi_pass_clone_ = NULL;
 }
 
