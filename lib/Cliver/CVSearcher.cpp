@@ -469,7 +469,7 @@ SearcherStage* VerifySearcher::get_new_stage(CVExecutionState* state) {
   SearcherStage* stage = SearcherStageFactory::create(merger_, state);
   CVExecutionState* next_state = stage->next_state();
 
-  if (state->searcher_stage() != NULL) {
+  if (state && state->searcher_stage() != NULL) {
     state->searcher_stage()->leaf_stages.push_back(stage);
   }
 
