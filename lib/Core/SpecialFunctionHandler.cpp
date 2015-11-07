@@ -661,7 +661,7 @@ void SpecialFunctionHandler::handlePrintBytes(ExecutionState &state,
 void SpecialFunctionHandler::handlePrintThreadId(ExecutionState &state,
                                           KInstruction *target,
                                           std::vector<ref<Expr> > &arguments) {
-  llvm::outs() << "KLEE Thread ID: " << klee::GetThreadID() << "\n";
+  klee_message("KLEE Thread ID: %d", klee::GetThreadID());
 }
 
 void SpecialFunctionHandler::handleSetForking(ExecutionState &state,
