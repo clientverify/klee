@@ -159,6 +159,7 @@ static ssize_t _clean_read(int fd, void *buf, size_t count, off_t offset) {
       //klee_warning("Setting length of symbolic read on stdin");
       static int stdin_index = -1;
       int loglen = cliver_ktest_copy("stdin", stdin_index--, buf, count);
+      int original_loglen = loglen;
 
       // Two options to support symbolic standard input:
       // 1) Use copy_symbolic buffer and return immediately, or
@@ -215,6 +216,7 @@ static ssize_t _clean_read(int fd, void *buf, size_t count, off_t offset) {
 
         // Debugging info: which thread is executing the state at this
         // instruction?  Hopefully not the same one for all states!
+        klee_debug("%d bytes of fake padding", original_loglen - loglen);
         klee_print_thread_id();
       }
 #endif // STDIN_FAKE_PADDING
