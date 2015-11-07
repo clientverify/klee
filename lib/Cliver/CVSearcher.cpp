@@ -266,7 +266,7 @@ SearcherStage* VerifySearcher::select_stage() {
       if (NULL != new_current_stage) {
         current_stage_ = new_current_stage;
         current_round_ = new_current_round;
-        cv_->set_round(current_round_);
+        cv_->set_round(current_round_, current_stage_);
 #ifndef NDEBUG
         if (prev_property_)
           delete prev_property_;
@@ -532,7 +532,7 @@ void VerifySearcher::add_state(CVExecutionState* state) {
   if (current_stage_ == NULL) {
     CVMESSAGE("Creating stage from add_state() " << *state);
     current_stage_ = create_and_add_stage(state);
-    cv_->set_round(0);
+    cv_->set_round(0, current_stage_);
   } else {
     if (!check_pending(state))
       current_stage_->add_state(state);
@@ -736,16 +736,33 @@ void VerifySearcher::notify(ExecutionEvent ev) {
 }
 
 #if defined(USE_BOOST_GRAPHVIZ)
-void add_stage_vertex(SearcherStage *s,
+void VerifySearcher::add_stage_vertex(SearcherStage *s,
                       std::map<SearcherStage *, dot_vertex_desc> &v_map,
-                      dot_graph & graph) {
+                      dot_graph &graph) {
   if (v_map.count(s) == 0) {
+
+    //*cv_message_stream << "STAGE " << s;
+    //cv_->sm()->print_stage(*cv_message_stream,s, " ");
+    std::stringstream ss;
     std::string v_name;
-    std::stringstream v_ss;
-    v_ss << s->root_state()
-         << " Rd: " << s->root_state()->property()->round
-         << " Sz: " << s->size();
-    v_name = v_ss.str();
+    uint64_t tm = cv_->sm()->get_stage_statistic(s, "RoundRealTime");
+    uint64_t rn = cv_->sm()->get_stage_statistic(s, "RoundNumber");
+    uint64_t scc = cv_->sm()->get_stage_statistic(s, "StateCloneCount");
+    uint64_t src = cv_->sm()->get_stage_statistic(s, "StateRemoveCount");
+    uint64_t vpi =
+        cv_->sm()->get_stage_statistic(s, "ValidPathInstructionCount");
+    uint64_t ic = cv_->sm()->get_stage_statistic(s, "InstructionCount");
+
+    double dtm = ((double)tm) / ((double)1000000.0);
+
+    ss << "Rn:" << rn <<
+        "\nTm:" << dtm <<
+        "\nIC:" << ic <<
+        "\nSC:" << scc <<
+        "\nSR:" << src <<
+        "\nVPI:" << vpi;
+
+    v_name = ss.str();
 
     dot_vertex v(v_name);
 
@@ -753,7 +770,7 @@ void add_stage_vertex(SearcherStage *s,
   }
 }
 
-void add_stage_edge(SearcherStage *from, SearcherStage *to,
+void VerifySearcher::add_stage_edge(SearcherStage *from, SearcherStage *to,
                     std::string label,
                     std::map<SearcherStage *, dot_vertex_desc> &v_map,
                     dot_graph &graph) {
@@ -771,10 +788,10 @@ void VerifySearcher::WriteSearcherStageGraph(std::ostream *os) {
   SearcherStage *root = SearcherStageFactory::create(
       merger_, new_stages_[0]->front()->root_state());
 
-  //for (auto stage : *(new_stages_[0])) {
-  //  CVMESSAGE("Root Stage: " << stage << " " << stage->root_state());
-  //  root->leaf_stages.push_back(stage);
-  //}
+  for (auto stage : *(new_stages_[0])) {
+    //CVMESSAGE("Root Stage: " << stage << " " << stage->root_state());
+    root->leaf_stages.push_back(stage);
+  }
 
   std::map<SearcherStage *, dot_vertex_desc> v_map;
   std::set<std::pair<SearcherStage*, SearcherStage*> > edge_set;

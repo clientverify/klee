@@ -21,6 +21,10 @@
 #include "klee/util/Mutex.h"
 #include "klee/util/Atomic.h"
 
+#if defined(USE_BOOST_GRAPHVIZ)
+#include <boost/graph/graphviz.hpp>
+#endif
+
 namespace cliver {
 class CVExecutionState;
 class StateMerger;
@@ -105,6 +109,17 @@ class VerifySearcher : public CVSearcher {
   void remove_pending_duplicates();
   bool is_empty();
   SearcherStage* create_and_add_stage(CVExecutionState* state);
+
+#if defined(USE_BOOST_GRAPHVIZ)
+  void add_stage_vertex(SearcherStage *s,
+                        std::map<SearcherStage *, dot_vertex_desc> &v_map,
+                        dot_graph &graph);
+
+  void add_stage_edge(SearcherStage *from, SearcherStage *to, std::string label,
+                      std::map<SearcherStage *, dot_vertex_desc> &v_map,
+                      dot_graph &graph);
+#endif
+
 
   ClientVerifier* cv_;
   StateMerger* merger_;

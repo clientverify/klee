@@ -87,6 +87,7 @@ enum SearchModeType {
 ////////////////////////////////////////////////////////////////////////////////
 
 class CVStream;
+class SearcherStage;
 
 class ClientVerifier : public klee::InterpreterHandler {
  public:
@@ -141,7 +142,7 @@ class ClientVerifier : public klee::InterpreterHandler {
   void print_current_round_stats();
 
   // Set global context (round)
-  void set_round(int round);
+  void set_round(int round, SearcherStage* stage);
 
   int round() { return round_number_; }
 
@@ -161,6 +162,10 @@ class ClientVerifier : public klee::InterpreterHandler {
   // Return status of verifier: 0 == we've found a state consistent with the
   // socket log, non-zero otherwise
   int status();
+
+  void WriteSearcherStageGraph();
+
+  CVStatisticsManager* sm() { return &statistics_manager_; }
 
  private:
   CVStream *cvstream_;

@@ -688,6 +688,8 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
   }
   totalThreadCount = 1;
 
+  cv_->WriteSearcherStageGraph();
+
  dump:
   if (klee::DumpStatesOnHalt && !empty()) {
     std::cerr << "KLEE: halting execution, dumping remaining states\n";

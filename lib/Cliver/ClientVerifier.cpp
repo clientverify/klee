@@ -407,6 +407,18 @@ void ClientVerifier::write_all_stats() {
     cv_error("failed to print cliver.stats");
   }
 
+  std::ostream *stage_stats_csv =
+      cvstream_->openOutputFile("cliver_stage.stats");
+
+  if (stage_stats_csv) {
+    *stage_stats_csv << "ptr,";
+    statistics_manager_.print_names(*stage_stats_csv, ",");
+    statistics_manager_.print_all_stages(*stage_stats_csv, ",");
+    delete stage_stats_csv;
+  } else {
+    cv_error("failed to print cliver_stage.stats");
+  }
+
   std::ostream *summary_csv = cvstream_->openOutputFile("cliver.stats.summary");
 
   if (summary_csv) {
@@ -422,7 +434,7 @@ uint64_t ClientVerifier::get_round_statistic_value(int round,
   return statistics_manager_.get_context_statistic_value(round, s);
 }
 
-void ClientVerifier::set_round(int round) {
+void ClientVerifier::set_round(int round, SearcherStage *stage) {
 
   // Increment context timers before we switch to new context
   statistics_manager_.update_context_timers();
@@ -450,7 +462,7 @@ void ClientVerifier::set_round(int round) {
   }
 
   // Update statistic manager with new round number
-  statistics_manager_.set_context(round);
+  statistics_manager_.set_context(round, stage);
 
   // Recalculate memory usage if we are tracking it
   if (klee::MaxMemory)
@@ -553,6 +565,11 @@ klee::Interpreter *ClientVerifier::create_interpreter(
     const klee::Interpreter::InterpreterOptions &opts,
     klee::InterpreterHandler *ih) {
   return new CVExecutor(opts, ih);
+}
+
+void ClientVerifier::WriteSearcherStageGraph() {
+  auto file = cvstream_->openOutputFile("searcher_stage.graph");
+  static_cast<VerifySearcher*>(searcher_)->WriteSearcherStageGraph(file);
 }
 
 //////////////////////////////////////////////////////////////////////////////
