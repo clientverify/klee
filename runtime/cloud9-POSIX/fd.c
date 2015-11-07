@@ -212,6 +212,10 @@ static ssize_t _clean_read(int fd, void *buf, size_t count, off_t offset) {
             break;
           }
         }
+
+        // Debugging info: which thread is executing the state at this
+        // instruction?  Hopefully not the same one for all states!
+        klee_print_thread_id();
       }
 #endif // STDIN_FAKE_PADDING
       copy_symbolic_buffer(buf, loglen, "stdinsym", NULL);

@@ -74,7 +74,11 @@ extern "C" {
   
   /* print the tree associated w/ a given expression. */
   void klee_print_expr(const char *msg, ...);
-  
+
+  /* If parallel KLEE is enabled, print the thread_id of the thread executing
+   * the current state. */
+  void klee_print_thread_id(void);
+
   /* NB: this *does not* fork n times and return [0,n) in children.
    * It makes n be symbolic and returns: caller must compare N times.
    */

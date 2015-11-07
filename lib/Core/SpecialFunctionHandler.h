@@ -145,6 +145,7 @@ namespace klee {
     HANDLER(handlePrintExpr);
     HANDLER(handlePrintBytes);
     HANDLER(handlePrintRange);
+    HANDLER(handlePrintThreadId);
     HANDLER(handleRange);
     HANDLER(handleRealloc);
     HANDLER(handleReportError);

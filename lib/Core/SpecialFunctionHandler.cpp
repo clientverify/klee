@@ -19,6 +19,7 @@
 #include "klee/Internal/Module/KModule.h"
 #include "klee/util/ExprUtil.h"
 #include "klee/Internal/Support/Debug.h"
+#include "klee/util/Thread.h"
 
 #include "Executor.h"
 #include "MemoryManager.h"
@@ -98,6 +99,7 @@ static SpecialFunctionHandler::HandlerInfo handlerInfo[] = {
   add("klee_print_expr", handlePrintExpr, false),
   add("klee_print_bytes", handlePrintBytes, false),
   add("klee_print_range", handlePrintRange, false),
+  add("klee_print_thread_id", handlePrintThreadId, false),
   add("klee_set_forking", handleSetForking, false),
   add("klee_stack_trace", handleStackTrace, false),
   add("klee_warning", handleWarning, false),
@@ -654,6 +656,12 @@ void SpecialFunctionHandler::handlePrintBytes(ExecutionState &state,
     ss << os->read8(offset+i) << " ";
   }
   llvm::errs() << ss.str() << "\n";
+}
+
+void SpecialFunctionHandler::handlePrintThreadId(ExecutionState &state,
+                                          KInstruction *target,
+                                          std::vector<ref<Expr> > &arguments) {
+  llvm::outs() << "KLEE Thread ID: " << klee::GetThreadID() << "\n";
 }
 
 void SpecialFunctionHandler::handleSetForking(ExecutionState &state,
