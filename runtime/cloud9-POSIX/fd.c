@@ -172,7 +172,6 @@ static ssize_t _clean_read(int fd, void *buf, size_t count, off_t offset) {
 #if !(KTEST_STDIN_PLAYBACK)
 #ifdef STDIN_FAKE_PADDING
       if (fake_padding_max != 0) {
-        int i;
         int fakepadlen = 0; // Note that there is actually no padding
         klee_make_symbolic(&fakepadlen, sizeof(fakepadlen), "fakepadlen");
         klee_assume(fakepadlen >= 0);
@@ -182,7 +181,8 @@ static ssize_t _clean_read(int fd, void *buf, size_t count, off_t offset) {
         /* We create a loop that is equivalent to the following code. The
          * important point is that loglen must be concrete at the end of this
          * fake padding operation so that copy_symbolic_buffer has a concrete
-         * length to work with.
+         * length to work with.  This loop is intentionally designed to create
+         * a "fork bomb" of states in order to leverage parallelization.
 
         switch (fakepadlen) {
           case 0:
@@ -199,20 +199,31 @@ static ssize_t _clean_read(int fd, void *buf, size_t count, off_t offset) {
             break;
         }
         */
-        for (i = fake_padding_max; i >= 0; --i) {
-
-          // The following block is dead code, but ironically, if you remove
-          // it, the optimizer actually ends up creating a symbolic loglen.
-          if (klee_is_symbolic(i)) {
-            klee_warning("symbolic i for fake_padding_max loop");
-          }
-
-          // Pretend last i bytes of stdin were padding.
-          if (fakepadlen == i) {
-            loglen -= i;
-            break;
+        // Determine most significant bit of fake_padding_max
+        int msb = 0;
+        int n = fake_padding_max >> 1;
+        while (n > 0) {
+          msb++;
+          n >>= 1;
+        }
+        // The following is equivalent to
+        //    int i = fakepadlen;
+        // Its purpose is to make KLEE generate all possible concrete i as
+        // different states.
+        int i = 0;
+        int bit_position;
+        for (bit_position = msb; bit_position >= 0; bit_position--) {
+          i *= 2;
+          if ((fakepadlen >> bit_position) & 1) {
+            // The following block is dead code, but it prevents the optimizer
+            // from creating a symbolic i and therefore a symbolic loglen.
+            if (klee_is_symbolic(i)) {
+              klee_warning("symbolic i for fake_padding_max loop");
+            }
+            i++;
           }
         }
+        loglen -= i;
 
         // Debugging info: which thread is executing the state at this
         // instruction?  Hopefully not the same one for all states!
