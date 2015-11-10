@@ -32,12 +32,7 @@ public:
   ConstraintManager() {}
 
   // create from constraints with no optimization
-  explicit
-  //ConstraintManager(const std::vector< ref<Expr> > &_constraints) :
-  //  constraints(_constraints) {}
-
-  //ConstraintManager(const ConstraintManager &cs) : constraints(cs.constraints) {}
-  ConstraintManager(const std::vector< ref<Expr> > &_constraints);
+  explicit ConstraintManager(const std::vector<ref<Expr> > &_constraints);
 
   ConstraintManager(const ConstraintManager &cs);
 
@@ -49,11 +44,11 @@ public:
   void simplifyForValidConstraint(ref<Expr> e);
 
   ref<Expr> simplifyExpr(ref<Expr> e) const;
-  ref<Expr> simplifyExprV2(ref<Expr> e) const;
-  ref<Expr> simplifyExprV3(ref<Expr> e) const;
-  ref<Expr> simplifyExprV4(ref<Expr> e) const;
+  ref<Expr> simplifyWithXorOptimization(ref<Expr> e) const;
 
   void addConstraint(ref<Expr> e);
+
+  void DoXorOptimization();
   
   bool empty() const {
     return constraints.empty();
@@ -90,10 +85,8 @@ public:
   
 private:
   std::vector< ref<Expr> > constraints;
-  ExprHashMap< ref<Expr> > equalities_hash_map;
   std::map< ref<Expr>, ref<Expr> > equalities_map;
   std::unordered_map< unsigned, std::pair< ref<Expr>, ref<Expr> > > equalities_hashval_map;
-  //ExprHashMap< ref<Expr> > equalities_hash_map;;
 
 
   // returns true iff the constraints were modified

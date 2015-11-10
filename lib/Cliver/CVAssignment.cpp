@@ -147,8 +147,7 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
       klee::ConstantExpr::alloc(0, klee::Expr::Bool)), result);
 
     if (result) {
-      //TODO Handle this case!
-      CVDEBUG("INVALID solver concretization!");
+      cv_error("INVALID solver concretization!");
     } else {
       //TODO Test this path
       CVDEBUG("VALID solver concretization!");

@@ -43,6 +43,9 @@ UseInPlaceConcretization("in-place-concretization",llvm::cl::init(false));
 llvm::cl::opt<bool>
 UseRecvProcessingFlag("use-recv-processing-flag",llvm::cl::init(false));
 
+llvm::cl::opt<bool>
+EnableXorOptimization("enable-xor-opt", llvm::cl::init(false));
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef NDEBUG
@@ -276,6 +279,11 @@ void NetworkManager::execute_write(CVExecutor* executor,
 			RETURN_FAILURE_OBJ("send", "not valid (1) ");
 	} else {
 		bool result; 
+
+    if (EnableXorOptimization) {
+      klee::ConstraintManager cm;
+      write_condition = state_->constraints.simplifyWithXorOptimization(write_condition);
+    }
 
     executor->compute_false(state_, write_condition, result);
     if (result)
