@@ -61,6 +61,11 @@ OnlyVerifyFirstS2C("only-verify-first-s2c",
   llvm::cl::desc("Verify only the first N server to client messages (default=-1, i.e., all server to client messages)"),
   llvm::cl::init(-1));
 
+llvm::cl::opt<bool>
+DropS2CTLSApplicationData("drop-tls-s2c-app-data",
+  llvm::cl::desc("Drop server-to-client messages that match TLS application data filter"),
+  llvm::cl::init(false));
+
 llvm::cl::list<std::string> 
 SocketLogFile("socket-log",
   llvm::cl::ZeroOrMore,
@@ -315,41 +320,79 @@ klee::KBasicBlock* ClientVerifier::LookupBasicBlockID(int id) {
 
 int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
 
-	foreach (std::string filename, logs) {
-		KTest *ktest = kTest_fromFile(filename.c_str());
-		if (ktest) {
+  foreach(std::string filename, logs) {
+    KTest *ktest = kTest_fromFile(filename.c_str());
+    if (ktest) {
 
-			socket_events_.push_back(new SocketEventList());
+      socket_events_.push_back(new SocketEventList());
       unsigned s2c_count = 0;
-			for (unsigned i=0; i<ktest->numObjects; ++i) {
+      unsigned s2c_used = 0;
+      int last_s2c_application_msg_index = INT_MAX;
+      int last_s2c_application_msg_length = 0;
+      for (unsigned i = 0; i < ktest->numObjects; ++i) {
         std::string obj_name(ktest->objects[i].name);
         if (obj_name == "s2c") {
           s2c_count++;
-          if (OnlyVerifyFirstS2C == -1 || s2c_count <= OnlyVerifyFirstS2C) {
-            socket_events_.back()->push_back(
-                new SocketEvent(ktest->objects[i]));
+          // Two options for dropping s2c messages...
+          if (DropS2CTLSApplicationData) { // ...TLS specific (by message contents)
+            uint8_t first_msg_byte = ktest->objects[i].bytes[0];
+            // TLS message format:
+            // [byte:0 type][byte:1-2 vers][byte:3-4 length][...]
+            // Drop S2C application data header == 23
+            if (first_msg_byte == 23) {
+              last_s2c_application_msg_index = i;
+              // Extract length field
+              last_s2c_application_msg_length =
+                  (ktest->objects[i].bytes[3] << 8) |
+                  (ktest->objects[i].bytes[4]);
+              // Drop S2C rest of application data (in next SocketEvent)
+            } else if (i - 1 == last_s2c_application_msg_index) {
+              // check length field == ktest object(socket event) size
+              if (last_s2c_application_msg_length !=
+                  ktest->objects[i].numBytes) {
+                cv_error("DropS2CTLSApplicationData: TLS Field Length != "
+                         "message size");
+              }
+            } else {
+              socket_events_.back()->push_back(
+                  new SocketEvent(ktest->objects[i]));
+              s2c_used++;
+            }
+          } else { // ... or by s2c message index
+            if (OnlyVerifyFirstS2C == -1 || s2c_count <= OnlyVerifyFirstS2C) {
+              socket_events_.back()->push_back(
+                  new SocketEvent(ktest->objects[i]));
+              s2c_used++;
+            }
           }
         }
         if (obj_name == "c2s")
-          socket_events_.back()->push_back(
-              new SocketEvent(ktest->objects[i]));
-			}
+          socket_events_.back()->push_back(new SocketEvent(ktest->objects[i]));
+      }
 
-			cv_message("Opened socket log \"%s\" with %d objects",
-					filename.c_str(), ktest->numObjects);
+      cv_message("Opened socket log \"%s\" with %d objects", filename.c_str(),
+                 ktest->numObjects);
       if (OnlyVerifyFirstS2C != -1) {
         cv_message("Skipped %d server to client messages after first %d",
                    s2c_count - (int)OnlyVerifyFirstS2C,
                    (int)OnlyVerifyFirstS2C);
       }
 
-      replay_objs_ = ktest;
-		} else {
-			cv_error("Error opening socket log \"%s\"", filename.c_str());
-		}
-	}
+      if (s2c_count != s2c_used) {
+        CVMESSAGE("WARNING: Verifier is not using all server-to-client "
+                  "messages (see ClientVerifier::read_socket_logs for more "
+                  "information)");
+        CVMESSAGE("WARNING: Using " << s2c_used << " of " << s2c_count
+                                    << " server-to-client messages");
+      }
 
-	return socket_events_.size();
+      replay_objs_ = ktest;
+    } else {
+      cv_error("Error opening socket log \"%s\"", filename.c_str());
+    }
+  }
+
+  return socket_events_.size();
 }
 
 void ClientVerifier::hook(ExecutionObserver* observer) {
