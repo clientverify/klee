@@ -6,10 +6,10 @@ MAINTAINER Dan Liew <daniel.liew@imperial.ac.uk>
 # the resulting image is unnecessarily large!
 
 ENV LLVM_VERSION=3.4 \
-    STP_VERSION=master \
+    STP_VERSION=2.1.0 \
     DISABLE_ASSERTIONS=0 \
     ENABLE_OPTIMIZED=1 \
-    KLEE_UCLIBC=1 \
+    KLEE_UCLIBC=klee_uclibc_v1.0.0 \
     KLEE_SRC=/home/klee/klee_src \
     COVERAGE=0 \
     BUILD_DIR=/home/klee/klee_build
@@ -98,7 +98,7 @@ RUN sudo mkdir -p /usr/lib/llvm-${LLVM_VERSION}/build/Release/bin && \
     sudo mkdir -p /usr/lib/llvm-${LLVM_VERSION}/build/include && \
     sudo ln -s /usr/include/llvm-${LLVM_VERSION}/llvm /usr/lib/llvm-${LLVM_VERSION}/build/include/llvm && \
     sudo ln -s /usr/include/llvm-c-${LLVM_VERSION}/llvm-c /usr/lib/llvm-${LLVM_VERSION}/build/include/llvm-c && \
-    for static_lib in /usr/lib/llvm-3.4/lib/*.a ; do sudo ln -s ${static_lib} /usr/lib/`basename ${static_lib}`; done
+    for static_lib in /usr/lib/llvm-${LLVM_VERSION}/lib/*.a ; do sudo ln -s ${static_lib} /usr/lib/`basename ${static_lib}`; done
 
 # FIXME: This is **really gross**. The Official Ubuntu LLVM packages don't ship
 # with ``FileCheck`` or the ``not`` tools so we have to hack building these
