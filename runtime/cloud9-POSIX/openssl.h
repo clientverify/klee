@@ -37,6 +37,7 @@
 
 void copy_symbolic_buffer(unsigned char* buf, int len, char* tag, void* taint);
 
+DECLARE_MODEL(int, init_version, void)
 //DECLARE_MODEL(void*, memset, void *s, int c, size_t n)
 
 DECLARE_MODEL(int, RAND_bytes, unsigned char *buf, int num)
