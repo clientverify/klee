@@ -18,6 +18,13 @@
 // OpenSSL helper routines
 ////////////////////////////////////////////////////////////////////////////////
 
+DEFINE_MODEL(int, init_version, void) {
+  int *version = (int*) malloc(sizeof(int));
+  assert(version != NULL);
+  klee_make_symbolic(version, sizeof(int), "version");
+  return *version;
+}
+
 // Check if buffer is symbolic
 static void* is_symbolic_buffer(const void* buf, int len) {
 #if OPENSSL_SYMBOLIC_TAINT
