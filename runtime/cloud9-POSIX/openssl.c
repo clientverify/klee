@@ -20,7 +20,7 @@
 
 DEFINE_MODEL(int, init_version, void) {
   int version;
-  klee_make_symbolic(version, sizeof(version), "version");
+  klee_make_symbolic(&version, sizeof(version), "version");
   klee_assume((version == 1) || (version == 2));
   return version;
 }
