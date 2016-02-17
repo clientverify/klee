@@ -36,7 +36,7 @@
 #define KTEST_STDIN_PLAYBACK 0
 
 void copy_symbolic_buffer(unsigned char* buf, int len, char* tag, void* taint);
-
+DECLARE_MODEL(void, klee_print, char* str, int symb_var)
 DECLARE_MODEL(int, init_version, void)
 //DECLARE_MODEL(void*, memset, void *s, int c, size_t n)
 
