@@ -18,6 +18,11 @@
 // OpenSSL helper routines
 ////////////////////////////////////////////////////////////////////////////////
 
+DEFINE_MODEL(void, klee_print, char* str, int symb_var){
+    klee_warning(str);
+    klee_message("%s: %d", str, symb_var);
+}
+
 DEFINE_MODEL(int, init_version, void) {
   int version;
   klee_make_symbolic(&version, sizeof(version), "version");
