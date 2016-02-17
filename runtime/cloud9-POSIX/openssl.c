@@ -19,10 +19,10 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 DEFINE_MODEL(int, init_version, void) {
-  int *version = (int*) malloc(sizeof(int));
-  assert(version != NULL);
-  klee_make_symbolic(version, sizeof(int), "version");
-  return *version;
+  int version;
+  klee_make_symbolic(version, sizeof(version), "version");
+  klee_assume((version == 1) || (version == 2));
+  return version;
 }
 
 // Check if buffer is symbolic
