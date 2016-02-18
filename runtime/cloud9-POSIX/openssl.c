@@ -20,11 +20,13 @@
 
 DEFINE_MODEL(void, klee_print, char* str, int symb_var){
     if(klee_is_symbolic(symb_var))
-        klee_warning("%s", str);
+        ;
     else if (symb_var == 1 )
-        klee_warning("%s E", str);
-    else if (symb_var == 2 ) klee_warning("%s F", str);
+        klee_warning("E");
+    else if (symb_var == 2 )
+        klee_warning("F");
     else exit(-23);
+    if(klee_is_symbolic(symb_var));
 }
 
 DEFINE_MODEL(int, init_version, void) {
