@@ -15,6 +15,7 @@
 #include <iostream>
 #include <vector>
 #include <set>
+#include <memory>
 
 #define UBATOINT_I(_b,_i) \
     (((_b)[_i]<<24) + ((_b)[_i+1]<<16) + ((_b)[_i+2]<<8) + ((_b)[_i+3]))
@@ -95,6 +96,35 @@ typedef std::set<SocketEvent*, SocketEventDataOnlyLT> SocketEventDataSet;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class SocketSource {
+public:
+  virtual ~SocketSource() {}
+  virtual bool finished() = 0;
+  virtual const SocketEvent& next() = 0;
+};
+
+class SocketSourcePreloaded : public SocketSource {
+public:
+  SocketSourcePreloaded(const SocketEventList &log)
+      : log_(new SocketEventList(log)), next_index_(0) {}
+  SocketSourcePreloaded(const KTest *ktest) : next_index_(0) {
+    SocketEventList *log = new SocketEventList();
+    for (unsigned i = 0; i < ktest->numObjects; ++i) {
+      log->push_back(new SocketEvent(ktest->objects[i])); // FIXME: memory leak
+    }
+    log_ = log;
+  }
+  virtual ~SocketSourcePreloaded() { delete log_; }
+  virtual bool finished() { return next_index_ >= log_->size(); }
+  virtual const SocketEvent &next() { return *((*log_)[next_index_++]); }
+
+private:
+  const SocketEventList *log_;
+  size_t next_index_;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class Socket {
  public:
 	typedef enum { SOCKET_STATES } State;
@@ -103,37 +133,40 @@ class Socket {
 	Socket(const SocketEventList &log);
 	~Socket();
 
-	SocketEvent::Type type() { return event().type; }
-	State state() 					 { return state_; }
-	unsigned length()				 { return event().length; }
-	unsigned client_round()	 { return event().client_round; }
-	int fd() 								 { return file_descriptor_; }
-	unsigned index()				 { return index_; }
+  SocketEvent::Type type() { return event().type; }
+  State state() { return state_; }
+  unsigned length() { return event().length; }
+  unsigned client_round() { return event().client_round; }
+  int fd() { return file_descriptor_; }
+  unsigned index() { return index_; }
 
-	uint8_t next_byte();
-	bool has_data();
-	unsigned bytes_remaining();
-	bool is_open();
-	bool end_of_log();
-	void open();
-	void set_state(State s);
-	void advance();
+  uint8_t next_byte();
+  bool has_data();
+  unsigned bytes_remaining();
+  bool is_open();
+  bool end_of_log();
+  void open();
+  void set_state(State s);
+  void advance();
 
   void print(std::ostream &os);
 
-	const SocketEvent& event();
-	const SocketEvent& previous_event();
+  const SocketEvent &event();
+  const SocketEvent &previous_event();
 
-	static int NextFileDescriptor;
+  static int NextFileDescriptor;
+
  protected:
 	Socket() {}
 
 	int file_descriptor_;
 	bool open_;
+	bool end_reached_;
 	State state_;
-	unsigned index_;
+	unsigned index_; // points to last item in log_
 	unsigned offset_;
-	const SocketEventList  *log_;
+	SocketEventList  *log_; // socket events retrieved thus far
+  std::shared_ptr<SocketSource> socket_source_; // FIXME: why unique_ptr breaks?
 };
 
 #undef X

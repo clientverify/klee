@@ -237,7 +237,7 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
 
   if (state && state->network_manager() && 
       state->network_manager()->socket() &&
-      state->network_manager()->socket()->end_of_log()) {
+      !state->network_manager()->socket()->end_of_log()) {
     is_socket_active = true;
   }
 
@@ -717,7 +717,7 @@ void VerifyExecutionTraceManager::create_ed_tree_future(CVExecutionState* state)
   }
   stage->ed_tree_init = true;
   
-  if (!state->network_manager()->socket()->end_of_log()) {
+  if (state->network_manager()->socket()->end_of_log()) {
     CVDEBUG("End of log, not building edit distance tree");
     return;
   }
@@ -759,7 +759,7 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state,
   //stage->root_ed_tree = NULL;
   ExecutionTraceEditDistanceTree*  root_ed_tree = NULL;
 
-  //if (!state->network_manager()->socket()->end_of_log()) {
+  //if (state->network_manager()->socket()->end_of_log()) {
   //  CVDEBUG("End of log, not building edit distance tree");
   //  return;
   //}
@@ -951,7 +951,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
 
   if (state && state->network_manager() && 
       state->network_manager()->socket() &&
-      state->network_manager()->socket()->end_of_log()) {
+      !state->network_manager()->socket()->end_of_log()) {
     is_socket_active = true;
   }
 

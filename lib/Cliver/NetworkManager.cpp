@@ -428,7 +428,7 @@ void NetworkManagerXpilot::execute_read(CVExecutor* executor,
 	GET_SOCKET_OR_DIE_TRYIN("read", fd);
 
 	int bytes_written = 0;
-	
+
   if (socket.type() != SocketEvent::RECV)
     RETURN_SUCCESS("read-on-send", bytes_written);
 

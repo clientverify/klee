@@ -181,27 +181,32 @@ bool SocketEventDataOnlyLT::operator()(const SocketEvent* a,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Socket::Socket(const KTest* ktest) 
-	: file_descriptor_(Socket::NextFileDescriptor++), 
-	  open_(false), 
-		state_(IDLE), 
-		index_(0), 
-		offset_(0) {
+Socket::Socket(const KTest *ktest)
+    : file_descriptor_(Socket::NextFileDescriptor++), open_(false),
+      end_reached_(false), state_(IDLE), index_(0), offset_(0),
+      log_(new SocketEventList()),
+      socket_source_(std::make_shared<SocketSourcePreloaded>(ktest)) {
 
-	SocketEventList *log = new SocketEventList();
-	for (unsigned i=0; i<ktest->numObjects; ++i) {
-		log->push_back(new SocketEvent(ktest->objects[i]));
-	}
-	log_ = log;
+  // Load first socket event if it exists.
+  if (socket_source_->finished()) {
+    end_reached_ = true; // degenerate case - empty log
+  } else {
+    log_->push_back(new SocketEvent(socket_source_->next())); // FIXME: leak
+  }
 }
 
-Socket::Socket(const SocketEventList &log) 
-	: file_descriptor_(Socket::NextFileDescriptor++), 
-	  open_(false), 
-		state_(IDLE), 
-		index_(0), 
-		offset_(0),
-		log_(new SocketEventList(log)) {
+Socket::Socket(const SocketEventList &log)
+    : file_descriptor_(Socket::NextFileDescriptor++), open_(false),
+      end_reached_(false), state_(IDLE), index_(0), offset_(0),
+      log_(new SocketEventList()),
+      socket_source_(std::make_shared<SocketSourcePreloaded>(log)) {
+
+  // Load first socket event if it exists.
+  if (socket_source_->finished()) {
+    end_reached_ = true; // degenerate case - empty log
+  } else {
+    log_->push_back(new SocketEvent(socket_source_->next())); // FIXME: leak
+  }
 }
 
 Socket::~Socket() {}
@@ -220,11 +225,11 @@ unsigned Socket::bytes_remaining() {
 }
 
 bool  Socket::is_open() {
-	return open_ && (index_ < log_->size());
+	return open_ && !end_of_log();
 }
 
 bool  Socket::end_of_log() {
-	return index_ < log_->size();
+	return end_reached_;
 }
 
 void  Socket::open() {
@@ -235,18 +240,30 @@ void  Socket::set_state(State s) {
 	state_ = s;
 }
 
-void  Socket::advance(){ 
-	index_++; state_ = IDLE; offset_ = 0;
+void  Socket::advance(){
+  if (socket_source_->finished()) {
+    end_reached_ = true;
+    index_++; // This is necessary! Callers depend on one-past-the-end behavior.
+  } else {
+    log_->push_back(new SocketEvent(socket_source_->next())); // FIXME: leak
+    index_++; // index_ points to last item in log_
+  }
+  state_ = IDLE;
+  offset_ = 0;
 }
 
-const SocketEvent& Socket::event() { 
-	assert (log_ && index_ < log_->size());
-	return *((*log_)[index_]);
+const SocketEvent& Socket::event() {
+  if (!(log_ && index_ < log_->size())) {
+    cv_error("Socket::event() - invalid index into Socket log");
+  }
+  return *((*log_)[index_]);
 }
 
-const SocketEvent& Socket::previous_event(){ 
-	assert (log_ && index_ <= log_->size() && index_ > 0);
-	return *((*log_)[index_-1]);
+const SocketEvent& Socket::previous_event() {
+  if (!(log_ && index_ <= log_->size() && index_ > 0)) {
+    cv_error("Socket::previous_event() - invalid index into Socket log");
+  }
+  return *((*log_)[index_ - 1]);
 }
 
 void Socket::print(std::ostream &os) {

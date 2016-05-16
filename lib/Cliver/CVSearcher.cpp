@@ -654,7 +654,7 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
         }
 
         if (FinishAfterLastMessage) {
-          if (!state->network_manager()->socket()->end_of_log())  {
+          if (state->network_manager()->socket()->end_of_log())  {
             ExecutionStateProperty* property = state->property();
             CVMESSAGE("Finish Event - Last Message - Socket: " 
                       << *(state->network_manager()->socket())
