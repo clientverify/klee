@@ -178,6 +178,13 @@ int NetworkManager::socket_log_index(int fd) {
 	return -1;
 }
 
+// FIXME: this is dangerous if the sockets_ list can be built
+// incrementally with std::vector::push_back(), i.e., if a call to
+// NetworkManager::add_socket() occurs between the call to
+// NetworkManager::socket() and the use of the returned pointer.  If a
+// reallocation happens, all iterators, pointers and references
+// related to the container are invalidated.
+// http://www.cplusplus.com/reference/vector/vector/push_back/)
 Socket* NetworkManager::socket(int fd) {
 	if (!sockets_.empty()) {
 		if (fd == -1) {
