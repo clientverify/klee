@@ -101,7 +101,6 @@ class Socket {
 
 	Socket(const KTest* ktest);
 	Socket(const SocketEventList &log);
-  Socket(const SocketEvent &se, bool is_open);
 	~Socket();
 
 	SocketEvent::Type type() { return event().type; }
@@ -135,7 +134,6 @@ class Socket {
 	unsigned index_;
 	unsigned offset_;
 	const SocketEventList  *log_;
-	const SocketEvent *event_;
 };
 
 #undef X

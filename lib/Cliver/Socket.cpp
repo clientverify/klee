@@ -186,8 +186,7 @@ Socket::Socket(const KTest* ktest)
 	  open_(false), 
 		state_(IDLE), 
 		index_(0), 
-		offset_(0),
-		event_(NULL) {
+		offset_(0) {
 
 	SocketEventList *log = new SocketEventList();
 	for (unsigned i=0; i<ktest->numObjects; ++i) {
@@ -202,18 +201,8 @@ Socket::Socket(const SocketEventList &log)
 		state_(IDLE), 
 		index_(0), 
 		offset_(0),
-		log_(new SocketEventList(log)),
-		event_(NULL) {
+		log_(new SocketEventList(log)) {
 }
-
-Socket::Socket(const SocketEvent &se, bool is_open) 
-	: file_descriptor_(Socket::NextFileDescriptor), 
-	  open_(is_open), 
-		state_(IDLE), 
-		index_(0), 
-		offset_(0),
-		log_(NULL),
-		event_(&se) {}
 
 Socket::~Socket() {}
 
@@ -231,20 +220,10 @@ unsigned Socket::bytes_remaining() {
 }
 
 bool  Socket::is_open() {
-	if (event_) {
-		if (index_ != 0) cv_error (" index is not zero %d", index_);
-		assert(index_ == 0);
-		return open_;
-	}
 	return open_ && (index_ < log_->size());
 }
 
 bool  Socket::end_of_log() {
-	if (event_) {
-		if (index_ != 0) cv_error (" index is not zero %d", index_);
-		assert(index_ == 0);
-    return false;
-	}
 	return index_ < log_->size();
 }
 
@@ -261,14 +240,11 @@ void  Socket::advance(){
 }
 
 const SocketEvent& Socket::event() { 
-	if (event_) return *event_;
 	assert (log_ && index_ < log_->size());
 	return *((*log_)[index_]);
 }
 
 const SocketEvent& Socket::previous_event(){ 
-	// ::previous_event() not supported when using single event Socket
-	if (event_) cv_error("previous_event not supported");
 	assert (log_ && index_ <= log_->size() && index_ > 0);
 	return *((*log_)[index_-1]);
 }
@@ -280,19 +256,7 @@ void Socket::print(std::ostream &os) {
 #undef X
 		
   os << "[ ";
-	if (event_) {
-
-    if (ClientModelFlag == XPilot)
-      os << "Client Round:" << client_round() << ", ";
-
-		os << "Event: " << index_ << "/" << 1 << ", "
-       //<< "Position: " << offset_ << "/" << event().length << ", "
-			 << socket_states[state()] << ", " << socketevent_types[type()] << " ]";
-
-		if (DebugSocket)
-			 os << " " << event();
-
-	} else if (index_ < log_->size()) {
+	if (index_ < log_->size()) {
 
     if (ClientModelFlag == XPilot)
       os << "Client Round:" << client_round() << ", ";
@@ -308,6 +272,7 @@ void Socket::print(std::ostream &os) {
 
 		os << "Event: " << index_ << "/" << log_->size() << ", "
 			 << socket_states[state()] << ", N/A ]";
+
 	}
 }
 
