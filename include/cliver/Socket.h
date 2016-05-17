@@ -125,6 +125,16 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// WARNING: a Socket can be copied, in which case different copies of
+// the same Socket may be advance()'d separately and return a
+// different index(), yet be working off of the same underlying
+// SocketSource and SocketEventList.  Changes to Socket need to
+// support this usage.
+//
+// This data structure is NOT thread-safe if advance() is called from
+// different threads, since log_ and socket_source_ may be shared
+// between copies of Socket objects.
+
 class Socket {
  public:
 	typedef enum { SOCKET_STATES } State;
@@ -163,10 +173,10 @@ class Socket {
 	bool open_;
 	bool end_reached_;
 	State state_;
-	unsigned index_; // points to last item in log_
+	unsigned index_; // copies may point to different places in the log_
 	unsigned offset_;
-	SocketEventList  *log_; // socket events retrieved thus far
-  std::shared_ptr<SocketSource> socket_source_; // FIXME: why unique_ptr breaks?
+	SocketEventList  *log_; // socket events retrieved thus far (shared!)
+  std::shared_ptr<SocketSource> socket_source_;
 };
 
 #undef X

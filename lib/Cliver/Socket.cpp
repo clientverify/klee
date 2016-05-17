@@ -241,15 +241,17 @@ void  Socket::set_state(State s) {
 }
 
 void  Socket::advance(){
-  if (socket_source_->finished()) {
-    end_reached_ = true;
-    index_++; // This is necessary! Callers depend on one-past-the-end behavior.
-  } else {
-    log_->push_back(new SocketEvent(socket_source_->next())); // FIXME: leak
-    index_++; // index_ points to last item in log_
-  }
   state_ = IDLE;
   offset_ = 0;
+  if (index_ + 1 < log_->size()) { // socket event already retrieved
+    index_++;
+  } else if (!socket_source_->finished()) { // need to retrieve next socket event
+    log_->push_back(new SocketEvent(socket_source_->next())); // FIXME: leak
+    index_++;
+  } else { // no more socket events
+    index_ = log_->size(); // callers may depend on one-past-the-end index()
+    end_reached_ = true;
+  }
 }
 
 const SocketEvent& Socket::event() {
