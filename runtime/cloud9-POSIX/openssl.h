@@ -31,9 +31,9 @@
 #define DEBUG_OPENSSL_MODEL 0
 
 // Enable for fully concrete model (requires ktest)
-#define KTEST_RAND_PLAYBACK 0
-#define KTEST_SELECT_PLAYBACK 0
-#define KTEST_STDIN_PLAYBACK 0
+#define KTEST_RAND_PLAYBACK 1
+#define KTEST_SELECT_PLAYBACK 1
+#define KTEST_STDIN_PLAYBACK 1
 
 void copy_symbolic_buffer(unsigned char* buf, int len, char* tag, void* taint);
 DECLARE_MODEL(void, klee_print, char* str, int symb_var)
@@ -55,6 +55,7 @@ DECLARE_MODEL(int, SHA256_Update, SHA256_CTX *c, const void *data, size_t len)
 DECLARE_MODEL(int, SHA256_Final, unsigned char *md, SHA256_CTX *c)
 
 // KTest socket operations
+DECLARE_MODEL(int, ktest_fcntl, int sock, int flags, int not_sure);
 DECLARE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout)
 //DECLARE_MODEL(int, ktest_connect, int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 //DECLARE_MODEL(ssize_t, ktest_writesocket, int fd, const void *buf, size_t count)
