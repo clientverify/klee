@@ -221,6 +221,17 @@ void ExternalHandler_ktest_copy(
                           object_offset, len);
 }
 
+void ExternalHandler_tls_predict_stdin(
+    klee::Executor* executor, klee::ExecutionState *state,
+    klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {
+
+  CVExecutionState* cv_state = static_cast<CVExecutionState*>(state);
+  CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
+  size_t count = cast<klee::ConstantExpr>(arguments[0])->getZExtValue();
+
+  cv_executor->tls_predict_stdin_size(cv_state, target, count);
+}
+
 void ExternalHandler_cliver_event(
     klee::Executor* executor, klee::ExecutionState *state,
     klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {

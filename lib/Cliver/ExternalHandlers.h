@@ -75,6 +75,10 @@ void ExternalHandler_ktest_copy(
     klee::Executor* executor, klee::ExecutionState *state,
     klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
 
+void ExternalHandler_tls_predict_stdin(
+    klee::Executor* executor, klee::ExecutionState *state,
+    klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
+
 void ExternalHandler_cliver_event(
     klee::Executor* executor, klee::ExecutionState *state,
     klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
