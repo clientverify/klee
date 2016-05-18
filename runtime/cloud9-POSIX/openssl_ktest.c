@@ -1,5 +1,6 @@
 #include "openssl.h"
 #include <assert.h>
+#include <netdb.h>
 
 #if DEBUG_OPENSSL_MODEL
 #define DEBUG_PRINT(x) klee_warning(x);
@@ -29,8 +30,9 @@ static void print_fd_set(int nfds, fd_set *fds) {
 }
 
 DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout) {
+  assert(readfds != NULL);
+  assert(exceptfds == NULL);
   static int select_index = -1;
-  //DEBUG_PRINT("playback");
 
   unsigned int size = 4*nfds + 40 /*text*/ + 3*4 /*3 fd's*/ + 1 /*null*/;
   char *bytes = (char *)calloc(size, sizeof(char));
@@ -45,9 +47,9 @@ DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_
   int i, ret, recorded_sockfd, recorded_nfds;
 
   FD_ZERO(&in_readfds);  // input to select
-  FD_ZERO(&in_writefds); // input to select
+  if(writefds != NULL) FD_ZERO(&in_writefds); // input to select
   FD_ZERO(&out_readfds); // output of select
-  FD_ZERO(&out_writefds);// output of select
+  if(writefds != NULL) FD_ZERO(&out_writefds);// output of select
 
   tmp = strtok(recorded_select, " ");
   assert(strcmp(tmp, "sockfd") == 0);
@@ -70,13 +72,15 @@ DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_
     }
   }
 
-  tmp = strtok(NULL, " ");
-  assert(strcmp(tmp, "inW") == 0);
-  item = strtok(NULL, " ");
-  assert(strlen(item) == recorded_nfds);
-  for (i = 0; i < recorded_nfds; i++) {
-    if (item[i] == '1') {
-      FD_SET(i, &in_writefds);
+  if(writefds != NULL) {
+    tmp = strtok(NULL, " ");
+    assert(strcmp(tmp, "inW") == 0);
+    item = strtok(NULL, " ");
+     assert(strlen(item) == recorded_nfds);
+    for (i = 0; i < recorded_nfds; i++) {
+      if (item[i] == '1') {
+        FD_SET(i, &in_writefds);
+      }
     }
   }
 
@@ -96,33 +100,36 @@ DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_
     }
   }
 
-  tmp = strtok(NULL, " ");
-  assert(strcmp(tmp, "outW") == 0);
+  if(writefds != NULL) {
+    tmp = strtok(NULL, " ");
+    assert(strcmp(tmp, "outW") == 0);
 
-  item = strtok(NULL, " ");
-  assert(strlen(item) == recorded_nfds);
-  for (i = 0; i < recorded_nfds; i++) {
-    if (item[i] == '1') {
-      FD_SET(i, &out_writefds);
+    item = strtok(NULL, " ");
+    assert(strlen(item) == recorded_nfds);
+    for (i = 0; i < recorded_nfds; i++) {
+      if (item[i] == '1') {
+        FD_SET(i, &out_writefds);
+      }
     }
   }
+
   free(recorded_select);
 
   printf("SELECT playback (recorded_nfds = %d, actual_nfds = %d):\n",
           recorded_nfds, nfds);
   printf("  inR: ");
   print_fd_set(recorded_nfds, &in_readfds);
-  printf("  inW: ");
-  print_fd_set(recorded_nfds, &in_writefds);
+  if(writefds != NULL) printf("  inW: ");
+  if(writefds != NULL) print_fd_set(recorded_nfds, &in_writefds);
   printf("  outR:");
   print_fd_set(recorded_nfds, &out_readfds);
-  printf("  outW:");
-  print_fd_set(recorded_nfds, &out_writefds);
+  if(writefds != NULL) printf("  outW:");
+  if(writefds != NULL) print_fd_set(recorded_nfds, &out_writefds);
   printf("  ret = %d\n", ret);
 
   // Copy recorded data to the final output fd_sets.
   FD_ZERO(readfds);
-  FD_ZERO(writefds);
+  if(writefds != NULL) FD_ZERO(writefds);
   int active_fd_count = 0;
   // stdin(0), stdout(1), stderr(2)
   for (i = 0; i < 3; i++) {
@@ -130,9 +137,11 @@ DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_
       FD_SET(i, readfds);
       active_fd_count++;
     }
-    if (FD_ISSET(i, &out_writefds)) {
-      FD_SET(i, writefds);
-      active_fd_count++;
+    if(writefds != NULL) {
+      if (FD_ISSET(i, &out_writefds)) {
+        FD_SET(i, writefds);
+        active_fd_count++;
+      }
     }
   }
   // TLS socket (nfds-1)
@@ -141,10 +150,12 @@ DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_
     FD_SET(nfds-1, readfds);
     active_fd_count++;
   }
-  if (FD_ISSET(recorded_sockfd, &out_writefds)) {
-    //FD_SET(ktest_sockfd, writefds);
-    FD_SET(nfds-1, writefds);
-    active_fd_count++;
+  if(writefds != NULL) {
+    if (FD_ISSET(recorded_sockfd, &out_writefds)) {
+      //FD_SET(ktest_sockfd, writefds);
+      FD_SET(nfds-1, writefds);
+      active_fd_count++;
+    }
   }
   assert(active_fd_count == ret); // Did we miss anything?
 
@@ -252,3 +263,85 @@ DEFINE_MODEL(ssize_t, ktest_readsocket, int fd, void *buf, size_t count) {
 }
 */
 
+
+//getaddrinfo is an external call with a malloc.  Therefore accessing any of that
+//malloced memory in klee fails.  These are dummy functions that malloc a addrinfo
+//and associated sockaddr.  The address is set to 0, which I believe corresponds
+//to localhost.
+//More work is required to actually make this resolve an address.
+//It is also required to overwrite freeaddrinfo
+//Returns 0 on success, -1 on failure
+int dummy_addrinfo(const char *servname, const struct addrinfo *hints,
+  struct addrinfo **res);
+/*
+++struct addrinfo {
+++    int              ai_flags;    //Don't care about -1
+++    int              ai_family;   //AF_INET
+++    int              ai_socktype; //SOCK_STREAM
+++    int              ai_protocol; //SOCKET_PROTOCOL
+++    socklen_t        ai_addrlen;
+++    struct sockaddr *ai_addr;
+++    char            *ai_canonname;//don't care about NULL
+++    struct addrinfo *ai_next;     //don't care about NULL
++}
+*/
+int dummy_addrinfo(const char *port, const struct addrinfo *hints,
+  struct addrinfo **res){
+    struct sockaddr_in *sa_in;
+    struct addrinfo *new_res;
+
+    new_res = (struct addrinfo *)malloc(sizeof(struct addrinfo));
+    if(new_res == NULL) return -1;
+
+    new_res->ai_addr = (struct sockaddr *) malloc(sizeof(struct sockaddr_in));
+    new_res->ai_addrlen = sizeof(struct sockaddr_in);
+
+    if (new_res->ai_addr == NULL) {
+        free(new_res);
+        return -1;
+    }
+
+   struct in_addr in;
+   in.s_addr = 0; //I think localhost is 0
+
+    sa_in = (struct sockaddr_in *)new_res->ai_addr;
+    memset(sa_in, 0, sizeof(struct sockaddr_in));
+    sa_in->sin_family = PF_INET;
+    sa_in->sin_port = atoi(port);
+    memcpy(&sa_in->sin_addr, &in, sizeof(struct in_addr));
+
+
+
+
+    new_res->ai_flags     = -1;
+    new_res->ai_family    = AF_INET;
+    new_res->ai_socktype  = hints->ai_socktype; //SOCK_STREAM;
+    new_res->ai_protocol  = hints->ai_protocol; //SOCKET_PROTOCOL;
+    new_res->ai_canonname = NULL;
+    new_res->ai_next      = NULL;
+
+    *res = new_res;
+    return 0;
+}
+
+
+
+DEFINE_MODEL(int, ktest_getaddrinfo, const char *node, const char *service,
+    const struct addrinfo *hints, struct addrinfo **res){
+       return dummy_addrinfo(service, hints, res);
+}
+
+DEFINE_MODEL(void, ktest_freeaddrinfo, struct addrinfo *res){
+    free(res->ai_addr);
+    free(res);
+}
+
+#include <fcntl.h>
+DEFINE_MODEL(int, ktest_fcntl, int sock, int flags, int not_sure){
+    printf("ktest_fcntl MODEL called\n");
+    if(flags ==F_GETFL)
+        return 1;
+    else if(flags == F_SETFL)
+        return 0;
+    else return -1;
+}
