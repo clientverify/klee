@@ -1238,7 +1238,8 @@ void CVExecutor::ktest_copy(CVExecutionState* state,
 
     // Enforce rule that a stdin event can only be processed in a round that
     // ends in a SEND event
-    //bssl terminates on a 0 return from recv, indicating network actvity is over
+    // In bssl, 0-len stdin is followed by a shutdown, so there is no more recorded
+    // network activity--hence exception for 0length stdin read.
     if (name == "stdin" && ktest_obj->numBytes > 0 &&
         state->network_manager()->socket()->event().type == SocketEvent::RECV ) {
       CVDEBUG("Early stdin read, terminating state.");

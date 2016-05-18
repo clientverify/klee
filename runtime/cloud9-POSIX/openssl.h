@@ -31,9 +31,9 @@
 #define DEBUG_OPENSSL_MODEL 0
 
 // Enable for fully concrete model (requires ktest)
-#define KTEST_RAND_PLAYBACK 1
-#define KTEST_SELECT_PLAYBACK 1
-#define KTEST_STDIN_PLAYBACK 1
+#define KTEST_RAND_PLAYBACK 0
+#define KTEST_SELECT_PLAYBACK 0
+#define KTEST_STDIN_PLAYBACK 0
 
 void copy_symbolic_buffer(unsigned char* buf, int len, char* tag, void* taint);
 DECLARE_MODEL(void, klee_print, char* str, int symb_var)
