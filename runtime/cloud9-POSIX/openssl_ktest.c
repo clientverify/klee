@@ -1,6 +1,7 @@
 #include "openssl.h"
 #include <assert.h>
 #include <netdb.h>
+#include <fcntl.h> //Remove on fixing fcntl kludge
 
 #if DEBUG_OPENSSL_MODEL
 #define DEBUG_PRINT(x) klee_warning(x);
@@ -336,7 +337,8 @@ DEFINE_MODEL(void, ktest_freeaddrinfo, struct addrinfo *res){
     free(res);
 }
 
-#include <fcntl.h>
+//THis is a kludge to support bssl.  We need to reconcile the support provided
+//in klee's fcntl with the requirements of boringssl.
 DEFINE_MODEL(int, ktest_fcntl, int sock, int flags, int not_sure){
     printf("ktest_fcntl MODEL called\n");
     if(flags ==F_GETFL)
