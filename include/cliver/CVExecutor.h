@@ -141,6 +141,9 @@ class CVExecutor : public klee::Executor {
   void tls_predict_stdin_size(CVExecutionState *state,
                               klee::KInstruction *target, size_t count);
 
+  void tls_master_secret(CVExecutionState *state, klee::KInstruction *target,
+                         klee::ObjectState *os, unsigned os_offset);
+
   virtual void executeEvent(klee::ExecutionState &state, unsigned int type,
                             long int value);
 

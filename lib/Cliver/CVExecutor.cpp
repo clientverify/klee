@@ -1344,6 +1344,41 @@ void CVExecutor::tls_predict_stdin_size(CVExecutionState *state,
             klee::ConstantExpr::alloc(stdin_len, klee::Expr::Int32));
 }
 
+// Write the 48-byte TLS master secret into the designated buffer location.
+void CVExecutor::tls_master_secret(CVExecutionState *state,
+                                   klee::KInstruction *target,
+                                   klee::ObjectState *os, unsigned os_offset) {
+
+  uint8_t master_secret[TLS_MASTER_SECRET_SIZE];
+  bool master_secret_obtained = false;
+  unsigned ret = 0; // failure
+
+  // Read master secret from file (or in-memory cache)
+  master_secret_obtained = cv_->load_tls_master_secret(master_secret);
+  if (!master_secret_obtained) {
+    // This should be non-fatal in case the bitcode program wants to recover.
+    CVMESSAGE("Could not load master secret from dedicated key file");
+  } else {
+
+    // Master secret obtained. Write to the designated location if
+    // there is enough space there.
+    if (os && os_offset + TLS_MASTER_SECRET_SIZE <= os->size) {
+      for (size_t i = 0; i < TLS_MASTER_SECRET_SIZE; i++) {
+        os->write8(os_offset + i, master_secret[i]);
+      }
+      ret = 1; // success
+    } else {
+      cv_warning(
+          "Terminating state: TLS master secret too big for target buffer.");
+      terminate_state(state);
+    }
+
+  }
+
+  // Return success (1) or failure (0)
+  bindLocal(target, *state, klee::ConstantExpr::alloc(ret, klee::Expr::Int32));
+}
+
 void CVExecutor::executeEvent(klee::ExecutionState &state, unsigned int type,
                             long int value) {
   CVExecutionState *cvstate = static_cast<CVExecutionState*>(&state);

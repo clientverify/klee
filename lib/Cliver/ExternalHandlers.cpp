@@ -209,7 +209,7 @@ void ExternalHandler_ktest_copy(
   klee::ref<klee::Expr> address = arguments[2];
   uint64_t raw_address = cast<klee::ConstantExpr>(arguments[2])->getZExtValue();
   unsigned len = cast<klee::ConstantExpr>(arguments[3])->getZExtValue();
-  klee::ObjectState *object = resolve_address(executor, state, address, true);
+  //klee::ObjectState *object = resolve_address(executor, state, address, true);
 
   klee::ObjectPair res;
   static_cast<CVExecutor*>(executor)->resolve_one(state, address, res, true);
@@ -230,6 +230,25 @@ void ExternalHandler_tls_predict_stdin(
   size_t count = cast<klee::ConstantExpr>(arguments[0])->getZExtValue();
 
   cv_executor->tls_predict_stdin_size(cv_state, target, count);
+}
+
+void ExternalHandler_tls_master_secret(
+    klee::Executor *executor, klee::ExecutionState *state,
+    klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments)
+{
+
+  CVExecutionState* cv_state = static_cast<CVExecutionState*>(state);
+  CVExecutor* cv_executor = static_cast<CVExecutor*>(executor);
+  klee::ref<klee::Expr> address = arguments[0];
+  uint64_t raw_address = cast<klee::ConstantExpr>(arguments[0])->getZExtValue();
+
+  klee::ObjectPair result;
+  static_cast<CVExecutor*>(executor)->resolve_one(state, address, result, true);
+  unsigned object_offset = raw_address - result.first->address;
+
+  cv_executor->tls_master_secret(cv_state, target,
+                                 const_cast<klee::ObjectState *>(result.second),
+                                 object_offset);
 }
 
 void ExternalHandler_cliver_event(

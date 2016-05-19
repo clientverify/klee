@@ -66,6 +66,13 @@ DropS2CTLSApplicationData("drop-tls-s2c-app-data",
   llvm::cl::desc("Drop server-to-client messages that match TLS application data filter"),
   llvm::cl::init(false));
 
+llvm::cl::opt<std::string>
+TLSMasterSecretFile("tls-master-secret-file",
+  llvm::cl::Optional,
+  llvm::cl::ValueRequired,
+  llvm::cl::desc("Binary file containing 48-byte TLS master secret"),
+  llvm::cl::init(""));
+
 llvm::cl::list<std::string> 
 SocketLogFile("socket-log",
   llvm::cl::ZeroOrMore,
@@ -132,6 +139,7 @@ ExternalHandlerInfo external_handler_info[] = {
 	{"cliver_select", ExternalHandler_select, true, CV_SELECT_EVENT},
 	{"cliver_ktest_copy", ExternalHandler_ktest_copy, true, CV_NULL_EVENT},
 	{"cliver_tls_predict_stdin", ExternalHandler_tls_predict_stdin, true, CV_NULL_EVENT},
+	{"cliver_tls_master_secret", ExternalHandler_tls_master_secret, true, CV_NULL_EVENT},
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -394,6 +402,39 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
   }
 
   return socket_events_.size();
+}
+
+bool ClientVerifier::load_tls_master_secret(
+    uint8_t master_secret[TLS_MASTER_SECRET_SIZE]) {
+
+  std::lock_guard<std::mutex> guard(master_secret_mutex_);
+
+  // If necessary, read master secret from file into cache.
+  if (!master_secret_cached_) {
+    if (TLSMasterSecretFile.empty()) {
+      cv_warning("No master secret file provided");
+      return false;
+    }
+
+    std::ifstream is(TLSMasterSecretFile, std::ifstream::binary);
+    if (!is) {
+      cv_warning("Error reading file: %s", TLSMasterSecretFile.c_str());
+      return false;
+    }
+
+    is.read((char *)master_secret_, TLS_MASTER_SECRET_SIZE);
+    if (!is) {
+      cv_warning("Error: only %ld bytes could be read from %s",
+                 is.gcount(), TLSMasterSecretFile.c_str());
+      return false;
+    }
+
+    master_secret_cached_ = true;
+  }
+
+  // Get master secret from in-memory cache.
+  memcpy(master_secret, master_secret_, TLS_MASTER_SECRET_SIZE);
+  return true;
 }
 
 void ClientVerifier::hook(ExecutionObserver* observer) {

@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 #include <list>
+#include <mutex>
 
 #include "cliver/ExecutionObserver.h"
 #include "cliver/Socket.h" // For SocketEventList typedef
@@ -25,6 +26,8 @@
 #include "klee/Internal/ADT/KTest.h"
 
 #include "llvm/Support/CommandLine.h"
+
+#define TLS_MASTER_SECRET_SIZE 48
 
 namespace klee {
   struct KBasicBlock;
@@ -124,7 +127,10 @@ class ClientVerifier : public klee::InterpreterHandler {
 	// Socket logs
 	int read_socket_logs(std::vector<std::string> &logs);
 	std::vector<SocketEventList*>& socket_events() { return socket_events_; }
-	
+
+  // TLS Master Secret (RFC 5246 requires it to be 48 bytes)
+  bool load_tls_master_secret(uint8_t master_secret[TLS_MASTER_SECRET_SIZE]);
+
   // Observers
   void hook(ExecutionObserver* observer);
   void unhook(ExecutionObserver* observer);
@@ -188,6 +194,11 @@ class ClientVerifier : public klee::InterpreterHandler {
   std::string client_name_;
 
   KTest* replay_objs_;
+
+  // RFC 5246 TLS Master Secret (48 bytes)
+  std::mutex master_secret_mutex_;
+  bool master_secret_cached_ = false;
+  uint8_t master_secret_[TLS_MASTER_SECRET_SIZE];
 
   CVStatisticsManager statistics_manager_;
 };

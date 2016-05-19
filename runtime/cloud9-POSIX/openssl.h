@@ -39,6 +39,9 @@
 // Note: this option is ignored if KTEST_STDIN_PLAYBACK=1
 #define CLIVER_TLS_PREDICT_STDIN 1
 
+// Special Function Declarations
+int cliver_tls_master_secret(unsigned char *buffer);
+
 void copy_symbolic_buffer(unsigned char* buf, int len, char* tag, void* taint);
 DECLARE_MODEL(void, klee_print, char* str, int symb_var)
 DECLARE_MODEL(int, init_version, void)
