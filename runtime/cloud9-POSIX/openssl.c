@@ -248,6 +248,12 @@ DEFINE_MODEL(size_t, EC_POINT_point2oct, const EC_GROUP *group,
 ////////////////////////////////////////////////////////////////////////////////
 
 DEFINE_MODEL(int, SHA1_Update, SHA_CTX *c, const void *data, size_t len) {
+   //Boringssl calls SHA256_Update with a null data arguement and 0 len.  As update
+  //is supposed to copy len bytes from data and include it in the hash state
+  //maintained by ctx.  It returns directly on 0 len (note, we depend on this
+  // check in the bssl code, so if they ever remove it we will have issues)
+  if( len == 0)
+    return CALL_UNDERLYING(SHA1_Update, c, data, len);
   SYMBOLIC_MODEL_CHECK_AND_RETURN(data, len, c, 20, "SHA1", 1);
   SYMBOLIC_MODEL_CHECK_AND_RETURN(c, 20, c, 20, "SHA1", 1);
   return CALL_UNDERLYING(SHA1_Update, c, data, len);
@@ -259,6 +265,12 @@ DEFINE_MODEL(int, SHA1_Final, unsigned char *md, SHA_CTX *c) {
 }
 
 DEFINE_MODEL(int, SHA256_Update, SHA256_CTX *c, const void *data, size_t len) {
+  //Boringssl calls SHA256_Update with a null data arguement and 0 len.  As update
+  //is supposed to copy len bytes from data and include it in the hash state
+  //maintained by ctx.  It returns directly on 0 len (note, we depend on this
+  // check in the bssl code, so if they ever remove it we will have issues)
+  if( len == 0)
+    return CALL_UNDERLYING(SHA256_Update, c, data, len);
   SYMBOLIC_MODEL_CHECK_AND_RETURN(data, len, c, 32, "SHA256", 1);
   SYMBOLIC_MODEL_CHECK_AND_RETURN(c, 32, c, 32, "SHA256", 1);
   return CALL_UNDERLYING(SHA256_Update, c, data, len);
