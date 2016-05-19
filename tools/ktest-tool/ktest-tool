@@ -228,6 +228,20 @@ def convert_to_timeval(doubletime):
     tv_usec = int(math.floor(frac_part * 1000000.0))
     return tv_sec, tv_usec
 
+def write_tls_key(tls_master_secret, filename):
+    MASTER_SECRET_LENGTH = 48
+    if tls_master_secret is None:
+        print >>sys.stderr, "TLS master secret not present in ktest file"
+        sys.exit(2)
+    elif len(tls_master_secret) != MASTER_SECRET_LENGTH:
+        print >>sys.stderr, \
+            "Invalid master secret length (got %d, expected %d)" % \
+            (len(tls_master_secret), MASTER_SECRET_LENGTH)
+        sys.exit(2)
+    with open(filename, 'wb') as f:
+        f.write(tls_master_secret)
+    print('TLS master secret written to %s' % filename)
+
 def main(args):
     from optparse import OptionParser
     op = OptionParser("usage: %prog [options] files")
@@ -245,6 +259,8 @@ def main(args):
                   help='print one line summary of each ktest object')
     op.add_option('','--out-file', dest='outFile',
                   help='path to output ktest file')
+    op.add_option('','--tls-key', dest='tlsKeyFile',
+                  help='write TLS master secret to file')
     op.add_option('','--timestamps', dest='tFile',
                   help='rewrite ktest timestamps using tFile')
     op.add_option('','--ndss2013timestamps', dest='tFileNDSS',
@@ -257,7 +273,11 @@ def main(args):
         op.error("rewriting timestamps requires an output filename")
     if opts.outFile and len(args) != 1:
         op.error("only one input ktest file allowed when output requested")
+    if opts.tlsKeyFile and len(args) != 1:
+        op.error("exactly one input ktest file allowed for TLS key extraction")
 
+    if opts.tlsKeyFile:
+        tls_master_secret = None
 
     for file in args:
         b = KTest.fromfile(file)
@@ -289,6 +309,10 @@ def main(args):
                         print('object %4d: data: %r' % (i, struct.unpack('i',str)[0]))
                     else:
                         print('object %4d: data: %r' % (i, str))
+
+            if opts.tlsKeyFile and name == 'master_secret':
+                tls_master_secret = data
+
         if file != args[-1]:
             print()
         if opts.tFile:
@@ -296,6 +320,8 @@ def main(args):
         if opts.outFile:
             print('Writing output to %s' % opts.outFile)
             b.tofile(opts.outFile)
+        if opts.tlsKeyFile:
+            write_tls_key(tls_master_secret, opts.tlsKeyFile)
 
 if __name__=='__main__':
     main(sys.argv)
