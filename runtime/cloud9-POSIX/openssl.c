@@ -224,11 +224,15 @@ DEFINE_MODEL(int, ECDH_compute_key, void *out, size_t outlen,
 DEFINE_MODEL(int, tls1_generate_master_secret, SSL *s, unsigned char *out, 
     unsigned char *p, int len) {
   if (is_symbolic_buffer(p, len)) {
-    DEBUG_PRINT("playback");
-    cliver_ktest_copy("master_secret", -1, out, SSL3_MASTER_SECRET_SIZE);
+    DEBUG_PRINT("playback - master secret");
+    int read_successfully_from_file = cliver_tls_master_secret(out);
+    if (!read_successfully_from_file) {
+      klee_warning("Falling back to KTest file for master secret");
+      cliver_ktest_copy("master_secret", -1, out, SSL3_MASTER_SECRET_SIZE);
+    }
     return SSL3_MASTER_SECRET_SIZE;
   }
-  DEBUG_PRINT("concrete");
+  DEBUG_PRINT("concrete - master secret");
   return CALL_UNDERLYING(tls1_generate_master_secret, s, out, p, len);
 }
 

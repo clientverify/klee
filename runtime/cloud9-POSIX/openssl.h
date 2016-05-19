@@ -35,6 +35,9 @@
 #define KTEST_SELECT_PLAYBACK 0
 #define KTEST_STDIN_PLAYBACK 0
 
+// Special Function Declarations
+int cliver_tls_master_secret(unsigned char *buffer);
+
 void copy_symbolic_buffer(unsigned char* buf, int len, char* tag, void* taint);
 DECLARE_MODEL(void, klee_print, char* str, int symb_var)
 DECLARE_MODEL(int, init_version, void)
