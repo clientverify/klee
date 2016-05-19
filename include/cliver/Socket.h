@@ -16,6 +16,7 @@
 #include <vector>
 #include <set>
 #include <memory>
+#include <mutex>
 
 #define UBATOINT_I(_b,_i) \
     (((_b)[_i]<<24) + ((_b)[_i+1]<<16) + ((_b)[_i+2]<<8) + ((_b)[_i+3]))
@@ -131,9 +132,16 @@ private:
 // SocketSource and SocketEventList.  Changes to Socket need to
 // support this usage.
 //
-// This data structure is NOT thread-safe if advance() is called from
-// different threads, since log_ and socket_source_ may be shared
-// between copies of Socket objects.
+// Socket is thread-safe in the case that the two threads own two
+// different (copy-constructed) copies of a Socket, which share the
+// same log_ and socket_source_. That is, we apply mutexes to member
+// functions that touch those two shared data structures.
+//
+// Socket is NOT logically thread-safe in the case of two threads
+// accessing the *same* Socket object. In this scenario, one thread
+// could make two immediately adjacent calls to event() that return
+// different results, because the other thread could have called
+// advance() in between.
 
 class Socket {
  public:
@@ -175,8 +183,9 @@ class Socket {
 	State state_;
 	unsigned index_; // copies may point to different places in the log_
 	unsigned offset_;
-	SocketEventList  *log_; // socket events retrieved thus far (shared!)
-  std::shared_ptr<SocketSource> socket_source_;
+	SocketEventList  *log_; // events retrieved thus far (shared btw copies)
+  std::shared_ptr<SocketSource> socket_source_; // shared btw copies
+  std::shared_ptr<std::mutex> log_mutex_; // protects sharing btw copies
 };
 
 #undef X

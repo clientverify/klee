@@ -157,9 +157,12 @@ static ssize_t _clean_read(int fd, void *buf, size_t count, off_t offset) {
     // RAC: FIXME: Hack to set (recorded) length of stdin into 'count'
     if (((file_t*)fde->io_object)->storage == _fs.stdin_file) {
       //klee_warning("Setting length of symbolic read on stdin");
+#if !(KTEST_STDIN_PLAYBACK) && CLIVER_TLS_PREDICT_STDIN
+      int loglen = cliver_tls_predict_stdin(count);
+#else
       static int stdin_index = -1;
       int loglen = cliver_ktest_copy("stdin", stdin_index--, buf, count);
-      int original_loglen = loglen;
+#endif
 
       // Two options to support symbolic standard input:
       // 1) Use copy_symbolic buffer and return immediately, or
@@ -172,6 +175,7 @@ static ssize_t _clean_read(int fd, void *buf, size_t count, off_t offset) {
 #if !(KTEST_STDIN_PLAYBACK)
 #ifdef STDIN_FAKE_PADDING
       if (fake_padding_max != 0) {
+        int original_loglen = loglen;
         int fakepadlen = 0; // Note that there is actually no padding
         klee_make_symbolic(&fakepadlen, sizeof(fakepadlen), "fakepadlen");
         klee_assume(fakepadlen >= 0);

@@ -185,7 +185,8 @@ Socket::Socket(const KTest *ktest)
     : file_descriptor_(Socket::NextFileDescriptor++), open_(false),
       end_reached_(false), state_(IDLE), index_(0), offset_(0),
       log_(new SocketEventList()),
-      socket_source_(std::make_shared<SocketSourcePreloaded>(ktest)) {
+      socket_source_(std::make_shared<SocketSourcePreloaded>(ktest)),
+      log_mutex_(std::make_shared<std::mutex>()) {
 
   // Load first socket event if it exists.
   if (socket_source_->finished()) {
@@ -199,7 +200,8 @@ Socket::Socket(const SocketEventList &log)
     : file_descriptor_(Socket::NextFileDescriptor++), open_(false),
       end_reached_(false), state_(IDLE), index_(0), offset_(0),
       log_(new SocketEventList()),
-      socket_source_(std::make_shared<SocketSourcePreloaded>(log)) {
+      socket_source_(std::make_shared<SocketSourcePreloaded>(log)),
+      log_mutex_(std::make_shared<std::mutex>()) {
 
   // Load first socket event if it exists.
   if (socket_source_->finished()) {
@@ -240,21 +242,25 @@ void  Socket::set_state(State s) {
 	state_ = s;
 }
 
-void  Socket::advance(){
+void Socket::advance() {
+  std::lock_guard<std::mutex> lock(*log_mutex_);
   state_ = IDLE;
   offset_ = 0;
   if (index_ + 1 < log_->size()) { // socket event already retrieved
     index_++;
-  } else if (!socket_source_->finished()) { // need to retrieve next socket event
+  } else if (!socket_source_->finished()) { // must retrieve next socket event
     log_->push_back(new SocketEvent(socket_source_->next())); // FIXME: leak
     index_++;
-  } else { // no more socket events
+  } else if (index_ + 1 == log_->size()) { // no more socket events
     index_ = log_->size(); // callers may depend on one-past-the-end index()
     end_reached_ = true;
+  } else {
+    cv_error("Socket::advance() called too many times");
   }
 }
 
 const SocketEvent& Socket::event() {
+  std::lock_guard<std::mutex> lock(*log_mutex_);
   if (!(log_ && index_ < log_->size())) {
     cv_error("Socket::event() - invalid index into Socket log");
   }
@@ -262,6 +268,7 @@ const SocketEvent& Socket::event() {
 }
 
 const SocketEvent& Socket::previous_event() {
+  std::lock_guard<std::mutex> lock(*log_mutex_);
   if (!(log_ && index_ <= log_->size() && index_ > 0)) {
     cv_error("Socket::previous_event() - invalid index into Socket log");
   }
@@ -274,6 +281,7 @@ void Socket::print(std::ostream &os) {
 	static std::string socket_states[] = { SOCKET_STATES };
 #undef X
 		
+  std::lock_guard<std::mutex> lock(*log_mutex_);
   os << "[ ";
 	if (index_ < log_->size()) {
 

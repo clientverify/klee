@@ -131,6 +131,7 @@ ExternalHandlerInfo external_handler_info[] = {
 	{"cliver_select_event", ExternalHandler_select_event, false, CV_SELECT_EVENT},
 	{"cliver_select", ExternalHandler_select, true, CV_SELECT_EVENT},
 	{"cliver_ktest_copy", ExternalHandler_ktest_copy, true, CV_NULL_EVENT},
+	{"cliver_tls_predict_stdin", ExternalHandler_tls_predict_stdin, true, CV_NULL_EVENT},
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -1278,6 +1278,72 @@ void CVExecutor::ktest_copy(CVExecutionState* state,
   }
 }
 
+// Predict size of stdin read based on the size of the next
+// client-to-server TLS record, assuming the negotiated symmetric
+// ciphersuite is AES128-GCM.
+//
+// Case 1: (OpenSSL and BoringSSL) The next c2s TLS application data
+//         record [byte#1 = 23] is 29 bytes longer than stdin.
+//
+// Case 2: (OpenSSL only) The stdin read is 0, i.e., Control-D on a
+//         blank line, thereby closing the connection.  In this case,
+//         the subsequent c2s TLS alert record [byte#1 = 21] has
+//         length 31.
+//
+// Case 3: (BoringSSL only) The stdin read is 0, i.e., Control-D on a
+//         blank line, thereby closing the connection.  There is no
+//         subsequent c2s TLS alert record in this case; instead we
+//         simply see the connection close.
+//
+// Any other situation terminates the state (stdin read disallowed).
+//
+// The ultimate read() call attempts to read up to 'count' bytes from
+// a given file descriptor. If for some reason the stdin length
+// prediction exceeds 'count', do not return a number greater than
+// 'count'.
+void CVExecutor::tls_predict_stdin_size(CVExecutionState *state,
+                                        klee::KInstruction *target,
+                                        size_t count) {
+  const uint8_t TLS_ALERT = 21;
+  const uint8_t TLS_APPDATA = 23;
+  size_t stdin_len;
+  Socket *socket = state->network_manager()->socket();
+
+  if (socket->end_of_log()) { // Case 3
+
+    stdin_len = 0;
+
+  } else if (socket->event().type == SocketEvent::SEND &&
+             socket->event().data[0] == TLS_ALERT &&
+             socket->event().data.size() == 31) { // Case 2
+
+    stdin_len = 0;
+
+  } else if (socket->event().type == SocketEvent::SEND &&
+             socket->event().data[0] == TLS_APPDATA &&
+             socket->event().data.size() > 29) { // Case 1
+
+    stdin_len = socket->event().data.size() - 29;
+
+  } else {
+    CVDEBUG(
+        "Terminating state: stdin disallowed in current TLS network state.");
+    stdin_len = 0;
+    terminate_state(state);
+  }
+
+  if (stdin_len > count) {
+    // Is this sufficient grounds for terminating the state?
+    CVMESSAGE("tls_predict_stdin_size predicts stdin_len = "
+              << stdin_len << ", but read() max count = " << count);
+    stdin_len = count;
+  }
+
+  // write return value (stdin length) into bitcode
+  bindLocal(target, *state,
+            klee::ConstantExpr::alloc(stdin_len, klee::Expr::Int32));
+}
+
 void CVExecutor::executeEvent(klee::ExecutionState &state, unsigned int type,
                             long int value) {
   CVExecutionState *cvstate = static_cast<CVExecutionState*>(&state);
