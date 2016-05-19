@@ -62,6 +62,10 @@
 int fake_padding_max = 0; // global, configurable via --fake-padding N
 #endif
 
+#if CLIVER_TLS_PREDICT_STDIN
+int cliver_tls_predict_stdin(size_t count); // special function declaration
+#endif
+
 // For multiplexing multiple syscalls into a single _read/_write op. set
 #define _IO_TYPE_SCATTER_GATHER  0x1
 #define _IO_TYPE_POSITIONAL      0x2
