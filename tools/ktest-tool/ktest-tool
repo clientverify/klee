@@ -5,6 +5,7 @@ import struct
 import sys
 from bisect import *
 import math
+import binascii
 
 #version_no=3
 version_no=4
@@ -104,6 +105,46 @@ class KTest:
             f.write(struct.pack('>q', obj_tv_usec))
             f.write(struct.pack('>i', len(obj_bytes)))
             f.write(obj_bytes)
+        f.close()
+
+    def totextfile(self, path, sessionID, appendFIN):
+        """Write text file of the form:
+        Timestamp SessionID Direction NumBytes Data(Hex)  Comments
+        98.123456        14 s2c       5        1703030024 # TLS Application Data
+
+        Note that instead of simply 'Direction', we can also save
+        arbitrary types such as stdin, rng, etc. This function does
+        not insert any comments.
+        """
+        f = open(path, 'w')
+
+        network_activity = False
+        for obj in self.objects:
+            obj_name = obj[0]
+            obj_bytes = obj[1]
+            obj_tv_sec = obj[2]
+            obj_tv_usec = obj[3]
+            timestamp = str(obj_tv_sec) + ".%6.6d" % (obj_tv_usec)
+            session_str = str(sessionID)
+            numbytes = str(len(obj_bytes))
+            data_str = binascii.hexlify(obj_bytes).upper()
+            line = "  ".join([timestamp, session_str, obj_name,
+                             numbytes, data_str])
+            print >>f, line
+            # save last network activity
+            if obj_name == "c2s" or obj_name == "s2c":
+                network_activity = True
+                network_last_timestamp = timestamp
+
+        # Optionally append 0-length packets representing TCP FINs
+        if network_activity and appendFIN:
+            timestamp = network_last_timestamp
+            session_str = str(sessionID)
+            numbytes = str(0)
+            for direction in ["c2s", "s2c"]:
+                line = "  ".join([timestamp, session_str, direction, numbytes])
+                print >>f, line
+
         f.close()
 
     def add_ndss2013_timestamps(self, csvpath):
@@ -259,6 +300,14 @@ def main(args):
                   help='print one line summary of each ktest object')
     op.add_option('','--out-file', dest='outFile',
                   help='path to output ktest file')
+    op.add_option('','--text-format', dest='textFormat', action='store_true',
+                  default=False,
+                  help='output file should be KTestText format (*.ktest.txt)')
+    op.add_option('','--session-id', dest='sID', default="0",
+                  help='set KTestText SessionID (default=0)')
+    op.add_option('','--add-tcp-fin', dest='addTCPFIN', action='store_true',
+                  default=False,
+                  help='KTestText: append 0-length c2s and s2c (TCP FINs)')
     op.add_option('','--tls-key', dest='tlsKeyFile',
                   help='write TLS master secret to file')
     op.add_option('','--timestamps', dest='tFile',
@@ -275,6 +324,12 @@ def main(args):
         op.error("only one input ktest file allowed when output requested")
     if opts.tlsKeyFile and len(args) != 1:
         op.error("exactly one input ktest file allowed for TLS key extraction")
+    if opts.textFormat and not opts.outFile:
+        op.error("KTestText mode requires an output filename")
+    if opts.addTCPFIN and not opts.textFormat:
+        op.error("appending TCP FIN packets currently requires KTestText mode")
+
+    session_id = int(opts.sID)
 
     if opts.tlsKeyFile:
         tls_master_secret = None
@@ -318,8 +373,12 @@ def main(args):
         if opts.tFile:
             b.fix_timestamps(opts.tFile)
         if opts.outFile:
-            print('Writing output to %s' % opts.outFile)
-            b.tofile(opts.outFile)
+            if opts.textFormat:
+                print('Writing KTestText output to %s' % opts.outFile)
+                b.totextfile(opts.outFile, session_id, opts.addTCPFIN)
+            else:
+                print('Writing output to %s' % opts.outFile)
+                b.tofile(opts.outFile)
         if opts.tlsKeyFile:
             write_tls_key(tls_master_secret, opts.tlsKeyFile)
 
