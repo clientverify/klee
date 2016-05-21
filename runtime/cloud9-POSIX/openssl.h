@@ -25,15 +25,15 @@
 #define OPENSSL_SYMBOLIC_TAINT 0
 
 // Ignore writes to stdout and stderr
-#define IGNORE_STD_WRITES 1
+#define IGNORE_STD_WRITES 0
 
 // Enable debug output
 #define DEBUG_OPENSSL_MODEL 0
 
 // Enable for fully concrete model (requires ktest)
 #define KTEST_RAND_PLAYBACK 0
-#define KTEST_SELECT_PLAYBACK 0
-#define KTEST_STDIN_PLAYBACK 0  // if 1, overrides CLIVER_TLS_PREDICT_STDIN
+#define KTEST_SELECT_PLAYBACK 1
+#define KTEST_STDIN_PLAYBACK 1  // if 1, overrides CLIVER_TLS_PREDICT_STDIN
 
 // Predict stdin length based on next client-to-server TLS record.
 // Note: this option is ignored if KTEST_STDIN_PLAYBACK=1
@@ -55,6 +55,7 @@ DECLARE_MODEL(int, EC_KEY_generate_key, EC_KEY *eckey)
 DECLARE_MODEL(int, ECDH_compute_key, void *out, size_t outlen, const EC_POINT *pub_key, EC_KEY *eckey, void *(*KDF)(const void *in, size_t inlen, void *out, size_t *outlen))
 DECLARE_MODEL(int, tls1_generate_master_secret, SSL *s, unsigned char *out, unsigned char *p, int len)
 DECLARE_MODEL(size_t, EC_POINT_point2oct, const EC_GROUP *group, const EC_POINT *point, point_conversion_form_t form, unsigned char *buf, size_t len, BN_CTX *ctx)
+//DECLARE_MODEL(void, noop_make_priv_key_symbolic, BIGNUM *bn)
 
 DECLARE_MODEL(int, SHA1_Update, SHA_CTX *c, const void *data, size_t len)
 DECLARE_MODEL(int, SHA1_Final, unsigned char *md, SHA_CTX *c)
@@ -62,7 +63,7 @@ DECLARE_MODEL(int, SHA256_Update, SHA256_CTX *c, const void *data, size_t len)
 DECLARE_MODEL(int, SHA256_Final, unsigned char *md, SHA256_CTX *c)
 
 // KTest socket operations
-DECLARE_MODEL(int, ktest_fcntl, int sock, int flags, int not_sure);
+DECLARE_MODEL(int, ktest_fcntl, int sock, int flags, int not_sure)
 DECLARE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout)
 //DECLARE_MODEL(int, ktest_connect, int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 //DECLARE_MODEL(ssize_t, ktest_writesocket, int fd, const void *buf, size_t count)
