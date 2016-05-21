@@ -461,7 +461,7 @@ bool SocketSourceKTestText::try_loading_next_ktest() {
   while (is_) {
     KTestObject *obj = get_next_ktest(is_);
     if (obj) {
-      if (is_s2c_tls_appdata(obj)) {
+      if (drop_s2c_tls_appdata_ && is_s2c_tls_appdata(obj)) {
         delete_KTestObject(obj);
       } else {
         log_.push_back(new SocketEvent(*obj));
