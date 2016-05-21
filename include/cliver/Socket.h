@@ -132,16 +132,23 @@ private:
 
 class SocketSourceKTestText : public SocketSource {
 public:
-  SocketSourceKTestText(const std::string &filename)
-    : finished_(false), is_(filename, std::ifstream::binary), index_(0) {}
+  SocketSourceKTestText(const std::string &filename, bool drop_s2c_tls_appdata)
+      : finished_(false), is_(filename, std::ifstream::binary), index_(0),
+        drop_s2c_tls_appdata_(drop_s2c_tls_appdata),
+        drop_next_s2c_(false) {}
   virtual bool finished();
   virtual const SocketEvent &next();
 
 private:
+  bool try_loading_next_ktest();
+  bool is_s2c_tls_appdata(const KTestObject *obj); // WARNING: stateful!
+
   bool finished_;
   std::ifstream is_;
   SocketEventList log_;
   size_t index_; // next item to read from the log_;
+  const bool drop_s2c_tls_appdata_; // configuration option
+  bool drop_next_s2c_; // s2c assumed to be split into header(5) + payload(n)
 };
 
 

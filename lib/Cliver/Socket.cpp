@@ -219,7 +219,8 @@ Socket::Socket(const std::string &ktest_text_file, bool drop_s2c_tls_appdata)
     : file_descriptor_(Socket::NextFileDescriptor++), open_(false),
       end_reached_(false), state_(IDLE), index_(0), offset_(0),
       log_(new SocketEventList()),
-      socket_source_(std::make_shared<SocketSourceKTestText>(ktest_text_file)),
+      socket_source_(std::make_shared<SocketSourceKTestText>(
+          ktest_text_file, drop_s2c_tls_appdata)),
       log_mutex_(std::make_shared<std::mutex>()) {
 
   // Load first socket event if it exists.
@@ -443,20 +444,52 @@ bool SocketSourceKTestText::finished() {
     return false;
 
   // Not sure, have to check
-  KTestObject *obj = get_next_ktest(is_);
-  if (obj) {
-    log_.push_back(new SocketEvent(*obj));
-    delete_KTestObject(obj);
-    return false;
+  if (try_loading_next_ktest()) {
+    return false; // not finished
   } else {
     finished_ = true;
-    return true;
+    return true; // finished
   }
 }
 
 const SocketEvent &SocketSourceKTestText::next() {
   const SocketEvent &event = *(log_[index_++]);
   return event;
+}
+
+bool SocketSourceKTestText::try_loading_next_ktest() {
+  while (is_) {
+    KTestObject *obj = get_next_ktest(is_);
+    if (obj) {
+      if (is_s2c_tls_appdata(obj)) {
+        delete_KTestObject(obj);
+      } else {
+        log_.push_back(new SocketEvent(*obj));
+        delete_KTestObject(obj);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// WARNING: stateful / side effects!
+// s2c assumed to be split into header(5) + payload(n)
+bool SocketSourceKTestText::is_s2c_tls_appdata(const KTestObject *obj) {
+  const unsigned char TLS_APPDATA = 23; // RFC 5246
+  if (!obj)
+    return false;
+  if (strcmp(obj->name, "s2c") != 0)
+    return false;
+  if (drop_next_s2c_) { // appdata payload
+    drop_next_s2c_ = false;
+    return true;
+  }
+  if (obj->numBytes == 5 && obj->bytes[0] == TLS_APPDATA) { // appdata header
+    drop_next_s2c_ = true;
+    return true;
+  }
+  return false; // some other kind of s2c message (e.g., handshake, alert)
 }
 
 } // end namespace cliver
