@@ -285,6 +285,9 @@ DEFINE_MODEL(int, ktest_BN_rand_range, BIGNUM *private_key, BIGNUM *order) {
 }
 
 //This is a hack, just for boringssl support
+//We're doing this so that all the structures get initalized.  Note
+//our assumption that having a private key of 1 will not affect the
+//size of the public key.  This may not work for all possible test cases
 DEFINE_MODEL(int, bssl_EC_POINT_mul, const EC_GROUP *group, EC_POINT *r,
                                 const BIGNUM *n, const EC_POINT *q,
                                 const BIGNUM *m, BN_CTX *ctx){

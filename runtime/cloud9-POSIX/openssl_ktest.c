@@ -48,9 +48,9 @@ DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_
   int i, ret, recorded_sockfd, recorded_nfds;
 
   FD_ZERO(&in_readfds);  // input to select
-  if(writefds != NULL) FD_ZERO(&in_writefds); // input to select
+  if(writefds != NULL) { FD_ZERO(&in_writefds);} // input to select
   FD_ZERO(&out_readfds); // output of select
-  if(writefds != NULL) FD_ZERO(&out_writefds);// output of select
+  if(writefds != NULL) { FD_ZERO(&out_writefds); }// output of select
 
   tmp = strtok(recorded_select, " ");
   assert(strcmp(tmp, "sockfd") == 0);
@@ -130,7 +130,7 @@ DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_
 
   // Copy recorded data to the final output fd_sets.
   FD_ZERO(readfds);
-  if(writefds != NULL) FD_ZERO(writefds);
+  if(writefds != NULL){ FD_ZERO(writefds); }
   int active_fd_count = 0;
   // stdin(0), stdout(1), stderr(2)
   for (i = 0; i < 3; i++) {
@@ -163,23 +163,82 @@ DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_
   return ret;
 }
 
+DEFINE_MODEL(int, bssl_stdin_ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout){
+//I have tested that ktest_select w/ PLAYBACK enabled is working for the stdin
+//case, so I am calling it here
+  return ktest_select(nfds, readfds, writefds, exceptfds, timeout);
+}
+
 #else
 
+DEFINE_MODEL(int, bssl_stdin_ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout) {
+  assert(readfds   != NULL);
+  assert(exceptfds == NULL);
+  assert(writefds  == NULL);
+
+  int i, retval, ret;
+  fd_set in_readfds;
+
+  printf("HAPPY TUESDAY: bssl_stdin_ktest_select\n");
+  // Copy the read and write fd_sets
+  in_readfds = *readfds;
+
+  // Reset for output
+  FD_ZERO(readfds);
+
+  int mask_count = nfds/NFDBITS;
+  fd_mask all_bits_or = 0;
+
+  for (i = 0; i <= mask_count; ++i) {
+    if (in_readfds.fds_bits[i] != 0) {
+        fd_mask symbolic_mask;
+        klee_make_symbolic(&symbolic_mask, sizeof(fd_mask));
+        readfds->fds_bits[i] = in_readfds.fds_bits[i] & symbolic_mask;
+        all_bits_or |= readfds->fds_bits[i];
+    }
+  }
+
+  klee_make_symbolic(&retval, sizeof(retval));
+
+  // Model assumes select does not fail
+  if (timeout == NULL) {
+    printf("HAPPY TUESDAY: ktest_select 6\n");
+    // if timeout is null we assume that at least one bit in the bit
+    // is set
+    klee_assume(all_bits_or != 0);
+    klee_assume(retval > 0);
+  } else {
+    klee_assume(retval >= 0);
+  }
+
+  return retval;
+}
+
+
 DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout) {
+  assert(readfds != NULL);
+  assert(exceptfds == NULL);
   //DEBUG_PRINT("symbolic");
 
   // OPENSSL: Assumption: no sockets ready for reading on the first call to select
   static int first_select = 1;
+  assert( !(first_select == 1 && writefds == NULL));
+
   int i, retval, ret;
-  fd_set in_readfds, in_writefds;
+  fd_set in_readfds;
+  fd_set in_writefds;
 
   // Copy the read and write fd_sets
   in_readfds = *readfds;
-  in_writefds = *writefds;
+  if(writefds != NULL) {
+    in_writefds = *writefds;
+  }
 
   // Reset for output
   FD_ZERO(readfds);
-  FD_ZERO(writefds);
+  if(writefds != NULL) {
+    FD_ZERO(writefds);
+  }
 
   int mask_count = nfds/NFDBITS;
   fd_mask all_bits_or = 0;
@@ -193,13 +252,14 @@ DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_
         all_bits_or |= readfds->fds_bits[i];
       }
     }
-
+  if(writefds != NULL){
     if (in_writefds.fds_bits[i] != 0) {
       fd_mask symbolic_mask;
       klee_make_symbolic(&symbolic_mask, sizeof(fd_mask));
       writefds->fds_bits[i] = in_writefds.fds_bits[i] & symbolic_mask;
       all_bits_or |= writefds->fds_bits[i];
     }
+   }
   }
 
   // Set after first call to select
@@ -208,7 +268,7 @@ DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_
   }
 
   klee_make_symbolic(&retval, sizeof(retval));
-  
+
   // Model assumes select does not fail
   if (timeout == NULL) {
     // if timeout is null we assume that at least one bit in the bit

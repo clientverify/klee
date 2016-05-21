@@ -31,13 +31,13 @@
 #define DEBUG_OPENSSL_MODEL 0
 
 // Enable for fully concrete model (requires ktest)
-#define KTEST_RAND_PLAYBACK 0
-#define KTEST_SELECT_PLAYBACK 1
+#define KTEST_RAND_PLAYBACK 1
+#define KTEST_SELECT_PLAYBACK 0
 #define KTEST_STDIN_PLAYBACK 1  // if 1, overrides CLIVER_TLS_PREDICT_STDIN
 
 // Predict stdin length based on next client-to-server TLS record.
 // Note: this option is ignored if KTEST_STDIN_PLAYBACK=1
-#define CLIVER_TLS_PREDICT_STDIN 1
+#define CLIVER_TLS_PREDICT_STDIN 0
 
 // Special Function Declarations
 int cliver_tls_master_secret(unsigned char *buffer);
