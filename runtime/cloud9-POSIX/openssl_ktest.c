@@ -179,7 +179,6 @@ DEFINE_MODEL(int, bssl_stdin_ktest_select, int nfds, fd_set *readfds, fd_set *wr
   int i, retval, ret;
   fd_set in_readfds;
 
-  printf("HAPPY TUESDAY: bssl_stdin_ktest_select\n");
   // Copy the read and write fd_sets
   in_readfds = *readfds;
 
@@ -202,7 +201,6 @@ DEFINE_MODEL(int, bssl_stdin_ktest_select, int nfds, fd_set *readfds, fd_set *wr
 
   // Model assumes select does not fail
   if (timeout == NULL) {
-    printf("HAPPY TUESDAY: ktest_select 6\n");
     // if timeout is null we assume that at least one bit in the bit
     // is set
     klee_assume(all_bits_or != 0);

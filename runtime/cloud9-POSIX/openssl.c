@@ -228,7 +228,6 @@ DEFINE_MODEL(int, tls1_generate_master_secret, SSL *s, unsigned char *out,
   return CALL_UNDERLYING(tls1_generate_master_secret, s, out, p, len);
 #endif
 
-//  if (is_symbolic_buffer(p, len)) {
     DEBUG_PRINT("playback - master secret");
     int read_successfully_from_file = cliver_tls_master_secret(out);
     if (!read_successfully_from_file) {
@@ -236,13 +235,11 @@ DEFINE_MODEL(int, tls1_generate_master_secret, SSL *s, unsigned char *out,
       cliver_ktest_copy("master_secret", -1, out, SSL3_MASTER_SECRET_SIZE);
     }
     return SSL3_MASTER_SECRET_SIZE;
-//  }
 }
 
 DEFINE_MODEL(size_t, EC_POINT_point2oct, const EC_GROUP *group, 
     const EC_POINT *point, point_conversion_form_t form, 
     unsigned char *buf, size_t len, BN_CTX *ctx) {
-  printf("HAPPY TUESDAY: EC_POINT_point2oct MODEL\n");
   size_t field_len = BN_num_bytes(&group->field);
   size_t ret = (form == POINT_CONVERSION_COMPRESSED) ? 1 + field_len : 1 + 2*field_len;
 
@@ -251,9 +248,8 @@ DEFINE_MODEL(size_t, EC_POINT_point2oct, const EC_GROUP *group,
 }
 
 
-//The following 2 functions (ktest_BN_rand_range, EC_POINT_point2cbb) were needed
-// for boringssl support.  The CBB structs are for their support.
-
+//Following stucts copied from boringssl, used by supporting functions.  Will have
+//issues if boringssl changes the structs.
 typedef struct cbb_st CBB;
 
 struct cbb_buffer_st {
@@ -280,9 +276,6 @@ struct cbb_st {
   char is_top_level;
 };
 
-DEFINE_MODEL(int, ktest_BN_rand_range, BIGNUM *private_key, BIGNUM *order) {
-  return BN_one(private_key); //returns 1 on success, 0 ow
-}
 
 //This is a hack, just for boringssl support
 //We're doing this so that all the structures get initalized.  Note
@@ -292,51 +285,16 @@ DEFINE_MODEL(int, bssl_EC_POINT_mul, const EC_GROUP *group, EC_POINT *r,
                                 const BIGNUM *n, const EC_POINT *q,
                                 const BIGNUM *m, BN_CTX *ctx){
     if(is_symbolic_BIGNUM(n)){ //n is private key
-        printf("HAPPY TUESDAY bssl_EC_POINT_mul 1\n");
         BIGNUM *pretend_priv_key = BN_new();
-        printf("HAPPY TUESDAY bssl_EC_POINT_mul 2\n");
         assert(pretend_priv_key != NULL);
-        printf("HAPPY TUESDAY bssl_EC_POINT_mul 3\n");
         int ret = BN_one(pretend_priv_key);
-        printf("HAPPY TUESDAY bssl_EC_POINT_mul 4\n");
         assert(ret != 0);
-        printf("HAPPY TUESDAY bssl_EC_POINT_mul 5\n");
+        //This one calls EC_POINT_mul
         ret = CALL_UNDERLYING(bssl_EC_POINT_mul, group, r, pretend_priv_key, q, m, ctx);
-        printf("HAPPY TUESDAY bssl_EC_POINT_mul 6\n");
         make_EC_POINT_symbolic(r);
-        printf("HAPPY TUESDAY bssl_EC_POINT_mul 7\n");
         return ret;
     }
     return CALL_UNDERLYING(bssl_EC_POINT_mul, group, r, n, q, m, ctx);
-}
-
-//With the one test case we have, this function produces the same out->base->cap
-// and out->base->len as observed in the bssl playback case.
-/*DEFINE_MODEL(int, EC_POINT_point2cbb, CBB *out, const EC_GROUP *group,
-     const EC_POINT *point, point_conversion_form_t form, BN_CTX *ctx){
-    int ret = CALL_UNDERLYING(EC_POINT_point2cbb, out, group, point, form, ctx);
-    unsigned char* buf = (unsigned char*)malloc(out->base->cap);
-    copy_symbolic_buffer(buf, out->base->len, "CBB", NULL);
-    out->base->buf = buf;
-    printf("HAPPY TUESDAY EC_POINT_point2cbb MODEL about to print lengths\n");
-    printf("HAPPY TUESDAY EC_POINT_point2cbb MODEL out->base->cap %d, out->base->len %d\n", out->base->cap, out->base->len);
-    return ret;
-}*/
-
-//XXX: if this works, then we need to be sure to have the right size everytime...
-//the order {d = 0x7bfec0, top = 4, dmax = 4, neg = 0, flags = 0} is 4 long
-//which means with decreasing probability the top may be less than 4.
-//We'd need to branch into 4 cases here...
-DEFINE_MODEL(void, noop_make_priv_key_symbolic, BIGNUM *bn){
-  if (is_symbolic_BIGNUM(bn)){
-    printf("HAPPY TUESDAY: private key ALREADY symbolic\n");
-    return;
-  }
-  bn->dmax=4;
-  bn->top=4;
-  bn->d = (char *)malloc((bn->dmax)*sizeof(bn->d[0]));
-  make_BN_symbolic(bn);
-  printf("HAPPY TUESDAY: just made private key symbolic\n");
 }
 
 typedef struct ssl_ecdh_method_st SSL_ECDH_METHOD;
@@ -369,21 +327,24 @@ typedef struct ssl_ecdh_ctx_st {
    const uint8_t *peer_key, size_t peer_key_len);
 }; // SSL_ECDH_METHOD
 
-
+// This models a function with the aim of initializing out_secret_len
+// out_secret and out_alert.  They will be initialized to symbolic buffers, in
+// the case of a symbolic private key.  The size of these buffers copied from
+// a computation in the origional, and is deterministic.  Openssl has no
+// ssl_ec_point_compute_secret, so there is no worry of collision.
 DEFINE_MODEL(int, ssl_ec_point_compute_secret, SSL_ECDH_CTX *ctx,
     uint8_t **out_secret, size_t *out_secret_len, uint8_t *out_alert,
     const uint8_t *peer_key, size_t peer_key_len){
-  if(is_symbolic_BIGNUM(ctx->data)){
+  if(is_symbolic_BIGNUM(ctx->data)){ //private_key is symbolic
     *out_alert = SSL_AD_INTERNAL_ERROR;
 
-    printf("HAPPY TUESDAY ssl_ec_point_compute_secret MODEL\n");
     EC_GROUP *group = EC_GROUP_new_by_curve_name(ctx->method->nid);
 
 
     int secret_len = (EC_GROUP_get_degree(group) + 7) / 8;
     unsigned char* secret = (unsigned char*) malloc(secret_len);
     assert(secret != NULL);
-    klee_make_symbolic(secret, secret_len, "ssl_ec_point_compute_secret"); 
+    klee_make_symbolic(secret, secret_len, "ssl_ec_point_compute_secret");
 
     *out_secret_len = secret_len;
     *out_secret = (uint8_t*) secret;
