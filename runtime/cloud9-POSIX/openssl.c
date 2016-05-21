@@ -242,12 +242,14 @@ DEFINE_MODEL(int, tls1_generate_master_secret, SSL *s, unsigned char *out,
 DEFINE_MODEL(size_t, EC_POINT_point2oct, const EC_GROUP *group, 
     const EC_POINT *point, point_conversion_form_t form, 
     unsigned char *buf, size_t len, BN_CTX *ctx) {
+  printf("HAPPY TUESDAY: EC_POINT_point2oct MODEL\n");
   size_t field_len = BN_num_bytes(&group->field);
   size_t ret = (form == POINT_CONVERSION_COMPRESSED) ? 1 + field_len : 1 + 2*field_len;
 
   SYMBOLIC_MODEL_CHECK_AND_RETURN(point,sizeof(EC_POINT),buf,ret,"point2oct",ret);
   return CALL_UNDERLYING(EC_POINT_point2oct, group, point, form, buf, len, ctx);
 }
+
 
 //The following 2 functions (ktest_BN_rand_range, EC_POINT_point2cbb) were needed
 // for boringssl support.  The CBB structs are for their support.
@@ -256,25 +258,25 @@ typedef struct cbb_st CBB;
 
 struct cbb_buffer_st {
   uint8_t *buf;
-  size_t len;      /* The number of valid bytes. */
-  size_t cap;      /* The size of buf. */
-  char can_resize; /* One iff |buf| is owned by this object. If not then |buf|
-                      cannot be resized. */
+  size_t len;      // The number of valid bytes.
+  size_t cap;      // The size of buf.
+  char can_resize; // One iff |buf| is owned by this object. If not then |buf|
+                   // cannot be resized.
 };
 
 struct cbb_st {
   struct cbb_buffer_st *base;
-  /* child points to a child CBB if a length-prefix is pending. */
+  // child points to a child CBB if a length-prefix is pending.
   CBB *child;
-  /* offset is the number of bytes from the start of |base->buf| to this |CBB|'s
-  * pending length prefix. */
+  // offset is the number of bytes from the start of |base->buf| to this |CBB|'s
+  // pending length prefix.
   size_t offset;
-  /* pending_len_len contains the number of bytes in this |CBB|'s pending
-  * length-prefix, or zero if no length-prefix is pending. */
+  // pending_len_len contains the number of bytes in this |CBB|'s pending
+  // length-prefix, or zero if no length-prefix is pending.
   uint8_t pending_len_len;
   char pending_is_asn1;
-  /* is_top_level is true iff this is a top-level |CBB| (as opposed to a child
-  * |CBB|). Top-level objects are valid arguments for |CBB_finish|. */
+  // is_top_level is true iff this is a top-level |CBB| (as opposed to a child
+  // |CBB|). Top-level objects are valid arguments for |CBB_finish|.
   char is_top_level;
 };
 
@@ -282,9 +284,32 @@ DEFINE_MODEL(int, ktest_BN_rand_range, BIGNUM *private_key, BIGNUM *order) {
   return BN_one(private_key); //returns 1 on success, 0 ow
 }
 
+//This is a hack, just for boringssl support
+DEFINE_MODEL(int, bssl_EC_POINT_mul, const EC_GROUP *group, EC_POINT *r,
+                                const BIGNUM *n, const EC_POINT *q,
+                                const BIGNUM *m, BN_CTX *ctx){
+    if(is_symbolic_BIGNUM(n)){ //n is private key
+        printf("HAPPY TUESDAY bssl_EC_POINT_mul 1\n");
+        BIGNUM *pretend_priv_key = BN_new();
+        printf("HAPPY TUESDAY bssl_EC_POINT_mul 2\n");
+        assert(pretend_priv_key != NULL);
+        printf("HAPPY TUESDAY bssl_EC_POINT_mul 3\n");
+        int ret = BN_one(pretend_priv_key);
+        printf("HAPPY TUESDAY bssl_EC_POINT_mul 4\n");
+        assert(ret != 0);
+        printf("HAPPY TUESDAY bssl_EC_POINT_mul 5\n");
+        ret = CALL_UNDERLYING(bssl_EC_POINT_mul, group, r, pretend_priv_key, q, m, ctx);
+        printf("HAPPY TUESDAY bssl_EC_POINT_mul 6\n");
+        make_EC_POINT_symbolic(r);
+        printf("HAPPY TUESDAY bssl_EC_POINT_mul 7\n");
+        return ret;
+    }
+    return CALL_UNDERLYING(bssl_EC_POINT_mul, group, r, n, q, m, ctx);
+}
+
 //With the one test case we have, this function produces the same out->base->cap
 // and out->base->len as observed in the bssl playback case.
-DEFINE_MODEL(int, EC_POINT_point2cbb, CBB *out, const EC_GROUP *group,
+/*DEFINE_MODEL(int, EC_POINT_point2cbb, CBB *out, const EC_GROUP *group,
      const EC_POINT *point, point_conversion_form_t form, BN_CTX *ctx){
     int ret = CALL_UNDERLYING(EC_POINT_point2cbb, out, group, point, form, ctx);
     unsigned char* buf = (unsigned char*)malloc(out->base->cap);
@@ -293,9 +318,20 @@ DEFINE_MODEL(int, EC_POINT_point2cbb, CBB *out, const EC_GROUP *group,
     printf("HAPPY TUESDAY EC_POINT_point2cbb MODEL about to print lengths\n");
     printf("HAPPY TUESDAY EC_POINT_point2cbb MODEL out->base->cap %d, out->base->len %d\n", out->base->cap, out->base->len);
     return ret;
-}
+}*/
 
+//XXX: if this works, then we need to be sure to have the right size everytime...
+//the order {d = 0x7bfec0, top = 4, dmax = 4, neg = 0, flags = 0} is 4 long
+//which means with decreasing probability the top may be less than 4.
+//We'd need to branch into 4 cases here...
 DEFINE_MODEL(void, noop_make_priv_key_symbolic, BIGNUM *bn){
+  if (is_symbolic_BIGNUM(bn)){
+    printf("HAPPY TUESDAY: private key ALREADY symbolic\n");
+    return;
+  }
+  bn->dmax=4;
+  bn->top=4;
+  bn->d = (char *)malloc((bn->dmax)*sizeof(bn->d[0]));
   make_BN_symbolic(bn);
   printf("HAPPY TUESDAY: just made private key symbolic\n");
 }
