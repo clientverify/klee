@@ -173,6 +173,10 @@ class ClientVerifier : public klee::InterpreterHandler {
 
   CVStatisticsManager* sm() { return &statistics_manager_; }
 
+  const std::string &socket_log_text_file() { return socket_log_text_file_; }
+
+  bool drop_s2c_tls_appdata() { return drop_s2c_tls_appdata_; }
+
  private:
   CVStream *cvstream_;
   klee::Atomic<int>::type paths_explored_;
@@ -194,6 +198,9 @@ class ClientVerifier : public klee::InterpreterHandler {
   std::string client_name_;
 
   KTest* replay_objs_;
+
+  std::string socket_log_text_file_; // optional
+  bool drop_s2c_tls_appdata_ = false;
 
   // RFC 5246 TLS Master Secret (48 bytes)
   std::mutex master_secret_mutex_;

@@ -152,12 +152,18 @@ NetworkManager* NetworkManagerFactory::create(CVExecutionState* state,
       foreach( SocketEventList *sel, cv->socket_events()) {
         nm->add_socket(*sel);
       }
+      if (!cv->socket_log_text_file().empty()) {
+        nm->add_socket(cv->socket_log_text_file(), cv->drop_s2c_tls_appdata());
+      }
       return nm;
     }
     case XPilot: {
       NetworkManagerXpilot *nm = new NetworkManagerXpilot(state);
       foreach( SocketEventList *sel, cv->socket_events()) {
         nm->add_socket(*sel);
+      }
+      if (!cv->socket_log_text_file().empty()) {
+        nm->add_socket(cv->socket_log_text_file(), cv->drop_s2c_tls_appdata());
       }
       return nm;
     }

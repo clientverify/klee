@@ -87,6 +87,13 @@ SocketLogDir("socket-log-dir",
   llvm::cl::desc("Specify socket log directory"),
   llvm::cl::value_desc("ktest directory"));
 
+llvm::cl::opt<std::string>
+SocketLogTextFile("socket-log-text",
+  llvm::cl::Optional,
+  llvm::cl::ValueRequired,
+  llvm::cl::desc("Specify socket log file (.ktest.txt) - network only"),
+  llvm::cl::init(""));
+
 llvm::cl::opt<bool> 
 CopyInputFilesToOutputDir("copy-input-files-to-output-dir", llvm::cl::init(false));
 
@@ -250,10 +257,19 @@ void ClientVerifier::initialize() {
     }
   }
 
-  // Read socket log files
+  // Read binary socket log files
 	if (SocketLogFile.empty() || read_socket_logs(SocketLogFile) == 0) {
-    CVMESSAGE("No socket log files loaded");
+    CVMESSAGE("No binary socket log files loaded");
 	}
+
+  // Register text socket log filename (for lazy loading, e.g., live tcpdump)
+  socket_log_text_file_ = SocketLogTextFile;
+  if (SocketLogTextFile.empty()) {
+    CVMESSAGE("No text socket log file specified");
+  }
+
+  // Are we dropping TLS server-to-client application data packets?
+  drop_s2c_tls_appdata_ = DropS2CTLSApplicationData;
 
   assign_basic_block_ids();
 
@@ -634,7 +650,7 @@ int ClientVerifier::status() {
   }
 
   // Return success if there was no log to verify
-  if (SocketLogFile.size() == 0) {
+  if (SocketLogFile.size() == 0 && SocketLogTextFile.empty()) {
     CVMESSAGE("Verifier Result: success (0): "
               << "no socket log provided");
     status = 0;

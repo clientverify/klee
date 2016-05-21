@@ -15,6 +15,10 @@
 #include "llvm/Support/CommandLine.h"
 
 #include <algorithm>
+#include <string>
+#include <sstream>
+#include <cstring>
+#include <stdexcept>
 
 namespace cliver {
 
@@ -211,6 +215,21 @@ Socket::Socket(const SocketEventList &log)
   }
 }
 
+Socket::Socket(const std::string &ktest_text_file, bool drop_s2c_tls_appdata)
+    : file_descriptor_(Socket::NextFileDescriptor++), open_(false),
+      end_reached_(false), state_(IDLE), index_(0), offset_(0),
+      log_(new SocketEventList()),
+      socket_source_(std::make_shared<SocketSourceKTestText>(ktest_text_file)),
+      log_mutex_(std::make_shared<std::mutex>()) {
+
+  // Load first socket event if it exists.
+  if (socket_source_->finished()) {
+    end_reached_ = true; // degenerate case - empty log
+  } else {
+    log_->push_back(new SocketEvent(socket_source_->next())); // FIXME: leak
+  }
+}
+
 Socket::~Socket() {}
 
 uint8_t Socket::next_byte() {
@@ -301,6 +320,143 @@ void Socket::print(std::ostream &os) {
 			 << socket_states[state()] << ", N/A ]";
 
 	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+/// SocketSourceKTestText Implementation
+
+static std::vector<std::string> &split(const std::string &s, char delim,
+                                       std::vector<std::string> &elems) {
+  std::stringstream ss(s);
+  std::string item;
+  while (std::getline(ss, item, delim)) {
+    if (!item.empty())
+      elems.push_back(item);
+  }
+  return elems;
+}
+
+static std::vector<std::string> split(const std::string &s, char delim) {
+  std::vector<std::string> elems;
+  split(s, delim, elems);
+  return elems;
+}
+
+static std::string strip_comments(const std::string &line) {
+  size_t pos = line.find("#");
+
+  if (pos == std::string::npos)
+    return std::string(line);
+  else
+    return line.substr(0, pos);
+}
+
+static int char2int(char input) {
+  if (input >= '0' && input <= '9')
+    return input - '0';
+  if (input >= 'A' && input <= 'F')
+    return input - 'A' + 10;
+  if (input >= 'a' && input <= 'f')
+    return input - 'a' + 10;
+  throw std::invalid_argument("Invalid input string");
+}
+
+// This function assumes src to be a zero terminated sanitized string with
+// an even number of [0-9a-f] characters, and target to be sufficiently large
+static void hex2bin(const char *src, unsigned char *target) {
+  while (*src && src[1]) {
+    *(target++) = char2int(*src) * 16 + char2int(src[1]);
+    src += 2;
+  }
+}
+
+static KTestObject *ktest_text_to_obj(const std::string &line) {
+  KTestObject *obj = NULL;
+  std::vector<std::string> fields = split(strip_comments(line), ' ');
+
+  if (fields.size() < 4) {
+    return NULL;
+  }
+
+  std::vector<std::string> time_parts = split(fields[0], '.');
+  if (time_parts.size() != 2) {
+    return NULL;
+  }
+
+  obj = new KTestObject();
+  obj->name = new char[fields[2].size() + 1];
+  std::strcpy(obj->name, fields[2].c_str());
+  std::stringstream convert_sec(time_parts[0]);
+  convert_sec >> (obj->timestamp.tv_sec);
+  std::stringstream convert_usec(time_parts[1]);
+  convert_usec >> (obj->timestamp.tv_usec);
+  std::stringstream convert_numbytes(fields[3]);
+  convert_numbytes >> (obj->numBytes);
+  if (obj->numBytes > 0) {
+    if (fields[4].size() != 2 * obj->numBytes) {
+      delete[] obj->name;
+      delete obj;
+      return NULL;
+    }
+    obj->bytes = new unsigned char[obj->numBytes];
+    hex2bin(fields[4].c_str(), obj->bytes);
+  } else {
+    obj->bytes = NULL;
+  }
+
+  return obj;
+}
+
+static KTestObject *get_next_ktest(std::ifstream &is) {
+  while (is) {
+    std::string line;
+    std::getline(is, line);
+    if (!is) {
+      return NULL;
+    }
+    KTestObject *obj = ktest_text_to_obj(line);
+    if (obj) {
+      return obj;
+    }
+  }
+  return NULL;
+}
+
+static void delete_KTestObject(KTestObject *obj) {
+  if (obj) {
+    if (obj->name)
+      delete[] obj->name;
+    if (obj->bytes)
+      delete[] obj->bytes;
+    delete obj;
+  }
+}
+
+bool SocketSourceKTestText::finished() {
+  // Definitely finished
+  if (finished_)
+    return true;
+
+  // Definitely not finished
+  if (index_ < log_.size())
+    return false;
+
+  // Not sure, have to check
+  KTestObject *obj = get_next_ktest(is_);
+  if (obj) {
+    log_.push_back(new SocketEvent(*obj));
+    delete_KTestObject(obj);
+    return false;
+  } else {
+    finished_ = true;
+    return true;
+  }
+}
+
+const SocketEvent &SocketSourceKTestText::next() {
+  const SocketEvent &event = *(log_[index_++]);
+  return event;
 }
 
 } // end namespace cliver

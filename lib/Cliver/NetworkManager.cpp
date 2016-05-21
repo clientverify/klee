@@ -153,6 +153,11 @@ void NetworkManager::add_socket(const SocketEventList &log) {
 	sockets_.push_back(Socket(log));
 }
 
+void NetworkManager::add_socket(const std::string &ktest_text_file,
+                                bool drop_s2c_tls_appdata) {
+  sockets_.push_back(Socket(ktest_text_file, drop_s2c_tls_appdata));
+}
+
 void NetworkManager::clear_sockets() {
 	sockets_.clear();
 }

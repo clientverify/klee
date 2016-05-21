@@ -17,6 +17,7 @@
 #include <set>
 #include <memory>
 #include <mutex>
+#include <fstream>
 
 #define UBATOINT_I(_b,_i) \
     (((_b)[_i]<<24) + ((_b)[_i+1]<<16) + ((_b)[_i+2]<<8) + ((_b)[_i+3]))
@@ -97,6 +98,11 @@ typedef std::set<SocketEvent*, SocketEventDataOnlyLT> SocketEventDataSet;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// SocketSource usage: you MUST NOT call next() if finished() ==
+// true. This implies that you MUST call finished() before calling
+// next(). In fact, the SocketSource MAY depend on precisely that
+// behavior.
+
 class SocketSource {
 public:
   virtual ~SocketSource() {}
@@ -124,6 +130,21 @@ private:
   size_t next_index_;
 };
 
+class SocketSourceKTestText : public SocketSource {
+public:
+  SocketSourceKTestText(const std::string &filename)
+    : finished_(false), is_(filename, std::ifstream::binary), index_(0) {}
+  virtual bool finished();
+  virtual const SocketEvent &next();
+
+private:
+  bool finished_;
+  std::ifstream is_;
+  SocketEventList log_;
+  size_t index_; // next item to read from the log_;
+};
+
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // WARNING: a Socket can be copied, in which case different copies of
@@ -149,6 +170,7 @@ class Socket {
 
 	Socket(const KTest* ktest);
 	Socket(const SocketEventList &log);
+	Socket(const std::string &ktest_text_file, bool drop_s2c_tls_appdata);
 	~Socket();
 
   SocketEvent::Type type() { return event().type; }
