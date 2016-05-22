@@ -223,7 +223,11 @@ DEFINE_MODEL(int, ECDH_compute_key, void *out, size_t outlen,
 
 DEFINE_MODEL(int, tls1_generate_master_secret, SSL *s, unsigned char *out, 
     unsigned char *p, int len) {
-  if (is_symbolic_buffer(p, len)) {
+//Should never call underlying except in playback case.
+#if KTEST_RAND_PLAYBACK
+  return CALL_UNDERLYING(tls1_generate_master_secret, s, out, p, len);
+#endif
+
     DEBUG_PRINT("playback - master secret");
     int read_successfully_from_file = cliver_tls_master_secret(out);
     if (!read_successfully_from_file) {
@@ -231,15 +235,11 @@ DEFINE_MODEL(int, tls1_generate_master_secret, SSL *s, unsigned char *out,
       cliver_ktest_copy("master_secret", -1, out, SSL3_MASTER_SECRET_SIZE);
     }
     return SSL3_MASTER_SECRET_SIZE;
-  }
-  DEBUG_PRINT("concrete - master secret");
-  return CALL_UNDERLYING(tls1_generate_master_secret, s, out, p, len);
 }
 
 DEFINE_MODEL(size_t, EC_POINT_point2oct, const EC_GROUP *group, 
     const EC_POINT *point, point_conversion_form_t form, 
     unsigned char *buf, size_t len, BN_CTX *ctx) {
-
   size_t field_len = BN_num_bytes(&group->field);
   size_t ret = (form == POINT_CONVERSION_COMPRESSED) ? 1 + field_len : 1 + 2*field_len;
 
@@ -247,8 +247,119 @@ DEFINE_MODEL(size_t, EC_POINT_point2oct, const EC_GROUP *group,
   return CALL_UNDERLYING(EC_POINT_point2oct, group, point, form, buf, len, ctx);
 }
 
+
+//Following stucts copied from boringssl, used by supporting functions.  Will have
+//issues if boringssl changes the structs.
+typedef struct cbb_st CBB;
+
+struct cbb_buffer_st {
+  uint8_t *buf;
+  size_t len;      // The number of valid bytes.
+  size_t cap;      // The size of buf.
+  char can_resize; // One iff |buf| is owned by this object. If not then |buf|
+                   // cannot be resized.
+};
+
+struct cbb_st {
+  struct cbb_buffer_st *base;
+  // child points to a child CBB if a length-prefix is pending.
+  CBB *child;
+  // offset is the number of bytes from the start of |base->buf| to this |CBB|'s
+  // pending length prefix.
+  size_t offset;
+  // pending_len_len contains the number of bytes in this |CBB|'s pending
+  // length-prefix, or zero if no length-prefix is pending.
+  uint8_t pending_len_len;
+  char pending_is_asn1;
+  // is_top_level is true iff this is a top-level |CBB| (as opposed to a child
+  // |CBB|). Top-level objects are valid arguments for |CBB_finish|.
+  char is_top_level;
+};
+
+
+//This is a hack, just for boringssl support
+//We're doing this so that all the structures get initalized.  Note
+//our assumption that having a private key of 1 will not affect the
+//size of the public key.  This may not work for all possible test cases
+DEFINE_MODEL(int, bssl_EC_POINT_mul, const EC_GROUP *group, EC_POINT *r,
+                                const BIGNUM *n, const EC_POINT *q,
+                                const BIGNUM *m, BN_CTX *ctx){
+    if(is_symbolic_BIGNUM(n)){ //n is private key
+        BIGNUM *pretend_priv_key = BN_new();
+        assert(pretend_priv_key != NULL);
+        int ret = BN_one(pretend_priv_key);
+        assert(ret != 0);
+        //This one calls EC_POINT_mul
+        ret = CALL_UNDERLYING(bssl_EC_POINT_mul, group, r, pretend_priv_key, q, m, ctx);
+        make_EC_POINT_symbolic(r);
+        return ret;
+    }
+    return CALL_UNDERLYING(bssl_EC_POINT_mul, group, r, n, q, m, ctx);
+}
+
+typedef struct ssl_ecdh_method_st SSL_ECDH_METHOD;
+typedef struct ssl_ecdh_ctx_st {
+    const SSL_ECDH_METHOD *method;
+    void *data;
+} SSL_ECDH_CTX;
+
+// An SSL_ECDH_METHOD is an implementation of ECDH-like key exchanges for
+// TLS.
+ struct ssl_ecdh_method_st {
+   int nid;
+   uint16_t curve_id;
+   const char name[8];
+
+   // cleanup releases state in |ctx|.
+   void (*cleanup)(SSL_ECDH_CTX *ctx);
+
+   // generate_keypair generates a keypair and writes the public value to
+   // |out_public_key|. It returns one on success and zero on error.
+   int (*generate_keypair)(SSL_ECDH_CTX *ctx, CBB *out_public_key);
+
+   // compute_secret performs a key exchange against |peer_key| and, on
+   // success, returns one and sets |*out_secret| and |*out_secret_len| to
+   // a newly-allocated buffer containing the shared secret. The caller must
+   // release this buffer with |OPENSSL_free|. Otherwise, it returns zero and
+   // sets |*out_alert| to an alert to send to the peer.
+   int (*compute_secret)(SSL_ECDH_CTX *ctx, uint8_t **out_secret,
+   size_t *out_secret_len, uint8_t *out_alert,
+   const uint8_t *peer_key, size_t peer_key_len);
+}; // SSL_ECDH_METHOD
+
+// This models a function with the aim of initializing out_secret_len
+// out_secret and out_alert.  They will be initialized to symbolic buffers, in
+// the case of a symbolic private key.  The size of these buffers copied from
+// a computation in the origional, and is deterministic.  Openssl has no
+// ssl_ec_point_compute_secret, so there is no worry of collision.
+DEFINE_MODEL(int, ssl_ec_point_compute_secret, SSL_ECDH_CTX *ctx,
+    uint8_t **out_secret, size_t *out_secret_len, uint8_t *out_alert,
+    const uint8_t *peer_key, size_t peer_key_len){
+  if(is_symbolic_BIGNUM(ctx->data)){ //private_key is symbolic
+    *out_alert = SSL_AD_INTERNAL_ERROR;
+
+    EC_GROUP *group = EC_GROUP_new_by_curve_name(ctx->method->nid);
+
+
+    int secret_len = (EC_GROUP_get_degree(group) + 7) / 8;
+    unsigned char* secret = (unsigned char*) malloc(secret_len);
+    assert(secret != NULL);
+    klee_make_symbolic(secret, secret_len, "ssl_ec_point_compute_secret");
+
+    *out_secret_len = secret_len;
+    *out_secret = (uint8_t*) secret;
+
+    return 1;
+  } else {
+    return CALL_UNDERLYING( ssl_ec_point_compute_secret, ctx,
+        out_secret, out_secret_len, out_alert, peer_key, peer_key_len);
+  }
+
+}
+
+
 ////////////////////////////////////////////////////////////////////////////////
-// SHA1 / SHA256 
+// SHA1 / SHA256
 ////////////////////////////////////////////////////////////////////////////////
 
 DEFINE_MODEL(int, SHA1_Update, SHA_CTX *c, const void *data, size_t len) {
