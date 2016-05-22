@@ -445,7 +445,7 @@ bool SocketSourceKTestText::finished() {
 
   // Not sure, have to check
   if (try_loading_next_ktest()) {
-    return false; // not finished
+    return false; // loaded another SocketEvent; not finished
   } else {
     finished_ = true;
     return true; // finished
@@ -458,12 +458,33 @@ const SocketEvent &SocketSourceKTestText::next() {
 }
 
 bool SocketSourceKTestText::try_loading_next_ktest() {
+
+  // If the connection is closed, don't try to load any more.
+  if (finished_) {
+    return false;
+  }
+
   while (is_) {
     KTestObject *obj = get_next_ktest(is_);
     if (obj) {
-      if (drop_s2c_tls_appdata_ && is_s2c_tls_appdata(obj)) {
+      if (strcmp(obj->name, "c2s") != 0 &&
+          strcmp(obj->name, "s2c") != 0) { // Ignore non-network KTest events
         delete_KTestObject(obj);
-      } else {
+      } else if (obj->numBytes == 0) { // TCP FIN
+        if (strcmp(obj->name, "c2s") == 0) {
+          c2s_tcp_fin_ = true;
+        } else {
+          s2c_tcp_fin_ = true;
+        }
+        delete_KTestObject(obj);
+        if (c2s_tcp_fin_ && s2c_tcp_fin_) { // Both FINs seen: connection closed
+          finished_ = true;
+          return false;
+        }
+      } else if (drop_s2c_tls_appdata_ &&
+                 is_s2c_tls_appdata(obj)) { // Optionally drop s2c appdata
+        delete_KTestObject(obj);
+      } else { // Good network KTestObject: create SocketEvent
         log_.push_back(new SocketEvent(*obj));
         delete_KTestObject(obj);
         return true;
