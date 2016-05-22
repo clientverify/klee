@@ -382,6 +382,13 @@ void NetworkManager::execute_read(CVExecutor* executor,
 
 	GET_SOCKET_OR_DIE_TRYIN("read", fd);
 
+	// From the read(2) manpage: "On success, the number of bytes read
+	// is returned (zero indicates end of file)".  Some programs depend
+	// on the zero return from read() at the end of a connection to
+	// behave (and therefore verify) properly.
+	if (socket.end_of_log())
+		RETURN_SUCCESS("read", 0);
+
 	if (socket.is_open() != true)
 		RETURN_FAILURE("read", "not open");
 
