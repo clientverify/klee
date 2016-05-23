@@ -379,3 +379,7 @@ void ExecutionState::dumpStack(llvm::raw_ostream &out) const {
     target = sf.caller;
   }
 }
+
+void ExecutionState::dumpStack() const {
+  dumpStack(llvm::outs());
+}
