@@ -37,7 +37,7 @@
 
 // Predict stdin length based on next client-to-server TLS record.
 // Note: this option is ignored if KTEST_STDIN_PLAYBACK=1
-#define CLIVER_TLS_PREDICT_STDIN 0
+#define CLIVER_TLS_PREDICT_STDIN 1
 
 // Special Function Declarations
 int cliver_tls_master_secret(unsigned char *buffer);
