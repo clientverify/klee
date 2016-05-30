@@ -495,7 +495,11 @@ bool SocketSourceKTestText::try_loading_next_ktest() {
 }
 
 // WARNING: stateful / side effects!
-// s2c assumed to be split into header(5) + payload(n)
+// s2c assumed to be split into header(5) + payload(n) or
+// header(13) + payload(n)
+//
+// FIXME: For some reason, this still breaks for BoringSSL (running
+// against Chromium)!
 bool SocketSourceKTestText::is_s2c_tls_appdata(const KTestObject *obj) {
   const unsigned char TLS_APPDATA = 23; // RFC 5246
   if (!obj)
@@ -506,7 +510,8 @@ bool SocketSourceKTestText::is_s2c_tls_appdata(const KTestObject *obj) {
     drop_next_s2c_ = false;
     return true;
   }
-  if (obj->numBytes == 5 && obj->bytes[0] == TLS_APPDATA) { // appdata header
+  if ((obj->numBytes == 5 || obj->numBytes == 13) &&
+      obj->bytes[0] == TLS_APPDATA) { // appdata header
     drop_next_s2c_ = true;
     return true;
   }
