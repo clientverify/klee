@@ -29,6 +29,8 @@ typedef std::map<const Array*, unsigned> ArrayIndexMap;
 typedef std::map<size_t, ArrayVector> SizeArrayVectorMap;
 typedef std::map<size_t, int> SizeIndexMap;
 
+// Robby's brain: Added this canonical solver for Xpilot
+
 class CanonicalVisitor : public ExprVisitor {
  private:
 

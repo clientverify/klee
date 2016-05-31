@@ -165,12 +165,12 @@ private:
   // mutable because may need flushed during read of const
   mutable BitArray *flushMask;
 
-  BitArray *pointerMask;
+  BitArray *pointerMask; // Robby's brain: Added by Robby
 
   ref<Expr> *knownSymbolics;
 
   // mutable because we may need flush during read of const
-  mutable UpdateList updates;
+  mutable UpdateList updates; // updates to object state w/ symbolic indices
   mutable SpinLock updatesLock;
 
 public:

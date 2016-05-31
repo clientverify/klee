@@ -102,7 +102,7 @@ void MemoryObject::getAllocInfo(std::string &result) const {
 }
 
 /***/
-
+// Robby's brain: Concrete ObjectState
 ObjectState::ObjectState(const MemoryObject *mo)
   : copyOnWriteOwner(0),
     refCount(0),
@@ -126,7 +126,7 @@ ObjectState::ObjectState(const MemoryObject *mo)
   updatesLock = {0};
 }
 
-
+// Robby's brain: Symbolic ObjectState
 ObjectState::ObjectState(const MemoryObject *mo, const Array *array)
   : copyOnWriteOwner(0),
     refCount(0),

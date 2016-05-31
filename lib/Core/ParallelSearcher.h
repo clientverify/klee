@@ -23,6 +23,10 @@
 
 namespace klee {
 
+  // Robby's brain: ParallelSearcher is not actually used by Cliver.
+  // It was "backported" to KLEE.  CVSearcher already has the right
+  // properties.
+
   /// ParallelSearcher acts as wrapper around other searchers. It's only purpose is
   /// to remove every state returned by selectState from the underlying searcher
   /// and re-add it back when update is called so that multiple threads won't be
