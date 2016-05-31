@@ -34,6 +34,7 @@ class SearcherStage;
 ////////////////////////////////////////////////////////////////////////////////
 
 class CVExecutionState : public klee::ExecutionState {
+  // unique id for each state (used for debugging)
   static klee::Atomic<unsigned>::type  next_id_;
 
  public:

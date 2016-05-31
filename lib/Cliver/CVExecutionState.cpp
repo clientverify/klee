@@ -24,11 +24,14 @@ namespace cliver {
 
 klee::Atomic<unsigned>::type CVExecutionState::next_id_;
 
+// This constructor is (likely) called only once, i.e., "main".
+// Everything else is a result of cloning states.
 CVExecutionState::CVExecutionState(klee::KFunction *kF)
- : klee::ExecutionState(kF),
-	 id_(increment_id()), property_(0), basic_block_tracking_(true),
-   multi_pass_clone_(NULL), searcher_stage_(NULL) {}
+    : klee::ExecutionState(kF), id_(increment_id()), property_(0),
+      basic_block_tracking_(true), multi_pass_clone_(NULL),
+      searcher_stage_(NULL) {}
 
+// Robby wasn't sure what this constructor did, so he disabled it.
 CVExecutionState::CVExecutionState(
     const std::vector< klee::ref<klee::Expr> > &assumptions)
     : klee::ExecutionState(assumptions) {
