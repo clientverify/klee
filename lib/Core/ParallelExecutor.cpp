@@ -668,6 +668,9 @@ Executor::ExecutorContext& Executor::getContext() {
 }
 
 bool Executor::empty() {
+  if (stateCount == 0) {
+    klee_message("Executor is empty: state count has reached 0.");
+  }
   return stateCount == 0;
 }
 
