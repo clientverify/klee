@@ -668,10 +668,13 @@ Executor::ExecutorContext& Executor::getContext() {
 }
 
 bool Executor::empty() {
-  if (stateCount == 0) {
-    klee_message("Executor is empty: state count has reached 0.");
+  bool is_empty = (stateCount == 0);
+  if (is_empty) {
+    LockGuard guard(initializationLock);
+    klee_message("Thread %d detects empty Executor (state count == 0)",
+                 klee::GetThreadID());
   }
-  return stateCount == 0;
+  return is_empty;
 }
 
 /// Don't use mallinfo, overflows if usage is > 4GB and also doesn't work with
