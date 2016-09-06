@@ -398,7 +398,6 @@ DEFINE_MODEL(void, ktest_freeaddrinfo, struct addrinfo *res){
 //THis is a kludge to support bssl.  We need to reconcile the support provided
 //in klee's fcntl with the requirements of boringssl.
 DEFINE_MODEL(int, ktest_fcntl, int sock, int flags, int not_sure){
-    printf("ktest_fcntl MODEL called\n");
     if(flags ==F_GETFL)
         return 1;
     else if(flags == F_SETFL)
