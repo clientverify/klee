@@ -343,6 +343,9 @@ klee::KBasicBlock* ClientVerifier::LookupBasicBlockID(int id) {
   return basicblock_map_[id];
 }
 
+//We always look 5 ahead, then we had to rewrite to look 13 ahead for
+//bssl support
+#define CONST_PREFIX 5
 int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
 
   foreach(std::string filename, logs) {
@@ -352,8 +355,14 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
       socket_events_.push_back(new SocketEventList());
       unsigned s2c_count = 0;
       unsigned s2c_used = 0;
-      int last_s2c_application_msg_index = INT_MAX;
-      int last_s2c_application_msg_length = 0;
+      //Index of the s2c postfix as yet unread
+      int s2c_app_msg_2b_read_idx = INT_MAX;
+      //Lenght of the remaining s2c message as yet unread
+      int s2c_app_msg_2b_read_len = 0;
+      //This is the lenght of the readahead into the s2c message - 5
+      //Openssl results in a lookahead of 5, while BoringSSL looks ahead 13
+      //resulting in a prefix of 0 and 8 respectively.
+      int prefix_length;
       for (unsigned i = 0; i < ktest->numObjects; ++i) {
         std::string obj_name(ktest->objects[i].name);
         if (obj_name == "s2c") {
@@ -365,15 +374,19 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
             // [byte:0 type][byte:1-2 vers][byte:3-4 length][...]
             // Drop S2C application data header == 23
             if (first_msg_byte == 23) {
-              last_s2c_application_msg_index = i;
+              prefix_length = ktest->objects[i].numBytes;
+              assert(prefix_length == 13 || prefix_length == 5); //enforce openssl and bssl expeted values
+              s2c_app_msg_2b_read_idx = i;
               // Extract length field
-              last_s2c_application_msg_length =
+              s2c_app_msg_2b_read_len =
                   (ktest->objects[i].bytes[3] << 8) |
                   (ktest->objects[i].bytes[4]);
+              s2c_app_msg_2b_read_len = s2c_app_msg_2b_read_len - prefix_length + CONST_PREFIX;
+
               // Drop S2C rest of application data (in next SocketEvent)
-            } else if (i - 1 == last_s2c_application_msg_index) {
+            } else if (i - 1 == s2c_app_msg_2b_read_idx) {
               // check length field == ktest object(socket event) size
-              if (last_s2c_application_msg_length !=
+              if (s2c_app_msg_2b_read_len !=
                   ktest->objects[i].numBytes) {
                 cv_error("DropS2CTLSApplicationData: TLS Field Length != "
                          "message size");
