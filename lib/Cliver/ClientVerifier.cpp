@@ -365,8 +365,8 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
             // TLS Application Data records.  RFC 5246 states that
             // application data records can be identified by the first
             // byte of the TLS record, the ContentType, being equal to
-            // 23 (decimal).  The following summarizes the relevant
-            // TLS record format.
+            // 23 (decimal).  The following excerpt from RFC 5246
+            // summarizes the relevant TLS record fields.
             //
             // struct {
             //     uint8 major;
@@ -419,10 +419,10 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
             // up into two "s2c" KTest objects.  The split point
             // differs between OpenSSL and BoringSSL.  In the
             // following code, we attempt to generically handle both
-            // cases and correctly drop both reads regardless of
-            // whether we are verifying an OpenSSL or BoringSSL
-            // client.  We emit an error if the observed behavior
-            // conforms to neither OpenSSL nor BoringSSL.
+            // implementations and correctly drop two consecutive
+            // read() calls regardless of the split point.  We emit an
+            // error if the observed behavior conforms to neither
+            // OpenSSL nor BoringSSL.
 
             const uint8_t TLS_CONTENT_TYPE_APPDATA = 23;
             const int TLS_HEADER_LEN = 5;
@@ -457,8 +457,9 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
               assert(first_read_len >= 5); // required for memory safety
               int tls_record_len = (ktest->objects[i].bytes[3] << 8) |
                                    (ktest->objects[i].bytes[4]);
-              // Drop the rest of the TLS application data packet
-              // (if any) in the next s2c SocketEvent.
+              // Set a flag to drop the rest of the TLS application
+              // data packet (if any). That is, drop the next s2c
+              // SocketEvent.
               next_s2c_predicted_len =
                   TLS_HEADER_LEN + tls_record_len - first_read_len;
               if (next_s2c_predicted_len > 0) {
