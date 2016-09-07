@@ -56,11 +56,6 @@ MaxRoundNumber("max-round", llvm::cl::init(0));
 llvm::cl::opt<int>
 MaxPassCount("max-pass-count", llvm::cl::init(0));
 
-llvm::cl::opt<int>
-OnlyVerifyFirstS2C("only-verify-first-s2c",
-  llvm::cl::desc("Verify only the first N server to client messages (default=-1, i.e., all server to client messages)"),
-  llvm::cl::init(-1));
-
 llvm::cl::opt<bool>
 DropS2CTLSApplicationData("drop-tls-s2c-app-data",
   llvm::cl::desc("Drop server-to-client messages that match TLS application data filter"),
@@ -343,9 +338,6 @@ klee::KBasicBlock* ClientVerifier::LookupBasicBlockID(int id) {
   return basicblock_map_[id];
 }
 
-//We always look 5 ahead, then we had to rewrite to look 13 ahead for
-//bssl support
-#define CONST_PREFIX 5
 int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
 
   foreach(std::string filename, logs) {
@@ -355,66 +347,144 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
       socket_events_.push_back(new SocketEventList());
       unsigned s2c_count = 0;
       unsigned s2c_used = 0;
-      //Index of the s2c postfix as yet unread
-      int s2c_app_msg_2b_read_idx = INT_MAX;
-      //Lenght of the remaining s2c message as yet unread
-      int s2c_app_msg_2b_read_len = 0;
-      //This is the lenght of the readahead into the s2c message - 5
-      //Openssl results in a lookahead of 5, while BoringSSL looks ahead 13
-      //resulting in a prefix of 0 and 8 respectively.
-      int prefix_length;
+
+      // Variables used to track state of DropS2CTLSApplicationData
+      // Full explanation below.
+      bool drop_next_s2c = false;
+      int next_s2c_predicted_len = 0;
+
       for (unsigned i = 0; i < ktest->numObjects; ++i) {
         std::string obj_name(ktest->objects[i].name);
         if (obj_name == "s2c") {
           s2c_count++;
-          // Two options for dropping s2c messages...
-          if (DropS2CTLSApplicationData) { // ...TLS specific (by message contents)
-            uint8_t first_msg_byte = ktest->objects[i].bytes[0];
-            // TLS message format:
-            // [byte:0 type][byte:1-2 vers][byte:3-4 length][...]
-            // Drop S2C application data header == 23
-            if (first_msg_byte == 23) {
-              prefix_length = ktest->objects[i].numBytes;
-              assert(prefix_length == 13 || prefix_length == 5); //enforce openssl and bssl expeted values
-              s2c_app_msg_2b_read_idx = i;
-              // Extract length field
-              s2c_app_msg_2b_read_len =
-                  (ktest->objects[i].bytes[3] << 8) |
-                  (ktest->objects[i].bytes[4]);
-              s2c_app_msg_2b_read_len = s2c_app_msg_2b_read_len - prefix_length + CONST_PREFIX;
 
-              // Drop S2C rest of application data (in next SocketEvent)
-            } else if (i - 1 == s2c_app_msg_2b_read_idx) {
-              // check length field == ktest object(socket event) size
-              if (s2c_app_msg_2b_read_len !=
-                  ktest->objects[i].numBytes) {
-                cv_error("DropS2CTLSApplicationData: TLS Field Length != "
-                         "message size");
+          // If we're dropping s2c TLS application data messages...
+          if (DropS2CTLSApplicationData) {
+
+            // Conceptually, we'd like to drop any server-to-client
+            // TLS Application Data records.  RFC 5246 states that
+            // application data records can be identified by the first
+            // byte of the TLS record, the ContentType, being equal to
+            // 23 (decimal).  The following summarizes the relevant
+            // TLS record format.
+            //
+            // struct {
+            //     uint8 major;
+            //     uint8 minor;
+            // } ProtocolVersion;
+            //
+            // ProtocolVersion version = { 3, 3 };     /* TLS v1.2*/
+            //
+            // enum {
+            //     change_cipher_spec(20), alert(21), handshake(22),
+            //     application_data(23), (255)
+            // } ContentType;
+            //
+            // struct {
+            //     ContentType type;
+            //     ProtocolVersion version;
+            //     uint16 length;
+            //     select (SecurityParameters.cipher_type) {
+            //         case stream: GenericStreamCipher;
+            //         case block:  GenericBlockCipher;
+            //         case aead:   GenericAEADCipher; // <-- used for AES-GCM
+            //     } fragment;
+            // } TLSCiphertext;
+            //
+            // struct {
+            //    opaque nonce_explicit[SecurityParameters.record_iv_length];
+            //    aead-ciphered struct {
+            //        opaque content[TLSCompressed.length];
+            //    };
+            // } GenericAEADCipher;
+
+            // The complication is that neither OpenSSL s_client nor
+            // BoringSSL client process server-to-client messages
+            // using a single read() call.  Instead, we observe the
+            // following behavior for application data messages
+            // protected by 128-bit AES-GCM. Note that other
+            // ContentTypes and cipher suites may differ.
+            //
+            // OpenSSL s_client:
+            // 1. Read 5 bytes, parse uint16 "length"
+            // 2. Read (length) bytes
+            //
+            // BoringSSL client:
+            // 1. Read 13 bytes (includes 8-byte IV), parse uint16 "length"
+            // 2. Read (length - 8) bytes
+            //
+            // Since the KTest record/playback mechanism intercepts
+            // network messages at the calls to read() and write(),
+            // each server-to-client application data record is split
+            // up into two "s2c" KTest objects.  The split point
+            // differs between OpenSSL and BoringSSL.  In the
+            // following code, we attempt to generically handle both
+            // cases and correctly drop both reads regardless of
+            // whether we are verifying an OpenSSL or BoringSSL
+            // client.  We emit an error if the observed behavior
+            // conforms to neither OpenSSL nor BoringSSL.
+
+            const uint8_t TLS_CONTENT_TYPE_APPDATA = 23;
+            const int TLS_HEADER_LEN = 5;
+            const int OPENSSL_FIRST_READ_LEN = 5;
+            const int BORINGSSL_FIRST_READ_LEN = 13;
+
+            uint8_t first_msg_byte = ktest->objects[i].bytes[0];
+
+            // Previous s2c message contained the appdata header: drop.
+            if (drop_next_s2c) {
+              if (next_s2c_predicted_len != ktest->objects[i].numBytes) {
+                cv_error("DropS2CTLSApplicationData: unexpected 2nd read "
+                         "length: expected %d but got %d bytes",
+                         next_s2c_predicted_len, ktest->objects[i].numBytes);
               }
-            } else {
-              socket_events_.back()->push_back(
-                  new SocketEvent(ktest->objects[i]));
-              s2c_used++;
+              drop_next_s2c = false;
+              continue; // Drop this one -- the second read()
             }
-          } else { // ... or by s2c message index
-            if (OnlyVerifyFirstS2C == -1 || s2c_count <= OnlyVerifyFirstS2C) {
-              socket_events_.back()->push_back(
-                  new SocketEvent(ktest->objects[i]));
-              s2c_used++;
+
+            // This s2c message contains the appdata header: drop.
+            else if (first_msg_byte == TLS_CONTENT_TYPE_APPDATA) {
+              int first_read_len = ktest->objects[i].numBytes;
+              if (first_read_len != OPENSSL_FIRST_READ_LEN &&
+                  first_read_len != BORINGSSL_FIRST_READ_LEN) {
+                cv_error("DropS2CTLSApplicationData: unexpected 1st read "
+                         "length (%d) -- matches neither OpenSSL (%d) nor "
+                         "BoringSSL (%d) behavior",
+                         first_read_len, OPENSSL_FIRST_READ_LEN,
+                         BORINGSSL_FIRST_READ_LEN);
+              }
+              // Extract TLS record's length field
+              assert(first_read_len >= 5); // required for memory safety
+              int tls_record_len = (ktest->objects[i].bytes[3] << 8) |
+                                   (ktest->objects[i].bytes[4]);
+              // Drop the rest of the TLS application data packet
+              // (if any) in the next s2c SocketEvent.
+              next_s2c_predicted_len =
+                  TLS_HEADER_LEN + tls_record_len - first_read_len;
+              if (next_s2c_predicted_len > 0) {
+                drop_next_s2c = true;
+              } else {
+                drop_next_s2c = false;
+              }
+              continue; // Drop this one -- the first read()
             }
-          }
-        }
-        if (obj_name == "c2s")
+
+          } // if (DropS2CTLSApplicationData)
+
+          // Add this s2c message -- it wasn't dropped.
+          socket_events_.back()->push_back(
+                new SocketEvent(ktest->objects[i]));
+          s2c_used++;
+
+        } // if(obj_name == "s2c")
+
+        else if (obj_name == "c2s") {
           socket_events_.back()->push_back(new SocketEvent(ktest->objects[i]));
+        }
       }
 
       cv_message("Opened socket log \"%s\" with %d objects", filename.c_str(),
                  ktest->numObjects);
-      if (OnlyVerifyFirstS2C != -1) {
-        cv_message("Skipped %d server to client messages after first %d",
-                   s2c_count - (int)OnlyVerifyFirstS2C,
-                   (int)OnlyVerifyFirstS2C);
-      }
 
       if (s2c_count != s2c_used) {
         CVMESSAGE("WARNING: Verifier is not using all server-to-client "
