@@ -252,19 +252,24 @@ void ClientVerifier::initialize() {
     }
   }
 
+  // Are we dropping TLS server-to-client application data packets?
+  // If so, set a flag in ClientVerifier object.
+  drop_s2c_tls_appdata_ = DropS2CTLSApplicationData;
+
   // Read binary socket log files
-	if (SocketLogFile.empty() || read_socket_logs(SocketLogFile) == 0) {
-    CVMESSAGE("No binary socket log files loaded");
-	}
+  if (SocketLogFile.empty() || read_socket_logs(SocketLogFile) == 0) {
+    CVMESSAGE("No binary socket log files loaded. Need to check for text "
+              "socket log file(s).");
+  }
 
   // Register text socket log filename (for lazy loading, e.g., live tcpdump)
   socket_log_text_file_ = SocketLogTextFile;
   if (SocketLogTextFile.empty()) {
-    CVMESSAGE("No text socket log file specified");
+    CVMESSAGE("No text socket log file specified.");
+    if (!SocketLogFile.empty()) {
+      CVMESSAGE(" Falling back to binary socket log(s).");
+    }
   }
-
-  // Are we dropping TLS server-to-client application data packets?
-  drop_s2c_tls_appdata_ = DropS2CTLSApplicationData;
 
   assign_basic_block_ids();
 
@@ -351,7 +356,7 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
       // Variables used to track state of DropS2CTLSApplicationData
       // Full explanation below.
       bool drop_next_s2c = false;
-      int next_s2c_predicted_len = 0;
+      unsigned int next_s2c_predicted_len = 0;
 
       for (unsigned i = 0; i < ktest->numObjects; ++i) {
         std::string obj_name(ktest->objects[i].name);
@@ -359,7 +364,7 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
           s2c_count++;
 
           // If we're dropping s2c TLS application data messages...
-          if (DropS2CTLSApplicationData) {
+          if (drop_s2c_tls_appdata_) {
 
             // Conceptually, we'd like to drop any server-to-client
             // TLS Application Data records.  RFC 5246 states that
@@ -424,8 +429,8 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
             // error if the observed behavior conforms to neither
             // OpenSSL nor BoringSSL.
 
-            const uint8_t TLS_CONTENT_TYPE_APPDATA = 23;
-            const int TLS_HEADER_LEN = 5;
+            const uint8_t TLS_CONTENT_TYPE_APPDATA = 23; // RFC 5246
+            const int TLS_HEADER_LEN = 5;                // RFC 5246
             const int OPENSSL_FIRST_READ_LEN = 5;
             const int BORINGSSL_FIRST_READ_LEN = 13;
 
@@ -435,7 +440,7 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
             if (drop_next_s2c) {
               if (next_s2c_predicted_len != ktest->objects[i].numBytes) {
                 cv_error("DropS2CTLSApplicationData: unexpected 2nd read "
-                         "length: expected %d but got %d bytes",
+                         "length: expected %u but got %u bytes",
                          next_s2c_predicted_len, ktest->objects[i].numBytes);
               }
               drop_next_s2c = false;
@@ -457,11 +462,11 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
               assert(first_read_len >= 5); // required for memory safety
               int tls_record_len = (ktest->objects[i].bytes[3] << 8) |
                                    (ktest->objects[i].bytes[4]);
+              next_s2c_predicted_len =
+                  TLS_HEADER_LEN + tls_record_len - first_read_len;
               // Set a flag to drop the rest of the TLS application
               // data packet (if any). That is, drop the next s2c
               // SocketEvent.
-              next_s2c_predicted_len =
-                  TLS_HEADER_LEN + tls_record_len - first_read_len;
               if (next_s2c_predicted_len > 0) {
                 drop_next_s2c = true;
               } else {
@@ -470,7 +475,7 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
               continue; // Drop this one -- the first read()
             }
 
-          } // if (DropS2CTLSApplicationData)
+          } // if (drop_s2c_tls_appdata_)
 
           // Add this s2c message -- it wasn't dropped.
           socket_events_.back()->push_back(

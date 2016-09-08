@@ -148,7 +148,8 @@ private:
   SocketEventList log_;
   size_t index_;                    // next item to read from the log_;
   const bool drop_s2c_tls_appdata_; // configuration option
-  bool drop_next_s2c_; // s2c assumed to be split into header(5) + payload(n)
+  bool drop_next_s2c_; // s2c assumed to be split into header / payload
+  unsigned int next_s2c_predicted_len_; // s2c appdata payload predicted length
   bool c2s_tcp_fin_;   // c2s tcp fin observed
   bool s2c_tcp_fin_;   // s2c tcp fin observed
 };

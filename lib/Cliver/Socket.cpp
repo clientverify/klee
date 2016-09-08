@@ -457,6 +457,70 @@ const SocketEvent &SocketSourceKTestText::next() {
   return event;
 }
 
+// The next function, SocketSourceKTestText::try_loading_next_ktest(),
+// has a TLS-specific customization for dropping server-to-client
+// application data messages.  The implementation is somewhat involved
+// and thus are explained in detail here.
+
+// Conceptually, we'd like to detect (and drop) any server-to-client
+// TLS Application Data records.  RFC 5246 states that application
+// data records can be identified by the first byte of the TLS record,
+// the ContentType, being equal to 23 (decimal).  The following
+// excerpt from RFC 5246 summarizes the relevant TLS record fields.
+
+// struct {
+//     uint8 major;
+//     uint8 minor;
+// } ProtocolVersion;
+//
+// ProtocolVersion version = { 3, 3 };     /* TLS v1.2*/
+//
+// enum {
+//     change_cipher_spec(20), alert(21), handshake(22),
+//     application_data(23), (255)
+// } ContentType;
+//
+// struct {
+//     ContentType type;
+//     ProtocolVersion version;
+//     uint16 length;
+//     select (SecurityParameters.cipher_type) {
+//         case stream: GenericStreamCipher;
+//         case block:  GenericBlockCipher;
+//         case aead:   GenericAEADCipher; // <-- used for AES-GCM
+//     } fragment;
+// } TLSCiphertext;
+//
+// struct {
+//    opaque nonce_explicit[SecurityParameters.record_iv_length];
+//    aead-ciphered struct {
+//        opaque content[TLSCompressed.length];
+//    };
+// } GenericAEADCipher;
+
+// The complication is that neither OpenSSL s_client nor BoringSSL
+// client process server-to-client messages using a single read()
+// call.  Instead, we observe the following behavior for application
+// data messages protected by 128-bit AES-GCM. Note that other
+// ContentTypes and cipher suites may differ.
+
+// OpenSSL s_client:
+// 1. Read 5 bytes, parse uint16 "length"
+// 2. Read (length) bytes
+//
+// BoringSSL client:
+// 1. Read 13 bytes (includes 8-byte IV), parse uint16 "length"
+// 2. Read (length - 8) bytes
+
+// Since the KTest record/playback mechanism intercepts network
+// messages at the calls to read() and write(), each server-to-client
+// application data record is split up into two "s2c" KTest objects.
+// The split point differs between OpenSSL and BoringSSL.  In the
+// following code, we attempt to generically handle both
+// implementations and correctly drop two consecutive read() calls
+// regardless of the split point.  We emit an error if the observed
+// behavior conforms to neither OpenSSL nor BoringSSL.
+
 bool SocketSourceKTestText::try_loading_next_ktest() {
 
   // If the connection is closed, don't try to load any more.
@@ -470,6 +534,7 @@ bool SocketSourceKTestText::try_loading_next_ktest() {
       if (strcmp(obj->name, "c2s") != 0 &&
           strcmp(obj->name, "s2c") != 0) { // Ignore non-network KTest events
         delete_KTestObject(obj);
+        continue;
       } else if (obj->numBytes == 0) { // TCP FIN
         if (strcmp(obj->name, "c2s") == 0) {
           c2s_tcp_fin_ = true;
@@ -481,41 +546,84 @@ bool SocketSourceKTestText::try_loading_next_ktest() {
           finished_ = true;
           return false;
         }
-      } else if (drop_s2c_tls_appdata_ &&
-                 is_s2c_tls_appdata(obj)) { // Optionally drop s2c appdata
-        delete_KTestObject(obj);
-      } else { // Good network KTestObject: create SocketEvent
-        log_.push_back(new SocketEvent(*obj));
-        delete_KTestObject(obj);
-        return true;
+        continue;
+      } else if (drop_s2c_tls_appdata_ && // Optionally drop s2c appdata
+                 strcmp(obj->name, "s2c") == 0) {
+        // Previous s2c message contained the appdata header: drop.
+        if (drop_next_s2c_) {
+          if (obj->numBytes != next_s2c_predicted_len_) {
+            cv_error("drop-tls-s2c-app-data: unexpected 2nd read length: "
+                     "expected %u but got %u bytes",
+                     next_s2c_predicted_len_, obj->numBytes);
+          }
+          drop_next_s2c_ = false;
+          next_s2c_predicted_len_ = 0; // no longer applicable
+          delete_KTestObject(obj);
+          continue;
+        }
+        // This s2c message contains the appdata header: drop.
+        else if (is_s2c_tls_appdata(obj)) {
+          const int TLS_HEADER_LEN = 5; // RFC 5246
+          const int OPENSSL_FIRST_READ_LEN = 5;
+          const int BORINGSSL_FIRST_READ_LEN = 13;
+          int first_read_len = obj->numBytes;
+          if (first_read_len != OPENSSL_FIRST_READ_LEN &&
+              first_read_len != BORINGSSL_FIRST_READ_LEN) {
+            cv_error("drop-tls-s2c-app-data: unexpected 1st read length (%d) "
+                     "-- matches neither OpenSSL (%d) nor BoringSSL (%d) "
+                     "behavior",
+                     first_read_len, OPENSSL_FIRST_READ_LEN,
+                     BORINGSSL_FIRST_READ_LEN);
+          }
+          // Extract TLS record's length field
+          assert(first_read_len >= 5); // required for memory safety
+          int tls_record_len = (obj->bytes[3] << 8) | (obj->bytes[4]);
+          next_s2c_predicted_len_ =
+              TLS_HEADER_LEN + tls_record_len - first_read_len;
+          // Set flag to drop rest of the appdata (if any). That is,
+          // drop the next s2c SocketEvent.
+          if (next_s2c_predicted_len_ > 0) {
+            drop_next_s2c_ = true;
+          } else {
+            drop_next_s2c_ = false;
+          }
+          delete_KTestObject(obj);
+          continue;
+        }
+        // Other s2c messages are fine: fall through.
       }
+      // Good network KTestObject: create SocketEvent
+      log_.push_back(new SocketEvent(*obj));
+      delete_KTestObject(obj);
+      return true;
     }
   }
   return false;
 }
 
-// WARNING: stateful / side effects!
-// s2c assumed to be split into header(5) + payload(n) or
-// header(13) + payload(n)
-//
-// FIXME: For some reason, this still breaks for BoringSSL (running
-// against Chromium)!
+// WARNING: The following function depends on the correct behavior of
+// SocketSourceKTestText::try_loading_next_ktest(), as there is a
+// state variable (drop_next_s2c_) shared between the two that must be
+// kept synchronized. See explanation above for dropS2C details.
 bool SocketSourceKTestText::is_s2c_tls_appdata(const KTestObject *obj) {
-  const unsigned char TLS_APPDATA = 23; // RFC 5246
+  const unsigned char TLS_CONTENT_TYPE_APPDATA = 23; // RFC 5246
+
   if (!obj)
     return false;
   if (strcmp(obj->name, "s2c") != 0)
     return false;
-  if (drop_next_s2c_) { // appdata payload
-    drop_next_s2c_ = false;
+
+  // last s2c was an appdata header, this must be the appdata payload
+  if (drop_next_s2c_)
+    return true;
+
+  // this s2c is an appdata header
+  if (obj->bytes[0] == TLS_CONTENT_TYPE_APPDATA) {
     return true;
   }
-  if ((obj->numBytes == 5 || obj->numBytes == 13) &&
-      obj->bytes[0] == TLS_APPDATA) { // appdata header
-    drop_next_s2c_ = true;
-    return true;
-  }
-  return false; // some other kind of s2c message (e.g., handshake, alert)
+
+  // this s2c is some other kind of message (e.g., handshake, alert)
+  return false;
 }
 
 } // end namespace cliver
