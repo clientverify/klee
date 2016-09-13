@@ -157,6 +157,10 @@ llvm::cl::opt<bool>
 PrintFunctionCalls("print-function-calls",
                    llvm::cl::init(false));
 
+llvm::cl::opt<bool>
+DebugPrintInstructionAtCVFork("debug-print-instructions-at-cvfork",
+    llvm::cl::desc("Print instruction when cliver forks an execution state."));
+
 llvm::cl::opt<bool> 
 NoXWindows("no-xwindows",
            llvm::cl::desc("Do not allow external XWindows function calls"),
@@ -908,12 +912,22 @@ CVExecutor::fork(klee::ExecutionState &current,
  
   if (res == klee::Solver::True) {
 
+    // if (DebugPrintInstructionAtCVFork) {
+    //   CVMESSAGE("icount=" << klee::stats::instructions
+    //                       << " [fork|always-true] @ " << *current.prevPC);
+    // }
+
     if (EnableStateRebuilding && !replayPath)
       cv_->notify_all(ExecutionEvent(CV_STATE_FORK_TRUE, &current));
 
     return StatePair(&current, 0);
 
   } else if (res == klee::Solver::False) {
+
+    // if (DebugPrintInstructionAtCVFork) {
+    //   CVMESSAGE("icount=" << klee::stats::instructions
+    //                       << " [fork|always-false] @ " << *current.prevPC);
+    // }
 
     if (EnableStateRebuilding && !replayPath)
       cv_->notify_all(ExecutionEvent(CV_STATE_FORK_FALSE, &current));
@@ -924,6 +938,11 @@ CVExecutor::fork(klee::ExecutionState &current,
     klee::ExecutionState *falseState, *trueState = &current;
 
     ++klee::stats::forks;
+
+    if (DebugPrintInstructionAtCVFork) {
+      CVMESSAGE("icount=" << klee::stats::instructions
+                          << " [fork|both-possible] @ " << *current.prevPC);
+    }
 
     falseState = trueState->branch();
     getContext().addedStates.insert(falseState);
