@@ -221,20 +221,21 @@ DEFINE_MODEL(int, ECDH_compute_key, void *out, size_t outlen,
   return CALL_UNDERLYING(ECDH_compute_key, out, outlen, pub_key, eckey, KDF);
 }
 
-DEFINE_MODEL(int, tls1_generate_master_secret, SSL *s, unsigned char *out, 
-    unsigned char *p, int len) {
-//Should never call underlying except in playback case.
+DEFINE_MODEL(int, tls1_generate_master_secret, SSL *s, unsigned char *out,
+             unsigned char *p, int len) {
+// Should never call underlying except in playback case.
 #if KTEST_RAND_PLAYBACK
   return CALL_UNDERLYING(tls1_generate_master_secret, s, out, p, len);
 #endif
 
-    DEBUG_PRINT("playback - master secret");
-    int read_successfully_from_file = cliver_tls_master_secret(out);
-    if (!read_successfully_from_file) {
-      klee_warning("Falling back to KTest file for master secret");
-      cliver_ktest_copy("master_secret", -1, out, SSL3_MASTER_SECRET_SIZE);
-    }
-    return SSL3_MASTER_SECRET_SIZE;
+  DEBUG_PRINT("playback - master secret");
+  int read_successfully_from_file = cliver_tls_master_secret(out);
+  if (!read_successfully_from_file) {
+    klee_warning("No TLS master secret file designated, attempting fallback to "
+                 "ktest log");
+    cliver_ktest_copy("master_secret", -1, out, SSL3_MASTER_SECRET_SIZE);
+  }
+  return SSL3_MASTER_SECRET_SIZE;
 }
 
 DEFINE_MODEL(size_t, EC_POINT_point2oct, const EC_GROUP *group, 
