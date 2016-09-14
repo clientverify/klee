@@ -273,7 +273,7 @@ void ClientVerifier::initialize() {
     }
   } else if (SocketLogFile.empty() && !SocketLogTextFile.empty()) {
     CVMESSAGE("Socket log file (text format) specified: " << SocketLogTextFile);
-    CVMESSAGE("Reading of socket log file deferred until needed.");
+    CVMESSAGE("Socket log file will be loaded on demand (incrementally).");
     socket_log_text_file_ = SocketLogTextFile;
   } else { // (!SocketLogFile.empty() && !SocketLogTextFile.empty())
     cv_error("Both binary and text socket logs specified. Please choose one!");
@@ -282,7 +282,7 @@ void ClientVerifier::initialize() {
   // TLS master secret file - deferred loading
   if (!TLSMasterSecretFile.empty()) {
     CVMESSAGE("TLS master secret file specified: " << TLSMasterSecretFile);
-    CVMESSAGE("TLS master secret will be loaded on demand (if necessary).");
+    CVMESSAGE("TLS master secret will be loaded on demand (as needed).");
   }
 
   assign_basic_block_ids();
@@ -539,14 +539,15 @@ bool ClientVerifier::load_tls_master_secret(
   if (!master_secret_cached_) {
     std::ifstream is(TLSMasterSecretFile, std::ifstream::binary);
     if (!is) {
-      cv_warning("Error reading file: %s", TLSMasterSecretFile.c_str());
+      cv_error("Failed to read file: %s", TLSMasterSecretFile.c_str());
       return false;
     }
 
     is.read((char *)master_secret_, TLS_MASTER_SECRET_SIZE);
     if (!is) {
-      cv_warning("Error: only %ld bytes could be read from %s",
-                 is.gcount(), TLSMasterSecretFile.c_str());
+      cv_error("Only %ld bytes (needed %d bytes) could be read from %s ",
+               is.gcount(), TLS_MASTER_SECRET_SIZE,
+               TLSMasterSecretFile.c_str());
       return false;
     }
     cv_message("TLS master secret loaded from %s", TLSMasterSecretFile.c_str());
