@@ -17,6 +17,17 @@
 ////////////////////////////////////////////////////////////////////////////////
 // OpenSSL helper routines
 ////////////////////////////////////////////////////////////////////////////////
+#include <netdb.h>
+DEFINE_MODEL(struct servent*, getservbyname, const char *name, const char *proto){
+    struct servent* s = malloc(sizeof(struct servent));
+    if(s == NULL) exit(-1);
+    s->s_name    = NULL;
+    s->s_aliases = NULL;
+    s->s_port    = 80;
+    s->s_proto   = NULL;
+    return s;
+}
+
 
 DEFINE_MODEL(void, klee_print, char* str, int symb_var){
     if(klee_is_symbolic(symb_var))
