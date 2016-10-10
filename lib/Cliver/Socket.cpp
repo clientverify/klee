@@ -436,9 +436,10 @@ static void delete_KTestObject(KTestObject *obj) {
 
 SocketSourceKTestText::SocketSourceKTestText(const std::string &filename,
                                              bool drop_s2c_tls_appdata)
-    : finished_(false), is_(filename, std::ifstream::binary), index_(0),
-      drop_s2c_tls_appdata_(drop_s2c_tls_appdata), drop_next_s2c_(false),
-      c2s_tcp_fin_(false), s2c_tcp_fin_(false) {
+    : finished_(false), index_(0), drop_s2c_tls_appdata_(drop_s2c_tls_appdata),
+      drop_next_s2c_(false), c2s_tcp_fin_(false), s2c_tcp_fin_(false) {
+  is_.rdbuf()->pubsetbuf(0, 0); // disable input buffering
+  is_.open(filename);
   if (!is_.is_open()) {
     cv_error("Failed to open %s", filename.c_str());
   }
@@ -556,7 +557,7 @@ bool SocketSourceKTestText::try_loading_next_ktest() {
           s2c_tcp_fin_ = true;
         }
         delete_KTestObject(obj);
-        if (c2s_tcp_fin_ && s2c_tcp_fin_) { // Both FINs seen: connection closed
+        if (c2s_tcp_fin_ || s2c_tcp_fin_) { // TCP FIN seen: connection closed
           finished_ = true;
           return false;
         }
