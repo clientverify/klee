@@ -380,12 +380,17 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
           // If we're dropping s2c TLS application data messages...
           if (drop_s2c_tls_appdata_) {
 
-            // Conceptually, we'd like to drop any server-to-client
-            // TLS Application Data records.  RFC 5246 states that
+            // Conceptually, we'd like to detect (and drop) any
+            // server-to-client TLS Application Data records and Alert
+            // records.  Note that we must drop subsequent Alert
+            // records since the additional_data component contains a
+            // sequence number that will be invalid once we skip any
+            // server-to-client records.  RFC 5246 states that
             // application data records can be identified by the first
             // byte of the TLS record, the ContentType, being equal to
-            // 23 (decimal).  The following excerpt from RFC 5246
-            // summarizes the relevant TLS record fields.
+            // 23 (decimal).  Likewise, Alert records have a content
+            // type of 21 (decimal).  The following excerpt from RFC
+            // 5246 summarizes the relevant TLS record fields.
             //
             // struct {
             //     uint8 major;
@@ -444,6 +449,7 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
             // OpenSSL nor BoringSSL.
 
             const uint8_t TLS_CONTENT_TYPE_APPDATA = 23; // RFC 5246
+            const uint8_t TLS_CONTENT_TYPE_ALERT = 21;   // RFC 5246
             const int TLS_HEADER_LEN = 5;                // RFC 5246
             const int OPENSSL_FIRST_READ_LEN = 5;
             const int BORINGSSL_FIRST_READ_LEN = 13;
@@ -462,7 +468,8 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
             }
 
             // This s2c message contains the appdata header: drop.
-            else if (first_msg_byte == TLS_CONTENT_TYPE_APPDATA) {
+            else if (first_msg_byte == TLS_CONTENT_TYPE_APPDATA ||
+                     first_msg_byte == TLS_CONTENT_TYPE_ALERT) {
               int first_read_len = ktest->objects[i].numBytes;
               if (first_read_len != OPENSSL_FIRST_READ_LEN &&
                   first_read_len != BORINGSSL_FIRST_READ_LEN) {

@@ -473,10 +473,14 @@ const SocketEvent &SocketSourceKTestText::next() {
 // and thus are explained in detail here.
 
 // Conceptually, we'd like to detect (and drop) any server-to-client
-// TLS Application Data records.  RFC 5246 states that application
-// data records can be identified by the first byte of the TLS record,
-// the ContentType, being equal to 23 (decimal).  The following
-// excerpt from RFC 5246 summarizes the relevant TLS record fields.
+// TLS Application Data records and Alert records.  Note that we must
+// drop subsequent Alert records since the additional_data component
+// contains a sequence number that will be invalid once we skip any
+// server-to-client records.  RFC 5246 states that application data
+// records can be identified by the first byte of the TLS record, the
+// ContentType, being equal to 23 (decimal).  Likewise, Alert records
+// have a content type of 21 (decimal).  The following excerpt from
+// RFC 5246 summarizes the relevant TLS record fields.
 
 // struct {
 //     uint8 major;
@@ -617,6 +621,7 @@ bool SocketSourceKTestText::try_loading_next_ktest() {
 // kept synchronized. See explanation above for dropS2C details.
 bool SocketSourceKTestText::is_s2c_tls_appdata(const KTestObject *obj) {
   const unsigned char TLS_CONTENT_TYPE_APPDATA = 23; // RFC 5246
+  const unsigned char TLS_CONTENT_TYPE_ALERT = 21;   // RFC 5246
 
   if (!obj)
     return false;
@@ -627,12 +632,13 @@ bool SocketSourceKTestText::is_s2c_tls_appdata(const KTestObject *obj) {
   if (drop_next_s2c_)
     return true;
 
-  // this s2c is an appdata header
-  if (obj->bytes[0] == TLS_CONTENT_TYPE_APPDATA) {
+  // this s2c is an appdata or alert header
+  if (obj->bytes[0] == TLS_CONTENT_TYPE_APPDATA ||
+      obj->bytes[0] == TLS_CONTENT_TYPE_ALERT) {
     return true;
   }
 
-  // this s2c is some other kind of message (e.g., handshake, alert)
+  // this s2c is some other kind of message (e.g., handshake)
   return false;
 }
 
