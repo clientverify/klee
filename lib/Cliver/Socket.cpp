@@ -29,6 +29,11 @@ DebugSocket("debug-socket",
   llvm::cl::init(false));
 
 llvm::cl::opt<bool>
+Require2TCPFIN("require-double-tcpfin", llvm::cl::init(false),
+	       llvm::cl::desc("In KTestText mode, require TCP FIN in both "
+			      "directions to indicate connection close"));
+
+llvm::cl::opt<bool>
 PrintAsciiSocket("print-ascii-socket",llvm::cl::init(false));
 
 llvm::cl::opt<bool>
@@ -557,7 +562,9 @@ bool SocketSourceKTestText::try_loading_next_ktest() {
           s2c_tcp_fin_ = true;
         }
         delete_KTestObject(obj);
-        if (c2s_tcp_fin_ || s2c_tcp_fin_) { // TCP FIN seen: connection closed
+        if ((Require2TCPFIN && (c2s_tcp_fin_ && s2c_tcp_fin_)) ||
+            (!Require2TCPFIN && (c2s_tcp_fin_ || s2c_tcp_fin_))) {
+          // TCP FIN seen: connection closed
           finished_ = true;
           return false;
         }
