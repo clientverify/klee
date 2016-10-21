@@ -370,6 +370,7 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
       // Variables used to track state of DropS2CTLSApplicationData
       // Full explanation below.
       bool drop_next_s2c = false;
+      bool next_s2c_is_header = true; // next read() is 5/7/13-byte header
       unsigned int next_s2c_predicted_len = 0;
 
       for (unsigned i = 0; i < ktest->numObjects; ++i) {
@@ -456,44 +457,64 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
 
             uint8_t first_msg_byte = ktest->objects[i].bytes[0];
 
-            // Previous s2c message contained the appdata header: drop.
-            if (drop_next_s2c) {
-              if (next_s2c_predicted_len != ktest->objects[i].numBytes) {
-                cv_error("DropS2CTLSApplicationData: unexpected 2nd read "
-                         "length: expected %u but got %u bytes",
-                         next_s2c_predicted_len, ktest->objects[i].numBytes);
-              }
-              drop_next_s2c = false;
-              continue; // Drop this one -- the second read()
-            }
+            // This s2c message contains a TLS header (1st read)
+            if (next_s2c_is_header) {
 
-            // This s2c message contains the appdata header: drop.
-            else if (first_msg_byte == TLS_CONTENT_TYPE_APPDATA ||
-                     first_msg_byte == TLS_CONTENT_TYPE_ALERT) {
+              // Track header/payload state
               int first_read_len = ktest->objects[i].numBytes;
-              if (first_read_len != OPENSSL_FIRST_READ_LEN &&
-                  first_read_len != BORINGSSL_FIRST_READ_LEN) {
-                cv_error("DropS2CTLSApplicationData: unexpected 1st read "
-                         "length (%d) -- matches neither OpenSSL (%d) nor "
-                         "BoringSSL (%d) behavior",
-                         first_read_len, OPENSSL_FIRST_READ_LEN,
-                         BORINGSSL_FIRST_READ_LEN);
-              }
               // Extract TLS record's length field
               assert(first_read_len >= 5); // required for memory safety
               int tls_record_len = (ktest->objects[i].bytes[3] << 8) |
                                    (ktest->objects[i].bytes[4]);
               next_s2c_predicted_len =
                   TLS_HEADER_LEN + tls_record_len - first_read_len;
-              // Set a flag to drop the rest of the TLS application
-              // data packet (if any). That is, drop the next s2c
-              // SocketEvent.
               if (next_s2c_predicted_len > 0) {
-                drop_next_s2c = true;
+                next_s2c_is_header = false;
               } else {
-                drop_next_s2c = false;
+                next_s2c_is_header = true;
               }
-              continue; // Drop this one -- the first read()
+
+              // If this is an APPDATA/ALERT header: drop.
+              if (first_msg_byte == TLS_CONTENT_TYPE_APPDATA ||
+                  first_msg_byte == TLS_CONTENT_TYPE_ALERT) {
+                if (first_read_len != OPENSSL_FIRST_READ_LEN &&
+                    first_read_len != BORINGSSL_FIRST_READ_LEN) {
+                  cv_error("DropS2CTLSApplicationData: unexpected 1st read "
+                           "length (%d) -- matches neither OpenSSL (%d) nor "
+                           "BoringSSL (%d) behavior",
+                           first_read_len, OPENSSL_FIRST_READ_LEN,
+                           BORINGSSL_FIRST_READ_LEN);
+                }
+                // Set a flag to drop the rest of the TLS record (if
+                // any). That is, drop the next s2c SocketEvent.
+                if (next_s2c_predicted_len > 0) {
+                  drop_next_s2c = true;
+                } else {
+                  drop_next_s2c = false;
+                }
+                continue; // Drop this one -- the first read()
+              }
+
+            }
+
+            // This s2c message is a TLS record body (2nd read)
+            else { // !next_s2c_is_header
+
+              // Track header/payload state
+              if (next_s2c_predicted_len != ktest->objects[i].numBytes) {
+                cv_error("DropS2CTLSApplicationData: unexpected 2nd read "
+                         "length: expected %u but got %u bytes",
+                         next_s2c_predicted_len, ktest->objects[i].numBytes);
+              }
+              next_s2c_is_header = true;
+              next_s2c_predicted_len = 0; // no longer applicable
+
+              // Previous s2c message contained the appdata/alert header: drop.
+              if (drop_next_s2c) {
+                drop_next_s2c = false;
+                continue; // Drop this one -- the second read()
+              }
+
             }
 
           } // if (drop_s2c_tls_appdata_)
