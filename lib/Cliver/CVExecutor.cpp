@@ -432,7 +432,7 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
               std::set<klee::ExecutionState*> sset, empty_set;
               sset.insert(e);
               s->update(0, sset, empty_set); // Add state
-              s->update(0, empty_set, empty_set); // Force flush
+              s->update(0, empty_set, empty_set); // Force flush (ThreadBufferedSearcher)
               },
             searcher, initialState);
 
@@ -459,6 +459,9 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
 
       static_cast<CVExecutionState*>(&state)->set_event_flag(false);
 
+      // This is the main execution loop where most of the time is spent.
+      // Note that executeInstruction() might fork a new state, which is
+      // appended to context.addedStates.
       klee::KInstruction *ki = state.pc;
       stepInstruction(state);
       executeInstruction(state, ki);
@@ -488,10 +491,12 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
         cv_->notify_all(ExecutionEvent(CV_STATE_REMOVED, rstate));
       }
 
-      // Update searcher with new states and get next state to execute
-      if (static_cast<CVExecutionState*>(&state)->event_flag()
-          || !context.removedStates.empty()
-          || !context.addedStates.empty()) {
+      // Update searcher with new states and get next state to execute, if
+      // anything interesting happened (network event, fork, etc.).
+      // If nothing interesting happened (e.g., add instruction), we just
+      // continue with the same state.
+      if (static_cast<CVExecutionState *>(&state)->event_flag() ||
+          !context.removedStates.empty() || !context.addedStates.empty()) {
         statePtr = searcher->updateAndTrySelectState(&state,
                                                      context.addedStates,
                                                      context.removedStates);
@@ -500,8 +505,20 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
       }
     }
 
-    while (pauseExecution
-           || (!statePtr && searcher->empty() && !empty() && !haltExecution)) {
+    // We hit this point after we execute an instruction, or if our
+    // trySelectState failed and we have a null state pointer.
+
+    // If I should go to sleep, go to sleep.
+    //
+    // Reasons for going to sleep comprise:
+    // 1. pauseExecution (global), usually indicating the round is "finished"
+    // 2. round is unfinished but no work is available for this thread
+    //    - no state currently being executed (statePtr == NULL)
+    //    - searcher has no states ready to be executed (searcher->empty())
+    //    - somewhere there are still states to execute (!empty())
+    //    - we have not fully finished behavioral verification (!haltExecution)
+    while (pauseExecution ||
+           (!statePtr && searcher->empty() && !empty() && !haltExecution)) {
 
       if (pauseExecution && statePtr) {
         searcher->update(statePtr,
