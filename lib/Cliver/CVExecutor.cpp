@@ -543,10 +543,11 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
       }
 
       if (pauseExecution) {
+        // All threads except one (in PauseExecution) will wait here
         threadBarrier->wait();
+        // All threads except one (in UnPauseExecution) will wait here
         threadBarrier->wait();
       }
-
 
 #endif
 
