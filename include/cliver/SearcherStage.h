@@ -21,6 +21,15 @@ namespace cliver {
 /// given SearcherStage have processed network events 1 to i, where i is equal
 /// among all the states. Each SearcherStage has a single root state from which
 /// all of the other states began execution.
+///
+/// Some functionality is deprecated.  For example, the cache_size() and
+/// rebuilding() were used when we ran out of memory.  In that case, we delete
+/// some states (but not their ExecutionStateProperty), and then later
+/// regenerate them by executing from the root and following the correct
+/// sequence of branches, as stored in the ExecutionStateProperty(?).
+///
+/// get_states() and set_states() are used when we need to recompute, e.g., edit
+/// distances for all of our states while expanding the Ukkonen matrix.
 
 class SearcherStage {
  public:
@@ -32,11 +41,11 @@ class SearcherStage {
   virtual void remove_state(CVExecutionState *state) = 0;
   virtual void notify(ExecutionEvent ev) = 0;
   virtual bool empty() = 0;
-  virtual size_t cache_size() = 0;
+  virtual size_t cache_size() = 0; // deprecated
   virtual size_t size() = 0;
   virtual size_t live_count() = 0;
   virtual void clear() = 0;
-  virtual bool rebuilding() = 0;
+  virtual bool rebuilding() = 0; // deprecated
   virtual void get_states(std::vector<ExecutionStateProperty*> &states) = 0;
   virtual void set_states(std::vector<ExecutionStateProperty*> &states) = 0;
   virtual void set_capacity(size_t c) = 0;
@@ -44,8 +53,8 @@ class SearcherStage {
 
   SearcherStage *parent;
   SearcherStage *multi_pass_parent;
-  std::vector<CVExecutionState*> leaf_states;
-  std::vector<SearcherStage*> leaf_stages;
+  std::vector<CVExecutionState *> leaf_states; // states yielding child stages
+  std::vector<SearcherStage *> leaf_stages;    // corresponding child stages
 };
 
 typedef std::list<SearcherStage*> SearcherStageList;
@@ -388,7 +397,7 @@ class StatePropertyRandomSelector
   void push(ExecutionStateProperty* property) { push_back(property); }
 };
 
-// TODO FIXME support rebuilding
+// TODO FIXME support rebuilding (doesn't yet work with parallelization)
 //typedef SearcherStageImpl<
 //  StatePropertyStack, RebuildingStateCache >          DFSSearcherStage;
 //typedef SearcherStageImpl<
@@ -398,14 +407,14 @@ class StatePropertyRandomSelector
 //typedef SearcherStageImpl<
 //  StatePropertyRandomSelector, RebuildingStateCache > RandomSearcherStage;
 
-typedef SearcherStageThreadedImpl<
-  StatePropertyStack, BasicStateCache >          DFSSearcherStage;
-typedef SearcherStageThreadedImpl<
-  StatePropertyQueue, BasicStateCache >          BFSSearcherStage;
-typedef SearcherStageThreadedImpl<
-  StatePropertyPriorityQueue, BasicStateCache >  PQSearcherStage;
-typedef SearcherStageThreadedImpl<
-  StatePropertyRandomSelector, BasicStateCache > RandomSearcherStage;
+typedef SearcherStageThreadedImpl<StatePropertyStack, BasicStateCache>
+    DFSSearcherStage; // for testing
+typedef SearcherStageThreadedImpl<StatePropertyQueue, BasicStateCache>
+    BFSSearcherStage; // for testing
+typedef SearcherStageThreadedImpl<StatePropertyPriorityQueue, BasicStateCache>
+    PQSearcherStage; // for production use (-search-mode=pq by default)
+typedef SearcherStageThreadedImpl<StatePropertyRandomSelector, BasicStateCache>
+    RandomSearcherStage; // for testing
 
 }
 
