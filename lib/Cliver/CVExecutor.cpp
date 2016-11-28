@@ -977,6 +977,7 @@ CVExecutor::fork(klee::ExecutionState &current,
   }
 }
 
+// NOTE: this function seems to never be called during cliver execution.
 void CVExecutor::branch(klee::ExecutionState &state, 
 		const std::vector< klee::ref<klee::Expr> > &conditions,
     std::vector<klee::ExecutionState*> &result) {
@@ -984,10 +985,10 @@ void CVExecutor::branch(klee::ExecutionState &state,
   unsigned N = conditions.size();
   assert(N);
 
-	klee::stats::forks += N-1;
+  klee::stats::forks += N-1;
 
   // Cliver assumes each state branches from a single other state
-  assert(N <= 1);
+  assert(N <= 1); // FIXME: This seems wrong, given the loop bound below
 
   result.push_back(&state);
   for (unsigned i=1; i<N; ++i) {
