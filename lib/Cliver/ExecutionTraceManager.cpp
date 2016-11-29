@@ -380,6 +380,8 @@ void TrainingExecutionTraceManager::notify(ExecutionEvent ev) {
       ExecutionStateProperty *parent_property 
           = (ev.parent) ? ev.parent->property() : NULL;
 
+      // If we're finished, take property of finished state and walk in reverse
+      // through all parent stages, writing a training object for every stage.
       if (parent_property &&
           cv_->executor()->finished_states().count(parent_property)) {
         assert(get_stage(parent_property) != NULL);
@@ -504,6 +506,7 @@ void VerifyExecutionTraceManager::initialize() {
   if (UseClustering || UseClusteringHint || UseClusteringAll) {
     initialize_training_data();
   } else if (UseHMM) {
+    // FIXME: HMM doesn't yet work with parallelization. Normal training does.
     hmm_ = new HMMPathPredictor();
     std::ifstream HMMTrainingFileIS(HMMTrainingFile.c_str(),
                                     std::ifstream::in | std::ifstream::binary );
@@ -511,7 +514,7 @@ void VerifyExecutionTraceManager::initialize() {
     HMMTrainingFileIS >> *hmm_;
 
     hmm_training_objs_ = hmm_->getAllTrainingObjects();
-    CVMESSAGE("HMM: Retreived " << hmm_training_objs_.size() << " training objects");
+    CVMESSAGE("HMM: Retrieved " << hmm_training_objs_.size() << " training objects");
   }
 }
 
@@ -707,7 +710,17 @@ void VerifyExecutionTraceManager::compute_self_training_stats(CVExecutionState* 
   }
 }
 
-void VerifyExecutionTraceManager::create_ed_tree_future(CVExecutionState* state) {
+// When a new stage is created, we start with zero-length execution fragments.
+// In the sequential version, before we start executing, we take the message we
+// are trying to verify, assign it to a cluster, and look up guide paths.  In
+// this version, the lookup happens in a separate thread. Worker threads go
+// ahead and start exploring while the clustering/lookup happens. When it's
+// ready, the next time a STATE_CLONE event happens, we will use that data to
+// update the weight for the two cloned states. "Future" is used in the sense of
+// promise/future, although it is not technically a future.  The command line
+// option for this is AsyncCreateEDTree.
+void VerifyExecutionTraceManager::create_ed_tree_future(
+    CVExecutionState *state) {
   ExecutionStateProperty *property = state->property();
   ExecutionStage* stage = get_stage(property);
   klee::LockGuard ed_tree_guard(ed_tree_lock_);
@@ -821,6 +834,7 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state,
     TrainingObjectScoreList sorted_clusters;
     std::vector<TrainingObject*> selected_training_objs;
 
+    // NOTE: Hints are no longer used. This was for the NDSS paper.
     if (UseClusteringHint) {
       // Select matching execution path
       if (property->round < 5 || self_training_data_map_.count(property->round) == 0) {
