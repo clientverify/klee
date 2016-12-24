@@ -434,10 +434,10 @@ void Executor::execute(ExecutionState *initialState, MemoryManager *memory) {
 
       if (pauseExecution) {
         // 1st Barrier:
-        // All threads execept one (in PauseExecution) will wait here
+        // All threads except one (in PauseExecution) will wait here
         threadBarrier->wait();
         // 2nd Barrier:
-        // All threads execept one (in UnPauseExecution) will wait here
+        // All threads except one (in UnPauseExecution) will wait here
         threadBarrier->wait();
       }
     }
@@ -670,7 +670,7 @@ Executor::ExecutorContext& Executor::getContext() {
 bool Executor::empty() {
   bool is_empty = (stateCount == 0);
   if (is_empty) {
-    LockGuard guard(initializationLock);
+    LockGuard guard(checkEmptyMutex);
     klee_message("Thread %d detects empty Executor (state count == 0)",
                  klee::GetThreadID());
   }

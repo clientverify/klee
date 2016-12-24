@@ -157,6 +157,10 @@ llvm::cl::opt<bool>
 PrintFunctionCalls("print-function-calls",
                    llvm::cl::init(false));
 
+llvm::cl::opt<bool>
+DebugPrintInstructionAtCVFork("debug-print-instructions-at-cvfork",
+    llvm::cl::desc("Print instruction when cliver forks an execution state."));
+
 llvm::cl::opt<bool> 
 NoXWindows("no-xwindows",
            llvm::cl::desc("Do not allow external XWindows function calls"),
@@ -428,7 +432,7 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
               std::set<klee::ExecutionState*> sset, empty_set;
               sset.insert(e);
               s->update(0, sset, empty_set); // Add state
-              s->update(0, empty_set, empty_set); // Force flush
+              s->update(0, empty_set, empty_set); // Force flush (ThreadBufferedSearcher)
               },
             searcher, initialState);
 
@@ -455,6 +459,9 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
 
       static_cast<CVExecutionState*>(&state)->set_event_flag(false);
 
+      // This is the main execution loop where most of the time is spent.
+      // Note that executeInstruction() might fork a new state, which is
+      // appended to context.addedStates.
       klee::KInstruction *ki = state.pc;
       stepInstruction(state);
       executeInstruction(state, ki);
@@ -484,10 +491,12 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
         cv_->notify_all(ExecutionEvent(CV_STATE_REMOVED, rstate));
       }
 
-      // Update searcher with new states and get next state to execute
-      if (static_cast<CVExecutionState*>(&state)->event_flag()
-          || !context.removedStates.empty()
-          || !context.addedStates.empty()) {
+      // Update searcher with new states and get next state to execute, if
+      // anything interesting happened (network event, fork, etc.).
+      // If nothing interesting happened (e.g., add instruction), we just
+      // continue with the same state.
+      if (static_cast<CVExecutionState *>(&state)->event_flag() ||
+          !context.removedStates.empty() || !context.addedStates.empty()) {
         statePtr = searcher->updateAndTrySelectState(&state,
                                                      context.addedStates,
                                                      context.removedStates);
@@ -496,8 +505,20 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
       }
     }
 
-    while (pauseExecution
-           || (!statePtr && searcher->empty() && !empty() && !haltExecution)) {
+    // We hit this point after we execute an instruction, or if our
+    // trySelectState failed and we have a null state pointer.
+
+    // If I should go to sleep, go to sleep.
+    //
+    // Reasons for going to sleep comprise:
+    // 1. pauseExecution (global), usually indicating the round is "finished"
+    // 2. round is unfinished but no work is available for this thread
+    //    - no state currently being executed (statePtr == NULL)
+    //    - searcher has no states ready to be executed (searcher->empty())
+    //    - somewhere there are still states to execute (!empty())
+    //    - we have not fully finished behavioral verification (!haltExecution)
+    while (pauseExecution ||
+           (!statePtr && searcher->empty() && !empty() && !haltExecution)) {
 
       if (pauseExecution && statePtr) {
         searcher->update(statePtr,
@@ -522,10 +543,11 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
       }
 
       if (pauseExecution) {
+        // All threads except one (in PauseExecution) will wait here
         threadBarrier->wait();
+        // All threads except one (in UnPauseExecution) will wait here
         threadBarrier->wait();
       }
-
 
 #endif
 
@@ -908,12 +930,22 @@ CVExecutor::fork(klee::ExecutionState &current,
  
   if (res == klee::Solver::True) {
 
+    // if (DebugPrintInstructionAtCVFork) {
+    //   CVMESSAGE("icount=" << klee::stats::instructions
+    //                       << " [fork|always-true] @ " << *current.prevPC);
+    // }
+
     if (EnableStateRebuilding && !replayPath)
       cv_->notify_all(ExecutionEvent(CV_STATE_FORK_TRUE, &current));
 
     return StatePair(&current, 0);
 
   } else if (res == klee::Solver::False) {
+
+    // if (DebugPrintInstructionAtCVFork) {
+    //   CVMESSAGE("icount=" << klee::stats::instructions
+    //                       << " [fork|always-false] @ " << *current.prevPC);
+    // }
 
     if (EnableStateRebuilding && !replayPath)
       cv_->notify_all(ExecutionEvent(CV_STATE_FORK_FALSE, &current));
@@ -924,6 +956,11 @@ CVExecutor::fork(klee::ExecutionState &current,
     klee::ExecutionState *falseState, *trueState = &current;
 
     ++klee::stats::forks;
+
+    if (DebugPrintInstructionAtCVFork) {
+      CVMESSAGE("icount=" << klee::stats::instructions
+                          << " [fork|both-possible] @ " << *current.prevPC);
+    }
 
     falseState = trueState->branch();
     getContext().addedStates.insert(falseState);
@@ -940,6 +977,7 @@ CVExecutor::fork(klee::ExecutionState &current,
   }
 }
 
+// NOTE: this function seems to never be called during cliver execution.
 void CVExecutor::branch(klee::ExecutionState &state, 
 		const std::vector< klee::ref<klee::Expr> > &conditions,
     std::vector<klee::ExecutionState*> &result) {
@@ -947,10 +985,10 @@ void CVExecutor::branch(klee::ExecutionState &state,
   unsigned N = conditions.size();
   assert(N);
 
-	klee::stats::forks += N-1;
+  klee::stats::forks += N-1;
 
   // Cliver assumes each state branches from a single other state
-  assert(N <= 1);
+  assert(N <= 1); // FIXME: This seems wrong, given the loop bound below
 
   result.push_back(&state);
   for (unsigned i=1; i<N; ++i) {
@@ -1344,7 +1382,10 @@ void CVExecutor::tls_predict_stdin_size(CVExecutionState *state,
             klee::ConstantExpr::alloc(stdin_len, klee::Expr::Int32));
 }
 
-// Write the 48-byte TLS master secret into the designated buffer location.
+// Write the 48-byte TLS master secret into the designated buffer
+// location.  If no master secret file has been designated, this will
+// silently return failure, in which case the caller must try to
+// obtain the master secret some other way (e.g., binary ktest file).
 void CVExecutor::tls_master_secret(CVExecutionState *state,
                                    klee::KInstruction *target,
                                    klee::ObjectState *os, unsigned os_offset) {
@@ -1355,11 +1396,7 @@ void CVExecutor::tls_master_secret(CVExecutionState *state,
 
   // Read master secret from file (or in-memory cache)
   master_secret_obtained = cv_->load_tls_master_secret(master_secret);
-  if (!master_secret_obtained) {
-    // This should be non-fatal in case the bitcode program wants to recover.
-    CVMESSAGE("Could not load master secret from dedicated key file");
-  } else {
-
+  if (master_secret_obtained) {
     // Master secret obtained. Write to the designated location if
     // there is enough space there.
     if (os && os_offset + TLS_MASTER_SECRET_SIZE <= os->size) {
@@ -1372,7 +1409,6 @@ void CVExecutor::tls_master_secret(CVExecutionState *state,
           "Terminating state: TLS master secret too big for target buffer.");
       terminate_state(state);
     }
-
   }
 
   // Return success (1) or failure (0)

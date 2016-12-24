@@ -108,18 +108,26 @@ class ExecutionTraceManager : public ExecutionObserver {
   virtual ExecutionStage* get_stage(ExecutionStateProperty* p);
   virtual void remove_from_stage(ExecutionStateProperty* p);
 
+  // Some properties such as edit distance trees can be added to concurrently,
+  // but not removed concurrently.
   virtual bool remove_property(ExecutionStateProperty* p);
   virtual void lazy_property_removals();
 
  protected:
   ClientVerifier *cv_;
-  //StatePropertyStageMap stages_private_;
+
+  // These three are relevant only when option UseExternalStage == false.
+  // To avoid contention among threads, the UseExternalStage option enables the
+  // information to be stored in each ExecutionStateProperty rather than a
+  // globally shared map.
   StatePropertyStageMap stages_;
   klee::Mutex lock_;
   klee::Mutex ed_tree_lock_;
 
+  // Instead of ThreadSpecificPointer, we use folly::ThreadLocal to enable one
+  // thread to iterate through the others at some point.
   class ETMTag; // segments global folly::ThreadLocal mutex
-  folly::ThreadLocal< StageRemovedTrackerListMap, ETMTag > removed_trackers_;
+  folly::ThreadLocal<StageRemovedTrackerListMap, ETMTag> removed_trackers_;
 };
 
 class TrainingExecutionTraceManager : public ExecutionTraceManager {

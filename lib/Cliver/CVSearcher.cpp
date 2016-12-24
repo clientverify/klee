@@ -583,7 +583,7 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
         // Record successful leaf state in stage
         current_stage_->leaf_states.push_back(state);
 
-        // Handle multipass
+        // Handle multipass: "bindings" maps variable names to concrete values
         if (state->multi_pass_assignment().bindings.size()
             && current_stage_ && current_stage_->root_state()) {
 
@@ -621,7 +621,7 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
           if (socket->previous_event().type != SocketEvent::RECV)
             property->is_recv_processing = false;
 
-          // Set pass count if this round was multipass
+          // Set pass count if this round was (last) multipass round
           if (property->pass_count != 0) {
             stats::pass_count = property->pass_count;
           }
@@ -710,7 +710,7 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
 
 void VerifySearcher::notify(ExecutionEvent ev) {
   // Notify stage for cache events
-  // XXX FIXME
+  // XXX FIXME // only needed for state rebuilder, recording every branch
   //if (current_stage_ && !current_stage_->empty())
   //  current_stage_->notify(ev);
 

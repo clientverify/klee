@@ -256,19 +256,33 @@ void ClientVerifier::initialize() {
   // If so, set a flag in ClientVerifier object.
   drop_s2c_tls_appdata_ = DropS2CTLSApplicationData;
 
-  // Read binary socket log files
-  if (SocketLogFile.empty() || read_socket_logs(SocketLogFile) == 0) {
-    CVMESSAGE("No binary socket log files loaded. Need to check for text "
-              "socket log file(s).");
+  // Read binary socket log file(s) now.
+  // Store text socket log filename to be read later when verification demands.
+  if (SocketLogFile.empty() && SocketLogTextFile.empty()) {
+    // This is not an error; some tests run in no-socket-log mode.
+    CVMESSAGE("Neither binary nor text-format socket logs specified.");
+  } else if (!SocketLogFile.empty() && SocketLogTextFile.empty()) {
+    for (size_t i = 0; i < SocketLogFile.size(); ++i) {
+      CVMESSAGE("Binary socket log file specified ("
+                << i + 1 << " of " << SocketLogFile.size()
+                << "): " << SocketLogFile[i]);
+    }
+    CVMESSAGE("Reading entire socket log file(s) now.");
+    if (read_socket_logs(SocketLogFile) == 0) {
+      cv_error("Failed to read socket log file(s).");
+    }
+  } else if (SocketLogFile.empty() && !SocketLogTextFile.empty()) {
+    CVMESSAGE("Socket log file (text format) specified: " << SocketLogTextFile);
+    CVMESSAGE("Socket log file will be loaded on demand (incrementally).");
+    socket_log_text_file_ = SocketLogTextFile;
+  } else { // (!SocketLogFile.empty() && !SocketLogTextFile.empty())
+    cv_error("Both binary and text socket logs specified. Please choose one!");
   }
 
-  // Register text socket log filename (for lazy loading, e.g., live tcpdump)
-  socket_log_text_file_ = SocketLogTextFile;
-  if (SocketLogTextFile.empty()) {
-    CVMESSAGE("No text socket log file specified.");
-    if (!SocketLogFile.empty()) {
-      CVMESSAGE(" Falling back to binary socket log(s).");
-    }
+  // TLS master secret file - deferred loading
+  if (!TLSMasterSecretFile.empty()) {
+    CVMESSAGE("TLS master secret file specified: " << TLSMasterSecretFile);
+    CVMESSAGE("TLS master secret will be loaded on demand (as needed).");
   }
 
   assign_basic_block_ids();
@@ -356,6 +370,7 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
       // Variables used to track state of DropS2CTLSApplicationData
       // Full explanation below.
       bool drop_next_s2c = false;
+      bool next_s2c_is_header = true; // next read() is 5/7/13-byte header
       unsigned int next_s2c_predicted_len = 0;
 
       for (unsigned i = 0; i < ktest->numObjects; ++i) {
@@ -366,12 +381,17 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
           // If we're dropping s2c TLS application data messages...
           if (drop_s2c_tls_appdata_) {
 
-            // Conceptually, we'd like to drop any server-to-client
-            // TLS Application Data records.  RFC 5246 states that
+            // Conceptually, we'd like to detect (and drop) any
+            // server-to-client TLS Application Data records and Alert
+            // records.  Note that we must drop subsequent Alert
+            // records since the additional_data component contains a
+            // sequence number that will be invalid once we skip any
+            // server-to-client records.  RFC 5246 states that
             // application data records can be identified by the first
             // byte of the TLS record, the ContentType, being equal to
-            // 23 (decimal).  The following excerpt from RFC 5246
-            // summarizes the relevant TLS record fields.
+            // 23 (decimal).  Likewise, Alert records have a content
+            // type of 21 (decimal).  The following excerpt from RFC
+            // 5246 summarizes the relevant TLS record fields.
             //
             // struct {
             //     uint8 major;
@@ -430,49 +450,71 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
             // OpenSSL nor BoringSSL.
 
             const uint8_t TLS_CONTENT_TYPE_APPDATA = 23; // RFC 5246
+            const uint8_t TLS_CONTENT_TYPE_ALERT = 21;   // RFC 5246
             const int TLS_HEADER_LEN = 5;                // RFC 5246
             const int OPENSSL_FIRST_READ_LEN = 5;
             const int BORINGSSL_FIRST_READ_LEN = 13;
 
             uint8_t first_msg_byte = ktest->objects[i].bytes[0];
 
-            // Previous s2c message contained the appdata header: drop.
-            if (drop_next_s2c) {
-              if (next_s2c_predicted_len != ktest->objects[i].numBytes) {
-                cv_error("DropS2CTLSApplicationData: unexpected 2nd read "
-                         "length: expected %u but got %u bytes",
-                         next_s2c_predicted_len, ktest->objects[i].numBytes);
-              }
-              drop_next_s2c = false;
-              continue; // Drop this one -- the second read()
-            }
+            // This s2c message contains a TLS header (1st read)
+            if (next_s2c_is_header) {
 
-            // This s2c message contains the appdata header: drop.
-            else if (first_msg_byte == TLS_CONTENT_TYPE_APPDATA) {
+              // Track header/payload state
               int first_read_len = ktest->objects[i].numBytes;
-              if (first_read_len != OPENSSL_FIRST_READ_LEN &&
-                  first_read_len != BORINGSSL_FIRST_READ_LEN) {
-                cv_error("DropS2CTLSApplicationData: unexpected 1st read "
-                         "length (%d) -- matches neither OpenSSL (%d) nor "
-                         "BoringSSL (%d) behavior",
-                         first_read_len, OPENSSL_FIRST_READ_LEN,
-                         BORINGSSL_FIRST_READ_LEN);
-              }
               // Extract TLS record's length field
               assert(first_read_len >= 5); // required for memory safety
               int tls_record_len = (ktest->objects[i].bytes[3] << 8) |
                                    (ktest->objects[i].bytes[4]);
               next_s2c_predicted_len =
                   TLS_HEADER_LEN + tls_record_len - first_read_len;
-              // Set a flag to drop the rest of the TLS application
-              // data packet (if any). That is, drop the next s2c
-              // SocketEvent.
               if (next_s2c_predicted_len > 0) {
-                drop_next_s2c = true;
+                next_s2c_is_header = false;
               } else {
-                drop_next_s2c = false;
+                next_s2c_is_header = true;
               }
-              continue; // Drop this one -- the first read()
+
+              // If this is an APPDATA/ALERT header: drop.
+              if (first_msg_byte == TLS_CONTENT_TYPE_APPDATA ||
+                  first_msg_byte == TLS_CONTENT_TYPE_ALERT) {
+                if (first_read_len != OPENSSL_FIRST_READ_LEN &&
+                    first_read_len != BORINGSSL_FIRST_READ_LEN) {
+                  cv_error("DropS2CTLSApplicationData: unexpected 1st read "
+                           "length (%d) -- matches neither OpenSSL (%d) nor "
+                           "BoringSSL (%d) behavior",
+                           first_read_len, OPENSSL_FIRST_READ_LEN,
+                           BORINGSSL_FIRST_READ_LEN);
+                }
+                // Set a flag to drop the rest of the TLS record (if
+                // any). That is, drop the next s2c SocketEvent.
+                if (next_s2c_predicted_len > 0) {
+                  drop_next_s2c = true;
+                } else {
+                  drop_next_s2c = false;
+                }
+                continue; // Drop this one -- the first read()
+              }
+
+            }
+
+            // This s2c message is a TLS record body (2nd read)
+            else { // !next_s2c_is_header
+
+              // Track header/payload state
+              if (next_s2c_predicted_len != ktest->objects[i].numBytes) {
+                cv_error("DropS2CTLSApplicationData: unexpected 2nd read "
+                         "length: expected %u but got %u bytes",
+                         next_s2c_predicted_len, ktest->objects[i].numBytes);
+              }
+              next_s2c_is_header = true;
+              next_s2c_predicted_len = 0; // no longer applicable
+
+              // Previous s2c message contained the appdata/alert header: drop.
+              if (drop_next_s2c) {
+                drop_next_s2c = false;
+                continue; // Drop this one -- the second read()
+              }
+
             }
 
           } // if (drop_s2c_tls_appdata_)
@@ -514,25 +556,29 @@ bool ClientVerifier::load_tls_master_secret(
 
   std::lock_guard<std::mutex> guard(master_secret_mutex_);
 
+  if (TLSMasterSecretFile.empty()) {
+    // No master secret file provided, but this might be okay if we're
+    // running against binary ktest logs that already contain the TLS
+    // master secret. No error message needed.
+    return false;
+  }
+
   // If necessary, read master secret from file into cache.
   if (!master_secret_cached_) {
-    if (TLSMasterSecretFile.empty()) {
-      cv_warning("No master secret file provided");
-      return false;
-    }
-
     std::ifstream is(TLSMasterSecretFile, std::ifstream::binary);
     if (!is) {
-      cv_warning("Error reading file: %s", TLSMasterSecretFile.c_str());
+      cv_error("Failed to read file: %s", TLSMasterSecretFile.c_str());
       return false;
     }
 
     is.read((char *)master_secret_, TLS_MASTER_SECRET_SIZE);
     if (!is) {
-      cv_warning("Error: only %ld bytes could be read from %s",
-                 is.gcount(), TLSMasterSecretFile.c_str());
+      cv_error("Only %ld bytes (needed %d bytes) could be read from %s ",
+               is.gcount(), TLS_MASTER_SECRET_SIZE,
+               TLSMasterSecretFile.c_str());
       return false;
     }
+    cv_message("TLS master secret loaded from %s", TLSMasterSecretFile.c_str());
 
     master_secret_cached_ = true;
   }

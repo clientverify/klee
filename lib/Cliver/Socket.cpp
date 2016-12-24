@@ -29,6 +29,11 @@ DebugSocket("debug-socket",
   llvm::cl::init(false));
 
 llvm::cl::opt<bool>
+Require2TCPFIN("require-double-tcpfin", llvm::cl::init(false),
+	       llvm::cl::desc("In KTestText mode, require TCP FIN in both "
+			      "directions to indicate connection close"));
+
+llvm::cl::opt<bool>
 PrintAsciiSocket("print-ascii-socket",llvm::cl::init(false));
 
 llvm::cl::opt<bool>
@@ -434,6 +439,18 @@ static void delete_KTestObject(KTestObject *obj) {
   }
 }
 
+SocketSourceKTestText::SocketSourceKTestText(const std::string &filename,
+                                             bool drop_s2c_tls_appdata)
+    : finished_(false), index_(0), drop_s2c_tls_appdata_(drop_s2c_tls_appdata),
+      drop_next_s2c_(false), next_s2c_is_header_(true), c2s_tcp_fin_(false),
+      s2c_tcp_fin_(false) {
+  is_.rdbuf()->pubsetbuf(0, 0); // disable input buffering
+  is_.open(filename);
+  if (!is_.is_open()) {
+    cv_error("Failed to open %s", filename.c_str());
+  }
+}
+
 bool SocketSourceKTestText::finished() {
   // Definitely finished
   if (finished_)
@@ -463,10 +480,14 @@ const SocketEvent &SocketSourceKTestText::next() {
 // and thus are explained in detail here.
 
 // Conceptually, we'd like to detect (and drop) any server-to-client
-// TLS Application Data records.  RFC 5246 states that application
-// data records can be identified by the first byte of the TLS record,
-// the ContentType, being equal to 23 (decimal).  The following
-// excerpt from RFC 5246 summarizes the relevant TLS record fields.
+// TLS Application Data records and Alert records.  Note that we must
+// drop subsequent Alert records since the additional_data component
+// contains a sequence number that will be invalid once we skip any
+// server-to-client records.  RFC 5246 states that application data
+// records can be identified by the first byte of the TLS record, the
+// ContentType, being equal to 23 (decimal).  Likewise, Alert records
+// have a content type of 21 (decimal).  The following excerpt from
+// RFC 5246 summarizes the relevant TLS record fields.
 
 // struct {
 //     uint8 major;
@@ -542,54 +563,84 @@ bool SocketSourceKTestText::try_loading_next_ktest() {
           s2c_tcp_fin_ = true;
         }
         delete_KTestObject(obj);
-        if (c2s_tcp_fin_ && s2c_tcp_fin_) { // Both FINs seen: connection closed
+        if ((Require2TCPFIN && (c2s_tcp_fin_ && s2c_tcp_fin_)) ||
+            (!Require2TCPFIN && (c2s_tcp_fin_ || s2c_tcp_fin_))) {
+          // TCP FIN seen: connection closed
           finished_ = true;
           return false;
         }
         continue;
       } else if (drop_s2c_tls_appdata_ && // Optionally drop s2c appdata
                  strcmp(obj->name, "s2c") == 0) {
-        // Previous s2c message contained the appdata header: drop.
-        if (drop_next_s2c_) {
-          if (obj->numBytes != next_s2c_predicted_len_) {
-            cv_error("drop-tls-s2c-app-data: unexpected 2nd read length: "
-                     "expected %u but got %u bytes",
-                     next_s2c_predicted_len_, obj->numBytes);
-          }
-          drop_next_s2c_ = false;
-          next_s2c_predicted_len_ = 0; // no longer applicable
-          delete_KTestObject(obj);
-          continue;
-        }
-        // This s2c message contains the appdata header: drop.
-        else if (is_s2c_tls_appdata(obj)) {
+
+        // This s2c message contains a TLS header (1st read)
+        if (next_s2c_is_header_) {
+
           const int TLS_HEADER_LEN = 5; // RFC 5246
           const int OPENSSL_FIRST_READ_LEN = 5;
           const int BORINGSSL_FIRST_READ_LEN = 13;
+
+          // Warning: this must be checked before changing state
+          // variables drop_next_s2c_ and next_s2c_is_header_.
+          bool drop_this_one = is_s2c_tls_droppable(obj);
+
+          // Track header/payload state
           int first_read_len = obj->numBytes;
-          if (first_read_len != OPENSSL_FIRST_READ_LEN &&
-              first_read_len != BORINGSSL_FIRST_READ_LEN) {
-            cv_error("drop-tls-s2c-app-data: unexpected 1st read length (%d) "
-                     "-- matches neither OpenSSL (%d) nor BoringSSL (%d) "
-                     "behavior",
-                     first_read_len, OPENSSL_FIRST_READ_LEN,
-                     BORINGSSL_FIRST_READ_LEN);
-          }
           // Extract TLS record's length field
           assert(first_read_len >= 5); // required for memory safety
           int tls_record_len = (obj->bytes[3] << 8) | (obj->bytes[4]);
           next_s2c_predicted_len_ =
               TLS_HEADER_LEN + tls_record_len - first_read_len;
-          // Set flag to drop rest of the appdata (if any). That is,
-          // drop the next s2c SocketEvent.
           if (next_s2c_predicted_len_ > 0) {
-            drop_next_s2c_ = true;
+            next_s2c_is_header_ = false;
           } else {
-            drop_next_s2c_ = false;
+            next_s2c_is_header_ = true;
           }
-          delete_KTestObject(obj);
-          continue;
+
+          // If this is an APPDATA/ALERT header: drop.
+          if (drop_this_one) {
+            if (first_read_len != OPENSSL_FIRST_READ_LEN &&
+                first_read_len != BORINGSSL_FIRST_READ_LEN) {
+              cv_error("drop-tls-s2c-app-data: unexpected 1st read length (%d) "
+                       "-- matches neither OpenSSL (%d) nor BoringSSL (%d) "
+                       "behavior",
+                       first_read_len, OPENSSL_FIRST_READ_LEN,
+                       BORINGSSL_FIRST_READ_LEN);
+            }
+            // Set flag to drop rest of the TLS record (if any). That
+            // is, drop the next s2c SocketEvent.
+            if (next_s2c_predicted_len_ > 0) {
+              drop_next_s2c_ = true;
+            } else {
+              drop_next_s2c_ = false;
+            }
+            delete_KTestObject(obj);
+            continue;
+          }
+
         }
+
+        // This s2c message is a TLS record body (2nd read)
+        else { // !next_s2c_is_header_
+
+          // Track header/payload state
+          if (next_s2c_predicted_len_ != obj->numBytes) {
+            cv_error("drop-tls-s2c-app-data: unexpected 2nd read length: "
+                     "expected %u but got %u bytes",
+                     next_s2c_predicted_len_, obj->numBytes);
+          }
+          next_s2c_is_header_ = true;
+          next_s2c_predicted_len_ = 0; // no longer applicable
+
+          // Previous s2c message contained the appdata/alert header: drop.
+          if (drop_next_s2c_) {
+            drop_next_s2c_ = false;
+            delete_KTestObject(obj);
+            continue; // drop this one -- the second read()
+          }
+
+        }
+
         // Other s2c messages are fine: fall through.
       }
       // Good network KTestObject: create SocketEvent
@@ -601,28 +652,33 @@ bool SocketSourceKTestText::try_loading_next_ktest() {
   return false;
 }
 
+// Returns true if this KTestObject should be dropped in dropS2C mode.
+//
 // WARNING: The following function depends on the correct behavior of
-// SocketSourceKTestText::try_loading_next_ktest(), as there is a
-// state variable (drop_next_s2c_) shared between the two that must be
-// kept synchronized. See explanation above for dropS2C details.
-bool SocketSourceKTestText::is_s2c_tls_appdata(const KTestObject *obj) {
+// SocketSourceKTestText::try_loading_next_ktest(), as there are state
+// variables (drop_next_s2c_, next_s2c_is_header_) shared between the
+// two that must be kept synchronized. See explanation above for
+// dropS2C details.
+bool SocketSourceKTestText::is_s2c_tls_droppable(const KTestObject *obj) const {
   const unsigned char TLS_CONTENT_TYPE_APPDATA = 23; // RFC 5246
+  const unsigned char TLS_CONTENT_TYPE_ALERT = 21;   // RFC 5246
 
   if (!obj)
     return false;
   if (strcmp(obj->name, "s2c") != 0)
     return false;
 
-  // last s2c was an appdata header, this must be the appdata payload
+  // last s2c was an alert/appdata header, this must be the payload
   if (drop_next_s2c_)
     return true;
 
-  // this s2c is an appdata header
-  if (obj->bytes[0] == TLS_CONTENT_TYPE_APPDATA) {
+  // this s2c is an appdata or alert header
+  if (next_s2c_is_header_ && (obj->bytes[0] == TLS_CONTENT_TYPE_APPDATA ||
+                              obj->bytes[0] == TLS_CONTENT_TYPE_ALERT)) {
     return true;
   }
 
-  // this s2c is some other kind of message (e.g., handshake, alert)
+  // this s2c is some other kind of message (e.g., handshake)
   return false;
 }
 
