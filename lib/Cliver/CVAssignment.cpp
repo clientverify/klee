@@ -75,10 +75,12 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
   klee::Query query(cm, klee::ConstantExpr::alloc(0, klee::Expr::Bool));
 
   if (DebugCVAssignment) {
-    llvm::errs() << " CVAssignment: ";
-    klee::ExprPPrinter::printQuery(llvm::errs(), cm,
+    std::string s;
+    llvm::raw_string_ostream info(s);
+    info << "CVAssignment query:\n\n";
+    klee::ExprPPrinter::printQuery(info, cm,
                              klee::ConstantExpr::alloc(0, klee::Expr::Bool));
-    llvm::errs() << "\n";
+    CVDEBUG(info.str());
   }
 
   solver->getInitialValues(query, arrays, initial_values);
