@@ -92,14 +92,16 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
       info << "IV: ARRAY(" << initial_values[i].size() << ") "
           << arrays[i]->name << " = ";
 
-      bool isASCII = true;
+      bool is_printable = true;
       for (unsigned j=0; j<initial_values[i].size()-1; ++j) {
-        if (initial_values[i][j] > 128)
-          isASCII = false;
+        if (!std::isprint(initial_values[i][j]))
+          is_printable = false;
       }
 
-      if (isASCII) {
+      if (is_printable) {
+        info << "\"";
         info << std::string(initial_values[i].begin(), initial_values[i].end());
+        info << "\"";
       } else {
         info << "0x";
         for (unsigned j=0; j<initial_values[i].size(); ++j) {
