@@ -19,6 +19,8 @@
 #include <stdio.h>
 #include <ostream>
 
+#include "klee/Common.h"
+
 // XXX ugh
 namespace klee {
   class Solver;

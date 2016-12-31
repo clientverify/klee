@@ -36,6 +36,10 @@ static const char* warningOncePrefix = "WARNING ONCE";
 static const char* errorPrefix = "ERROR";
 static const char* notePrefix = "NOTE";
 
+namespace klee {
+  Mutex logging_mutex;
+}
+
 static bool shouldSetColor(const char* pfx, const char* msg, const char* prefixToSearchFor)
 {
   if (pfx && strcmp(pfx, prefixToSearchFor) == 0)
@@ -191,8 +195,7 @@ static void klee_vomessage(std::ostream* os, const char *pfx, const char *msg,
 */
 static void klee_vmessage(const char *pfx, bool onlyToFile, const char *msg, 
                           va_list ap) {
-  static Mutex lock;
-  LockGuard guard(lock);
+  LockGuard guard(klee::logging_mutex);
   if (klee_warning_stream && klee_message_stream) {
     klee_vomessage(pfx ? klee_warning_stream : klee_message_stream, pfx, msg, ap);
   } else {

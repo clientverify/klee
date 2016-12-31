@@ -156,7 +156,6 @@ protected:
   ConditionVariable startExecutionCondition;
   Mutex pauseExecutionMutex;
   Mutex initializationLock;
-  Mutex checkEmptyMutex;
 
 #if USE_BOOST_THREAD_SPECIFIC_PTR
   /// Per-thread ExecutorContext

@@ -9,6 +9,8 @@
 #ifndef CLIVER_COMMON_H
 #define CLIVER_COMMON_H
 
+#include "klee/Common.h"
+
 // Boost FOREACH macro
 #include <boost/foreach.hpp>
 #define foreach BOOST_FOREACH 

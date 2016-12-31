@@ -11,6 +11,7 @@
 
 #include "klee/util/Thread.h"
 #include "klee/util/Mutex.h"
+#include "klee/Common.h"
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -34,7 +35,6 @@ namespace cliver {
 extern std::ostream* cv_warning_stream;
 extern std::ostream* cv_message_stream;
 extern std::ostream* cv_debug_stream;
-extern klee::Mutex*  cv_stream_lock;
 
 // TODO FIXME make output thread safe
 
@@ -46,7 +46,7 @@ extern klee::Mutex*  cv_stream_lock;
   time(&rawtime); \
   timeinfo = localtime(&rawtime); \
   strftime(timebuff, sizeof(timebuff), "%Y-%m-%d %H:%M:%S", timeinfo); \
-  { klee::LockGuard cv_message_guard(*cv_stream_lock); \
+  { klee::LockGuard cv_message_guard(klee::logging_mutex); \
   *cv_message_stream << timebuff << " | "; \
   *cv_message_stream <<"CV: "<< __x << "\n";} \
   }
@@ -61,15 +61,18 @@ extern klee::Mutex*  cv_stream_lock;
 
 #define __CVDEBUG(__debug_enabled, __x) \
 	if (__debug_enabled) { \
+	klee::LockGuard cv_stream_guard(klee::logging_mutex); \
 	*cv_debug_stream << __CVDEBUG_FILE << __x << "\n"; }
 
 #define __CVDEBUG_S(__debug_enabled, __state_id, __x) \
 	if (__debug_enabled) { \
+	klee::LockGuard cv_stream_guard(klee::logging_mutex); \
 	*cv_debug_stream << __CVDEBUG_FILE << "State: " \
    << std::setw(4) << std::right << __state_id << " - " << __x << "\n"; } 
 
 #define __CVDEBUG_S2(__debug_enabled, __state_id_1, __state_id_2, __x) \
 	if (__debug_enabled) { \
+	klee::LockGuard cv_stream_guard(klee::logging_mutex); \
 	*cv_debug_stream << __CVDEBUG_FILE << "States: (" \
    <<  __state_id_1 << ", " << __state_id_2 << ") " <<__x << "\n"; }
 

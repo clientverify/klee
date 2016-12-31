@@ -643,8 +643,8 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
   this->memory.release();
 
   // Print per-thread stats
-  klee::LockGuard initializationLockGuard(initializationLock);
-  CVMESSAGE("Thread: " << klee::GetThreadID() << " executed " << *threadInstCount << " instructions");
+  CVMESSAGE("Thread " << klee::GetThreadID() << ": executed "
+                      << *threadInstCount << " instructions and exited");
 }
 
 #if 1

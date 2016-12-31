@@ -70,8 +70,6 @@ std::ostream* cv_warning_stream = NULL;
 std::ostream* cv_message_stream = NULL;
 std::ostream* cv_debug_stream   = NULL;
 
-klee::Mutex*  cv_stream_lock = NULL;
-
 ////////////////////////////////////////////////////////////////////////////////
 
 class teebuf: public std::streambuf {
@@ -126,6 +124,8 @@ static void cv_vomessage(std::ostream* os, const char *pfx, const char *msg,
     va_list ap) {
   if (!os)
     return;
+
+  klee::LockGuard guard(klee::logging_mutex);
 
   char timebuff[20];
   time_t rawtime;
@@ -183,13 +183,9 @@ CVStream::CVStream(bool no_output, std::string &output_dir)
     debug_file_stream_(NULL),
     message_file_stream_(NULL),
     warning_file_stream_(NULL) {
-  cv_stream_lock = new klee::Mutex();
 }
 
 CVStream::~CVStream() {
-  if (cv_stream_lock)
-    delete cv_stream_lock;
-
   if (info_file_stream_) {
     delete info_file_stream_;
     info_file_stream_ = NULL;
