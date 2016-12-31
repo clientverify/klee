@@ -24,6 +24,7 @@
 #include "klee/Statistics.h"
 #include "klee/TimerStatIncrementer.h"
 #include "klee/Internal/ADT/KTest.h"
+#include "klee/util/Mutex.h"
 
 #include "llvm/Support/CommandLine.h"
 
@@ -203,7 +204,7 @@ class ClientVerifier : public klee::InterpreterHandler {
   bool drop_s2c_tls_appdata_ = false;
 
   // RFC 5246 TLS Master Secret (48 bytes)
-  std::mutex master_secret_mutex_;
+  klee::Mutex master_secret_mutex_;
   bool master_secret_cached_ = false;
   uint8_t master_secret_[TLS_MASTER_SECRET_SIZE];
 

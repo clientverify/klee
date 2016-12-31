@@ -554,7 +554,7 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
 bool ClientVerifier::load_tls_master_secret(
     uint8_t master_secret[TLS_MASTER_SECRET_SIZE]) {
 
-  std::lock_guard<std::mutex> guard(master_secret_mutex_);
+  klee::LockGuard guard(master_secret_mutex_);
 
   if (TLSMasterSecretFile.empty()) {
     // No master secret file provided, but this might be okay if we're
