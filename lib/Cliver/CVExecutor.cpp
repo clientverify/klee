@@ -281,6 +281,17 @@ void CVExecutor::parallelUpdateStates(klee::ExecutionState *current) {
   // update atomic stateCount
   stateCount += (addedCount - removedCount);
 
+  // print diagnostic info if any change in stateCount
+  if (DebugExecutor && (addedCount != 0 || removedCount != 0)) {
+    std::string s;
+    llvm::raw_string_ostream stack_info(s);
+    current->dumpStack(stack_info);
+    CVDEBUG("addedCount=" << addedCount << ", removedCount=" << removedCount
+                          << ", (new) stateCount=" << stateCount
+                          << ", state stack:\n"
+                          << stack_info.str());
+  }
+
   if (!EnableLockFreeSearcher) {
     // Delete removed states 
     // TODO move all state delete into cvsearcher
