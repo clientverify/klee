@@ -286,10 +286,11 @@ void CVExecutor::parallelUpdateStates(klee::ExecutionState *current) {
     std::string s;
     llvm::raw_string_ostream stack_info(s);
     current->dumpStack(stack_info);
-    CVDEBUG("addedCount=" << addedCount << ", removedCount=" << removedCount
-                          << ", (new) stateCount=" << stateCount
-                          << ", state stack:\n"
-                          << stack_info.str());
+    CVDEBUG("Thread " << klee::GetThreadID() << ": addedCount=" << addedCount
+                      << ", removedCount=" << removedCount
+                      << ", (new) stateCount=" << stateCount
+                      << ", execution state stack:\n"
+                      << stack_info.str());
   }
 
   if (!EnableLockFreeSearcher) {
