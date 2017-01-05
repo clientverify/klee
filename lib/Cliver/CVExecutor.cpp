@@ -6,6 +6,9 @@
 //
 //
 //===----------------------------------------------------------------------===//
+
+#include <unistd.h>
+
 #include "cliver/CVExecutor.h"
 
 #include "cliver/ConstraintPruner.h"
@@ -512,6 +515,11 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
         statePtr = searcher->updateAndTrySelectState(&state,
                                                      context.addedStates,
                                                      context.removedStates);
+        // Sleep for a random amount of time to simulate race condition
+        // This is for debugging the deadlock.
+        unsigned int usec_to_sleep = rand() % (1000000 * 10);
+        CVDEBUG("Sleeping for " << usec_to_sleep << " microseconds");
+        usleep(usec_to_sleep);
         // Update Executor state tracking
         parallelUpdateStates(&state);
       }
