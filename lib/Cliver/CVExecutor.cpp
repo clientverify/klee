@@ -519,7 +519,7 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
         // Wake up all the threads (spurious wakeups are possible; force here)
         searcherCond.notify_all();
         // Sleep for a random amount of time to simulate race condition
-        unsigned int usec_to_sleep = rand() % (1000000 * 10);
+        unsigned int usec_to_sleep = rand() % (1000000 * 1);
         CVDEBUG("Sleeping for " << usec_to_sleep << " microseconds");
         usleep(usec_to_sleep);
         // Update Executor state tracking

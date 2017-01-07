@@ -334,6 +334,9 @@ klee::ExecutionState* VerifySearcher::trySelectState() {
       state = check_state_property(current_stage_, state);
     }
   }
+  if (state) {
+    CVDEBUG("Selected state: " << *(state->pc));
+  }
   return state;
 }
 
