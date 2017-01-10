@@ -106,7 +106,8 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
         info << "0x";
         for (unsigned j=0; j<initial_values[i].size(); ++j) {
           unsigned c = initial_values[i][j];
-          info << std::hex << c << std::dec;
+          info << std::setfill('0') << std::setw(2) << std::hex << c
+               << std::dec;
         }
       }
 
