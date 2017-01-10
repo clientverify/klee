@@ -120,7 +120,7 @@ static void print_buffer(void *buf, size_t s, char* tag) {
 
 // Make BIGNUM with internal symbolic data
 #define SYMBOLIC_BN_DMAX 64
-static void make_BN_symbolic(BIGNUM* bn) {
+static void make_BN_symbolic(BIGNUM* bn, const char *symbol_name) {
   if (bn->dmax > 0) {
     char *buf = (char *)malloc((bn->dmax)*sizeof(bn->d[0]));
     klee_make_symbolic(buf, (bn->dmax)*sizeof(bn->d[0]), "BN_buf");
@@ -133,15 +133,18 @@ static void make_BN_symbolic(BIGNUM* bn) {
     bn->d = buf;
   }
   int neg;
-  klee_make_symbolic(&neg, sizeof(neg), "BN_neg");
+  if (symbol_name == NULL) {
+    symbol_name = "BN";
+  }
+  klee_make_symbolic(&neg, sizeof(neg), symbol_name);
   bn->neg = neg;
 }
 
 // Make EC_POINT symbolic 
 static void make_EC_POINT_symbolic(EC_POINT* p) {
-  make_BN_symbolic(&(p->X));
-  make_BN_symbolic(&(p->Y));
-  make_BN_symbolic(&(p->Z));
+  make_BN_symbolic(&(p->X), "BN_EC_POINT_X");
+  make_BN_symbolic(&(p->Y), "BN_EC_POINT_Y");
+  make_BN_symbolic(&(p->Z), "BN_EC_POINT_Z");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -193,7 +196,7 @@ DEFINE_MODEL(int, EC_KEY_generate_key, EC_KEY *eckey) {
   if (pub_key == NULL)
     pub_key = EC_POINT_new(eckey->group);
 
-  make_BN_symbolic(priv_key);
+  make_BN_symbolic(priv_key, "BN_EC_KEY_private");
   make_EC_POINT_symbolic(pub_key);
 
   eckey->priv_key = priv_key;
@@ -244,7 +247,7 @@ DEFINE_MODEL(size_t, EC_POINT_point2oct, const EC_GROUP *group,
   size_t field_len = BN_num_bytes(&group->field);
   size_t ret = (form == POINT_CONVERSION_COMPRESSED) ? 1 + field_len : 1 + 2*field_len;
 
-  SYMBOLIC_MODEL_CHECK_AND_RETURN(point,sizeof(EC_POINT),buf,ret,"point2oct",ret);
+  SYMBOLIC_MODEL_CHECK_AND_RETURN(point,sizeof(EC_POINT),buf,ret,"EC_point2oct",ret);
   return CALL_UNDERLYING(EC_POINT_point2oct, group, point, form, buf, len, ctx);
 }
 
