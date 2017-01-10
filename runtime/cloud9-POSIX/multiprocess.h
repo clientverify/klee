@@ -62,6 +62,8 @@ typedef uint64_t wlist_id_t;
 
 #define PTHREAD_BARRIER_SERIAL_THREAD    -1
 
+#define PTHREAD_MUTEX_INITIALIZER (mutex_data_t){0, 0, 0, -1, 0, 0}
+#define PTHREAD_RWLOCK_INITIALIZER (pthread_rwlock_t){ 0, 0, 0, 0, 0, 0}
 ////////////////////////////////////////////////////////////////////////////////
 // System Wide Data Structures
 ////////////////////////////////////////////////////////////////////////////////
@@ -170,14 +172,14 @@ extern tsync_data_t __tsync;
 
 void klee_init_processes(void);
 void klee_init_threads(void);
-
+static inline void meep_klee_thread_preempt(int yield){ printf("HAPPY TUESDAY\n"); }
 /*
  * Wrapper over the klee_thread_preempt() call.
  * This is done to simulate checking for received
  * signals when being first planned.
  */
 static inline void __thread_preempt(int yield) {
-  klee_thread_preempt(yield);
+  meep_klee_thread_preempt(yield);
 #ifdef HAVE_POSIX_SIGNALS
   if((&__pdata[PID_TO_INDEX(getpid())])->signaled)
       __handle_signal();
@@ -208,5 +210,10 @@ static inline void __thread_notify_one(uint64_t wlist) {
 static inline void __thread_notify_all(uint64_t wlist) {
   __thread_notify(wlist, 1);
 }
+
+static int klee_get_context(pthread_t *result, int *pid){
+    return 0;
+}
+
 
 #endif /* THREADS_H_ */
