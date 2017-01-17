@@ -594,7 +594,17 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
                                                  stats::round_instructions) <<
                   " Assignments: " << state->multi_pass_assignment());
 
-          assert(state->multi_pass_clone_ != NULL);
+          if (state->multi_pass_clone_ == NULL) {
+            // This means there were no symbolic variables generated
+            // during this round. In this case, set multi_pass_clone_
+            // to the stage's root state (i.e., unoptimized multipass
+            // behavior), instead of the state when the first symbolic
+            // variable is about to be generated.
+            ExecutionStateProperty *property =
+                current_stage_->root_state()->property()->clone();
+            state->multi_pass_clone_ =
+                current_stage_->root_state()->clone(property);
+          }
 
           // Clone ExecutionStateProperty
           ExecutionStateProperty* property_clone = state->multi_pass_clone_->property();
