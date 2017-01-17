@@ -233,6 +233,9 @@ void client_run(int client_fd) {
     goto exit_error;
 
   // Send x
+  if (NEGATIVE_TEST_CASE) {
+    x += 1;
+  }
 #ifdef KLEE
   printf("CLIENT: send x (uint32)\n");
 #else
