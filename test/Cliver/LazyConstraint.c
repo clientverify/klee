@@ -26,7 +26,8 @@ char* ktest_file = "lazyconstraint.ktest";
 
 #define BUFFER_SIZE 256
 static int NEGATIVE_TEST_CASE = 0; // intentionally send wrong message
-
+static int FORCE_X_EQUAL_TEN = 0; // for IVC concrete run, force x = 10
+enum lazy_constraint_type {NETWORK_DATA, IMPLIED_VALUE_CONCRETIZATION};
 enum mode_type {CLIENT_MODE, SERVER_MODE, FORK_MODE};
 
 /**************************** TEST DESCRIPTION ****************************
@@ -74,11 +75,13 @@ at a network send point:
     SEND(314);
     if (x == 10) {
       SEND(y);
+    } else {
+      SEND(159);
     }
     return 0;
   }
 
-  // Positive test case: 314
+  // Positive test case: 314, 159
   // Positive test case: 314, 6410
   // Negative test case: 314, 6411
 
@@ -215,7 +218,7 @@ exit_error:
   exit(1);
 }
 
-void client_run(int client_fd) {
+void client_run_net(int client_fd) {
   char send_buffer[BUFFER_SIZE];
   unsigned int x, y;
 
@@ -225,7 +228,7 @@ void client_run(int client_fd) {
 
   // Send y = p(x)
 #ifdef KLEE
-  printf("CLIENT: send y (uint32)\n");
+  printf("CLIENT: send y (uint32) = ??\n");
 #else
   printf("CLIENT: send y (uint32) = %u\n", y);
 #endif
@@ -237,7 +240,7 @@ void client_run(int client_fd) {
     x += 1;
   }
 #ifdef KLEE
-  printf("CLIENT: send x (uint32)\n");
+  printf("CLIENT: send x (uint32) = ??\n");
 #else
   printf("CLIENT: send x (uint32) = %u\n", x);
 #endif
@@ -260,6 +263,67 @@ exit_error:
   exit(1);
 }
 
+void client_run_ivc(int client_fd) {
+  char send_buffer[BUFFER_SIZE];
+  unsigned int x, y;
+
+  memset(send_buffer, '\0', sizeof(send_buffer));
+  x = (unsigned int)rand();
+  if (FORCE_X_EQUAL_TEN) {
+    x = 10;
+  }
+  y = prohibitive_f(x);
+
+  // Send 314
+  unsigned int z = 314;
+  printf("CLIENT: send 314 (uint32)\n");
+  if (send(client_fd, &z, sizeof(z), 0) < 0)
+    goto exit_error;
+
+  // Send next one depending on what x was.
+  if (x == 10) {
+#ifdef KLEE
+    printf("CLIENT: send y (uint32) = ??\n");
+#else
+    printf("CLIENT: send y (uint32) = %u\n", x);
+#endif
+    if (NEGATIVE_TEST_CASE) {
+      y += 1;
+    }
+    if (send(client_fd, &y, sizeof(y), 0) < 0)
+      goto exit_error;
+  } else {
+    unsigned int w = 159;
+    printf("CLIENT: send 159 (uint32)\n");
+    if (send(client_fd, &w, sizeof(w), 0) < 0)
+      goto exit_error;
+  }
+
+  // Send quit
+  sprintf(send_buffer, "QUITTING");
+  printf("CLIENT: send: %s\n", send_buffer);
+  if (send(client_fd, send_buffer, strnlen(send_buffer,BUFFER_SIZE)+1, 0) < 0)
+    goto exit_error;
+
+  close(client_fd);
+  printf("CLIENT: success!\n");
+
+  return;
+
+exit_error:
+  perror("client_run error");
+  exit(1);
+}
+
+void client_run(int client_fd, int lcg_test_type) {
+  if (lcg_test_type == NETWORK_DATA) {
+    client_run_net(client_fd);
+  }
+  else if (lcg_test_type == IMPLIED_VALUE_CONCRETIZATION) {
+    client_run_ivc(client_fd);
+  }
+}
+
 int main(int argc, char* argv[]) {
   int listen_fd=-1, client_fd=-1, port=0;
   int c;
@@ -270,7 +334,9 @@ int main(int argc, char* argv[]) {
   int mode=FORK_MODE;
 #endif
 
-  while ((c = getopt(argc, argv, "csfp:m:b:k:n")) != -1) {
+  int lcg_test_type = NETWORK_DATA; // default test type
+
+  while ((c = getopt(argc, argv, "csfp:m:b:k:nit")) != -1) {
     switch (c) {
       case 'c':
         mode=CLIENT_MODE;
@@ -291,12 +357,18 @@ int main(int argc, char* argv[]) {
       case 'n':
         NEGATIVE_TEST_CASE = 1;
         break;
+      case 'i':
+        lcg_test_type = IMPLIED_VALUE_CONCRETIZATION;
+        break;
+      case 't':
+        FORCE_X_EQUAL_TEN = 1;
+        break;
     }
   }
 
   if (mode == CLIENT_MODE) {
     client_init(port, &client_fd);
-    client_run(client_fd);
+    client_run(client_fd, lcg_test_type);
   } else if (mode == SERVER_MODE) {
     server_init(&port, &listen_fd);
     server_run(listen_fd);
@@ -309,9 +381,8 @@ int main(int argc, char* argv[]) {
       ktest_finish();
     } else {
       client_init(port, &client_fd);
-      client_run(client_fd);
+      client_run(client_fd, lcg_test_type);
     }
   }
   return 0;
 }
-
