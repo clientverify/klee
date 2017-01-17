@@ -7,6 +7,7 @@ ssize_t ktest_send(int fd, const void *buf, size_t count) {
 
 ssize_t ktest_recv(int fd, void *buf, size_t count, int flags) {
   ssize_t num_bytes = recv(fd, buf, count, flags);
+  return num_bytes;
 }
 
 void ktest_finish() {
