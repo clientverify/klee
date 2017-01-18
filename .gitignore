@@ -21,3 +21,13 @@ lit.site.cfg
 
 TAGS
 tags
+GPATH
+GRTAGS
+GSYMS
+GTAGS
+
+# Eclipse
+.settings/
+
+# Visual Studio Code
+.vscode/
