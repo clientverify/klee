@@ -282,14 +282,14 @@ void client_run_ivc(int client_fd) {
 
   // Send next one depending on what x was.
   if (x == 10) {
-#ifdef KLEE
-    printf("CLIENT: send y (uint32) = ??\n");
-#else
-    printf("CLIENT: send y (uint32) = %u\n", x);
-#endif
     if (NEGATIVE_TEST_CASE) {
       y += 1;
     }
+#ifdef KLEE
+    printf("CLIENT: send y (uint32) = ??\n");
+#else
+    printf("CLIENT: send y (uint32) = %u\n", y);
+#endif
     if (send(client_fd, &y, sizeof(y), 0) < 0)
       goto exit_error;
   } else {
