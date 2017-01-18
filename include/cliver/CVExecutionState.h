@@ -86,6 +86,14 @@ class CVExecutionState : public klee::ExecutionState {
     multi_pass_assignment_ = cva; 
   }
 
+  void set_multi_pass_bindings_prev(const klee::Assignment::bindings_ty &b) {
+    multi_pass_previous_round_bindings_ = b;
+  }
+
+  klee::Assignment::bindings_ty& multi_pass_bindings_prev() {
+    return multi_pass_previous_round_bindings_;
+  }
+
   CVExecutionState* multi_pass_clone_;
  private:
   unsigned increment_id() { return next_id_++; }
@@ -99,6 +107,7 @@ class CVExecutionState : public klee::ExecutionState {
   bool basic_block_tracking_;
   std::map<std::string, uint64_t> array_name_index_map_;
   CVAssignment multi_pass_assignment_;
+  klee::Assignment::bindings_ty multi_pass_previous_round_bindings_;
   SearcherStage *searcher_stage_;
 };
 

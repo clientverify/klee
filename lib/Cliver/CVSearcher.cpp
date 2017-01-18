@@ -584,8 +584,14 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
         current_stage_->leaf_states.push_back(state);
 
         // Handle multipass: "bindings" maps variable names to concrete values
-        if (state->multi_pass_assignment().bindings.size()
-            && current_stage_ && current_stage_->root_state()) {
+        if (state->multi_pass_assignment().bindings.size() && current_stage_ &&
+            current_stage_->root_state() &&
+            state->multi_pass_assignment().bindings !=
+                state->multi_pass_bindings_prev()) {
+
+          // FIXME: do we need to do a deeper inequality check of the
+          // bindings in the if() condition above, rather than simply
+          // comparing the bindings using the operator== for std::map?
 
           CVDEBUG("Multi-pass: " << property->pass_count <<
                   " Round: " << current_round_ <<
@@ -606,6 +612,11 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
                 current_stage_->root_state()->clone(property);
           }
 
+          // Save the assignments as the "previous multipass bindings"
+          // in case we execute another round but learn nothing new.
+          state->multi_pass_clone_->set_multi_pass_bindings_prev(
+              state->multi_pass_assignment().bindings);
+
           // Clone ExecutionStateProperty
           ExecutionStateProperty* property_clone = state->multi_pass_clone_->property();
 
@@ -613,8 +624,10 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
           property_clone->pass_count++;
           stats::pass_count = property_clone->pass_count;
 
-          // Clone the CVExecutionState at the root of the most recent round
-          // (we are re-executing)
+          // Select the clone of the CVExecutionState at the root of
+          // the most recent round, or (as an optimization) the clone
+          // of the execution state at which the first symbolic
+          // variable appeared in this round.
           CVExecutionState* new_state = state->multi_pass_clone_;
 
           state->multi_pass_clone_ = NULL;
@@ -638,6 +651,9 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
           // Reset pass count for the new state (root of next stage)
           property->pass_count = 0;
           property->round++;
+          // Reset multipass bindings (if any)
+          state->multi_pass_bindings_prev().clear();
+
           pending_states_.push_back(state);
         }
 
