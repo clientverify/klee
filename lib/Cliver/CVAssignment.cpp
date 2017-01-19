@@ -86,7 +86,7 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
   solver->getInitialValues(query, arrays, initial_values);
 
   // Print implied values
-	if (DebugCVAssignment) {
+  if (DebugCVAssignment) {
     for (unsigned i=0; i<arrays.size(); ++i) {
       std::ostringstream info;
       info << "IV: ARRAY(" << initial_values[i].size() << ") "
@@ -170,7 +170,7 @@ void CVAssignment::print(std::ostream& os) const {
     } else {
       os << ", ";
     }
-    // print array name and data bytes (little-endian)
+    // print array name and data bytes
     os << ar->name << "[" << data.size() << "] = 0x";
     for (size_t i = 0; i < data.size(); i++) {
       os << std::setfill('0') << std::setw(2) << std::hex << (int)data[i];
