@@ -348,10 +348,9 @@ void NetworkManager::execute_write(CVExecutor* executor,
 
   CVDEBUG("Network Bytes: " << bytes_ss.str());
 
-  if (!state_->multi_pass_assignment().bindings.size())
-    executor->add_constraint(state_, write_condition);
+  executor->add_constraint(state_, write_condition);
 
-	RETURN_SUCCESS("send", bytes_read);
+  RETURN_SUCCESS("send", bytes_read);
 }
 
 /*
