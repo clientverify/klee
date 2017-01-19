@@ -14,7 +14,7 @@ static unsigned int p_inv(unsigned int x) {
   return 6700417 * x;
 }
 
-TEST(ProhibitiveFunction, POf10) {
+TEST(ProhibitiveFunction, Pof10) {
   EXPECT_EQ(p(10), 6410);
   EXPECT_EQ(p_inv(6410), 10);
 }
@@ -28,4 +28,3 @@ TEST(ProhibitiveFunction, PinvThenP) {
   unsigned int n = 314159;
   EXPECT_EQ(p(p_inv(n)), n);
 }
-

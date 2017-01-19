@@ -21,4 +21,4 @@
 // RUN: not %klee --output-dir=%t4.dir -cliver -optimize=0 -cloud9-posix-runtime -libc=uclibc -socket-log=%t1.ktest %t1.bc &> %t4.log
 // RUN: not grep -q "Verifier Result: success" %t4.log
 
-#include "LazyConstraint.c"
+#include "TestLazyConstraint.inc.c"
