@@ -161,12 +161,31 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
 }
 
 void CVAssignment::print(std::ostream& os) const {
-  for (name_ty::const_iterator it=name_bindings.begin(),ie=name_bindings.end();
-       it!=ie; ++it) {
-    os << it->first;
-    name_ty::const_iterator next = it;
-    if (++next != ie)
+  bool first_entry = true;
+  for (const auto& entry: bindings) {
+    const klee::Array* ar = entry.first;
+    const std::vector<unsigned char>& data = entry.second;
+    if (first_entry) {
+      first_entry = false;
+    } else {
       os << ", ";
+    }
+    // print array name and data bytes (little-endian)
+    os << ar->name << "[" << data.size() << "] = 0x";
+    for (size_t i = 0; i < data.size(); i++) {
+      os << std::setfill('0') << std::setw(2) << std::hex << (int)data[i];
+      os << std::dec;
+    }
+    // If possibly an integer or long, display decimal value.
+    if (data.size() == sizeof(unsigned int)) {
+      unsigned int integer_value;
+      std::copy(data.begin(), data.end(), (unsigned char *)&integer_value);
+      os << " (unsigned int " << integer_value << ")";
+    } else if (data.size() == sizeof(unsigned long)) {
+      unsigned long integer_value;
+      std::copy(data.begin(), data.end(), (unsigned char *)&integer_value);
+      os << " (unsigned long " << integer_value << ")";
+    }
   }
 }
 
