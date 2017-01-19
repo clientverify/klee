@@ -591,7 +591,7 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
 
           // FIXME: do we need to do a deeper inequality check of the
           // bindings in the if() condition above, rather than simply
-          // comparing the bindings using the operator== for std::map?
+          // comparing the bindings using the operator!= for std::map?
 
           CVDEBUG("Multi-pass: " << property->pass_count <<
                   " Round: " << current_round_ <<
