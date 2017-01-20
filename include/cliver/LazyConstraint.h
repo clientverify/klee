@@ -65,7 +65,7 @@
 // The LazyConstraint class represents a lazy constraint L that is waiting for
 // a particular set of expressions InE to be concretized, at which time it can
 // be realized into a true constraint L(InE), and added to the path condition.
-// Note that the set of expressions E represents the "input" to L but may
+// Note that the set of expressions InE represents the "input" to L but may
 // correspond to the output of a prohibitive function P, e.g., when the lazy
 // constraint L represents the inverse of P.  A lazy constraint is a tuple L =
 // (InE, OutE, f) as follows:
@@ -74,9 +74,9 @@
 //   2. OutE: A vector of output expressions containing symbolic variables.
 //   3. f(): A function s.t. if InE and OutE were concrete, f(InE) = OutE.
 //
-// If at some point in time, the InE expression takes on a concrete value InE',
+// If at some point in time, the InE expression takes on a concrete value InC,
 // L is "triggered" and realized into a true constraint, namely the expression
-// OutE == f(InE').
+// OutE == f(InC).
 //
 // In order to create a lazy constraint L, call the following special function
 // from the *bitcode* (or inside the DEFINE_MODEL of a prohibitive function):
@@ -89,11 +89,13 @@
 // You must also designate a function in KLEE (not the bitcode) corresponding
 // to "function_name" with the following signature:
 //
-//   int function_name(uint8 *in_buf, size_t in_len,
+//   int function_name(const uint8 *in_buf, size_t in_len,
 //                     uint8 *out_buf, size_t out_len)
 //
 // This function pointer will be assigned to lazy constraint L, and will be
-// executed when InE is available as a concrete value.
+// executed when InE is available as a concrete value. Note that since there is
+// only one input buffer and one output buffer, some serialization may be
+// required in order to use this interface.
 //
 // Lazy Constraint Dispatcher overview
 //
@@ -113,11 +115,13 @@
 #ifndef LIB_CLIVER_LAZYCONSTRAINT_H_
 #define LIB_CLIVER_LAZYCONSTRAINT_H_
 
+#include <vector>
 #include <map>
 #include <string>
 
-#include "klee/ExecutionState.h"
+// #include "klee/ExecutionState.h"
 #include "klee/util/ExprVisitor.h"
+#include "cliver/CVAssignment.h"
 
 // namespace klee {
 //   struct KFunction;
@@ -125,19 +129,30 @@
 
 namespace cliver {
 
-class CVExecutionState;
-
-typedef std::pair<klee::ObjectState&, klee::ObjectState&> ObjectStatePair;
-typedef std::map<const klee::MemoryObject*, klee::ObjectState*> MemoryObjectMap;
-
-struct VertexProperties {
-  klee::ObjectState *object;
-};
-
 class LazyConstraint
 {
 public:
-  std::string name;
+
+  typedef std::vector< klee::ref<klee::Expr> > ExprVec;
+  typedef int (*TriggerFunc)(const unsigned char *in_buf, size_t in_len,
+                             unsigned char *out_buf, size_t out_len);
+
+  // Input and output (symbolic) expressions
+  ExprVec in_exprs;
+  ExprVec out_exprs;
+
+  // Function to invoke concretely/natively when triggering the LazyConstraint
+  TriggerFunc trigger_func;
+  std::string trigger_func_name; // used by bitcode to identify the function
+
+  // Taint information used when OPENSSL_SYMBOLIC_TAINT == 1
+  std::string taint;
+
+  /// \brief Trigger (or realize) the lazy constraint.
+  /// @param[in]  cva An assignment covering all symbolic variables in in_exprs.
+  /// @param[out] real_constraints A vector of realized constraints.
+  /// @return true on success; false if, e.g., we cannot concretize in_exprs.
+  bool trigger(const CVAssignment& cva, ExprVec& real_constraints) const;
 };
 
 }  // End cliver namespace

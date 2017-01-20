@@ -8,8 +8,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "cliver/AddressSpaceGraph.h"
-#include "cliver/CVExecutionState.h"
 #include "cliver/CVStream.h"
 #include "CVCommon.h"
 
@@ -17,10 +15,6 @@
 #include "../Core/Context.h"
 #include "../Core/Memory.h"
 
-#include "klee/Internal/Module/Cell.h"
-#include "klee/Internal/Module/InstructionInfoTable.h"
-#include "klee/Internal/Module/KInstruction.h"
-#include "klee/Internal/Module/KModule.h"
 #include "klee/util/ExprUtil.h"
 
 #if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
@@ -31,6 +25,8 @@
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
+
+#include "cliver/LazyConstraint.h"
 
 #include <map>
 #include <set>
@@ -72,5 +68,11 @@ DebugLazyConstraint("debug-lazy-constraint", llvm::cl::init(false));
 #endif
 
 ////////////////////////////////////////////////////////////////////////////////
+
+bool LazyConstraint::trigger(const CVAssignment &cva,
+                             LazyConstraint::ExprVec &real_constraints) const {
+  //findSymbolicObjects
+  return false;
+}
 
 } // end namespace cliver
