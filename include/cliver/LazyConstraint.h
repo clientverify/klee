@@ -137,7 +137,8 @@ public:
   typedef int (*TriggerFunc)(const unsigned char *in_buf, size_t in_len,
                              unsigned char *out_buf, size_t out_len);
 
-  // Input and output (symbolic) expressions
+  // Input and output (symbolic) expressions.  Each should be a vector of
+  // expressions, with each element representing one byte of in_buf/out_buf.
   ExprVec in_exprs;
   ExprVec out_exprs;
 
@@ -149,10 +150,13 @@ public:
   std::string taint;
 
   /// \brief Trigger (or realize) the lazy constraint.
-  /// @param[in]  cva An assignment covering all symbolic variables in in_exprs.
+  /// @param[in] cm ConstraintManager (maybe empty) covering in_expr variables.
+  /// @param[in] as Assignment (maybe empty) covering in_expr variables.
+  /// @pre NOTE: We assume "as" is consistent with the constraints in "cm".
   /// @param[out] real_constraints A vector of realized constraints.
   /// @return true on success; false if, e.g., we cannot concretize in_exprs.
-  bool trigger(const CVAssignment& cva, ExprVec& real_constraints) const;
+  bool trigger(const klee::ConstraintManager &cm, const klee::Assignment &as,
+               ExprVec &real_constraints) const;
 };
 
 }  // End cliver namespace

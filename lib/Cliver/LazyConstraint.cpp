@@ -69,9 +69,13 @@ DebugLazyConstraint("debug-lazy-constraint", llvm::cl::init(false));
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool LazyConstraint::trigger(const CVAssignment &cva,
+bool LazyConstraint::trigger(const klee::ConstraintManager &cm,
+                             const klee::Assignment &as,
                              LazyConstraint::ExprVec &real_constraints) const {
-  //findSymbolicObjects
+  // findSymbolicObjects
+
+  // TODO: use a solver to try extra hard to find concrete values for in_exprs,
+  // in case the expression simplification heuristics are insufficient.
   return false;
 }
 

@@ -16,6 +16,7 @@
 using namespace cliver;
 using namespace klee;
 
+
 class LazyConstraintTest : public ::testing::Test {
 public:
 
@@ -78,11 +79,14 @@ TEST(ProhibitiveFunction, PinvThenP) {
 }
 
 TEST_F(LazyConstraintTest, ExprToString) {
-  EXPECT_EQ("N0:(Mul w32 N1:(Add w32 1 N2:(ReadLSB w32 0 x)) N1)",
-            exprToString(xplusone_squared));
+  EXPECT_EQ(exprToString(xplusone_squared),
+            "N0:(Mul w32 N1:(Add w32 1 N2:(ReadLSB w32 0 x)) N1)");
+  EXPECT_EQ(
+      exprToString(xplusy_squared),
+      "N0:(Mul w32 N1:(Add w32 N2:(ReadLSB w32 0 x) N3:(ReadLSB w32 0 y)) N1)");
 }
 
-TEST_F(LazyConstraintTest, SimplifyExpr) {
+TEST_F(LazyConstraintTest, SubstitutionOneVariable) {
   ref<Expr> read_x = Expr::createTempRead(x_array, 32);
   ref<Expr> two = ConstantExpr::alloc(2U, Expr::Int32);
   ref<Expr> x_equals_2 = EqExpr::create(read_x, two);
@@ -93,12 +97,13 @@ TEST_F(LazyConstraintTest, SimplifyExpr) {
   EXPECT_EQ(exprToString(nine), "9");
 }
 
-TEST_F(LazyConstraintTest, SimplifyExprBytewise) {
+TEST_F(LazyConstraintTest, SubstitutionBytewise) {
   UpdateList x_ul(x_array, 0);
+  ref<Expr> read_x = Expr::createTempRead(x_array, 32);
   ref<Expr> read_x_0 = ReadExpr::create(x_ul, ConstantExpr::create(0, 32));
   ref<Expr> read_x_1 = ReadExpr::create(x_ul, ConstantExpr::create(1, 32));
-  ref<Expr> read_x_2 = ReadExpr::create(x_ul, ConstantExpr::create(2, 32));
-  ref<Expr> read_x_3 = ReadExpr::create(x_ul, ConstantExpr::create(3, 32));
+  ref<Expr> read_x_2 = ExtractExpr::create(read_x, 16, Expr::Int8);
+  ref<Expr> read_x_3 = ExtractExpr::create(read_x, 24, Expr::Int8);
   ref<Expr> zero_byte = ConstantExpr::alloc(0U, Expr::Int8);
   ref<Expr> two_byte = ConstantExpr::alloc(2U, Expr::Int8);
 
@@ -117,7 +122,7 @@ TEST_F(LazyConstraintTest, SimplifyExprBytewise) {
   EXPECT_EQ(exprToString(nine), "9");
 }
 
-TEST_F(LazyConstraintTest, SimplifyExprTwoVariable) {
+TEST_F(LazyConstraintTest, SubstitutionTwoVariable) {
   ref<Expr> read_x = Expr::createTempRead(x_array, 32);
   ref<Expr> two = ConstantExpr::alloc(2U, Expr::Int32);
   ref<Expr> x_equals_2 = EqExpr::create(read_x, two);
@@ -131,6 +136,30 @@ TEST_F(LazyConstraintTest, SimplifyExprTwoVariable) {
   cm.addConstraint(y_equals_3);
   ref<Expr> twentyfive = cm.simplifyExpr(xplusy_squared);
   EXPECT_EQ(exprToString(twentyfive), "25");
+  EXPECT_EQ(twentyfive->getKind(), Expr::Constant);
+  EXPECT_TRUE(isa<ConstantExpr>(twentyfive)); // equivalent to previous line
+}
+
+TEST_F(LazyConstraintTest, SubstitutionViaEvaluate) {
+  std::vector<const Array*> objects;
+  std::vector< std::vector<unsigned char> > values;
+
+  objects.push_back(x_array);
+  values.push_back(std::vector<unsigned char>{2,0,0,0});
+
+  Assignment as_incomplete(objects, values, true); // allowFreeValues = true
+  ref<Expr> yplus2_squared = as_incomplete.evaluate(xplusy_squared);
+  EXPECT_EQ(exprToString(yplus2_squared),
+            "N0:(Mul w32 N1:(Add w32 2 N2:(ReadLSB w32 0 y)) N1)");
+
+  objects.push_back(y_array);
+  values.push_back(std::vector<unsigned char>{3,0,0,0});
+
+  Assignment as(objects, values, true); // allowFreeValues = true
+  ref<Expr> twentyfive = as.evaluate(xplusy_squared);
+  EXPECT_EQ(exprToString(twentyfive), "25");
+  EXPECT_EQ(twentyfive->getKind(), Expr::Constant);
+  EXPECT_TRUE(isa<ConstantExpr>(twentyfive)); // equivalent to previous line
 }
 
 } // end anonymous namespace
