@@ -121,6 +121,7 @@
 
 // #include "klee/ExecutionState.h"
 #include "klee/util/ExprVisitor.h"
+#include "klee/Solver.h"
 #include "cliver/CVAssignment.h"
 
 // namespace klee {
@@ -133,9 +134,45 @@ class LazyConstraint
 {
 public:
 
+  // Vector of expressions, each usually representing one byte of a
+  // buffer. These expressions can be either symbolic formulas (representing
+  // the data) or equality constraints (representing the triggered lazy
+  // constraints), but each element always corresponds to one byte of a buffer.
   typedef std::vector< klee::ref<klee::Expr> > ExprVec;
+
+  // A function that when triggered, populates out_buf and returns 0 on
+  // success. The buffers in_buf and out_buf must be non-overlapping.
   typedef int (*TriggerFunc)(const unsigned char *in_buf, size_t in_len,
                              unsigned char *out_buf, size_t out_len);
+
+  LazyConstraint(const ExprVec &in, const ExprVec &out, TriggerFunc f,
+                 std::string fname, std::string taint = "")
+      : in_exprs(in), out_exprs(out), trigger_func(f), trigger_func_name(fname),
+        taint(taint) {}
+
+  /// \brief Trigger (or realize) the lazy constraint.
+  /// @param[in] solver SMT solver stack to be used for concretization.
+  /// @param[in] cm ConstraintManager (maybe empty) covering in_expr variables.
+  /// @param[in] as Assignment (maybe empty) covering in_expr variables.
+  /// @pre NOTE: We assume "as" is consistent with the constraints in "cm".
+  /// @param[out] new_constraints A vector of realized constraints.
+  /// @return true on success; false if, e.g., we cannot concretize in_exprs.
+  bool trigger(klee::Solver *solver, const klee::ConstraintManager &cm,
+               const klee::Assignment &as,
+               std::vector<klee::ref<klee::Expr>> &new_constraints) const;
+
+  /// \brief Trigger the lazy constraint (with just a constraint manager)
+  bool trigger(klee::Solver *solver, const klee::ConstraintManager &cm,
+               std::vector<klee::ref<klee::Expr>> &new_constraints) const;
+
+  /// \brief Trigger the lazy constraint (with just an assignment)
+  bool trigger(klee::Solver *solver, const klee::Assignment &as,
+               std::vector<klee::ref<klee::Expr>> &new_constraints) const;
+
+  /// \brief Return the (nick)name of the trigger function.
+  std::string name() const { return trigger_func_name; }
+
+private:
 
   // Input and output (symbolic) expressions.  Each should be a vector of
   // expressions, with each element representing one byte of in_buf/out_buf.
@@ -149,15 +186,21 @@ public:
   // Taint information used when OPENSSL_SYMBOLIC_TAINT == 1
   std::string taint;
 
-  /// \brief Trigger (or realize) the lazy constraint.
-  /// @param[in] cm ConstraintManager (maybe empty) covering in_expr variables.
-  /// @param[in] as Assignment (maybe empty) covering in_expr variables.
-  /// @pre NOTE: We assume "as" is consistent with the constraints in "cm".
-  /// @param[out] real_constraints A vector of realized constraints.
-  /// @return true on success; false if, e.g., we cannot concretize in_exprs.
-  bool trigger(const klee::ConstraintManager &cm, const klee::Assignment &as,
-               ExprVec &real_constraints) const;
 };
+
+/////////////////// Helper Functions //////////////////
+std::string exprToString(klee::ref<klee::Expr> e);
+void addAssignmentToConstraints(const klee::Assignment &as,
+                                klee::ConstraintManager &cm);
+klee::ref<klee::Expr> assignmentToExpr(const klee::Assignment &as);
+
+// If the constraints in cm imply a unique, concrete set of values for exprs,
+// return true and assign those values to unique_values (output
+// parameter). Otherwise, return false.
+bool solveForUniqueExprVec(klee::Solver *solver,
+                           const klee::ConstraintManager &cm,
+                           const LazyConstraint::ExprVec &exprs,
+                           std::vector<unsigned char> &unique_values);
 
 }  // End cliver namespace
 
