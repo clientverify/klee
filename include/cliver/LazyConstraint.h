@@ -116,8 +116,10 @@
 #define LIB_CLIVER_LAZYCONSTRAINT_H_
 
 #include <vector>
+#include <list>
 #include <map>
 #include <string>
+#include <memory>
 
 // #include "klee/ExecutionState.h"
 #include "klee/util/ExprVisitor.h"
@@ -151,12 +153,12 @@ public:
         taint(taint) {}
 
   /// \brief Trigger (or realize) the lazy constraint.
-  /// @param[in] solver SMT solver stack to be used for concretization.
-  /// @param[in] cm ConstraintManager (maybe empty) covering in_expr variables.
-  /// @param[in] as Assignment (maybe empty) covering in_expr variables.
-  /// @pre NOTE: We assume "as" is consistent with the constraints in "cm".
-  /// @param[out] new_constraints A vector of realized constraints.
-  /// @return true on success; false if, e.g., we cannot concretize in_exprs.
+  /// \param[in] solver SMT solver stack to be used for concretization.
+  /// \param[in] cm ConstraintManager (maybe empty) covering in_expr variables.
+  /// \param[in] as Assignment (maybe empty) covering in_expr variables.
+  /// \pre NOTE: We assume "as" is consistent with the constraints in "cm".
+  /// \param[out] new_constraints A vector of realized constraints.
+  /// \return true on success; false if, e.g., we cannot concretize in_exprs.
   bool trigger(klee::Solver *solver, const klee::ConstraintManager &cm,
                const klee::Assignment &as,
                std::vector<klee::ref<klee::Expr>> &new_constraints) const;
@@ -188,11 +190,55 @@ private:
 
 };
 
+
+class LazyConstraintDispatcher
+{
+public:
+
+  /// \brief Add lazy constraint to the dispatcher's cache.
+  void addLazy(std::shared_ptr<LazyConstraint> lazy_c) {
+    lazy_constraint_cache.push_back(lazy_c);
+  }
+
+  /// \brief number of lazy constraints cached
+  size_t size() const { return lazy_constraint_cache.size(); }
+
+  /// \brief Attempt to trigger all lazy constraints
+  ///
+  /// Once a lazy constraint has been triggered, remove it from the dispatcher's
+  /// cache. If a lazy constraint triggers and causes a contradiction with the
+  /// earlier constraints, the last LazyConstraint triggered (in the output)
+  /// will be the contradicting constraint.
+  ///
+  /// \param[out] new_constraints - one Expr per triggered LazyConstraint.
+  /// \param[out] triggered - List of LazyConstraints successfully triggered.
+  /// \param[in] cm - Constraint manager with all initial constraints to apply.
+  /// \param[in] recursive - Enable lazily-generated constraints to cascade and
+  ///            trigger other lazy constraints recursively (default: true).
+  /// \return True if the triggered lazy constraints (if any) are consistent
+  ///            with all the initial constraints in the constraint manager.
+  ///            Vacuously true if no LazyConstraints have been triggered.
+  bool triggerAll(klee::Solver *solver,
+                  std::vector<klee::ref<klee::Expr>> &new_constraints,
+                  std::vector<std::shared_ptr<LazyConstraint>> &triggered,
+                  const klee::ConstraintManager &cm, bool recursive = true);
+
+private:
+
+  std::list<std::shared_ptr<LazyConstraint>> lazy_constraint_cache;
+};
+
 /////////////////// Helper Functions //////////////////
+
 std::string exprToString(klee::ref<klee::Expr> e);
+
 void addAssignmentToConstraints(const klee::Assignment &as,
                                 klee::ConstraintManager &cm);
+
 klee::ref<klee::Expr> assignmentToExpr(const klee::Assignment &as);
+
+klee::ref<klee::Expr>
+conjunctAllExpr(const std::vector<klee::ref<klee::Expr>> &vex);
 
 // If the constraints in cm imply a unique, concrete set of values for exprs,
 // return true and assign those values to unique_values (output

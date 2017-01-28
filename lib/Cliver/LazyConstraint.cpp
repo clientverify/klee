@@ -111,6 +111,15 @@ ref<Expr> assignmentToExpr(const Assignment &as) {
   return conjunct;
 }
 
+/// \brief Create one large expression as conjunction of all expressions
+ref<Expr> conjunctAllExpr(const std::vector<ref<Expr>> &vex) {
+  ref<Expr> conjunct = ConstantExpr::alloc(1U, Expr::Bool);
+  for (auto e : vex) {
+    conjunct = AndExpr::create(conjunct, e);
+  }
+  return conjunct;
+}
+
 // Should this be in Expr.cpp?
 std::string exprToString(ref<Expr> e) {
   std::string expr_string;
@@ -169,6 +178,8 @@ bool solveForUniqueExprVec(Solver *solver, const ConstraintManager &cm,
 
   return true;
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 bool LazyConstraint::trigger(Solver *solver, const ConstraintManager &cm,
                              const Assignment &as,
@@ -237,6 +248,72 @@ bool LazyConstraint::trigger(Solver *solver, const Assignment &as,
                              std::vector<ref<Expr>> &new_constraints) const {
   ConstraintManager cm;
   return trigger(solver, cm, as, new_constraints);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool LazyConstraintDispatcher::triggerAll(Solver *solver,
+    std::vector<ref<Expr>> &new_constraints,
+    std::vector<std::shared_ptr<LazyConstraint>> &triggered,
+    const ConstraintManager &cm, bool recursive) {
+
+  // Clear output params
+  new_constraints.clear();
+  triggered.clear();
+
+  // Local copy of constraint manager
+  ConstraintManager cm_temp(cm);
+
+  // Recursively... (although we implement it as a loop, not recursion)
+  bool something_triggered = false;
+  do {
+    // Iterate through cache of lazy constraints and try to trigger them
+    something_triggered = false;
+    auto it = lazy_constraint_cache.begin();
+    while (it != lazy_constraint_cache.end()) {
+
+      // Attempt to trigger this lazy constraint.
+      std::shared_ptr<LazyConstraint> lc(*it);
+      std::vector<ref<Expr>> byte_constraints;
+      if (lc->trigger(solver, cm_temp, byte_constraints)) {
+
+        // Triggered: get the newly realized constraints.
+        something_triggered = true;
+        triggered.push_back(lc);
+        ref<Expr> merged_constraints = conjunctAllExpr(byte_constraints);
+        new_constraints.push_back(merged_constraints);
+
+        // Check that the newly realized constraints are consistent with
+        // existing ones.
+        bool result;
+        solver->mayBeTrue(Query(cm_temp, merged_constraints), result);
+        if (result) {
+          // Consistent: add newly realized constraints to constraint manager.
+          for (auto e: byte_constraints) {
+            cm_temp.addConstraint(e);
+          }
+        } else {
+          // Inconsistent: quit now.
+          CVDEBUG("Lazy constraint "
+                  << (*it)->name()
+                  << " triggered and produced a contradiction.");
+          return false;
+        }
+
+        // Remove lc from cache (erase increments iterator)
+        it = lazy_constraint_cache.erase(it);
+
+      } else {
+
+        // Not triggered: move on to the next lazy constraint.
+        ++it;
+
+      }
+
+    } // END: Iterate through cache.
+  } while (recursive && something_triggered);
+
+  return true;
 }
 
 } // end namespace cliver

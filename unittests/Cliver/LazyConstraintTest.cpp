@@ -16,6 +16,9 @@
 using namespace cliver;
 using namespace klee;
 
+////////////////////////////////////////////////////////////////////////////////
+namespace {
+////////////////////////////////////////////////////////////////////////////////
 
 class LazyConstraintTest : public ::testing::Test {
 public:
@@ -63,8 +66,7 @@ public:
   Solver *solver;
 };
 
-
-namespace {
+////////////////////////////////////////////////////////////////////////////////
 
 // sample "prohibitive" function
 unsigned int p(unsigned int x) {
@@ -106,6 +108,8 @@ int trigger_p_inv(const unsigned char *in_buf, size_t in_len,
   return 0; // success
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 TEST(ProhibitiveFunction, Pof10) {
   EXPECT_EQ(p(10), (unsigned int)6410);
   EXPECT_EQ(p_inv(6410), (unsigned int)10);
@@ -120,6 +124,8 @@ TEST(ProhibitiveFunction, PinvThenP) {
   unsigned int n = 314159;
   EXPECT_EQ(p(p_inv(n)), n);
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 TEST_F(LazyConstraintTest, ExprToString) {
   EXPECT_EQ(exprToString(xplusone_squared),
@@ -404,5 +410,285 @@ TEST_F(LazyConstraintTest, TriggerViaAssignment) {
   EXPECT_EQ(exprToString(result_y), "6410");
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+unsigned int triple(unsigned int x) {
+  return 3 * x;
+}
+
+// trigger version of p()
+int trigger_triple(const unsigned char *in_buf, size_t in_len,
+                   unsigned char *out_buf, size_t out_len) {
+  const unsigned int *input = (const unsigned int *)in_buf;
+  unsigned int *output = (unsigned int *)out_buf;
+  if (input == NULL || in_len != sizeof(*input))
+    return -1;
+  if (output == NULL || out_len != sizeof(*output))
+    return -1;
+
+  *output = triple(*input);
+
+  return 0; // success
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+class LazyConstraintDispatcherTest : public ::testing::Test {
+public:
+
+  virtual void SetUp() {
+    x_array = Array::CreateArray("x", sizeof(unsigned int));
+    y_array = Array::CreateArray("y", sizeof(unsigned int));
+    z_array = Array::CreateArray("z", sizeof(unsigned int));
+    read_x = Expr::createTempRead(x_array, Expr::Int32);
+    read_y = Expr::createTempRead(y_array, Expr::Int32);
+    read_z = Expr::createTempRead(z_array, Expr::Int32);
+
+    for (unsigned int i = 0; i < 4; i++) {
+      ref<Expr> x_byte = ExtractExpr::create(read_x, 8*i, Expr::Int8);
+      x_exprs.push_back(x_byte);
+      ref<Expr> y_byte = ExtractExpr::create(read_y, 8*i, Expr::Int8);
+      y_exprs.push_back(y_byte);
+      ref<Expr> z_byte = ExtractExpr::create(read_z, 8*i, Expr::Int8);
+      z_exprs.push_back(z_byte);
+    }
+
+    // Construct 3 lazy constraints, corresponding to following code.
+    //
+    //   unsigned int x, y, z;
+    //   klee_make_symbolic(&x, sizeof(x), "x");
+    //   z = triple(x);
+    //   y = p(x);
+    //   ...
+    //
+    // We assume triple() and p() are prohibitive functions, therefore producing
+    // fully symbolic z and y when the code is run.  This also produces lazy
+    // constraints for p() and its inverse p_inv(), as well as the forward
+    // direction of triple(). The inverse of triple() is also well-defined,
+    // but here we intentionally choose not to introduce it.
+    lazy_p = std::make_shared<LazyConstraint>(
+        x_exprs, y_exprs, trigger_p, "trigger_p");
+    lazy_p_inv = std::make_shared<LazyConstraint>(
+        y_exprs, x_exprs, trigger_p_inv, "trigger_p_inv");
+    lazy_triple = std::make_shared<LazyConstraint>(
+        x_exprs, z_exprs, trigger_triple, "trigger_triple");
+
+    // construct standard solver chain
+    STPSolver *stpSolver = new STPSolver(true);
+    solver = stpSolver;
+    solver = createCexCachingSolver(solver);
+    solver = createCachingSolver(solver);
+    solver = createIndependentSolver(solver);
+  }
+
+  virtual void TearDown() {
+    delete solver;
+  }
+
+  const Array *x_array, *y_array, *z_array;
+  ref<Expr> read_x;
+  ref<Expr> read_y;
+  ref<Expr> read_z;
+  LazyConstraint::ExprVec x_exprs;
+  LazyConstraint::ExprVec y_exprs;
+  LazyConstraint::ExprVec z_exprs;
+
+  std::shared_ptr<LazyConstraint> lazy_p;
+  std::shared_ptr<LazyConstraint> lazy_p_inv;
+  std::shared_ptr<LazyConstraint> lazy_triple;
+
+  LazyConstraintDispatcher lcd;
+
+  Solver *solver;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+TEST_F(LazyConstraintDispatcherTest, NoLazy) {
+  std::vector<ref<Expr>> new_constraints;
+  std::vector<std::shared_ptr<LazyConstraint>> triggered;
+  ConstraintManager cm;
+
+  // Add constraint (x == 10)
+  ref<Expr> ten = ConstantExpr::alloc(10U, Expr::Int32);
+  ref<Expr> x_eq_10 = EqExpr::create(read_x, ten);
+  cm.addConstraint(x_eq_10);
+
+  // Make sure nothing happens ;-)
+  EXPECT_EQ(lcd.size(), 0U);
+  bool result = lcd.triggerAll(solver, new_constraints, triggered, cm);
+  EXPECT_EQ(result, true); // vacuously true
+  EXPECT_EQ(triggered.size(), 0U);
+  EXPECT_EQ(new_constraints.size(), 0U);
+}
+
+TEST_F(LazyConstraintDispatcherTest, OneLazyNoTrigger) {
+  std::vector<ref<Expr>> new_constraints;
+  std::vector<std::shared_ptr<LazyConstraint>> triggered;
+  ConstraintManager cm;
+
+  // Intentionally leave cm empty without constraints.
+
+  // No lazy constraint should trigger.
+  lcd.addLazy(lazy_p);
+  EXPECT_EQ(lcd.size(), 1U);
+  bool result = lcd.triggerAll(solver, new_constraints, triggered, cm);
+  EXPECT_EQ(result, true);
+  EXPECT_EQ(triggered.size(), 0U);
+  EXPECT_EQ(new_constraints.size(), 0U);
+}
+
+
+TEST_F(LazyConstraintDispatcherTest, OneLazyOneTrigger) {
+  std::vector<ref<Expr>> new_constraints;
+  std::vector<std::shared_ptr<LazyConstraint>> triggered;
+  ConstraintManager cm;
+
+  // Add constraint (x == 10)
+  ref<Expr> ten = ConstantExpr::alloc(10U, Expr::Int32);
+  ref<Expr> x_eq_10 = EqExpr::create(read_x, ten);
+  cm.addConstraint(x_eq_10);
+
+  // See if one lazy constraint triggers correctly.
+  lcd.addLazy(lazy_p);
+  EXPECT_EQ(lcd.size(), 1U);
+  bool result = lcd.triggerAll(solver, new_constraints, triggered, cm);
+  EXPECT_EQ(result, true);
+  EXPECT_EQ(triggered.size(), 1U);
+  EXPECT_EQ(new_constraints.size(), 1U);
+  cm.addConstraint(new_constraints[0]);
+  ref<Expr> result_y = cm.simplifyExpr(read_y);
+  EXPECT_EQ(exprToString(result_y), "6410");
+}
+
+TEST_F(LazyConstraintDispatcherTest, OneLazyContradiction) {
+  std::vector<ref<Expr>> new_constraints;
+  std::vector<std::shared_ptr<LazyConstraint>> triggered;
+  ConstraintManager cm;
+
+  // Add constraint (x == 10)
+  ref<Expr> ten = ConstantExpr::alloc(10U, Expr::Int32);
+  ref<Expr> x_eq_10 = EqExpr::create(read_x, ten);
+  cm.addConstraint(x_eq_10);
+  // Add constraint (y == 6411) to force contradiction
+  ref<Expr> sixtyfoureleven = ConstantExpr::alloc(6411U, Expr::Int32);
+  ref<Expr> y_eq_6411 = EqExpr::create(read_y, sixtyfoureleven);
+  cm.addConstraint(y_eq_6411);
+
+  // See if one lazy constraint triggers but reaches contradiction.
+  lcd.addLazy(lazy_p);
+  EXPECT_EQ(lcd.size(), 1U);
+  bool result = lcd.triggerAll(solver, new_constraints, triggered, cm);
+  EXPECT_EQ(result, false);
+  EXPECT_EQ(triggered.size(), 1U);
+  EXPECT_EQ(new_constraints.size(), 1U);
+}
+
+
+TEST_F(LazyConstraintDispatcherTest, TwoLazyOneTrigger) {
+  std::vector<ref<Expr>> new_constraints;
+  std::vector<std::shared_ptr<LazyConstraint>> triggered;
+  ConstraintManager cm;
+
+  // Add constraint (y == 6410)
+  ref<Expr> sixtyfourten = ConstantExpr::alloc(6410U, Expr::Int32);
+  ref<Expr> y_eq_6410 = EqExpr::create(read_y, sixtyfourten);
+  cm.addConstraint(y_eq_6410);
+
+  // Add two lazy constraints s.t. only the 2nd triggers (non-recursive mode)
+  lcd.addLazy(lazy_triple);
+  lcd.addLazy(lazy_p_inv);
+  EXPECT_EQ(lcd.size(), 2U);
+  bool result = lcd.triggerAll(solver, new_constraints, triggered, cm, false);
+  EXPECT_EQ(result, true);
+  EXPECT_EQ(triggered.size(), 1U);
+  EXPECT_EQ(new_constraints.size(), 1U);
+  cm.addConstraint(new_constraints[0]);
+  ref<Expr> result_x = cm.simplifyExpr(read_x);
+  EXPECT_EQ(exprToString(result_x), "10");
+}
+
+TEST_F(LazyConstraintDispatcherTest, TwoLazyTwoTrigger) {
+  std::vector<ref<Expr>> new_constraints;
+  std::vector<std::shared_ptr<LazyConstraint>> triggered;
+  ConstraintManager cm;
+
+  // Add constraint (y == 6410)
+  ref<Expr> sixtyfourten = ConstantExpr::alloc(6410U, Expr::Int32);
+  ref<Expr> y_eq_6410 = EqExpr::create(read_y, sixtyfourten);
+  cm.addConstraint(y_eq_6410);
+
+  // Add two lazy constraints such that the 2nd triggers first (recursive mode)
+  lcd.addLazy(lazy_triple);
+  lcd.addLazy(lazy_p_inv);
+  EXPECT_EQ(lcd.size(), 2U);
+  bool result = lcd.triggerAll(solver, new_constraints, triggered, cm);
+  EXPECT_EQ(result, true);
+  EXPECT_EQ(triggered.size(), 2U);
+  EXPECT_EQ(new_constraints.size(), 2U);
+  for (auto c: new_constraints) {
+    cm.addConstraint(c);
+  }
+  ref<Expr> result_x = cm.simplifyExpr(read_x);
+  EXPECT_EQ(exprToString(result_x), "10");
+  ref<Expr> result_z = cm.simplifyExpr(read_z);
+  EXPECT_EQ(exprToString(result_z), "30");
+}
+
+TEST_F(LazyConstraintDispatcherTest, TwoLazyContradiction) {
+  std::vector<ref<Expr>> new_constraints;
+  std::vector<std::shared_ptr<LazyConstraint>> triggered;
+  ConstraintManager cm;
+
+  // Add constraint (y == 6410)
+  ref<Expr> sixtyfourten = ConstantExpr::alloc(6410U, Expr::Int32);
+  ref<Expr> y_eq_6410 = EqExpr::create(read_y, sixtyfourten);
+  cm.addConstraint(y_eq_6410);
+  // Add constraint (z == 31)
+  ref<Expr> thirtyone = ConstantExpr::alloc(31U, Expr::Int32);
+  ref<Expr> z_eq_31 = EqExpr::create(read_z, thirtyone);
+  cm.addConstraint(z_eq_31);
+
+  // Add two lazy constraints such that a contradiction occurs
+  lcd.addLazy(lazy_triple);
+  lcd.addLazy(lazy_p_inv);
+  EXPECT_EQ(lcd.size(), 2U);
+  bool result = lcd.triggerAll(solver, new_constraints, triggered, cm);
+  EXPECT_EQ(result, false);
+  EXPECT_EQ(triggered.size(), 2U);
+  EXPECT_EQ(new_constraints.size(), 2U);
+  EXPECT_EQ(triggered[1]->name(), "trigger_triple");
+}
+
+TEST_F(LazyConstraintDispatcherTest, ThreeLazyThreeTriggerEquiv) {
+  std::vector<ref<Expr>> new_constraints;
+  std::vector<std::shared_ptr<LazyConstraint>> triggered;
+  ConstraintManager cm;
+
+  // Add constraint (y == 6410)
+  ref<Expr> sixtyfourten = ConstantExpr::alloc(6410U, Expr::Int32);
+  ref<Expr> y_eq_6410 = EqExpr::create(read_y, sixtyfourten);
+  cm.addConstraint(y_eq_6410);
+
+  // Add three lazy constraints, one of which is redundant (inverse of another).
+  lcd.addLazy(lazy_triple);
+  lcd.addLazy(lazy_p_inv);
+  lcd.addLazy(lazy_p);
+  EXPECT_EQ(lcd.size(), 3U);
+  bool result = lcd.triggerAll(solver, new_constraints, triggered, cm);
+  EXPECT_EQ(result, true);
+  EXPECT_EQ(triggered.size(), 3U);
+  EXPECT_EQ(new_constraints.size(), 3U);
+  for (auto c: new_constraints) {
+    cm.addConstraint(c);
+  }
+  ref<Expr> result_x = cm.simplifyExpr(read_x);
+  EXPECT_EQ(exprToString(result_x), "10");
+  ref<Expr> result_z = cm.simplifyExpr(read_z);
+  EXPECT_EQ(exprToString(result_z), "30");
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
 
 } // end anonymous namespace
