@@ -64,19 +64,26 @@
 //
 // The LazyConstraint class represents a lazy constraint L that is waiting for
 // a particular set of expressions InE to be concretized, at which time it can
-// be realized into a true constraint L(InE), and added to the path condition.
-// Note that the set of expressions InE represents the "input" to L but may
-// correspond to the output of a prohibitive function P, e.g., when the lazy
-// constraint L represents the inverse of P.  A lazy constraint is a tuple L =
-// (InE, OutE, f) as follows:
+// be realized into a true constraint and added to the path condition.  Note
+// that the expressions InE comprise the "input" to L but may correspond to the
+// output of a prohibitive function P, e.g., when the lazy constraint L
+// represents the inverse of P.  More precisely, a lazy constraint is defined
+// as the tuple L = (InE, OutE, f) as follows:
 //
 //   1. InE: A vector of input expressions containing symbolic variables.
 //   2. OutE: A vector of output expressions containing symbolic variables.
 //   3. f(): A function s.t. if InE and OutE were concrete, f(InE) = OutE.
 //
-// If at some point in time, the InE expression takes on a concrete value InC,
-// L is "triggered" and realized into a true constraint, namely the expression
-// OutE == f(InC).
+// Each element of InE and OutE correspond to one byte of input and output,
+// respectively, of the function f().  Note that OutE corresponds not exactly
+// to the output of the lazy constraint, but rather to the symbolic output of
+// f(), e.g., produced by skipping f() as a prohibitive function.  If at some
+// point in time the InE expression takes on a concrete value, say InE == 42,
+// then L can be "triggered" and realized into a true constraint.  This new
+// constraint is the entire expression OutE == f(42), where the RHS is first
+// evaluated concretely to, say f(42) = 2187.  The output resulting from
+// triggering L is therefore the constraint defined by the entire expression
+// (OutE == 2187).
 //
 // In order to create a lazy constraint L, call the following special function
 // from the *bitcode* (or inside the DEFINE_MODEL of a prohibitive function):
@@ -104,13 +111,17 @@
 // ConstraintManager, but from a testing and maintenance perspective, it is
 // more manageable to keep this code separate from vanilla KLEE.  Logically,
 // each LazyConstraintDispatcher is paired with and interacts with one
-// ConstraintManager (hence, one per state).  Whenever the constraint manager
-// adds a new constraint to the path condition, the LCD is invoked to determine
+// ConstraintManager (hence, one per state).  Whenever the execution reaches
+// a SEND point and new constraints are added, the LCD is invoked to determine
 // whether any lazy constraints now have InE's that take on concrete values,
 // i.e., triggering them.  If so, they are realized into true constraints and
 // added to the path condition.  This may trigger other lazy constraints, and
-// this process is continued until a fixed point is reached.
-//
+// this process is continued until a fixed point (or a contradiction) is
+// reached. Note that in theory, every symbolic branch provides a potential
+// opportunity to trigger one or more lazy constraints, as it adds a constraint
+// to the path condition.  However, because several solver queries are involved,
+// we delay this until we reach a SEND point to minimize our code modifications
+// and reduce overhead in the common case (TODO: test this performance claim).
 //===---------------------------------------------------------------------===//
 #ifndef LIB_CLIVER_LAZYCONSTRAINT_H_
 #define LIB_CLIVER_LAZYCONSTRAINT_H_
