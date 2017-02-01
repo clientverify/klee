@@ -12,7 +12,8 @@
 #include <time.h>
 
 #ifdef KLEE
-int klee_int(const char *name); // prototype for klee_int()
+#include "klee/klee.h"
+unsigned klee_is_symbolic_buffer(const unsigned char *buf, size_t len);
 #endif
 
 #ifdef KTEST
@@ -24,11 +25,15 @@ char* ktest_file = "lazyconstraint.ktest";
 #include "klee/Internal/ADT/KTest.h"
 #include "KTestSocket.inc"
 
-#define BUFFER_SIZE 256
-static int NEGATIVE_TEST_CASE = 0; // intentionally send wrong message
-static int FORCE_X_EQUAL_TEN = 0; // for IVC concrete run, force x = 10
-enum lazy_constraint_type {NETWORK_DATA, IMPLIED_VALUE_CONCRETIZATION};
+enum bitcode_test_case {NETWORK_DATA, IMPLIED_VALUE_CONCRETIZATION};
 enum mode_type {CLIENT_MODE, SERVER_MODE, FORK_MODE};
+enum lazy_constraint_type {LAZY_NONE, LAZY_P, LAZY_P_INV, LAZY_P_BOTH};
+
+#define BUFFER_SIZE 256
+static int NEGATIVE_TEST_CASE = 0;  // intentionally send wrong message
+static int FORCE_X_EQUAL_TEN = 0;   // for IVC concrete run, force x = 10
+static int ENABLE_PROHIBITIVE = 0;  // mark prohibitive_f as prohibitive
+static int ENABLE_LAZY = LAZY_NONE; // enable lazy constraint generators
 
 /**************************** TEST DESCRIPTION ****************************
 
@@ -86,18 +91,63 @@ at a network send point:
   // Negative test case: 314, 6411
 
 Below, we use the more descriptive names prohibitive_f() and
-prohibitive_f_inverse() for the functions p() and p_inv() above.
+prohibitive_f_inverse() as wrappers for the functions p() and p_inv() above.
 **************************************************************************/
 
+////////////////////////////////////////////////////////////////////////////////
+// KLEE related tooling
+////////////////////////////////////////////////////////////////////////////////
 
-// "Prohibitive" functions to test.
-unsigned int prohibitive_f(unsigned int x) {
+#ifdef KLEE
+
+// Allocate a temporary symbolic buffer and copy into buf; this is needed
+// because klee_make_symbolic looks up the allocated object for a buf pointer
+// and will fail on non-aligned pointers.
+void copy_symbolic_buffer(unsigned char *buf, int len, char *tag) {
+  if (buf) {
+    unsigned char *symbolic_buf = (unsigned char *)malloc(len);
+    klee_make_symbolic(symbolic_buf, len, tag);
+    memcpy(buf, symbolic_buf, len);
+    free(symbolic_buf);
+  }
+}
+
+#endif // KLEE
+
+////////////////////////////////////////////////////////////////////////////////
+
+// "Complicated" function and its inverse.
+
+unsigned int p(unsigned int x) {
   return 641 * x;
 }
 
-unsigned int prohibitive_f_inverse(unsigned int x) {
+unsigned int p_inv(unsigned int x) {
   return 6700417 * x;
 }
+
+// "Prohibitive" function version, which will skip p() on symbolic input,
+// and possibly add lazy constraints.
+unsigned int prohibitive_f(unsigned int x) {
+  if (ENABLE_PROHIBITIVE) {
+#ifdef KLEE
+    // If symbolic input, skip.
+    if(klee_is_symbolic_buffer((unsigned char *)&x, sizeof(x))) {
+      unsigned int ret;
+      copy_symbolic_buffer((unsigned char *)&ret, (int)sizeof(ret), "pOut");
+      // TODO: Inject lazy constraint(s)
+      printf("skipping p()\n");
+      return ret;
+    }
+#else
+    fprintf(stderr, "prohibitive functions require compiling with -DKLEE\n");
+    exit(1);
+#endif // KLEE
+  }
+  printf("running concrete p()\n");
+  return p(x);
+}
+
 
 
 //static unsigned long int srand_next = 1;
@@ -336,7 +386,7 @@ int main(int argc, char* argv[]) {
 
   int lcg_test_type = NETWORK_DATA; // default test type
 
-  while ((c = getopt(argc, argv, "csfp:m:b:k:nit")) != -1) {
+  while ((c = getopt(argc, argv, "csfp:m:b:k:nitPL:")) != -1) {
     switch (c) {
       case 'c':
         mode=CLIENT_MODE;
@@ -362,6 +412,21 @@ int main(int argc, char* argv[]) {
         break;
       case 't':
         FORCE_X_EQUAL_TEN = 1;
+        break;
+      case 'P':
+        ENABLE_PROHIBITIVE = 1;
+        break;
+      case 'L':
+        if (strcmp(optarg, "p") == 0) {
+          ENABLE_LAZY = LAZY_P;
+        } else if (strcmp(optarg, "p_inv") == 0) {
+          ENABLE_LAZY = LAZY_P_INV;
+        } else if (strcmp(optarg, "p_both") == 0) {
+          ENABLE_LAZY = LAZY_P_BOTH;
+        } else {
+          fprintf(stderr, "invalid argument to -L\n");
+          exit(1);
+        }
         break;
     }
   }
