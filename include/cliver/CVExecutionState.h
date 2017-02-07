@@ -9,9 +9,9 @@
 #ifndef CLIVER_EXECUTION_STATE_H
 #define CLIVER_EXECUTION_STATE_H
 
-#include "cliver/CVAssignment.h"
-
 #include "klee/ExecutionState.h"
+#include "cliver/CVAssignment.h"
+#include "cliver/LazyConstraint.h"
 
 #include <list>
 #include <sstream>
@@ -94,6 +94,10 @@ class CVExecutionState : public klee::ExecutionState {
     return multi_pass_previous_round_bindings_;
   }
 
+  LazyConstraintDispatcher &get_lazy_constraint_dispatcher() {
+    return lazy_constraint_dispatcher_;
+  }
+
   CVExecutionState* multi_pass_clone_;
  private:
   unsigned increment_id() { return next_id_++; }
@@ -108,6 +112,7 @@ class CVExecutionState : public klee::ExecutionState {
   std::map<std::string, uint64_t> array_name_index_map_;
   CVAssignment multi_pass_assignment_;
   klee::Assignment::bindings_ty multi_pass_previous_round_bindings_;
+  LazyConstraintDispatcher lazy_constraint_dispatcher_;
   SearcherStage *searcher_stage_;
 };
 

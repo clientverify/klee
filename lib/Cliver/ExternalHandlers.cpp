@@ -16,11 +16,14 @@
 #include "cliver/CVStream.h"
 #include "cliver/ExecutionObserver.h"
 #include "cliver/NetworkManager.h"
+#include "cliver/LazyConstraint.h"
+#include "cliver/LazyConstraintConfig.h"
 #include "CVCommon.h"
 
 #include "../Core/Executor.h"
 #include "../Core/Memory.h"
 #include "../Core/TimingSolver.h"
+#include "../Core/SpecialFunctionHandler.h"
 #include "klee/Constants.h"
 #include "klee/util/ExprUtil.h"
 #include "klee/Internal/Module/KInstruction.h"
@@ -124,7 +127,7 @@ void ExternalHandler_merge(
     klee::Executor* executor, klee::ExecutionState *state, 
     klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments) {
   assert(arguments.size() == 0);
-  CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
+  //CVExecutor *cv_executor = static_cast<CVExecutor*>(executor);
 }
 
 void ExternalHandler_XEventsQueued(
@@ -277,7 +280,7 @@ void ExternalHandler_cliver_event(
           res &&
           "Symbolic Model Event: interior pointer unhandled");
 
-    const klee::MemoryObject *mo = op.first;
+    //const klee::MemoryObject *mo = op.first;
     const klee::ObjectState *os = op.second;
 
     std::vector<klee::ref<klee::Expr> > expr_bytes;
@@ -298,6 +301,69 @@ void ExternalHandler_cliver_event(
   }
 
 
+}
+
+/// Called from bitcode as follows:
+///
+///   cliver_lazy_constraint(uint8 *in_buf, size_t in_len,
+///                          uint8 *out_buf, size_t out_len,
+///                          const char *function_name)
+///
+/// TODO: we should create a cliver.h file like klee/klee.h
+/// TODO: optional taint string
+void ExternalHandler_lazy_constraint(
+    klee::Executor *executor, klee::ExecutionState *state,
+    klee::KInstruction *target, std::vector<klee::ref<klee::Expr>> &arguments) {
+  using namespace klee;
+
+  assert(arguments.size() == 5); // FIXME: optional taint string
+  CVExecutionState *cv_state = static_cast<CVExecutionState *>(state);
+  CVExecutor *cv_executor = static_cast<CVExecutor *>(executor);
+
+  // Extract parameters (FIXME: we assume concrete params)
+  ref<Expr> in_address_expr = arguments[0];
+  uint64_t in_address = cast<ConstantExpr>(arguments[0])->getZExtValue();
+  size_t in_len = cast<ConstantExpr>(arguments[1])->getZExtValue();
+  ref<Expr> out_address_expr = arguments[2];
+  uint64_t out_address = cast<ConstantExpr>(arguments[2])->getZExtValue();
+  size_t out_len = cast<ConstantExpr>(arguments[3])->getZExtValue();
+  std::string fname =
+      cv_executor->get_string_at_address(cv_state, arguments[4]);
+
+  // Compute memory object offsets
+  ObjectPair in_result;
+  cv_executor->resolve_one(state, in_address_expr, in_result, false);
+  const MemoryObject *in_mo = in_result.first;
+  const ObjectState *in_os = in_result.second;
+  uint64_t in_offset = in_address - in_mo->address;
+
+  ObjectPair out_result;
+  cv_executor->resolve_one(state, out_address_expr, out_result, false);
+  const MemoryObject *out_mo = out_result.first;
+  const ObjectState *out_os = out_result.second;
+  uint64_t out_offset = out_address - out_mo->address;
+
+  // Create vectors of expressions representing in_buf and out_buf
+  LazyConstraint::ExprVec inE;
+  for (size_t i = 0; i < in_len; i++) {
+    inE.push_back(in_os->read8(in_offset + i));
+  }
+
+  LazyConstraint::ExprVec outE;
+  for (size_t i = 0; i < out_len; i++) {
+    outE.push_back(out_os->read8(out_offset + i));
+  }
+
+  // Look up trigger function
+  LazyTriggerFuncDB &ltfdb = LazyTriggerFuncDB::Instance();
+  LazyConstraint::TriggerFunc f = ltfdb.find(fname);
+  assert(f != NULL);
+
+  // Create lazy constraint and insert into dispatcher
+  std::shared_ptr<LazyConstraint> lazy_c =
+      std::make_shared<LazyConstraint>(inE, outE, f, fname);
+  LazyConstraintDispatcher &lcd = cv_state->get_lazy_constraint_dispatcher();
+  lcd.addLazy(lazy_c);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

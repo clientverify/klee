@@ -83,6 +83,10 @@ void ExternalHandler_tls_master_secret(
     klee::Executor* executor, klee::ExecutionState *state,
     klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
 
+void ExternalHandler_lazy_constraint(
+    klee::Executor* executor, klee::ExecutionState *state,
+    klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);
+
 void ExternalHandler_cliver_event(
     klee::Executor* executor, klee::ExecutionState *state,
     klee::KInstruction *target, std::vector<klee::ref<klee::Expr> > &arguments);

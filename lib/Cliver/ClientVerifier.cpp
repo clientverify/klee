@@ -142,6 +142,7 @@ ExternalHandlerInfo external_handler_info[] = {
 	{"cliver_ktest_copy", ExternalHandler_ktest_copy, true, CV_NULL_EVENT},
 	{"cliver_tls_predict_stdin", ExternalHandler_tls_predict_stdin, true, CV_NULL_EVENT},
 	{"cliver_tls_master_secret", ExternalHandler_tls_master_secret, true, CV_NULL_EVENT},
+	{"cliver_lazy_constraint", ExternalHandler_lazy_constraint, false, CV_NULL_EVENT},
 };
 
 ////////////////////////////////////////////////////////////////////////////////

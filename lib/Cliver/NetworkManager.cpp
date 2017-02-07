@@ -46,6 +46,9 @@ UseRecvProcessingFlag("use-recv-processing-flag",llvm::cl::init(false));
 llvm::cl::opt<bool>
 EnableXorOptimization("enable-xor-opt", llvm::cl::init(false));
 
+llvm::cl::opt<bool>
+EnableLazyConstraints("enable-lazy-constraints", llvm::cl::init(false));
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef NDEBUG
@@ -297,9 +300,33 @@ void NetworkManager::execute_write(CVExecutor* executor,
       write_condition = state_->constraints.simplifyWithXorOptimization(write_condition);
     }
 
+    // Solve for whether the write_condition is consistent with the path
+    // constraints collected up to this point. If lazy constraint generation
+    // is enabled, check the newly triggered constraints as well.
     executor->compute_false(state_, write_condition, result);
-    if (result)
-			RETURN_FAILURE_OBJ("send", "not valid (2) ");
+    if (result) {
+      RETURN_FAILURE_OBJ("send", "not valid (2) ");
+    } else if (EnableLazyConstraints) {
+      klee::ConstraintManager cm(state_->constraints); // copy
+      cm.addConstraint(write_condition);
+      std::vector<klee::ref<klee::Expr>> new_constraints;
+      std::vector<std::shared_ptr<LazyConstraint>> triggered;
+      bool consistent = state_->get_lazy_constraint_dispatcher().triggerAll(
+          executor->get_solver()->solver, new_constraints, triggered, cm);
+      if (consistent) {
+        for (size_t i = 0; i < new_constraints.size(); i++) {
+          executor->add_constraint(state_, new_constraints[i]);
+          CVDEBUG("Lazy constraint for " << triggered[i]->name()
+                                         << " added to path condition.");
+        }
+      } else {
+        if (triggered.size() > 0) {
+          CVDEBUG("Lazy constraint for " << triggered.back()->name()
+                                         << " produced a contradiction.");
+        }
+        RETURN_FAILURE_OBJ("send", "not valid (3) - lazy constraint ");
+      }
+    }
 
     if (DebugNetworkManager) {
       std::vector<const klee::Array*> arrays;

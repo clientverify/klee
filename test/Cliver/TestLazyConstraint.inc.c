@@ -135,8 +135,21 @@ unsigned int prohibitive_f(unsigned int x) {
     if(klee_is_symbolic_buffer((unsigned char *)&x, sizeof(x))) {
       unsigned int ret;
       copy_symbolic_buffer((unsigned char *)&ret, (int)sizeof(ret), "pOut");
-      // TODO: Inject lazy constraint(s)
       printf("skipping p()\n");
+
+      // Inject lazy constraints if enabled.
+      if (ENABLE_LAZY == LAZY_P || ENABLE_LAZY == LAZY_P_BOTH) {
+        cliver_lazy_constraint((unsigned char *)&x, sizeof(x),
+                               (unsigned char *)&ret, sizeof(ret),
+                               "__LAZYTEST_p");
+        printf("injected lazy constraint for p()\n");
+      }
+      if (ENABLE_LAZY == LAZY_P_INV || ENABLE_LAZY == LAZY_P_BOTH) {
+        cliver_lazy_constraint((unsigned char *)&ret, sizeof(ret),
+                               (unsigned char *)&x, sizeof(x),
+                               "__LAZYTEST_p_inv");
+        printf("injected lazy constraint for p_inv()\n");
+      }
       return ret;
     }
 #else
