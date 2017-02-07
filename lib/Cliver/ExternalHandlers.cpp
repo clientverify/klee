@@ -41,6 +41,9 @@ XEventOptimization("xevent-optimization", llvm::cl::init(false));
 llvm::cl::opt<unsigned>
 QUEUE_SIZE("queue-size", llvm::cl::init(5));
 
+extern llvm::cl::opt<bool>
+EnableLazyConstraints;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 klee::ObjectState* resolve_address(klee::Executor* executor, 
@@ -303,20 +306,23 @@ void ExternalHandler_cliver_event(
 
 }
 
-/// Called from bitcode as follows:
+/// Called from bitcode with the following interface:
 ///
-///   cliver_lazy_constraint(uint8 *in_buf, size_t in_len,
-///                          uint8 *out_buf, size_t out_len,
-///                          const char *function_name)
+///   void cliver_lazy_constraint(uint8 *in_buf, size_t in_len,
+///                               uint8 *out_buf, size_t out_len,
+///                               const char *function_name,
+///                               const char *taint) // taint string optional
 ///
 /// TODO: we should create a cliver.h file like klee/klee.h
-/// TODO: optional taint string
 void ExternalHandler_lazy_constraint(
     klee::Executor *executor, klee::ExecutionState *state,
     klee::KInstruction *target, std::vector<klee::ref<klee::Expr>> &arguments) {
   using namespace klee;
 
-  assert(arguments.size() == 5); // FIXME: optional taint string
+  if (!EnableLazyConstraints)
+    return;
+
+  assert(arguments.size() == 5 || arguments.size() == 6); // optional taint
   CVExecutionState *cv_state = static_cast<CVExecutionState *>(state);
   CVExecutor *cv_executor = static_cast<CVExecutor *>(executor);
 
@@ -329,6 +335,10 @@ void ExternalHandler_lazy_constraint(
   size_t out_len = cast<ConstantExpr>(arguments[3])->getZExtValue();
   std::string fname =
       cv_executor->get_string_at_address(cv_state, arguments[4]);
+  std::string taint;
+  if (arguments.size() == 6) {
+    taint = cv_executor->get_string_at_address(cv_state, arguments[5]);
+  }
 
   // Compute memory object offsets
   ObjectPair in_result;
@@ -361,7 +371,7 @@ void ExternalHandler_lazy_constraint(
 
   // Create lazy constraint and insert into dispatcher
   std::shared_ptr<LazyConstraint> lazy_c =
-      std::make_shared<LazyConstraint>(inE, outE, f, fname);
+      std::make_shared<LazyConstraint>(inE, outE, f, fname, taint);
   LazyConstraintDispatcher &lcd = cv_state->get_lazy_constraint_dispatcher();
   lcd.addLazy(lazy_c);
 }

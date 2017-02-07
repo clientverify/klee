@@ -88,10 +88,10 @@
 // In order to create a lazy constraint L, call the following special function
 // from the *bitcode* (or inside the DEFINE_MODEL of a prohibitive function):
 //
-//   cliver_lazy_constraint(uint8 *in_buf, size_t in_len,
-//                          uint8 *out_buf, size_t out_len,
-//                          const char *function_name,
-//                          const char *taint) // taint string optional
+//   void cliver_lazy_constraint(uint8 *in_buf, size_t in_len,
+//                               uint8 *out_buf, size_t out_len,
+//                               const char *function_name,
+//                               const char *taint) // taint string optional
 //
 // You must also designate a function in KLEE (not the bitcode) corresponding
 // to "function_name" with the following signature:
