@@ -198,7 +198,8 @@ class Socket {
 
   void print(std::ostream &os);
 
-  const SocketEvent &event();
+  const SocketEvent &event(); // always safe to use
+  const SocketEvent &event_nolock(); // dangerous: acquire log_mutex_ beforehand
   const SocketEvent &previous_event();
 
   static int NextFileDescriptor;

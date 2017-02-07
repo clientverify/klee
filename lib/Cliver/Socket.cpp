@@ -286,6 +286,10 @@ void Socket::advance() {
 
 const SocketEvent& Socket::event() {
   std::lock_guard<std::mutex> lock(*log_mutex_);
+  return event_nolock();
+}
+
+const SocketEvent& Socket::event_nolock() {
   if (!(log_ && index_ < log_->size())) {
     cv_error("Socket::event() - invalid index into Socket log");
   }
@@ -302,30 +306,30 @@ const SocketEvent& Socket::previous_event() {
 
 void Socket::print(std::ostream &os) {
 #define X(x) #x
-	static std::string socketevent_types[] = { SOCKETEVENT_TYPES };
-	static std::string socket_states[] = { SOCKET_STATES };
+  static std::string socketevent_types[] = {SOCKETEVENT_TYPES};
+  static std::string socket_states[] = {SOCKET_STATES};
 #undef X
-		
+
   std::lock_guard<std::mutex> lock(*log_mutex_);
   os << "[ ";
-	if (index_ < log_->size()) {
+  if (index_ < log_->size()) {
 
     if (ClientModelFlag == XPilot)
-      os << "Client Round:" << client_round() << ", ";
+      os << "Client Round:" << event_nolock().client_round << ", ";
 
-		os << "Event: " << index_ << "/" << log_->size() << ", "
-       //<< "Position: " << offset_ << "/" << event().length << ", "
-			 << socket_states[state()] << ", " << socketevent_types[type()] << " ]";
+    os << "Event: " << index_ << "/" << log_->size() << ", "
+       //<< "Position: " << offset_ << "/" << event_nolock().length << ", "
+       << socket_states[state()] << ", "
+       << socketevent_types[event_nolock().type] << " ]";
 
-		if (DebugSocket)
-			 os << " " << event();
+    if (DebugSocket)
+      os << " " << event_nolock();
 
-	} else {
+  } else {
 
-		os << "Event: " << index_ << "/" << log_->size() << ", "
-			 << socket_states[state()] << ", N/A ]";
-
-	}
+    os << "Event: " << index_ << "/" << log_->size() << ", "
+       << socket_states[state()] << ", N/A ]";
+  }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
