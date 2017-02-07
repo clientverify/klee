@@ -432,9 +432,9 @@ int main(int argc, char* argv[]) {
       case 'L':
         if (strcmp(optarg, "p") == 0) {
           ENABLE_LAZY = LAZY_P;
-        } else if (strcmp(optarg, "p_inv") == 0) {
+        } else if (strcmp(optarg, "pinv") == 0) {
           ENABLE_LAZY = LAZY_P_INV;
-        } else if (strcmp(optarg, "p_both") == 0) {
+        } else if (strcmp(optarg, "pboth") == 0) {
           ENABLE_LAZY = LAZY_P_BOTH;
         } else {
           fprintf(stderr, "invalid argument to -L\n");
