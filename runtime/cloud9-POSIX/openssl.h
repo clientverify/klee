@@ -6,6 +6,7 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
+#include "../../include/klee/klee.h"
 // FIXME: need internal openssl data types
 #include "../../../openssl/include/openssl/ssl.h"
 #include "../../../openssl/include/openssl/evp.h"

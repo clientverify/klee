@@ -19,6 +19,8 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
+#include "../../include/klee/klee.h"
+
 // override inline assembly version of FD_ZERO from
 // /usr/include/x86_64-linux-gnu/bits/select.h
 #ifdef FD_ZERO
@@ -104,6 +106,47 @@ int getsockname(int s, struct sockaddr *name, socklen_t *namelen) {
   unsigned short port;
   klee_make_symbolic(&port, sizeof(unsigned short), "getsockname_port");
   ((struct sockaddr_in*)name)->sin_port = port;
+  return 0;
+}
+#include "sockets.h"
+int getsockopt (int sockfd, int level, int optname, void *optval, socklen_t *optlen) {
+
+  klee_warning("called getsockopt()");
+
+  socket_t *sock = (socket_t*) __fdt[sockfd].io_object;
+
+  switch (level) {
+  case SOL_SOCKET:
+    switch (optname) {
+    case SO_ACCEPTCONN:
+      if (*optlen < sizeof(int)) {
+        return -1;
+      }
+
+      *((int*) optval) = (sock->status == SOCK_STATUS_LISTENING);
+      *optlen = sizeof(int);
+      break;
+    case SO_TYPE:
+      *((int*)optval) = 1;
+      return 0;
+      break;
+    case SO_ERROR:
+      if (*optlen < sizeof(int)) {
+        return -1;
+      }
+      // XXX: We currently do not support any of the possible socket errors
+      *((int*) optval) = 0;
+      *optlen = sizeof(int);
+      break;
+    default:
+      klee_warning("unsupported optname");
+      return -1;
+    }
+    break;
+  default:
+    klee_warning("unsupported level");
+    return -1;
+  }
   return 0;
 }
 

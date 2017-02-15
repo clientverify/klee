@@ -172,14 +172,14 @@ extern tsync_data_t __tsync;
 
 void klee_init_processes(void);
 void klee_init_threads(void);
-static inline void meep_klee_thread_preempt(int yield){ printf("HAPPY TUESDAY\n"); }
+static inline void klee_thread_preempt(int yield){ printf("in klee klee_thread_preempt\n"); }
 /*
  * Wrapper over the klee_thread_preempt() call.
  * This is done to simulate checking for received
  * signals when being first planned.
  */
 static inline void __thread_preempt(int yield) {
-  meep_klee_thread_preempt(yield);
+  klee_thread_preempt(yield);
 #ifdef HAVE_POSIX_SIGNALS
   if((&__pdata[PID_TO_INDEX(getpid())])->signaled)
       __handle_signal();

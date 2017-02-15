@@ -6,7 +6,7 @@
 #if DEBUG_OPENSSL_MODEL
 #define DEBUG_PRINT(x) klee_warning(x);
 #else
-#define DEBUG_PRINT(x) 
+#define DEBUG_PRINT(x)
 #endif
 
 // override inline assembly version of FD_ZERO from
@@ -191,13 +191,13 @@ DEFINE_MODEL(int, bssl_stdin_ktest_select, int nfds, fd_set *readfds, fd_set *wr
   for (i = 0; i <= mask_count; ++i) {
     if (in_readfds.fds_bits[i] != 0) {
         fd_mask symbolic_mask;
-        klee_make_symbolic(&symbolic_mask, sizeof(fd_mask));
+        klee_make_symbolic(&symbolic_mask, sizeof(fd_mask), "");
         readfds->fds_bits[i] = in_readfds.fds_bits[i] & symbolic_mask;
         all_bits_or |= readfds->fds_bits[i];
     }
   }
 
-  klee_make_symbolic(&retval, sizeof(retval));
+  klee_make_symbolic(&retval, sizeof(retval), "");
 
   // Model assumes select does not fail
   if (timeout == NULL) {
@@ -245,7 +245,7 @@ DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_
     if (first_select == 0) {
       if (in_readfds.fds_bits[i] != 0) {
         fd_mask symbolic_mask;
-        klee_make_symbolic(&symbolic_mask, sizeof(fd_mask));
+        klee_make_symbolic(&symbolic_mask, sizeof(fd_mask), "");
         readfds->fds_bits[i] = in_readfds.fds_bits[i] & symbolic_mask;
         all_bits_or |= readfds->fds_bits[i];
       }
@@ -253,7 +253,7 @@ DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_
   if(writefds != NULL){
     if (in_writefds.fds_bits[i] != 0) {
       fd_mask symbolic_mask;
-      klee_make_symbolic(&symbolic_mask, sizeof(fd_mask));
+      klee_make_symbolic(&symbolic_mask, sizeof(fd_mask), "");
       writefds->fds_bits[i] = in_writefds.fds_bits[i] & symbolic_mask;
       all_bits_or |= writefds->fds_bits[i];
     }
@@ -265,7 +265,7 @@ DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_
     first_select = 0;
   }
 
-  klee_make_symbolic(&retval, sizeof(retval));
+  klee_make_symbolic(&retval, sizeof(retval), "");
 
   // Model assumes select does not fail
   if (timeout == NULL) {
@@ -323,6 +323,8 @@ DEFINE_MODEL(ssize_t, ktest_readsocket, int fd, void *buf, size_t count) {
 */
 
 
+
+
 //getaddrinfo is an external call with a malloc.  Therefore accessing any of that
 //malloced memory in klee fails.  These are dummy functions that malloc a addrinfo
 //and associated sockaddr.  The address is set to 0, which I believe corresponds
@@ -351,6 +353,7 @@ int dummy_addrinfo(const char *port, const struct addrinfo *hints,
 
     new_res = (struct addrinfo *)malloc(sizeof(struct addrinfo));
     if(new_res == NULL) return -1;
+//    klee_make_symbolic(new_res, sizeof(struct addrinfo));
 
     new_res->ai_addr = (struct sockaddr *) malloc(sizeof(struct sockaddr_in));
     new_res->ai_addrlen = sizeof(struct sockaddr_in);
@@ -359,7 +362,9 @@ int dummy_addrinfo(const char *port, const struct addrinfo *hints,
         free(new_res);
         return -1;
     }
+//    klee_make_symbolic((new_res->ai_addr), sizeof(struct sockaddr_in));
 
+//remove later?
    struct in_addr in;
    in.s_addr = 0; //I think localhost is 0
 
@@ -374,6 +379,8 @@ int dummy_addrinfo(const char *port, const struct addrinfo *hints,
 
     new_res->ai_flags     = -1;
     new_res->ai_family    = AF_INET;
+//end remove?
+
     new_res->ai_socktype  = hints->ai_socktype; //SOCK_STREAM;
     new_res->ai_protocol  = hints->ai_protocol; //SOCKET_PROTOCOL;
     new_res->ai_canonname = NULL;
@@ -383,19 +390,34 @@ int dummy_addrinfo(const char *port, const struct addrinfo *hints,
     return 0;
 }
 
-
-
 DEFINE_MODEL(int, ktest_getaddrinfo, const char *node, const char *service,
     const struct addrinfo *hints, struct addrinfo **res){
-       return dummy_addrinfo(service, hints, res);
+    return dummy_addrinfo(service, hints, res);
 }
 
 DEFINE_MODEL(void, ktest_freeaddrinfo, struct addrinfo *res){
+    printf("in ktest_freeaddrinfo\n");
     free(res->ai_addr);
     free(res);
 }
 
-//THis is a kludge to support bssl.  We need to reconcile the support provided
+DEFINE_MODEL(pid_t, ktest_getpid, void){
+    printf("in ktest_getpid\n");
+    pid_t* ret = (pid_t*)malloc(sizeof(pid_t));
+    if(ret == NULL) return -1;
+    klee_make_symbolic((ret), sizeof(pid_t), "pid");
+    return *ret;
+}
+
+DEFINE_MODEL(int, ktest_gettimeofday, struct timeval *tv, struct timezone *tz){
+    printf("in ktest_gettimeofday\n");
+    assert(tz == NULL);
+    if (tv == NULL) return 0;
+    klee_make_symbolic(tv, sizeof(struct timeval), "");
+
+    return 0;
+}
+
 //in klee's fcntl with the requirements of boringssl.
 DEFINE_MODEL(int, ktest_fcntl, int sock, int flags, int not_sure){
     if(flags ==F_GETFL)
