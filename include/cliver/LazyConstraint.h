@@ -60,7 +60,10 @@
 // inferred from the concrete ciphertexts by exclusive-or.
 //===---------------------------------------------------------------------===//
 //
-// Lazy Constraint overview
+// Lazy Constraint (Generator) overview
+//
+// In the following paragraphs and code, the term "lazy constraint" is
+// synonymous with "lazy constraint generator".
 //
 // The LazyConstraint class represents a lazy constraint L that is waiting for
 // a particular set of expressions InE to be concretized, at which time it can
