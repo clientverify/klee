@@ -22,6 +22,7 @@
 #include "TimingSolver.h"
 #include "UserSearcher.h"
 #include "ExecutorTimerInfo.h"
+#include <iostream>
 
 
 #include "klee/ExecutionState.h"
@@ -1123,6 +1124,16 @@ const Cell& Executor::eval(KInstruction *ki, unsigned index,
   }
 }
 
+void record_function_taint(KInstruction *ki, TaintSet t){
+  std::string s = ki->inst->getParent()->getParent()->getName().str();
+  s += " contains ";
+  s += ki->inst->getOpcodeName();
+  s += " instruction tainted with ";
+  s += t;
+  s += "\n";
+  klee_warning(s.c_str());
+}
+
 void Executor::bindLocal(KInstruction *target, ExecutionState &state, 
                          ref<Expr> value,
                          TaintSet taint ) {
@@ -1131,6 +1142,8 @@ void Executor::bindLocal(KInstruction *target, ExecutionState &state,
   cell.taint = taint;
   if (interpreterOpts.TaintConfig.has(TaintConfig::ControlFlow))
       cell.taint |= state.getPCTaint();
+  if(cell.taint != EMPTYTAINTSET)
+    record_function_taint(target, cell.taint);
 }
 
 void Executor::bindArgument(KFunction *kf, unsigned index, 
