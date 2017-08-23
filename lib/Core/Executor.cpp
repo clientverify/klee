@@ -1114,9 +1114,8 @@ void record_function_taint(KInstruction *ki, TaintSet t){
   std::string s = ki->inst->getParent()->getParent()->getName().str();
   s += " contains ";
   s += ki->inst->getOpcodeName();
-  s += " instruction tainted with ";
+  s += " instruction tainted";
   s += t;
-  s += "\n";
   klee_warning(s.c_str());
 }
 
