@@ -828,6 +828,9 @@ void SpecialFunctionHandler::handleSetTaint(ExecutionState &state,
                                                 KInstruction *target,
                                                 std::vector<ref<Expr> > &arguments) {
 
+  std::string s = target->inst->getParent()->getParent()->getName().str();
+  klee_warning("%s calls klee_set_taint", s.c_str());
+
   assert(arguments.size()==3 &&
            "invalid number of arguments to klee_set_taint");  
 
@@ -872,6 +875,9 @@ void SpecialFunctionHandler::handleGetPcTaint(ExecutionState &state,
 void SpecialFunctionHandler::handleSetPcTaint(ExecutionState &state,
                                                 KInstruction *target,
                                                 std::vector<ref<Expr> > &arguments) {
+
+  std::string s = target->inst->getParent()->getParent()->getName().str();
+  klee_warning("%s calls klee_set_taint", s.c_str());
 
   assert(arguments.size()==1 &&
            "invalid number of arguments to klee_set_pc_taint");  
