@@ -1,5 +1,3 @@
-KLEE-TAINT Symbolic Virtual Machine
-===================================
 
 The idea is to be able to mark memory containing sensitive data and
 track it at runtime.  It allows the user to check if any data (like
