@@ -12,17 +12,21 @@
 
 #include "Statistic.h"
 
+#include "klee/util/Atomic.h"
+#include "klee/StatisticDataType.h"
+
 #include <vector>
 #include <string>
 #include <string.h>
 
 namespace klee {
+
   class Statistic;
   class StatisticRecord {
     friend class StatisticManager;
 
   private:
-    uint64_t *data;
+    StatisticDataType *data;
 
   public:    
     StatisticRecord();
@@ -41,9 +45,11 @@ namespace klee {
   private:
     bool enabled;
     std::vector<Statistic*> stats;
-    uint64_t *globalStats;
-    uint64_t *indexedStats;
+    StatisticDataType *globalStats;
+    StatisticDataType *indexedStats;
     StatisticRecord *contextStats;
+    StatisticRecord *cliverRoundStats;
+    StatisticRecord *cliverStageStats;
     unsigned index;
 
   public:
@@ -54,6 +60,8 @@ namespace klee {
 
     StatisticRecord *getContext();
     void setContext(StatisticRecord *sr); /* null to reset */
+    void setCliverRoundContext(StatisticRecord *sr); /* null to reset */
+    void setCliverStageContext(StatisticRecord *sr); /* null to reset */
 
     void setIndex(unsigned i) { index = i; }
     unsigned getIndex() { return index; }
@@ -62,6 +70,7 @@ namespace klee {
     
     void registerStatistic(Statistic &s);
     void incrementStatistic(Statistic &s, uint64_t addend);
+    void setValueStatistic(Statistic &s, uint64_t value);
     uint64_t getValue(const Statistic &s) const;
     void incrementIndexedValue(const Statistic &s, unsigned index, 
                                uint64_t addend) const;
@@ -82,6 +91,26 @@ namespace klee {
         if (contextStats)
           contextStats->data[s.id] += addend;
       }
+      if (cliverRoundStats)
+        cliverRoundStats->data[s.id] += addend;
+      if (cliverStageStats)
+        cliverStageStats->data[s.id] += addend;
+    }
+  }
+
+  inline void StatisticManager::setValueStatistic(Statistic &s, 
+                                                  uint64_t value) {
+    if (enabled) {
+      globalStats[s.id] = value;
+      if (indexedStats) {
+        indexedStats[index*stats.size() + s.id] = value;
+        if (contextStats)
+          contextStats->data[s.id] = value;
+      }
+			if (cliverRoundStats)
+				cliverRoundStats->data[s.id] = value;
+			if (cliverStageStats)
+				cliverStageStats->data[s.id] = value;
     }
   }
 
@@ -91,25 +120,35 @@ namespace klee {
   inline void StatisticManager::setContext(StatisticRecord *sr) {
     contextStats = sr;
   }
+  inline void StatisticManager::setCliverRoundContext(StatisticRecord *sr) {
+    cliverRoundStats = sr;
+  }
+  inline void StatisticManager::setCliverStageContext(StatisticRecord *sr) {
+    cliverStageStats = sr;
+  }
 
   inline void StatisticRecord::zero() {
-    ::memset(data, 0, sizeof(*data)*theStatisticManager->getNumStatistics());
+    unsigned nStats = theStatisticManager->getNumStatistics();
+    for (unsigned i=0; i<nStats; i++)
+      data[i] = 0;
   }
 
   inline StatisticRecord::StatisticRecord() 
-    : data(new uint64_t[theStatisticManager->getNumStatistics()]) {
+    : data(new StatisticDataType[theStatisticManager->getNumStatistics()]) {
     zero();
   }
 
   inline StatisticRecord::StatisticRecord(const StatisticRecord &s) 
-    : data(new uint64_t[theStatisticManager->getNumStatistics()]) {
-    ::memcpy(data, s.data, 
-             sizeof(*data)*theStatisticManager->getNumStatistics());
+    : data(new StatisticDataType[theStatisticManager->getNumStatistics()]) {
+    unsigned nStats = theStatisticManager->getNumStatistics();
+    for (unsigned i=0; i<nStats; i++)
+      data[i] = s.data[i].get();
   }
 
   inline StatisticRecord &StatisticRecord::operator=(const StatisticRecord &s) {
-    ::memcpy(data, s.data, 
-             sizeof(*data)*theStatisticManager->getNumStatistics());
+    unsigned nStats = theStatisticManager->getNumStatistics();
+    for (unsigned i=0; i<nStats; i++)
+      data[i] = s.data[i].get();
     return *this;
   }
 
@@ -117,20 +156,21 @@ namespace klee {
                                               uint64_t addend) const {
     data[s.id] += addend;
   }
+
   inline uint64_t StatisticRecord::getValue(const Statistic &s) const { 
-    return data[s.id]; 
+    return data[s.id].get();
   }
 
   inline StatisticRecord &
   StatisticRecord::operator +=(const StatisticRecord &sr) {
     unsigned nStats = theStatisticManager->getNumStatistics();
     for (unsigned i=0; i<nStats; i++)
-      data[i] += sr.data[i];
+      data[i] += sr.data[i].get();
     return *this;
   }
 
   inline uint64_t StatisticManager::getValue(const Statistic &s) const {
-    return globalStats[s.id];
+    return globalStats[s.id].get();
   }
 
   inline void StatisticManager::incrementIndexedValue(const Statistic &s, 
@@ -141,7 +181,7 @@ namespace klee {
 
   inline uint64_t StatisticManager::getIndexedValue(const Statistic &s, 
                                                     unsigned index) const {
-    return indexedStats[index*stats.size() + s.id];
+    return indexedStats[index*stats.size() + s.id].get();
   }
 
   inline void StatisticManager::setIndexedValue(const Statistic &s, 

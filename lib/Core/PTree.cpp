@@ -12,11 +12,18 @@
 #include <klee/Expr.h>
 #include <klee/util/ExprPPrinter.h>
 
+#include "llvm/Support/CommandLine.h"
+
 #include <vector>
 
 using namespace klee;
 
   /* *** */
+namespace klee {
+  llvm::cl::opt<bool>
+  UseProcessTree("process-tree",
+                  llvm::cl::init(true));
+}
 
 PTree::PTree(const data_type &_root) : root(new Node(0,_root)) {
 }
@@ -27,13 +34,20 @@ std::pair<PTreeNode*, PTreeNode*>
 PTree::split(Node *n, 
              const data_type &leftData, 
              const data_type &rightData) {
+  if (!UseProcessTree)
+    return std::pair<PTreeNode*, PTreeNode*>(NULL, NULL);
+  PTree::Guard guard(*this);
   assert(n && !n->left && !n->right);
+  n->data = 0;
   n->left = new Node(n, leftData);
   n->right = new Node(n, rightData);
   return std::make_pair(n->left, n->right);
 }
 
 void PTree::remove(Node *n) {
+  if (!UseProcessTree)
+    return;
+  PTree::Guard guard(*this);
   assert(!n->left && !n->right);
   do {
     Node *p = n->parent;
@@ -51,6 +65,9 @@ void PTree::remove(Node *n) {
 }
 
 void PTree::dump(llvm::raw_ostream &os) {
+  if (!UseProcessTree)
+    return;
+  PTree::Guard guard(*this);
   ExprPPrinter *pp = ExprPPrinter::create(os);
   pp->setNewline("\\l");
   os << "digraph G {\n";
@@ -86,6 +103,18 @@ void PTree::dump(llvm::raw_ostream &os) {
   }
   os << "}\n";
   delete pp;
+}
+
+void PTree::lock() {
+  lock_.lock();
+}
+
+bool PTree::try_lock() {
+  return lock_.try_lock();
+}
+
+void PTree::unlock() {
+  lock_.unlock();
 }
 
 PTreeNode::PTreeNode(PTreeNode *_parent, 

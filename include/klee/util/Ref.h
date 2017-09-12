@@ -38,12 +38,12 @@ public:
 private:
   void inc() const {
     if (ptr)
-      ++ptr->refCount;
+      ptr->refCount.add_ref();
   }
 
   void dec() const {
-    if (ptr && --ptr->refCount == 0)
-      delete ptr;
+    if (ptr)
+      ptr->refCount.release(ptr);
   }
 
 public:

@@ -11,6 +11,7 @@
 #define __UTIL_CALLPATHMANAGER_H__
 
 #include "klee/Statistics.h"
+#include "klee/util/Mutex.h"
 
 #include <map>
 #include <vector>
@@ -62,6 +63,7 @@ namespace klee {
   class CallPathManager {
     CallPathNode root;
     std::vector<CallPathNode*> paths;
+    Mutex lock;
 
   private:
     CallPathNode *computeCallPath(CallPathNode *parent, 

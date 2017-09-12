@@ -12,8 +12,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdint.h>
+#include <sys/time.h>
+#include <ctype.h>
+#include <time.h>
 
-#define KTEST_VERSION 3
+#define KTEST_VERSION 4 // Cliver-specific (incompatible with normal klee)
 #define KTEST_MAGIC_SIZE 5
 #define KTEST_MAGIC "KTEST"
 
@@ -26,7 +30,7 @@ static int read_uint32(FILE *f, unsigned *value_out) {
   unsigned char data[4];
   if (fread(data, 4, 1, f)!=1)
     return 0;
-  *value_out = (((((data[0]<<8) + data[1])<<8) + data[2])<<8) + data[3];
+  *value_out = ((((((uint64_t)data[0]<<8) + (uint64_t)data[1])<<8) + (uint64_t)data[2])<<8) + (uint64_t)data[3];
   return 1;
 }
 
@@ -37,6 +41,27 @@ static int write_uint32(FILE *f, unsigned value) {
   data[2] = value>> 8;
   data[3] = value>> 0;
   return fwrite(data, 1, 4, f)==4;
+}
+
+static int read_uint64(FILE *f, uint64_t *value_out) {
+  unsigned char data[8];
+  if (fread(data, 8, 1, f)!=1)
+    return 0;
+  *value_out = (((((((((((( ((uint64_t)data[0]<<8) + (uint64_t)data[1])<<8) + (uint64_t)data[2])<<8) + (uint64_t)data[3])<<8) + (uint64_t)data[4])<<8) + (uint64_t)data[5])<<8) + (uint64_t)data[6])<<8) + (uint64_t)data[7];
+  return 1;
+}
+
+static int write_uint64(FILE *f, uint64_t value) {
+  unsigned char data[8];
+  data[0] = value>>56;
+  data[1] = value>>48;
+  data[2] = value>>40;
+  data[3] = value>>32;
+  data[4] = value>>24;
+  data[5] = value>>16;
+  data[6] = value>> 8;
+  data[7] = value>> 0;
+  return fwrite(data, 1, 8, f)==8;
 }
 
 static int read_string(FILE *f, char **value_out) {
@@ -59,6 +84,42 @@ static int write_string(FILE *f, const char *value) {
   if (fwrite(value, len, 1, f)!=1)
     return 0;
   return 1;
+}
+
+static void timeval2str(char *out, int outlen, const struct timeval *tv) {
+  time_t nowtime;
+  struct tm *nowtm;
+  char tmbuf[64];
+
+  nowtime = tv->tv_sec;
+  nowtm = localtime(&nowtime);
+  strftime(tmbuf, sizeof tmbuf, "%Y-%m-%d %H:%M:%S", nowtm);
+  snprintf(out, outlen, "%s.%06ld", tmbuf, tv->tv_usec);
+}
+
+// Print hex and ascii side-by-side
+static void KTO_print(FILE *f, const KTestObject *o) {
+  unsigned int i, j;
+  const unsigned int WIDTH = 16;
+  char timebuf[64];
+
+  timeval2str(timebuf, sizeof(timebuf), &o->timestamp);
+  fprintf(f, "%s | ", timebuf);
+  fprintf(f, "%s [%u]\n", o->name, o->numBytes);
+  for (i = 0; WIDTH*i <  o->numBytes; i++) {
+    for (j = 0; j < 16 && WIDTH*i+j < o->numBytes; j++) {
+      fprintf(f, " %2.2x", o->bytes[WIDTH*i+j]);
+    }
+    for (; j < 17; j++) {
+      fprintf(f, "   ");
+    }
+    for (j = 0; j < 16 && WIDTH*i+j < o->numBytes; j++) {
+      unsigned char c = o->bytes[WIDTH*i+j];
+      fprintf(f, "%c", isprint(c)?c:'.');
+    }
+    fprintf(f, "\n");
+  }
+  fprintf(f, "\n");
 }
 
 /***/
@@ -139,10 +200,16 @@ KTest *kTest_fromFile(const char *path) {
     KTestObject *o = &res->objects[i];
     if (!read_string(f, &o->name))
       goto error;
+    if (res->version >= 4) { // Cliver-specific version 4
+      if (!read_uint64(f, (uint64_t*)&o->timestamp.tv_sec))
+	goto error;
+      if (!read_uint64(f, (uint64_t*)&o->timestamp.tv_usec))
+	goto error;
+    }
     if (!read_uint32(f, &o->numBytes))
       goto error;
     o->bytes = (unsigned char*) malloc(o->numBytes);
-    if (fread(o->bytes, o->numBytes, 1, f)!=1)
+    if (o->numBytes && fread(o->bytes, o->numBytes, 1, f)!=1)
       goto error;
   }
 
@@ -204,6 +271,10 @@ int kTest_toFile(KTest *bo, const char *path) {
     KTestObject *o = &bo->objects[i];
     if (!write_string(f, o->name))
       goto error;
+    if (!write_uint64(f, o->timestamp.tv_sec))
+      goto error;
+    if (!write_uint64(f, o->timestamp.tv_usec))
+      goto error;
     if (!write_uint32(f, o->numBytes))
       goto error;
     if (fwrite(o->bytes, o->numBytes, 1, f)!=1)
@@ -226,6 +297,14 @@ unsigned kTest_numBytes(KTest *bo) {
   return res;
 }
 
+void kTest_print(FILE *f, KTest *k) {
+  unsigned int i;
+  for (i = 0; i < k->numObjects; i++) {
+    fprintf(f, "%u: ", i);
+    KTO_print(f, &k->objects[i]);
+  }
+}
+
 void kTest_free(KTest *bo) {
   unsigned i;
   for (i=0; i<bo->numArgs; i++)
@@ -238,3 +317,4 @@ void kTest_free(KTest *bo) {
   free(bo->objects);
   free(bo);
 }
+

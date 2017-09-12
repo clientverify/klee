@@ -10,6 +10,7 @@
 #include "UserSearcher.h"
 
 #include "Searcher.h"
+#include "ParallelSearcher.h"
 #include "Executor.h"
 
 #include "klee/Internal/Support/ErrorHandling.h"
@@ -18,7 +19,7 @@
 using namespace llvm;
 using namespace klee;
 
-namespace {
+namespace klee {
   cl::list<Searcher::CoreSearchType>
   CoreSearch("search", cl::desc("Specify the search heuristic (default=random-path interleaved with nurs:covnew)"),
 	     cl::values(clEnumValN(Searcher::DFS, "dfs", "use Depth First Search (DFS)"),
@@ -54,6 +55,11 @@ namespace {
 
 
   cl::opt<bool>
+  ForceParallel("force-parallel-searcher",
+           cl::desc("Force the usage of parallel searcher impl when single-threaded"), cl::init(false));
+ 
+
+  cl::opt<bool>
   UseMerge("use-merge", 
            cl::desc("Enable support for klee_merge() (experimental)"));
  
@@ -61,6 +67,12 @@ namespace {
   UseBumpMerge("use-bump-merge", 
            cl::desc("Enable support for klee_merge() (extra experimental)"));
 
+  cl::opt<unsigned>
+  UseThreads("use-threads",
+           cl::desc("Use multiple threads"),
+           cl::init(1));
+
+  extern cl::opt<bool> UseProcessTree;
 }
 
 
@@ -91,7 +103,43 @@ Searcher *getNewSearcher(Searcher::CoreSearchType type, Executor &executor) {
   return searcher;
 }
 
+Searcher *getNewParallelSearcher(Searcher::CoreSearchType type, Executor &executor) {
+  Searcher *searcher = NULL;
+  switch (type) {
+  case Searcher::DFS: searcher = new ParallelDFSSearcher(); break;
+  case Searcher::BFS: searcher = new ParallelBFSSearcher(); break;
+  case Searcher::RandomState: searcher = new ParallelSearcher(new RandomSearcher()); break;
+  case Searcher::RandomPath: searcher = new ParallelRandomPathSearcher(executor); break;
+  case Searcher::NURS_CovNew: searcher = new ParallelWeightedRandomSearcher(executor, ParallelWeightedRandomSearcher::CoveringNew); break;
+  case Searcher::NURS_MD2U: searcher = new ParallelWeightedRandomSearcher(executor, ParallelWeightedRandomSearcher::MinDistToUncovered); break;
+  case Searcher::NURS_Depth: searcher = new ParallelWeightedRandomSearcher(executor, ParallelWeightedRandomSearcher::Depth); break;
+  case Searcher::NURS_ICnt: searcher = new ParallelWeightedRandomSearcher(executor, ParallelWeightedRandomSearcher::InstCount); break;
+  case Searcher::NURS_CPICnt: searcher = new ParallelWeightedRandomSearcher(executor, ParallelWeightedRandomSearcher::CPInstCount); break;
+  case Searcher::NURS_QC: searcher = new ParallelWeightedRandomSearcher(executor, ParallelWeightedRandomSearcher::QueryCost); break;
+  }
+
+  return searcher;
+}
+
 Searcher *klee::constructUserSearcher(Executor &executor) {
+
+  // Check for invalid searcher configurations
+  if (UseMerge || UseBumpMerge) {
+    if (UseThreads > 1 || ForceParallel) {
+      llvm::raw_ostream &os = executor.getHandler().getInfoStream();
+      os << "Invalid configuration: multiple threads not supported this configuration. ";
+      os << "Setting thread count to 1\n";
+      UseThreads = 1;
+    }
+  }
+
+  if (!UseProcessTree && 
+      std::find(CoreSearch.begin(), CoreSearch.end(), Searcher::RandomPath) 
+        != CoreSearch.end()) {
+    llvm::raw_ostream &os = executor.getHandler().getInfoStream();
+    os << "Invalid configuration: -random-path=true requires -process-tree=true\n";
+    return NULL;
+  }
 
   // default values
   if (CoreSearch.size() == 0) {
@@ -99,7 +147,11 @@ Searcher *klee::constructUserSearcher(Executor &executor) {
     CoreSearch.push_back(Searcher::NURS_CovNew);
   }
 
-  Searcher *searcher = getNewSearcher(CoreSearch[0], executor);
+  Searcher *searcher = NULL;
+  if ((UseThreads > 1 || ForceParallel) && CoreSearch.size() == 1)
+    searcher = getNewParallelSearcher(CoreSearch[0], executor);
+  else
+    searcher = getNewSearcher(CoreSearch[0], executor);
   
   if (CoreSearch.size() > 1) {
     std::vector<Searcher *> s;
@@ -112,7 +164,11 @@ Searcher *klee::constructUserSearcher(Executor &executor) {
   }
 
   if (UseBatchingSearch) {
-    searcher = new BatchingSearcher(searcher, BatchTime, BatchInstructions);
+    if (UseThreads > 1 || ForceParallel) {
+      searcher = new ParallelBatchingSearcher(searcher, BatchTime, BatchInstructions);
+    } else {
+      searcher = new BatchingSearcher(searcher, BatchTime, BatchInstructions);
+    }
   }
 
   // merge support is experimental
@@ -126,6 +182,10 @@ Searcher *klee::constructUserSearcher(Executor &executor) {
   
   if (UseIterativeDeepeningTimeSearch) {
     searcher = new IterativeDeepeningTimeSearcher(searcher);
+  }
+
+  if ((UseThreads > 1 || ForceParallel)  && CoreSearch.size() > 1) {
+    searcher = new ParallelSearcher(searcher);
   }
 
   llvm::raw_ostream &os = executor.getHandler().getInfoStream();

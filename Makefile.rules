@@ -392,6 +392,19 @@ endif
   LD.Flags += -Wl,--no-relax
 endif
 
+# cliver specific build modes
+ifeq ($(ENABLE_THREAD_SANITIZER),1)
+  BuildMode := $(BuildMode)+TSan
+endif
+
+ifeq ($(ENABLE_ADDRESS_SANITIZER),1)
+  BuildMode := $(BuildMode)+ASan
+endif
+
+ifeq ($(DISABLE_THREADS),1)
+  BuildMode := $(BuildMode)+SingleThreaded
+endif
+
 #--------------------------------------------------------------------
 # Directory locations
 #--------------------------------------------------------------------

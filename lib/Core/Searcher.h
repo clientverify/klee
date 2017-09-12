@@ -11,6 +11,9 @@
 #define KLEE_SEARCHER_H
 
 #include "llvm/Support/raw_ostream.h"
+
+#include "klee/util/Mutex.h"
+
 #include <vector>
 #include <set>
 #include <map>
@@ -64,6 +67,27 @@ namespace klee {
       std::vector<ExecutionState *> tmp;
       tmp.push_back(es);
       update(current, std::vector<ExecutionState *>(), tmp);
+    }
+
+    // trySelectState and updateAndTrySelectState are wrappers around 
+    // selectState(), update() and empty(). Thread-aware Searcher 
+    // implmentations override them if needed.
+
+    virtual ExecutionState* trySelectState() {
+      if (!empty()) {
+        return &(selectState());
+      }
+      return NULL;
+    }
+
+    // updateAndTrySelectState() will always call update(), but may or may not call
+    // trySelectState(), the default is to return NULL.
+    // Note: update, followed by trySelectState will fail with BatchingSearcher
+    virtual ExecutionState* updateAndTrySelectState(ExecutionState *current,
+                                                    const std::vector<ExecutionState*> &addedStates,
+                                                    const std::vector<ExecutionState*> &removedStates) {
+      update(current, addedStates, removedStates);
+      return NULL;
     }
 
     enum CoreSearchType {

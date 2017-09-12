@@ -7,6 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "cliver/CliverStats.h"
+#include "klee/Internal/Support/Timer.h"
 #include "Executor.h"
 #include "Context.h"
 #include "CoreStats.h"
@@ -114,7 +116,7 @@ using namespace klee;
 
 
 
-namespace {
+namespace klee {
   cl::opt<bool>
   DumpStatesOnHalt("dump-states-on-halt",
                    cl::init(true),
@@ -169,6 +171,12 @@ namespace {
 #endif
 
   cl::opt<bool>
+  DebugPrintConcretizations("debug-print-concretizations",
+                cl::init(false),
+                cl::desc("Print the read expressions that are concretized"
+                         "(default=off)"));
+
+  cl::opt<bool>
   DebugCheckForImpliedValues("debug-check-for-implied-values");
 
 
@@ -181,6 +189,11 @@ namespace {
   EqualitySubstitution("equality-substitution",
 		       cl::init(true),
 		       cl::desc("Simplify equality expressions before querying the solver (default=on)."));
+
+  cl::opt<bool>
+  EqualitySubstitution("equality-substitution",
+                     cl::init(true),
+                     cl::desc("Simplify equality expressions before querying the solver (default=on)."));
 
   cl::opt<unsigned>
   MaxSymArraySize("max-sym-array-size",
@@ -312,18 +325,20 @@ namespace {
   
   cl::opt<unsigned>
   MaxMemory("max-memory",
-            cl::desc("Refuse to fork when above this amount of memory (in MB, default=2000)"),
-            cl::init(2000));
+            cl::desc("Refuse to fork when above this amount of memory (in MB, default=0)"),
+            cl::init(0));
 
   cl::opt<bool>
   MaxMemoryInhibit("max-memory-inhibit",
             cl::desc("Inhibit forking at memory cap (vs. random terminate) (default=on)"),
             cl::init(true));
+
+  extern llvm::cl::opt<unsigned> UseThreads;
 }
 
 
 namespace klee {
-  RNG theRNG;
+  ThreadSpecificPointer<RNG>::type theRNG;
 }
 
 const char *Executor::TerminateReasonNames[] = {
@@ -340,7 +355,6 @@ const char *Executor::TerminateReasonNames[] = {
   [ User ] = "user",
   [ Unhandled ] = "xxx",
 };
-
 Executor::Executor(const InterpreterOptions &opts, InterpreterHandler *ih)
     : Interpreter(opts), kmodule(0), interpreterHandler(ih), searcher(0),
       externalDispatcher(new ExternalDispatcher()), statsTracker(0),
@@ -348,26 +362,29 @@ Executor::Executor(const InterpreterOptions &opts, InterpreterHandler *ih)
       processTree(0), replayKTest(0), replayPath(0), usingSeeds(0),
       atMemoryLimit(false), inhibitForking(false), haltExecution(false),
       ivcEnabled(false),
+    stateCount(0),
+    pauseExecution(false),
+    pausedThreadCount(0),
       coreSolverTimeout(MaxCoreSolverTime != 0 && MaxInstructionTime != 0
                             ? std::min(MaxCoreSolverTime, MaxInstructionTime)
                             : std::max(MaxCoreSolverTime, MaxInstructionTime)),
       debugInstFile(0), debugLogBuffer(debugBufferString) {
 
   if (coreSolverTimeout) UseForkedCoreSolver = true;
-  Solver *coreSolver = klee::createCoreSolver(CoreSolverToUse);
-  if (!coreSolver) {
-    klee_error("Failed to create core solver\n");
-  }
-  Solver *solver = constructSolverChain(
-      coreSolver,
-      interpreterHandler->getOutputFilename(ALL_QUERIES_SMT2_FILE_NAME),
-      interpreterHandler->getOutputFilename(SOLVER_QUERIES_SMT2_FILE_NAME),
-      interpreterHandler->getOutputFilename(ALL_QUERIES_PC_FILE_NAME),
-      interpreterHandler->getOutputFilename(SOLVER_QUERIES_PC_FILE_NAME));
+  
+  // Initialize solver for the root thread
+  this->solver.reset(new TimingSolver(initializeSolver(), EqualitySubstitution));
 
-  this->solver = new TimingSolver(solver, EqualitySubstitution);
-  memory = new MemoryManager(&arrayCache);
+  // Keep track of MemoryManager so we can delete later
+  memoryManagers.push_back(new MemoryManager(&arrayCache));
 
+  // Initialize MemoryManager for the root thread
+  memory.reset(memoryManagers.back());
+
+  // Thread-safe RNG
+  theRNG.reset(new RNG());
+
+  // eba0093c: Modified -debug-print-instructions to allow to write directly on log file.
   if (optionIsSet(DebugPrintInstructions, FILE_ALL) ||
       optionIsSet(DebugPrintInstructions, FILE_COMPACT) ||
       optionIsSet(DebugPrintInstructions, FILE_SRC)) {
@@ -398,6 +415,22 @@ Executor::Executor(const InterpreterOptions &opts, InterpreterHandler *ih)
   }
 }
 
+Solver* Executor::initializeSolver() {
+  Solver *coreSolver = NULL;
+  
+  coreSolver = klee::createCoreSolver(CoreSolverToUse);
+  if (!coreSolver) {
+    klee_error("Failed to create core solver\n");
+  }
+   
+  Solver *solver = 
+    constructSolverChain(coreSolver,
+                         interpreterHandler->getOutputFilename(ALL_QUERIES_SMT2_FILE_NAME),
+                         interpreterHandler->getOutputFilename(SOLVER_QUERIES_SMT2_FILE_NAME),
+                         interpreterHandler->getOutputFilename(ALL_QUERIES_PC_FILE_NAME),
+                         interpreterHandler->getOutputFilename(SOLVER_QUERIES_PC_FILE_NAME));
+  return solver;
+}
 
 const Module *Executor::setModule(llvm::Module *module, 
                                   const ModuleOptions &opts) {
@@ -431,7 +464,6 @@ const Module *Executor::setModule(llvm::Module *module,
 }
 
 Executor::~Executor() {
-  delete memory;
   delete externalDispatcher;
   if (processTree)
     delete processTree;
@@ -439,7 +471,6 @@ Executor::~Executor() {
     delete specialFunctionHandler;
   if (statsTracker)
     delete statsTracker;
-  delete solver;
   delete kmodule;
   while(!timers.empty()) {
     delete timers.back();
@@ -577,6 +608,21 @@ void Executor::initializeGlobals(ExecutionState &state) {
   addExternalObject(state, const_cast<int32_t*>(*upper_addr-128),
                     384 * sizeof **upper_addr, true);
   addExternalObject(state, upper_addr, sizeof(*upper_addr), true);
+
+	ObjectPair addr_obj;
+	ObjectPair lower_addr_obj;
+	ObjectPair upper_addr_obj;
+	unsigned width = Context::get().getPointerWidth();
+	state.addressSpace.resolveOne(ConstantExpr::alloc((uint64_t)addr, width), addr_obj);
+	state.addressSpace.resolveOne(ConstantExpr::alloc((uint64_t)lower_addr, width), lower_addr_obj);
+	state.addressSpace.resolveOne(ConstantExpr::alloc((uint64_t)upper_addr, width), upper_addr_obj);
+	for (unsigned i=0; i<width/8; ++i) {
+		// const ugliness
+		const_cast<ObjectState*>(addr_obj.second)->markBytePointer(i);
+		const_cast<ObjectState*>(lower_addr_obj.second)->markBytePointer(i);
+		const_cast<ObjectState*>(upper_addr_obj.second)->markBytePointer(i);
+	}
+
 #endif
 #endif
 #endif
@@ -687,7 +733,7 @@ void Executor::branch(ExecutionState &state,
   assert(N);
 
   if (MaxForks!=~0u && stats::forks >= MaxForks) {
-    unsigned next = theRNG.getInt32() % N;
+    unsigned next = theRNG->getInt32() % N;
     for (unsigned i=0; i<N; ++i) {
       if (i == next) {
         result.push_back(&state);
@@ -701,11 +747,10 @@ void Executor::branch(ExecutionState &state,
     // XXX do proper balance or keep random?
     result.push_back(&state);
     for (unsigned i=1; i<N; ++i) {
-      ExecutionState *es = result[theRNG.getInt32() % i];
+      ExecutionState *es = result[theRNG->getInt32() % i];
       ExecutionState *ns = es->branch();
-      addedStates.push_back(ns);
+      getContext().addedStates.push_back(ns);
       result.push_back(ns);
-      es->ptreeNode->data = 0;
       std::pair<PTree::Node*,PTree::Node*> res = 
         processTree->split(es->ptreeNode, ns, es);
       ns->ptreeNode = res.first;
@@ -743,7 +788,7 @@ void Executor::branch(ExecutionState &state,
       // If we didn't find a satisfying condition randomly pick one
       // (the seed will be patched).
       if (i==N)
-        i = theRNG.getInt32() % N;
+        i = theRNG->getInt32() % N;
 
       // Extra check in case we're replaying seeds with a max-fork
       if (result[i])
@@ -849,7 +894,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
 	  klee_warning_once(0, "skipping fork (max-forks reached)");
 
         TimerStatIncrementer timer(stats::forkTime);
-        if (theRNG.getBool()) {
+        if (theRNG->getBool()) {
           addConstraint(current, condition);
           res = Solver::True;        
         } else {
@@ -921,9 +966,9 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     ++stats::forks;
 
     falseState = trueState->branch();
-    addedStates.push_back(falseState);
+    getContext().addedStates.push_back(falseState);
 
-    if (RandomizeFork && theRNG.getBool())
+    if (RandomizeFork && theRNG->getBool())
       std::swap(trueState, falseState);
 
     if (it != seedMap.end()) {
@@ -960,7 +1005,6 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
       }
     }
 
-    current.ptreeNode->data = 0;
     std::pair<PTree::Node*, PTree::Node*> res =
       processTree->split(current.ptreeNode, falseState, trueState);
     falseState->ptreeNode = res.first;
@@ -1013,7 +1057,7 @@ void Executor::addConstraint(ExecutionState &state, ref<Expr> condition) {
       assert(success && "FIXME: Unhandled solver failure");
       (void) success;
       if (res) {
-        siit->patchSeed(state, condition, solver);
+        siit->patchSeed(state, condition, solver.get());
         warn = true;
       }
     }
@@ -1040,6 +1084,47 @@ ref<klee::ConstantExpr> Executor::evalConstant(const Constant *c) {
     } else if (isa<ConstantPointerNull>(c)) {
       return Expr::createPointer(0);
     } else if (isa<UndefValue>(c) || isa<ConstantAggregateZero>(c)) {
+      if (llvm::VectorType *VTy = dyn_cast<llvm::VectorType>(c->getType())) {
+        std::vector<ref<Expr> > kids;
+        for (unsigned i = 0, e = VTy->getNumElements(); i != e; ++i) {
+          ref<Expr> kid = ConstantExpr::create(0, 
+            getWidthForLLVMType(VTy->getElementType()));
+          kids.push_back(kid);
+        }
+        ref<Expr> res = ConcatExpr::createN(kids.size(), kids.data());
+        return cast<ConstantExpr>(res);
+      } else if (llvm::StructType *STy = dyn_cast<llvm::StructType>(c->getType())) {
+        const StructLayout *sl = kmodule->targetData->getStructLayout(STy);
+        const llvm::UndefValue *uv = dyn_cast<const llvm::UndefValue>(c);
+        llvm::SmallVector<ref<Expr>, 4> kids;
+        for (unsigned i = STy->getNumElements(); i != 0; --i) {
+          unsigned op = i-1;
+          ref<Expr> kid = evalConstant(uv->getStructElement(op));
+
+          uint64_t thisOffset = sl->getElementOffsetInBits(op),
+                  nextOffset = (op == STy->getNumElements() - 1)
+                                ? sl->getSizeInBits()
+                                : sl->getElementOffsetInBits(op+1);
+          if (nextOffset-thisOffset > kid->getWidth()) {
+            uint64_t paddingWidth = nextOffset-thisOffset-kid->getWidth();
+            kids.push_back(ConstantExpr::create(0, paddingWidth));
+          }
+          kids.push_back(kid);
+        }
+        ref<Expr> res = ConcatExpr::createN(kids.size(), kids.data());
+        return cast<ConstantExpr>(res);
+      }
+      if (c->getType()->getTypeID() == llvm::Type::VectorTyID) {
+        llvm::VectorType *VTy = cast<llvm::VectorType>(c->getType());
+        std::vector<ref<Expr> > kids;
+        for (unsigned i = 0, e = VTy->getNumElements(); i != e; ++i) {
+          ref<Expr> kid = ConstantExpr::create(0, 
+            getWidthForLLVMType(VTy->getElementType()));
+          kids.push_back(kid);
+        }
+        ref<Expr> res = ConcatExpr::createN(kids.size(), kids.data());
+        return cast<ConstantExpr>(res);
+      }
       return ConstantExpr::create(0, getWidthForLLVMType(c->getType()));
 #if LLVM_VERSION_CODE >= LLVM_VERSION(3, 1)
     } else if (const ConstantDataSequential *cds =
@@ -1081,8 +1166,16 @@ ref<klee::ConstantExpr> Executor::evalConstant(const Constant *c) {
       }
       ref<Expr> res = ConcatExpr::createN(kids.size(), kids.data());
       return cast<ConstantExpr>(res);
+    } else if (const ConstantVector *cv = dyn_cast<ConstantVector>(c)){
+      llvm::SmallVector<ref<Expr>, 4> kids;
+      for (unsigned i = cv->getNumOperands(); i != 0; --i) {
+        unsigned op = i-1;
+        ref<Expr> kid = evalConstant(cv->getOperand(op));
+        kids.push_back(kid);
+      }
+      ref<Expr> res = ConcatExpr::createN(kids.size(), kids.data());
+      return cast<ConstantExpr>(res);
     } else {
-      // Constant{Vector}
       llvm::report_fatal_error("invalid argument to evalConstant()");
     }
   }
@@ -1159,7 +1252,7 @@ Executor::toConstant(ExecutionState &state,
      << (*(state.pc)).info->line << ")";
 
   if (AllExternalWarnings)
-    klee_warning(reason, os.str().c_str());
+    klee_warning("%s", os.str().c_str());
   else
     klee_warning_once(reason, "%s", os.str().c_str());
 
@@ -1253,7 +1346,7 @@ void Executor::stepInstruction(ExecutionState &state) {
   state.prevPC = state.pc;
   ++state.pc;
 
-  if (stats::instructions==StopAfterNInstructions)
+  if (StopAfterNInstructions && stats::instructions==StopAfterNInstructions)
     haltExecution = true;
 }
 
@@ -2565,14 +2658,14 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 
 void Executor::updateStates(ExecutionState *current) {
   if (searcher) {
-    searcher->update(current, addedStates, removedStates);
+    searcher->update(current, getContext().addedStates, getContext().removedStates);
   }
   
-  states.insert(addedStates.begin(), addedStates.end());
-  addedStates.clear();
+  states.insert(getContext().addedStates.begin(), getContext().addedStates.end());
+  getContext().addedStates.clear();
 
-  for (std::vector<ExecutionState *>::iterator it = removedStates.begin(),
-                                               ie = removedStates.end();
+  for (std::vector<ExecutionState *>::iterator
+         it = getContext().removedStates.begin(), ie = getContext().removedStates.end();
        it != ie; ++it) {
     ExecutionState *es = *it;
     std::set<ExecutionState*>::iterator it2 = states.find(es);
@@ -2585,7 +2678,7 @@ void Executor::updateStates(ExecutionState *current) {
     processTree->remove(es->ptreeNode);
     delete es;
   }
-  removedStates.clear();
+  getContext().removedStates.clear();
 }
 
 template <typename TypeIt>
@@ -2860,18 +2953,18 @@ void Executor::terminateState(ExecutionState &state) {
   interpreterHandler->incPathsExplored();
 
   std::vector<ExecutionState *>::iterator it =
-      std::find(addedStates.begin(), addedStates.end(), &state);
-  if (it==addedStates.end()) {
+      std::find(getContext().addedStates.begin(), getContext().addedStates.end(), &state);
+  if (it==getContext().addedStates.end()) {
     state.pc = state.prevPC;
 
-    removedStates.push_back(&state);
+    getContext().removedStates.push_back(&state);
   } else {
     // never reached searcher, just delete immediately
     std::map< ExecutionState*, std::vector<SeedInfo> >::iterator it3 = 
       seedMap.find(&state);
     if (it3 != seedMap.end())
       seedMap.erase(it3);
-    addedStates.erase(it);
+    getContext().addedStates.erase(it);
     processTree->remove(state.ptreeNode);
     delete &state;
   }
@@ -3053,8 +3146,50 @@ void Executor::callExternalFunction(ExecutionState &state,
     }
   }
 
-  state.addressSpace.copyOutConcretes();
+  // Mutex is used because only have concrete backstore for the addressSpace 
+  // and it is shared amongst all states.  
+  static Mutex externalCallMutex;
+  LockGuard guard(externalCallMutex);
 
+  ObjectPair inOP, outOP, keyOP;
+  if (function->getName() == "AES_encrypt" ||
+      function->getName() == "AES_decrypt") {
+    ref<ConstantExpr> in = cast<ConstantExpr>(arguments[0]);
+    ref<ConstantExpr> key = cast<ConstantExpr>(arguments[2]);
+
+    state.addressSpace.resolveOne(in, inOP);
+    state.addressSpace.copyOutConcreteOffset(inOP, in, 16);
+
+    state.addressSpace.resolveOne(key, keyOP);
+    state.addressSpace.copyOutConcreteOffset(keyOP, key, 244);
+
+  } else if (function->getName() == "gcm_gmult_4bit") {
+    ref<ConstantExpr> out = cast<ConstantExpr>(arguments[0]); // Xi: 16 bytes
+    ref<ConstantExpr> key = cast<ConstantExpr>(arguments[1]); // Htable:256 bytes
+
+    state.addressSpace.resolveOne(out, outOP);
+    state.addressSpace.copyOutConcreteOffset(outOP, out, 16);
+
+    state.addressSpace.resolveOne(key, keyOP);
+    state.addressSpace.copyOutConcreteOffset(keyOP, key, 256);
+
+  } else if (function->getName() == "gcm_ghash_4bit") {
+    ref<ConstantExpr> out = cast<ConstantExpr>(arguments[0]); // Xi: 16 bytes
+    ref<ConstantExpr> key = cast<ConstantExpr>(arguments[1]); // Htable: 256 bytes
+    ref<ConstantExpr> in = cast<ConstantExpr>(arguments[2]); // inp: len bytes
+    size_t len = cast<ConstantExpr>(arguments[3])->getZExtValue(); // len
+
+    state.addressSpace.resolveOne(out, outOP);
+    state.addressSpace.copyOutConcreteOffset(outOP, out, 16);
+
+    state.addressSpace.resolveOne(key, keyOP);
+    state.addressSpace.copyOutConcreteOffset(keyOP, key, 256);
+
+    state.addressSpace.resolveOne(in, inOP);
+    state.addressSpace.copyOutConcreteOffset(inOP, in, len);
+  } else {
+    state.addressSpace.copyOutConcretes();
+  }
   if (!SuppressExternalWarnings) {
 
     std::string TmpStr;
@@ -3080,10 +3215,48 @@ void Executor::callExternalFunction(ExecutionState &state,
     return;
   }
 
+  if (function->getName() == "AES_encrypt" ||
+      function->getName() == "AES_decrypt") {
+    ref<ConstantExpr> out = cast<ConstantExpr>(arguments[1]);
+    ref<ConstantExpr> key = cast<ConstantExpr>(arguments[2]);
+
+    state.addressSpace.resolveOne(out, outOP);
+    state.addressSpace.copyInConcreteOffset(outOP, out, 16);
+
+    state.addressSpace.resolveOne(key, keyOP);
+    state.addressSpace.copyInConcreteOffset(keyOP, key, 244);
+
+  } else if (function->getName() == "gcm_gmult_4bit") {
+    ref<ConstantExpr> out = cast<ConstantExpr>(arguments[0]);
+    ref<ConstantExpr> key = cast<ConstantExpr>(arguments[1]);
+
+    state.addressSpace.resolveOne(out, outOP);
+    state.addressSpace.copyInConcreteOffset(outOP, out, 16);
+
+    state.addressSpace.resolveOne(key, keyOP);
+    state.addressSpace.copyInConcreteOffset(keyOP, key, 256);
+
+  } else if (function->getName() == "gcm_ghash_4bit") {
+    ref<ConstantExpr> out = cast<ConstantExpr>(arguments[0]);
+    ref<ConstantExpr> key = cast<ConstantExpr>(arguments[1]);
+    ref<ConstantExpr> in = cast<ConstantExpr>(arguments[2]);
+    size_t len = cast<ConstantExpr>(arguments[3])->getZExtValue(); // len
+
+    state.addressSpace.resolveOne(out, outOP);
+    state.addressSpace.copyInConcreteOffset(outOP, out, 16);
+
+    state.addressSpace.resolveOne(key, keyOP);
+    state.addressSpace.copyInConcreteOffset(keyOP, key, 256);
+
+    state.addressSpace.resolveOne(in, inOP);
+    state.addressSpace.copyOutConcreteOffset(inOP, in, len);
+
+  } else {
   if (!state.addressSpace.copyInConcretes()) {
     terminateStateOnError(state, "external modified read-only object",
                           External);
     return;
+  }
   }
 
   LLVM_TYPE_Q Type *resultType = target->inst->getType();
@@ -3284,7 +3457,7 @@ void Executor::resolveExact(ExecutionState &state,
                             const std::string &name) {
   // XXX we may want to be capping this?
   ResolutionList rl;
-  state.addressSpace.resolve(state, solver, p, rl);
+  state.addressSpace.resolve(state, solver.get(), p, rl);
   
   ExecutionState *unbound = &state;
   for (ResolutionList::iterator it = rl.begin(), ie = rl.end(); 
@@ -3327,7 +3500,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
   ObjectPair op;
   bool success;
   solver->setTimeout(coreSolverTimeout);
-  if (!state.addressSpace.resolveOne(state, solver, address, op, success)) {
+  if (!state.addressSpace.resolveOne(state, solver.get(), address, op, success)) {
     address = toConstant(state, address, "resolveOne failure");
     success = state.addressSpace.resolveOne(cast<ConstantExpr>(address), op);
   }
@@ -3382,7 +3555,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
   
   ResolutionList rl;  
   solver->setTimeout(coreSolverTimeout);
-  bool incomplete = state.addressSpace.resolve(state, solver, address, rl,
+  bool incomplete = state.addressSpace.resolve(state, solver.get(), address, rl,
                                                0, coreSolverTimeout);
   solver->setTimeout(0);
   
@@ -3590,18 +3763,19 @@ void Executor::runFunctionAsMain(Function *f,
       }
     }
   }
+
+  totalThreadCount = UseThreads;
   
   initializeGlobals(*state);
 
   processTree = new PTree(state);
   state->ptreeNode = processTree->root;
-  run(*state);
+  //if (UseThreads > 1)
+    parallelRun(*state);
+  //else
+  //  run(*state);
   delete processTree;
   processTree = 0;
-
-  // hack to clear memory objects
-  delete memory;
-  memory = new MemoryManager(NULL);
 
   globalObjects.clear();
   globalAddresses.clear();
@@ -3716,38 +3890,134 @@ void Executor::getCoveredLines(const ExecutionState &state,
   res = state.coveredLines;
 }
 
+bool Executor::concretizeExpr(ref<Expr> e,
+                           std::map< ref<Expr>, ref<Expr> > &implied,
+                           ref<Expr> &result) {
+  result = e;
+  bool concretized = false;
+  if (!e.isNull() && !isa<ConstantExpr>(e)) {
+    // Fast check if this is a direct read
+    if (isa<ReadExpr>(e) && implied.find(e) != implied.end()) {
+      result = implied[e];
+      concretized = true;
+    } else {
+
+      // Attempt to concretize until we can no longer reduce
+      // the number of reads in the expr
+      unsigned lastCount = 0;
+      std::vector<ref<ReadExpr> > reads;
+      ref<Expr> simplifiedExpr = e;
+      findReads(simplifiedExpr, true, reads);
+
+      while (reads.size() != lastCount) {
+        lastCount = reads.size();
+        bool updateReads = false;
+        for (std::vector<ref<ReadExpr> >::iterator rit=reads.begin(),
+              rie=reads.end(); rit!=rie; ++rit) {
+          if (implied.find(*rit) != implied.end()) {
+            ConstraintManager cm;
+            cm.addConstraint(EqExpr::create(implied[*rit], *rit));
+            simplifiedExpr = cm.simplifyExpr(simplifiedExpr);
+            updateReads = true;
+          }
+        }
+        if (updateReads)
+          findReads(simplifiedExpr, true, reads);
+      }
+      if (simplifiedExpr != e) {
+        result = simplifiedExpr;
+        concretized = true;
+      }
+    }
+  }
+
+  if (DebugPrintConcretizations && concretized) {
+    std::string info_str;
+    llvm::raw_string_ostream info(info_str);
+    info << "Concretized " << e << " into " << result;
+    klee_warning(info_str.c_str());
+  }
+
+  return concretized;
+}
+
 void Executor::doImpliedValueConcretization(ExecutionState &state,
                                             ref<Expr> e,
                                             ref<ConstantExpr> value) {
-  abort(); // FIXME: Broken until we sort out how to do the write back.
-
   if (DebugCheckForImpliedValues)
     ImpliedValue::checkForImpliedValues(solver->solver, e, value);
 
   ImpliedValueList results;
   ImpliedValue::getImpliedValues(e, value, results);
-  for (ImpliedValueList::iterator it = results.begin(), ie = results.end();
-       it != ie; ++it) {
-    ReadExpr *re = it->first.get();
-    
-    if (ConstantExpr *CE = dyn_cast<ConstantExpr>(re->index)) {
-      // FIXME: This is the sole remaining usage of the Array object
-      // variable. Kill me.
-      const MemoryObject *mo = 0; //re->updates.root->object;
-      const ObjectState *os = state.addressSpace.findObject(mo);
 
-      if (!os) {
-        // object has been free'd, no need to concretize (although as
-        // in other cases we would like to concretize the outstanding
-        // reads, but we have no facility for that yet)
-      } else {
-        assert(!os->readOnly && 
-               "not possible? read only object with static read?");
+  std::map< ref<Expr>, ref<Expr> > impliedReads;
+  impliedReads.insert(results.begin(), results.end());
+
+  if (impliedReads.size() == 0)
+    return;
+
+  unsigned concretization_count = 0;
+  ref<Expr> result;
+
+  std::vector<const MemoryObject*> memoryObjects;
+  for (MemoryMap::iterator it = state.addressSpace.objects.begin(),
+        ie = state.addressSpace.objects.end(); it != ie; ++it) {
+    memoryObjects.push_back(it->first);
+  }
+
+  // Iterate over *entire* address space! FIXME: faster?
+  for (std::vector<const MemoryObject*>::iterator it=memoryObjects.begin(),
+        ie = memoryObjects.end(); it != ie; ++it) {
+    const MemoryObject *mo = *it;
+    const ObjectState *os = state.addressSpace.findObject(mo);
+    assert(os);
+    for (unsigned i=0; i<mo->size; i++) {
+      ref<Expr> curr_read = os->read8(i);
+      if (concretizeExpr(curr_read, impliedReads, result)) {
+        // Concretize the ReadExpr
         ObjectState *wos = state.addressSpace.getWriteable(mo, os);
-        wos->write(CE, it->second);
+        wos->write(i, result);
+        // Update object for next byte
+        os = wos;
+        concretization_count++;
       }
     }
   }
+
+  // Walk stack frames (needed?)
+  for (int i=0; i<state.stack.size(); ++i) {
+    StackFrame &sf = state.stack[i];
+    if (sf.locals != NULL && sf.kf != NULL) {
+      for (int j=0; j < sf.kf->numRegisters; ++j) {
+        if (concretizeExpr(sf.locals[j].value, impliedReads, result)) {
+          sf.locals[j].value = result;
+          concretization_count++;
+        }
+      }
+    }
+  }
+
+  // Check constraints (needed?)
+  std::set< ref<Expr> > impliedConstraints;
+  ConstraintManager &cm = state.constraints;
+  for (ConstraintManager::const_iterator it=cm.begin(),ie=cm.end();
+       it!=ie; ++it) {
+    if (concretizeExpr(*it, impliedReads, result)) {
+      impliedConstraints.insert(EqExpr::create(result, *it));
+    }
+  }
+
+  for (std::set<ref<Expr> >::iterator it=impliedConstraints.begin(),
+       ie=impliedConstraints.end(); it!=ie; ++it) {
+    state.addConstraint(*it);
+    concretization_count++;
+  }
+
+  if (DebugPrintConcretizations && concretization_count)
+    klee_warning("Concretized %d symbolic reads", concretization_count);
+}
+
+void Executor::executeEvent(ExecutionState &state, unsigned int type, long int value) {
 }
 
 Expr::Width Executor::getWidthForLLVMType(LLVM_TYPE_Q llvm::Type *type) const {

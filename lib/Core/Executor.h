@@ -22,6 +22,8 @@
 #include "klee/Internal/Module/KModule.h"
 #include "klee/util/ArrayCache.h"
 #include "llvm/Support/raw_ostream.h"
+#include "klee/util/Mutex.h"
+#include "klee/util/Thread.h"
 
 #include "llvm/ADT/Twine.h"
 
@@ -70,8 +72,10 @@ namespace klee {
   class SpecialFunctionHandler;
   struct StackFrame;
   class StatsTracker;
+  class Solver;
   class TimingSolver;
   class TreeStreamWriter;
+  class CliverFunctionHandler;
   template<class T> class ref;
 
 
@@ -84,9 +88,11 @@ class Executor : public Interpreter {
   friend class BumpMergingSearcher;
   friend class MergingSearcher;
   friend class RandomPathSearcher;
+  friend class ParallelRandomPathSearcher;
   friend class OwningSearcher;
   friend class WeightedRandomSearcher;
   friend class SpecialFunctionHandler;
+  friend class CliverFunctionHandler;
   friend class StatsTracker;
 
 public:
@@ -99,7 +105,23 @@ public:
     virtual void run() = 0;
   };
 
+  /// Context object to keep track of data only live during an instruction step
+  struct ExecutorContext {
+    /// Used to track states that have been added during the current
+    /// instructions step. 
+    /// \invariant \ref addedStates is a subset of \ref states. 
+    /// \invariant \ref addedStates and \ref removedStates are disjoint.
+    std::vector<ExecutionState*> addedStates;
+    /// Used to track states that have been removed during the current
+    /// instructions step. 
+    /// \invariant \ref removedStates is a subset of \ref states. 
+    /// \invariant \ref addedStates and \ref removedStates are disjoint.
+    std::vector<ExecutionState*> removedStates;
+  };
+
   typedef std::pair<ExecutionState*,ExecutionState*> StatePair;
+
+  Atomic<int>::type live_threads_;
 
   enum TerminateReason {
     Abort,
@@ -116,7 +138,7 @@ public:
     Unhandled
   };
 
-private:
+protected:
   static const char *TerminateReasonNames[];
 
   class TimerInfo;
@@ -126,25 +148,39 @@ private:
   Searcher *searcher;
 
   ExternalDispatcher *externalDispatcher;
-  TimingSolver *solver;
-  MemoryManager *memory;
+  ThreadSpecificPointer<TimingSolver>::type solver;
+  ThreadSpecificPointer<MemoryManager>::type memory;
   std::set<ExecutionState*> states;
+  Mutex statesMutex;
+  Atomic<int>::type stateCount;
+  std::vector<MemoryManager*> memoryManagers;
   StatsTracker *statsTracker;
   TreeStreamWriter *pathWriter, *symPathWriter;
   SpecialFunctionHandler *specialFunctionHandler;
   std::vector<TimerInfo*> timers;
   PTree *processTree;
 
-  /// Used to track states that have been added during the current
-  /// instructions step. 
-  /// \invariant \ref addedStates is a subset of \ref states. 
-  /// \invariant \ref addedStates and \ref removedStates are disjoint.
-  std::vector<ExecutionState *> addedStates;
-  /// Used to track states that have been removed during the current
-  /// instructions step. 
-  /// \invariant \ref removedStates is a subset of \ref states. 
-  /// \invariant \ref addedStates and \ref removedStates are disjoint.
-  std::vector<ExecutionState *> removedStates;
+  /// Used to communicate to other threads when new states have been added
+  ConditionVariable searcherCond;
+  Mutex searcherCondLock;
+
+  /// Used to wait until all threads have been initialized before executing
+  /// states
+  Barrier* threadBarrier;
+
+  /// Indicate to threads when execution should be paused
+  Atomic<bool>::type pauseExecution;
+  Atomic<int>::type pausedThreadCount;
+  Atomic<int>::type totalThreadCount;
+  ConditionVariable pauseExecutionCondition;
+  ConditionVariable startExecutionCondition;
+  Mutex pauseExecutionMutex;
+  Mutex initializationLock;
+
+#if USE_BOOST_THREAD_SPECIFIC_PTR
+  /// Per-thread ExecutorContext
+  ThreadSpecificPointer<ExecutorContext>::type context;
+#endif
 
   /// When non-empty the Executor is running in "seed" mode. The
   /// states in this map will be executed in an arbitrary order
@@ -188,7 +224,7 @@ private:
 
   /// Signals the executor to halt execution at the next instruction
   /// step.
-  bool haltExecution;  
+  Atomic<bool>::type haltExecution;
 
   /// Whether implied-value concretization is enabled. Currently
   /// false, it is buggy (it needs to validate its writes).
@@ -218,7 +254,10 @@ private:
   void printFileLine(ExecutionState &state, KInstruction *ki,
                      llvm::raw_ostream &file);
 
-  void run(ExecutionState &initialState);
+  virtual void execute(ExecutionState *initialState, MemoryManager* memory);
+
+  virtual void run(ExecutionState &initialState);
+  virtual void parallelRun(ExecutionState &initialState);
 
   // Given a concrete object in our [klee's] address space, add it to 
   // objects checked code can reference.
@@ -229,14 +268,16 @@ private:
 			      const llvm::Constant *c,
 			      unsigned offset);
   void initializeGlobals(ExecutionState &state);
+  void initializePerThread(ExecutionState &state, MemoryManager* memory);
 
-  void stepInstruction(ExecutionState &state);
-  void updateStates(ExecutionState *current);
-  void transferToBasicBlock(llvm::BasicBlock *dst, 
+  virtual void stepInstruction(ExecutionState &state);
+  virtual void updateStates(ExecutionState *current);
+  virtual void parallelUpdateStates(ExecutionState *current);
+  virtual void transferToBasicBlock(llvm::BasicBlock *dst, 
 			    llvm::BasicBlock *src,
 			    ExecutionState &state);
 
-  void callExternalFunction(ExecutionState &state,
+  virtual void callExternalFunction(ExecutionState &state,
                             KInstruction *target,
                             llvm::Function *function,
                             std::vector< ref<Expr> > &arguments);
@@ -290,7 +331,7 @@ private:
                    ref<Expr> address,
                    KInstruction *target = 0);
   
-  void executeCall(ExecutionState &state, 
+  virtual void executeCall(ExecutionState &state, 
                    KInstruction *ki,
                    llvm::Function *f,
                    std::vector< ref<Expr> > &arguments);
@@ -303,21 +344,21 @@ private:
                               ref<Expr> value /* undef if read */,
                               KInstruction *target /* undef if write */);
 
-  void executeMakeSymbolic(ExecutionState &state, const MemoryObject *mo,
+  virtual void executeMakeSymbolic(ExecutionState &state, const MemoryObject *mo,
                            const std::string &name);
 
   /// Create a new state where each input condition has been added as
   /// a constraint and return the results. The input state is included
   /// as one of the results. Note that the output vector may included
   /// NULL pointers for states which were unable to be created.
-  void branch(ExecutionState &state, 
+  virtual void branch(ExecutionState &state, 
               const std::vector< ref<Expr> > &conditions,
               std::vector<ExecutionState*> &result);
 
   // Fork current and return states in which condition holds / does
   // not hold, respectively. One of the states is necessarily the
   // current state, and one of the states may be null.
-  StatePair fork(ExecutionState &current, ref<Expr> condition, bool isInternal);
+  virtual StatePair fork(ExecutionState &current, ref<Expr> condition, bool isInternal);
 
   /// Add the given (boolean) condition as a constraint on state. This
   /// function is a wrapper around the state's addConstraint function
@@ -382,11 +423,11 @@ private:
   bool shouldExitOn(enum TerminateReason termReason);
 
   // remove state from queue and delete
-  void terminateState(ExecutionState &state);
+  virtual void terminateState(ExecutionState &state);
   // call exit handler and terminate state
   void terminateStateEarly(ExecutionState &state, const llvm::Twine &message);
   // call exit handler and terminate state
-  void terminateStateOnExit(ExecutionState &state);
+  virtual void terminateStateOnExit(ExecutionState &state);
   // call error handler and terminate state
   void terminateStateOnError(ExecutionState &state, const llvm::Twine &message,
                              enum TerminateReason termReason,
@@ -416,9 +457,17 @@ private:
                          KInstruction *target, 
                          const std::vector<ref<Expr> > &arguments);
 
+  bool concretizeExpr(ref<Expr> e,
+                      std::map< ref<Expr>, ref<Expr> > &implied,
+                      ref<Expr> &result);
+
+  virtual void executeEvent(ExecutionState &state, unsigned int type, long int value);
+
+public:
   void doImpliedValueConcretization(ExecutionState &state,
                                     ref<Expr> e,
                                     ref<ConstantExpr> value);
+protected:
 
   /// Add a timer to be executed periodically.
   ///
@@ -432,6 +481,18 @@ private:
   void checkMemoryUsage();
   void printDebugInstructions(ExecutionState &state);
   void doDumpStates();
+
+  /// Return the ExecutorContext for the current thread
+  ExecutorContext& getContext();
+
+  /// Returns true if the states set is empty (thread-safe)
+  bool empty();
+
+  /// Returns the current application memory usage in bytes (thread-safe)
+  size_t GetMemoryUsage();
+
+  /// Initialize a new solver
+  Solver* initializeSolver();
 
 public:
   Executor(const InterpreterOptions &opts, InterpreterHandler *ie);
@@ -475,10 +536,19 @@ public:
                                  char **argv,
                                  char **envp);
 
+  virtual bool PauseExecution();
+
+  virtual void UnPauseExecution();
+
   /*** Runtime options ***/
   
   virtual void setHaltExecution(bool value) {
     haltExecution = value;
+    searcherCond.notify_all();
+  }
+
+  virtual bool getHaltExecution() {
+    return haltExecution;
   }
 
   virtual void setInhibitForking(bool value) {

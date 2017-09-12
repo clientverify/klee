@@ -127,10 +127,10 @@ void UpdateList::tryFreeNodes() {
   //  nullptr
   //  ^Head0
   //
-  while (head && --head->refCount==0) {
-    const UpdateNode *n = head->next;
-    delete head;
-    head = n;
+  const UpdateNode *next = (head) ? head->next : NULL;
+  while (head && head->refCount.release(head)) {
+    head = next;
+    if (head) next = head->next;
   }
 }
 
@@ -151,7 +151,7 @@ void UpdateList::extend(const ref<Expr> &index, const ref<Expr> &value) {
     assert(root->getRange() == value->getWidth());
   }
 
-  if (head) --head->refCount;
+  if (head) head->refCount.release();
   head = new UpdateNode(head, index, value);
   ++head->refCount;
 }

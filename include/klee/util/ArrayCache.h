@@ -71,8 +71,10 @@ private:
   typedef unordered_set<const Array *, klee::ArrayHashFn,
                         klee::EquivArrayCmpFn> ArrayHashMap;
   ArrayHashMap cachedSymbolicArrays;
+  Mutex cachedSymbolicArraysMutex;
   typedef std::vector<const Array *> ArrayPtrVec;
   ArrayPtrVec concreteArrays;
+  Mutex concreteArraysMutex;
 };
 }
 

@@ -58,6 +58,7 @@ CallPathManager::~CallPathManager() {
 }
 
 void CallPathManager::getSummaryStatistics(CallSiteSummaryTable &results) {
+  LockGuard guard(lock);
   results.clear();
 
   for (std::vector<CallPathNode*>::iterator it = paths.begin(),
@@ -92,6 +93,7 @@ CallPathNode *CallPathManager::computeCallPath(CallPathNode *parent,
 CallPathNode *CallPathManager::getCallPath(CallPathNode *parent, 
                                            Instruction *cs,
                                            Function *f) {
+  LockGuard guard(lock);
   std::pair<Instruction*,Function*> key(cs, f);
   if (!parent)
     parent = &root;

@@ -9,6 +9,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "cliver/ClientVerifier.h"
+
+#include "klee/Cloud9Init.h"
 #include "klee/ExecutionState.h"
 #include "klee/Expr.h"
 #include "klee/Interpreter.h"
@@ -21,6 +24,14 @@
 #include "klee/Internal/System/Time.h"
 #include "klee/Internal/Support/PrintVersion.h"
 #include "klee/Internal/Support/ErrorHandling.h"
+#include "klee/util/Atomic.h"
+
+// FIXME: Ugh, this is gross. But otherwise our config.h conflicts with LLVMs.
+#undef PACKAGE_BUGREPORT
+#undef PACKAGE_NAME
+#undef PACKAGE_STRING
+#undef PACKAGE_TARNAME
+#undef PACKAGE_VERSION
 
 #if LLVM_VERSION_CODE > LLVM_VERSION(3, 2)
 #include "llvm/IR/Constants.h"
@@ -75,7 +86,7 @@
 using namespace llvm;
 using namespace klee;
 
-namespace {
+namespace klee {
   cl::opt<std::string>
   InputFile(cl::desc("<input bytecode>"), cl::Positional, cl::init("-"));
 
@@ -155,6 +166,11 @@ namespace {
 		cl::init(false));
 
   cl::opt<bool>
+  WithCloud9POSIXRuntime("cloud9-posix-runtime",
+		cl::desc("Link with the cloud9 POSIX runtime.  Options that can be passed as arguments to the programs are: --sym-argv <max-len>  --sym-argvs <min-argvs> <max-argvs> <max-len> + file model options"),
+		cl::init(false));
+    
+  cl::opt<bool>
   OptimizeModule("optimize",
                  cl::desc("Optimize before execution"),
 		 cl::init(false));
@@ -221,9 +237,20 @@ namespace {
   Watchdog("watchdog",
            cl::desc("Use a watchdog process to enforce --max-time."),
            cl::init(0));
+
+  cl::opt<bool>
+  StripUclibcAsm64("strip-uclibc-asm64",
+           cl::desc("Strip of asm prefixes for 64 bit functions not present in uclibc."),
+           cl::init(1));
 }
 
 extern cl::opt<double> MaxTime;
+
+namespace cliver {
+  extern cl::opt<bool> EnableCliver;
+}
+
+#include "cliver.h"
 
 /***/
 
@@ -235,8 +262,8 @@ private:
 
   SmallString<128> m_outputDirectory;
 
-  unsigned m_testIndex;  // number of tests written so far
-  unsigned m_pathsExplored; // number of paths explored so far
+  Atomic<unsigned>::type m_testIndex;  // number of tests written so far
+  Atomic<unsigned>::type m_pathsExplored; // number of paths explored so far
 
   // used for writing .ktest files
   int m_argc;
@@ -652,8 +679,14 @@ static void parseArguments(int argc, char **argv) {
 #else
   cl::ParseCommandLineOptions(argc, argv, " klee\n", /*ReadResponseFiles=*/ true);
 #endif
+  if (cliver::EnableCliver) {
+    // Check if klee options are compatible with cliver, 
+    // doesn't support options read from response file above
+    std::vector<std::string> arguments;
+    arguments.insert(arguments.begin(), argv, argv + argc);
+    processKleeArgumentsForCliver(arguments);
+  }
 }
-
 static int initEnv(Module *mainModule) {
 
   /*
@@ -930,6 +963,12 @@ void externalsAndGlobalsCheck(const Module *m) {
       if (unsafe.count(ext)) {
         foundUnsafe.insert(*it);
       } else {
+        if (ext[0] == '\x1') {
+        klee_warning("asm sentinel in  %s: %s",
+                     it->second ? "variable" : "function",
+                     ext.c_str());
+        }
+
         klee_warning("undefined reference to %s: %s",
                      it->second ? "variable" : "function",
                      ext.c_str());
@@ -1048,7 +1087,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
                                                     true));
 
   // force various imports
-  if (WithPOSIXRuntime) {
+  if (WithPOSIXRuntime || WithCloud9POSIXRuntime) {
     LLVM_TYPE_Q llvm::Type *i8Ty = Type::getInt8Ty(getGlobalContext());
     mainModule->getOrInsertFunction("realpath",
                                     PointerType::getUnqual(i8Ty),
@@ -1077,32 +1116,43 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
   // linked. In the off chance that both prefixed and unprefixed
   // versions are present in the module, make sure we don't create a
   // naming conflict.
-  for (Module::iterator fi = mainModule->begin(), fe = mainModule->end();
-       fi != fe; ++fi) {
-    Function *f = fi;
-    const std::string &name = f->getName();
-    if (name[0]=='\01') {
-      unsigned size = name.size();
-      if (name[size-2]=='6' && name[size-1]=='4') {
-        std::string unprefixed = name.substr(1);
+  if (StripUclibcAsm64) {
+    std::vector<Function*> funcs;
+    for (Module::iterator fi = mainModule->begin(), fe = mainModule->end();
+        fi != fe; ++fi) {
+      funcs.push_back(&*fi);
+    }
 
-        // See if the unprefixed version exists.
-        if (Function *f2 = mainModule->getFunction(unprefixed)) {
-          f->replaceAllUsesWith(f2);
-          f->eraseFromParent();
-        } else {
-          f->setName(unprefixed);
+    for (std::vector<Function*>::iterator fi = funcs.begin(), fe = funcs.end();
+        fi != fe; ++fi) {
+      Function *f = *fi;
+      const std::string &name = f->getName();
+      if (name[0]=='\01') {
+        unsigned size = name.size();
+        if (name[size-2]=='6' && name[size-1]=='4') {
+          std::string unprefixed = name.substr(1);
+
+          // See if the unprefixed version exists.
+          if (Function *f2 = mainModule->getFunction(unprefixed)) {
+            f->replaceAllUsesWith(f2);
+            f->eraseFromParent();
+          } else {
+            f->setName(unprefixed);
+          }
         }
       }
     }
   }
+  replaceOrRenameFunction(mainModule, "\01__isoc99_sscanf", "sscanf");
 
+  //mainModule = klee::deterministicLinkWithLibrary(mainModule, uclibcBCA.c_str());
   mainModule = klee::linkWithLibrary(mainModule, uclibcBCA.c_str());
   assert(mainModule && "unable to link with uclibc");
 
 
   replaceOrRenameFunction(mainModule, "__libc_open", "open");
   replaceOrRenameFunction(mainModule, "__libc_fcntl", "fcntl");
+  replaceOrRenameFunction(mainModule, "__libc_lseek", "lseek");
 
   // Take care of fortified functions
   replaceOrRenameFunction(mainModule, "__fprintf_chk", "fprintf");
@@ -1280,6 +1330,7 @@ int main(int argc, char **argv, char **envp) {
   }
 #endif
 
+
   if (WithPOSIXRuntime) {
     int r = initEnv(mainModule);
     if (r != 0)
@@ -1291,6 +1342,13 @@ int main(int argc, char **argv, char **envp) {
                                   /*Optimize=*/OptimizeModule,
                                   /*CheckDivZero=*/CheckDivZero,
                                   /*CheckOvershift=*/CheckOvershift);
+  if (WithPOSIXRuntime && cliver::EnableCliver) {
+    SmallString<128> Path(Opts.LibraryDir);
+    llvm::sys::path::append(Path, "libkleeRuntimePOSIX.bca");
+    klee_message("NOTE: Using model: %s", Path.c_str());
+    mainModule = klee::linkWithLibrary(mainModule, Path.c_str());
+    assert(mainModule && "unable to link with simple model");
+  }  
 
   switch (Libc) {
   case NoLibc: /* silence compiler warning */
@@ -1314,12 +1372,18 @@ int main(int argc, char **argv, char **envp) {
     break;
   }
 
-  if (WithPOSIXRuntime) {
+  if (WithPOSIXRuntime && !cliver::EnableCliver) {
     SmallString<128> Path(Opts.LibraryDir);
     llvm::sys::path::append(Path, "libkleeRuntimePOSIX.bca");
     klee_message("NOTE: Using model: %s", Path.c_str());
     mainModule = klee::linkWithLibrary(mainModule, Path.c_str());
     assert(mainModule && "unable to link with simple model");
+  }
+
+  if (WithCloud9POSIXRuntime) {
+    SmallString<128> Path(Opts.LibraryDir);
+    llvm::sys::path::append(Path, "libkleeRuntimeCloud9POSIX.bca");
+    mainModule = linkWithCloud9POSIX(mainModule, Path.c_str());
   }
 
   std::vector<std::string>::iterator libs_it;
@@ -1384,10 +1448,20 @@ int main(int argc, char **argv, char **envp) {
 
   Interpreter::InterpreterOptions IOpts;
   IOpts.MakeConcreteSymbolic = MakeConcreteSymbolic;
-  KleeHandler *handler = new KleeHandler(pArgc, pArgv);
-  Interpreter *interpreter =
-    theInterpreter = Interpreter::create(IOpts, handler);
-  handler->setInterpreter(interpreter);
+  InterpreterHandler *handler = NULL;
+  Interpreter *interpreter = NULL;
+
+  if (cliver::EnableCliver) {
+    handler = new cliver::ClientVerifier(InputFile, NoOutput, OutputDir);
+    interpreter = theInterpreter = cliver::ClientVerifier::create_interpreter(IOpts, handler);
+    static_cast<cliver::ClientVerifier*>(handler)->setInterpreter(interpreter);
+  } else {
+    handler = new KleeHandler(pArgc, pArgv);
+    interpreter = theInterpreter = Interpreter::create(IOpts, handler);
+    static_cast<KleeHandler*>(handler)->setInterpreter(interpreter);
+  }
+  
+  llvm::raw_ostream &infoFile = handler->getInfoStream();
 
   for (int i=0; i<argc; i++) {
     handler->getInfoStream() << argv[i] << (i+1<argc ? " ":"\n");
@@ -1505,6 +1579,12 @@ int main(int argc, char **argv, char **envp) {
     }
   }
 
+  int ret_status = 0;
+
+  if (cliver::EnableCliver) {
+    ret_status = static_cast<cliver::ClientVerifier*>(handler)->status();
+  }
+
   t[1] = time(NULL);
   strftime(buf, sizeof(buf), "Finished: %Y-%m-%d %H:%M:%S\n", localtime(&t[1]));
   handler->getInfoStream() << buf;
@@ -1555,9 +1635,9 @@ int main(int argc, char **argv, char **envp) {
   stats << "KLEE: done: total instructions = "
         << instructions << "\n";
   stats << "KLEE: done: completed paths = "
-        << handler->getNumPathsExplored() << "\n";
+        << static_cast<KleeHandler*>(handler)->getNumPathsExplored() << "\n";
   stats << "KLEE: done: generated tests = "
-        << handler->getNumTestCases() << "\n";
+        << static_cast<KleeHandler*>(handler)->getNumTestCases() << "\n";
 
   bool useColors = llvm::errs().is_displayed();
   if (useColors)
@@ -1570,7 +1650,7 @@ int main(int argc, char **argv, char **envp) {
   if (useColors)
     llvm::errs().resetColor();
 
-  handler->getInfoStream() << stats.str();
+  static_cast<KleeHandler*>(handler)->getInfoStream() << stats.str();
 
 #if LLVM_VERSION_CODE < LLVM_VERSION(3, 5)
   // FIXME: This really doesn't look right
@@ -1580,5 +1660,5 @@ int main(int argc, char **argv, char **envp) {
 #endif
   delete handler;
 
-  return 0;
+  return ret_status;
 }

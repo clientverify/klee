@@ -11,6 +11,9 @@
 #define KLEE_CONSTRAINTS_H
 
 #include "klee/Expr.h"
+#include "klee/util/ExprHashMap.h"
+
+#include <unordered_map>
 
 // FIXME: Currently we use ConstraintManager for two things: to pass
 // sets of constraints around, and to optimize constraints. We should
@@ -29,21 +32,23 @@ public:
   ConstraintManager() {}
 
   // create from constraints with no optimization
-  explicit
-  ConstraintManager(const std::vector< ref<Expr> > &_constraints) :
-    constraints(_constraints) {}
+  explicit ConstraintManager(const std::vector<ref<Expr> > &_constraints);
 
-  ConstraintManager(const ConstraintManager &cs) : constraints(cs.constraints) {}
+  ConstraintManager(const ConstraintManager &cs);
 
   typedef std::vector< ref<Expr> >::const_iterator constraint_iterator;
+  typedef std::vector< ref<Expr> >::iterator nonconst_constraint_iterator;
 
   // given a constraint which is known to be valid, attempt to 
   // simplify the existing constraint set
   void simplifyForValidConstraint(ref<Expr> e);
 
   ref<Expr> simplifyExpr(ref<Expr> e) const;
+  ref<Expr> simplifyWithXorOptimization(ref<Expr> e) const;
 
   void addConstraint(ref<Expr> e);
+
+  void DoXorOptimization();
   
   bool empty() const {
     return constraints.empty();
@@ -51,15 +56,28 @@ public:
   ref<Expr> back() const {
     return constraints.back();
   }
+
   constraint_iterator begin() const {
     return constraints.begin();
   }
   constraint_iterator end() const {
     return constraints.end();
   }
+
+  nonconst_constraint_iterator begin() {
+    return constraints.begin();
+  }
+  nonconst_constraint_iterator end() {
+    return constraints.end();
+  }
+
   size_t size() const {
     return constraints.size();
   }
+
+	void clear() {
+		constraints.clear();
+	}
 
   bool operator==(const ConstraintManager &other) const {
     return constraints == other.constraints;
@@ -67,11 +85,15 @@ public:
   
 private:
   std::vector< ref<Expr> > constraints;
+  std::map< ref<Expr>, ref<Expr> > equalities_map;
+  std::unordered_map< unsigned, std::pair< ref<Expr>, ref<Expr> > > equalities_hashval_map;
+
 
   // returns true iff the constraints were modified
   bool rewriteConstraints(ExprVisitor &visitor);
 
   void addConstraintInternal(ref<Expr> e);
+  void addToEqualitiesMap(ref<Expr> e);
 };
 
 }

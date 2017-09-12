@@ -12,6 +12,7 @@
 
 #include "klee/Expr.h"
 #include "klee/Solver.h"
+#include "klee/util/Mutex.h"
 
 #include <vector>
 
@@ -22,6 +23,8 @@ namespace klee {
   /// TimingSolver - A simple class which wraps a solver and handles
   /// tracking the statistics that we care about.
   class TimingSolver {
+    RecursiveMutex solverMutex;
+
   public:
     Solver *solver;
     bool simplifyExprs;

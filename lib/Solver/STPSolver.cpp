@@ -16,6 +16,8 @@
 #include "klee/util/Assignment.h"
 #include "klee/util/ExprUtil.h"
 
+#include "klee/util/Thread.h" // commit 5c01b7c
+
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 
@@ -35,12 +37,19 @@ llvm::cl::opt<bool> DebugDumpSTPQueries(
 llvm::cl::opt<bool> IgnoreSolverFailures(
     "ignore-solver-failures", llvm::cl::init(false),
     llvm::cl::desc("Ignore any solver failures (default=off)"));
+
+llvm::cl::opt<bool> TimeoutSolverWithAlarm( // commit 5c01b7c
+    "timeout-solver-with-alarm", llvm::cl::init(false),
+    llvm::cl::desc("Check for solver timeout with sigalarm (not threadsafe) "
+                   "(default=off)"));
+
 }
 
 #define vc_bvBoolExtract IAMTHESPAWNOFSATAN
 
-static unsigned char *shared_memory_ptr;
-static int shared_memory_id = 0;
+// commit 5c01b7c
+static ThreadSpecificPointer<unsigned char *>::type shared_memory_ptr;
+static ThreadSpecificPointer<int>::type shared_memory_id;
 // Darwin by default has a very small limit on the maximum amount of shared
 // memory, which will quickly be exhausted by KLEE running its tests in
 // parallel. For now, we work around this by just requesting a smaller size --
@@ -102,24 +111,34 @@ STPSolverImpl::STPSolverImpl(bool _useForkedSTP, bool _optimizeDivides)
 
   vc_registerErrorHandler(::stp_error_handler);
 
+  // commit 5c01b7c
   if (useForkedSTP) {
-    assert(shared_memory_id == 0 && "shared memory id already allocated");
-    shared_memory_id =
+    assert(shared_memory_id.get() == NULL &&
+           "shared memory id already allocated");
+    shared_memory_id.reset(new int());
+    *shared_memory_id =
         shmget(IPC_PRIVATE, shared_memory_size, IPC_CREAT | 0700);
-    if (shared_memory_id < 0)
+    if (*shared_memory_id < 0)
       llvm::report_fatal_error("unable to allocate shared memory region");
-    shared_memory_ptr = (unsigned char *)shmat(shared_memory_id, NULL, 0);
-    if (shared_memory_ptr == (void *)-1)
+    shared_memory_ptr.reset(new unsigned char*());
+    *shared_memory_ptr = (unsigned char *)shmat(*shared_memory_id, NULL, 0);
+    if (*shared_memory_ptr == (void *)-1)
       llvm::report_fatal_error("unable to attach shared memory region");
-    shmctl(shared_memory_id, IPC_RMID, NULL);
+    shmctl(*shared_memory_id, IPC_RMID, NULL);
   }
 }
 
 STPSolverImpl::~STPSolverImpl() {
   // Detach the memory region.
-  shmdt(shared_memory_ptr);
-  shared_memory_ptr = 0;
-  shared_memory_id = 0;
+
+  // commit 5c01b7c
+  if (shared_memory_ptr.get()) {
+    shmdt(*shared_memory_ptr);
+    delete shared_memory_ptr.release();
+  }
+  if (shared_memory_id.get()) {
+    delete shared_memory_id.release();
+  }
 
   delete builder;
 
@@ -218,7 +237,7 @@ runAndGetCexForked(::VC vc, STPBuilder *builder, ::VCExpr q,
                    const std::vector<const Array *> &objects,
                    std::vector<std::vector<unsigned char> > &values,
                    bool &hasSolution, double timeout) {
-  unsigned char *pos = shared_memory_ptr;
+  unsigned char *pos = *shared_memory_ptr;
   unsigned sum = 0;
   for (std::vector<const Array *>::const_iterator it = objects.begin(),
                                                   ie = objects.end();
@@ -238,10 +257,35 @@ runAndGetCexForked(::VC vc, STPBuilder *builder, ::VCExpr q,
   }
 
   if (pid == 0) {
-    if (timeout) {
+    if (timeout && TimeoutSolverWithAlarm) {
       ::alarm(0); /* Turn off alarm so we can safely set signal handler */
       ::signal(SIGALRM, stpTimeoutHandler);
       ::alarm(std::max(1, (int)timeout));
+    }
+    // commit 5c01b7c
+    // Instead of using alarm, we can fork 3 additional processes: 1) query the
+    // solver, 2) sleep for timeout seconds and 3) wait for the other two
+    // processes to exit. And the last process forwards the exit status code to
+    // the parent process.
+    else if (timeout) {
+      int query_pid = fork();
+      if (query_pid != 0) {
+        int timeout_pid = fork();
+        if (timeout_pid == 0) {
+          sleep(timeout);
+          _exit(52);
+        }
+        int status;
+        int exit_pid = wait(&status);
+        int exitcode = WEXITSTATUS(status);
+        if (exit_pid == query_pid)
+          kill(timeout_pid, SIGKILL);
+        else
+          kill(query_pid, SIGKILL);
+
+        wait(NULL);
+        _exit(exitcode);
+      }
     }
     unsigned res = vc_query(vc, q);
     if (!res) {

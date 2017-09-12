@@ -1,8 +1,7 @@
-Release/
-Release+Asserts/
-Debug/
-Debug+Asserts/
-Output/
+**Release/
+**Release\+*
+**Debug/
+**Debug\+*
 
 cscope.*
 *~
@@ -27,3 +26,16 @@ lit.site.cfg
 autoconf/aclocal.m4
 autoconf/autom4te.cache/
 autom4te.cache/
+
+TAGS
+tags
+GPATH
+GRTAGS
+GSYMS
+GTAGS
+
+# Eclipse
+.settings/
+
+# Visual Studio Code
+.vscode/

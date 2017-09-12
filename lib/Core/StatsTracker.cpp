@@ -9,6 +9,7 @@
 
 #include "StatsTracker.h"
 
+#include "Executor.h"
 #include "klee/ExecutionState.h"
 #include "klee/Statistics.h"
 #include "klee/Config/Version.h"
@@ -19,11 +20,11 @@
 #include "klee/Internal/System/MemoryUsage.h"
 #include "klee/Internal/System/Time.h"
 #include "klee/Internal/Support/ErrorHandling.h"
+#include "klee/util/Mutex.h"
 #include "klee/SolverStats.h"
 
 #include "CallPathManager.h"
 #include "CoreStats.h"
-#include "Executor.h"
 #include "MemoryManager.h"
 #include "UserSearcher.h"
 
@@ -65,7 +66,7 @@ using namespace llvm;
 
 ///
 
-namespace {  
+namespace klee {  
   cl::opt<bool>
   TrackInstructionTime("track-instruction-time",
                        cl::init(false),
@@ -317,6 +318,7 @@ void StatsTracker::stepInstruction(ExecutionState &es) {
     if (es.instsSinceCovNew)
       ++es.instsSinceCovNew;
 
+    // FIXME getIndexedValue is slow! we need to use cached value, not Fullget
     if (sf.kf->trackCoverage && instructionIsCoverable(inst)) {
       if (!theStatisticManager->getIndexedValue(stats::coveredInstructions, ii.id)) {
         // Checking for actual stoppoints avoids inconsistencies due
@@ -437,7 +439,7 @@ void StatsTracker::writeStatsLine() {
              << "," << partialBranches
              << "," << numBranches
              << "," << util::getUserTime()
-             << "," << executor.states.size()
+             << "," << executor.stateCount
              << "," << util::GetTotalMallocUsage() + executor.memory->getUsedDeterministicSize()
              << "," << stats::queries
              << "," << stats::queryConstructs
@@ -458,6 +460,8 @@ void StatsTracker::writeStatsLine() {
 }
 
 void StatsTracker::updateStateStatistics(uint64_t addend) {
+  
+  LockGuard statesGuard(executor.statesMutex);
   for (std::set<ExecutionState*>::iterator it = executor.states.begin(),
          ie = executor.states.end(); it != ie; ++it) {
     ExecutionState &state = **it;
@@ -469,6 +473,10 @@ void StatsTracker::updateStateStatistics(uint64_t addend) {
 }
 
 void StatsTracker::writeIStats() {
+  if (!executor.PauseExecution()) {
+    klee_warning("PauseExecution failed, not writing istats");
+    return;
+  }
   Module *m = executor.kmodule->module;
   uint64_t istatsMask = 0;
   llvm::raw_fd_ostream &of = *istatsFile;
@@ -488,24 +496,24 @@ void StatsTracker::writeIStats() {
   unsigned nStats = sm.getNumStatistics();
 
   // Max is 13, sadly
-  istatsMask |= 1<<sm.getStatisticID("Queries");
-  istatsMask |= 1<<sm.getStatisticID("QueriesValid");
-  istatsMask |= 1<<sm.getStatisticID("QueriesInvalid");
-  istatsMask |= 1<<sm.getStatisticID("QueryTime");
-  istatsMask |= 1<<sm.getStatisticID("ResolveTime");
-  istatsMask |= 1<<sm.getStatisticID("Instructions");
-  istatsMask |= 1<<sm.getStatisticID("InstructionTimes");
-  istatsMask |= 1<<sm.getStatisticID("InstructionRealTimes");
-  istatsMask |= 1<<sm.getStatisticID("Forks");
-  istatsMask |= 1<<sm.getStatisticID("CoveredInstructions");
-  istatsMask |= 1<<sm.getStatisticID("UncoveredInstructions");
-  istatsMask |= 1<<sm.getStatisticID("States");
-  istatsMask |= 1<<sm.getStatisticID("MinDistToUncovered");
+  istatsMask |= (uint64_t)1<<sm.getStatisticID("Queries");
+  istatsMask |= (uint64_t)1<<sm.getStatisticID("QueriesValid");
+  istatsMask |= (uint64_t)1<<sm.getStatisticID("QueriesInvalid");
+  istatsMask |= (uint64_t)1<<sm.getStatisticID("QueryTime");
+  istatsMask |= (uint64_t)1<<sm.getStatisticID("ResolveTime");
+  istatsMask |= (uint64_t)1<<sm.getStatisticID("Instructions");
+  istatsMask |= (uint64_t)1<<sm.getStatisticID("InstructionTimes");
+  istatsMask |= (uint64_t)1<<sm.getStatisticID("InstructionRealTimes");
+  istatsMask |= (uint64_t)1<<sm.getStatisticID("Forks");
+  istatsMask |= (uint64_t)1<<sm.getStatisticID("CoveredInstructions");
+  istatsMask |= (uint64_t)1<<sm.getStatisticID("UncoveredInstructions");
+  istatsMask |= (uint64_t)1<<sm.getStatisticID("States");
+  istatsMask |= (uint64_t)1<<sm.getStatisticID("MinDistToUncovered");
 
   of << "positions: instr line\n";
 
   for (unsigned i=0; i<nStats; i++) {
-    if (istatsMask & (1<<i)) {
+    if (istatsMask & ((uint64_t)1<<i)) {
       Statistic &s = sm.getStatistic(i);
       of << "event: " << s.getShortName() << " : " 
          << s.getName() << "\n";
@@ -514,14 +522,14 @@ void StatsTracker::writeIStats() {
 
   of << "events: ";
   for (unsigned i=0; i<nStats; i++) {
-    if (istatsMask & (1<<i))
+    if (istatsMask & ((uint64_t)1<<i)) 
       of << sm.getStatistic(i).getShortName() << " ";
   }
   of << "\n";
   
   // set state counts, decremented after we process so that we don't
   // have to zero all records each time.
-  if (istatsMask & (1<<stats::states.getID()))
+  if (istatsMask & ((uint64_t)1<<stats::states.getID()))
     updateStateStatistics(1);
 
   std::string sourceFile = "";
@@ -559,7 +567,7 @@ void StatsTracker::writeIStats() {
           of << ii.assemblyLine << " ";
           of << ii.line << " ";
           for (unsigned i=0; i<nStats; i++)
-            if (istatsMask&(1<<i))
+            if (istatsMask&((uint64_t)1<<i))
               of << sm.getIndexedValue(sm.getStatistic(i), index) << " ";
           of << "\n";
 
@@ -585,7 +593,7 @@ void StatsTracker::writeIStats() {
                 of << ii.assemblyLine << " ";
                 of << ii.line << " ";
                 for (unsigned i=0; i<nStats; i++) {
-                  if (istatsMask&(1<<i)) {
+                  if (istatsMask&((uint64_t)1<<i)) {
                     Statistic &s = sm.getStatistic(i);
                     uint64_t value;
 
@@ -609,7 +617,7 @@ void StatsTracker::writeIStats() {
     }
   }
 
-  if (istatsMask & (1<<stats::states.getID()))
+  if (istatsMask & ((uint64_t)1<<stats::states.getID()))
     updateStateStatistics((uint64_t)-1);
   
   // Clear then end of the file if necessary (no truncate op?).
@@ -618,6 +626,7 @@ void StatsTracker::writeIStats() {
     of << '\n';
   
   of.flush();
+  executor.UnPauseExecution();
 }
 
 ///
@@ -881,25 +890,26 @@ void StatsTracker::computeReachableUncovered() {
     }
   } while (changed);
 
-  for (std::set<ExecutionState*>::iterator it = executor.states.begin(),
-         ie = executor.states.end(); it != ie; ++it) {
-    ExecutionState *es = *it;
-    uint64_t currentFrameMinDist = 0;
-    for (ExecutionState::stack_ty::iterator sfIt = es->stack.begin(),
-           sf_ie = es->stack.end(); sfIt != sf_ie; ++sfIt) {
-      ExecutionState::stack_ty::iterator next = sfIt + 1;
-      KInstIterator kii;
+  //LockGuard statesGuard(executor.statesMutex);
+  //for (std::set<ExecutionState*>::iterator it = executor.states.begin(),
+  //       ie = executor.states.end(); it != ie; ++it) {
+  //  ExecutionState *es = *it;
+  //  uint64_t currentFrameMinDist = 0;
+  //  for (ExecutionState::stack_ty::iterator sfIt = es->stack.begin(),
+  //         sf_ie = es->stack.end(); sfIt != sf_ie; ++sfIt) {
+  //    ExecutionState::stack_ty::iterator next = sfIt + 1;
+  //    KInstIterator kii;
 
-      if (next==es->stack.end()) {
-        kii = es->pc;
-      } else {
-        kii = next->caller;
-        ++kii;
-      }
-      
-      sfIt->minDistToUncoveredOnReturn = currentFrameMinDist;
-      
-      currentFrameMinDist = computeMinDistToUncovered(kii, currentFrameMinDist);
-    }
-  }
+  //    if (next==es->stack.end()) {
+  //      kii = es->pc;
+  //    } else {
+  //      kii = next->caller;
+  //      ++kii;
+  //    }
+  //    
+  //    sfIt->minDistToUncoveredOnReturn = currentFrameMinDist;
+  //    
+  //    currentFrameMinDist = computeMinDistToUncovered(kii, currentFrameMinDist);
+  //  }
+  //}
 }

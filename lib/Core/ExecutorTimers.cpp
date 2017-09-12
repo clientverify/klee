@@ -7,8 +7,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "Executor.h" // Must declare before ExecutorTimerInfo.h (FIXME ?)
+
 #include "CoreStats.h"
-#include "Executor.h"
 #include "PTree.h"
 #include "StatsTracker.h"
 #include "ExecutorTimerInfo.h"
@@ -60,7 +61,7 @@ public:
 ///
 
 static const double kSecondsPerTick = .1;
-static volatile unsigned timerTicks = 0;
+static Atomic<unsigned>::type timerTicks(0);
 
 // XXX hack
 extern "C" unsigned dumpStates, dumpPTree;
@@ -109,6 +110,10 @@ void Executor::addTimer(Timer *timer, double rate) {
 
 void Executor::processTimers(ExecutionState *current,
                              double maxInstTime) {
+  static Mutex timerMutex;
+  if (!timerMutex.try_lock())
+    return;
+
   static unsigned callsWithoutCheck = 0;
   unsigned ticks = timerTicks;
 
@@ -134,6 +139,7 @@ void Executor::processTimers(ExecutionState *current,
       llvm::raw_ostream *os = interpreterHandler->openOutputFile("states.txt");
       
       if (os) {
+        // Not thread safe, but dumpStates only used for debugging
         for (std::set<ExecutionState*>::const_iterator it = states.begin(), 
                ie = states.end(); it != ie; ++it) {
           ExecutionState *es = *it;
@@ -179,9 +185,7 @@ void Executor::processTimers(ExecutionState *current,
       dumpStates = 0;
     }
 
-    if (maxInstTime > 0 && current &&
-        std::find(removedStates.begin(), removedStates.end(), current) ==
-            removedStates.end()) {
+    if (maxInstTime > 0 && current && !getContext().removedStates.count(current)) {
       if (timerTicks*kSecondsPerTick > maxInstTime) {
         klee_warning("max-instruction-time exceeded: %.2fs",
                      timerTicks*kSecondsPerTick);
@@ -206,5 +210,7 @@ void Executor::processTimers(ExecutionState *current,
     timerTicks = 0;
     callsWithoutCheck = 0;
   }
+
+  timerMutex.unlock();
 }
 

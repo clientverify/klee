@@ -46,37 +46,39 @@
 #include "llvm/Support/PluginLoader.h"
 using namespace llvm;
 
+namespace llvm {
 // Don't verify at the end
-static cl::opt<bool> DontVerify("disable-verify", cl::ReallyHidden);
+cl::opt<bool> DontVerify("disable-verify", cl::ReallyHidden);
 
-static cl::opt<bool> DisableInline("disable-inlining",
+cl::opt<bool> DisableInline("disable-inlining",
   cl::desc("Do not run the inliner pass"));
 
-static cl::opt<bool>
+cl::opt<bool>
 DisableOptimizations("disable-opt",
   cl::desc("Do not run any optimization passes"));
 
-static cl::opt<bool> DisableInternalize("disable-internalize",
+cl::opt<bool> DisableInternalize("disable-internalize",
   cl::desc("Do not mark all symbols as internal"));
 
-static cl::opt<bool> VerifyEach("verify-each",
+cl::opt<bool> VerifyEach("verify-each",
  cl::desc("Verify intermediate results of all passes"));
 
-static cl::alias ExportDynamic("export-dynamic",
+cl::alias ExportDynamic("export-dynamic",
   cl::aliasopt(DisableInternalize),
   cl::desc("Alias for -disable-internalize"));
 
-static cl::opt<bool> Strip("strip-all", 
+cl::opt<bool> Strip("strip-all", 
   cl::desc("Strip all symbol info from executable"));
 
-static cl::alias A0("s", cl::desc("Alias for --strip-all"), 
+cl::alias A0("s", cl::desc("Alias for --strip-all"), 
   cl::aliasopt(Strip));
 
-static cl::opt<bool> StripDebug("strip-debug",
+cl::opt<bool> StripDebug("strip-debug",
   cl::desc("Strip debugger symbol info from executable"));
 
-static cl::alias A1("S", cl::desc("Alias for --strip-debug"),
+cl::alias A1("S", cl::desc("Alias for --strip-debug"),
   cl::aliasopt(StripDebug));
+}
 
 // A utility function that adds a pass to the pass manager but will also add
 // a verifier pass after if we're supposed to verify.
@@ -109,7 +111,10 @@ static void AddStandardCompilePasses(PassManager &PM) {
   addPass(PM, createPromoteMemoryToRegisterPass());// Kill useless allocas
   addPass(PM, createGlobalOptimizerPass());      // Optimize out global vars
   addPass(PM, createGlobalDCEPass());            // Remove unused fns and globs
-  addPass(PM, createIPConstantPropagationPass());// IP Constant Propagation
+
+  // RAC: causes crashes in XPilot
+  //addPass(PM, createIPConstantPropagationPass());// IP Constant Propagation
+  
   addPass(PM, createDeadArgEliminationPass());   // Dead argument elimination
   addPass(PM, createInstructionCombiningPass()); // Clean up after IPCP & DAE
   addPass(PM, createCFGSimplificationPass());    // Clean up after IPCP & DAE
@@ -257,7 +262,7 @@ void Optimize(Module *M, const std::string &EntryPoint) {
 
     // Now that we have optimized the program, discard unreachable functions...
     addPass(Passes, createGlobalDCEPass());
-  }
+}
 
   // If the -s or -S command line options were specified, strip the symbols out
   // of the resulting program to make it smaller.  -s and -S are GNU ld options

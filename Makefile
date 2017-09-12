@@ -51,7 +51,7 @@ cscope.files:
           -name \*.h | sort > cscope.files
 
 test::
-	-(cd test/ && make)
+	(cd test/ && make)
 
 .PHONY: klee-cov
 klee-cov:

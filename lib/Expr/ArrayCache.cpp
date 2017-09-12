@@ -25,6 +25,7 @@ ArrayCache::CreateArray(const std::string &_name, uint64_t _size,
   const Array *array = new Array(_name, _size, constantValuesBegin,
                                  constantValuesEnd, _domain, _range);
   if (array->isSymbolicArray()) {
+    LockGuard guard(cachedSymbolicArraysMutex);
     std::pair<ArrayHashMap::const_iterator, bool> success =
         cachedSymbolicArrays.insert(array);
     if (success.second) {
@@ -40,6 +41,7 @@ ArrayCache::CreateArray(const std::string &_name, uint64_t _size,
   } else {
     // Treat every constant array as distinct so we never cache them
     assert(array->isConstantArray());
+    LockGuard guard(concreteArraysMutex);
     concreteArrays.push_back(array); // For deletion later
     return array;
   }

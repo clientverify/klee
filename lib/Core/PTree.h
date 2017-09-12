@@ -11,14 +11,16 @@
 #define __UTIL_PTREE_H__
 
 #include <klee/Expr.h>
-
+#include <klee/util/Mutex.h>
 namespace klee {
   class ExecutionState;
 
   class PTree { 
     typedef ExecutionState* data_type;
+    Mutex lock_;
 
   public:
+    typedef Guard<PTree>::type Guard;
     typedef class PTreeNode Node;
     Node *root;
 
@@ -31,6 +33,12 @@ namespace klee {
     void remove(Node *n);
 
     void dump(llvm::raw_ostream &os);
+
+    void lock();
+
+    bool try_lock();
+
+    void unlock();
   };
 
   class PTreeNode {

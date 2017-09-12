@@ -36,3 +36,7 @@ endif
 ifeq ($(HAVE_ZLIB),1)
   LIBS += -lz
 endif
+
+ifeq ($(ENABLE_THREAD_SANITIZER),1)
+  LIBS += -ltsan -pie
+endif

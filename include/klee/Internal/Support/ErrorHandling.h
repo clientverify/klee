@@ -17,11 +17,17 @@
 #endif
 
 #include <stdio.h>
+#include <ostream>
+
+#include "klee/Common.h"
 
 namespace klee {
 
 extern FILE *klee_warning_file;
 extern FILE *klee_message_file;
+
+extern std::ostream* klee_warning_stream;
+extern std::ostream* klee_message_stream;
 
 /// Print "KLEE: ERROR: " followed by the msg in printf format and a
 /// newline on stderr and to warnings.txt, then exit with an error.

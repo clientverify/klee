@@ -1,4 +1,8 @@
 //===-- QueryLoggingSolver.cpp --------------------------------------------===//
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 5)
+#include "llvm/Support/FileSystem.h"
+#endif
+
 //
 //                     The KLEE Symbolic Virtual Machine
 //

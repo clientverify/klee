@@ -1,0 +1,460 @@
+$ grep Makefile conflicts.txt
+
+DONE:
+
+Auto-merging Makefile
+CONFLICT (content): Merge conflict in Makefile
+Auto-merging Makefile.common
+CONFLICT (content): Merge conflict in Makefile.common
+Auto-merging Makefile.config.in
+CONFLICT (content): Merge conflict in Makefile.config.in
+Auto-merging Makefile.rules
+Auto-merging test/Makefile
+CONFLICT (content): Merge conflict in test/Makefile
+Auto-merging tools/kleaver/Makefile
+CONFLICT (content): Merge conflict in tools/kleaver/Makefile
+Auto-merging tools/klee-stats/Makefile
+Auto-merging tools/klee/Makefile
+CONFLICT (content): Merge conflict in tools/klee/Makefile
+Auto-merging tools/ktest-tool/Makefile
+Auto-merging unittests/Makefile
+CONFLICT (content): Merge conflict in unittests/Makefile
+Auto-merging unittests/Solver/Makefile
+CONFLICT (content): Merge conflict in unittests/Solver/Makefile
+Auto-merging unittests/Expr/Makefile
+CONFLICT (content): Merge conflict in unittests/Expr/Makefile
+
+-------------------------------------------------------------------------------
+
+$ grep travis conflicts.txt
+
+DONE:
+
+Auto-merging .travis.yml
+CONFLICT (add/add): Merge conflict in .travis.yml
+Auto-merging .travis/testing-utils.sh
+CONFLICT (add/add): Merge conflict in .travis/testing-utils.sh
+Auto-merging .travis/stp.sh
+CONFLICT (add/add): Merge conflict in .travis/stp.sh
+Auto-merging .travis/klee.sh
+CONFLICT (add/add): Merge conflict in .travis/klee.sh
+Auto-merging .travis/install-llvm-and-runtime-compiler.sh
+CONFLICT (add/add): Merge conflict in .travis/install-llvm-and-runtime-compiler.sh
+
+-------------------------------------------------------------------------------
+
+$ grep '\.sh' conflicts.txt | grep -v travis
+
+DONE:
+
+Auto-merging scripts/genTempFiles.sh
+CONFLICT (add/add): Merge conflict in scripts/genTempFiles.sh
+
+-------------------------------------------------------------------------------
+
+$ grep cfg conflicts.txt
+
+DONE:
+
+Auto-merging test/lit.cfg
+CONFLICT (content): Merge conflict in test/lit.cfg
+Auto-merging test/lit.site.cfg.in
+CONFLICT (content): Merge conflict in test/lit.site.cfg.in
+
+-------------------------------------------------------------------------------
+
+DONE:
+
+Auto-merging .gitignore
+CONFLICT (content): Merge conflict in .gitignore
+
+-------------------------------------------------------------------------------
+
+DONE:
+
+Auto-merging README.md
+CONFLICT (content): Merge conflict in README.md
+
+-------------------------------------------------------------------------------
+
+$ grep -v '\.c' conflicts.txt | grep -v '\.h'
+
+UNDONE (IGNORED FOR NOW, FIXME):
+
+Auto-merging tools/ktest-tool/ktest-tool
+
+DONE:
+
+Auto-merging utils/hacks/TreeGraphs/DumpTreeStream.py
+Auto-merging tools/klee-stats/klee-stats
+CONFLICT (content): Merge conflict in tools/klee-stats/klee-stats
+Auto-merging test/Concrete/ConstantExpr.ll
+Auto-merging configure
+CONFLICT (content): Merge conflict in configure
+Auto-merging autoconf/configure.ac
+CONFLICT (content): Merge conflict in autoconf/configure.ac
+
+-------------------------------------------------------------------------------
+
+FIXME:
+
+lib/Core/Common.h moved
+lib/Core/Common.cpp was moved to ErrorHandling in Support directory
+Nowack - 771cdf39d9c1e142269e2cafc4365d0d68e05f9a
+
+-------------------------------------------------------------------------------
+
+DONE:
+
+Auto-merging include/klee/Config/config.h.in
+CONFLICT (content): Merge conflict in include/klee/Config/config.h.in
+
+-------------------------------------------------------------------------------
+
+DONE:
+
+Auto-merging test/Runtime/POSIX/Stdin.c
+CONFLICT (content): Merge conflict in test/Runtime/POSIX/Stdin.c
+Auto-merging test/Runtime/POSIX/Isatty.c
+CONFLICT (content): Merge conflict in test/Runtime/POSIX/Isatty.c
+Auto-merging test/Runtime/POSIX/FD_Fail2.c   # -O0 weirdness (FIXME:TEST LATER)
+CONFLICT (content): Merge conflict in test/Runtime/POSIX/FD_Fail2.c
+Auto-merging test/Feature/SolverTimeout.c
+CONFLICT (content): Merge conflict in test/Feature/SolverTimeout.c
+Auto-merging test/Feature/MemoryLimit.c (FIXME: TEST LATER)
+CONFLICT (content): Merge conflict in test/Feature/MemoryLimit.c
+Auto-merging test/Feature/MakeConcreteSymbolic.c (FIXME: TEST LATER)
+CONFLICT (content): Merge conflict in test/Feature/MakeConcreteSymbolic.c
+Auto-merging include/klee/Expr.h
+CONFLICT (content): Merge conflict in include/klee/Expr.h
+
+-------------------------------------------------------------------------------
+
+DONE:
+
+Auto-merging lib/Module/Passes.h
+Auto-merging lib/Module/Optimize.cpp
+CONFLICT (content): Merge conflict in lib/Module/Optimize.cpp
+Auto-merging lib/Module/ModuleUtil.cpp
+CONFLICT (content): Merge conflict in lib/Module/ModuleUtil.cpp
+Auto-merging lib/Module/KModule.cpp
+CONFLICT (content): Merge conflict in lib/Module/KModule.cpp
+Auto-merging lib/Module/IntrinsicCleaner.cpp
+CONFLICT (content): Merge conflict in lib/Module/IntrinsicCleaner.cpp
+
+-------------------------------------------------------------------------------
+
+DONE:
+
+Auto-merging tools/kleaver/main.cpp
+CONFLICT (content): Merge conflict in tools/kleaver/main.cpp
+
+-------------------------------------------------------------------------------
+
+DONE:
+
+Auto-merging tools/klee/main.cpp
+CONFLICT (content): Merge conflict in tools/klee/main.cpp
+
+-------------------------------------------------------------------------------
+
+DONE:
+
+Auto-merging lib/Expr/Updates.cpp
+CONFLICT (content): Merge conflict in lib/Expr/Updates.cpp
+  FIXME: commit b8c3533761cf4268d1273dcf9f1798a5d7ab81e1 gives up sequential
+  consistency in the RefCount class. Are we sure we can play with fire?
+
+-------------------------------------------------------------------------------
+
+DONE:
+
+Auto-merging lib/Core/Memory.h
+CONFLICT (content): Merge conflict in lib/Core/Memory.h
+Auto-merging lib/Core/Memory.cpp
+CONFLICT (content): Merge conflict in lib/Core/Memory.cpp
+
+Auto-merging lib/Core/StatsTracker.cpp
+CONFLICT (content): Merge conflict in lib/Core/StatsTracker.cpp
+
+FIXME: lib/Core/StatsTracker.cpp -- Robby commented out a bunch of stuff at the
+end with computeMinDistToUncovered / currentFrameMinDist.  We're not quite sure
+why, and whether this is something that is necessary for certain statistics
+measuring the coverage of new code.  It's possible that access to a global
+variable (theStatisticManager) in klee::computeMinDistToUncovered was causing
+Robby problems.
+
+Auto-merging lib/Core/TimingSolver.cpp
+CONFLICT (content): Merge conflict in lib/Core/TimingSolver.cpp
+
+FIXME: lib/Core/TimingSolver.cpp -- the statistic += timer.check() in
+include/klee/timerStatIncrementer.h happens in the destructor, which means that
+what is added to _statistic may be different from what is stored when someone
+calls, for example, state.queryCost += timer.check()/1000000.
+
+Auto-merging lib/Core/UserSearcher.cpp
+CONFLICT (content): Merge conflict in lib/Core/UserSearcher.cpp
+
+Auto-merging lib/Core/SpecialFunctionHandler.h
+Auto-merging lib/Core/SpecialFunctionHandler.cpp
+
+FIXME: Tell Adam about DeterministicAllocation*() in MemoryManager.cpp. Our
+approach will be to include the new code, but design the #ifdef
+MEMORY_MANAGER_OBJECT_TRACKING such that it will not actually be run. Also,
+none of this code is applicable unless the DeterministicAllocation flag is
+specified on the command line.
+
+Auto-merging lib/Core/MemoryManager.h
+CONFLICT (content): Merge conflict in lib/Core/MemoryManager.h
+
+FIXME: lib/Core/MemoryManager.h -- we need to compile/test this with memory
+manager object tracking both on and off (compile with
+-DMEMORY_MANAGER_OBJECT_TRACKING).  After just compiling and running the lit
+tests for KLEE, we have discovered a *massive* performance difference between
+having it on vs off, when we applied this to parallel-rc-thesis-fakepadding at
+commit caabcd6edd058c27f6934f72ce641de27b8069bb
+
+Auto-merging lib/Core/MemoryManager.cpp
+CONFLICT (content): Merge conflict in lib/Core/MemoryManager.cpp
+
+Auto-merging lib/Core/PTree.h
+CONFLICT (content): Merge conflict in lib/Core/PTree.h
+Auto-merging lib/Core/PTree.cpp
+CONFLICT (content): Merge conflict in lib/Core/PTree.cpp
+
+Auto-merging lib/Core/ExecutorTimers.cpp
+CONFLICT (content): Merge conflict in lib/Core/ExecutorTimers.cpp
+
+FIXME: Tell Adam about Executor::addExternalObject
+
+FIXME (KLEE): Robby seems to have added some (minimal) support for LLVM vectors
+in Executor::evalConstant.  Do we want to get this upstreamed into KLEE?
+
+FIXME: Get rid of Robby's MaxMemory code where he kills off states and then
+reconstructs them later.
+
+FIXME: Executor.cpp contains "AES_encrypt" etc. specialization. This location
+is totally inappropriate for this client-specific code. Move to a more
+work-appropriate place.
+
+FIXME: Executor::concretizeExpr was Robby's attempt to add support for implied
+value concretization although it was never fully supported in original KLEE.
+It is incomplete, and I (Andrew) used something slightly different for the lazy
+constraint generation that I added.
+
+FIXME: Executor::executeEvent() is a NO-op. Is this intentional?
+
+Auto-merging lib/Core/Executor.h
+CONFLICT (content): Merge conflict in lib/Core/Executor.h
+Auto-merging lib/Core/Executor.cpp
+CONFLICT (content): Merge conflict in lib/Core/Executor.cpp
+
+FIXME: (1) Commit f3ff3b06318cae93db4d682e6451ddbca4760328 changes addedStates
+and removedStates from std::set to std::vector.  (2) Robby moved it to public,
+and changed private to protected in its original location, probably for
+inheritance purposes. (3) Robby wrapped addedStates and removedStates into an
+ExecutorContext struct so that it could be put into a ThreadSpecificPointer.
+(Solution) We are going to go with vector. We should switch cliver code over to
+std::vector and use Robby's struct.  We think std::vector is okay
+performance-wise because these are going to be very small sets/vectors. In
+addition, the compiler should catch all instances that need to be changed.
+
+- Skipped (and fixed later): The solver = constructSolverChain(...) section is
+  really confusing. We're going to come back to it.
+
+- Skipped (and fixed later): It seems the if(MaxMemory) section has been
+  absorbed into a function called checkMemoryUsage().  But I *think* we want to
+  make sure we use unsigned mbs = util::GetTotalMallocUsage() >> 20;
+
+FIXME: arrayCache may need to be put into a getContext() sort of thing, if
+multiple threads are accessing it at the same time.  Or better yet, the
+implementation of arrayCache should have a lock inside.
+
+Robby has a commit where he removes many instances of "delete" (e.g., delete
+memory).
+
+commit 251b52c8a4999359d643786b7835b65ef23cb701
+Author: Robby Cochran <rac@cs.unc.edu>
+Date:   Sat Apr 5 16:32:04 2014 -0400
+
+    - Added per-thread Solvers (caches are not shared) and per-thread MemoryManagers
+    - Updated usage of Searcher to use trySelectState and updateAndTrySelectState
+    - Removed internal accounting of states in Executor; the Executor maintains state count only
+
+FIXME: eba0093c4887473be2562a7ab4e16b3d09793f4e (Andrea Matavelli) puts in some
+functionality for -debug-print-instructions, making Marie wonder if we need to
+be careful about thread safety for debug printing.
+
+Auto-merging lib/Core/ExecutionState.cpp
+CONFLICT (content): Merge conflict in lib/Core/ExecutionState.cpp
+
+FIXME: Make sure any changes are propagated from Executor.cpp to
+ParallelExecutor.cpp and from Searcher.cpp to ParallelSearcher.cpp.
+
+Auto-merging lib/Core/Searcher.h
+CONFLICT (content): Merge conflict in lib/Core/Searcher.h
+
+Auto-merging lib/Core/Searcher.cpp
+CONFLICT (content): Merge conflict in lib/Core/Searcher.cpp
+
+CONFLICT (modify/delete): lib/Core/Common.h deleted in HEAD and modified in parallel-rc-thesis-fakepadding. Version parallel-rc-thesis-fakepadding of lib/Core/Common.h left in tree.
+CONFLICT (modify/delete): lib/Core/Common.cpp deleted in HEAD and modified in parallel-rc-thesis-fakepadding. Version parallel-rc-thesis-fakepadding of lib/Core/Common.cpp left in tree.
+
+In resolving conflicts for lib/Solver/Solver.cpp, we noticed that large
+portions of the code were refactored and moved to other files.  We have handled
+all the transformations/merging that are necessary for lib/Solver/STPSolver.cpp
+(a new file) except for the "hidden" changes that Robby rebased/committed, but
+other people authored.  An example is the following:
+
+  commit 445ea5b9d7fa75ab46af6f08a6bb7537d2001e14
+  Author:	Daniel Dunbar <daniel@zuster.org>  Sat Sep 13 21:22:45 2014
+  Committer:	Robby Cochran <rac@cs.unc.edu>  Tue Jan 13 11:36:53 2015
+
+The following command line will be useful in finding some of these:
+
+  $ git log parallel-rc-thesis-fakepadding --stat --pretty=full \
+      --committer=Cochran lib/Solver/Solver.cpp
+
+We decided NOT to port the thread-safety changes over to MetaSMTSolver.cpp,
+because it is probably going away at some point soon.
+
+Auto-merging lib/Solver/Solver.cpp
+CONFLICT (content): Merge conflict in lib/Solver/Solver.cpp
+
+Turns out we just wanted to take the version from v1.3.0 (but we took a while
+to figure that out).
+
+Auto-merging lib/Solver/STPBuilder.cpp
+CONFLICT (content): Merge conflict in lib/Solver/STPBuilder.cpp
+
+Auto-merging lib/Solver/QueryLoggingSolver.h
+CONFLICT (content): Merge conflict in lib/Solver/QueryLoggingSolver.h
+
+Auto-merging lib/Solver/QueryLoggingSolver.cpp
+CONFLICT (content): Merge conflict in lib/Solver/QueryLoggingSolver.cpp
+
+Auto-merging lib/Solver/MetaSMTBuilder.h
+CONFLICT (content): Merge conflict in lib/Solver/MetaSMTBuilder.h
+
+Auto-merging lib/Solver/IndependentSolver.cpp
+CONFLICT (content): Merge conflict in lib/Solver/IndependentSolver.cpp
+
+Auto-merging lib/Basic/ConstructSolverChain.cpp
+CONFLICT (content): Merge conflict in lib/Basic/ConstructSolverChain.cpp
+
+Auto-merging lib/Basic/CmdLineOptions.cpp
+
+Auto-merging lib/Support/MemoryUsage.cpp
+CONFLICT (add/add): Merge conflict in lib/Support/MemoryUsage.cpp
+
+Auto-merging lib/Support/Timer.cpp
+CONFLICT (content): Merge conflict in lib/Support/Timer.cpp
+
+Auto-merging unittests/Solver/SolverTest.cpp
+CONFLICT (content): Merge conflict in unittests/Solver/SolverTest.cpp
+
+Auto-merging unittests/Ref/RefTest.cpp
+
+Auto-merging unittests/Expr/ExprTest.cpp
+CONFLICT (content): Merge conflict in unittests/Expr/ExprTest.cpp
+
+Auto-merging test/Feature/Vararg.c
+
+Auto-merging include/klee/Internal/System/Time.h
+CONFLICT (content): Merge conflict in include/klee/Internal/System/Time.h
+
+Auto-merging include/klee/ExecutionState.h
+CONFLICT (content): Merge conflict in include/klee/ExecutionState.h
+
+Auto-merging include/klee/util/Ref.h
+Auto-merging include/klee/klee.h
+Auto-merging include/klee/Solver.h
+Auto-merging include/klee/Internal/Module/KModule.h
+Auto-merging include/klee/Internal/Module/KInstruction.h
+Auto-merging include/klee/CommandLine.h
+
+FIXME: Take a look at 65df173098310ff29dfbdb617ce876bf3a7945f7 (native AES)
+
+Auto-merging lib/Core/ExternalDispatcher.cpp
+Auto-merging lib/Core/AddressSpace.cpp
+
+FIXME: Array::CreateArray should no longer be used by LazyConstraintTest.cpp.
+
+FIXED: Compare ArrayCache::CreateArray and the old Array::CreateArray. Make
+sure that Robby's thread-safety stuff that he added to Array::CreateArray is
+reflected in ArrayCache::CreateArray if required.  Here is the code from
+Array::CreateArray (which Robby modified) that we think should be
+translated/inserted into ArrayCache::CreateArray.
+
+std::map<unsigned, std::vector<const Array *> *> Array::symbolicArraySingletonMap;
+Mutex Array::symbolicArraySingletonMapLock;
+
+const Array *Array::CreateArray(const std::string &_name, uint64_t _size,
+                                const ref<ConstantExpr> *constantValuesBegin,
+                                const ref<ConstantExpr> *constantValuesEnd,
+                                Expr::Width _domain, Expr::Width _range) {
+
+  const Array *array = new Array(_name, _size, constantValuesBegin,
+                                 constantValuesEnd, _domain, _range);
+  if (array->constantValues.size() == 0) { // symbolic array
+    unsigned hash = array->hash();
+    LockGuard guard(Array::symbolicArraySingletonMapLock);
+    std::vector<const Array *> *bucket = Array::symbolicArraySingletonMap[hash];
+    if (bucket) {
+      for (std::vector<const Array *>::const_iterator it = bucket->begin();
+           it != bucket->end(); it++) {
+        const Array *prospect = *it;
+        if (prospect->size == array->size && prospect->name == array->name) {
+          delete array;
+          return prospect;
+        }
+      }
+      bucket->push_back(array);
+      return array;
+    } else {
+      bucket = new std::vector<const Array *>();
+      bucket->push_back(array);
+      Array::symbolicArraySingletonMap[hash] = bucket;
+      return array;
+    }
+  } else { // concrete array
+    return array;
+  }
+}
+
+This has been fixed by adding some Mutexes and LockGuards to
+lib/Expr/ArrayCache.cpp and include/klee/util/ArrayCache.h.
+
+For lib/Expr/Expr.cpp, we are assuming that only the operators that could
+potentially return a pointer need pointer tracking.  In particular,
+ConstantExpr::Not, ConstantExpr::And, ConstantExpr::Or, we assume to mean the
+bitwise operators (and thus can return a pointer value).
+
+FIXME: Investigate whether the following commit should be incorporated into the
+main line of KLEE.
+
+  commit 5806a0b471fcbcb7db264a6ea24272f7ef39bcd9
+  Author:	Robby Cochran <Robby Cochran>  Sat Sep 27 15:33:26 2014
+  Committer:	Robby Cochran <Robby Cochran>  Sat Sep 27 15:33:26 2014
+
+  Fix bug in ReadExpr comparisons
+  Two ReadExprs could have the same hashvalue but different index values,
+  which were not being checked in compareContents
+
+Auto-merging lib/Expr/Expr.cpp
+CONFLICT (content): Merge conflict in lib/Expr/Expr.cpp
+
+Auto-merging lib/Expr/ExprSMTLIBPrinter.cpp
+CONFLICT (content): Merge conflict in lib/Expr/ExprSMTLIBPrinter.cpp
+
+FIXME: Parser.cpp: Command-line option '-rewrite-equalities" was set to false
+by default in Robby's version, but set to true by default in v1.3.0.  Remember
+to test with both, but we set it default false like in Robby's.
+
+FIXME: Parser.cpp: XOR optimization should be a command-line option
+
+Auto-merging lib/Expr/Constraints.cpp
+CONFLICT (content): Merge conflict in lib/Expr/Constraints.cpp
+
+Auto-merging lib/Expr/Parser.cpp
+CONFLICT (content): Merge conflict in lib/Expr/Parser.cpp

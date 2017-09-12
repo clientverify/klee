@@ -13,6 +13,7 @@
 #include "klee/Constraints.h"
 #include "klee/Expr.h"
 #include "klee/Internal/ADT/TreeStream.h"
+#include "klee/util/Mutex.h"
 
 // FIXME: We do not want to be exposing these? :(
 #include "../../lib/Core/AddressSpace.h"
@@ -141,6 +142,12 @@ public:
   /// @brief Set of used array names for this state.  Used to avoid collisions.
   std::set<std::string> arrayNames;
 
+  /// Internal lock, held between Searcher::selectState and Searcher::update
+  Mutex lock;
+
+  /// State can only be executed by one thread at a time
+  Mutex stepInstructionLock;
+
   std::string getFnAlias(std::string fn);
   void addFnAlias(std::string old_fn, std::string new_fn);
   void removeFnAlias(std::string fn);
@@ -157,18 +164,19 @@ public:
 
   ExecutionState(const ExecutionState &state);
 
-  ~ExecutionState();
+  virtual ~ExecutionState();
 
-  ExecutionState *branch();
+  virtual ExecutionState *branch();
 
   void pushFrame(KInstIterator caller, KFunction *kf);
   void popFrame();
 
-  void addSymbolic(const MemoryObject *mo, const Array *array);
+  virtual void addSymbolic(const MemoryObject *mo, const Array *array);
   void addConstraint(ref<Expr> e) { constraints.addConstraint(e); }
 
   bool merge(const ExecutionState &b);
   void dumpStack(llvm::raw_ostream &out) const;
+  void dumpStack() const;
 };
 }
 

@@ -1,0 +1,314 @@
+#!/bin/bash
+
+# Cliver HMM trainer
+
+SCRIPT_DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
+export PATH="${SCRIPT_DIR}:$PATH"
+
+show_help () {
+    echo
+    echo "Cliver HMM trainer"
+    echo "Usage: $1 [-m metric] [-t metric] indir prefix nFrag nMsg tmpdir outhmm"
+    cat << EOF
+
+  Take as input a directory of tpath files, and create as output an
+  HMM training file.  The HMM training file will contain HMM matrix
+  coefficients, a list of tpath files representing guide paths
+  (fragment cluster medoids), and a list of tpath files representing
+  message cluster medoids.
+
+  Command line arguments
+  -----------------------
+  Inputs:
+  1. input  = Directory of tpath files or TXT list of tpath file paths
+  2. prefix = Session prefix (*)
+  3. nFrag  = Number of fragment clusters
+  4. nMsg   = Number of message clusters
+  Outputs:
+  5. tmpdir = Directory to put intermediate, processed data
+  6. outhmm = HMM training file
+
+  Options:
+  -f  Use faster but less accurate clustering method
+  -m  Change message metric: "Ruzicka" (default) and "Jaccard" supported
+  -t  Change trace metric: "Jaccard" (default) and "mJaccard" supported
+  -d  Change trace dedupe metric: "Jaccard" (default) and "exact" supported
+  -x  Omit xpilot headers (default: false)
+  -p  Generate plots of fragment and message clusters (pauses execution)
+  -v  Verbose mode
+
+  (*) prefix for top-level directory of a session, which must be
+      followed by an integer that uniquely identifies the
+      session. (example: 'cliver-out-')
+
+  Example acceptable path: 'foo/bar/cliver-out-9/round_0048/baz.tpath'
+  indir = foo/bar
+  prefix = cliver-out-
+
+EOF
+}
+
+
+###############################################################################
+# Parse command line arguments
+###############################################################################
+# A POSIX variable
+OPTIND=1         # Reset in case getopts has been used previously in the shell.
+
+# Parse optional arguments
+message_metric="Ruzicka" # other option is "Jaccard"
+trace_metric="Jaccard"   # other option is "mJaccard"
+trace_dedupe_metric="Jaccard"  # other option is "exact"
+verbose=0
+verbose_flag=
+fast_cluster=0
+fast_cluster_flag=
+omit_xpilot_header=0
+omit_xpilot_header_flag=
+plots=0
+plots_flag=
+while getopts "h?vm:t:d:fxp" opt; do
+    case "$opt" in
+    h|\?)
+        show_help $0
+        exit 0
+        ;;
+    v)  verbose=1
+        verbose_flag="-v"
+        ;;
+    f)  fast_cluster=1
+        fast_cluster_flag="-f"
+        ;;
+    m)  message_metric=$OPTARG
+        ;;
+    t)  trace_metric=$OPTARG
+        ;;
+    d)  trace_dedupe_metric=$OPTARG
+        ;;
+    x)  omit_xpilot_header=1
+        omit_xpilot_header_flag="-x"
+        ;;
+    p)  plots=1
+        plots_flag="-p"
+        ;;
+    esac
+done
+shift $((OPTIND-1))
+[ "$1" = "--" ] && shift
+
+# Parse required arguments
+if [ $# -ne 6 ]
+then
+    echo "Error: illegal number of arguments (6 required)."
+    show_help $0
+    exit 1
+else
+    input_dir=$1
+    session_prefix=$2
+    num_frag_clusters=$3
+    num_msg_clusters=$4
+    tmp_dir=$5      # for intermediate files
+    out_hmm_file=$6 # for final output
+
+    mkdir -p "${tmp_dir}"
+fi
+
+if [ $verbose -eq 1 ]
+then
+    printf "message_metric='$message_metric', trace_metric='$trace_metric', "
+    printf "arguments($#): $*\n"
+fi
+
+###############################################################################
+# Assemble training data from directory of tpath files
+###############################################################################
+if [ $verbose -eq 1 ]
+then
+    echo "--------------------------------------------------------------------"
+    echo "Assembling training data from ${input_dir}"
+    echo "--------------------------------------------------------------------"
+fi
+
+if [[ -d ${input_dir} ]]
+then
+    find -L "${input_dir}" -name '*.tpath' | sort -n > "${tmp_dir}/tpath_files.txt"
+elif [[ -f ${input_dir} ]]
+then
+    sort -n ${input_dir} > "${tmp_dir}/tpath_files.txt"
+else
+    echo "${input_dir} is not file or directory!"
+    exit 1
+fi
+
+tpath_count=0
+if [[ -e "${tmp_dir}/tpath_files.txt"  ]]
+then
+    tpath_count=$(wc -l "${tmp_dir}/tpath_files.txt" | awk '{print $1}')
+fi 
+
+if [[ $tpath_count -eq 0 ]]
+then
+    echo "${input_dir} is empty or invalid"
+    exit 1
+fi
+
+if [ $verbose -eq 1 ]
+then
+    echo "Using ${tpath_count} tpath files"
+fi
+
+cat "${tmp_dir}/tpath_files.txt" | \
+    extract_training.py $verbose_flag $omit_xpilot_header_flag \
+    -r "${session_prefix}" > \
+    "${tmp_dir}/training.csv"
+cut -f1,2 -d, < "${tmp_dir}/training.csv" > "${tmp_dir}/sessions_and_rounds.csv"
+
+###############################################################################
+# Deduplicate fragments and messages
+###############################################################################
+if [ $verbose -eq 1 ]
+then
+    echo "--------------------------------------------------------------------"
+    echo "Deduplicating fragments"
+    echo "--------------------------------------------------------------------"
+fi
+
+dedupe.py $verbose_flag -t fragment -m $trace_dedupe_metric \
+    "${tmp_dir}/training.csv" \
+    "${tmp_dir}/training_deduped_frag.csv" "${tmp_dir}/dupemap_frag.csv"
+extract_canonical_lines.py $verbose_flag "${tmp_dir}/dupemap_frag.csv" \
+    "${tmp_dir}/tpath_files.txt" > "${tmp_dir}/tpath_files_frag.txt"
+
+if [ $verbose -eq 1 ]
+then
+    echo "--------------------------------------------------------------------"
+    echo "Deduplicating messages"
+    echo "--------------------------------------------------------------------"
+fi
+
+dedupe.py $verbose_flag -t message -r "${tmp_dir}/training.csv" \
+    "${tmp_dir}/training_deduped_msg.csv" "${tmp_dir}/dupemap_msg.csv"
+extract_canonical_lines.py $verbose_flag "${tmp_dir}/dupemap_msg.csv" \
+    "${tmp_dir}/tpath_files.txt" > "${tmp_dir}/tpath_files_msg.txt"
+
+
+###############################################################################
+# Compute distance matrices for fragments and messages
+###############################################################################
+if [ $verbose -eq 1 ]
+then
+    echo "--------------------------------------------------------------------"
+    echo "Computing distance matrix for fragments"
+    echo "--------------------------------------------------------------------"
+fi
+distmtx.py $verbose_flag -f -m "${trace_metric}" < \
+    "${tmp_dir}/training_deduped_frag.csv" > \
+    "${tmp_dir}/distmtx_frag.csv"
+
+if [ $verbose -eq 1 ]
+then
+    echo "--------------------------------------------------------------------"
+    echo "Computing distance matrix for messages"
+    echo "--------------------------------------------------------------------"
+fi
+distmtx.py $verbose_flag -m "${message_metric}" < \
+    "${tmp_dir}/training_deduped_msg.csv" > \
+    "${tmp_dir}/distmtx_msg.csv"
+
+###############################################################################
+# Compute clusters for fragments and messages
+###############################################################################
+# Output file csv formats:
+# cluster_ids_frag_msg.csv: fragClusterID, msgClusterID (both zero-indexed)
+# medoids_frag.txt: list of tpath files representing fragment medoids
+# medoids_msg.txt:  list of tpath files representing message medoids
+
+if [ $verbose -eq 1 ]
+then
+    echo "--------------------------------------------------------------------"
+    echo "Computing clusters for fragments"
+    echo "--------------------------------------------------------------------"
+fi
+hier_cluster.py $verbose_flag $plots_flag $fast_cluster_flag \
+    "${num_frag_clusters}" \
+    -m "${tmp_dir}/medoids_linenum_frag.txt" < \
+    "${tmp_dir}/distmtx_frag.csv" > "${tmp_dir}/cluster_ids_frag.csv"
+num_frag_clusters=$(( $(sort -rn "${tmp_dir}/cluster_ids_frag.csv" | head -n1) + 1 ))
+if [ $verbose -eq 1 ]
+then
+    echo "--------------------------------------------------------------------"
+    echo "Computing clusters for messages"
+    echo "--------------------------------------------------------------------"
+fi
+hier_cluster.py $verbose_flag $plots_flag $fast_cluster_flag \
+    "${num_msg_clusters}" \
+    -m "${tmp_dir}/medoids_linenum_msg.txt" < \
+    "${tmp_dir}/distmtx_msg.csv" > "${tmp_dir}/cluster_ids_msg.csv"
+num_msg_clusters=$(( $(sort -rn "${tmp_dir}/cluster_ids_msg.csv" | head -n1) + 1 ))
+
+if [ $verbose -eq 1 ]
+then
+    echo "--------------------------------------------------------------------"
+    echo "Applying fragment cluster IDs to original training data"
+    echo "--------------------------------------------------------------------"
+fi
+apply_clusterids.py $verbose_flag "${tmp_dir}/cluster_ids_frag.csv" \
+    "${tmp_dir}/dupemap_frag.csv" > "${tmp_dir}/cluster_ids_orig_frag.csv"
+
+if [ $verbose -eq 1 ]
+then
+    echo "--------------------------------------------------------------------"
+    echo "Applying message cluster IDs to original training data"
+    echo "--------------------------------------------------------------------"
+fi
+apply_clusterids.py $verbose_flag "${tmp_dir}/cluster_ids_msg.csv" \
+    "${tmp_dir}/dupemap_msg.csv" > "${tmp_dir}/cluster_ids_orig_msg.csv"
+
+# Combine into one file
+paste -d, "${tmp_dir}/cluster_ids_orig_frag.csv" \
+    "${tmp_dir}/cluster_ids_orig_msg.csv" > \
+    "${tmp_dir}/cluster_ids_orig_frag_msg.csv"
+
+if [ $verbose -eq 1 ]
+then
+    echo "--------------------------------------------------------------------"
+    echo "Saving medoids"
+    echo "--------------------------------------------------------------------"
+fi
+sed -n `awk '{printf $0 "p;"}' "${tmp_dir}/medoids_linenum_frag.txt"` \
+    "${tmp_dir}/tpath_files_frag.txt" > "${tmp_dir}/medoids_frag.txt"
+sed -n `awk '{printf $0 "p;"}' "${tmp_dir}/medoids_linenum_msg.txt"` \
+    "${tmp_dir}/tpath_files_msg.txt" > "${tmp_dir}/medoids_msg.txt"
+
+###############################################################################
+# Estimate HMM coefficients on the series of sessions
+###############################################################################
+
+if [ $verbose -eq 1 ]
+then
+    echo "--------------------------------------------------------------------"
+    echo "Training HMM based on fragment and message sequences"
+    echo "--------------------------------------------------------------------"
+    echo "Number of fragment clusters: ${num_frag_clusters}"
+    echo "Number of message clusters: ${num_msg_clusters}"
+fi
+hmm_estimate.py $verbose_flag "${num_frag_clusters}" "${num_msg_clusters}" \
+    -s "${tmp_dir}/sessions_and_rounds.csv" -t 1e-5 -e 1e-5 < \
+    "${tmp_dir}/cluster_ids_orig_frag_msg.csv" > \
+    "${tmp_dir}/hmm_coefficients.txt"
+
+###############################################################################
+# Create HMM training file
+###############################################################################
+
+cat "${tmp_dir}/hmm_coefficients.txt" > "${out_hmm_file}"
+echo "FragmentMedoids:" >> "${out_hmm_file}"
+cat "${tmp_dir}/medoids_frag.txt" >> "${out_hmm_file}"
+echo "MessageMedoids:" >> "${out_hmm_file}"
+cat "${tmp_dir}/medoids_msg.txt" >> "${out_hmm_file}"
+
+if [ $verbose -eq 1 ]
+then
+    echo "Wrote HMM training file: ${out_hmm_file}"
+fi
+

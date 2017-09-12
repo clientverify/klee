@@ -54,7 +54,7 @@ namespace {
 }
 
 namespace klee {
-  extern RNG theRNG;
+  extern ThreadSpecificPointer<RNG>::type theRNG;
 }
 
 Searcher::~Searcher() {
@@ -133,7 +133,7 @@ void BFSSearcher::update(ExecutionState *current,
 ///
 
 ExecutionState &RandomSearcher::selectState() {
-  return *states[theRNG.getInt32()%states.size()];
+  return *states[theRNG->getInt32()%states.size()];
 }
 
 void
@@ -188,7 +188,7 @@ WeightedRandomSearcher::~WeightedRandomSearcher() {
 }
 
 ExecutionState &WeightedRandomSearcher::selectState() {
-  return *states->choose(theRNG.getDoubleL());
+  return *states->choose(theRNG->getDoubleL());
 }
 
 double WeightedRandomSearcher::getWeight(ExecutionState *es) {
@@ -274,7 +274,7 @@ ExecutionState &RandomPathSearcher::selectState() {
       n = n->left;
     } else {
       if (bits==0) {
-        flips = theRNG.getInt32();
+        flips = theRNG->getInt32();
         bits = 32;
       }
       --bits;
@@ -292,7 +292,7 @@ RandomPathSearcher::update(ExecutionState *current,
 }
 
 bool RandomPathSearcher::empty() { 
-  return executor.states.empty(); 
+  return executor.states.empty();
 }
 
 ///

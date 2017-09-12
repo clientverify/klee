@@ -45,6 +45,9 @@ Solver *constructSolverChain(Solver *coreSolver, std::string querySMT2LogPath,
   if (UseCache)
     solver = createCachingSolver(solver);
 
+	  if (UseCanonicalization)
+		solver = createCanonicalSolver(solver);
+
   if (UseIndependentSolver)
     solver = createIndependentSolver(solver);
 

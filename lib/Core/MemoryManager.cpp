@@ -13,6 +13,7 @@
 
 #include "klee/Expr.h"
 #include "klee/Internal/Support/ErrorHandling.h"
+#include "klee/util/Thread.h"
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/MathExtras.h"
@@ -54,7 +55,8 @@ llvm::cl::opt<unsigned long long> DeterministicStartAddress(
 /***/
 MemoryManager::MemoryManager(ArrayCache *_arrayCache)
     : arrayCache(_arrayCache), deterministicSpace(0), nextFreeSlot(0),
-      spaceSize(DeterministicAllocationSize.getValue() * 1024 * 1024) {
+      spaceSize(DeterministicAllocationSize.getValue() * 1024 * 1024),
+      activeObjects(0) {
   if (DeterministicAllocation) {
     // Page boundary
     void *expectedAddress = (void *)DeterministicStartAddress.getValue();
@@ -77,6 +79,7 @@ MemoryManager::MemoryManager(ArrayCache *_arrayCache)
 }
 
 MemoryManager::~MemoryManager() {
+#if defined(MEMORY_MANAGER_OBJECT_TRACKING)
   while (!objects.empty()) {
     MemoryObject *mo = *objects.begin();
     if (!mo->isFixed && !DeterministicAllocation)
@@ -84,9 +87,15 @@ MemoryManager::~MemoryManager() {
     objects.erase(mo);
     delete mo;
   }
+#endif
 
   if (DeterministicAllocation)
     munmap(deterministicSpace, spaceSize);
+
+  if (activeObjects) {
+    klee_warning("MemoryManager %x (TID:%d): %d objects not freed",
+                 this, GetThreadID(), (unsigned)activeObjects);
+  }
 }
 
 MemoryObject *MemoryManager::allocate(uint64_t size, bool isLocal,
@@ -141,38 +150,60 @@ MemoryObject *MemoryManager::allocate(uint64_t size, bool isLocal,
     return 0;
 
   ++stats::allocations;
+  ++activeObjects;
   MemoryObject *res = new MemoryObject(address, size, isLocal, isGlobal, false,
                                        allocSite, this);
+#if defined(MEMORY_MANAGER_OBJECT_TRACKING)
+  objectsLock.lock();
   objects.insert(res);
+  objectsLock.unlock();
+#endif
   return res;
 }
 
 MemoryObject *MemoryManager::allocateFixed(uint64_t address, uint64_t size,
                                            const llvm::Value *allocSite) {
-#ifndef NDEBUG
+#if defined(MEMORY_MANAGER_OBJECT_TRACKING)
+  objectsLock.lock();
   for (objects_ty::iterator it = objects.begin(), ie = objects.end(); it != ie;
        ++it) {
     MemoryObject *mo = *it;
     if (address + size > mo->address && address < mo->address + mo->size)
       klee_error("Trying to allocate an overlapping object");
   }
+  objectsLock.unlock();
 #endif
 
   ++stats::allocations;
+  ++activeObjects;
   MemoryObject *res =
       new MemoryObject(address, size, false, true, true, allocSite, this);
+#if defined(MEMORY_MANAGER_OBJECT_TRACKING)
+  objectsLock.lock();
   objects.insert(res);
+  objectsLock.unlock();
+#endif
   return res;
 }
 
 void MemoryManager::deallocate(const MemoryObject *mo) { assert(0); }
 
 void MemoryManager::markFreed(MemoryObject *mo) {
-  if (objects.find(mo) != objects.end()) {
+  --activeObjects;
+
+#if defined(MEMORY_MANAGER_OBJECT_TRACKING)
+  objectsLock.lock();
+  if (objects.find(mo) != objects.end())
+  {
     if (!mo->isFixed && !DeterministicAllocation)
       free((void *)mo->address);
     objects.erase(mo);
   }
+  objectsLock.unlock();
+#else
+  if (!mo->isFixed && !DeterministicAllocation)
+    free((void *)mo->address);
+#endif
 }
 
 size_t MemoryManager::getUsedDeterministicSize() {

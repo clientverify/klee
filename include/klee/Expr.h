@@ -12,6 +12,8 @@
 
 #include "klee/util/Bits.h"
 #include "klee/util/Ref.h"
+#include "klee/util/RefCount.h"
+#include "klee/util/Mutex.h"
 
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/APFloat.h"
@@ -89,7 +91,7 @@ Todo: Shouldn't bool \c Xor just be written as not equal?
 
 class Expr {
 public:
-  static unsigned count;
+  // static unsigned count; // removed by RAC (commit 1308fe0c)
   static const unsigned MAGIC_HASH_CONSTANT = 39;
 
   /// The type of an expression is simply its width, in bits. 
@@ -172,14 +174,16 @@ public:
     CmpKindLast=Sge
   };
 
-  unsigned refCount;
+  RefCount refCount;
 
 protected:  
   unsigned hashValue;
   
 public:
-  Expr() : refCount(0) { Expr::count++; }
-  virtual ~Expr() { Expr::count--; } 
+  // Expr() : refCount(0) { Expr::count++; } // removed by RAC, commit 1308fe0c
+  Expr() : refCount(0) {}
+  // virtual ~Expr() { Expr::count--; } // removed by RAC, commit 1308fe0c
+  virtual ~Expr() {}
 
   virtual Kind getKind() const = 0;
   virtual Width getWidth() const = 0;
@@ -203,9 +207,14 @@ public:
   typedef llvm::DenseSet<std::pair<const Expr *, const Expr *> > ExprEquivSet;
   int compare(const Expr &b, ExprEquivSet &equivs) const;
   int compare(const Expr &b) const {
+#if defined (THREADSAFE_ATOMIC)
+    ExprEquivSet equivs;
+    int r = compare(b, equivs);
+#else
     static ExprEquivSet equivs;
     int r = compare(b, equivs);
     equivs.clear();
+#endif
     return r;
   }
   virtual int compareContents(const Expr &b) const { return 0; }
@@ -248,6 +257,7 @@ public:
   static ref<Expr> createTempRead(const Array *array, Expr::Width w);
   
   static ref<ConstantExpr> createPointer(uint64_t v);
+  static ref<ConstantExpr> createPointerWidthConstant(uint64_t v);
 
   struct CreateArg;
   static ref<Expr> createFromKind(Kind k, std::vector<CreateArg> args);
@@ -415,8 +425,9 @@ public:
 /// Class representing a byte update of an array.
 class UpdateNode {
   friend class UpdateList;  
+  friend class RefCount;
 
-  mutable unsigned refCount;
+  mutable RefCount refCount;
   // cache instead of recalc
   unsigned hashValue;
 
@@ -464,6 +475,17 @@ public:
 
 private:
   unsigned hashValue;
+
+  /// The symbolic array singleton map is necessary to allow sharing
+  /// of Arrays across states, essentially performing a (limited) form
+  /// of alpha renaming.  Some Solvers use maps such as < const *Array,
+  /// std::vector<unsigned> >.  This causes problems because stored
+  /// answers can't be easily recovered.  Even worse, in read
+  /// expressions, such as (read array 32), array is a pointer, and
+  /// cached solutions are missed because the two Array instances
+  /// aren't recognized as the same.
+  static std::map < unsigned, std::vector < const Array * > * > symbolicArraySingletonMap;
+  static Mutex symbolicArraySingletonMapLock;
 
   // FIXME: Make =delete when we switch to C++11
   Array(const Array& array);
@@ -943,11 +965,15 @@ public:
 
 private:
   llvm::APInt value;
+  bool pointer; // True if value is a pointer to a memory address.
 
-  ConstantExpr(const llvm::APInt &v) : value(v) {}
+  ConstantExpr(const llvm::APInt &v) : value(v), pointer(false) {}
 
 public:
   ~ConstantExpr() {}
+  
+  bool isPointer() { return pointer; };
+  void setPointer(bool val=true) { pointer = val; };
 
   Width getWidth() const { return value.getBitWidth(); }
   Kind getKind() const { return Constant; }
@@ -1011,17 +1037,42 @@ public:
     return r;
   }
 
+  // RAC added, commit 7f2d8ff1
+  static ref<ConstantExpr> alloc_pointer(const llvm::APInt &v) {
+    ref<ConstantExpr> r(new ConstantExpr(v));
+    r->setPointer();
+    r->computeHash();
+    return r;
+  }
+
   static ref<ConstantExpr> alloc(const llvm::APFloat &f) {
     return alloc(f.bitcastToAPInt());
+  }
+
+  // RAC added, commit 7f2d8ff1
+  static ref<ConstantExpr> alloc_pointer(const llvm::APFloat &f) {
+    return alloc_pointer(f.bitcastToAPInt());
   }
 
   static ref<ConstantExpr> alloc(uint64_t v, Width w) {
     return alloc(llvm::APInt(w, v));
   }
 
+  // RAC added, commit 7f2d8ff1
+  static ref<ConstantExpr> alloc_pointer(uint64_t v, Width w) {
+    return alloc_pointer(llvm::APInt(w, v));
+  }
+ 
   static ref<ConstantExpr> create(uint64_t v, Width w) {
     assert(v == bits64::truncateToNBits(v, w) && "invalid constant");
     return alloc(v, w);
+  }
+
+  // RAC added, commit 7f2d8ff1
+  static ref<ConstantExpr> create_pointer(uint64_t v, Width w) {
+    assert(v == bits64::truncateToNBits(v, w) &&
+           "invalid constant");
+    return alloc_pointer(v, w);
   }
 
   static bool classof(const Expr *E) { return E->getKind() == Expr::Constant; }

@@ -10,6 +10,7 @@
 #ifndef __UTIL_IMMUTABLETREE_H__
 #define __UTIL_IMMUTABLETREE_H__
 
+#include "klee/util/RefCount.h"
 #include <cassert>
 #include <vector>
 
@@ -17,7 +18,7 @@ namespace klee {
   template<class K, class V, class KOV, class CMP>
   class ImmutableTree {
   public:
-    static size_t allocated;
+    static Atomic<size_t>::type allocated;
     class iterator;
 
     typedef K key_type;
@@ -74,7 +75,8 @@ namespace klee {
     static Node terminator;
     Node *left, *right;
     value_type value;
-    unsigned height, references;
+    unsigned height;
+    RefCount references;
 
   protected:
     Node(); // solely for creating the terminator node
@@ -241,7 +243,7 @@ namespace klee {
   ImmutableTree<K,V,KOV,CMP>::Node::terminator;
 
   template<class K, class V, class KOV, class CMP> 
-  size_t ImmutableTree<K,V,KOV,CMP>::allocated = 0;
+  Atomic<size_t>::type ImmutableTree<K,V,KOV,CMP>::allocated(0);
 
   template<class K, class V, class KOV, class CMP>
   ImmutableTree<K,V,KOV,CMP>::Node::Node() 
@@ -272,8 +274,7 @@ namespace klee {
 
   template<class K, class V, class KOV, class CMP>
   inline void ImmutableTree<K,V,KOV,CMP>::Node::decref() {
-    --references;
-    if (references==0) delete this;
+    references.release(this);
   }
 
   template<class K, class V, class KOV, class CMP>

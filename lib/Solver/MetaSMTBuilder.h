@@ -540,11 +540,12 @@ MetaSMTBuilder<SolverContext>::bvVarLeftShift(
 
   assert(_solver.get_bv_width(expr) == width);
   assert(_solver.get_bv_width(shift) == width);
-
+    
   // If overshifting, shift to zero
   return evaluate(_solver,
                   metaSMT::logic::Ite(bvult(shift, bvConst32(width, width)),
                                       bvshl(expr, shift), bvZero(width)));
+
 }
 
 // logical right shift by a variable amount on an expression of the specified
@@ -557,11 +558,12 @@ MetaSMTBuilder<SolverContext>::bvVarRightShift(
 
   assert(_solver.get_bv_width(expr) == width);
   assert(_solver.get_bv_width(shift) == width);
-
+    
   // If overshifting, shift to zero
   return evaluate(_solver,
                   metaSMT::logic::Ite(bvult(shift, bvConst32(width, width)),
                                       bvshr(expr, shift), bvZero(width)));
+
 }
 
 // arithmetic right shift by a variable amount on an expression of the specified
@@ -574,11 +576,12 @@ MetaSMTBuilder<SolverContext>::bvVarArithRightShift(
 
   assert(_solver.get_bv_width(expr) == width);
   assert(_solver.get_bv_width(shift) == width);
-
+    
   // If overshifting, shift to zero
   return evaluate(_solver,
                   metaSMT::logic::Ite(bvult(shift, bvConst32(width, width)),
                                       bvashr(expr, shift), bvZero(width)));
+
 }
 
 template <typename SolverContext>

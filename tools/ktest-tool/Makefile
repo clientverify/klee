@@ -42,7 +42,7 @@ install-local:: $(DestTool)
 
 $(DestTool): $(ToolBuildPath) $(DESTDIR)$(PROJ_bindir)
 	$(Echo) Installing $(BuildMode) $(DestTool)
-	$(Verb) $(ProgInstall) $(ToolBuildPath) $(DestTool)
+	$(Verb) $(ScriptInstall) $(ToolBuildPath) $(DestTool)
 
 uninstall-local::
 	$(Echo) Uninstalling $(BuildMode) $(DestTool)

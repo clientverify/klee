@@ -10,6 +10,8 @@
 #ifndef __COMMON_KTEST_H__
 #define __COMMON_KTEST_H__
 
+#include <sys/time.h>
+#include <stdio.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -18,6 +20,7 @@ extern "C" {
   typedef struct KTestObject KTestObject;
   struct KTestObject {
     char *name;
+    struct timeval timestamp;
     unsigned numBytes;
     unsigned char *bytes;
   };
@@ -52,6 +55,9 @@ extern "C" {
   
   /* returns total number of object bytes */
   unsigned kTest_numBytes(KTest *);
+
+  /* print kTest in human-readable form */
+  void kTest_print(FILE *f, KTest *);
 
   void  kTest_free(KTest *);
 

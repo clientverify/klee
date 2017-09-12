@@ -21,12 +21,13 @@ include Makefile.tests
 #===------------------------------------------------------------------------===#
 # llvm-lit testing support
 #===------------------------------------------------------------------------===#
-ULIMIT = ulimit -t 600 ; ulimit -d 512000 ;
+#ULIMIT = ulimit -t 3000 ; ulimit -d 512000 ;
+ULIMIT = ulimit -d 5120000 ;
 
 ifdef VERBOSE
-LIT_ARGS := -v
+LIT_ARGS := -v --time-tests
 else
-LIT_ARGS := -s -v
+LIT_ARGS := -s -v --time-tests
 endif
 
 ifdef TESTSUITE
@@ -65,6 +66,8 @@ clean::
 	$(RM) -rf `find $(PROJ_OBJ_ROOT)/test -name 'ft-last' -print`
 	$(RM) -rf `find $(PROJ_OBJ_ROOT)/test -name 'klee-last'`
 	$(RM) -rf `find $(PROJ_OBJ_ROOT)/test -name 'klee-out*'`
+	$(RM) -rf `find $(PROJ_OBJ_ROOT)/test -name 'cliver-last'`
+	$(RM) -rf `find $(PROJ_OBJ_ROOT)/test -name 'cliver-out*'`
 	$(RM) -rf `find $(PROJ_OBJ_ROOT)/test -name '*~'`
 	$(RM) -rf `find $(PROJ_OBJ_ROOT)/test -name test.log`
 
@@ -84,4 +87,7 @@ lit.site.cfg: lit.site.cfg.in
 	     -e "s#@HAVE_SELINUX@#$(HAVE_SELINUX)#g" \
 	     -e "s#@ENABLE_STP@#$(ENABLE_STP)#g" \
 	     -e "s#@ENABLE_Z3@#$(ENABLE_Z3)#g" \
+	     -e "s#@ENABLE_ADDRESS_SANITIZER@#$(ENABLE_ADDRESS_SANITIZER)#g" \
+	     -e "s#@ENABLE_THREAD_SANITIZER@#$(ENABLE_THREAD_SANITIZER)#g" \
+	     -e "s#@DISABLE_THREADS@#$(DISABLE_THREADS)#g" \
 	     $(PROJ_SRC_DIR)/lit.site.cfg.in > $@

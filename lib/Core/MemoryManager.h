@@ -6,10 +6,16 @@
 // License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
+//
+// Define MEMORY_MANAGER_OBJECT_TRACKING to prevent memory leaks at exit
+//
+//===----------------------------------------------------------------------===//
 
 #ifndef KLEE_MEMORYMANAGER_H
 #define KLEE_MEMORYMANAGER_H
 
+#include "klee/util/Atomic.h"
+#include "klee/util/Mutex.h"
 #include <set>
 #include <stdint.h>
 
@@ -23,8 +29,12 @@ class ArrayCache;
 
 class MemoryManager {
 private:
+  Atomic<unsigned>::type activeObjects;
+
   typedef std::set<MemoryObject *> objects_ty;
   objects_ty objects;
+  SpinLock objectsLock;
+
   ArrayCache *const arrayCache;
 
   char *deterministicSpace;

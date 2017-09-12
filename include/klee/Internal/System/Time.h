@@ -9,6 +9,9 @@
 
 #ifndef KLEE_UTIL_TIME_H
 #define KLEE_UTIL_TIME_H
+#include <llvm/Support/TimeValue.h>
+
+#include <chrono>
 
 #include <llvm/Support/TimeValue.h>
 
@@ -23,6 +26,10 @@ namespace klee {
 
     /// Wall time as TimeValue object.
     llvm::sys::TimeValue getWallTimeVal();
+
+    typedef std::chrono::high_resolution_clock Clock;
+    typedef Clock::time_point TimePoint;
+    using DurationToSeconds = std::chrono::duration<double, std::chrono::seconds::period>;
   }
 }
 
