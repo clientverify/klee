@@ -406,8 +406,8 @@ klee::ExecutionState &VerifySearcher::selectState() {
 }
 
 void VerifySearcher::update(klee::ExecutionState *current,
-    const std::set<klee::ExecutionState*> &addedStates,
-    const std::set<klee::ExecutionState*> &removedStates) {
+    const std::vector<klee::ExecutionState *> &addedStates,
+    const std::vector<klee::ExecutionState *> &removedStates) {
   klee::TimerStatIncrementer timer(stats::searcher_time);
 
   if (current != NULL && removedStates.count(current) == 0) {
@@ -432,8 +432,8 @@ void VerifySearcher::update(klee::ExecutionState *current,
 
 klee::ExecutionState* VerifySearcher::updateAndTrySelectState(
     klee::ExecutionState *current,
-    const std::set<klee::ExecutionState*> &addedStates,
-    const std::set<klee::ExecutionState*> &removedStates) {
+    const std::vector<klee::ExecutionState *> &addedStates,
+    const std::vector<klee::ExecutionState *> &removedStates) {
   update(current, addedStates, removedStates);
   return trySelectState();
 }

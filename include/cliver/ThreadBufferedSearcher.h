@@ -21,13 +21,13 @@ class ThreadBufferedSearcher : public CVSearcher {
   virtual klee::ExecutionState &selectState();
 
   virtual void update(klee::ExecutionState *current,
-                      const std::set<klee::ExecutionState*> &addedStates,
-                      const std::set<klee::ExecutionState*> &removedStates);
+                      const std::vector<klee::ExecutionState *> &addedStates,
+                      const std::vector<klee::ExecutionState *> &removedStates);
 
   virtual klee::ExecutionState* updateAndTrySelectState(
       klee::ExecutionState *current,
-      const std::set<klee::ExecutionState*> &addedStates,
-      const std::set<klee::ExecutionState*> &removedStates);
+      const std::vector<klee::ExecutionState *> &addedStates,
+      const std::vector<klee::ExecutionState *> &removedStates);
 
   virtual bool empty();
   virtual void notify(ExecutionEvent ev);

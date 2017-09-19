@@ -24,13 +24,13 @@ class LockFreeVerifySearcher : public CVSearcher {
   virtual klee::ExecutionState &selectState();
 
   virtual void update(klee::ExecutionState *current,
-                      const std::set<klee::ExecutionState*> &addedStates,
-                      const std::set<klee::ExecutionState*> &removedStates);
+                      const std::vector<klee::ExecutionState *> &addedStates,
+                      const std::vector<klee::ExecutionState *> &removedStates);
 
   virtual klee::ExecutionState* updateAndTrySelectState(
       klee::ExecutionState *current,
-      const std::set<klee::ExecutionState*> &addedStates,
-      const std::set<klee::ExecutionState*> &removedStates);
+      const std::vector<klee::ExecutionState *> &addedStates,
+      const std::vector<klee::ExecutionState *> &removedStates);
 
   virtual bool empty();
   virtual klee::ExecutionState* trySelectState();
@@ -54,9 +54,9 @@ class LockFreeVerifySearcher : public CVSearcher {
 
   inline void add_state(klee::ExecutionState* es);
   inline void add_ready_state(klee::ExecutionState* es);
-  inline void add_states(const std::set<klee::ExecutionState*> &states);
+  inline void add_states(const std::vector<klee::ExecutionState *> &states);
   inline void remove_state(klee::ExecutionState* es);
-  inline void remove_states(const std::set<klee::ExecutionState*> &states);
+  inline void remove_states(const std::vector<klee::ExecutionState *> &states);
 
   klee::LockFreeQueue<klee::ExecutionState*> added_queue_;
   klee::LockFreeQueue<klee::ExecutionState*> removed_queue_;

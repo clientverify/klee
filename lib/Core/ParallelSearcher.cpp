@@ -47,6 +47,7 @@
 #include <cassert>
 #include <fstream>
 #include <climits>
+#include <algorithm>
 
 ///
 
@@ -72,9 +73,11 @@ ExecutionState* ParallelDFSSearcher::trySelectState() {
 }
 
 void ParallelDFSSearcher::update(ExecutionState *current,
-                            const std::set<ExecutionState*> &addedStates,
-                            const std::set<ExecutionState*> &removedStates) {
-  if (current && removedStates.count(current) == 0)
+                            const std::vector<ExecutionState *> &addedStates,
+                            const std::vector<ExecutionState *> &removedStates) {
+  if (current &&
+      std::find(removedStates.begin(), removedStates.end(), current) ==
+          removedStates.end())
     stack.push(current, true);
   if (addedStates.size()) {
     for (auto es : addedStates) {
@@ -84,8 +87,8 @@ void ParallelDFSSearcher::update(ExecutionState *current,
 }
 
 ExecutionState* ParallelDFSSearcher::updateAndTrySelectState(ExecutionState *current,
-                            const std::set<ExecutionState*> &addedStates,
-                            const std::set<ExecutionState*> &removedStates) {
+                            const std::vector<ExecutionState *> &addedStates,
+                            const std::vector<ExecutionState *> &removedStates) {
   update(current, addedStates, removedStates);
   return trySelectState();
 }
@@ -120,21 +123,23 @@ ExecutionState* ParallelBFSSearcher::trySelectState() {
 }
 
 void ParallelBFSSearcher::update(ExecutionState *current,
-                            const std::set<ExecutionState*> &addedStates,
-                            const std::set<ExecutionState*> &removedStates) {
+                            const std::vector<ExecutionState *> &addedStates,
+                            const std::vector<ExecutionState *> &removedStates) {
   if (addedStates.size()) {
     for (auto es : addedStates) {
       queue.push(es, true);
     }
   }
-  if (current && removedStates.count(current) == 0)
+  if (current &&
+      std::find(removedStates.begin(), removedStates.end(), current) ==
+          removedStates.end())
     queue.push(current, true);
 }
 
 ExecutionState* ParallelBFSSearcher::updateAndTrySelectState(
     ExecutionState *current,
-    const std::set<ExecutionState*> &addedStates,
-    const std::set<ExecutionState*> &removedStates) {
+    const std::vector<ExecutionState *> &addedStates,
+    const std::vector<ExecutionState *> &removedStates) {
 
   update(current, addedStates, removedStates);
   return trySelectState();
@@ -163,8 +168,8 @@ ExecutionState &ParallelSearcher::selectState() {
 }
 
 void ParallelSearcher::update(ExecutionState *current,
-                            const std::set<ExecutionState*> &addedStates,
-                            const std::set<ExecutionState*> &removedStates) {
+                            const std::vector<ExecutionState *> &addedStates,
+                            const std::vector<ExecutionState *> &removedStates) {
   RecursiveLockGuard guard(lock);
 
   if (current)
@@ -299,9 +304,9 @@ double ParallelWeightedRandomSearcher::getWeight(ExecutionState *es) {
 }
 
 void ParallelWeightedRandomSearcher::update(ExecutionState *current,
-                                    const std::set<ExecutionState*> &addedStates,
-                                    const std::set<ExecutionState*> &removedStates) {
-  for (std::set<ExecutionState*>::const_iterator it = addedStates.begin(),
+                                    const std::vector<ExecutionState *> &addedStates,
+                                    const std::vector<ExecutionState *> &removedStates) {
+  for (std::vector<ExecutionState *>::const_iterator it = addedStates.begin(),
          ie = addedStates.end(); it != ie; ++it) {
     ExecutionState *es = *it;
     double weight = getWeight(es);
@@ -313,7 +318,7 @@ void ParallelWeightedRandomSearcher::update(ExecutionState *current,
     ++stateCount;
   }
 
-  for (std::set<ExecutionState*>::const_iterator it = removedStates.begin(),
+  for (std::vector<ExecutionState *>::const_iterator it = removedStates.begin(),
          ie = removedStates.end(); it != ie; ++it) {
     {
       // Acquire unique writer lock
@@ -324,7 +329,9 @@ void ParallelWeightedRandomSearcher::update(ExecutionState *current,
   }
 
   if (current) {
-    if (updateWeights && !removedStates.count(current)) {
+    if (updateWeights &&
+        std::find(removedStates.begin(), removedStates.end(), current) ==
+            removedStates.end()) {
       double currentWeight;
       double weight = getWeight(current);
       {
@@ -386,10 +393,10 @@ ExecutionState &ParallelRandomPathSearcher::selectState() {
 }
 
 void ParallelRandomPathSearcher::update(ExecutionState *current,
-                                const std::set<ExecutionState*> &addedStates,
-                                const std::set<ExecutionState*> &removedStates) {
+                                const std::vector<ExecutionState *> &addedStates,
+                                const std::vector<ExecutionState *> &removedStates) {
   states.insert(addedStates.begin(), addedStates.end());
-  for (std::set<ExecutionState*>::const_iterator it = removedStates.begin(),
+  for (std::vector<ExecutionState *>::const_iterator it = removedStates.begin(),
          ie = removedStates.end(); it != ie; ++it) {
     states.erase(*it);
   }
@@ -484,8 +491,8 @@ bool ParallelBatchingSearcher::empty() {
 }
 
 void ParallelBatchingSearcher::update(ExecutionState *current,
-                              const std::set<ExecutionState*> &addedStates,
-                              const std::set<ExecutionState*> &removedStates) {
+                              const std::vector<ExecutionState *> &addedStates,
+                              const std::vector<ExecutionState *> &removedStates) {
   //if (lastState.get() != current || addedStates.size() || removedStates.size()) {
   if (lastState != current || addedStates.size() || removedStates.size()) {
     //lastState.reset(0);
@@ -496,8 +503,8 @@ void ParallelBatchingSearcher::update(ExecutionState *current,
 
 ExecutionState* ParallelBatchingSearcher::updateAndTrySelectState(
     ExecutionState *current,
-    const std::set<ExecutionState*> &addedStates,
-    const std::set<ExecutionState*> &removedStates) {
+    const std::vector<ExecutionState *> &addedStates,
+    const std::vector<ExecutionState *> &removedStates) {
 
   //if (lastState.get() != current || addedStates.size() || removedStates.size()) {
   if (lastState != current || addedStates.size() || removedStates.size()) {

@@ -19,6 +19,8 @@
 
 #include "llvm/Support/CommandLine.h"
 
+#include <algorithm>
+
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace klee {
@@ -54,26 +56,34 @@ klee::ExecutionState* LockFreeVerifySearcher::trySelectState() {
 }
 
 void LockFreeVerifySearcher::update(klee::ExecutionState *current,
-                    const std::set<klee::ExecutionState*> &addedStates,
-                    const std::set<klee::ExecutionState*> &removedStates) {
+                    const std::vector<klee::ExecutionState *> &addedStates,
+                    const std::vector<klee::ExecutionState *> &removedStates) {
 
+  // FIXME: Is it bad to remove states before adding new ones? That is, might
+  // we hit a "zero" state count, thereby causing worker threads to exit early?
   remove_states(removedStates);
   add_states(addedStates);
 
-  if (current && removedStates.count(current) == 0) {
+  if (current &&
+      std::find(removedStates.begin(), removedStates.end(), current) ==
+          removedStates.end()) {
     add_state(current);
   }
 }
 
 klee::ExecutionState* LockFreeVerifySearcher::updateAndTrySelectState(
     klee::ExecutionState *current,
-    const std::set<klee::ExecutionState*> &addedStates,
-    const std::set<klee::ExecutionState*> &removedStates) {
+    const std::vector<klee::ExecutionState *> &addedStates,
+    const std::vector<klee::ExecutionState *> &removedStates) {
 
+  // FIXME: Is it bad to remove states before adding new ones? That is, might
+  // we hit a "zero" state count, thereby causing worker threads to exit early?
   remove_states(removedStates);
   add_states(addedStates);
 
-  if (current && removedStates.count(current) == 0) {
+  if (current &&
+      std::find(removedStates.begin(), removedStates.end(), current) ==
+          removedStates.end()) {
     add_state(current);
   }
   klee::ExecutionState *next = trySelectState();
@@ -125,7 +135,7 @@ void LockFreeVerifySearcher::add_ready_state(klee::ExecutionState* es) {
   ++ready_size_;
 }
 
-void LockFreeVerifySearcher::add_states(const std::set<klee::ExecutionState*> &states) {
+void LockFreeVerifySearcher::add_states(const std::vector<klee::ExecutionState *> &states) {
   for (auto es : states) {
     added_queue_.push(es, true);
   }
@@ -138,7 +148,7 @@ void LockFreeVerifySearcher::remove_state(klee::ExecutionState* es) {
   //workerCond.notify_one();
 }
 
-void LockFreeVerifySearcher::remove_states(const std::set<klee::ExecutionState*> &states) {
+void LockFreeVerifySearcher::remove_states(const std::vector<klee::ExecutionState *> &states) {
   for (auto es : states)
     removed_queue_.push(es, true);
   //if (states.size())
@@ -154,30 +164,28 @@ void LockFreeVerifySearcher::notify(ExecutionEvent ev) {
 }
 
 void LockFreeVerifySearcher::flush_updates() {
-  std::set<klee::ExecutionState*> removed_states;
-  std::set<klee::ExecutionState*> added_states;
+  std::vector<klee::ExecutionState *> removed_states;
+  std::vector<klee::ExecutionState *> added_states;
   klee::ExecutionState *es;
 
   if (removed_queue_.size()) {
     while (removed_queue_.pop(es)) {
-      removed_states.insert(es);
+      removed_states.push_back(es);
     }
   }
 
   if (added_queue_.size()) {
     while (added_queue_.pop(es)) {
-      added_states.insert(es);
+      added_states.push_back(es);
     }
   }
 
   if (added_states.size() || removed_states.size()) {
     searcher_->update(NULL, added_states, removed_states);
-    added_states.clear();
     // Lazy State delete
     for (auto r : removed_states) {
       delete r;
     }
-    removed_states.clear();
   }
 }
 

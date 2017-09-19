@@ -11,6 +11,8 @@
 
 #include "llvm/Support/CommandLine.h"
 
+#include <algorithm>
+
 namespace cliver {
 
 llvm::cl::opt<unsigned>
@@ -57,8 +59,8 @@ klee::ExecutionState* ThreadBufferedSearcher::trySelectState() {
 }
 
 void ThreadBufferedSearcher::update(klee::ExecutionState *current,
-                    const std::set<klee::ExecutionState*> &addedStates,
-                    const std::set<klee::ExecutionState*> &removedStates) {
+                    const std::vector<klee::ExecutionState *> &addedStates,
+                    const std::vector<klee::ExecutionState *> &removedStates) {
 
   // Called with no parameters, flush buffers
   if (!current && !addedStates.size() && !removedStates.size()) {
@@ -74,8 +76,10 @@ void ThreadBufferedSearcher::update(klee::ExecutionState *current,
   for (auto es : addedStates)
     local_states->add_state(static_cast<CVExecutionState*>(es));
 
-  if (current && removedStates.count(current) == 0)
-    local_states->add_state(static_cast<CVExecutionState*>(current));
+  if (current &&
+      std::find(removedStates.begin(), removedStates.end(), current) ==
+          removedStates.end())
+    local_states->add_state(static_cast<CVExecutionState *>(current));
 
   if ((local_states->cache_size() > BufferedSearcherSize) ||
       (current && static_cast<CVExecutionState*>(current)->event_flag())) {
@@ -85,8 +89,8 @@ void ThreadBufferedSearcher::update(klee::ExecutionState *current,
 
 klee::ExecutionState* ThreadBufferedSearcher::updateAndTrySelectState(
     klee::ExecutionState *current,
-    const std::set<klee::ExecutionState*> &addedStates,
-    const std::set<klee::ExecutionState*> &removedStates) {
+    const std::vector<klee::ExecutionState *> &addedStates,
+    const std::vector<klee::ExecutionState *> &removedStates) {
 
   update(current, addedStates, removedStates);
 
@@ -128,16 +132,18 @@ void ThreadBufferedSearcher::flush() {
   auto local_states = get_local_states();
   auto shared_states = get_shared_states();
 
-  std::set<klee::ExecutionState*> added_states;
+  std::vector<klee::ExecutionState *> added_states;
 
   while (local_states->cache_size()) {
     auto es = local_states->next_state();
-    added_states.insert(es);
+    added_states.push_back(es);
     local_states->remove_state(es);
     shared_states->erase(es);
   }
 
-  searcher_->update(NULL, added_states, *shared_states);
+  std::vector<klee::ExecutionState *> removed_states(shared_states->begin(),
+                                                     shared_states->end());
+  searcher_->update(NULL, added_states, removed_states);
   shared_states->clear();
 }
 

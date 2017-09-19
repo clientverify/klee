@@ -39,8 +39,8 @@ namespace klee {
     ParallelSearcher(Searcher* searcher);
     ExecutionState &selectState();
     void update(ExecutionState *current,
-                const std::set<ExecutionState*> &addedStates,
-                const std::set<ExecutionState*> &removedStates);
+                const std::vector<ExecutionState *> &addedStates,
+                const std::vector<ExecutionState *> &removedStates);
     bool empty();
     void printName(llvm::raw_ostream &os);
     ExecutionState* trySelectState();
@@ -52,11 +52,11 @@ namespace klee {
     ExecutionState &selectState();
     ExecutionState* trySelectState();
     void update(ExecutionState *current,
-                const std::set<ExecutionState*> &addedStates,
-                const std::set<ExecutionState*> &removedStates);
+                const std::vector<ExecutionState *> &addedStates,
+                const std::vector<ExecutionState *> &removedStates);
     ExecutionState* updateAndTrySelectState(ExecutionState *current,
-                    const std::set<ExecutionState*> &addedStates,
-                    const std::set<ExecutionState*> &removedStates);
+                    const std::vector<ExecutionState *> &addedStates,
+                    const std::vector<ExecutionState *> &removedStates);
     bool empty();
     void printName(llvm::raw_ostream &os);
   };
@@ -67,11 +67,11 @@ namespace klee {
     ExecutionState &selectState();
     ExecutionState* trySelectState();
     void update(ExecutionState *current,
-                const std::set<ExecutionState*> &addedStates,
-                const std::set<ExecutionState*> &removedStates);
+                const std::vector<ExecutionState *> &addedStates,
+                const std::vector<ExecutionState *> &removedStates);
     ExecutionState* updateAndTrySelectState(ExecutionState *current,
-                    const std::set<ExecutionState*> &addedStates,
-                    const std::set<ExecutionState*> &removedStates);
+                    const std::vector<ExecutionState *> &addedStates,
+                    const std::vector<ExecutionState *> &removedStates);
     bool empty();
     void printName(llvm::raw_ostream &os);
   };
@@ -106,8 +106,8 @@ namespace klee {
 
     ExecutionState &selectState();
     void update(ExecutionState *current,
-                const std::set<ExecutionState*> &addedStates,
-                const std::set<ExecutionState*> &removedStates);
+                const std::vector<ExecutionState *> &addedStates,
+                const std::vector<ExecutionState *> &removedStates);
     bool empty();
     ExecutionState* trySelectState();
     void printName(llvm::raw_ostream &os) {
@@ -134,8 +134,8 @@ namespace klee {
 
     ExecutionState &selectState();
     void update(ExecutionState *current,
-                const std::set<ExecutionState*> &addedStates,
-                const std::set<ExecutionState*> &removedStates);
+                const std::vector<ExecutionState *> &addedStates,
+                const std::vector<ExecutionState *> &removedStates);
     bool empty();
     void printName(llvm::raw_ostream &os) {
       os << "ParallelRandomPathSearcher\n";
@@ -162,11 +162,11 @@ namespace klee {
     ExecutionState &selectState();
     ExecutionState* trySelectState();
     void update(ExecutionState *current,
-                const std::set<ExecutionState*> &addedStates,
-                const std::set<ExecutionState*> &removedStates);
+                const std::vector<ExecutionState *> &addedStates,
+                const std::vector<ExecutionState *> &removedStates);
     ExecutionState* updateAndTrySelectState(ExecutionState *current,
-                                            const std::set<ExecutionState*> &addedStates,
-                                            const std::set<ExecutionState*> &removedStates);
+                                            const std::vector<ExecutionState *> &addedStates,
+                                            const std::vector<ExecutionState *> &removedStates);
  
     bool empty();
     void printName(llvm::raw_ostream &os) {
@@ -174,7 +174,7 @@ namespace klee {
          << ", instructionBudget: " << initialInstructionBudget
          << ", baseSearcher:\n";
       baseSearcher->printName(os);
-      os << "</BatchingSearcher>\n";
+      os << "</ParallelBatchingSearcher>\n";
     }
   };
 

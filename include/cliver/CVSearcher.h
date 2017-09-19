@@ -41,8 +41,8 @@ class CVSearcher : public klee::Searcher, public ExecutionObserver {
   virtual klee::ExecutionState &selectState() = 0;
 
   virtual void update(klee::ExecutionState *current,
-              const std::set<klee::ExecutionState*> &addedStates,
-              const std::set<klee::ExecutionState*> &removedStates) = 0;
+              const std::vector<klee::ExecutionState *> &addedStates,
+              const std::vector<klee::ExecutionState *> &removedStates) = 0;
 
   virtual bool empty() = 0;
 
@@ -50,8 +50,8 @@ class CVSearcher : public klee::Searcher, public ExecutionObserver {
 
   virtual klee::ExecutionState* updateAndTrySelectState(
       klee::ExecutionState *current,
-      const std::set<klee::ExecutionState*> &addedStates,
-      const std::set<klee::ExecutionState*> &removedStates) = 0;
+      const std::vector<klee::ExecutionState *> &addedStates,
+      const std::vector<klee::ExecutionState *> &removedStates) = 0;
 
   virtual klee::ExecutionState* trySelectState() = 0;
 
@@ -74,13 +74,13 @@ class VerifySearcher : public CVSearcher {
   virtual klee::ExecutionState &selectState();
 
   virtual void update(klee::ExecutionState *current,
-                      const std::set<klee::ExecutionState*> &addedStates,
-                      const std::set<klee::ExecutionState*> &removedStates);
+                      const std::vector<klee::ExecutionState *> &addedStates,
+                      const std::vector<klee::ExecutionState *> &removedStates);
 
   virtual klee::ExecutionState* updateAndTrySelectState(
       klee::ExecutionState *current,
-      const std::set<klee::ExecutionState*> &addedStates,
-      const std::set<klee::ExecutionState*> &removedStates);
+      const std::vector<klee::ExecutionState *> &addedStates,
+      const std::vector<klee::ExecutionState *> &removedStates);
 
   virtual klee::ExecutionState* trySelectState();
 
