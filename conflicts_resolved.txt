@@ -458,3 +458,210 @@ CONFLICT (content): Merge conflict in lib/Expr/Constraints.cpp
 
 Auto-merging lib/Expr/Parser.cpp
 CONFLICT (content): Merge conflict in lib/Expr/Parser.cpp
+
+Members of class Executor where changes might need to be propagated.
+
+  Embedded class Timer:
+    virtual ~Timer();
+    virtual void run() = 0;
+
+  virtual void execute(ExecutionState *initialState, MemoryManager* memory);
+  virtual void run(ExecutionState &initialState);
+  virtual void parallelRun(ExecutionState &initialState);
+  virtual void stepInstruction(ExecutionState &state);
+  virtual void updateStates(ExecutionState *current);
+  virtual void parallelUpdateStates(ExecutionState *current);
+  virtual void transferToBasicBlock(llvm::BasicBlock *dst,
+  virtual void callExternalFunction(ExecutionState &state,
+  virtual void executeCall(ExecutionState &state,
+  virtual void executeMakeSymbolic(ExecutionState &state, const MemoryObject *mo,
+  virtual void branch(ExecutionState &state,
+  virtual StatePair fork(ExecutionState &current, ref<Expr> condition, bool isInternal);
+  virtual void terminateState(ExecutionState &state);
+  virtual void terminateStateOnExit(ExecutionState &state);
+  virtual void executeEvent(ExecutionState &state, unsigned int type, long int value);
+  virtual ~Executor();
+  virtual void setPathWriter(TreeStreamWriter *tsw) {
+  virtual void setSymbolicPathWriter(TreeStreamWriter *tsw) {
+  virtual void setReplayKTest(const struct KTest *out) {
+  virtual void setReplayPath(const std::vector<bool> *path) {
+  virtual const llvm::Module *
+  virtual void useSeeds(const std::vector<struct KTest *> *seeds) {
+  virtual void runFunctionAsMain(llvm::Function *f,
+  virtual bool PauseExecution();
+  virtual void UnPauseExecution();
+  virtual void setHaltExecution(bool value) {
+  virtual bool getHaltExecution() {
+  virtual void setInhibitForking(bool value) {
+  virtual unsigned getPathStreamID(const ExecutionState &state);
+  virtual unsigned getSymbolicPathStreamID(const ExecutionState &state);
+  virtual void getConstraintLog(const ExecutionState &state,
+  virtual bool getSymbolicSolution(const ExecutionState &state,
+  virtual void getCoveredLines(const ExecutionState &state,
+
+Virtual members of class Executor where changes were observed from
+parallel-rc-thesis to v1.3.0.
+
+  virtual ~Executor();
+  virtual void branch(ExecutionState &state,
+  virtual StatePair fork(ExecutionState &current, ref<Expr> condition, bool isInternal);
+  virtual void executeCall(ExecutionState &state,
+  virtual void transferToBasicBlock(llvm::BasicBlock *dst,
+  virtual void updateStates(ExecutionState *current);
+  virtual void parallelUpdateStates(ExecutionState *current);
+  virtual void run(ExecutionState &initialState);
+  shouldbevirtual void terminateStateOnError(ExecutionState &state);
+  virtual void callExternalFunction(ExecutionState &state,
+  virtual void executeMakeSymbolic(ExecutionState &state, const MemoryObject *mo,
+  virtual void runFunctionAsMain(llvm::Function *f,
+  virtual bool getSymbolicSolution(const ExecutionState &state,
+
+Virtual members of the above list that we actually overrode or we think we
+should look at.
+
+  virtual ~Executor();
+  virtual void branch(ExecutionState &state,
+  virtual StatePair fork(ExecutionState &current, ref<Expr> condition, bool isInternal);
+  virtual void executeCall(ExecutionState &state,
+  virtual void updateStates(ExecutionState *current);
+  virtual void parallelUpdateStates(ExecutionState *current);
+  virtual void run(ExecutionState &initialState);
+  shouldbevirtual void terminateStateOnError(ExecutionState &state);
+  virtual void callExternalFunction(ExecutionState &state,
+  virtual void executeMakeSymbolic(ExecutionState &state, const MemoryObject *mo,
+  virtual void runFunctionAsMain(llvm::Function *f,
+
+Meaningful changes:
+
+  virtual void executeCall(ExecutionState &state,
+  virtual void run(ExecutionState &initialState);
+  shouldbevirtual void terminateStateOnError(ExecutionState &state);
+  virtual void executeMakeSymbolic(ExecutionState &state, const MemoryObject
+  virtual void runFunctionAsMain(llvm::Function *f,
+
+NOTE: upstream KLEE v1.3.0 does not contain an Executor::execute()
+function. Instead, the main stepInstruction/executeInstruction loop happens
+inside their Executor::run() function.  Therefore, if any changes were made in
+Executor::run() upstream, we need to consider porting them over into our
+[CV]Executor::run() and/or [CV]Executor::execute() functions.  And maybe
+Executor::parallelRun.
+
+For *Executor.h:
+  - vector/set for addedStates/removedStates
+  - TerminateReason was added to the base class Executor
+  - ArrayCache
+  - printFileLine has new parameter (&file)
+
+
+The list of functions in ParallelExecutor.cpp is:
+
+  void Executor::initializePerThread(ExecutionState &state,
+  bool Executor::PauseExecution() {
+  bool Executor::PauseExecution() {
+  void Executor::UnPauseExecution() {
+  void Executor::UnPauseExecution() {
+  void Executor::parallelUpdateStates(ExecutionState *current) {
+  void Executor::execute(ExecutionState *initialState, MemoryManager *memory) {
+  void Executor::parallelRun(ExecutionState &initialState) {
+  Executor::ExecutorContext& Executor::getContext() {
+  bool Executor::empty() {
+  size_t Executor::GetMemoryUsage() {
+
+The ones we actually want to look at in ParallelExecutor.cpp are:
+
+  void Executor::initializePerThread(ExecutionState &state,
+      compare w/ Executor::initializeGlobals (and other initialization)
+  void Executor::parallelUpdateStates(ExecutionState *current) {
+      compare w/ Executor::updateStates
+  void Executor::execute(ExecutionState *initialState, MemoryManager *memory) {
+      compare w/ Executor::run inner loop
+  void Executor::parallelRun(ExecutionState &initialState) {
+      compare w/ Executor::run and Executor::runFunctionAsMain
+  size_t Executor::GetMemoryUsage() {
+      check sanity w/ Executor::checkMemoryUsage and MemoryManager
+
+For CVSearcher and ParallelSearcher (.cpp/.h), the only differences in
+Searcher.cpp/.h are that:
+
+  1. addedStates and removedStates are now std::vectors (not std::sets)
+  2. error output
+
+For CVExecutionState.h/cpp, see if we ever used: fakeState, shadowObjects,
+incomingBBindex, and any usage of "value" in dumpStack and check whether it is
+null first, using value.get() (which were the ones that changed in
+ExecutionState.h/cpp).
+
+Actually, we might want to check whether any of these need review as well.
+$ find . -name '*Searcher*'
+./include/cliver/CVSearcher.h
+./include/cliver/LockFreeVerifySearcher.h
+./include/cliver/SearcherStage.h
+./include/cliver/ThreadBufferedSearcher.h
+./lib/Core/UserSearcher.cpp
+./lib/Core/Searcher.cpp.orig
+./lib/Core/UserSearcher.h
+./lib/Core/Searcher.cpp
+./lib/Core/Searcher.h.orig
+./lib/Core/ParallelSearcher.h
+./lib/Core/UserSearcher.cpp.orig
+./lib/Core/Searcher.h
+./lib/Core/ParallelSearcher.cpp
+./lib/Cliver/CVSearcher.cpp
+./lib/Cliver/LockFreeVerifySearcher.cpp
+./lib/Cliver/ThreadBufferedSearcher.cpp
+./test/Feature/Searchers.c
+./unittests/Searcher
+./unittests/Searcher/SearcherTest.cpp
+
+
+DONE:
+
+CVExecutionState.h: none of these are used, so we change nothing.
+CVExecutionState.cpp: none of these are used, so we change nothing.
+
+CVSearcher -- we're not going to try to port the deterministic stuff they tried
+to add (by changing std::set to std::vector), because we're not trying to push
+this to upstream KLEE.  We *should* care about it in ParallelSearcher.  Note
+that add_state adds a state to the *round* (i.e. SearcherStage), which only
+exists in behavioral verification.
+
+CVSearcher.h: changed std::set to std::vector for addedStates/removedStates
+variables, and observed no error output.
+
+CVSearcher.cpp: changed std::set to std::vector for addedStates/removedStates,
+and for error output, we're already using our own cv_error, which we leave that
+way.  For unique_pending_states, this is local / added for behavioral
+verification, so we leave it as std::set rather than converting it to
+std::vector.  The compiler should catch any further mismatches.
+
+ParallelSearcher.h: changed std::set to std::vector, for addedStates and
+removedStates.  We fixed a broken tag in
+ParallelBatchingSearcher::printName(). If we ever contribute this to upstream
+KLEE, try to make ParallelWeightedRandomSearcher::printName() match their
+convention.
+
+ParallelSearcher.cpp: changed std::set to std::vector, which then required
+changing from std::set::count to std::find (over a vector), which meant
+#include <algorithm>.
+
+LockFreeVerifySearcher.cpp: std::set to std::vector,
+add_states()/removed_states() now takes std::vector. In flush_updates(), we
+changed local variables added/removed_states to std::vector because they are
+passed to update().  We changed insert() to push_back(), and we removed the
+pointless added_states.clear() and removed_states.clear() calls.  Changed
+count() to std::find(), requiring #include <algorithm>. Nothing needed for
+updating error messages.
+FIXME: In update(), we call remove_states() before add_states(), and we're
+worried this will cause worker threads to exit early.
+
+FIXME: try removing __builtin_expect from ThreadBufferedSearcher when doing
+performance tests (assuming that the performance tests are even exercising
+ThreadBufferedSearcher).
+
+ThreadBufferedSearcher: std::set to std::vector, and accompanying changes.  The
+only place that is different is ThreadBufferedSearcher::flush(), in which
+shared_states must remain a std::set, because set::erase() is called inside a
+loop, and we didn't want to turn that loop quadratic. Instead, we wait until
+the end, and then copy shared_states into a newly created std::vector. This
+does not add to the big-O of flush(), because the next statement
+searcher_->update() is at least O(n).
