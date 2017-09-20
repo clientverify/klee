@@ -674,6 +674,12 @@ ThreadSpecificPointer (if it is really NOT shared between threads), or if it
 truly is a shared variable, then guard all uses. Note that we intentionally
 leave Executor::states as a std::set, as we need O(log n) erase functionality.
 
+ParallelExecutor.cpp:
+
+- We added &arrayCache as the argument to the constructor for
+  klee::MemoryManager() when we're initializing all the per-thread memory
+  managers.
+
 FIXME: Executor::execute() -- In the upstream Executor::run(), the MaxMemory
 check code was refactored into Executor::checkMemoryUsage().  We decided to put
 off refactoring the analogous MaxMemory check code in Executor::execute()
@@ -724,3 +730,14 @@ this code is right:
     searcher = 0;
   }
 
+CVExecutor.h has no need of changes. Only if anything accesses finished_states_
+(through its accessor) might we have std::set / std::vector mismatches.
+
+CVExecutor.cpp:
+
+- CVExecutor::run() has the label dump (for dumping states), but no actual
+  goto. We still might want to refactor this, or at least look at it.
+
+- We added &arrayCache as the argument to the constructor for
+  klee::MemoryManager() when we're initializing all the per-thread memory
+  managers.
