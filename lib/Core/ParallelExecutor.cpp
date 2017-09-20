@@ -351,7 +351,7 @@ void Executor::parallelUpdateStates(ExecutionState *current) {
 
   if (getContext().removedStates.size() > 0) {
     LockGuard guard(statesMutex);
-    for (std::set<ExecutionState*>::iterator
+    for (std::vector<ExecutionState *>::iterator
           it = getContext().removedStates.begin(), ie = getContext().removedStates.end();
         it != ie; ++it) {
       ExecutionState *es = *it;
@@ -425,8 +425,8 @@ void Executor::execute(ExecutionState *initialState, MemoryManager *memory) {
 
       if (statePtr) {
         searcher->update(statePtr,
-                         std::set<ExecutionState*>(),
-                         std::set<ExecutionState*>());
+                         std::vector<ExecutionState *>(),
+                         std::vector<ExecutionState *>());
         statePtr = NULL;
       }
 
@@ -463,8 +463,8 @@ void Executor::execute(ExecutionState *initialState, MemoryManager *memory) {
 
             // Return statePtr to searcher
             if (statePtr) {
-              searcher->update(statePtr, std::set<ExecutionState*>(), 
-                               std::set<ExecutionState*>());
+              searcher->update(statePtr, std::vector<ExecutionState *>(),
+                               std::vector<ExecutionState *>());
               statePtr = NULL;
             }
 
@@ -556,7 +556,7 @@ void Executor::parallelRun(ExecutionState &initialState) {
 
       states.insert(getContext().addedStates.begin(),getContext().addedStates.end());
 
-      for (std::set<ExecutionState*>::iterator
+      for (std::vector<ExecutionState *>::iterator
             it = getContext().removedStates.begin(), ie = getContext().removedStates.end();
           it != ie; ++it) {
         ExecutionState *es = *it;
@@ -608,7 +608,8 @@ void Executor::parallelRun(ExecutionState &initialState) {
     klee_error("failed to create searcher");
   }
 
-  searcher->update(0, states, std::set<ExecutionState*>());
+  std::vector<ExecutionState *> add_these_states(states.begin(), states.end());
+  searcher->update(0, add_these_states, std::vector<ExecutionState *>());
 
   threadBarrier = new Barrier(totalThreadCount);
 
