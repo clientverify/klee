@@ -621,7 +621,7 @@ void Executor::parallelRun(ExecutionState &initialState) {
       ThreadGroup threadGroup;
       for (unsigned i=0; i<totalThreadCount; ++i) {
         // Initialize MemoryManager outside of thread
-        memoryManagers.push_back(new MemoryManager());
+        memoryManagers.push_back(new MemoryManager(&arrayCache));
         threadGroup.add_thread(new Thread(&klee::Executor::execute, 
                                           this, &initialState, memoryManagers.back()));
       }

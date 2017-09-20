@@ -361,7 +361,10 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
     if (++ai!=ae) {
       argvMO = memory->allocate((argc+1+envc+1+1) * NumPtrBytes, false, true,
                                 f->begin()->begin());
-      
+
+      if (!argvMO)
+        klee_error("Could not allocate memory for function arguments");
+
       arguments.push_back(argvMO->getBaseExpr());
 
       if (++ai!=ae) {
@@ -399,6 +402,8 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
         int j, len = strlen(s);
         
         MemoryObject *arg = memory->allocate(len+1, false, true, state->pc->inst);
+        if (!arg)
+          klee_error("Could not allocate memory for function arguments");
         ObjectState *os = bindObjectInState(*state, arg, false);
         for (j=0; j<len+1; j++)
           os->write8(j, s[j]);
@@ -489,7 +494,8 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
         ++stats::recv_round_instructions;
 
       // Handle post execution events if state wasn't removed
-      if (context.removedStates.find(&state) == context.removedStates.end()) {
+      if (std::find(context.removedStates.begin(), context.removedStates.end(),
+                    &state) == context.removedStates.end()) {
         handle_post_execution_events(state);
       }
 
@@ -711,7 +717,7 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
             new klee::Thread(&cliver::LockFreeVerifySearcher::Worker, lfvs));
       }
       for (unsigned i=0; i<worker_count; ++i) {
-        memoryManagers.push_back(new klee::MemoryManager());
+        memoryManagers.push_back(new klee::MemoryManager(&arrayCache));
         threadGroup.add_thread(new klee::Thread(&cliver::CVExecutor::execute,
                                           this, &initialState, memoryManagers.back()));
       }
@@ -724,7 +730,6 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
 
   cv_->WriteSearcherStageGraph();
 
- dump:
   if (klee::DumpStatesOnHalt && !empty()) {
     std::cerr << "KLEE: halting execution, dumping remaining states\n";
     while (klee::ExecutionState* state = searcher->trySelectState()) {
@@ -866,7 +871,7 @@ void CVExecutor::executeMakeSymbolic(klee::ExecutionState &state,
     if (!unnamed) {
       CVDEBUG("Multi-pass: Concretization not found for " << array_name);
     }
-    array = klee::Array::CreateArray(array_name, mo->size);
+    array = arrayCache.CreateArray(array_name, mo->size);
   }
 
   bindObjectInState(state, mo, false, array);
@@ -975,7 +980,7 @@ CVExecutor::fork(klee::ExecutionState &current,
     }
 
     falseState = trueState->branch();
-    getContext().addedStates.insert(falseState);
+    getContext().addedStates.push_back(falseState);
 
     addConstraint(*trueState, condition);
     addConstraint(*falseState, klee::Expr::createIsZero(condition));
@@ -1006,7 +1011,7 @@ void CVExecutor::branch(klee::ExecutionState &state,
   for (unsigned i=1; i<N; ++i) {
 		klee::ExecutionState *es = result[klee::theRNG.getInt32() % i];
 		klee::ExecutionState *ns = es->branch();
-    getContext().addedStates.insert(ns);
+    getContext().addedStates.push_back(ns);
     result.push_back(ns);
     es->ptreeNode->data = 0;
     std::pair<klee::PTree::Node*,klee::PTree::Node*> res = 
@@ -1168,7 +1173,7 @@ void CVExecutor::register_function_call_event(const char **fname,
 //}
 
 void CVExecutor::add_state(CVExecutionState* state) {
-	getContext().addedStates.insert(state);
+	getContext().addedStates.push_back(state);
 }
 
 void CVExecutor::add_state_internal(CVExecutionState* state) {
