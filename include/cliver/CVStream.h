@@ -11,7 +11,7 @@
 
 #include "klee/util/Thread.h"
 #include "klee/util/Mutex.h"
-#include "klee/Common.h"
+#include "klee/Internal/Support/ErrorHandling.h"
 #include <fstream>
 #include <iomanip>
 #include <iostream>

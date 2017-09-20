@@ -14,13 +14,9 @@
 #ifndef KLEE_COMMON_H
 #define KLEE_COMMON_H
 #include "klee/Solver.h"
-#include "klee/util/Mutex.h"
 #include <string>
 
 namespace klee {
-
-    extern Mutex logging_mutex;
-
     const char ALL_QUERIES_SMT2_FILE_NAME[]="all-queries.smt2";
     const char SOLVER_QUERIES_SMT2_FILE_NAME[]="solver-queries.smt2";
     const char ALL_QUERIES_PC_FILE_NAME[]="all-queries.pc";

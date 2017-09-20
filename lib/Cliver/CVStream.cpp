@@ -10,7 +10,7 @@
 #include "cliver/CVStream.h"
 #include "CVCommon.h"
 
-#include "../lib/Core/Common.h"
+#include "klee/Internal/Support/ErrorHandling.h"
 
 #include "klee/Interpreter.h"
 

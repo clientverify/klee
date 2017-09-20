@@ -19,9 +19,11 @@
 #include <stdio.h>
 #include <ostream>
 
-#include "klee/Common.h"
+#include "klee/util/Mutex.h"
 
 namespace klee {
+
+extern Mutex logging_mutex;
 
 extern FILE *klee_warning_file;
 extern FILE *klee_message_file;
