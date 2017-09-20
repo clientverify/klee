@@ -79,12 +79,10 @@ CONFLICT (content): Merge conflict in README.md
 
 $ grep -v '\.c' conflicts.txt | grep -v '\.h'
 
-UNDONE (IGNORED FOR NOW, FIXME):
-
-Auto-merging tools/ktest-tool/ktest-tool
 
 DONE:
 
+Auto-merging tools/ktest-tool/ktest-tool
 Auto-merging utils/hacks/TreeGraphs/DumpTreeStream.py
 Auto-merging tools/klee-stats/klee-stats
 CONFLICT (content): Merge conflict in tools/klee-stats/klee-stats
@@ -96,11 +94,14 @@ CONFLICT (content): Merge conflict in autoconf/configure.ac
 
 -------------------------------------------------------------------------------
 
-FIXME:
+DONE:
 
-lib/Core/Common.h moved
-lib/Core/Common.cpp was moved to ErrorHandling in Support directory
+lib/Core/Common.h moved to /include/klee/Common.h
+lib/Core/Common.cpp was moved to lib/Support/ErrorHandling.cpp?
 Nowack - 771cdf39d9c1e142269e2cafc4365d0d68e05f9a
+
+Commit 2b9a7840db moves klee::logging_mutex to ErrorHandling.h, which is a more
+appropriate location that didn't exist until we pulled in the upstream v1.3.0.
 
 -------------------------------------------------------------------------------
 
@@ -665,3 +666,61 @@ loop, and we didn't want to turn that loop quadratic. Instead, we wait until
 the end, and then copy shared_states into a newly created std::vector. This
 does not add to the big-O of flush(), because the next statement
 searcher_->update() is at least O(n).
+
+FIXME: Executor::states is apparently accessed by multiple threads, and is
+intended to be guarded by Executor::statesMutex. It appears that not all
+accesses to Executor::states are so guarded. Possible solutions:
+ThreadSpecificPointer (if it is really NOT shared between threads), or if it
+truly is a shared variable, then guard all uses. Note that we intentionally
+leave Executor::states as a std::set, as we need O(log n) erase functionality.
+
+FIXME: Executor::execute() -- In the upstream Executor::run(), the MaxMemory
+check code was refactored into Executor::checkMemoryUsage().  We decided to put
+off refactoring the analogous MaxMemory check code in Executor::execute()
+(which is the function that is executed by each worker thread) until after our
+code compiles and runs successfully.  We also decided not to do the refactoring
+of the "goto dump" code until afterwards.  For reference, though, Andrew thinks
+this code is right:
+
+  Executor::parallelDoDumpStates() {
+    static klee::Mutex dumpStatesMutex;
+    static bool dumped_already = false;
+
+    klee::LockGuard guard(&dumpStatesMutex);
+
+    if (!dumped_already) {
+
+      // This should be run at most once, by one thread.
+      if (DumpStatesOnHalt && !empty()) {
+        klee_message("halting execution, dumping remaining states");
+        while (ExecutionState *state = searcher->trySelectState()) {
+          stepInstruction(*state); // keep stats rolling
+          terminateStateEarly(*state, "Execution halting.");
+          searcher->update(state, getContext().addedStates,
+                           getContext().removedStates);
+          parallelUpdateStates(state);
+        }
+      }
+
+      // Delete all MemoryManagers used by threads
+      // everyone else's memory managers
+      for (std::vector<MemoryManager *>::iterator it = memoryManagers.begin(),
+                                                  ie = memoryManagers.end();
+           it != ie; ++it) {
+        delete *it;
+      }
+
+      dumped_already = true;
+
+    } else {
+      klee_message("states already dumped (e.g., by another thread)");
+    }
+
+    memory.release(); // clear my thread-specific-pointer
+
+    delete threadBarrier;
+    threadBarrier = 0;
+    delete searcher;
+    searcher = 0;
+  }
+
