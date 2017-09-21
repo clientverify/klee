@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Common.h"
+#include "klee/Internal/Support/ErrorHandling.h"
 
 #include "Memory.h"
 #include "SpecialFunctionHandler.h"
@@ -43,7 +43,7 @@ void SpecialFunctionHandler::handleEvent(ExecutionState &state,
   assert(arguments.size() == 2 && "invalid number of arguments to klee_event");
 
   if (!isa<ConstantExpr>(arguments[0]) || !isa<ConstantExpr>(arguments[1])) {
-    executor.terminateStateOnError(state, "klee_event requires a constant arg", "user.err");
+    executor.terminateStateOnError(state, "klee_event requires a constant arg", Executor::User);
     return;
   }
 
@@ -125,7 +125,7 @@ void SpecialFunctionHandler::handleDebug(ExecutionState &state,
   default:
     executor.terminateStateOnError(state,
                                    "klee_debug allows up to 3 arguments",
-                                   "user.err");
+                                   Executor::User);
     return;
   }
 }

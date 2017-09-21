@@ -19,7 +19,7 @@
 #include "cliver/ThreadBufferedSearcher.h"
 #include "CVCommon.h"
 
-#include "../Core/Common.h"
+#include "klee/Internal/Support/ErrorHandling.h"
 #include "../Core/Context.h"
 #include "../Core/CoreStats.h"
 #include "../Core/ExternalDispatcher.h"
@@ -33,7 +33,7 @@
 #include "../Core/UserSearcher.h"
 #include "../Core/Searcher.h"
 #include "../Core/SpecialFunctionHandler.h"
-#include "../Solver/SolverStats.h"
+#include "klee/SolverStats.h"
 
 #include "klee/CommandLine.h"
 #include "klee/Common.h"
@@ -446,8 +446,8 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
   // Only one thread needs to add state to searcher after init
   thread_call_once(searcher_init_flag_,
             [](klee::Searcher *s, klee::ExecutionState *e) {
-              std::set<klee::ExecutionState*> sset, empty_set;
-              sset.insert(e);
+              std::vector<klee::ExecutionState*> sset, empty_set;
+              sset.push_back(e);
               s->update(0, sset, empty_set); // Add state
               s->update(0, empty_set, empty_set); // Force flush (ThreadBufferedSearcher)
               },
@@ -540,15 +540,15 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
 
       if (pauseExecution && statePtr) {
         searcher->update(statePtr,
-                         std::set<klee::ExecutionState*>(),
-                         std::set<klee::ExecutionState*>());
+                         std::vector<klee::ExecutionState*>(),
+                         std::vector<klee::ExecutionState*>());
         statePtr = NULL;
       }
 
       // Call empty update to flush buffered searcher
       searcher->update(NULL,
-                       std::set<klee::ExecutionState*>(),
-                       std::set<klee::ExecutionState*>());
+                       std::vector<klee::ExecutionState*>(),
+                       std::vector<klee::ExecutionState*>());
 
 #if 1
       if (klee::UseThreads > 1) {
@@ -605,8 +605,8 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
 
             // Return statePtr to searcher
             if (statePtr) {
-              searcher->update(statePtr, std::set<klee::ExecutionState*>(),
-                               std::set<klee::ExecutionState*>());
+              searcher->update(statePtr, std::vector<klee::ExecutionState*>(),
+                               std::vector<klee::ExecutionState*>());
               statePtr = NULL;
             }
 
@@ -843,7 +843,7 @@ void CVExecutor::executeMakeSymbolic(klee::ExecutionState &state,
                                      const klee::MemoryObject *mo,
                                      const std::string &name) {
 
-  assert(!replayOut && "replayOut not supported by cliver");
+  assert(!replayKTest && "replayOut not supported by cliver");
 
   CVExecutionState *cvstate = static_cast<CVExecutionState*>(&state);
 

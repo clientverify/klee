@@ -43,7 +43,7 @@ extern "C" void vc_DeleteExpr(void*);
 // UpdateList manages the correct destruction of a chain UpdateNodes
 // non-recursively.
 UpdateNode::~UpdateNode() {
-    assert(refCount == 0 && "Deleted UpdateNode when a reference is still held");
+    assert(refCount.get() == 0 && "Deleted UpdateNode when a reference is still held");
 }
 
 int UpdateNode::compare(const UpdateNode &b) const {

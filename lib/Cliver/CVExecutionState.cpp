@@ -14,7 +14,7 @@
 #include "cliver/NetworkManager.h"
 #include "CVCommon.h"
 
-#include "../Core/Common.h"
+#include "klee/Internal/Support/ErrorHandling.h"
 #include "klee/Internal/Module/InstructionInfoTable.h"
 #include "klee/Internal/Module/KInstruction.h"
 

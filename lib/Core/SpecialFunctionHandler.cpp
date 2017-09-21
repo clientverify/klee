@@ -327,6 +327,7 @@ void SpecialFunctionHandler::handleAbort(ExecutionState &state,
                            std::vector<ref<Expr> > &arguments) {
   assert(arguments.size()==0 && "invalid number of arguments to abort");
   executor.terminateStateOnError(state, "abort failure", Executor::Abort);
+}
 
 void SpecialFunctionHandler::handleExit(ExecutionState &state,
                            KInstruction *target,
@@ -484,7 +485,7 @@ void SpecialFunctionHandler::handleMemcpy(ExecutionState &state,
   if (!success_src || !success_dst) {
     executor.terminateStateOnError(state,
           "memcpy failure: symbolic parameters (disable klee_memcpy recommended)",
-          "memcpy.err");
+          Executor::Model);
     return;
   }
 
@@ -506,7 +507,7 @@ void SpecialFunctionHandler::handleMemset(ExecutionState &state,
   } else {
     executor.terminateStateOnError(state,
           "memset failure: symbolic parameters (disable klee_memset recommended)",
-          "memset.err");
+          Executor::Model);
     return;
   }
 
@@ -962,7 +963,7 @@ void SpecialFunctionHandler::handleMakeSymbolic(ExecutionState &state,
     // seed values, otherwise if the same memory object is declared symbolic
     // multiple times, we will have an error where the name is overwritten
     if (!OnlyOutputStatesCoveringNew || OutputIStats || AlwaysOutputSeeds ||
-        executor.usingSeeds || executor.replayOut != NULL)
+        executor.usingSeeds || executor.replayKTest != NULL)
       mo->setName(name);
     
     const ObjectState *old = it->first.second;
@@ -1016,22 +1017,6 @@ void SpecialFunctionHandler::handleAddOverflow(ExecutionState &state,
                                                std::vector<ref<Expr> > &arguments) {
   executor.terminateStateOnError(state, "overflow on unsigned addition",
                                  Executor::Overflow);
-}
-
-void SpecialFunctionHandler::handleSubOverflow(ExecutionState &state,
-                                               KInstruction *target,
-                                               std::vector<ref<Expr> > &arguments) {
-  executor.terminateStateOnError(state,
-                                 "overflow on unsigned subtraction",
-                                 "overflow.err");
-}
-
-void SpecialFunctionHandler::handleMulOverflow(ExecutionState &state,
-                                               KInstruction *target,
-                                               std::vector<ref<Expr> > &arguments) {
-  executor.terminateStateOnError(state,
-                                 "overflow on unsigned multiplication",
-                                 "overflow.err");
 }
 
 void SpecialFunctionHandler::handleSubOverflow(ExecutionState &state,

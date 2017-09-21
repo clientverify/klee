@@ -8,7 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "cliver/Statistics.h"
-#include "../lib/Solver/SolverStats.h"
+#include "klee/SolverStats.h"
 #include "../lib/Core/CoreStats.h"
 
 #include <ostream>

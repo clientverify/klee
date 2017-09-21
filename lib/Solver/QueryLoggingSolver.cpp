@@ -1,8 +1,4 @@
 //===-- QueryLoggingSolver.cpp --------------------------------------------===//
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 5)
-#include "llvm/Support/FileSystem.h"
-#endif
-
 //
 //                     The KLEE Symbolic Virtual Machine
 //
@@ -14,6 +10,11 @@
 #include "klee/Config/config.h"
 #include "klee/Internal/System/Time.h"
 #include "klee/Statistics.h"
+
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 5)
+#include "llvm/Support/FileSystem.h"
+#endif
+
 #ifdef HAVE_ZLIB_H
 #include "klee/Internal/Support/CompressionStream.h"
 #include "klee/Internal/Support/ErrorHandling.h"

@@ -190,11 +190,6 @@ namespace klee {
 		       cl::init(true),
 		       cl::desc("Simplify equality expressions before querying the solver (default=on)."));
 
-  cl::opt<bool>
-  EqualitySubstitution("equality-substitution",
-                     cl::init(true),
-                     cl::desc("Simplify equality expressions before querying the solver (default=on)."));
-
   cl::opt<unsigned>
   MaxSymArraySize("max-sym-array-size",
                   cl::init(0));

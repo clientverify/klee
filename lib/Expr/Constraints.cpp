@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "../Core/Common.h"
+#include "klee/Internal/Support/ErrorHandling.h"
 #include "klee/Constraints.h"
 //#include "cliver/CliverStats.h"
 
@@ -309,7 +309,6 @@ void ConstraintManager::addConstraintInternal(ref<Expr> e) {
       if (isa<ConstantExpr>(be->left)) {
 	ExprReplaceVisitor visitor(be->right, be->left);
 	rewriteConstraints(visitor);
-      }
       }
     }
     addToEqualitiesMap(e);

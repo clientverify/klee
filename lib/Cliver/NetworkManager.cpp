@@ -21,7 +21,7 @@
 
 #include "../Core/ImpliedValue.h"
 #include "../Core/Memory.h"
-#include "../Core/Common.h"
+#include "klee/Internal/Support/ErrorHandling.h"
 #include "../Core/TimingSolver.h"
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/util/ExprPPrinter.h"

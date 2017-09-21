@@ -16,7 +16,7 @@
 #include "klee/util/ExprPPrinter.h"
 #include "klee/Constraints.h"
 #include "../Core/ImpliedValue.h"
-#include "../Core/Common.h"
+#include "klee/Internal/Support/ErrorHandling.h"
 
 #include "llvm/Support/CommandLine.h"
 

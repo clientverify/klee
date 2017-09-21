@@ -48,8 +48,8 @@ llvm::cl::opt<bool> TimeoutSolverWithAlarm( // commit 5c01b7c
 #define vc_bvBoolExtract IAMTHESPAWNOFSATAN
 
 // commit 5c01b7c
-static ThreadSpecificPointer<unsigned char *>::type shared_memory_ptr;
-static ThreadSpecificPointer<int>::type shared_memory_id;
+static klee::ThreadSpecificPointer<unsigned char *>::type shared_memory_ptr;
+static klee::ThreadSpecificPointer<int>::type shared_memory_id;
 // Darwin by default has a very small limit on the maximum amount of shared
 // memory, which will quickly be exhausted by KLEE running its tests in
 // parallel. For now, we work around this by just requesting a smaller size --

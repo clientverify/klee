@@ -9,8 +9,8 @@
 
 // Used for debugging implied value concretizations. (can remove this later)
 
-#include "Common.h"
- 
+#include "klee/Internal/Support/ErrorHandling.h"
+
 #include "ImpliedValue.h"
 #include "Memory.h"
 

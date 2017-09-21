@@ -8,7 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "TimingSolver.h"
-#include "Common.h"
+#include "klee/Internal/Support/ErrorHandling.h"
 
 #include "klee/Config/Version.h"
 #include "klee/ExecutionState.h"

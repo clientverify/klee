@@ -410,7 +410,8 @@ void VerifySearcher::update(klee::ExecutionState *current,
     const std::vector<klee::ExecutionState *> &removedStates) {
   klee::TimerStatIncrementer timer(stats::searcher_time);
 
-  if (current != NULL && removedStates.count(current) == 0) {
+  if (current != NULL && (std::find(removedStates.begin(),
+    removedStates.end(), current) == removedStates.end())) {
     klee::LockGuard guard(lock_);
     this->add_state(static_cast<CVExecutionState*>(current));
   }

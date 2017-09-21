@@ -30,7 +30,7 @@
  *
 */
 
-#include "Common.h"
+#include "klee/Internal/Support/ErrorHandling.h"
 
 #include "klee/Cloud9Init.h"
 #include "klee/Internal/Support/ModuleUtil.h"

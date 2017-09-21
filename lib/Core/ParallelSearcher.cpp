@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Common.h"
+#include "klee/Internal/Support/ErrorHandling.h"
 
 #include "Searcher.h"
 #include "ParallelSearcher.h"

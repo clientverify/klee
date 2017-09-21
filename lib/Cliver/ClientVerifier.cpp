@@ -25,7 +25,7 @@
 #include "klee/util/Mutex.h"
 #include "../lib/Core/SpecialFunctionHandler.h"
 #include "../lib/Core/CoreStats.h"
-#include "../lib/Solver/SolverStats.h"
+#include "klee/SolverStats.h"
 
 #if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
 #include "llvm/IR/Module.h"

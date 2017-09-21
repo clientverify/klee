@@ -6,7 +6,7 @@
 // License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
-#include "Common.h"
+#include "klee/Internal/Support/ErrorHandling.h"
 
 #include "Executor.h"
  
@@ -24,7 +24,7 @@
 #include "TimingSolver.h"
 #include "UserSearcher.h"
 #include "ExecutorTimerInfo.h"
-#include "../Solver/SolverStats.h"
+#include "klee/SolverStats.h"
 
 #include "klee/ExecutionState.h"
 #include "klee/Expr.h"
@@ -608,8 +608,9 @@ void Executor::parallelRun(ExecutionState &initialState) {
     klee_error("failed to create searcher");
   }
 
-  std::vector<ExecutionState *> add_these_states(states.begin(), states.end());
-  searcher->update(0, add_these_states, std::vector<ExecutionState *>());
+  searcher->update(0,
+        std::vector<ExecutionState *>(states.begin(), states.end()), //Added states
+        std::vector<ExecutionState *>());
 
   threadBarrier = new Barrier(totalThreadCount);
 
