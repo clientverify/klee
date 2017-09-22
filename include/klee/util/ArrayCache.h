@@ -36,10 +36,9 @@ struct EquivArrayCmpFn {
 };
 
 /// Provides an interface for creating and destroying Array objects.
-class ArrayCache {
+class ArrayCacheSingleton {
 public:
-  ArrayCache() {}
-  ~ArrayCache();
+  ~ArrayCacheSingleton();
   /// Create an Array object.
   //
   /// Symbolic Arrays are cached so that only one instance exists. This
@@ -66,8 +65,12 @@ public:
                            const ref<ConstantExpr> *constantValuesEnd = 0,
                            Expr::Width _domain = Expr::Int32,
                            Expr::Width _range = Expr::Int8);
+  friend class ArrayCache;
 
 private:
+  ArrayCacheSingleton() {}
+  ArrayCacheSingleton(ArrayCacheSingleton const&) = delete;  // Don't Implement.
+  void operator=(ArrayCacheSingleton const&)      = delete;  // Don't implement.
   typedef unordered_set<const Array *, klee::ArrayHashFn,
                         klee::EquivArrayCmpFn> ArrayHashMap;
   ArrayHashMap cachedSymbolicArrays;
@@ -75,6 +78,23 @@ private:
   typedef std::vector<const Array *> ArrayPtrVec;
   ArrayPtrVec concreteArrays;
   Mutex concreteArraysMutex;
+};
+
+
+class ArrayCache{
+public:
+  ArrayCache() {}
+  ~ArrayCache();
+
+  const Array *CreateArray(const std::string &_name, uint64_t _size,
+                           const ref<ConstantExpr> *constantValuesBegin = 0,
+                           const ref<ConstantExpr> *constantValuesEnd = 0,
+                           Expr::Width _domain = Expr::Int32,
+                           Expr::Width _range = Expr::Int8);
+
+private:
+  static ArrayCacheSingleton singleton;
+
 };
 }
 

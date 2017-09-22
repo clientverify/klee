@@ -519,7 +519,7 @@ public:
   /// ComputeHash must take into account the name, the size, the domain, and the range
   unsigned computeHash();
   unsigned hash() const { return hashValue; }
-  friend class ArrayCache;
+  friend class ArrayCacheSingleton;
 };
 
 /// Class representing a complete list of updates into an array.

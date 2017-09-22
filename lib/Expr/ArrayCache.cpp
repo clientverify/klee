@@ -2,7 +2,18 @@
 
 namespace klee {
 
-ArrayCache::~ArrayCache() {
+ArrayCacheSingleton ArrayCache::singleton;
+
+const Array *
+ArrayCache::CreateArray(const std::string &_name, uint64_t _size,
+                        const ref<ConstantExpr> *constantValuesBegin,
+                        const ref<ConstantExpr> *constantValuesEnd,
+                        Expr::Width _domain, Expr::Width _range) {
+    ArrayCache::singleton.CreateArray(_name, _size, constantValuesBegin,
+            constantValuesEnd, _domain, _range);
+}
+
+ArrayCacheSingleton::~ArrayCacheSingleton() {
   // Free Allocated Array objects
   for (ArrayHashMap::iterator ai = cachedSymbolicArrays.begin(),
                               e = cachedSymbolicArrays.end();
@@ -17,7 +28,7 @@ ArrayCache::~ArrayCache() {
 }
 
 const Array *
-ArrayCache::CreateArray(const std::string &_name, uint64_t _size,
+ArrayCacheSingleton::CreateArray(const std::string &_name, uint64_t _size,
                         const ref<ConstantExpr> *constantValuesBegin,
                         const ref<ConstantExpr> *constantValuesEnd,
                         Expr::Width _domain, Expr::Width _range) {

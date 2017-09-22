@@ -17,6 +17,7 @@
 
 #include "klee/util/ExprUtil.h"
 #include "klee/util/ExprPPrinter.h"
+#include "klee/util/ArrayCache.h"
 #include "klee/Constraints.h"
 
 #if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
@@ -140,7 +141,8 @@ bool solveForUniqueExprVec(Solver *solver, const ConstraintManager &cm,
 
   // Make a dummy array (variable) and set bytewise equal to the elements of
   // exprs.  This is the variable we will try to solve for.
-  const Array *dumdum = Array::CreateArray("dumdum", exprs.size());
+  klee::ArrayCache ac;
+  const Array *dumdum = ac.CreateArray("dumdum", exprs.size());
   UpdateList ul(dumdum, 0);
   for (size_t i = 0; i < exprs.size(); i++) {
     ref<Expr> d = ReadExpr::create(ul, ConstantExpr::create(i, Expr::Int32));
