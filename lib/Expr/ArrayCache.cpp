@@ -4,9 +4,6 @@ namespace klee {
 
 ArrayCacheSingleton ArrayCache::singleton;
 
-ArrayCache::~ArrayCache() {
-}
-
 const Array *
 ArrayCache::CreateArray(const std::string &_name, uint64_t _size,
                         const ref<ConstantExpr> *constantValuesBegin,

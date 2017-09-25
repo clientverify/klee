@@ -83,9 +83,6 @@ private:
 
 class ArrayCache{
 public:
-  ArrayCache() {}
-  ~ArrayCache();
-
   const Array *CreateArray(const std::string &_name, uint64_t _size,
                            const ref<ConstantExpr> *constantValuesBegin = 0,
                            const ref<ConstantExpr> *constantValuesEnd = 0,
