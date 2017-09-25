@@ -55,7 +55,22 @@ ifeq ($(HOST_OS), $(filter $(HOST_OS), DragonFly Linux FreeBSD GNU/kFreeBSD GNU)
     LLVMLibsOptions += -Wl,--soname,lib$(LIBRARYNAME)$(SHLIBEXT).$(SHARED_VERSION)
 endif
 
-ifeq ($(HOST_OS), $(filter $(HOST_OS), Linux GNU GNU/kFreeBSD))
-    # Don't allow unresolved symbols.
-    LLVMLibsOptions += -Wl,--no-undefined
-endif
+# CLIVER: we must allow building of .so binaries with unresolved symbols, so we
+# have commented out the -Wl,--no-undefined. There is probably a better
+# solution, but we haven't yet figured it out.
+#
+# From https://github.com/google/sanitizers/wiki/AddressSanitizer:
+#
+# Q: When I link my shared library with -fsanitize=address, it fails due to
+# some undefined ASan symbols (e.g. asan_init_v4)?
+#
+# A: Most probably you link with -Wl,-z,defs or -Wl,--no-undefined. These flags
+# don't work with ASan unless you also use -shared-libasan (which is the
+# default mode for GCC, but not for Clang).
+#
+# This is the original from upstream KLEE:
+#
+# ifeq ($(HOST_OS), $(filter $(HOST_OS), Linux GNU GNU/kFreeBSD))
+#     # Don't allow unresolved symbols.
+#     LLVMLibsOptions += -Wl,--no-undefined
+# endif
