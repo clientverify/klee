@@ -185,8 +185,10 @@ void Executor::processTimers(ExecutionState *current,
       dumpStates = 0;
     }
 
-    if (maxInstTime > 0 && current && (std::find(getContext().removedStates.begin(),
-    getContext().removedStates.end(), current) == getContext().removedStates.end()) ) {
+    if (maxInstTime > 0 && current &&
+        (std::find(getContext().removedStates.begin(),
+                   getContext().removedStates.end(),
+                   current) == getContext().removedStates.end())) {
       if (timerTicks*kSecondsPerTick > maxInstTime) {
         klee_warning("max-instruction-time exceeded: %.2fs",
                      timerTicks*kSecondsPerTick);
