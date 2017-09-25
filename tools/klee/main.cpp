@@ -166,6 +166,11 @@ namespace {
 		cl::init(false));
 
   cl::opt<bool>
+  WithCloud9POSIXRuntime("cloud9-posix-runtime",
+        cl::desc("Link with the cloud9 POSIX runtime.  Options that can be passed as arguments to the programs are: --sym-argv <max-len>  --sym-argvs <min-argvs> <max-argvs> <max-len> + file model options"),
+        cl::init(false));
+
+  cl::opt<bool>
   OptimizeModule("optimize",
                  cl::desc("Optimize before execution"),
 		 cl::init(false));
