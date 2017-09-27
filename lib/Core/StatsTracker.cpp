@@ -434,13 +434,26 @@ double StatsTracker::elapsed() {
 }
 
 void StatsTracker::writeStatsLine() {
+
+  // FIXME: usedDeterministicSize ought to be recorded along the way as a
+  // stats::something item, rather than pulled from executor.memory from within
+  // this function. In particular, this usage crashes if executor.memory has
+  // already been deleted. Unfortunately, this was an upstream KLEE design
+  // choice, so I will "fix" this crash via the following hack.
+  size_t usedDeterministicSize = 0;
+  if (executor.memory.get()) {
+    usedDeterministicSize = executor.memory->getUsedDeterministicSize();
+  } else {
+    klee_warning("Ignoring deterministic memory usage - Memory Manager null");
+  }
+
   *statsFile << "(" << stats::instructions
              << "," << fullBranches
              << "," << partialBranches
              << "," << numBranches
              << "," << util::getUserTime()
              << "," << executor.stateCount
-             << "," << util::GetTotalMallocUsage() + executor.memory->getUsedDeterministicSize()
+             << "," << util::GetTotalMallocUsage() + usedDeterministicSize
              << "," << stats::queries
              << "," << stats::queryConstructs
              << "," << 0 // was numObjects
