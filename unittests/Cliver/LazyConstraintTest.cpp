@@ -11,6 +11,7 @@
 #include "klee/Expr.h"
 #include "klee/Constraints.h"
 #include "klee/Solver.h"
+#include "klee/util/ArrayCache.h"
 #include "cliver/LazyConstraint.h"
 
 using namespace cliver;
@@ -24,8 +25,8 @@ class LazyConstraintTest : public ::testing::Test {
 public:
 
   virtual void SetUp() {
-    x_array = Array::CreateArray("x", sizeof(unsigned int));
-    y_array = Array::CreateArray("y", sizeof(unsigned int));
+    x_array = ac.CreateArray("x", sizeof(unsigned int));
+    y_array = ac.CreateArray("y", sizeof(unsigned int));
 
     read_x = Expr::createTempRead(x_array, Expr::Int32);
     ref<Expr> one = ConstantExpr::alloc(1U, Expr::Int32);
@@ -64,6 +65,7 @@ public:
   ref<Expr> xplusone_squared;
   ref<Expr> xplusy_squared;
   Solver *solver;
+  ArrayCache ac;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -437,9 +439,9 @@ class LazyConstraintDispatcherTest : public ::testing::Test {
 public:
 
   virtual void SetUp() {
-    x_array = Array::CreateArray("x", sizeof(unsigned int));
-    y_array = Array::CreateArray("y", sizeof(unsigned int));
-    z_array = Array::CreateArray("z", sizeof(unsigned int));
+    x_array = ac.CreateArray("x", sizeof(unsigned int));
+    y_array = ac.CreateArray("y", sizeof(unsigned int));
+    z_array = ac.CreateArray("z", sizeof(unsigned int));
     read_x = Expr::createTempRead(x_array, Expr::Int32);
     read_y = Expr::createTempRead(y_array, Expr::Int32);
     read_z = Expr::createTempRead(z_array, Expr::Int32);
@@ -500,6 +502,7 @@ public:
   LazyConstraintDispatcher lcd;
 
   Solver *solver;
+  ArrayCache ac;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
