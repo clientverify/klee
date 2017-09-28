@@ -77,8 +77,8 @@ class SearcherTest : public ::testing::Test {
       theRNG->seed(std::hash<std::thread::id>()(std::this_thread::get_id()));
     }
 
-    std::set<ExecutionState*> added_states;
-    std::set<ExecutionState*> removed_states;
+    std::vector<ExecutionState *> added_states;
+    std::vector<ExecutionState *> removed_states;
 
     ExecutionState* state = GetNewState();
     s->update(state, added_states, removed_states);
@@ -113,21 +113,21 @@ class SearcherTest : public ::testing::Test {
                 break;
               case 1:
                 add_count++;
-                added_states.insert(GetNewState());
+                added_states.push_back(GetNewState());
                 s->update(state, added_states, removed_states);
                 added_states.clear();
                 break;
               case 2:
                 remove_count++;
-                removed_states.insert(state);
+                removed_states.push_back(state);
                 s->update(state, added_states, removed_states);
                 removed_states.clear();
                 break;
               case 3:
                 add_count++;
                 remove_count++;
-                removed_states.insert(state);
-                added_states.insert(GetNewState());
+                removed_states.push_back(state);
+                added_states.push_back(GetNewState());
                 s->update(state, added_states, removed_states);
                 removed_states.clear();
                 added_states.clear();
