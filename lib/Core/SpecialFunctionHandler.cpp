@@ -407,12 +407,12 @@ void SpecialFunctionHandler::handleMemcpy(ExecutionState &state,
 
   ObjectPair op_dst;
   bool success_dst;
-  state.addressSpace.resolveOne(state, executor.solver.get(),
+  state.addressSpace.resolveOne(state, executor.solver,
                                 arguments[0], op_dst, success_dst);
 
   ObjectPair op_src;
   bool success_src;
-  state.addressSpace.resolveOne(state, executor.solver.get(),
+  state.addressSpace.resolveOne(state, executor.solver,
                                 arguments[1], op_src, success_src);
 
   if (success_src && success_dst) {
@@ -446,7 +446,7 @@ void SpecialFunctionHandler::handleMemcpy(ExecutionState &state,
   if (!success_src || !success_dst) {
     executor.terminateStateOnError(state,
           "memcpy failure: symbolic parameters (disable klee_memcpy recommended)",
-          "memcpy.err");
+          Executor::Model);
     return;
   }
 
@@ -468,7 +468,7 @@ void SpecialFunctionHandler::handleMemset(ExecutionState &state,
   } else {
     executor.terminateStateOnError(state,
           "memset failure: symbolic parameters (disable klee_memset recommended)",
-          "memset.err");
+          Executor::Model);
     return;
   }
 
@@ -478,7 +478,7 @@ void SpecialFunctionHandler::handleMemset(ExecutionState &state,
   ObjectPair op;
   bool success;
   if (state.addressSpace.resolveOne(state,
-                                    executor.solver.get(),
+                                    executor.solver,
                                     address, op, success)) {
     const MemoryObject *mo = op.first;
     const ObjectState *os = op.second;
@@ -553,7 +553,7 @@ void SpecialFunctionHandler::handleIsSymbolic(ExecutionState &state,
         if (i > 0) info2 << ", ";
         info2 << symbolic_objects[i]->name;
       }
-      *klee::klee_warning_stream
+      llvm::errs()
           << "simplified (" << info2.str() << ") to " << e << "\n";
     }
   }
@@ -917,6 +917,7 @@ void SpecialFunctionHandler::handleSubOverflow(ExecutionState &state,
                                                std::vector<ref<Expr> > &arguments) {
   executor.terminateStateOnError(state, "overflow on unsigned subtraction",
                                  Executor::Overflow);
+}
 // Cloud9 support
 
 void SpecialFunctionHandler::handleMakeShared(ExecutionState &state,
@@ -988,7 +989,7 @@ void SpecialFunctionHandler::handleDebug(ExecutionState &state,
   default:
     executor.terminateStateOnError(state,
                                    "klee_debug allows up to 3 arguments",
-                                   "user.err");
+                                   Executor::User);
     return;
   }
 }
