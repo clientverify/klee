@@ -42,6 +42,13 @@ UseIndependentSolver("use-independent-solver",
                      llvm::cl::desc("Use constraint independence (default=on)"));
 
 llvm::cl::opt<bool>
+UseLegacyIndependentSolver("use-legacy-independent-solver",
+                           llvm::cl::init(true),
+                           llvm::cl::desc(
+                   "Use older, less aggressive factoring (default=on). "
+                   "Has effect only when use-independent-solver=on."));
+
+llvm::cl::opt<bool>
 DebugValidateSolver("debug-validate-solver",
 		             llvm::cl::init(false));
   
