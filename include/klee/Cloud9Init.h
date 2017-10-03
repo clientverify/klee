@@ -36,6 +36,8 @@
  * (commit: a15558d1fa3e397b157b1191aa1ef9b225eef2dd)
  */
 
+#include <iostream>
+
 #ifndef CLOUD9_INIT_H_
 #define CLOUD9_INIT_H_
 
