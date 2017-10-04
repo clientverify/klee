@@ -1381,7 +1381,7 @@ void Executor::executeCall(ExecutionState &state,
         if (WordSize == Expr::Int32) {
           size += Expr::getMinBytesForWidth(arguments[i].first->getWidth());
         } else {
-          Expr::Width argWidth = arguments[i]->getWidth();
+          Expr::Width argWidth = arguments[i].first->getWidth();
           // AMD64-ABI 3.5.7p5: Step 7. Align l->overflow_arg_area upwards to a
           // 16 byte boundary if alignment needed by type exceeds 8 byte
           // boundary.
@@ -1435,6 +1435,7 @@ void Executor::executeCall(ExecutionState &state,
           }
         }
       }
+    }
 
     unsigned numFormals = f->arg_size();
     for (unsigned i=0; i<numFormals; ++i) 
