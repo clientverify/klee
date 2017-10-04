@@ -630,8 +630,7 @@ void SpecialFunctionHandler::handleStackTrace(ExecutionState &state,
 void SpecialFunctionHandler::handleWarning(ExecutionState &state,
                                            KInstruction *target,
                                            std::vector<ref<Expr> > &arguments) {
-  printf("ASDASDASDASd\n");
-  assert(arguments.size()==1 && "invalid number of arguments to klee_warning!@#$%^&*");
+  assert(arguments.size()==1 && "invalid number of arguments to klee_warning!");
 
   std::string msg_str = readStringAtAddress(state, arguments[0]);
   klee_warning("%s: %s", state.stack.back().kf->function->getName().data(), 
