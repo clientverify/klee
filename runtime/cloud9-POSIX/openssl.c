@@ -404,10 +404,12 @@ DEFINE_MODEL(int, SHA256_Final, unsigned char *md, SHA256_CTX *c) {
 // GCM128 Encryption / Decryption
 ////////////////////////////////////////////////////////////////////////////////
 
+/*
 DEFINE_MODEL(void, gcm_gmult_4bit, u64 Xi[2], const u128 Htable[16]) {
   SYMBOLIC_MODEL_CHECK_AND_RETURN_VOID(Xi, 16, Xi, 16, "gmult")
   CALL_UNDERLYING(gcm_gmult_4bit, Xi, Htable);
 }
+*/
 
 DEFINE_MODEL(void, AES_encrypt, const unsigned char *in, unsigned char *out, const AES_KEY *key) {
   SYMBOLIC_MODEL_CHECK_AND_RETURN_VOID(in, 16, out, 16, "AESBlock")
@@ -415,11 +417,13 @@ DEFINE_MODEL(void, AES_encrypt, const unsigned char *in, unsigned char *out, con
   CALL_UNDERLYING(AES_encrypt, in, out, key);
 }
 
+/*
 DEFINE_MODEL(void, gcm_ghash_4bit, u64 Xi[2], const u128 Htable[16],const u8 *inp,size_t len) {
   SYMBOLIC_MODEL_CHECK_AND_RETURN_VOID(Xi, 16, Xi, 16, "ghash")
   SYMBOLIC_MODEL_CHECK_AND_RETURN_VOID(inp, len, Xi, 16, "ghash")
   CALL_UNDERLYING(gcm_ghash_4bit, Xi, Htable, inp, len);
 }
+*/
 
 ////////////////////////////////////////////////////////////////////////////////
 // Irrelevant output
