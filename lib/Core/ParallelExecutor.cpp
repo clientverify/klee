@@ -339,9 +339,13 @@ void Executor::UnPauseExecution() {
 }
 #endif
 
-void Executor::parallelUpdateStates(ExecutionState *current) {
-  unsigned addedCount = getContext().addedStates.size();
-  stateCount += addedCount;
+void Executor::parallelUpdateStates(ExecutionState *current,
+                                    bool updateStateCount) {
+  int addedCount = getContext().addedStates.size();
+  int removedCount = getContext().removedStates.size();
+  if (updateStateCount) {
+    stateCount += (addedCount - removedCount);
+  }
 
   if (getContext().addedStates.size() > 0) {
     LockGuard guard(statesMutex);
@@ -355,7 +359,6 @@ void Executor::parallelUpdateStates(ExecutionState *current) {
           it = getContext().removedStates.begin(), ie = getContext().removedStates.end();
         it != ie; ++it) {
       ExecutionState *es = *it;
-      --stateCount;
 
       std::map<ExecutionState*, std::vector<SeedInfo> >::iterator it3 = 
         seedMap.find(es);
@@ -411,13 +414,35 @@ void Executor::execute(ExecutionState *initialState, MemoryManager *memory) {
       ++(*ktInstCount);
       processTimers(&state, MaxInstructionTime);
 
+      // Update stateCount *before* potentially passing any new states off to
+      // the searcher. Why is this important? If a worker makes new states
+      // available to other workers BEFORE it updates stateCount, then in
+      // rare circumstances, the following could occur:
+      //
+      // 1. Initial conditions: stateCount = 1; state S1 assigned to Worker1.
+      // 2. Worker1 encounters symbolic branch in S1.
+      // 3. Worker1 clones S1 to create S2.
+      // 4. Worker1 makes S2 available to other worker threads.
+      // 5. Worker2 obtains S2 and executes it.
+      // 6. Worker2 encounters a contradiction and state S2 dies.
+      // 7. Worker2 executes stateCount+=(0-1), yielding stateCount = 0.
+      // 8. Worker1 executes stateCount+=(1-0), yielding stateCount = 1.
+      //
+      // Between steps 7 and 8, we have a small amount of time when
+      // stateCount = 0, so other worker threads may detect empty() == true,
+      // and exit.
+      int addedCount = getContext().addedStates.size();
+      int removedCount = getContext().removedStates.size();
+      stateCount += (addedCount - removedCount);
+
       // Update searcher with new states and get next state to execute
       // (if supported by searcher)
       statePtr = searcher->updateAndTrySelectState(&state, 
                                                    getContext().addedStates, 
                                                    getContext().removedStates);
-      // Update Executor state tracking
-      parallelUpdateStates(&state);
+
+      // Update Executor state tracking (stateCount already updated above)
+      parallelUpdateStates(&state, false);
     }
 
     while (pauseExecution

@@ -272,7 +272,8 @@ protected:
 
   virtual void stepInstruction(ExecutionState &state);
   virtual void updateStates(ExecutionState *current);
-  virtual void parallelUpdateStates(ExecutionState *current);
+  virtual void parallelUpdateStates(ExecutionState *current,
+                                    bool updateStateCount = true);
   virtual void transferToBasicBlock(llvm::BasicBlock *dst, 
 			    llvm::BasicBlock *src,
 			    ExecutionState &state);

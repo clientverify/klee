@@ -33,7 +33,8 @@ class CVExecutor : public klee::Executor {
                            llvm::Function *f,
                            std::vector< klee::ref<klee::Expr> > &arguments);
 
-  virtual void parallelUpdateStates(klee::ExecutionState *current);
+  virtual void parallelUpdateStates(klee::ExecutionState *current,
+                                    bool updateStateCount = true);
 
   virtual void callExternalFunction(klee::ExecutionState &state,
                                     klee::KInstruction *target,

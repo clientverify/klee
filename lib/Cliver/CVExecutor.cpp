@@ -273,13 +273,16 @@ void CVExecutor::callExternalFunction(klee::ExecutionState &state,
 /// CVExecutor::parallelUpdateStates differs from
 /// Executor::parallelUpdateStates and Executor::updatesStates by not
 /// maintaining the global std::set of ExecutionStates
-void CVExecutor::parallelUpdateStates(klee::ExecutionState *current) {
+void CVExecutor::parallelUpdateStates(klee::ExecutionState *current,
+                                      bool updateStateCount) {
   // Retrieve state counts for this thread
   int addedCount = getContext().addedStates.size();
   int removedCount = getContext().removedStates.size();
 
   // update atomic stateCount
-  stateCount += (addedCount - removedCount);
+  if (updateStateCount) {
+    stateCount += (addedCount - removedCount);
+  }
 
   // print diagnostic info if any change in stateCount
   if (DebugExecutor && (addedCount != 0 || removedCount != 0)) {
@@ -515,11 +518,36 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
       // continue with the same state.
       if (static_cast<CVExecutionState *>(&state)->event_flag() ||
           !context.removedStates.empty() || !context.addedStates.empty()) {
+
+        // Update stateCount *before* potentially passing any new states off to
+        // the searcher. Why is this important? If a worker makes new states
+        // available to other workers BEFORE it updates stateCount, then in
+        // rare circumstances, the following could occur:
+        //
+        // 1. Initial conditions: stateCount = 1; state S1 assigned to Worker1.
+        // 2. Worker1 encounters symbolic branch in S1.
+        // 3. Worker1 clones S1 to create S2.
+        // 4. Worker1 makes S2 available to other worker threads.
+        // 5. Worker2 obtains S2 and executes it.
+        // 6. Worker2 encounters a contradiction and state S2 dies.
+        // 7. Worker2 executes stateCount+=(0-1), yielding stateCount = 0.
+        // 8. Worker1 executes stateCount+=(1-0), yielding stateCount = 1.
+        //
+        // Between steps 7 and 8, we have a small amount of time when
+        // stateCount = 0, so other worker threads may detect empty() == true,
+        // and exit.
+        int addedCount = context.addedStates.size();
+        int removedCount = context.removedStates.size();
+        stateCount += (addedCount - removedCount);
+
+        // Update searcher with new states and get next state to execute
+        // (if supported by searcher)
         statePtr = searcher->updateAndTrySelectState(&state,
                                                      context.addedStates,
                                                      context.removedStates);
-        // Update Executor state tracking
-        parallelUpdateStates(&state);
+
+        // Update Executor state tracking (stateCount already updated above)
+        parallelUpdateStates(&state, false);
       }
     }
 
