@@ -49,7 +49,9 @@ DECLARE_MODEL(int, init_version, void)
 
 DECLARE_MODEL(int, RAND_bytes, unsigned char *buf, int num)
 DECLARE_MODEL(int, RAND_pseudo_bytes, unsigned char *buf, int num)
+#if 0
 DECLARE_MODEL(int, RAND_poll, void)
+#endif
 
 DECLARE_MODEL(int, EC_KEY_generate_key, EC_KEY *eckey)
 DECLARE_MODEL(int, ECDH_compute_key, void *out, size_t outlen, const EC_POINT *pub_key, EC_KEY *eckey, void *(*KDF)(const void *in, size_t inlen, void *out, size_t *outlen))

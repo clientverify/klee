@@ -43,6 +43,8 @@ static void __emit_error(const char *msg) {
 //  return 1;
 //}
 
+//Disable Cliver models for now.
+#if 0
 // POSIX implementation of connect(2)
 int connect(int sockfd, const struct sockaddr *serv_addr, socklen_t addrlen) {
   klee_warning("called connect()");
@@ -178,3 +180,4 @@ ssize_t __klee_model_ktest_readsocket(int fd, void *buf, size_t count) {
   free(buf_copy);
   return res;
 }
+#endif

@@ -51,8 +51,6 @@
 // Sleeping Operations
 ////////////////////////////////////////////////////////////////////////////////
 
-// RAC: Disable in Cliver for now
-#if 0
 void _yield_sleep(unsigned sec, unsigned usec) {
   uint64_t amount = ((uint64_t)sec)*1000000 + (uint64_t)usec;
 
@@ -103,7 +101,6 @@ int settimeofday(const struct timeval *tv, const struct timezone *tz) {
 
   return 0;
 }
-#endif
 
 ////////////////////////////////////////////////////////////////////////////////
 // mmap Operations

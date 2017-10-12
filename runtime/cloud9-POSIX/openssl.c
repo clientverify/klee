@@ -169,10 +169,12 @@ DEFINE_MODEL(int, RAND_pseudo_bytes, unsigned char *buf, int num) {
   SYMBOLIC_MODEL_CHECK_AND_RETURN_ALWAYS(buf, num, "prng", num);
 }
 
+#if 0
 DEFINE_MODEL(int, RAND_poll, void) {
   DEBUG_PRINT("stubbed");
   return 1;
 }
+#endif
 
 ////////////////////////////////////////////////////////////////////////////////
 // ECDH key generation

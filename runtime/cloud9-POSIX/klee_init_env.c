@@ -160,9 +160,9 @@ void klee_init_env(int argc, char **argv) {
   klee_init_symfs(&fid);
   klee_init_fdt();
   klee_init_mmap();
-  // RAC: disable cloud9 network implementation
-  //klee_init_network();
-  //klee_init_netlink();
+
+  klee_init_network();
+  klee_init_netlink();
 }
 
 void klee_process_args(int* argcPtr, char*** argvPtr) {

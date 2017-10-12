@@ -55,8 +55,6 @@
 #include <linux/netlink.h>
 #include <klee/klee.h>
 
-// RAC: Disable cloud9 network modeling implementation
-#if 0
 
 #define CHECK_SEND_FLAGS(flags) \
     do { \
@@ -1917,6 +1915,10 @@ void freeaddrinfo(struct addrinfo *res) {
 
 // getnameinfo() ///////////////////////////////////////////////////////////////
 
+//Marie: suspect: mismatch between the header declaration of the
+//POSIX call in your OS, and the definition in the Cloud9 POSIX model.
+//TODO: change to match OS.
+#if 0
 int getnameinfo(const struct sockaddr *sa, socklen_t salen,
                 char *host, socklen_t hostlen,
                 char *serv, socklen_t servlen,
