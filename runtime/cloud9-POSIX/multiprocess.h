@@ -190,7 +190,7 @@ static inline void __thread_preempt(int yield) {
  * signals when being first planned.
  */
 static inline void __thread_sleep(uint64_t wlist) {
-  klee_thread_sleep(wlist);
+  //klee_thread_sleep(wlist);
 #ifdef HAVE_POSIX_SIGNALS
   if((&__pdata[PID_TO_INDEX(getpid())])->signaled)
       __handle_signal();
