@@ -16,7 +16,6 @@
 // modes_lcl.h redfines objects included here
 //#include "../../../openssl/include/openssl/modes.h"
 #include "../../../openssl/crypto/ec/ec_lcl.h"
-#include "../../../openssl/crypto/modes/modes_lcl.h"
 #include "../../../openssl/crypto/aes/aes.h"
 #include "../../../openssl/crypto/sha/sha.h"
 
@@ -75,12 +74,9 @@ DECLARE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd
 //DECLARE_MODEL(int, CRYPTO_gcm128_encrypt, GCM128_CONTEXT *ctx, const unsigned char *in, unsigned char *out, size_t len)
 //DECLARE_MODEL(void, CRYPTO_gcm128_tag, GCM128_CONTEXT *ctx, unsigned char *tag, size_t len)
 //DECLARE_MODEL(int, CRYPTO_gcm128_finish, GCM128_CONTEXT *ctx,const unsigned char *tag, size_t len)
-DECLARE_MODEL(void, gcm_gmult_4bit, u64 Xi[2], const u128 Htable[16])
 DECLARE_MODEL(void, AES_encrypt, const unsigned char *in, unsigned char *out, const AES_KEY *key)
-DECLARE_MODEL(void, gcm_ghash_4bit, u64 Xi[2], const u128 Htable[16], const u8 *inp,size_t len)
 
 // EVP Cipher
-DECLARE_MODEL(int, EVP_PKEY_verify, EVP_PKEY_CTX *ctx, const unsigned char *sig, size_t siglen, const unsigned char *tbs, size_t tbslen);
 //DECLARE_MODEL(int, EVP_CIPHER_CTX_ctrl, EVP_CIPHER_CTX *ctx, int type, int arg, void *ptr)
 //DECLARE_MODEL(int, EVP_CipherInit, EVP_CIPHER_CTX *ctx, const EVP_CIPHER *cipher, const unsigned char *key, const unsigned char *iv, int enc)
 //DECLARE_MODEL(int, EVP_CipherInit_ex, EVP_CIPHER_CTX *ctx, const EVP_CIPHER *cipher, ENGINE *impl, const unsigned char *key, const unsigned char *iv, int enc)
