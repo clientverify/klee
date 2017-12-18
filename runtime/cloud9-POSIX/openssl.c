@@ -151,6 +151,10 @@ static void make_EC_POINT_symbolic(EC_POINT* p) {
 // Random number generation
 ////////////////////////////////////////////////////////////////////////////////
 
+DEFINE_MODEL(int, RAND_status, void) {
+  return 1;
+}
+
 DEFINE_MODEL(int, RAND_bytes, unsigned char *buf, int num) {
 #if KTEST_RAND_PLAYBACK
   static int rng_index = -1;
