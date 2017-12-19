@@ -46,6 +46,7 @@ DECLARE_MODEL(void, klee_print, char* str, int symb_var)
 DECLARE_MODEL(int, init_version, void)
 //DECLARE_MODEL(void*, memset, void *s, int c, size_t n)
 
+DECLARE_MODEL(void, arc4random_stir, void)
 DECLARE_MODEL(int, RAND_status, void)
 DECLARE_MODEL(int, RAND_bytes, unsigned char *buf, int num)
 DECLARE_MODEL(int, RAND_pseudo_bytes, unsigned char *buf, int num)
@@ -63,6 +64,7 @@ DECLARE_MODEL(int, SHA256_Final, unsigned char *md, SHA256_CTX *c)
 
 // KTest socket operations
 DECLARE_MODEL(int, ktest_fcntl, int sock, int flags, int not_sure)
+DECLARE_MODEL(int, ktest_listen, int sockfd, int backlog)
 DECLARE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout)
 //DECLARE_MODEL(int, ktest_connect, int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 //DECLARE_MODEL(ssize_t, ktest_writesocket, int fd, const void *buf, size_t count)

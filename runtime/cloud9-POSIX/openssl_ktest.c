@@ -404,3 +404,9 @@ DEFINE_MODEL(int, ktest_fcntl, int sock, int flags, int not_sure){
         return 0;
     else return -1;
 }
+
+DEFINE_MODEL(int, ktest_listen, int sockfd, int backlog){
+    return 0;
+}
+
+

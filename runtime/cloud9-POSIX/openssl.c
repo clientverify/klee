@@ -151,6 +151,13 @@ static void make_EC_POINT_symbolic(EC_POINT* p) {
 // Random number generation
 ////////////////////////////////////////////////////////////////////////////////
 
+DEFINE_MODEL(void, arc4random_stir, void){
+  //sshd uses to: "Initialize the random number generator."
+  //Man: reads data from /dev/urandom and uses it
+  //to permute the S-Boxes via arc4random_addrandom().
+  return;
+}
+
 DEFINE_MODEL(int, RAND_status, void) {
   return 1;
 }
@@ -158,6 +165,8 @@ DEFINE_MODEL(int, RAND_status, void) {
 DEFINE_MODEL(int, RAND_bytes, unsigned char *buf, int num) {
 #if KTEST_RAND_PLAYBACK
   static int rng_index = -1;
+  if(rng_index < 0)
+    DEBUG_PRINT("rng_index < 0");
   DEBUG_PRINT("playback");
   return cliver_ktest_copy("rng", rng_index--, buf, num);
 #endif
