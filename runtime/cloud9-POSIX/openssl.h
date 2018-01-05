@@ -24,15 +24,15 @@
 #define OPENSSL_SYMBOLIC_TAINT 0
 
 // Ignore writes to stdout and stderr
-#define IGNORE_STD_WRITES 1
+#define IGNORE_STD_WRITES 0
 
 // Enable debug output
-#define DEBUG_OPENSSL_MODEL 0
+#define DEBUG_OPENSSL_MODEL 1
 
 // Enable for fully concrete model (requires ktest)
-#define KTEST_RAND_PLAYBACK 0
-#define KTEST_SELECT_PLAYBACK 0
-#define KTEST_STDIN_PLAYBACK 0  // if 1, overrides CLIVER_TLS_PREDICT_STDIN
+#define KTEST_RAND_PLAYBACK 1
+#define KTEST_SELECT_PLAYBACK 1
+#define KTEST_STDIN_PLAYBACK 1  // if 1, overrides CLIVER_TLS_PREDICT_STDIN
 
 // Predict stdin length based on next client-to-server TLS record.
 // Note: this option is ignored if KTEST_STDIN_PLAYBACK=1
@@ -46,7 +46,6 @@ DECLARE_MODEL(void, klee_print, char* str, int symb_var)
 DECLARE_MODEL(int, init_version, void)
 //DECLARE_MODEL(void*, memset, void *s, int c, size_t n)
 
-DECLARE_MODEL(void, arc4random_stir, void)
 DECLARE_MODEL(int, RAND_status, void)
 DECLARE_MODEL(int, RAND_bytes, unsigned char *buf, int num)
 DECLARE_MODEL(int, RAND_pseudo_bytes, unsigned char *buf, int num)
@@ -63,9 +62,17 @@ DECLARE_MODEL(int, SHA256_Update, SHA256_CTX *c, const void *data, size_t len)
 DECLARE_MODEL(int, SHA256_Final, unsigned char *md, SHA256_CTX *c)
 
 // KTest socket operations
+enum KTEST_FORK {PARENT, CHILD};
+DECLARE_MODEL(pid_t, ktest_fork, enum KTEST_FORK which)
+DECLARE_MODEL(int, ktest_RAND_status, void)
+DECLARE_MODEL(int, ktest_getpeername, int sockfd, struct sockaddr *addr, socklen_t *addrlen)
 DECLARE_MODEL(int, ktest_fcntl, int sock, int flags, int not_sure)
 DECLARE_MODEL(int, ktest_listen, int sockfd, int backlog)
 DECLARE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout)
+DECLARE_MODEL(int, ktest_accept, int sockfd, struct sockaddr *addr, socklen_t *addrlen)
+DECLARE_MODEL(int, ktest_bind, int sockfd, const struct sockaddr *addr, socklen_t addrlen)
+DECLARE_MODEL(int, ktest_socket,int domain, int type, int protocol)
+DECLARE_MODEL(int, ktest_socketpair, int domain, int type, int protocol, int sv[2])
 //DECLARE_MODEL(int, ktest_connect, int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 //DECLARE_MODEL(ssize_t, ktest_writesocket, int fd, const void *buf, size_t count)
 //DECLARE_MODEL(ssize_t, ktest_readsocket, int fd, void *buf, size_t count)

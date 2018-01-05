@@ -150,14 +150,6 @@ static void make_EC_POINT_symbolic(EC_POINT* p) {
 ////////////////////////////////////////////////////////////////////////////////
 // Random number generation
 ////////////////////////////////////////////////////////////////////////////////
-
-DEFINE_MODEL(void, arc4random_stir, void){
-  //sshd uses to: "Initialize the random number generator."
-  //Man: reads data from /dev/urandom and uses it
-  //to permute the S-Boxes via arc4random_addrandom().
-  return;
-}
-
 DEFINE_MODEL(int, RAND_status, void) {
   return 1;
 }
