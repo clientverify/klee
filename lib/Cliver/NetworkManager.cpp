@@ -245,6 +245,7 @@ std::string NetworkManager::get_byte_string(klee::ObjectState *obj, int len) {
   return ss.str();
 }
 
+#define HORRIBLE_HACK_SOCKFD 10
 /* 
  * Client action for each log type on a Send in the ith round:
  *    LogRecv_i       terminate
@@ -255,7 +256,8 @@ std::string NetworkManager::get_byte_string(klee::ObjectState *obj, int len) {
 void NetworkManager::execute_write(CVExecutor* executor,
 		klee::KInstruction *target, klee::ObjectState* object, int fd, int len) {
 
-	GET_SOCKET_OR_DIE_TRYIN("send", fd);
+    //HORRIBLE HACK! HAVE HARDCODED THE SOCKET OF INTEREST TO THE ONE CLIVER SOCKET IN THE SYSTEM!!!
+	GET_SOCKET_OR_DIE_TRYIN("send", HORRIBLE_HACK_SOCKFD);
 
 	if (socket.is_open() != true)
 		RETURN_FAILURE_OBJ("send", "not open");
@@ -406,7 +408,8 @@ void NetworkManager::execute_write(CVExecutor* executor,
 void NetworkManager::execute_read(CVExecutor* executor,
 		klee::KInstruction *target, klee::ObjectState* object, int fd, int len) {
 
-	GET_SOCKET_OR_DIE_TRYIN("read", fd);
+    //HORRIBLE HACK! HAVE HARDCODED THE SOCKET OF INTEREST TO THE ONE CLIVER SOCKET IN THE SYSTEM!!!
+	GET_SOCKET_OR_DIE_TRYIN("read", HORRIBLE_HACK_SOCKFD);
 
 	// From the read(2) manpage: "On success, the number of bytes read
 	// is returned (zero indicates end of file)".  Some programs depend

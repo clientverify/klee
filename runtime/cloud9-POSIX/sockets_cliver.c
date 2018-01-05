@@ -56,9 +56,24 @@ int shutdown(int sockfd, int how) {
 }
 
 // POSIX implementation of socket(2) 
+//THIS IS A HORRIBLE HACK! WE KEEP RETURN FAKE FDS GREATER THAN THE
+//ONE SUPPORTED SOCKET FD IN KLEE BECAUSE THE ktest_select MODEL
+//REQUIRES THAT FDS ARE INCREASING.
 int socket(int domain, int type, int protocol) {
-  klee_warning("called socket()");
-  return cliver_socket_create(domain, type, protocol);
+//    klee_warning("called socket()");
+//  return cliver_socket_create(domain, type, protocol);
+  static int hack_fd = -1;
+  if(hack_fd == -1){
+    printf("klee's POSIX implementation of socket calling cliver_socket_create\n");
+    int sockfd = cliver_socket_create(domain, type, protocol);
+    hack_fd = sockfd;
+    printf("klee's POSIX implementation of socket returning %d\n", sockfd);
+  } else { //only works when nothing else creates fd after the second socket call.
+           //very very fragile, total hack, probably going to break literally everything else.
+    hack_fd++;
+    printf("klee's POSIX implementation of socket returning hack_fd %d\n", hack_fd);
+    return hack_fd;
+  }
 }
 
 int bind(int sockfd, const struct sockaddr *my_addr, socklen_t addrlen) {
