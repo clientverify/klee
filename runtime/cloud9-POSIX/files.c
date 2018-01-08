@@ -45,6 +45,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <sys/syscall.h>
+#include <limits.h>
 
 #include "common.h"
 #include "models.h"
@@ -571,6 +572,12 @@ static off_t _lseek(file_t *file, off_t offset, int whence) {
 
   file->offset = newOff;
   return file->offset;
+}
+
+DEFINE_MODEL(off_t, lseek64, int fd, off64_t offset64, int whence) {
+  assert(offset64 >= INT_MIN && offset64 <= INT_MAX);
+  off_t offset = offset64;
+  return lseek(fd, offset, whence);
 }
 
 DEFINE_MODEL(off_t, lseek, int fd, off_t offset, int whence) {
