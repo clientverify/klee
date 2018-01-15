@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <netdb.h>
 #include <fcntl.h> //Remove on fixing fcntl kludge
+#include <security/pam_appl.h>
 
 #if DEBUG_OPENSSL_MODEL
 #define DEBUG_PRINT(x) klee_warning(x);
@@ -113,6 +114,28 @@ DEFINE_MODEL(pid_t, ktest_fork, enum KTEST_FORK which){
   }
 }
 
+///Pam functions:
+DEFINE_MODEL(int, pam_start, const char *service_name, const char *user, const struct pam_conv *pam_conversation, pam_handle_t **pamh){
+  return PAM_SUCCESS;
+}
+
+DEFINE_MODEL(int, pam_set_item, pam_handle_t *pamh, int item_type, const void *item){
+  return PAM_SUCCESS;
+}
+
+DEFINE_MODEL(int, pam_end, pam_handle_t *pamh, int pam_status){
+  return PAM_SUCCESS;
+}
+
+DEFINE_MODEL(int, pam_acct_mgmt, pam_handle_t *pamh, int flags){
+  return PAM_SUCCESS;
+}
+
+DEFINE_MODEL(struct protoent*, getprotobyname, const char *name){
+  //struct protoent* p = malloc(sizeof(struct protoent));
+  //return p;
+  return NULL;
+}
 
 #if KTEST_SELECT_PLAYBACK
 
@@ -453,7 +476,10 @@ int dummy_addrinfo(const char *port, const struct addrinfo *hints,
     sa_in = (struct sockaddr_in *)new_res->ai_addr;
     memset(sa_in, 0, sizeof(struct sockaddr_in));
     sa_in->sin_family = PF_INET;
-    sa_in->sin_port = atoi(port);
+    //If service is NULL, then the port number of the returned socket addresses
+    //will be left uninitialized.
+    if(port != NULL)
+      sa_in->sin_port = atoi(port);
     memcpy(&sa_in->sin_addr, &in, sizeof(struct in_addr));
 
 

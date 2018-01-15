@@ -97,4 +97,11 @@ DECLARE_MODEL(void, AES_encrypt, const unsigned char *in, unsigned char *out, co
 // Irrelevant output
 DECLARE_MODEL(void, print_stuff, BIO *bio, SSL *s, int full)
 
+//PAM stuff:
+DECLARE_MODEL(int, pam_start, const char *service_name, const char *user, const struct pam_conv *pam_conversation, pam_handle_t **pamh)
+DECLARE_MODEL(int, pam_set_item, pam_handle_t *pamh, int item_type, const void *item)
+DECLARE_MODEL(int, pam_end, pam_handle_t *pamh, int pam_status)
+DECLARE_MODEL(int, pam_acct_mgmt, pam_handle_t *pamh, int flags)
+DECLARE_MODEL(struct protoent*, getprotobyname, const char *name)
+
 #endif /* OPENSSL_H_ */
