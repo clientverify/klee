@@ -2,7 +2,6 @@
 #include <assert.h>
 #include <netdb.h>
 #include <fcntl.h> //Remove on fixing fcntl kludge
-#include <security/pam_appl.h>
 
 #if DEBUG_OPENSSL_MODEL
 #define DEBUG_PRINT(x) klee_warning(x);
@@ -50,7 +49,7 @@ void klee_insert_ktest_sockfd(int sockfd){
       return;
     }
   }
-  printf("klee_insert_ktest_sockfd adding %d to ktest_sockfds\n", sockfd);
+  printf("klee_insert_ktest_sockfd adding %d to ktest_sockfds ktest_nfds %d\n", sockfd, ktest_nfds);
   assert(ktest_nfds + 1 < MAX_FDS);
   ktest_sockfds[ktest_nfds] = sockfd; // record the socket descriptor of interest
   ktest_nfds++; //incriment the counter recording the number of sockets we're tracking
@@ -68,9 +67,19 @@ DEFINE_MODEL(int, ktest_socket, int domain, int type, int protocol){
 DEFINE_MODEL(int, ktest_socketpair, int domain, int type, int protocol, int sv[2]){
   sv[0] = socket(domain, type, protocol);
   sv[1] = socket(domain, type, protocol);
-  printf("ktest_socket adding sockfds %d %d\n", sv[0], sv[1]);
+  printf("ktest_socketpair adding sockfds %d %d\n", sv[0], sv[1]);
   klee_insert_ktest_sockfd(sv[0]);
   klee_insert_ktest_sockfd(sv[1]);
+  return 0;
+}
+
+
+DEFINE_MODEL(int, ktest_pipe, int pipefd[2]){
+  pipefd[0] = socket(AF_INET, SOCK_STREAM, 0);
+  pipefd[1] = socket(AF_INET, SOCK_STREAM, 0);
+  printf("ktest_pipe adding sockfds %d %d\n", pipefd[0], pipefd[1]);
+  klee_insert_ktest_sockfd(pipefd[0]);
+  klee_insert_ktest_sockfd(pipefd[1]);
   return 0;
 }
 
@@ -131,10 +140,15 @@ DEFINE_MODEL(int, pam_acct_mgmt, pam_handle_t *pamh, int flags){
   return PAM_SUCCESS;
 }
 
+
+//Used in openssh, all that sshd cares about is the p_proto field
 DEFINE_MODEL(struct protoent*, getprotobyname, const char *name){
-  //struct protoent* p = malloc(sizeof(struct protoent));
-  //return p;
-  return NULL;
+  assert(strcmp("ip", name) == 0);
+  static struct protoent proto;
+  proto.p_proto   = IPPROTO_IP;
+  proto.p_aliases = NULL;
+  proto.p_name    = NULL;
+  return &proto;
 }
 
 #if KTEST_SELECT_PLAYBACK

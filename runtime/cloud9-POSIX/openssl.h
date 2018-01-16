@@ -5,6 +5,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <security/pam_appl.h>
 
 // FIXME: need internal openssl data types
 #include "../../../openssl/include/openssl/ssl.h"
