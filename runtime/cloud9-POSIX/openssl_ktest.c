@@ -63,6 +63,12 @@ DEFINE_MODEL(int, ktest_socket, int domain, int type, int protocol){
   return sockfd;
 }
 
+DEFINE_MODEL(int, ktest_dup, int oldfd){
+  int newfd = ktest_socket(AF_INET, SOCK_STREAM, 0);
+  printf("klee's dup returning %d\n", newfd);
+  return newfd;
+}
+
 
 DEFINE_MODEL(int, ktest_socketpair, int domain, int type, int protocol, int sv[2]){
   sv[0] = socket(domain, type, protocol);
@@ -125,18 +131,27 @@ DEFINE_MODEL(pid_t, ktest_fork, enum KTEST_FORK which){
 
 ///Pam functions:
 DEFINE_MODEL(int, pam_start, const char *service_name, const char *user, const struct pam_conv *pam_conversation, pam_handle_t **pamh){
+  printf("klee's pam_start model\n");
   return PAM_SUCCESS;
 }
 
 DEFINE_MODEL(int, pam_set_item, pam_handle_t *pamh, int item_type, const void *item){
+  printf("klee's pam_set_item model\n");
   return PAM_SUCCESS;
 }
 
 DEFINE_MODEL(int, pam_end, pam_handle_t *pamh, int pam_status){
+  printf("klee's pam_end model\n");
   return PAM_SUCCESS;
 }
 
 DEFINE_MODEL(int, pam_acct_mgmt, pam_handle_t *pamh, int flags){
+  printf("klee's pam_acct_mgmt model\n");
+  return PAM_SUCCESS;
+}
+
+DEFINE_MODEL(int, pam_setcred, pam_handle_t *pamh, int flags){
+  printf("klee's pam_setcred model\n");
   return PAM_SUCCESS;
 }
 
@@ -150,6 +165,24 @@ DEFINE_MODEL(struct protoent*, getprotobyname, const char *name){
   proto.p_name    = NULL;
   return &proto;
 }
+
+
+DEFINE_MODEL(ssize_t, ktest_recvmsg_fd, int fd, struct msghdr *msg, int flags){
+  int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+  assert(sockfd >= 0); //Ensure fd creation was successful.
+  klee_insert_ktest_sockfd(sockfd);
+
+  //The following is highly specific to what is checked inmm_recieve_fd in
+  //ssh codebase.
+  struct cmsghdr *cmsg;
+  cmsg = CMSG_FIRSTHDR(msg);
+  cmsg->cmsg_type = SCM_RIGHTS;
+  memcpy(CMSG_DATA(cmsg), &sockfd, sizeof(sockfd));
+
+  int expected_return = 1;
+  return expected_return;
+}
+
 
 #if KTEST_SELECT_PLAYBACK
 
