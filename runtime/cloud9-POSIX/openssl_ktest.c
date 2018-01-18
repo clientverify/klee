@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <netdb.h>
 #include <fcntl.h> //Remove on fixing fcntl kludge
+#include <errno.h>
 
 #if DEBUG_OPENSSL_MODEL
 #define DEBUG_PRINT(x) klee_warning(x);
@@ -185,6 +186,26 @@ DEFINE_MODEL(ssize_t, ktest_recvmsg_fd, int fd, struct msghdr *msg, int flags){
 
 
 #if KTEST_SELECT_PLAYBACK
+
+static int is_next_error_index = -1;
+static int error_index = -1;
+DEFINE_MODEL(int, ktest_readsocket_or_error, int fd, void *buf, size_t count){
+  unsigned int size = sizeof(int);
+  char *bytes = (char *)malloc(size);
+  int res = cliver_ktest_copy("is_next_error", is_next_error_index--, bytes, size);
+  int is_next_error = (int)*bytes;
+
+  if(is_next_error){
+    unsigned int err_size = sizeof(int);
+    char *err_bytes = (char *)malloc(err_size);
+    int err_res = cliver_ktest_copy("error", error_index--, err_bytes, err_size);
+    errno = (int)*bytes;
+    return -1;
+
+  }else{
+    return ktest_readsocket(fd, buf, count);
+  }
+}
 
 
 DEFINE_MODEL(int, ktest_getpeername, int sockfd, struct sockaddr *addr, socklen_t *addrlen){
