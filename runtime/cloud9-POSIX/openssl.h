@@ -65,6 +65,7 @@ DECLARE_MODEL(int, SHA256_Final, unsigned char *md, SHA256_CTX *c)
 // KTest socket operations
 enum KTEST_FORK {PARENT, CHILD};
 DECLARE_MODEL(pid_t, ktest_fork, enum KTEST_FORK which)
+DECLARE_MODEL(int, ktest_waitpid_or_error, pid_t pid, int *status, int options)
 DECLARE_MODEL(int, ktest_RAND_status, void)
 DECLARE_MODEL(int, ktest_getpeername, int sockfd, struct sockaddr *addr, socklen_t *addrlen)
 DECLARE_MODEL(int, ktest_fcntl, int sock, int flags, int not_sure)

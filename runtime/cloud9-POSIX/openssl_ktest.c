@@ -156,6 +156,10 @@ DEFINE_MODEL(int, pam_setcred, pam_handle_t *pamh, int flags){
   return PAM_SUCCESS;
 }
 
+DEFINE_MODEL(int, ktest_shutdown, int socket, int how){
+  printf("klee's ktest_shutdown\n");
+  return 0;
+}
 
 //Used in openssh, all that sshd cares about is the p_proto field
 DEFINE_MODEL(struct protoent*, getprotobyname, const char *name){
@@ -184,22 +188,72 @@ DEFINE_MODEL(ssize_t, ktest_recvmsg_fd, int fd, struct msghdr *msg, int flags){
   return expected_return;
 }
 
+static int (*signal_handler)(int);
+DEFINE_MODEL(int, ktest_register_signal_handler, int (*a)(int)){
+  printf("klee's ktest_register_signal_handler called\n");
+  signal_handler = a;
+}
 
 #if KTEST_SELECT_PLAYBACK
 
-static int is_next_error_index = -1;
-static int error_index = -1;
+DEFINE_MODEL(int, ktest_waitpid_or_error, pid_t pid, int *status, int options){
+  static int is_next_error_index = -1;
+  static int error_index = -1;
+  static int waitpid_index = -1;
+
+  printf("klee's ktest_waitpid_or_error entered\n");
+
+
+  unsigned int size = sizeof(int);
+  char *bytes = (char *)malloc(size);
+  int res = cliver_ktest_copy("is_next_waitpid_error", is_next_error_index--, bytes, size);
+  int is_next_error = (int)*bytes;
+
+  assert(is_next_error == 1 || is_next_error == 0);
+  if(is_next_error){
+    unsigned int err_size = sizeof(int);
+    char *err_bytes = (char *)malloc(err_size);
+    int err_res = cliver_ktest_copy("waitpid_error", error_index--, err_bytes, err_size);
+    errno = (int)*err_bytes;
+    printf("klee's ktest_waitpid_or_error errno %d\n", errno);
+    return -1;
+
+  }else{
+    unsigned int size = sizeof(int);
+    printf("klee's ktest_waitpid_or_error not error\n");
+    char *bytes = (char *)malloc( size);
+    int res = cliver_ktest_copy("waitpid", waitpid_index--, bytes, size);
+    *status = (int)*bytes;
+    printf("klee's ktest_waitpid_or_error status %d\n", *status);
+
+    res = cliver_ktest_copy("waitpid", waitpid_index--, bytes, size);
+    int ret = (int)*bytes;
+    if(ret == 0){
+      printf("klee's ktest_waitpid_or_error returning 0\n");
+      return 0;
+    }
+
+    return KTEST_FORK_DUMMY_CHILD_PID;
+  }
+}
+
+
 DEFINE_MODEL(int, ktest_readsocket_or_error, int fd, void *buf, size_t count){
+  static int is_next_error_index = -1;
+  static int error_index = -1;
+
   unsigned int size = sizeof(int);
   char *bytes = (char *)malloc(size);
   int res = cliver_ktest_copy("is_next_error", is_next_error_index--, bytes, size);
   int is_next_error = (int)*bytes;
 
+  assert(is_next_error == 1 || is_next_error == 0);
   if(is_next_error){
     unsigned int err_size = sizeof(int);
     char *err_bytes = (char *)malloc(err_size);
     int err_res = cliver_ktest_copy("error", error_index--, err_bytes, err_size);
     errno = (int)*bytes;
+    printf("klee's ktest_readsocket or error got errno %d\n", errno);
     return -1;
 
   }else{
@@ -208,19 +262,13 @@ DEFINE_MODEL(int, ktest_readsocket_or_error, int fd, void *buf, size_t count){
 }
 
 
+
+
 DEFINE_MODEL(int, ktest_getpeername, int sockfd, struct sockaddr *addr, socklen_t *addrlen){
   static int get_peer_name_index = -1;
   unsigned int size = *addrlen;
   char *bytes = (char *)calloc(size, sizeof(char));
   int res = cliver_ktest_copy("get_peer_name", get_peer_name_index--, bytes, size);
-#if 0
-  if (o->numBytes > *addrlen) {
-    fprintf(stderr,
-      "ktest_getpeername playback error: %zu bytes of input, "
-      "%d bytes recorded", *addrlen, o->numBytes);
-    exit(2);
-  }
-#endif
 
   *addrlen = res;
   memcpy(addr, bytes, res);
@@ -247,11 +295,12 @@ static void print_fd_set(int nfds, fd_set *fds) {
 
 
 DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout) {
+  printf("klee's select entered\n");
   assert(readfds != NULL);
   assert(exceptfds == NULL);
   static int select_index = -1;
 
-  unsigned int size = 4*nfds + 40 /*text*/ + 3*4 /*3 fd's*/ + 1 /*null*/;
+  unsigned int size = 4*nfds + 40 /*text*/ + 3*4 /*3 fd's*/ + 1 /*null*/ + 500 /*to make signals work*/;
   char *bytes = (char *)calloc(size, sizeof(char));
   int res = cliver_ktest_copy("select", select_index--, bytes, size);
 
@@ -265,6 +314,20 @@ DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_
   if(writefds != NULL){ FD_ZERO(writefds);}// output of select
 
   tmp = strtok(recorded_select, " ");
+
+  assert(strcmp(tmp, "signal_indicator") == 0);
+  int signal_indicator = atoi(strtok(NULL, " "));
+
+  tmp = strtok(NULL, " ");
+  assert(strcmp(tmp, "signal_val") == 0);
+  int signal_val = atoi(strtok(NULL, " "));
+  printf("ktest_select signal_indicator: %d signal_val %d\n", signal_indicator, signal_val);
+  if(signal_indicator){
+    printf("ktest_select calling signal_handler\n");
+    signal_handler(signal_val);
+  }
+
+  tmp = strtok(NULL, " ");
   assert(strcmp(tmp, "ktest_nfds") == 0);
   recorded_ktest_nfds = atoi(strtok(NULL, " ")); // socket for TLS traffic
   printf("ktest_select ktest_nfds: %d recorded_ktest_nfds %d\n", ktest_nfds, recorded_ktest_nfds);
