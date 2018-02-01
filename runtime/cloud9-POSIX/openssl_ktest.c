@@ -90,6 +90,64 @@ DEFINE_MODEL(int, ktest_pipe, int pipefd[2]){
   return 0;
 }
 
+//Need to go back and change this:
+DEFINE_MODEL(size_t, strlcat, char *dst, const char *src, size_t size){
+  return strcat(dst, src);
+}
+
+//Need to go back and change this:
+DEFINE_MODEL(size_t, strlcpy, char *dst, const char *src, size_t size){
+  return strcpy(dst, src);
+}
+
+//We assume that there is only one tty at any point.
+static int only_ttyfd = -1;
+static char only_ttyname[] = "/only/ttyname";
+DEFINE_MODEL(char *, ttyname, int fd){
+  assert(only_ttyfd > -1);
+  assert(only_ttyfd == fd);
+  return only_ttyname;
+}
+
+DEFINE_MODEL(int, ktest_openpty, int *ptyfd, int *ttyfd, char *name, const struct termios *termp, const struct winsize *winp){
+  *ptyfd = socket(AF_INET, SOCK_STREAM, 0);
+  *ttyfd = socket(AF_INET, SOCK_STREAM, 0);
+
+  only_ttyfd = *ttyfd;
+  printf("klee's ktest_openpty adding sockfds ptyfd %d ttyfd %d\n", *ptyfd, *ttyfd);
+  klee_insert_ktest_sockfd(*ptyfd);
+  klee_insert_ktest_sockfd(*ttyfd);
+  return 0;
+}
+
+//What we want is for the st_uid and st_gid to match the pw->uid and pw->gid
+//in OpenSSH's pty_setowner.
+DEFINE_MODEL(int, ktest_stat, const char *path, struct stat *buf){
+  assert(strcmp(path, only_ttyname) == 0);
+  buf->st_uid = getuid();  //assume these are the ones assigned to the file?
+  buf->st_gid = getgid();
+  buf->st_mode = 8592;//this is what it is in the replay without klee
+  printf("klee's ktest_stat returning: st_uid %d, st_gid %d, st_mode %d\n",
+      buf->st_uid,  buf->st_gid, buf->st_mode);
+  return 0; //assume success.
+}
+
+DEFINE_MODEL(int, ktest_chown, const char *pathname, uid_t owner, gid_t group){
+  assert(strcmp(pathname, only_ttyname) == 0);
+  return 0;
+}
+
+DEFINE_MODEL( int, ktest_initgroups, const char *user, gid_t group){
+  printf("klee's ktest_initgroups called with user %s group %d\n",
+      user, group);
+  return 0;
+}
+
+DEFINE_MODEL( int, ktest_setgroups, size_t size, const gid_t *list){
+  printf("klee's ktest_setgroups called with size %d\n", size);
+  return 0;
+}
+
 DEFINE_MODEL(int, ktest_bind, int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
   if( ktest_bind_sockfd != -1) //if ktest_bind_sockfd is already assigned, return error
     return -1;
@@ -153,6 +211,16 @@ DEFINE_MODEL(int, pam_acct_mgmt, pam_handle_t *pamh, int flags){
 
 DEFINE_MODEL(int, pam_setcred, pam_handle_t *pamh, int flags){
   printf("klee's pam_setcred model\n");
+  return PAM_SUCCESS;
+}
+
+DEFINE_MODEL(int, pam_authenticate, pam_handle_t *pamh, int flags){
+  printf("klee's pam_authenticate model\n");
+  return PAM_SUCCESS;
+}
+
+DEFINE_MODEL(int, pam_open_session, pam_handle_t *pamh, int flags){
+  printf("klee's pam_open_session model\n");
   return PAM_SUCCESS;
 }
 
