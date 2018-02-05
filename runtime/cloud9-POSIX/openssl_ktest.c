@@ -265,42 +265,41 @@ DEFINE_MODEL(int, ktest_register_signal_handler, int (*a)(int)){
 #if KTEST_SELECT_PLAYBACK
 
 DEFINE_MODEL(int, ktest_waitpid_or_error, pid_t pid, int *status, int options){
-  static int is_next_error_index = -1;
-  static int error_index = -1;
   static int waitpid_index = -1;
-
   printf("klee's ktest_waitpid_or_error entered\n");
 
-
-  unsigned int size = sizeof(int);
+  unsigned int size = 100;
   char *bytes = (char *)malloc(size);
-  int res = cliver_ktest_copy("is_next_waitpid_error", is_next_error_index--, bytes, size);
-  int is_next_error = (int)*bytes;
+  int res = cliver_ktest_copy("waitpid", waitpid_index--, bytes, size);
+  char *recorded_select = bytes;
+  char* tmp = strtok(recorded_select, " ");
+  assert(strcmp(tmp, "ret_val") == 0);
+  int ret_val = atoi(strtok(NULL, " "));
 
-  assert(is_next_error == 1 || is_next_error == 0);
-  if(is_next_error){
-    unsigned int err_size = sizeof(int);
-    char *err_bytes = (char *)malloc(err_size);
-    int err_res = cliver_ktest_copy("waitpid_error", error_index--, err_bytes, err_size);
-    errno = (int)*err_bytes;
-    printf("klee's ktest_waitpid_or_error errno %d\n", errno);
+  if(ret_val >= 0){
+    tmp = strtok(NULL, " ");
+    //remove print after tested
+    printf("ktest_waitpid status == %s\n", tmp);
+    assert(strcmp(tmp, "status") == 0);
+    *status = atoi(strtok(NULL, " "));
+    printf("ktest_waitpid status %d\n", *status);
+  } else {
+    tmp = strtok(NULL, " ");
+    //remove print after tested
+    printf("ktest_waitpid errno == %s\n", tmp);
+    assert(strcmp(tmp, "errno") == 0);
+    errno = atoi(strtok(NULL, " "));
+    printf("ktest_waitpid error %d\n", errno);
+  }
+  free(recorded_select);
+  if(ret_val == 0){
+    printf("ktest_waitpid returning 0\n");
+    return 0;
+  } else if(ret_val <  0){
     return -1;
-
-  }else{
-    unsigned int size = sizeof(int);
-    printf("klee's ktest_waitpid_or_error not error\n");
-    char *bytes = (char *)malloc( size);
-    int res = cliver_ktest_copy("waitpid", waitpid_index--, bytes, size);
-    *status = (int)*bytes;
-    printf("klee's ktest_waitpid_or_error status %d\n", *status);
-
-    res = cliver_ktest_copy("waitpid", waitpid_index--, bytes, size);
-    int ret = (int)*bytes;
-    if(ret == 0){
-      printf("klee's ktest_waitpid_or_error returning 0\n");
-      return 0;
-    }
-
+  } else {
+    printf("ktest_waitpid returning pid %d status %d\n",
+        KTEST_FORK_DUMMY_CHILD_PID, *status);
     return KTEST_FORK_DUMMY_CHILD_PID;
   }
 }
