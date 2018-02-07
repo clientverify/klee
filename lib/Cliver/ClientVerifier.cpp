@@ -376,7 +376,7 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
 
       for (unsigned i = 0; i < ktest->numObjects; ++i) {
         std::string obj_name(ktest->objects[i].name);
-        if (obj_name == "s2c") {
+        if (obj_name == KTEST_READ) {
           s2c_count++;
 
           // If we're dropping s2c TLS application data messages...
@@ -527,7 +527,7 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
 
         } // if(obj_name == "s2c")
 
-        else if (obj_name == "c2s") {
+        else if (obj_name == KTEST_WRITE) {
           socket_events_.back()->push_back(new SocketEvent(ktest->objects[i]));
         }
       }
