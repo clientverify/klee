@@ -304,28 +304,44 @@ DEFINE_MODEL(int, ktest_waitpid_or_error, pid_t pid, int *status, int options){
   }
 }
 
-
+int verification_socket = -1;
+//does not support verification of this socket.
 DEFINE_MODEL(int, ktest_readsocket_or_error, int fd, void *buf, size_t count){
-  static int is_next_error_index = -1;
-  static int error_index = -1;
+  printf("klee's ktest_readsocket_or_error entered\n");
+  const char* error_str = "is_error ";
+  const char* not_error_str = "not_error ";
+  static int readsocket_or_error_name_index = -1;
 
-  unsigned int size = sizeof(int);
-  char *bytes = (char *)malloc(size);
-  int res = cliver_ktest_copy("is_next_error", is_next_error_index--, bytes, size);
-  int is_next_error = (int)*bytes;
+  assert(verification_socket != fd);
 
-  assert(is_next_error == 1 || is_next_error == 0);
-  if(is_next_error){
-    unsigned int err_size = sizeof(int);
-    char *err_bytes = (char *)malloc(err_size);
-    int err_res = cliver_ktest_copy("error", error_index--, err_bytes, err_size);
-    errno = (int)*bytes;
-    printf("klee's ktest_readsocket or error got errno %d\n", errno);
+  char *bytes = (char *)calloc(count + strlen(not_error_str), sizeof(char));
+  int res = cliver_ktest_copy("readsocket_or_error", readsocket_or_error_name_index--, bytes, count);
+  if(strncmp(bytes, error_str, strlen(error_str)) == 0){
+    errno = (int)bytes[strlen(error_str)];
+    fprintf(stderr, "ktest_readsocket error returning bytes: %d errno: %d\n", -1, errno);
     return -1;
-
-  }else{
-    return ktest_readsocket(fd, buf, count);
   }
+  assert(strncmp(bytes, not_error_str, strlen(not_error_str)) == 0);
+  int   read_len = res   - strlen(not_error_str);
+  char* read_buf = bytes + strlen(not_error_str);
+  if (read_len > count) {
+    fprintf(stderr,
+        "ktest_readsocket playback error: %zu byte destination buffer, "
+        "%d bytes recorded", count, read_len);
+    exit(2);
+  }
+  // Read recorded data into buffer
+  memcpy(buf, read_buf, read_len);
+
+  //error stuff:  
+  unsigned int i;
+  printf("readsocket playback [read_len %d size %d]", read_len, res);
+  for (i = 0; i < read_len; i++) {
+    printf(" %2.2x", ((unsigned char*)buf)[i]);
+  }
+  printf("\n");
+  //end error stuff
+  return read_len;
 }
 
 
