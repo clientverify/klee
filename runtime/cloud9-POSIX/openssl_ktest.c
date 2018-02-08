@@ -56,12 +56,22 @@ void klee_insert_ktest_sockfd(int sockfd){
   ktest_nfds++; //incriment the counter recording the number of sockets we're tracking
 }
 
+static int verification_socket = -1;
+DEFINE_MODEL(int, ktest_verification_socket, int domain, int type, int protocol){
+  assert(verification_socket == -1); //should only be called once
+  verification_socket = socket(domain, type, protocol);
+  printf("ktest_socket adding verification_socket %d\n", verification_socket);
+  klee_insert_ktest_sockfd(verification_socket);
+  return verification_socket;
+}
 
 DEFINE_MODEL(int, ktest_socket, int domain, int type, int protocol){
-  int sockfd = socket(domain, type, protocol);
-  printf("ktest_socket adding sockfd %d\n", sockfd);
-  klee_insert_ktest_sockfd(sockfd);
-  return sockfd;
+  static int hack_fd = -1;
+  if(hack_fd == -1) hack_fd = verification_socket;
+  hack_fd++;
+  printf("ktest_socket adding sockfd %d\n", hack_fd);
+  klee_insert_ktest_sockfd(hack_fd);
+  return hack_fd;
 }
 
 DEFINE_MODEL(int, ktest_dup, int oldfd){
@@ -72,21 +82,17 @@ DEFINE_MODEL(int, ktest_dup, int oldfd){
 
 
 DEFINE_MODEL(int, ktest_socketpair, int domain, int type, int protocol, int sv[2]){
-  sv[0] = socket(domain, type, protocol);
-  sv[1] = socket(domain, type, protocol);
+  sv[0] = ktest_socket(domain, type, protocol);
+  sv[1] = ktest_socket(domain, type, protocol);
   printf("ktest_socketpair adding sockfds %d %d\n", sv[0], sv[1]);
-  klee_insert_ktest_sockfd(sv[0]);
-  klee_insert_ktest_sockfd(sv[1]);
   return 0;
 }
 
 
 DEFINE_MODEL(int, ktest_pipe, int pipefd[2]){
-  pipefd[0] = socket(AF_INET, SOCK_STREAM, 0);
-  pipefd[1] = socket(AF_INET, SOCK_STREAM, 0);
+  pipefd[0] = ktest_socket(AF_INET, SOCK_STREAM, 0);
+  pipefd[1] = ktest_socket(AF_INET, SOCK_STREAM, 0);
   printf("ktest_pipe adding sockfds %d %d\n", pipefd[0], pipefd[1]);
-  klee_insert_ktest_sockfd(pipefd[0]);
-  klee_insert_ktest_sockfd(pipefd[1]);
   return 0;
 }
 
@@ -110,13 +116,11 @@ DEFINE_MODEL(char *, ttyname, int fd){
 }
 
 DEFINE_MODEL(int, ktest_openpty, int *ptyfd, int *ttyfd, char *name, const struct termios *termp, const struct winsize *winp){
-  *ptyfd = socket(AF_INET, SOCK_STREAM, 0);
-  *ttyfd = socket(AF_INET, SOCK_STREAM, 0);
+  *ptyfd = ktest_socket(AF_INET, SOCK_STREAM, 0);
+  *ttyfd = ktest_socket(AF_INET, SOCK_STREAM, 0);
 
   only_ttyfd = *ttyfd;
   printf("klee's ktest_openpty adding sockfds ptyfd %d ttyfd %d\n", *ptyfd, *ttyfd);
-  klee_insert_ktest_sockfd(*ptyfd);
-  klee_insert_ktest_sockfd(*ttyfd);
   return 0;
 }
 
@@ -158,10 +162,9 @@ DEFINE_MODEL(int, ktest_bind, int sockfd, const struct sockaddr *addr, socklen_t
 
 DEFINE_MODEL(int, ktest_accept, int sockfd, struct sockaddr *addr, socklen_t *addrlen){
   printf("entered klee's ktest_accept adding calling socket\n");
-  int accept_sock = socket(AF_INET, SOCK_STREAM, 0);
+  int accept_sock = ktest_socket(AF_INET, SOCK_STREAM, 0);
   printf("ktest_accept adding %d to ktest_sockfds\n", accept_sock);
   assert(accept_sock >= 0);
-  klee_insert_ktest_sockfd(accept_sock);
   printf("accept() called on socket for TLS traffic (%d)\n", accept_sock);
   return accept_sock;
 
@@ -241,9 +244,8 @@ DEFINE_MODEL(struct protoent*, getprotobyname, const char *name){
 
 
 DEFINE_MODEL(ssize_t, ktest_recvmsg_fd, int fd, struct msghdr *msg, int flags){
-  int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+  int sockfd = ktest_socket(AF_INET, SOCK_STREAM, 0);
   assert(sockfd >= 0); //Ensure fd creation was successful.
-  klee_insert_ktest_sockfd(sockfd);
 
   //The following is highly specific to what is checked inmm_recieve_fd in
   //ssh codebase.
@@ -304,7 +306,6 @@ DEFINE_MODEL(int, ktest_waitpid_or_error, pid_t pid, int *status, int options){
   }
 }
 
-int verification_socket = -1;
 //does not support verification of this socket.
 DEFINE_MODEL(int, ktest_readsocket_or_error, int fd, void *buf, size_t count){
   printf("klee's ktest_readsocket_or_error entered\n");
