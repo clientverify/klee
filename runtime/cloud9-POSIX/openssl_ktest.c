@@ -346,6 +346,78 @@ DEFINE_MODEL(int, ktest_readsocket_or_error, int fd, void *buf, size_t count){
 }
 
 
+//does not support verification of this socket.
+DEFINE_MODEL(int, ktest_writesocket, int fd, void *buf, size_t count){
+  printf("klee's ktest_writesocket entered\n");
+  static int writesocket_index = -1;
+
+  if (verification_socket == fd)
+    return ktest_verify_writesocket(fd, buf, count);
+
+  char *bytes = (char *)calloc(count, sizeof(char));
+  int res = cliver_ktest_copy("writesocket", writesocket_index--, bytes, count);
+
+
+  if (res > count) {
+    fprintf(stderr,
+        "ktest_writesocket playback error: %zu bytes of input, "
+        "%d bytes recorded\n", count, res);
+    exit(2);
+  }
+
+  int i;
+  printf("writesocket record contains write [%d]", res);
+  for (i = 0; i < res; i++) {
+    printf(" %2.2x", ((unsigned char*)bytes)[i]);
+  }
+  printf("\n");
+
+
+  // Since this is a write, compare for equality.
+  if (res > 0 && memcmp(buf, bytes, res) != 0) {
+    fprintf(stderr, "WARNING: ktest_writesocket playback - data mismatch\n");
+    //trying to send:
+    unsigned int i;
+    printf("writesocket trying to write [%d]", count);
+    for (i = 0; i < count; i++) {
+      printf(" %2.2x", ((unsigned char*)buf)[i]);
+    }
+    printf("\n");
+    //and fail
+    assert(0);
+  }
+  return res;
+}
+
+//does not support verification of this socket.
+DEFINE_MODEL(int, ktest_readsocket, int fd, void *buf, size_t count){
+  printf("klee's ktest_readsocket entered\n");
+  static int readsocket_index = -1;
+
+  if (verification_socket == fd)
+    return ktest_verify_readsocket(fd, buf, count);
+
+  char *bytes = (char *)calloc(count, sizeof(char));
+  int res = cliver_ktest_copy("readsocket", readsocket_index--, bytes, count);
+  if (res > count) {
+    fprintf(stderr,
+        "ktest_readsocket playback error: %zu byte destination buffer, "
+        "%d bytes recorded", count, res);
+    exit(2);
+  }
+  // Read recorded data into buffer
+  memcpy(buf, bytes, res);
+
+  //error stuff:  
+  unsigned int i;
+  printf("readsocket playback [%d]", res);
+  for (i = 0; i < res; i++) {
+    printf(" %2.2x", ((unsigned char*)buf)[i]);
+  }
+  printf("\n");
+  //end error stuff
+  return res;
+}
 
 
 DEFINE_MODEL(int, ktest_getpeername, int sockfd, struct sockaddr *addr, socklen_t *addrlen){

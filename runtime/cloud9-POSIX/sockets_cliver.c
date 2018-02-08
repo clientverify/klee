@@ -150,7 +150,7 @@ int __klee_model_ktest_connect(int sockfd, const struct sockaddr *addr, socklen_
   return 0;
 }
 
-ssize_t __klee_model_ktest_writesocket(int fd, const void *buf, size_t count) {
+ssize_t __klee_model_ktest_verify_writesocket(int fd, const void *buf, size_t count) {
   unsigned i;
 
   // HACK NetworkManager doesn't support non-ObjectState aligned pointers
@@ -167,7 +167,7 @@ ssize_t __klee_model_ktest_writesocket(int fd, const void *buf, size_t count) {
   return res;
 }
 
-ssize_t __klee_model_ktest_readsocket(int fd, void *buf, size_t count) {
+ssize_t __klee_model_ktest_verify_readsocket(int fd, void *buf, size_t count) {
   unsigned i;
 
   // HACK NetworkManager doesn't support non-ObjectState aligned pointers
