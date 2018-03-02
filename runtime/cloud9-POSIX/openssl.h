@@ -20,6 +20,7 @@
 #include "../../../openssl/crypto/aes/aes.h"
 #include "../../../openssl/crypto/sha/sha.h"
 
+int verification_socket;
 // Track symbolic data flow through modelled functions
 // see: copy_symbolic_buffer()
 #define OPENSSL_SYMBOLIC_TAINT 0

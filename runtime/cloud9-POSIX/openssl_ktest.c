@@ -22,6 +22,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 
+verification_socket = -1;
 #define MAX_FDS 32  //total number of socket file descriptors we will support
 static int ktest_nfds = 0; //total number of socket file descriptors in system
 static int ktest_sockfds[MAX_FDS]; // descriptor of the sockets we're capturing
@@ -56,7 +57,6 @@ void klee_insert_ktest_sockfd(int sockfd){
   ktest_nfds++; //incriment the counter recording the number of sockets we're tracking
 }
 
-static int verification_socket = -1;
 DEFINE_MODEL(int, ktest_verification_socket, int domain, int type, int protocol){
   assert(verification_socket == -1); //should only be called once
   verification_socket = socket(domain, type, protocol);
@@ -108,11 +108,17 @@ DEFINE_MODEL(size_t, strlcpy, char *dst, const char *src, size_t size){
 
 //We assume that there is only one tty at any point.
 static int only_ttyfd = -1;
-static char only_ttyname[] = "/only/ttyname";
-DEFINE_MODEL(char *, ttyname, int fd){
-  assert(only_ttyfd > -1);
-  assert(only_ttyfd == fd);
-  return only_ttyname;
+DEFINE_MODEL(char*, ktest_ttyname, int fd){
+  //read from ktest here...
+  static int ttyname_index = -1;
+  unsigned int size = 100;//max len
+  char *bytes = (char *)calloc(size, sizeof(char));
+  int res = cliver_ktest_copy("ttyname", ttyname_index--, bytes, size);
+
+  assert(res <= size);
+  char *ret = strdup((const char*)bytes);
+  free(bytes);
+  return ret;
 }
 
 DEFINE_MODEL(int, ktest_openpty, int *ptyfd, int *ttyfd, char *name, const struct termios *termp, const struct winsize *winp){
@@ -127,7 +133,6 @@ DEFINE_MODEL(int, ktest_openpty, int *ptyfd, int *ttyfd, char *name, const struc
 //What we want is for the st_uid and st_gid to match the pw->uid and pw->gid
 //in OpenSSH's pty_setowner.
 DEFINE_MODEL(int, ktest_stat, const char *path, struct stat *buf){
-  assert(strcmp(path, only_ttyname) == 0);
   buf->st_uid = getuid();  //assume these are the ones assigned to the file?
   buf->st_gid = getgid();
   buf->st_mode = 8592;//this is what it is in the replay without klee
@@ -137,7 +142,6 @@ DEFINE_MODEL(int, ktest_stat, const char *path, struct stat *buf){
 }
 
 DEFINE_MODEL(int, ktest_chown, const char *pathname, uid_t owner, gid_t group){
-  assert(strcmp(pathname, only_ttyname) == 0);
   return 0;
 }
 

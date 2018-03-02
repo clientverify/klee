@@ -1,0 +1,2 @@
+//TODO: Wrap in CLIVER ifdef
+enum PAMSTATE{ INITIAL_LOGIN, OTHER };
