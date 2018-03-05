@@ -308,6 +308,31 @@ private:
                               ref<Expr> value /* undef if read */,
                               KInstruction *target /* undef if write */);
 
+
+  //AH: Tase additions below.
+  
+  bool gprsAreConcrete();
+  bool instructionBeginsTransaction(uint64_t pc);
+  bool instructionIsModeled();
+
+  void model_inst();
+  void model_entertran();
+  void model_exittran();
+  void model_reopentran();
+
+  //AH: Modeled functions
+  void model_random();
+  void model_strncat();
+  
+  //AH: This is our customized function for accessing memory
+  //within our poison-based symbolic value tracking system.
+  void executeMemoryOperationPoison(ExecutionState &state,
+                              bool isWrite,
+                              ref<Expr> address,
+                              ref<Expr> value /* undef if read */,
+                              KInstruction *target /* undef if write */);
+
+  
   void executeMakeSymbolic(ExecutionState &state, const MemoryObject *mo,
                            const std::string &name);
 
@@ -486,6 +511,12 @@ public:
   virtual void useSeeds(const std::vector<struct KTest *> *seeds) { 
     usingSeeds = seeds;
   }
+  
+  virtual void klee_interp_internal ();
+  
+  virtual bool resumeNativeExecution ();
+
+  virtual void initializeInterpretationStructures (llvm::Function *f);
 
   virtual void runFunctionAsMain(llvm::Function *f,
                                  int argc,

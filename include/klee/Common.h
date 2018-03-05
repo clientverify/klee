@@ -17,6 +17,7 @@
 #include <string>
 
 namespace klee {
+  
     const char ALL_QUERIES_SMT2_FILE_NAME[]="all-queries.smt2";
     const char SOLVER_QUERIES_SMT2_FILE_NAME[]="solver-queries.smt2";
     const char ALL_QUERIES_KQUERY_FILE_NAME[]="all-queries.kquery";

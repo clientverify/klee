@@ -92,12 +92,69 @@
 #include <errno.h>
 #include <cxxabi.h>
 
+
 using namespace llvm;
 using namespace klee;
 
+//AH: Our additions below. --------------------------------------
+#include <ucontext.h>
+#include <iostream>
+enum runType : int {PURE_INTERP, TSX_NATIVE, VERIFICATION};
+extern enum runType exec_mode;
+extern void * StackBase;
+//extern const uint64_t stack_size;
+// ugly ugly ugly.  Should just do a tase.h file
+// with stack_size defined only once.
+#define STACK_SIZE 131072
+extern char target_stack[STACK_SIZE +1];
+
+extern Module * interpModule;
+extern char * target_stack_begin_ptr;
+extern char * interp_stack_begin_ptr;
+extern uint32_t springboard_flags;
+
+extern "C" void * sb_entertran();
+extern "C" void * sb_exittran();
+extern "C" void * sb_reopen();
+//AH: Todo -- see if we need to change prototype of enter_modeled
+extern "C" void * sb_enter_modeled();
+extern gregset_t target_ctx_gregs;
+extern gregset_t prev_ctx_gregs;
+
+MemoryObject * target_ctx_gregs_MO;
+ObjectState * target_ctx_gregs_OS;
+MemoryObject * prev_ctx_gregs_MO;
+ObjectState * prev_ctx_gregs_OS;
+bool hasForked = false;
+//std::ofstream debugFile;
 
 
+void printCtx(gregset_t ctx );
 
+
+ExecutionState * GlobalExecutionStatePtr;
+extern klee::Interpreter * GlobalInterpreter;
+
+//Temp hack
+//TO-DO:  Remove!!
+
+//TODO Be careful, as BUFFER_SIZE is a macro we're defining twice now.
+#define BUFFER_SIZE 256
+extern char message_test_buffer[BUFFER_SIZE];
+//TODO Test verification with automatic message_buf_length stuff now..
+extern uint64_t message_buf_length;
+uint64_t bytes_printed = 0;
+
+extern int MESSAGE_COUNT;
+extern int BASKET_SIZE;
+char basket[BUFFER_SIZE];
+ObjectState * basket_OS;
+MemoryObject * basket_MO;
+
+extern std::stringstream workerIDStream;
+
+
+//AH: End of our additions. -----------------------------------
 
 namespace {
   cl::opt<bool>
@@ -161,7 +218,7 @@ namespace {
   EqualitySubstitution("equality-substitution",
 		       cl::init(true),
 		       cl::desc("Simplify equality expressions before querying the solver (default=on)."));
-
+ 
   cl::opt<unsigned>
   MaxSymArraySize("max-sym-array-size",
                   cl::init(0));
@@ -393,6 +450,9 @@ Executor::Executor(LLVMContext &ctx, const InterpreterOptions &opts,
 
 const Module *Executor::setModule(llvm::Module *module, 
                                   const ModuleOptions &opts) {
+  
+  assert (!kmodule && "kmodule fail \n");
+  assert (module && "module fail \n");
   assert(!kmodule && module && "can only register one module"); // XXX gross
   
   kmodule = new KModule(module);
@@ -487,8 +547,11 @@ MemoryObject * Executor::addExternalObject(ExecutionState &state,
   MemoryObject *mo = memory->allocateFixed((uint64_t) (unsigned long) addr, 
                                            size, 0);
   ObjectState *os = bindObjectInState(state, mo, false);
-  for(unsigned i = 0; i < size; i++)
-    os->write8(i, ((uint8_t*)addr)[i]);
+  
+  printf("mo->address is %lu \n", mo->address);
+  os->concreteStore = (uint8_t *) mo->address;
+  //for(unsigned i = 0; i < size; i++)
+  // os->write8(i, ((uint8_t*)addr)[i]);
   if(isReadOnly)
     os->setReadOnly(true);  
   return mo;
@@ -614,8 +677,10 @@ void Executor::initializeGlobals(ExecutionState &state) {
           klee_error("unable to load symbol(%s) while initializing globals.", 
                      i->getName().data());
 
-        for (unsigned offset=0; offset<mo->size; offset++)
+        for (unsigned offset=0; offset<mo->size; offset++){
+	  //printf("Calling os->write8 from initializeGlobals()\n ");
           os->write8(offset, ((unsigned char*)addr)[offset]);
+	}
       }
     } else {
       Type *ty = i->getType()->getElementType();
@@ -747,6 +812,9 @@ void Executor::branch(ExecutionState &state,
 
 Executor::StatePair 
 Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
+  
+  
+  printf("DBG: FRK 0 \n");
   Solver::Validity res;
   std::map< ExecutionState*, std::vector<SeedInfo> >::iterator it = 
     seedMap.find(&current);
@@ -779,18 +847,22 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     }
   }
 
+  printf("BR: FRK1 \n");
+  
   double timeout = coreSolverTimeout;
   if (isSeeding)
     timeout *= it->second.size();
   solver->setTimeout(timeout);
   bool success = solver->evaluate(current, condition, res);
+  printf("BR: FRK1.1 \n");
   solver->setTimeout(0);
   if (!success) {
+    printf("INTERPRETER: QUERY TIMEOUT \n");
     current.pc = current.prevPC;
     terminateStateEarly(current, "Query timed out (fork).");
     return StatePair(0, 0);
   }
-
+  printf("BR: FRK1.2 \n");
   if (!isSeeding) {
     if (replayPath && !isInternal) {
       assert(replayPosition<replayPath->size() &&
@@ -839,7 +911,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
       }
     }
   }
-
+  printf("BR: FRK1.5 \n");
   // Fix branch in only-replay-seed mode, if we don't have both true
   // and false seeds.
   if (isSeeding && 
@@ -870,7 +942,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     }
   }
 
-
+  printf("DBG: FRK 2\n");
   // XXX - even if the constraint is provable one way or the other we
   // can probably benefit by adding this constraint and allowing it to
   // reduce the other constraints. For example, if we do a binary
@@ -896,13 +968,20 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     return StatePair(0, &current);
   } else {
     TimerStatIncrementer timer(stats::forkTime);
-    ExecutionState *falseState, *trueState = &current;
+    
 
+    ExecutionState *falseState, *trueState = &current;
+  
+    //Original code:
+    //ExecutionState *falseState, *trueState = &current;
+    //End hack
     ++stats::forks;
 
+
+    /*
     falseState = trueState->branch();
     addedStates.push_back(falseState);
-
+ 
     if (it != seedMap.end()) {
       std::vector<SeedInfo> seeds = it->second;
       it->second.clear();
@@ -936,7 +1015,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
         std::swap(trueState->coveredLines, falseState->coveredLines);
       }
     }
-
+  
     current.ptreeNode->data = 0;
     std::pair<PTree::Node*, PTree::Node*> res =
       processTree->split(current.ptreeNode, falseState, trueState);
@@ -959,18 +1038,84 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
         falseState->symPathOS << "0";
       }
     }
+    */
+  
+    //ABH: Here's where we fork in TASE.
+    printf("DBG: FRK 3\n");
+    int pid  = ::fork();
+    hasForked = true;
+    if (pid ==0 ) {
+      int i = getpid();
+      
+      workerIDStream << ".";
+      workerIDStream << i;
+      std::string pidString ;
+      pidString = workerIDStream.str();
+      freopen(pidString.c_str(),"w",stdout);
+      freopen(pidString.c_str(),"w",stderr);
+      printf("DEBUG:  Child process created\n");
+      addConstraint(*GlobalExecutionStatePtr, Expr::createIsZero(condition));
+      //debugFile.open("FalseState.txt");
+      //debugFile.rdbuf()->pubsetbuf(0,0);
+    } else {
+      int i = getpid();
+      workerIDStream << ".";
+      workerIDStream << i;
+      std::string pidString ;
+      pidString = workerIDStream.str();
+      freopen(pidString.c_str(),"w",stdout);
+      freopen(pidString.c_str(),"w",stderr);
+      printf("DEBUG: Parent process continues \n");
+      addConstraint(*GlobalExecutionStatePtr, condition);
+      //debugFile.open("TrueState.txt");
+      //debugFile.rdbuf()->pubsetbuf(0,0);
+    }
+    
+    //debugFile << "First line after fork \n ";
+    //debugFile.flush();
+    
+    //Call to solver to make sure we're legit on this branch.
 
+    printf("Calling solver for sanity check \n");
+     std::vector< std::vector<unsigned char> > values;
+     std::vector<const Array*> objects;
+     for (unsigned i = 0; i != GlobalExecutionStatePtr->symbolics.size(); ++i)
+       objects.push_back(GlobalExecutionStatePtr->symbolics[i].second);
+     bool success = solver->getInitialValues(*GlobalExecutionStatePtr, objects, values);
+     if (success)
+       printf("Solver checked sanity \n");
+     else {
+       printf("Solver found invalid path \n");
+       printCtx(target_ctx_gregs);
+     }
+    
+    //Orig code:
+    /*
     addConstraint(*trueState, condition);
-    addConstraint(*falseState, Expr::createIsZero(condition));
+    
+    */
 
+    
+    
     // Kinda gross, do we even really still want this option?
+
+     /*
     if (MaxDepth && MaxDepth<=trueState->depth) {
       terminateStateEarly(*trueState, "max-depth exceeded.");
       terminateStateEarly(*falseState, "max-depth exceeded.");
       return StatePair(0, 0);
     }
+     */
+    printf("Reached end of Executor::fork() \n");
+     
 
-    return StatePair(trueState, falseState);
+    //used to be return StatePair(trueState,falseState);
+    if (pid == 0)  {
+      return StatePair(0, GlobalExecutionStatePtr);
+    } else {
+      return StatePair(GlobalExecutionStatePtr,0);
+    }
+
   }
 }
 
@@ -1168,12 +1313,16 @@ void Executor::printDebugInstructions(ExecutionState &state) {
 }
 
 void Executor::stepInstruction(ExecutionState &state) {
+  //printf(" DB -1 \n");
   printDebugInstructions(state);
+  //printf(" DB 0 \n");
   if (statsTracker)
     statsTracker->stepInstruction(state);
-
+  //printf(" DB 1 \n");
   ++stats::instructions;
+  //printf(" DB 2 \n");
   state.prevPC = state.pc;
+  //printf(" DB 3 \n");
   ++state.pc;
 
   if (stats::instructions==StopAfterNInstructions)
@@ -1368,6 +1517,8 @@ void Executor::transferToBasicBlock(BasicBlock *dst, BasicBlock *src,
   KFunction *kf = state.stack.back().kf;
   unsigned entry = kf->basicBlockEntry[dst];
   state.pc = &kf->instructions[entry];
+
+
   if (state.pc->inst->getOpcode() == Instruction::PHI) {
     PHINode *first = static_cast<PHINode*>(state.pc->inst);
     state.incomingBBIndex = first->getBasicBlockIndex(src);
@@ -1438,10 +1589,13 @@ static inline const llvm::fltSemantics * fpWidthToSemantics(unsigned width) {
 }
 
 void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
-  Instruction *i = ki->inst;
+  //printf( " KI is %s \n" , (ki->printFileLine()).c_str());
+  //printf("Calling executeInstruction \n ");
+Instruction *i = ki->inst;
   switch (i->getOpcode()) {
     // Control flow
   case Instruction::Ret: {
+
     ReturnInst *ri = cast<ReturnInst>(i);
     KInstIterator kcaller = state.stack.back().caller;
     Instruction *caller = kcaller ? kcaller->inst : 0;
@@ -1454,13 +1608,17 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     
     if (state.stack.size() <= 1) {
       assert(!caller && "caller set on initial stack frame");
-      terminateStateOnExit(state);
+      //printf("Choosing not to call terminateStateOnExit(state) \n \n ");
+      //terminateStateOnExit(state);
+      state.popFrame();
+      
+      haltExecution = true;
+      break;
     } else {
       state.popFrame();
 
       if (statsTracker)
         statsTracker->framePopped(state);
-
       if (InvokeInst *ii = dyn_cast<InvokeInst>(caller)) {
         transferToBasicBlock(ii->getNormalDest(), caller->getParent(), state);
       } else {
@@ -1498,10 +1656,14 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
           terminateStateOnExecError(state, "return void when caller expected a result");
         }
       }
-    }      
+    }
+   
+    
     break;
   }
   case Instruction::Br: {
+
+    printf("Hit br inst \n");
     BranchInst *bi = cast<BranchInst>(i);
     if (bi->isUnconditional()) {
       transferToBasicBlock(bi->getSuccessor(0), bi->getParent(), state);
@@ -1510,6 +1672,11 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       assert(bi->getCondition() == bi->getOperand(0) &&
              "Wrong operand index!");
       ref<Expr> cond = eval(ki, 0, state).value;
+      //cond->dump();
+
+      //ABH: Within TASE, we're unix forking within Executor::fork
+      // when a branch instruction depends on symbolic data.  Currently
+      // only ever returning 1 state in "branches" becuase of this.
       Executor::StatePair branches = fork(state, cond, false);
 
       // NOTE: There is a hidden dependency here, markBranchVisited
@@ -1519,10 +1686,13 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       if (statsTracker && state.stack.back().kf->trackCoverage)
         statsTracker->markBranchVisited(branches.first, branches.second);
 
-      if (branches.first)
+      if (branches.second) {
+        transferToBasicBlock(bi->getSuccessor(1), bi->getParent(), *branches.second);	
+      }
+      if (branches.first) {
         transferToBasicBlock(bi->getSuccessor(0), bi->getParent(), *branches.first);
-      if (branches.second)
-        transferToBasicBlock(bi->getSuccessor(1), bi->getParent(), *branches.second);
+      }
+            
     }
     break;
   }
@@ -1553,12 +1723,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       std::map<ref<Expr>, BasicBlock *> expressionOrder;
 
       // Iterate through all non-default cases and order them by expressions
-#if LLVM_VERSION_CODE > LLVM_VERSION(3, 4)
-      for (auto i : si->cases()) {
-#else
       for (SwitchInst::CaseIt i = si->case_begin(), e = si->case_end(); i != e;
            ++i) {
-#endif
         ref<Expr> value = evalConstant(i.getCaseValue());
 
         BasicBlock *caseSuccessor = i.getCaseSuccessor();
@@ -1987,11 +2153,13 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   case Instruction::Load: {
     ref<Expr> base = eval(ki, 0, state).value;
     executeMemoryOperation(state, false, base, 0, ki);
+
     break;
   }
   case Instruction::Store: {
     ref<Expr> base = eval(ki, 1, state).value;
     ref<Expr> value = eval(ki, 0, state).value;
+    //base->dump();
     executeMemoryOperation(state, true, base, value, 0);
     break;
   }
@@ -2374,7 +2542,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     ref<Expr> vec = eval(ki, 0, state).value;
     ref<Expr> newElt = eval(ki, 1, state).value;
     ref<Expr> idx = eval(ki, 2, state).value;
-
+    
     ConstantExpr *cIdx = dyn_cast<ConstantExpr>(idx);
     if (cIdx == NULL) {
       terminateStateOnError(
@@ -2386,6 +2554,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     const llvm::VectorType *vt = iei->getType();
     unsigned EltBits = getWidthForLLVMType(vt->getElementType());
 
+    //printf("\n Calling InsertElement at idx %lu \n", iIdx);
+
     if (iIdx >= vt->getNumElements()) {
       // Out of bounds write
       terminateStateOnError(state, "Out of bounds write when inserting element",
@@ -2396,14 +2566,21 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     const unsigned elementCount = vt->getNumElements();
     llvm::SmallVector<ref<Expr>, 8> elems;
     elems.reserve(elementCount);
-    for (unsigned i = elementCount; i != 0; --i) {
-      auto of = i - 1;
-      unsigned bitOffset = EltBits * of;
-      elems.push_back(
-          of == iIdx ? newElt : ExtractExpr::create(vec, bitOffset, EltBits));
+    for (unsigned i = 0; i < elementCount; ++i) {
+      // evalConstant() will use ConcatExpr to build vectors with the
+      // zero-th element leftmost (most significant bits), followed
+      // by the next element (second leftmost) and so on. This means
+      // that we have to adjust the index so we read left to right
+      // rather than right to left.
+      unsigned bitOffset = EltBits * (elementCount - i - 1);
+      //printf("bitOffset is %u \n\n",bitOffset);
+      if (i == iIdx) {
+	//printf("Found insert index at %u \n\n", bitOffset);
+      }
+      elems.push_back(i == iIdx ? newElt
+                                : ExtractExpr::create(vec, bitOffset, EltBits));
     }
 
-    assert(Context::get().isLittleEndian() && "FIXME:Broken for big endian");
     ref<Expr> Result = ConcatExpr::createN(elementCount, elems.data());
     bindLocal(ki, state, Result);
     break;
@@ -2431,7 +2608,12 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       return;
     }
 
-    unsigned bitOffset = EltBits * iIdx;
+    // evalConstant() will use ConcatExpr to build vectors with the
+    // zero-th element left most (most significant bits), followed
+    // by the next element (second left most) and so on. This means
+    // that we have to adjust the index so we read left to right
+    // rather than right to left.
+    unsigned bitOffset = EltBits*(vt->getNumElements() - iIdx -1);
     ref<Expr> Result = ExtractExpr::create(vec, bitOffset, EltBits);
     bindLocal(ki, state, Result);
     break;
@@ -2525,16 +2707,24 @@ void Executor::bindInstructionConstants(KInstruction *KI) {
 }
 
 void Executor::bindModuleConstants() {
+  //printf("Binding module constants... \n");
   for (std::vector<KFunction*>::iterator it = kmodule->functions.begin(), 
          ie = kmodule->functions.end(); it != ie; ++it) {
     KFunction *kf = *it;
+    //printf();
     for (unsigned i=0; i<kf->numInstructions; ++i)
       bindInstructionConstants(kf->instructions[i]);
   }
-
+  
+  //printf("Evaluating constants ... \n");
+  //printf("kmodule has %d constants \n", kmodule->constants.size());
   kmodule->constantTable = new Cell[kmodule->constants.size()];
   for (unsigned i=0; i<kmodule->constants.size(); ++i) {
+    //printf("Evaluating constant %d \n", i);
+    
     Cell &c = kmodule->constantTable[i];
+    // assert(c);
+    assert(kmodule->constants[i]);
     c.value = evalConstant(kmodule->constants[i]);
   }
 }
@@ -2588,14 +2778,18 @@ void Executor::doDumpStates() {
   updateStates(0);
 }
 
-void Executor::run(ExecutionState &initialState) {
+void Executor::run(ExecutionState  & initialState) {
+  printf("ENTERING EXECUTOR::RUN \n");
+
   bindModuleConstants();
 
+  //printf("Initializing timers... \n");
   // Delay init till now so that ticks don't accrue during
   // optimization and such.
   initTimers();
-
-  states.insert(&initialState);
+  //AH: Changed code to NOT insert states since we only have 1 state per process
+  //printf("Inserting state... \n");
+  //states.insert(&initialState);
 
   if (usingSeeds) {
     std::vector<SeedInfo> &v = seedMap[&initialState];
@@ -2665,29 +2859,61 @@ void Executor::run(ExecutionState &initialState) {
       return;
     }
   }
+  
+  //printf("Constructing searcher... \n");
+  //searcher = constructUserSearcher(*this);
+  
+  //AH: I removed the check for !states.empty() because we have 
+  // only 1 execution state.
 
-  searcher = constructUserSearcher(*this);
+  //std::vector<ExecutionState *> newStates(states.begin(), states.end());
+  //printf("Calling searcher-> update... \n");
+  //searcher->update(0, newStates, std::vector<ExecutionState *>());
+  //printf("Completed call to searcher update \n" );
+  //while (!states.empty() && !haltExecution) {
 
-  std::vector<ExecutionState *> newStates(states.begin(), states.end());
-  searcher->update(0, newStates, std::vector<ExecutionState *>());
-
-  while (!states.empty() && !haltExecution) {
+  int stepInstCtr =0;
+  
+  ExecutionState & state = *GlobalExecutionStatePtr;
+  while ( !haltExecution) {
+    /*
+    printf("Entering main execution loop ... \n");
     ExecutionState &state = searcher->selectState();
     KInstruction *ki = state.pc;
+    printf("Calling stepInstruction ... \n");
     stepInstruction(state);
 
+    printf("Calling execute instruction ... \n");
     executeInstruction(state, ki);
     processTimers(&state, MaxInstructionTime);
 
     checkMemoryUsage();
 
     updateStates(&state);
+    */
+    //printf("Entering main execution loop ... \n");
+    //ExecutionState &state = searcher->selectState();
+    KInstruction *ki = state.pc;
+    stepInstCtr++;
+    printf("Calling stepInstruction time %d ... \n", stepInstCtr);
+    stepInstruction(state);
+
+    //printf("Calling execute instruction ... \n");
+    executeInstruction(state, ki);
+    processTimers(&state, MaxInstructionTime);
+
+    //checkMemoryUsage();
+
+    //updateStates(&state);
+    
   }
+  
+  printf("Finished main instruction interpretation loop \n ");
 
-  delete searcher;
-  searcher = 0;
+  //delete searcher;
+  //searcher = 0;
 
-  doDumpStates();
+  //doDumpStates();
 }
 
 std::string Executor::getAddressInfo(ExecutionState &state, 
@@ -2786,6 +3012,7 @@ void Executor::terminateState(ExecutionState &state) {
       seedMap.erase(it3);
     addedStates.erase(it);
     processTree->remove(state.ptreeNode);
+    printf(" WOULD NORMALL DELETE STATE HERE \n \n \n \n ");
     delete &state;
   }
 }
@@ -3243,6 +3470,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
   ObjectPair op;
   bool success;
   solver->setTimeout(coreSolverTimeout);
+  //printf("Calling resolveOne \n");
   if (!state.addressSpace.resolveOne(state, solver, address, op, success)) {
     address = toConstant(state, address, "resolveOne failure");
     success = state.addressSpace.resolveOne(cast<ConstantExpr>(address), op);
@@ -3269,7 +3497,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
       terminateStateEarly(state, "Query timed out (bounds check).");
       return;
     }
-
+    
     if (inBounds) {
       const ObjectState *os = op.second;
       if (isWrite) {
@@ -3277,22 +3505,23 @@ void Executor::executeMemoryOperation(ExecutionState &state,
           terminateStateOnError(state, "memory error: object read only",
                                 ReadOnly);
         } else {
+	  //printf("Trying to write to MO representing buffer starting at %lu, hex 0x%p \n ", (uint64_t) mo->address, (void *) mo->address);
           ObjectState *wos = state.addressSpace.getWriteable(mo, os);
           wos->write(offset, value);
         }          
       } else {
-        ref<Expr> result = os->read(offset, type);
-        
-        if (interpreterOpts.MakeConcreteSymbolic)
-          result = replaceReadWithSymbolic(state, result);
-        
-        bindLocal(target, state, result);
+	ref<Expr> result = os->read(offset, type);
+	
+	if (interpreterOpts.MakeConcreteSymbolic)
+	  result = replaceReadWithSymbolic(state, result);
+	
+	bindLocal(target, state, result);	
       }
-
+      
       return;
     }
   } 
-
+  
   // we are on an error path (no resolution, multiple resolution, one
   // resolution with out of bounds)
   
@@ -3344,6 +3573,9 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     }
   }
 }
+
+
+
 
 void Executor::executeMakeSymbolic(ExecutionState &state, 
                                    const MemoryObject *mo,
@@ -3422,6 +3654,644 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
 
 /***/
 
+
+extern "C" void klee_interp () {
+  printf("---------------ENTERING KLEE_INTERP ---------------------- \n");
+  assert (GlobalInterpreter);
+  GlobalInterpreter->klee_interp_internal();
+  return;
+}
+
+//This function's purpose is to take a context from native execution 
+//and return an llvm function for interpretation.  It's OK for now if
+// this returns a KFunction with LLVM IR for only one machine instruction at a time. 
+KFunction * findInterpFunction (greg_t * registers, KModule * kmod) {
+
+  uint64_t nativePC = registers[REG_RIP];
+   printf("Looking up interp info for RIP : decimal %lld, hex  %p \n", nativePC, nativePC);
+  //Arithmetic to find interpretation function.
+  std::stringstream converter;
+  converter << std::hex << nativePC;  
+  std::string hexNativePCString(converter.str());
+  std::string functionName =   "interp_fn_" + hexNativePCString;
+  llvm::Function * interpFn = interpModule->getFunction(functionName);
+  KFunction * KInterpFunction = kmod->functionMap[interpFn];
+  //printf(" Trying to find interp function for %s \n",functionName.c_str());
+  
+  if (!KInterpFunction)
+    printf("Unable to find interp function for entrypoint PC 0x%lx \n", nativePC);
+  
+  return KInterpFunction;
+  
+}
+//Here's the interface expected for the llvm interpretation function.
+
+// void @interp_fn_PCValHere( %greg_t * %target_ctx_ptr) {
+
+//; Emulate the native code modeled in the function, including an
+//; updated program counter.  %target_ctx_ptr will take the initial greg_t ctx,
+//; and the necessary interpretation will occur in-place at the ctx pointed to. Also need 
+//; to perform loads and stores to main memory.  By this point, an llvm load/store to
+//; a given address in the interpreter will result in a load/store from/to the actual
+//; native memory address.
+
+// }
+
+
+//TODO: Determine if this is always a 4 byte return value in eax
+//or if it's ever an 8 byte return into rax.
+void Executor::model_random() {
+
+  static int timesRandomIsCalled = 0;
+  timesRandomIsCalled++;
+
+  printf("INTERPRETER: calling model_random() \n");   
+  printf(" DEBUG 1: conc store at 0x%llx \n", target_ctx_gregs_OS->concreteStore );
+
+
+  //Make buf have symbolic value.
+  void * randBuf = malloc(4);
+  //klee_make_symbolic (randBuf,4,"RandomSysCall");
+  printf(" Called malloc to create buf at 0x%lx \n", (uint64_t) randBuf);
+  
+  //Get the MO, then call executeMakeSymbolic()
+  MemoryObject * randBuf_MO = memory->allocateFixed( (uint64_t) randBuf,4,NULL);
+  std::string nameString = "randCall" + std::to_string(timesRandomIsCalled);
+  randBuf_MO->name = nameString;
+  executeMakeSymbolic(*GlobalExecutionStatePtr, randBuf_MO, "modelRandomBuffer");
+  
+  const ObjectState *constRandBufOS = GlobalExecutionStatePtr->addressSpace.findObject(randBuf_MO);
+  ObjectState * rand_buf_OS = GlobalExecutionStatePtr->addressSpace.getWriteable(randBuf_MO,constRandBufOS);
+
+  
+  ref <Expr> psnRand = rand_buf_OS->read(0,Expr::Int32);
+  
+  int objSize = rand_buf_OS->size;
+  
+  for (int i = 0; i < objSize; i++) {
+    printf("in obj location %d is val 0x%x \n", i, rand_buf_OS->concreteStore[i]);
+  }
+  
+  printf(" conc store is at 0x%llx, obj represents 0x%llx \n", &rand_buf_OS->concreteStore, rand_buf_OS->getObject()->address);
+  
+  //rand_buf_OS->print();
+  
+  //printf("Finished print call \n");
+
+  printf("conc store at 0x%llx \n", target_ctx_gregs_OS->concreteStore );
+  
+  target_ctx_gregs_OS->write(REG_RAX * 8,psnRand );
+  printf("Called write in model_rand \n");
+  
+  //target_ctx_gregs_OS->print();
+  
+  /*
+  //TODO: Make this more robust later for call instructions with more than 5 bytes.
+  //TODO: Add asserts to make sure RIP and RSP aren't symbolic.
+  */
+  target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_RIP] +5;
+  printf("INTERPRETER: Exiting model_random \n");
+  
+  printf("Ctx after modeling is ... \n");
+  printCtx(target_ctx_gregs);  
+  
+}
+
+//strncat model-------
+//Using implementation from https://linux.die.net/man/3/strncat :
+//Start copying at end of string in dest located at &dest + destLength
+/*
+  for (i = 0 ; i < len && (src[i] != '\0'); i++) {
+  dest[destLength + i] = src[i];
+  }
+  dest[destLength + i] = '\0';
+*/
+void Executor::model_strncat() {
+  //In our testing for fruitbasket this represents a send point.
+  printf("INTERPRETER: Entering model_strncat() \n");
+  static int timesInStrncat =0;
+  timesInStrncat++;
+  printf("Entered strncat %d times \n", timesInStrncat);
+  uint64_t rawArg1Val = target_ctx_gregs[REG_RDI]; //Ptr to string we append to.
+  uint64_t rawArg2Val = target_ctx_gregs[REG_RSI]; //Ptr to string we're appending to arg1
+  uint64_t rawArg3Val = target_ctx_gregs[REG_RDX]; //Max number of bytes to append
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64); 
+  
+  uint64_t actualLength;  // number of chars printed.
+  
+  // Case 1: Check to see if all the args are concrete for fast path resolution
+  if ( (isa<ConstantExpr>(arg1Expr)) &&
+       (isa<ConstantExpr>(arg2Expr)) &&
+       (isa<ConstantExpr>(arg3Expr))
+       ) {
+    
+    char * dest = (char *) rawArg1Val;
+    char * src  = (char *) rawArg2Val;
+    uint64_t len = rawArg3Val;
+    uint64_t destLength = strlen(dest);
+    uint64_t destFirstAvailableByte = rawArg1Val + destLength;
+    int i;
+
+    actualLength = std::min(len, strlen(src));
+    for (i = 0; i < actualLength; i++) {
+      ref<Expr> destAddressExpr = ConstantExpr::create( destFirstAvailableByte + i, Expr::Int64);
+      ref<Expr> valueExpr       = ConstantExpr::create( (uint8_t)(*(src + i)), Expr::Int8);
+      executeMemoryOperation(*GlobalExecutionStatePtr, /*isWrite*/ true,  destAddressExpr, valueExpr, /*not used for write*/ NULL);
+    }
+    
+    //Write the last value into dest, which is the null terminator
+    ref<Expr> nullCharExpr = ConstantExpr::create(0, Expr::Int8);     
+    ref<Expr> lastAddress = ConstantExpr::create(  destFirstAvailableByte + i, Expr::Int64);
+    executeMemoryOperation(*GlobalExecutionStatePtr, /*isWrite*/ true, lastAddress, nullCharExpr, /*not used for write */ NULL);
+    
+    //Return address of dest in RAX.  In this case, should be concrete.
+    //Todo: Should this actually be the last byte written to in dest, as opposed to the beginning of the array?
+    ref<Expr> destAddr = ConstantExpr::create( (uint64_t) dest, Expr::Int64);
+    target_ctx_gregs_OS->write(REG_RAX * 8, destAddr);
+  } else {
+    //Case 2:  Some args are symbolic.  Not implemented yet.
+    printf("INTERPRETER: CALLING MODEL_STRNCAT WITH SYMBOLIC ARGS.  NOT IMPLMENTED \n");
+    target_ctx_gregs_OS->print();
+    std::exit(EXIT_FAILURE);
+  }
+
+  bytes_printed += actualLength;
+  printf("bytes_printed is %d \n",bytes_printed);
+  
+  if (bytes_printed > message_buf_length) {
+    printf("INTERPRETER: printed more bytes in verification (%llu) than message_buf_length (%llu) \n", bytes_printed, message_buf_length);
+    std::exit(EXIT_FAILURE);
+  }
+  
+  //At this point, invoke the solver and  get back to execution by bumping RIP if necessary.
+  //RAX already has received the return value.
+  
+  for (int j = 0; j < bytes_printed; j++) {
+    ref<Expr> messageBufByteExpr = ConstantExpr::create(message_test_buffer[j],Expr::Int8);
+    ref<Expr> verifierBytePrinted = basket_OS->read(j,Expr::Int8);
+    ref<Expr> equalsExpr = EqExpr::create(messageBufByteExpr,verifierBytePrinted);
+    addConstraint(*GlobalExecutionStatePtr, equalsExpr);
+    //solve and signal back to parent process.
+  }
+
+  printf("Calling solver... \n");
+  std::vector< std::vector<unsigned char> > values;
+  std::vector<const Array*> objects;
+  for (unsigned i = 0; i != GlobalExecutionStatePtr->symbolics.size(); ++i) {
+    objects.push_back(GlobalExecutionStatePtr->symbolics[i].second);
+  }
+  bool success = solver->getInitialValues(*GlobalExecutionStatePtr, objects, values);
+  if (success){
+    printf("Solver success \n");  
+  }
+  else {
+    printf("Solver failed \n");
+    std::exit(EXIT_FAILURE);
+  }
+  
+  if (bytes_printed == message_buf_length  && success) {
+    printf("SUCCESS: All messages accounted for \n");
+    for ( int k =0; k < GlobalExecutionStatePtr->symbolics.size(); k++) {
+      printf("Symbolic var name: %s \n", GlobalExecutionStatePtr->symbolics[k].first->name.c_str());
+      printf("Symbolic var solution: ");
+      for (int m =0; m < values[k].size(); m++ )
+	printf(" %d ", values[k][m]);
+      printf("\n");
+    }
+    std::exit(EXIT_SUCCESS);
+  } else if (bytes_printed <= message_buf_length && success) {
+    target_ctx_gregs[REG_RIP] += 5;  //Increment RIP and get back to execution
+  } else {
+    printf("ERROR in model strncat() \n"); //Fallthrough case should never be reached
+  }
+
+}
+
+void Executor::model_entertran() {
+//Movb 0x0 into springboard_flags -- todo: double check this later
+  *((uint8_t *) &springboard_flags) = 0;
+  //Jump to address in r15
+  target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_R15];
+  
+}
+
+  //Set the next instruction to the value in R15, since that's what would happen
+  //in sb.exittran (along with poison checks we don't care about for the intepreter)
+void Executor::model_exittran() {
+  //Todo: add an assert later that R15 isn't symbolic, and if it is, potentially fork.
+  printf("Entered model_exittran() \n ");
+  target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_R15];
+  return;
+
+}
+
+void Executor::model_reopentran() {
+  printf("Calling model_reopentran() \n ");
+//Movb 0x1 into springboard_flags -- todo: double check this later
+  *((uint8_t *) &springboard_flags) = 1;
+  //Jump to address in r15
+  target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_R15];
+}
+
+bool Executor::gprsAreConcrete() {
+  //Check each byte in the gpr object state to see if any bytes are symbolic.
+  //Todo: In the future, add a fast path check here to see if individual bytes
+  //have the poison value.
+  int numberOfGPRS = 23;
+
+  for (int i = 0; i < (numberOfGPRS * 8) ; i++) {
+
+    //Need to expose isByteConcrete for external use
+    //if (!(target_ctx_gregs_OS->isByteConcrete(i)))
+      return false;
+  }
+  
+
+  return true;
+  
+}
+
+bool Executor::instructionBeginsTransaction(uint64_t pc) {
+  //Todo: Flesh it out later.
+  return false;
+  
+}
+
+
+//Function assumes PC has been incremented to point to next instruction
+bool Executor::resumeNativeExecution (){
+  greg_t * registers = target_ctx_gregs;
+
+if (gprsAreConcrete() && (instructionBeginsTransaction(registers[REG_RIP]))  ) {
+   return true;
+   } else {
+      return false;
+   }
+}
+
+
+//Look for a model for the current instruction at target_ctx_gregs[REG_RIP]
+//and call the model.
+void Executor::model_inst () {
+
+  uint64_t rip = target_ctx_gregs[REG_RIP];
+  int  callqOpc = 0xe8;
+  int  jmpqOpc = 0xe9;
+  uint16_t jleOpc = 0x8e0f;  //reversed from 0x0f8e due to endianness
+  
+  uint8_t * oneBytePtr = (uint8_t *) rip;
+  uint8_t firstByte = *oneBytePtr;
+  uint16_t firstTwoBytes = *((uint16_t *) rip);
+  
+  if (firstByte == callqOpc)  { 
+    printf("INTERPRETER: Modeling call \n");
+    //This is ugly, but we need to check to see if the 
+    //function we're calling is explicitly modeled in our interpreter.
+    //That means we have to add the number after the call instruction
+    //to the current instruction pointer.
+    //oneBytePtr++;
+    //uint32_t * fourBytePtr = (uint32_t *) oneBytePtr;
+    //printf("fourBytePtr is 0x%lx \n", fourBytePtr);
+    //uint32_t offset = *fourBytePtr;
+    //printf("offset is 0x%lx \n",offset);
+    //Must add 5 to account for call 0xe8 opcode and the 4 bytes for offset
+    //uint64_t dest = rip + (uint64_t) offset + 5;
+    //Checks are here to see if the dest is a function we model.
+
+    //Grab address of func to model from rax
+    uint64_t dest = target_ctx_gregs[REG_RAX];
+   
+
+    
+    if (dest == (uint64_t) &random) {
+      model_random();
+    }else if (dest == (uint64_t) &strncat) {
+      model_strncat();
+    }else {
+      printf("INTERPRETER: Couldn't find function model \n");
+      std::exit(EXIT_FAILURE);
+    }
+    return;
+  } else if  (rip == (uint64_t) &sb_entertran) {
+	model_entertran();
+  }else if (rip == (uint64_t) &sb_exittran) {
+    model_exittran();
+  }else if (rip == (uint64_t) &sb_reopen) {
+    model_reopentran();
+  }else {
+	printf("INTERPRETER: Couldn't find  model \n");
+	std::exit(EXIT_FAILURE);
+  }
+  return;
+
+}
+
+
+bool isSpecialInst (uint64_t rip) {
+
+  //printf("Entering isSpecialInst() \n");
+  //TO-DO: Add more opcodes here later on.
+  uint8_t callqOpc = 0xe8;
+  uint8_t jmpqOpc = 0xe9;
+  uint16_t jleOpc = 0x8e0f;  //reversed from 0x0f8e because of endianness.  Gross
+  
+  uint8_t * oneBytePtr = (uint8_t *) rip;
+  uint8_t firstByte = *oneBytePtr;
+  uint16_t firstTwoBytes = *((uint16_t *) rip);
+
+
+  
+  if (firstByte == callqOpc)  { 
+     printf("Found Call. Checking to see if fn is modeled \n");
+
+     //This is ugly, but we need to check to see if the 
+     //function we're calling is explicitly modeled in our interpreter.
+     //That means we have to add the number after the call instruction
+     //to the current instruction pointer.
+     oneBytePtr++;
+     uint32_t * fourBytePtr = (uint32_t *) oneBytePtr;
+     //printf("fourBytePtr is 0x%lx \n", fourBytePtr);
+     uint32_t offset = *fourBytePtr;
+     //printf("offset is 0x%lx \n",offset);
+     //Must add 5 to account for call 0xe8 opcode and the 4 bytes for offset
+     uint64_t dest = rip + (uint64_t) offset + 5;
+     //Checks are here to see if the dest is a function we model.
+     if (dest == (uint64_t) &sb_enter_modeled) {
+       return true;
+     } else {
+       return false;
+     }
+
+  } else if ((uint64_t)rip == (uint64_t) &sb_entertran || (uint64_t)rip == (uint64_t) &sb_reopen || (uint64_t)rip == (uint64_t) &sb_exittran  ) {
+    return true;
+      
+
+  }  else {
+    return false;
+  }
+}
+
+void Executor::klee_interp_internal () {
+  static int interpCtr = 0;
+  interpCtr++;
+  int max = 1000;
+   
+  if (interpCtr > max) {
+    printf("Hit interp counter %d times. Something is probably wrong. \n\n",interpCtr);
+    std::exit(EXIT_FAILURE);
+  }
+  printf("------------------------------------------- \n");
+  printf("Entering interpreter for time %d \n \n \n", interpCtr);
+   uint64_t rip = target_ctx_gregs[REG_RIP];
+  printf("RIP is %lu in decimal, 0x%lx in hex.\n", rip, rip);
+  printf("Initial ctx BEFORE interpretation is \n");
+  printCtx(target_ctx_gregs);
+  printf("\n");
+  //for (int i = 0; i < 23; i++) 
+  // prev_ctx_gregs[i] = target_ctx_gregs[i];
+  
+
+
+  //  printf("target_ctx_gregs conc store at %llx \n",&(target_ctx_gregs_OS->concreteStore[0]));
+  if (isSpecialInst(rip)) {
+    printf("INTERPRETER: FOUND SPECIAL MODELED INST \n");
+    model_inst();
+  } else {
+    
+    printf("INTERPRETER: FOUND NORMAL USER INST \n");
+    KFunction * interpFn = findInterpFunction (target_ctx_gregs, kmodule);
+  
+    //Instruction *firstInst = &*(interpFn->function->begin()->begin());
+    //We have to manually push a frame on for the function we'll be
+    //interpreting through.  At this point, no other frames should exist
+    // on klee's interpretation "stack".
+    GlobalExecutionStatePtr->pushFrame(0,interpFn);
+    GlobalExecutionStatePtr->pc = interpFn->instructions ;
+    GlobalExecutionStatePtr->prevPC = GlobalExecutionStatePtr->pc;
+    
+    //printf("Pushing back args ... \n");
+    std::vector<ref<Expr> > arguments;
+    
+    assert(target_ctx_gregs_MO);
+    uint64_t regAddr = (uint64_t) &target_ctx_gregs;
+    ref<ConstantExpr> regExpr = ConstantExpr::create(regAddr, Context::get().getPointerWidth());
+    arguments.push_back(regExpr);
+
+
+    assert(GlobalExecutionStatePtr);
+    bindArgument(interpFn, 0, *GlobalExecutionStatePtr, arguments[0]);
+    //printf("Calling statsTracker...\n");
+    if (statsTracker)
+      statsTracker->framePushed(*GlobalExecutionStatePtr, 0);
+    
+    //AH: This haltExecution thing is to exit out of the interpreter loop.
+    haltExecution = false;
+    printf("Calling run! \n ");
+    run(*GlobalExecutionStatePtr);
+  
+    if (statsTracker)
+      statsTracker->done();
+    
+  }
+  
+  
+  /*
+  printf("Orig ctx was \n ");
+  printCtx(prev_ctx_gregs);  
+  printf("New ctx is \n ");
+  printCtx(target_ctx_gregs);
+  */
+
+  assert( (uint64_t) target_ctx_gregs_OS->concreteStore == (uint64_t) &target_ctx_gregs);
+
+  printf("Finished round %d of interpretation. \n", interpCtr);
+  printf("-------------------------------------------\n");
+  
+  if (resumeNativeExecution()) {
+    printf("--------RETURNING TO TARGET--------------------- \n");
+    return;
+  }  else {
+    GlobalInterpreter->klee_interp_internal();
+  }  
+  return;
+}
+
+
+void printCtx(gregset_t registers ) {
+
+  printf("R8   : 0x%llx \n", registers[REG_R8]);
+  printf("R9   : 0x%llx \n", registers[REG_R9]);
+  printf("R10  : 0x%llx \n", registers[REG_R10]);
+  printf("R11  : 0x%llx \n", registers[REG_R11]);
+  printf("R12  : 0x%llx \n", registers[REG_R12]);
+  printf("R13  : 0x%llx \n", registers[REG_R13]);
+  printf("R14  : 0x%llx \n", registers[REG_R14]);
+  printf("R15  : 0x%llx \n", registers[REG_R15]);
+  printf("RDI  : 0x%llx \n", registers[REG_RDI]);
+  printf("RSI  : 0x%llx \n", registers[REG_RSI]);
+  printf("RBP  : 0x%llx \n", registers[REG_RBP]);
+  printf("RBX  : 0x%llx \n", registers[REG_RBX]);
+  printf("RDX  : 0x%llx \n", registers[REG_RDX]);
+  printf("RAX  : 0x%llx \n", registers[REG_RAX]);
+  printf("RCX  : 0x%llx \n", registers[REG_RCX]);
+  printf("RSP  : 0x%llx \n", registers[REG_RSP]);
+  printf("RIP  : 0x%llx \n", registers[REG_RIP]);
+  printf("EFL  : 0x%llx \n", registers[REG_EFL]);
+  printf("CSGSFS : 0x%llx \n", registers[REG_CSGSFS]);
+  printf("ERR  : 0x%llx \n", registers[REG_ERR]);
+  printf("TRAPNO : 0x%llx \n", registers[REG_TRAPNO]);
+  printf("OLDMASK : 0x%llx \n", registers[REG_OLDMASK]);
+  printf("CR2  : 0x%llx \n", registers[REG_CR2]);
+
+  return;
+}
+
+void Executor::initializeInterpretationStructures (Function *f) {
+
+  printf("INITIALIZING INTERPRETATION STRUCTURES \n");
+
+  printf("Creating new execution state \n");
+  GlobalExecutionStatePtr = new ExecutionState(kmodule->functionMap[f]);
+
+  //AH: We may not actually need this...
+  printf("Initializing globals ... \n");
+  initializeGlobals(*GlobalExecutionStatePtr);
+  //initializeGlobals(*GlobalExecutionStatePtr);
+  
+  //Set up the KLEE memory object for the stack, and back the concrete store with the actual stack.
+  //Need to be careful here.  The buffer we allocate for the stack is char [X] target_stack. It
+  // starts at address StackBase and covers up to StackBase + sizeof(target_stack) -1.
+  
+  printf("Adding structures to track target stack starting at 0x%llx with size %d \n", StackBase, sizeof(target_stack));
+  printf("target stack base ptr is 0x%llx \n", target_stack_begin_ptr);
+  printf("interp stack base ptr is 0x%llx \n", interp_stack_begin_ptr);
+  
+  MemoryObject * stackMem = addExternalObject(*GlobalExecutionStatePtr,StackBase, sizeof(target_stack), false );
+  const ObjectState *stackOS = GlobalExecutionStatePtr->addressSpace.findObject(stackMem);
+  ObjectState * stackOSWrite = GlobalExecutionStatePtr->addressSpace.getWriteable(stackMem,stackOS);  
+  printf("Setting concrete store to point to target stack \n");
+  stackOSWrite->concreteStore = (uint8_t *) StackBase;
+
+  printf("Adding external object target_ctx_gregs_MO \n");
+  target_ctx_gregs_MO = addExternalObject(*GlobalExecutionStatePtr, (void *) &target_ctx_gregs, sizeof (target_ctx_gregs), false );
+  printf("target_ctx_gregs is address %lu, hex 0x%p \n", (uint64_t) &target_ctx_gregs, (void *) &target_ctx_gregs);
+  printf("target_ctx_gregs is located at address %llu, hex 0x%p \n", (uint64_t) (&target_ctx_gregs), (void *) &target_ctx_gregs);
+  printf("target_ctx_gregs_MO represents address %lu, hex 0x%p \n", (uint64_t) target_ctx_gregs_MO->address, (void *) &target_ctx_gregs);
+
+  printf("Size of gregs is %d \n", sizeof(target_ctx_gregs));
+  
+  printf("Setting concrete store in target_ctx_gregs_OS to target_ctx_gregs \n");
+  const ObjectState *targetCtxOS = GlobalExecutionStatePtr->addressSpace.findObject(target_ctx_gregs_MO);
+  target_ctx_gregs_OS = GlobalExecutionStatePtr->addressSpace.getWriteable(target_ctx_gregs_MO,targetCtxOS);
+  target_ctx_gregs_OS->concreteStore = (uint8_t *) &target_ctx_gregs;
+  
+  printf("Adding external object prev_ctx_gregs_MO \n");
+  prev_ctx_gregs_MO = addExternalObject(*GlobalExecutionStatePtr,(void *)&prev_ctx_gregs, sizeof(prev_ctx_gregs), false );
+  printf("prev_ctx_gregs is address %lu, hex 0x%p \n", (uint64_t) &prev_ctx_gregs, (void *) &prev_ctx_gregs);
+  printf("prev_ctx_gregs_MO represents address %lu, hex 0x%p \n", (uint64_t) prev_ctx_gregs_MO->address, (void *) &prev_ctx_gregs);
+  printf("Setting concrete store in prev_ctx_gregs_OS to prev_ctx_gregs \n");
+  const ObjectState *prevCtxOS = GlobalExecutionStatePtr->addressSpace.findObject(prev_ctx_gregs_MO);
+  prev_ctx_gregs_OS = GlobalExecutionStatePtr->addressSpace.getWriteable(prev_ctx_gregs_MO,prevCtxOS);
+  prev_ctx_gregs_OS->concreteStore = (uint8_t *) &prev_ctx_gregs;
+
+  assert( ((uint8_t *) &prev_ctx_gregs) == (prev_ctx_gregs_OS->concreteStore));
+  assert( ((uint8_t *) &target_ctx_gregs) == (target_ctx_gregs_OS->concreteStore)); 
+
+  
+  printf("IMMEDIATELY AFTER ADDING extern objs:  target_ctx_gregs conc store at %llx \n",&(target_ctx_gregs_OS->concreteStore[0]));
+  printf("Adding structure to track verification message output \n");
+  basket_MO = addExternalObject(*GlobalExecutionStatePtr,(void *)&basket, BUFFER_SIZE, false );
+  const ObjectState * basketOS = GlobalExecutionStatePtr->addressSpace.findObject(basket_MO);
+  basket_OS = GlobalExecutionStatePtr->addressSpace.getWriteable(basket_MO,basketOS);
+  basket_OS->concreteStore = (uint8_t *) &basket;
+  
+  //Map in globals into klee from .vars file.
+  //Todo: Needs to be tested after we get everything compiling again.
+  //Also need to make a non-hardcoded file path and project name below.
+  char * varsFileLocation = "/playpen/humphries/tase/TASE/test/fruit_basket.vars";
+  FILE * externalsFile = fopen (varsFileLocation, "r+");
+
+  if (externalsFile == NULL) {
+    printf("Error reading externals file within initializeInterpretationStructures() \n");
+    std::exit(EXIT_FAILURE);
+  }
+
+ 
+  printf("basket located at 0x%llx \n", (uint64_t) &basket);
+  while (true) {
+    char addr [30];
+    char size [30];
+
+    if ( fscanf (externalsFile, "%s", addr) != EOF)
+      printf("Found global var with addr %s ", addr);
+    else
+      break;
+    
+    if (fscanf (externalsFile, "%s", size) != EOF)
+      printf("and size %s \n", size);
+    else
+      break;
+
+    uint64_t addrVal;
+    uint64_t sizeVal;
+    
+    std::stringstream addrStream;
+    addrStream << std::hex << addr;
+    addrStream >> addrVal;
+
+    std::stringstream sizeStream;
+    sizeStream << std::hex << size;
+    sizeStream >> sizeVal;
+    
+    printf ("After parsing,  global addr is 0x%lx, ", addrVal);
+    printf (" and sizeVal is 0x%lx \n", sizeVal);
+
+
+    //Todo:  Get rid of the special cases below for target_ctx_gregs and basket.
+    //The checks are there now to prevent us from creating two different MO/OS
+    //for the variables, since we map them above already.
+    if ((uint64_t) addrVal == (uint64_t) &target_ctx_gregs) {
+      printf("Found target_ctx_gregs while mapping extern symbols \n");
+      continue;
+    }
+    if ((uint64_t) addrVal == (uint64_t) &basket) {
+      printf("Found basket while mapping extern symbols \n ");
+      continue;
+    }
+      
+    
+    MemoryObject * GlobalVarMO = addExternalObject(*GlobalExecutionStatePtr,(void *) addrVal, sizeVal, false );
+    const ObjectState * ConstGlobalVarOS = GlobalExecutionStatePtr->addressSpace.findObject(GlobalVarMO);
+    ObjectState * GlobalVarOS = GlobalExecutionStatePtr->addressSpace.getWriteable(GlobalVarMO,ConstGlobalVarOS);
+    //Technically I think this is redundant, with addExternalObject changed in tase. 
+    GlobalVarOS->concreteStore = (uint8_t *) addrVal;
+    
+  }
+
+
+
+   
+  printf("PRIOR TO INITIALIZEINTERPSTRUCTS:  target_ctx_gregs conc store at %llx \n",&(target_ctx_gregs_OS->concreteStore[0]));
+
+  //Get rid of the dummy function used for initialization
+  GlobalExecutionStatePtr->popFrame();
+  processTree = new PTree(GlobalExecutionStatePtr);
+  GlobalExecutionStatePtr->ptreeNode = processTree->root;
+
+  printf("END OF INITIALIZEINTERPSTRUCTS:  target_ctx_gregs conc store at %llx \n",&(target_ctx_gregs_OS->concreteStore[0]));
+
+  
+ 
+  //std::exit(EXIT_SUCCESS);
+ 
+
+ 
+  
+}
+				   
+
 void Executor::runFunctionAsMain(Function *f,
 				 int argc,
 				 char **argv,
@@ -3451,7 +4321,7 @@ void Executor::runFunctionAsMain(Function *f,
     if (++ai!=ae) {
       Instruction *first = &*(f->begin()->begin());
       argvMO =
-          memory->allocate((argc + 1 + envc + 1 + 1) * NumPtrBytes,
+         memory->allocate((argc + 1 + envc + 1 + 1) * NumPtrBytes,
                            /*isLocal=*/false, /*isGlobal=*/true,
                            /*allocSite=*/first, /*alignment=*/8);
 
@@ -3476,7 +4346,6 @@ void Executor::runFunctionAsMain(Function *f,
     state->pathOS = pathWriter->open();
   if (symPathWriter) 
     state->symPathOS = symPathWriter->open();
-
 
   if (statsTracker)
     statsTracker->framePushed(*state, 0);
@@ -3513,6 +4382,15 @@ void Executor::runFunctionAsMain(Function *f,
   
   initializeGlobals(*state);
 
+  //AH addition
+  /*
+  if (true) {
+    MemoryObject * stackMem = addExternalObject(*state,(void *)targetMemAddr, 8, false );
+    const ObjectState *stackOS = state->addressSpace.findObject(stackMem);
+    ObjectState * stackOSWrite = state->addressSpace.getWriteable(stackMem,stackOS);
+    stackOSWrite->concreteStore = (uint8_t *) targetMemAddr;
+  }
+  */
   processTree = new PTree(state);
   state->ptreeNode = processTree->root;
   run(*state);

@@ -49,6 +49,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <sys/types.h>
 
 #include <cerrno>
 #include <fstream>
@@ -56,9 +57,153 @@
 #include <iterator>
 #include <sstream>
 
+#include <stdlib.h>
+
+//---------------------------------------------------------
+//AH: BEGINNING OF OUR ADDITIONS (not including .h files)
+
+extern "C" void begin_target_inner();
+extern "C" void klee_interp();
+extern "C" void ENTERTASEINITIAL();
+extern "C" void enter_tase(void (*) ());
+std::stringstream workerIDStream;
+
+//extern void ext_test();
+
+
+
+typedef struct  {
+  int workerPID;
+  uint64_t pc;
+  int childPID;
+} workerMessage;
+
+void * StackBase;
+llvm::Module * interpModule;
+//AH: Kind of gross.  We need to allocate X+1 bytes for an X byte stack, and note that it grows DOWNWARD.
+
+// ugly ugly ugly.  Should just do a tase.h file
+// with stack_size defined only once.
+#define STACK_SIZE 131072
+char target_stack[STACK_SIZE + 1];
+char interp_stack[STACK_SIZE + 1];
+char * target_stack_begin_ptr = &target_stack[STACK_SIZE];
+char * interp_stack_begin_ptr = &interp_stack[STACK_SIZE];
+klee::Interpreter * GlobalInterpreter;
+
+
+
+enum runType : int {PURE_INTERP, TSX_NATIVE, VERIFICATION};
+enum runType exec_mode;
+gregset_t target_ctx_gregs;
+gregset_t prev_ctx_gregs;
+uint64_t targetMemAddr;
+int glob_argc;
+char ** glob_argv;
+char ** glob_envp;
+
+void transferToTarget() {
+  target_ctx_gregs[REG_RDI] = reinterpret_cast<greg_t>(&begin_target_inner);
+  target_ctx_gregs[REG_R15] = reinterpret_cast<greg_t>(&enter_tase);
+  //hope this is right.  AH changed from "interp_stack_begin_ptr"
+  target_ctx_gregs[REG_RSP] = reinterpret_cast<greg_t>(target_stack_begin_ptr);
+
+  ENTERTASEINITIAL();
+}
+
+//AH:  main_original_vanilla() points to the original version of main from vanilla klee.  Not ideal but it works. 
+void main_original_vanilla();
+
+
+//Fruit basket specific code.
+//TODO: Get rid of this third pound define for buffer size!
+#define BUFFER_SIZE 256
+char message_test_buffer [BUFFER_SIZE];
+uint64_t message_buf_length;
+
+
+//AH: From the tsgx folks.
+//TO-DO: Make sure this is properly cited and recognized.
+//Todo:  I'm not actually sure we're mapping in everything.
+//Believe we need to hit the initialized global vars in .DATA
+//too.
+extern void * __bss_start;
+extern void * _end;
+//Start and end of text section
+extern char  __executable_start;
+extern char  __etext;
+
+void tsx_init()
+{
+  //uint64_t *addr = &tsx_init;
+  uint64_t addr = (uint64_t)tsx_init & 0xfffffffffff00000;
+  uint64_t bcc_start, bcc_end;
+  unsigned access;
+  int i;
+  
+    
+  //Hitting code pages---------------------------
+
+  uint64_t start_page_address = ((uint64_t) (&__executable_start))  & 0xfffffffffffff000;
+  uint64_t end_page_address = ((uint64_t) (&__etext) ) & 0xfffffffffffff000;
+  printf("__executable_start at 0x%lx \n", start_page_address);
+  printf("__etext at 0x%lx \n", end_page_address);
+  uint64_t numCodePages = ( end_page_address - start_page_address)/4096  +1;
+  uint64_t garbageVal = 1234;
+  uint64_t check_page_address =  start_page_address; 
+  printf("Found %lu code pages from __executable_start to __etext \n",numCodePages);  
+  for (int i = 0; i < numCodePages; i++) {
+    //Read a value to make sure the page is mapped in.
+    //printf("Checking page at hex %lx \n", check_page_address);
+    garbageVal = * ((uint64_t *)check_page_address);
+    check_page_address += 4096;
+  }
+  //Don't want the compiler to eliminate the loop above
+  //as dead code
+  printf(" Garbage is %lu \n",garbageVal);
+  //-----------------------------------------------  
+    
+  //AH I've removed the assignment to 1 below for the stack and bss
+  //sections.
+
+  //Hitting bss pages---------------------------------------
+  bcc_start = (uint64_t)&__bss_start & 0xfffffffffffff000;
+  bcc_end = (uint64_t)&_end & 0xfffffffffffff000;
+  //printf("bcc addr: %lx\n", bcc_start);
+  // Uninitialized data pages
+  while (bcc_start <= bcc_end) {
+    access = *(uint64_t *)(bcc_start);
+    //*(uint64_t *)(bcc_start) = 1;
+    bcc_start += 4096;
+  }
+  //-------------------------------------------------------
+  
+  // Hitting stack pages----------------------------------
+  //AH: Actually, I don't think this does anything anymore.
+  //We really only care about the target stack anyway.
+  addr = (uint64_t)&target_stack;
+  //printf("stack addr: %lx\n", addr);
+  for (i = 0; i < STACK_SIZE; i += 1) {
+    access = *(uint64_t *)(addr + i);
+  }
+  //------------------------------------------------------
+#if 0 // Seems we do not need to touch heap memory.
+  void *heap_base = get_heap_base();
+  printf("heap addr: %lx\n", (uint64_t)heap_base);
+  
+  void *ptr;
+  ptr = malloc(8192);
+  printf("malloc addr: %lx\n", (uint64_t)ptr);
+#endif
+}
+
+
+//AH: END OF OUR ADDITIONS
+//-----------------------------------
 
 using namespace llvm;
 using namespace klee;
+
 
 namespace {
   cl::opt<std::string>
@@ -67,7 +212,7 @@ namespace {
   cl::opt<std::string>
   EntryPoint("entry-point",
                cl::desc("Consider the function with the given name as the entrypoint"),
-               cl::init("main"));
+               cl::init("_Z9dummyMainv"));
 
   cl::opt<std::string>
   RunInDir("run-in", cl::desc("Change to the given directory prior to executing"));
@@ -636,6 +781,7 @@ static int initEnv(Module *mainModule) {
   */
 
   Function *mainFn = mainModule->getFunction(EntryPoint);
+
   if (!mainFn) {
     klee_error("'%s' function not found in module.", EntryPoint.c_str());
   }
@@ -1118,8 +1264,270 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 }
 #endif
 
-int main(int argc, char **argv, char **envp) {
+ 
+//This is a hack to allow us to call a function with c naming/linkage 
+//called begin_target_inner();
+ void begin_target () {
+   enter_tase(&begin_target_inner);
+
+   return;
+ }
+
+ //Fill in later
+ int processWorkerMessage (workerMessage m) {
+   return 5;
+ }
+ 
+ int main (int argc, char **argv, char **envp) {
+
+
+   //Redirect stdout messages to a file called "Monitor".
+   //Later, calls to unix fork in executor create new filenames
+   //after each fork.
+   workerIDStream << "Monitor";
+   std::string IDString;
+   IDString = workerIDStream.str();
+   freopen(IDString.c_str(),"w", stdout);
+   
+   glob_argc = argc;
+   glob_argv = argv;
+   glob_envp = envp;
+   
+   printf("Initializing interp and target contexts... \n");
+
+   llvm::InitializeNativeTarget();
+   parseArguments(argc, argv);
+   
+   // Load the bytecode...
+   std::string errorMsg;
+   LLVMContext ctx;
+   interpModule = klee::loadModule(ctx, InputFile, errorMsg);
+
+   printf("Module has been loaded...\n");
+   
+   if (!interpModule) {
+    klee_error("error loading program '%s': %s", InputFile.c_str(),
+               errorMsg.c_str());
+  }
+
+   
+   
+   ///////////////////////Arg Parsing section
+
+   int pArgc;
+   char **pArgv;
+   char **pEnvp;
+   if (Environ != "") {
+     std::vector<std::string> items;
+     std::ifstream f(Environ.c_str());
+     if (!f.good())
+       klee_error("unable to open --environ file: %s", Environ.c_str());
+     while (!f.eof()) {
+       std::string line;
+       std::getline(f, line);
+       line = strip(line);
+       if (!line.empty())
+	 items.push_back(line);
+     }
+     f.close();
+     pEnvp = new char *[items.size()+1];
+     unsigned i=0;
+     for (; i != items.size(); ++i)
+       pEnvp[i] = strdup(items[i].c_str());
+     pEnvp[i] = 0;
+   } else {
+     pEnvp = envp;
+   }
+   
+   
+
+   pArgc = InputArgv.size() + 1;
+   pArgv = new char *[pArgc];
+   for (unsigned i=0; i<InputArgv.size()+1; i++) {
+     std::string &arg = (i==0 ? InputFile : InputArgv[i-1]);
+     unsigned size = arg.size() + 1;
+     char *pArg = new char[size];
+     
+     std::copy(arg.begin(), arg.end(), pArg);
+     pArg[size - 1] = 0;
+     
+     pArgv[i] = pArg;
+   }
+   ///////////////////// End of Arg Parsing Section
+   
+   printf("Creating interpreter... \n");
+   
+   Interpreter::InterpreterOptions IOpts;
+   //IOpts.MakeConcreteSymbolic = MakeConcreteSymbolic;
+   KleeHandler *handler = new KleeHandler(pArgc, pArgv);
+   Interpreter *interpreter =
+     theInterpreter = Interpreter::create(ctx, IOpts, handler);
+   handler->setInterpreter(interpreter);
+   
+   std::string LibraryDir = KleeHandler::getRunTimeLibraryPath(argv[0]);
+   Interpreter::ModuleOptions Opts(LibraryDir.c_str(), EntryPoint,
+                                  /*Optimize=*/OptimizeModule,
+                                  /*CheckDivZero=*/CheckDivZero,
+                                  /*CheckOvershift=*/CheckOvershift);
+
+
+   //Todo:  See if we can rip some of the code below out for externalsAndGlobalsCheck.
+   // We're already doing the work of mapping in globals for tase in
+   // initializeInterpretationStructures().
+   printf("Setting module and checking externals and globals... \n");
+   const Module *finalModule = interpreter->setModule(interpModule, Opts);
+   externalsAndGlobalsCheck(finalModule);
+
+
+   StackBase = (void *) &target_stack;
+   //Entry fn for our purposes is a dummy main function.
+   // It's specified in parseltongue86 as dummyMain and
+   // as_Z9dummyMainv in "EntryPoint" because of cpp name mangling.
+  
+   Function *entryFn = interpModule->getFunction(EntryPoint);
+
+   if (!entryFn){
+     printf("ERROR: Couldn't locate entryFn \n");
+     std::exit(EXIT_FAILURE);
+   }
+
+  
+   
+   printf("Initializing interpretation structures ...\n");
+   interpreter->initializeInterpretationStructures(entryFn);
+   GlobalInterpreter = interpreter;
+   
+   //This should be made global later.
+   enum runType exec_mode = VERIFICATION;
+
+   int c2sFD [2];
+   int pipeResult = pipe(c2sFD);
+   if (pipeResult != 0) {
+     printf("ERROR: Couldn't create c2sFD pipe\n");
+     std::exit(EXIT_FAILURE);
+   }
+
+   
+   //TO-DO: Remove later.  For test purposes
+   //Really ought to be able to add in longer
+   //strings with multiple fruits now that
+   //the stupid simple "apple" case is working.
+   
+   memset (message_test_buffer, 0, 256);
+   strncpy (message_test_buffer, "appleappleapple", 15);
+
+   message_buf_length = strlen(message_test_buffer);
+   
+   
+   //TODO: Make tsx_init() work for global variables
+   //and double check the implementation.
+   printf("Calling tsx_init to map in pages \n");
+   tsx_init();
+
+   
+
+   int pid;
+   if (exec_mode == PURE_INTERP)
+     pid = 0;
+   else if (exec_mode == TSX_NATIVE)
+     pid = 0;
+   else if (exec_mode == VERIFICATION) {
+     pid = fork();
+   }
+   else {
+     printf("ERROR: invalid exec_mode \n");  std::exit(EXIT_FAILURE); }
+   
+   if (pid == 0){
+
+     //Child path is here.
+     printf("---------------------SWAPPING TO TARGET CONTEXT------------------- \n");
+     if (exec_mode == PURE_INTERP) {
+       printf("STARTING PURE INTERPRETER TEST \n");
+       //RIP hack is just for now.
+       
+       klee_interp();
+     } else if (exec_mode == TSX_NATIVE) {
+       printf("STARTING TSX_NATIVE EXECUTION TEST W/O SYMBOLIC VALUES \n");
+       //swapcontext(&handler_ctx, &target_ctx);
+     } else if (exec_mode == VERIFICATION) {
+       printf("STARTING VERIFICATION \n");
+       transferToTarget();
+       //swapcontext(&handler_ctx, &target_ctx);
+       
+     }
+     else {
+       printf("ERROR: Run mode not specified \n");
+       std::exit(EXIT_FAILURE);
+     }
+     
+     printf("RETURNING TO MAIN HANDLER \n");
+     
+     return 0;
+     
+   } else {
+     //Code path here will hold the management code for the controller process.
+
+     while (true) {
+       //spin
+     }
+     
+     
+     while(true) {
+       //manage states
+       int numBytesRead;
+       char workerMessageBuf[sizeof(workerMessage)];
+
+       //Get a "workerMessage-sized" number of bytes from the read end of the pipe.
+       numBytesRead =  read(c2sFD[0], workerMessageBuf, sizeof(workerMessageBuf));
+       if (numBytesRead != 0) {
+	 if (numBytesRead != sizeof(workerMessage)) {
+	   printf("Error: manager process encountered data from pipe with incorrect length %d \n",numBytesRead);
+	 }
+
+	 //Questionable.
+	 workerMessage * msg = (workerMessage *) &workerMessageBuf[0];
+	 
+	 int result =  processWorkerMessage(*msg);
+	 /* if (result == 0)
+	   //Freeze worker process
+	   else 
+	 if (result == 1)
+	   //Tell orig worker process to continue, fork and freeze child
+	 else 
+	 
+	 if (result == 3)
+	   //Tell both orig and child process to fork and continue
+	 else if (result == 2)
+	   //Tell orig process to freeze, but fork child first.
+	 else if (result == 5)
+	   std::exit(EXIT_SUCCESS);
+	 else
+	   printf("ERROR: invalid result from pickWorker(msg) in manager \n"); std::exit(EXIT_FAILURE);
+	 */
+	 //Remove me.
+	 std::exit(EXIT_FAILURE);
+       }
+     
+       //Determine if any workers are blocked.
+       
+       //If so, see why and determine if the worker should be able to fork.
+
+       //If worker forks, find the pid of the child and add it to the list.
+     } 
+     
+   }
+ 
+ }
+ 
+void main_original_vanilla() {
+  
+  int argc = glob_argc;
+  char ** argv = glob_argv;
+  char ** envp = glob_envp;
+
   atexit(llvm_shutdown);  // Call llvm_shutdown() on exit.
+
+  printf("Sanity Check -- starting klee main. \n");
 
   llvm::InitializeNativeTarget();
 
@@ -1153,13 +1561,13 @@ int main(int argc, char **argv, char **envp) {
                                // return error since we didn't catch
                                // the exit.
             klee_warning("KLEE: watchdog exiting (no child)\n");
-            return 1;
+            return; //1;
           } else if (errno!=EINTR) {
             perror("watchdog waitpid");
             exit(1);
           }
         } else if (res==pid && WIFEXITED(status)) {
-          return WEXITSTATUS(status);
+          return; //WEXITSTATUS(status);
         } else {
           double time = util::getWallTime();
 
@@ -1178,7 +1586,7 @@ int main(int argc, char **argv, char **envp) {
               klee_warning(
                   "KLEE: WATCHDOG: kill(9)ing child (I tried to be nice)\n");
               kill(pid, SIGKILL);
-              return 1; // what more can we do
+              return; //1; // what more can we do
             }
 
             // Ideally this triggers a dump, which may take a while,
@@ -1188,12 +1596,13 @@ int main(int argc, char **argv, char **envp) {
         }
       }
 
-      return 0;
+      return; //0;
     }
   }
+  //End Watchdog
 
   sys::SetInterruptFunction(interrupt_handle);
-
+  
   // Load the bytecode...
   std::string errorMsg;
   LLVMContext ctx;
@@ -1206,7 +1615,7 @@ int main(int argc, char **argv, char **envp) {
   if (WithPOSIXRuntime) {
     int r = initEnv(mainModule);
     if (r != 0)
-      return r;
+      return ;//r;
   }
 
   std::string LibraryDir = KleeHandler::getRunTimeLibraryPath(argv[0]);
@@ -1307,6 +1716,8 @@ int main(int argc, char **argv, char **envp) {
   Interpreter *interpreter =
     theInterpreter = Interpreter::create(ctx, IOpts, handler);
   handler->setInterpreter(interpreter);
+
+  GlobalInterpreter = interpreter;
 
   for (int i=0; i<argc; i++) {
     handler->getInfoStream() << argv[i] << (i+1<argc ? " ":"\n");
@@ -1416,6 +1827,8 @@ int main(int argc, char **argv, char **envp) {
                    sys::StrError(errno).c_str());
       }
     }
+    GlobalInterpreter = interpreter;
+
     interpreter->runFunctionAsMain(mainFn, pArgc, pArgv, pEnvp);
 
     while (!seeds.empty()) {
@@ -1493,5 +1906,5 @@ int main(int argc, char **argv, char **envp) {
 
   delete handler;
 
-  return 0;
+  return; //0;
 }

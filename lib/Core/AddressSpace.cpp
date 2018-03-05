@@ -20,8 +20,8 @@ using namespace klee;
 ///
 
 void AddressSpace::bindObject(const MemoryObject *mo, ObjectState *os) {
-  assert(os->copyOnWriteOwner==0 && "object already has owner");
-  os->copyOnWriteOwner = cowKey;
+  //assert(os->copyOnWriteOwner==0 && "object already has owner");
+  //os->copyOnWriteOwner = cowKey;
   objects = objects.replace(std::make_pair(mo, os));
 }
 
@@ -39,14 +39,17 @@ ObjectState *AddressSpace::getWriteable(const MemoryObject *mo,
                                         const ObjectState *os) {
   assert(!os->readOnly);
 
-  if (cowKey==os->copyOnWriteOwner) {
+  //AH: I changed this.
+  //if (cowKey==os->copyOnWriteOwner) {
     return const_cast<ObjectState*>(os);
-  } else {
+    /*
+} else {
     ObjectState *n = new ObjectState(*os);
     n->copyOnWriteOwner = cowKey;
     objects = objects.replace(std::make_pair(mo, n));
     return n;    
   }
+    */
 }
 
 /// 
@@ -55,7 +58,7 @@ bool AddressSpace::resolveOne(const ref<ConstantExpr> &addr,
                               ObjectPair &result) {
   uint64_t address = addr->getZExtValue();
   MemoryObject hack(address);
-
+  //printf("Calling resolveOne on memory address %lu hex %lx \n", address, address);
   if (const MemoryMap::value_type *res = objects.lookup_previous(&hack)) {
     const MemoryObject *mo = res->first;
     // Check if the provided address is between start and end of the object
