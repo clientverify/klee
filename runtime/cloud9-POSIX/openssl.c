@@ -150,6 +150,22 @@ static void make_EC_POINT_symbolic(EC_POINT* p) {
 ////////////////////////////////////////////////////////////////////////////////
 // Random number generation
 ////////////////////////////////////////////////////////////////////////////////
+
+DEFINE_MODEL(unsigned int, ktest_arc4random)
+{
+  static int arc4rng_index = -1;
+  unsigned int ret;
+  int len = cliver_ktest_copy("arc4rng", arc4rng_index--, (char*)(&ret), sizeof(ret));
+  assert(len == sizeof(unsigned int));
+
+  //only works if we're recording every call to arc4random in sequence.
+  unsigned int tmp = arc4random();
+  if(tmp != ret) printf("arc4random playback recorded: %u should be %d\n", ret, tmp);
+  assert(tmp == ret);
+
+  return ret;
+}
+
 DEFINE_MODEL(int, RAND_status, void) {
   return 1;
 }
@@ -193,7 +209,7 @@ DEFINE_MODEL(DH*, ktest_verify_choose_dh, int min, int wantbits, int max){
   ktest_writesocket(verification_socket, (char*)&max, sizeof(max));
 
   //dealing with the fact that the call this models has a single call to
-  arc4random();
+  ktest_arc4random();
 
   unsigned char *from = malloc(MAX_LEN);
 

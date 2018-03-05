@@ -48,6 +48,7 @@ DECLARE_MODEL(void, klee_print, char* str, int symb_var)
 DECLARE_MODEL(int, init_version, void)
 //DECLARE_MODEL(void*, memset, void *s, int c, size_t n)
 
+DECLARE_MODEL(unsigned int, ktest_arc4random)
 DECLARE_MODEL(int, RAND_status, void)
 DECLARE_MODEL(int, RAND_bytes, unsigned char *buf, int num)
 DECLARE_MODEL(int, RAND_pseudo_bytes, unsigned char *buf, int num)
