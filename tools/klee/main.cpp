@@ -56,6 +56,35 @@
 #include <iterator>
 #include <sstream>
 
+#include <stdlib.h>
+#include <ucontext.h>
+
+extern "C" void begin_target_inner();
+extern "C" void klee_interp();
+//extern void ext_test();
+
+void * StackBase;
+uint64_t InitStackSize;
+llvm::Module * interpModule;
+//AH: Kind of gross.  We need to allocate X+1 bytes for an X byte stack, and note that it grows DOWNWARD.
+char target_stack[65537];
+char interp_stack[65537];
+char temp_stack[65537];
+char * temp_stack_begin_ptr = &temp_stack[65536];
+char * interp_stack_begin_ptr = &interp_stack[65536];
+
+klee::Interpreter * GlobalInterpreter;
+
+enum runType : int {PURE_INTERP, TSX_NATIVE, VERIFICATION};
+enum runType exec_mode;
+ucontext_t handler_ctx, target_ctx, interp_ctx, prev_ctx;
+uint64_t targetMemAddr;
+int glob_argc;
+char ** glob_argv;
+char ** glob_envp;
+
+//AH:  main_real() points to the original version of main from vanilla klee.  Not ideal but it works. 
+void main_real();
 
 using namespace llvm;
 using namespace klee;
@@ -636,6 +665,7 @@ static int initEnv(Module *mainModule) {
   */
 
   Function *mainFn = mainModule->getFunction(EntryPoint);
+
   if (!mainFn) {
     klee_error("'%s' function not found in module.", EntryPoint.c_str());
   }
@@ -1118,8 +1148,156 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 }
 #endif
 
-int main(int argc, char **argv, char **envp) {
+//This is a hack to allow us to call a function with c naming/linkage 
+//called begin_target_inner();
+ void begin_target () {
+   begin_target_inner();
+
+   return;
+ }
+
+ int main (int argc, char **argv, char **envp) {
+
+   glob_argc = argc;
+   glob_argv = argv;
+   glob_envp = envp;
+   
+   printf("Initializing interp and target contexts... \n");
+   getcontext(&target_ctx);
+   target_ctx.uc_stack.ss_sp = &target_stack;
+   target_ctx.uc_stack.ss_size = sizeof(target_stack);
+   target_ctx.uc_link = &handler_ctx;
+   makecontext(&target_ctx, begin_target,0);
+
+   getcontext(&interp_ctx);
+   interp_ctx.uc_stack.ss_sp = &interp_stack;
+   interp_ctx.uc_stack.ss_size = sizeof(interp_stack);
+   interp_ctx.uc_link = &target_ctx;
+   makecontext(&interp_ctx, klee_interp, 0);
+   
+   llvm::InitializeNativeTarget();
+   parseArguments(argc, argv);
+   
+   // Load the bytecode...
+   std::string errorMsg;
+   LLVMContext ctx;
+   interpModule = klee::loadModule(ctx, InputFile, errorMsg);
+   
+   if (!interpModule) {
+    klee_error("error loading program '%s': %s", InputFile.c_str(),
+               errorMsg.c_str());
+  }
+
+   ///////////////////////Arg Parsing section
+
+   int pArgc;
+   char **pArgv;
+   char **pEnvp;
+   if (Environ != "") {
+     std::vector<std::string> items;
+     std::ifstream f(Environ.c_str());
+     if (!f.good())
+       klee_error("unable to open --environ file: %s", Environ.c_str());
+     while (!f.eof()) {
+       std::string line;
+       std::getline(f, line);
+       line = strip(line);
+       if (!line.empty())
+	 items.push_back(line);
+     }
+     f.close();
+     pEnvp = new char *[items.size()+1];
+     unsigned i=0;
+     for (; i != items.size(); ++i)
+       pEnvp[i] = strdup(items[i].c_str());
+     pEnvp[i] = 0;
+   } else {
+     pEnvp = envp;
+   }
+   
+   
+
+   pArgc = InputArgv.size() + 1;
+   pArgv = new char *[pArgc];
+   for (unsigned i=0; i<InputArgv.size()+1; i++) {
+     std::string &arg = (i==0 ? InputFile : InputArgv[i-1]);
+     unsigned size = arg.size() + 1;
+     char *pArg = new char[size];
+     
+     std::copy(arg.begin(), arg.end(), pArg);
+     pArg[size - 1] = 0;
+     
+     pArgv[i] = pArg;
+   }
+   ///////////////////// End of Arg Parsing Section
+   
+   printf("Creating interpreter... \n");
+   
+   Interpreter::InterpreterOptions IOpts;
+   //IOpts.MakeConcreteSymbolic = MakeConcreteSymbolic;
+   KleeHandler *handler = new KleeHandler(pArgc, pArgv);
+   Interpreter *interpreter =
+     theInterpreter = Interpreter::create(ctx, IOpts, handler);
+   handler->setInterpreter(interpreter);
+   
+   
+   std::string LibraryDir = KleeHandler::getRunTimeLibraryPath(argv[0]);
+   Interpreter::ModuleOptions Opts(LibraryDir.c_str(), EntryPoint,
+                                  /*Optimize=*/OptimizeModule,
+                                  /*CheckDivZero=*/CheckDivZero,
+                                  /*CheckOvershift=*/CheckOvershift);
+
+   printf("Setting module and checking externals and globals... \n");
+   const Module *finalModule = interpreter->setModule(interpModule, Opts);
+   externalsAndGlobalsCheck(finalModule);
+
+   StackBase = (void *) &target_stack;
+   InitStackSize = 65536;
+   Function *entryFn = interpModule->getFunction(EntryPoint);
+
+   if (!entryFn){
+     printf("ERROR: Couldn't locate entryFn \n");
+     std::exit(EXIT_FAILURE);
+   }
+
+   printf("Initializing interpretation structures ...\n");
+   interpreter->initializeInterpretationStructures(entryFn);
+   GlobalInterpreter = interpreter;
+   printf("---------------------SWAPPING TO TARGET CONTEXT------------------- \n");
+
+   enum runType exec_mode = PURE_INTERP;
+
+   if (exec_mode == PURE_INTERP) {
+     printf("STARTING PURE INTERPRETER TEST \n");
+     //RIP hack is just for now.
+     target_ctx.uc_mcontext.gregs[REG_RIP] = 0x5b5000;
+     klee_interp();
+   } else if (exec_mode == TSX_NATIVE) {
+     swapcontext(&handler_ctx, &target_ctx);
+   } else if (exec_mode == VERIFICATION) {
+     swapcontext(&handler_ctx, &target_ctx);
+   }
+   else {
+     printf("ERROR: Run mode not specified \n");
+     std::exit(EXIT_FAILURE);
+   }
+     
+   printf("RETURNING TO MAIN HANDLER \n");
+   
+   return 0;
+   
+ 
+ }
+ 
+void main_real() {
+  
+  int argc = glob_argc;
+  char ** argv = glob_argv;
+  char ** envp = glob_envp;
+
   atexit(llvm_shutdown);  // Call llvm_shutdown() on exit.
+
+  printf("Sanity Check -- starting klee main. \n");
 
   llvm::InitializeNativeTarget();
 
@@ -1153,13 +1331,13 @@ int main(int argc, char **argv, char **envp) {
                                // return error since we didn't catch
                                // the exit.
             klee_warning("KLEE: watchdog exiting (no child)\n");
-            return 1;
+            return; //1;
           } else if (errno!=EINTR) {
             perror("watchdog waitpid");
             exit(1);
           }
         } else if (res==pid && WIFEXITED(status)) {
-          return WEXITSTATUS(status);
+          return; //WEXITSTATUS(status);
         } else {
           double time = util::getWallTime();
 
@@ -1178,7 +1356,7 @@ int main(int argc, char **argv, char **envp) {
               klee_warning(
                   "KLEE: WATCHDOG: kill(9)ing child (I tried to be nice)\n");
               kill(pid, SIGKILL);
-              return 1; // what more can we do
+              return; //1; // what more can we do
             }
 
             // Ideally this triggers a dump, which may take a while,
@@ -1188,12 +1366,13 @@ int main(int argc, char **argv, char **envp) {
         }
       }
 
-      return 0;
+      return; //0;
     }
   }
+  //End Watchdog
 
   sys::SetInterruptFunction(interrupt_handle);
-
+  
   // Load the bytecode...
   std::string errorMsg;
   LLVMContext ctx;
@@ -1206,7 +1385,7 @@ int main(int argc, char **argv, char **envp) {
   if (WithPOSIXRuntime) {
     int r = initEnv(mainModule);
     if (r != 0)
-      return r;
+      return ;//r;
   }
 
   std::string LibraryDir = KleeHandler::getRunTimeLibraryPath(argv[0]);
@@ -1307,6 +1486,8 @@ int main(int argc, char **argv, char **envp) {
   Interpreter *interpreter =
     theInterpreter = Interpreter::create(ctx, IOpts, handler);
   handler->setInterpreter(interpreter);
+
+  GlobalInterpreter = interpreter;
 
   for (int i=0; i<argc; i++) {
     handler->getInfoStream() << argv[i] << (i+1<argc ? " ":"\n");
@@ -1416,6 +1597,8 @@ int main(int argc, char **argv, char **envp) {
                    sys::StrError(errno).c_str());
       }
     }
+    GlobalInterpreter = interpreter;
+
     interpreter->runFunctionAsMain(mainFn, pArgc, pArgv, pEnvp);
 
     while (!seeds.empty()) {
@@ -1493,5 +1676,5 @@ int main(int argc, char **argv, char **envp) {
 
   delete handler;
 
-  return 0;
+  return; //0;
 }

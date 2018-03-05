@@ -487,6 +487,12 @@ public:
     usingSeeds = seeds;
   }
 
+  virtual void klee_interp_internal ();
+  
+  virtual bool resumeNativeExecution ();
+
+  virtual void initializeInterpretationStructures (llvm::Function *f);
+
   virtual void runFunctionAsMain(llvm::Function *f,
                                  int argc,
                                  char **argv,

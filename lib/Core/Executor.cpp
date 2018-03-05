@@ -91,14 +91,28 @@
 
 #include <errno.h>
 #include <cxxabi.h>
+#include <ucontext.h>
 
 using namespace llvm;
 using namespace klee;
 
+enum runType : int {PURE_INTERP, TSX_NATIVE, VERIFICATION};
+extern enum runType exec_mode;
+extern void * StackBase;
+extern char target_stack[65537];
+extern uint64_t InitStackSize;
+extern Function * AddFunction;
+extern ucontext_t target_ctx;
+extern ucontext_t prev_ctx;
+extern Module * interpModule;
 
+MemoryObject * target_ctx_MO;
+MemoryObject * prev_ctx_MO;
 
+void printCtx(ucontext_t ctx );
 
-
+ExecutionState * GlobalExecutionStatePtr;
+extern klee::Interpreter * GlobalInterpreter;
 namespace {
   cl::opt<bool>
   DumpStatesOnHalt("dump-states-on-halt",
@@ -161,7 +175,7 @@ namespace {
   EqualitySubstitution("equality-substitution",
 		       cl::init(true),
 		       cl::desc("Simplify equality expressions before querying the solver (default=on)."));
-
+ 
   cl::opt<unsigned>
   MaxSymArraySize("max-sym-array-size",
                   cl::init(0));
@@ -393,6 +407,9 @@ Executor::Executor(LLVMContext &ctx, const InterpreterOptions &opts,
 
 const Module *Executor::setModule(llvm::Module *module, 
                                   const ModuleOptions &opts) {
+  
+  assert (!kmodule && "kmodule fail \n");
+  assert (module && "module fail \n");
   assert(!kmodule && module && "can only register one module"); // XXX gross
   
   kmodule = new KModule(module);
@@ -487,8 +504,11 @@ MemoryObject * Executor::addExternalObject(ExecutionState &state,
   MemoryObject *mo = memory->allocateFixed((uint64_t) (unsigned long) addr, 
                                            size, 0);
   ObjectState *os = bindObjectInState(state, mo, false);
-  for(unsigned i = 0; i < size; i++)
-    os->write8(i, ((uint8_t*)addr)[i]);
+  
+  printf("mo->address is %lu \n", mo->address);
+  os->concreteStore = (uint8_t *) mo->address;
+  //for(unsigned i = 0; i < size; i++)
+  // os->write8(i, ((uint8_t*)addr)[i]);
   if(isReadOnly)
     os->setReadOnly(true);  
   return mo;
@@ -614,8 +634,10 @@ void Executor::initializeGlobals(ExecutionState &state) {
           klee_error("unable to load symbol(%s) while initializing globals.", 
                      i->getName().data());
 
-        for (unsigned offset=0; offset<mo->size; offset++)
+        for (unsigned offset=0; offset<mo->size; offset++){
+	  //printf("Calling os->write8 from initializeGlobals()\n ");
           os->write8(offset, ((unsigned char*)addr)[offset]);
+	}
       }
     } else {
       Type *ty = i->getType()->getElementType();
@@ -1168,12 +1190,16 @@ void Executor::printDebugInstructions(ExecutionState &state) {
 }
 
 void Executor::stepInstruction(ExecutionState &state) {
+  //printf(" DB -1 \n");
   printDebugInstructions(state);
+  //printf(" DB 0 \n");
   if (statsTracker)
     statsTracker->stepInstruction(state);
-
+  //printf(" DB 1 \n");
   ++stats::instructions;
+  //printf(" DB 2 \n");
   state.prevPC = state.pc;
+  //printf(" DB 3 \n");
   ++state.pc;
 
   if (stats::instructions==StopAfterNInstructions)
@@ -1438,10 +1464,13 @@ static inline const llvm::fltSemantics * fpWidthToSemantics(unsigned width) {
 }
 
 void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
-  Instruction *i = ki->inst;
+  printf( " KI is %s \n" , (ki->printFileLine()).c_str());
+
+Instruction *i = ki->inst;
   switch (i->getOpcode()) {
     // Control flow
   case Instruction::Ret: {
+    printf("\n Entering ret instruction \n");
     ReturnInst *ri = cast<ReturnInst>(i);
     KInstIterator kcaller = state.stack.back().caller;
     Instruction *caller = kcaller ? kcaller->inst : 0;
@@ -1454,6 +1483,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     
     if (state.stack.size() <= 1) {
       assert(!caller && "caller set on initial stack frame");
+      //printf("Choosing not to call terminateStateOnExit(state) \n \n ");
       terminateStateOnExit(state);
     } else {
       state.popFrame();
@@ -1461,6 +1491,9 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       if (statsTracker)
         statsTracker->framePopped(state);
 
+      printf(" Found ret instruction (early) \n");
+      haltExecution = true;
+      break;
       if (InvokeInst *ii = dyn_cast<InvokeInst>(caller)) {
         transferToBasicBlock(ii->getNormalDest(), caller->getParent(), state);
       } else {
@@ -1498,7 +1531,12 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
           terminateStateOnExecError(state, "return void when caller expected a result");
         }
       }
-    }      
+    }
+    //AH: Added this code so that we can eventually exit out of the 
+    //interpretation function.  For now, this means we can only
+    //interpret a single function at a time with no calls.
+    printf(" Found ret instruction \n");
+    haltExecution = true;
     break;
   }
   case Instruction::Br: {
@@ -1553,12 +1591,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       std::map<ref<Expr>, BasicBlock *> expressionOrder;
 
       // Iterate through all non-default cases and order them by expressions
-#if LLVM_VERSION_CODE > LLVM_VERSION(3, 4)
-      for (auto i : si->cases()) {
-#else
       for (SwitchInst::CaseIt i = si->case_begin(), e = si->case_end(); i != e;
            ++i) {
-#endif
         ref<Expr> value = evalConstant(i.getCaseValue());
 
         BasicBlock *caseSuccessor = i.getCaseSuccessor();
@@ -2374,7 +2408,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     ref<Expr> vec = eval(ki, 0, state).value;
     ref<Expr> newElt = eval(ki, 1, state).value;
     ref<Expr> idx = eval(ki, 2, state).value;
-
+    
     ConstantExpr *cIdx = dyn_cast<ConstantExpr>(idx);
     if (cIdx == NULL) {
       terminateStateOnError(
@@ -2386,6 +2420,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     const llvm::VectorType *vt = iei->getType();
     unsigned EltBits = getWidthForLLVMType(vt->getElementType());
 
+    //printf("\n Calling InsertElement at idx %lu \n", iIdx);
+
     if (iIdx >= vt->getNumElements()) {
       // Out of bounds write
       terminateStateOnError(state, "Out of bounds write when inserting element",
@@ -2396,14 +2432,21 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     const unsigned elementCount = vt->getNumElements();
     llvm::SmallVector<ref<Expr>, 8> elems;
     elems.reserve(elementCount);
-    for (unsigned i = elementCount; i != 0; --i) {
-      auto of = i - 1;
-      unsigned bitOffset = EltBits * of;
-      elems.push_back(
-          of == iIdx ? newElt : ExtractExpr::create(vec, bitOffset, EltBits));
+    for (unsigned i = 0; i < elementCount; ++i) {
+      // evalConstant() will use ConcatExpr to build vectors with the
+      // zero-th element leftmost (most significant bits), followed
+      // by the next element (second leftmost) and so on. This means
+      // that we have to adjust the index so we read left to right
+      // rather than right to left.
+      unsigned bitOffset = EltBits * (elementCount - i - 1);
+      //printf("bitOffset is %u \n\n",bitOffset);
+      if (i == iIdx) {
+	//printf("Found insert index at %u \n\n", bitOffset);
+      }
+      elems.push_back(i == iIdx ? newElt
+                                : ExtractExpr::create(vec, bitOffset, EltBits));
     }
 
-    assert(Context::get().isLittleEndian() && "FIXME:Broken for big endian");
     ref<Expr> Result = ConcatExpr::createN(elementCount, elems.data());
     bindLocal(ki, state, Result);
     break;
@@ -2431,7 +2474,12 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       return;
     }
 
-    unsigned bitOffset = EltBits * iIdx;
+    // evalConstant() will use ConcatExpr to build vectors with the
+    // zero-th element left most (most significant bits), followed
+    // by the next element (second left most) and so on. This means
+    // that we have to adjust the index so we read left to right
+    // rather than right to left.
+    unsigned bitOffset = EltBits*(vt->getNumElements() - iIdx -1);
     ref<Expr> Result = ExtractExpr::create(vec, bitOffset, EltBits);
     bindLocal(ki, state, Result);
     break;
@@ -2525,16 +2573,24 @@ void Executor::bindInstructionConstants(KInstruction *KI) {
 }
 
 void Executor::bindModuleConstants() {
+  printf("Binding instruction constants... \n");
   for (std::vector<KFunction*>::iterator it = kmodule->functions.begin(), 
          ie = kmodule->functions.end(); it != ie; ++it) {
     KFunction *kf = *it;
+    //printf();
     for (unsigned i=0; i<kf->numInstructions; ++i)
       bindInstructionConstants(kf->instructions[i]);
   }
-
+  
+  //printf("Evaluating constants ... \n");
+  //printf("kmodule has %d constants \n", kmodule->constants.size());
   kmodule->constantTable = new Cell[kmodule->constants.size()];
   for (unsigned i=0; i<kmodule->constants.size(); ++i) {
+    //printf("Evaluating constant %d \n", i);
+    
     Cell &c = kmodule->constantTable[i];
+    // assert(c);
+    assert(kmodule->constants[i]);
     c.value = evalConstant(kmodule->constants[i]);
   }
 }
@@ -2588,14 +2644,18 @@ void Executor::doDumpStates() {
   updateStates(0);
 }
 
-void Executor::run(ExecutionState &initialState) {
+void Executor::run(ExecutionState  & initialState) {
+  printf("ENTERING EXECUTOR::RUN \n");
+
   bindModuleConstants();
 
+  printf("Initializing timers... \n");
   // Delay init till now so that ticks don't accrue during
   // optimization and such.
   initTimers();
-
-  states.insert(&initialState);
+  //AH Probably need to alter the code below
+  printf("Inserting state... \n");
+  //states.insert(&initialState);
 
   if (usingSeeds) {
     std::vector<SeedInfo> &v = seedMap[&initialState];
@@ -2665,29 +2725,57 @@ void Executor::run(ExecutionState &initialState) {
       return;
     }
   }
+  
+  //printf("Constructing searcher... \n");
+  //searcher = constructUserSearcher(*this);
+  
+  //AH: I removed the check for !states.empty() because we have 
+  // only 1 execution state.
 
-  searcher = constructUserSearcher(*this);
-
-  std::vector<ExecutionState *> newStates(states.begin(), states.end());
-  searcher->update(0, newStates, std::vector<ExecutionState *>());
-
-  while (!states.empty() && !haltExecution) {
+  //std::vector<ExecutionState *> newStates(states.begin(), states.end());
+  //printf("Calling searcher-> update... \n");
+  //searcher->update(0, newStates, std::vector<ExecutionState *>());
+  //printf("Completed call to searcher update \n" );
+  //while (!states.empty() && !haltExecution) {
+  ExecutionState & state = *GlobalExecutionStatePtr;
+  while ( !haltExecution) {
+    /*
+    printf("Entering main execution loop ... \n");
     ExecutionState &state = searcher->selectState();
     KInstruction *ki = state.pc;
+    printf("Calling stepInstruction ... \n");
     stepInstruction(state);
 
+    printf("Calling execute instruction ... \n");
     executeInstruction(state, ki);
     processTimers(&state, MaxInstructionTime);
 
     checkMemoryUsage();
 
     updateStates(&state);
+    */
+    printf("Entering main execution loop ... \n");
+    //ExecutionState &state = searcher->selectState();
+    KInstruction *ki = state.pc;
+    printf("Calling stepInstruction ... \n");
+    stepInstruction(state);
+
+    printf("Calling execute instruction ... \n");
+    executeInstruction(state, ki);
+    processTimers(&state, MaxInstructionTime);
+
+    //checkMemoryUsage();
+
+    //updateStates(&state);
+    
   }
+  
+  printf("Finished main instruction interpretation loop \n ...");
 
-  delete searcher;
-  searcher = 0;
+  //delete searcher;
+  //searcher = 0;
 
-  doDumpStates();
+  //doDumpStates();
 }
 
 std::string Executor::getAddressInfo(ExecutionState &state, 
@@ -2786,6 +2874,7 @@ void Executor::terminateState(ExecutionState &state) {
       seedMap.erase(it3);
     addedStates.erase(it);
     processTree->remove(state.ptreeNode);
+    printf(" WOULD NORMALL DELETE STATE HERE \n \n \n \n ");
     delete &state;
   }
 }
@@ -3243,6 +3332,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
   ObjectPair op;
   bool success;
   solver->setTimeout(coreSolverTimeout);
+  printf("Calling resolveOne \n");
   if (!state.addressSpace.resolveOne(state, solver, address, op, success)) {
     address = toConstant(state, address, "resolveOne failure");
     success = state.addressSpace.resolveOne(cast<ConstantExpr>(address), op);
@@ -3277,6 +3367,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
           terminateStateOnError(state, "memory error: object read only",
                                 ReadOnly);
         } else {
+	  printf("Trying to write to MO representing buffer starting at %lu, hex %p \n ", (uint64_t) mo->address, (void *) mo->address);
           ObjectState *wos = state.addressSpace.getWriteable(mo, os);
           wos->write(offset, value);
         }          
@@ -3422,6 +3513,219 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
 
 /***/
 
+
+extern "C" void klee_interp () {
+  printf("---------------ENTERING KLEE_INTERP ---------------------- \n");
+  assert (GlobalInterpreter);
+  GlobalInterpreter->klee_interp_internal();
+  return;
+}
+
+//This function's purpose is to take a context from native execution 
+//and return an llvm function for interpretation.  It's OK for now if
+// this returns a KFunction with LLVM IR for only one machine instruction at a time. 
+KFunction * findInterpFunction (greg_t * registers, KModule * kmod ) {
+
+  uint64_t nativePC = registers[REG_RIP];
+  // printf("Looking up interp info for RIP  : %lld \n", nativePC);
+
+  std::stringstream converter;
+  converter << std::hex << nativePC;
+  
+  std::string hexNativePCString(converter.str());
+  std::string functionName =   "interp_fn_" + hexNativePCString;
+
+  llvm::Function * interpFn = interpModule->getFunction(functionName);
+  KFunction * KInterpFunction = kmod->functionMap[interpFn];
+
+  printf(" Trying to find interp function for %s \n",functionName.c_str());
+  
+  if (!KInterpFunction)
+    printf("Unable to find interp function for entrypoint PC %lx \n", nativePC);
+  
+  return KInterpFunction;
+  
+}
+//Here's the interface expected for the llvm interpretation function.
+
+// void @[PC Val here]_interp_fn( %struct.uc_mcontext_t * %target_ctx_ptr) {
+
+//; Emulate the native code modeled in the function, including an
+//; updated program counter.  %target_ctx_ptr will take the initial uc_mcontext,
+//; and the necessary interpretation will occur in-place at the ctx pointed to. Also need 
+//; to perform loads and stores to main memory.  By this point, an llvm load/store to
+//; a given address in the interpreter will result in a load/store from/to the actual
+//; native memory address.
+
+// }
+
+bool Executor::resumeNativeExecution (){
+  if (exec_mode == PURE_INTERP) {
+    return false;
+  } else {
+    printf("Encountered new exec mode.  Closing program \n");
+    exit(EXIT_FAILURE);
+  }
+
+}
+
+void Executor::klee_interp_internal () {
+  static int interpCtr = 0;
+  interpCtr++;
+  printf("Entering interpreter for time %d \n \n \n", interpCtr);
+  
+  for (int i = 0; i < 23; i++) {
+    prev_ctx.uc_mcontext.gregs[i] = target_ctx.uc_mcontext.gregs[i];
+  }
+  KFunction * interpFn = findInterpFunction (target_ctx.uc_mcontext.gregs, kmodule);
+  
+  //Instruction *firstInst = &*(interpFn->function->begin()->begin());
+  
+  //We have to manually push a frame on for the function we'll be
+  //interpreting through.  At this point, no other frames should exist
+  // on klee's interpretation "stack".
+  GlobalExecutionStatePtr->pushFrame(0,interpFn);
+  GlobalExecutionStatePtr->pc = interpFn->instructions ;
+  GlobalExecutionStatePtr->prevPC = GlobalExecutionStatePtr->pc;
+  
+  printf("Pushing back args ... \n");
+  std::vector<ref<Expr> > arguments;
+  
+  assert(target_ctx_MO);
+  //assert(prev_ctx_MO);
+  uint64_t regAddr = (uint64_t) target_ctx.uc_mcontext.gregs;
+  ref<ConstantExpr> regExpr = ConstantExpr::create(regAddr, Context::get().getPointerWidth());
+  arguments.push_back(regExpr);
+  //arguments.push_back(prev_ctx_MO->getBaseExpr());
+  
+  printf("Binding Args ... \n");
+  
+  assert(GlobalExecutionStatePtr);
+  bindArgument(interpFn, 0, *GlobalExecutionStatePtr, arguments[0]);
+  //bindArgument(interpFn, 1, *GlobalExecutionStatePtr, arguments[1]);
+  printf("Calling statsTracker...\n");
+  if (statsTracker)
+    statsTracker->framePushed(*GlobalExecutionStatePtr, 0);
+  
+  
+  //AH: This haltExecution thing is to exit out of the interpreter loop.
+  haltExecution = false;
+  printf("Calling run! \n ");
+  run(*GlobalExecutionStatePtr);
+  
+  if (statsTracker)
+    statsTracker->done();
+  
+  printf("--------------RETURNING TO TARGET--------------------- \n");
+  
+  printf("Orig ctx was \n ");
+  printCtx(prev_ctx);
+  
+  printf("New ctx is \n ");
+  printCtx(target_ctx);
+  
+  
+  //FINISHED WITH THE CURRENT INTERP LOOP
+  //Need to figure out if we should go back
+  //to the native ctx or interp again
+  
+  //prev_ctx = restore_ctx;
+  //for (int i = 0; i < 23; i++) 
+  // prev_ctx.uc_mcontext.gregs[i] = restore_ctx.uc_mcontext.gregs[i];
+  
+  if (resumeNativeExecution()) {
+    return;
+  }  else {
+    GlobalInterpreter->klee_interp_internal();
+  }
+    
+    
+
+  
+  
+  return;
+}
+    
+
+
+
+void printCtx(ucontext_t ctx ) {
+  greg_t * registers;
+  registers  = ctx.uc_mcontext.gregs;
+  
+  printf("R8   : %lld \n", registers[REG_R8]);
+  printf("R9   : %lld \n", registers[REG_R9]);
+  printf("R10  : %lld \n", registers[REG_R10]);
+  printf("R11  : %lld \n", registers[REG_R11]);
+  printf("R12  : %lld \n", registers[REG_R12]);
+  printf("R13  : %lld \n", registers[REG_R13]);
+  printf("R14  : %lld \n", registers[REG_R14]);
+  printf("R15  : %lld \n", registers[REG_R15]);
+  printf("RDI  : %lld \n", registers[REG_RDI]);
+  printf("RSI  : %lld \n", registers[REG_RSI]);
+  printf("RBP  : %lld \n", registers[REG_RBP]);
+  printf("RBX  : %lld \n", registers[REG_RBX]);
+  printf("RDX  : %lld \n", registers[REG_RDX]);
+  printf("RAX  : %lld \n", registers[REG_RAX]);
+  printf("RCX  : %lld \n", registers[REG_RCX]);
+  printf("RSP  : %lld \n", registers[REG_RSP]);
+  printf("RIP  : %lld \n", registers[REG_RIP]);
+  printf("EFL  : %lld \n", registers[REG_EFL]);
+  printf("CSGSFS : %lld \n", registers[REG_CSGSFS]);
+  printf("ERR  : %lld \n", registers[REG_ERR]);
+  printf("TRAPNO : %lld \n", registers[REG_TRAPNO]);
+  printf("OLDMASK : %lld \n", registers[REG_OLDMASK]);
+  printf("CR2  : %lld \n", registers[REG_CR2]);
+
+  return;
+}
+
+void Executor::initializeInterpretationStructures (Function *f) {
+
+  printf("INITIALIZING INTERPRETATION STRUCTURES \n");
+
+  printf("Creating new execution state \n");
+  GlobalExecutionStatePtr = new ExecutionState(kmodule->functionMap[f]);
+  
+  printf("Initializing globals ... \n");
+  initializeGlobals(*GlobalExecutionStatePtr);
+  //initializeGlobals(*GlobalExecutionStatePtr);
+  
+  //Set up the KLEE memory object for the stack, and back the concrete store with the actual stack.
+  //Need to be careful here.  The buffer we allocate for the stack is char [X] target_stack. It
+  // starts at address StackBase and covers up to StackBase + sizeof(target_stack) -1.
+  
+
+  printf("Adding structures to track target stack starting at %x with size %d \n", StackBase, sizeof(target_stack));
+  
+  MemoryObject * stackMem = addExternalObject(*GlobalExecutionStatePtr,StackBase, sizeof(target_stack), false );
+  const ObjectState *stackOS = GlobalExecutionStatePtr->addressSpace.findObject(stackMem);
+  ObjectState * stackOSWrite = GlobalExecutionStatePtr->addressSpace.getWriteable(stackMem,stackOS);
+  
+  printf("Setting concrete store to point to target stack \n");
+  stackOSWrite->concreteStore = (uint8_t *) StackBase;
+
+  printf("Adding external object target_ctx_MO \n");
+  target_ctx_MO = addExternalObject(*GlobalExecutionStatePtr, (void *) &target_ctx, sizeof (ucontext_t), false );
+
+  printf("Adding external object prev_ctx_MO \n");
+  prev_ctx_MO = addExternalObject(*GlobalExecutionStatePtr,(void *)&prev_ctx, sizeof(ucontext_t), false );
+  
+  printf("target_ctx is address %lu, hex %p \n", (uint64_t) &target_ctx, (void *) &target_ctx);
+  printf("target_ctx_MO represents address %lu, hex %p \n", (uint64_t) target_ctx_MO->address, (void *) &target_ctx);
+  printf("prev_ctx is address %lu, hex %p \n", (uint64_t) &prev_ctx, (void *) &prev_ctx);
+  printf("prev_ctx_MO represents address %lu, hex %p \n", (uint64_t) prev_ctx_MO->address, (void *) &prev_ctx);
+
+
+  //Get rid of the dummy function used for initialization
+  GlobalExecutionStatePtr->popFrame();
+
+  processTree = new PTree(GlobalExecutionStatePtr);
+  GlobalExecutionStatePtr->ptreeNode = processTree->root;
+  
+}
+				   
+
 void Executor::runFunctionAsMain(Function *f,
 				 int argc,
 				 char **argv,
@@ -3451,7 +3755,7 @@ void Executor::runFunctionAsMain(Function *f,
     if (++ai!=ae) {
       Instruction *first = &*(f->begin()->begin());
       argvMO =
-          memory->allocate((argc + 1 + envc + 1 + 1) * NumPtrBytes,
+         memory->allocate((argc + 1 + envc + 1 + 1) * NumPtrBytes,
                            /*isLocal=*/false, /*isGlobal=*/true,
                            /*allocSite=*/first, /*alignment=*/8);
 
@@ -3476,7 +3780,6 @@ void Executor::runFunctionAsMain(Function *f,
     state->pathOS = pathWriter->open();
   if (symPathWriter) 
     state->symPathOS = symPathWriter->open();
-
 
   if (statsTracker)
     statsTracker->framePushed(*state, 0);
@@ -3513,6 +3816,15 @@ void Executor::runFunctionAsMain(Function *f,
   
   initializeGlobals(*state);
 
+  //AH addition
+  /*
+  if (true) {
+    MemoryObject * stackMem = addExternalObject(*state,(void *)targetMemAddr, 8, false );
+    const ObjectState *stackOS = state->addressSpace.findObject(stackMem);
+    ObjectState * stackOSWrite = state->addressSpace.getWriteable(stackMem,stackOS);
+    stackOSWrite->concreteStore = (uint8_t *) targetMemAddr;
+  }
+  */
   processTree = new PTree(state);
   state->ptreeNode = processTree->root;
   run(*state);

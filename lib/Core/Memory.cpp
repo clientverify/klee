@@ -93,8 +93,7 @@ void MemoryObject::getAllocInfo(std::string &result) const {
 /***/
 
 ObjectState::ObjectState(const MemoryObject *mo)
-  : copyOnWriteOwner(0),
-    refCount(0),
+  : refCount(0),
     object(mo),
     concreteStore(new uint8_t[mo->size]),
     concreteMask(0),
@@ -115,8 +114,7 @@ ObjectState::ObjectState(const MemoryObject *mo)
 
 
 ObjectState::ObjectState(const MemoryObject *mo, const Array *array)
-  : copyOnWriteOwner(0),
-    refCount(0),
+  : refCount(0),
     object(mo),
     concreteStore(new uint8_t[mo->size]),
     concreteMask(0),
@@ -131,8 +129,7 @@ ObjectState::ObjectState(const MemoryObject *mo, const Array *array)
 }
 
 ObjectState::ObjectState(const ObjectState &os) 
-  : copyOnWriteOwner(0),
-    refCount(0),
+  : refCount(0),
     object(os.object),
     concreteStore(new uint8_t[os.size]),
     concreteMask(os.concreteMask ? new BitArray(*os.concreteMask, os.size) : 0),
@@ -158,7 +155,7 @@ ObjectState::~ObjectState() {
   delete concreteMask;
   delete flushMask;
   delete[] knownSymbolics;
-  delete[] concreteStore;
+  //delete[] concreteStore;
 
   if (object)
   {
@@ -415,6 +412,8 @@ void ObjectState::write8(unsigned offset, uint8_t value) {
 
   markByteConcrete(offset);
   markByteUnflushed(offset);
+  
+  printf("Writing  %u to concrete store at addr %lu, hex %p  \n",value, ((void *) &concreteStore[offset]  ), (void *) &concreteStore[offset] );
 }
 
 void ObjectState::write8(unsigned offset, ref<Expr> value) {
@@ -543,7 +542,7 @@ void ObjectState::write(unsigned offset, ref<Expr> value) {
     write8(offset, ZExtExpr::create(value, Expr::Int8));
     return;
   }
-
+   //printf("Writing to concrete store at addr %lu, hex %p  \n", ((void *) &concreteStore[offset]  ), (void *) &concreteStore[offset] );
   // Otherwise, follow the slow general case.
   unsigned NumBytes = w / 8;
   assert(w == NumBytes * 8 && "Invalid write size!");
@@ -577,7 +576,7 @@ void ObjectState::write64(unsigned offset, uint64_t value) {
   }
 }
 
-void ObjectState::print() const {
+void ObjectState::print() {
   llvm::errs() << "-- ObjectState --\n";
   llvm::errs() << "\tMemoryObject ID: " << object->id << "\n";
   llvm::errs() << "\tRoot Object: " << updates.root << "\n";

@@ -146,14 +146,15 @@ public:
 class ObjectState {
 private:
   friend class AddressSpace;
-  unsigned copyOnWriteOwner; // exclusively for AddressSpace
+  //AH: I removed this.
+  //unsigned copyOnWriteOwner; // exclusively for AddressSpace
 
   friend class ObjectHolder;
   unsigned refCount;
 
   const MemoryObject *object;
 
-  uint8_t *concreteStore;
+  
   // XXX cleanup name of flushMask (its backwards or something)
   BitArray *concreteMask;
 
@@ -167,7 +168,7 @@ private:
 
 public:
   unsigned size;
-
+  uint8_t *concreteStore;
   bool readOnly;
 
 public:
@@ -205,8 +206,6 @@ public:
   void write32(unsigned offset, uint32_t value);
   void write64(unsigned offset, uint64_t value);
 
-  void print() const;
-
 private:
   const UpdateList &getUpdates() const;
 
@@ -233,6 +232,7 @@ private:
   void markByteUnflushed(unsigned offset);
   void setKnownSymbolic(unsigned offset, Expr *value);
 
+  void print();
   ArrayCache *getArrayCache() const;
 };
   

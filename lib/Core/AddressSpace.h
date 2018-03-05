@@ -36,7 +36,8 @@ namespace klee {
   class AddressSpace {
   private:
     /// Epoch counter used to control ownership of objects.
-    mutable unsigned cowKey;
+    //AH We don't need cowKey info since we have one OS per MO.
+    //mutable unsigned cowKey;
 
     /// Unsupported, use copy constructor
     AddressSpace &operator=(const AddressSpace&); 
@@ -52,8 +53,9 @@ namespace klee {
     MemoryMap objects;
     
   public:
-    AddressSpace() : cowKey(1) {}
-    AddressSpace(const AddressSpace &b) : cowKey(++b.cowKey), objects(b.objects) { }
+    //AH: I changed this
+    AddressSpace() {}
+    AddressSpace(const AddressSpace &b) :  objects(b.objects) { }
     ~AddressSpace() {}
 
     /// Resolve address to an ObjectPair in result.
