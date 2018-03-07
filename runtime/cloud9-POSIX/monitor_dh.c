@@ -74,4 +74,38 @@ DEFINE_MODEL(int, ktest_verify_DH_generate_key, DH *dh){
   ktest_readsocket(verification_socket, &ret, sizeof(ret));
   return ret;
 }
+
+
+
+DEFINE_MODEL(int, ktest_verify_RSA_sign, int type, const unsigned char *m, unsigned int m_len,
+    unsigned char *sigret, unsigned int *siglen, RSA *rsa){
+  printf("klee's ktest_verify_RSA_sign entered\n");
+  //Send:  type, m (m_len)
+  ktest_writesocket(verification_socket, &type, sizeof(type));
+  ktest_writesocket(verification_socket, m, m_len);
+
+  //Send important parts of rsa: n, d, p, q
+  unsigned char *to;
+  int len = bn_to_buf(&to, rsa->n);
+  ktest_writesocket(verification_socket, to, len);
+  free(to);
+
+  len = bn_to_buf(&to, rsa->d);
+  ktest_writesocket(verification_socket, to, len);
+  free(to);
+
+  len = bn_to_buf(&to, rsa->p);
+  ktest_writesocket(verification_socket, to, len);
+  free(to);
+
+  len = bn_to_buf(&to, rsa->q);
+  ktest_writesocket(verification_socket, to, len);
+  free(to);
+
+  //Return values: sig, siglen, ret
+  *siglen = ktest_readsocket(verification_socket, sigret, RSA_size(rsa));
+  int ret = -1;
+  ktest_readsocket(verification_socket, &ret, sizeof(ret));
+  return ret;
+}
     
