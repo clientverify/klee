@@ -197,38 +197,6 @@ DEFINE_MODEL(int, RAND_poll, void) {
 
 
 ////////////////////////////////////////////////////////////////////////////////
-// OpenSSH DH key generation
-////////////////////////////////////////////////////////////////////////////////
-#define MAX_LEN 1000
-DEFINE_MODEL(DH*, ktest_verify_choose_dh, int min, int wantbits, int max){
-  printf("ktest_verify_choose_dh entered\n");
-
-  printf("ktest_verify_choose_dh calling writesocket with min %d, wantbits %d, max %d\n", min, wantbits, max);
-  ktest_writesocket(verification_socket, (char*)&min, sizeof(min));
-  ktest_writesocket(verification_socket, (char*)&wantbits, sizeof(wantbits));
-  ktest_writesocket(verification_socket, (char*)&max, sizeof(max));
-
-  //dealing with the fact that the call this models has a single call to
-  ktest_arc4random();
-
-  unsigned char *from = malloc(MAX_LEN);
-
-  //recover p
-  int len = ktest_readsocket(verification_socket, (char*)from, MAX_LEN);
-  BIGNUM *p = BN_bin2bn(from, len, NULL);
-
-  //recover g
-  len = ktest_readsocket(verification_socket, (char*)from, MAX_LEN);
-  BIGNUM *g = BN_bin2bn(from, len, NULL);
-
-  free(from);
-
-  return dh_new_group(g, p);
-
-}
-
-
-////////////////////////////////////////////////////////////////////////////////
 // ECDH key generation
 ////////////////////////////////////////////////////////////////////////////////
 
