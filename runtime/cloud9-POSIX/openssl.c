@@ -158,11 +158,6 @@ DEFINE_MODEL(unsigned int, ktest_arc4random)
   int len = cliver_ktest_copy("arc4rng", arc4rng_index--, (char*)(&ret), sizeof(ret));
   assert(len == sizeof(unsigned int));
 
-  //only works if we're recording every call to arc4random in sequence.
-  unsigned int tmp = arc4random();
-  if(tmp != ret) printf("arc4random playback recorded: %u should be %d\n", ret, tmp);
-  assert(tmp == ret);
-
   return ret;
 }
 
