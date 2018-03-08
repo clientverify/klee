@@ -76,6 +76,32 @@ DEFINE_MODEL(int, ktest_verify_DH_generate_key, DH *dh){
 }
 
 
+DEFINE_MODEL(int, ktest_verify_DH_compute_key, unsigned char *key, BIGNUM *pub_key, DH *dh){
+  printf("klee's test_verify_DH_compute_key entered\n");
+  //send pub_key
+  unsigned char *to;
+  int len = bn_to_buf(&to, pub_key);
+  ktest_writesocket(verification_socket, to, len);
+  free(to);
+
+  //the parts of dh we need:
+  len = bn_to_buf(&to, dh->p);
+  ktest_writesocket(verification_socket, to, len);
+  free(to);
+
+  len = bn_to_buf(&to, dh->g);
+  ktest_writesocket(verification_socket, to, len);
+  free(to);
+
+  len = bn_to_buf(&to, dh->priv_key);
+  ktest_writesocket(verification_socket, to, len);
+  free(to);
+
+  //From Man: key must point to DH_size(dh) bytes of memory.
+  int ret = ktest_readsocket(verification_socket, key, DH_size(dh));
+  return ret;
+}
+
 
 DEFINE_MODEL(int, ktest_verify_RSA_sign, int type, const unsigned char *m, unsigned int m_len,
     unsigned char *sigret, unsigned int *siglen, RSA *rsa){
