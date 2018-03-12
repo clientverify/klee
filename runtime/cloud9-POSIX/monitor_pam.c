@@ -24,6 +24,20 @@ DEFINE_MODEL(int, ktest_verify_pamh_not_null, void){
   return ret;
 }
 
+DEFINE_MODEL(void, ktest_verify_set_password, char* password){
+  ktest_writesocket(verification_socket, password, strlen(password)+1);
+  __pampasswd = password;
+  printf("klee's ktest_verify_set_password called with: %s\n",  password);
+}
+
+DEFINE_MODEL(char*, ktest_verify_pam_strerror, int ret_val){
+  int MAX_LEN = 50;
+  char* ret = malloc(MAX_LEN);
+  ktest_readsocket(verification_socket, ret, MAX_LEN);
+  printf("klee's ktest_verify_pam_strerror calling record_readbuf with ret %s\n", ret);
+  return ret;
+}
+
 
 //Todo: record the arguements to this function in order to verify them.
 //For all item_types, other than PAM_CONV and PAM_FAIL_DELAY, item is a pointer

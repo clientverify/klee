@@ -383,8 +383,8 @@ DEFINE_MODEL(int, ktest_writesocket, int fd, void *buf, size_t count){
     //trying to send:
     unsigned int i;
     printf("writesocket trying to write [%d]", count);
-    for (i = 0; i < count; i++) {
-      printf(" %2.2x", ((unsigned char*)buf)[i]);
+    for (i = 0; i < res; i++) {
+      printf(" %2.2x", ((unsigned char*)bytes)[i]);
     }
     printf("\n");
     //and fail
