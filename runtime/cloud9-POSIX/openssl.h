@@ -32,6 +32,7 @@ int verification_socket;
 #define DEBUG_OPENSSL_MODEL 1
 
 // Enable for fully concrete model (requires ktest)
+#define KTEST_ARC4RAND_PLAYBACK 0
 #define KTEST_RAND_PLAYBACK 1
 #define KTEST_SELECT_PLAYBACK 1
 #define KTEST_STDIN_PLAYBACK 1  // if 1, overrides CLIVER_TLS_PREDICT_STDIN
@@ -43,11 +44,14 @@ int verification_socket;
 // Special Function Declarations
 int cliver_tls_master_secret(unsigned char *buffer);
 
+void* is_symbolic_BIGNUM(BIGNUM* bn);
+int is_symbolic_EC_POINT(EC_POINT* p);
 void copy_symbolic_buffer(unsigned char* buf, int len, char* tag, void* taint);
 DECLARE_MODEL(void, klee_print, char* str, int symb_var)
 DECLARE_MODEL(int, init_version, void)
 //DECLARE_MODEL(void*, memset, void *s, int c, size_t n)
 
+DECLARE_MODEL(void, ktest_arc4random_stir, void)
 DECLARE_MODEL(unsigned int, ktest_arc4random)
 DECLARE_MODEL(int, RAND_status, void)
 DECLARE_MODEL(int, RAND_bytes, unsigned char *buf, int num)

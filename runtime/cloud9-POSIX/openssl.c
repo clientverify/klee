@@ -52,7 +52,7 @@ static void* is_symbolic_buffer(const void* buf, int len) {
 }
 
 // Check if BIGNUM is symbolic
-static void* is_symbolic_BIGNUM(BIGNUM* bn) {
+void* is_symbolic_BIGNUM(BIGNUM* bn) {
   void *retval = is_symbolic_buffer(bn->d, bn->dmax);
   if (!retval)
     retval = is_symbolic_buffer(&(bn->neg), sizeof(bn->neg));
@@ -60,7 +60,7 @@ static void* is_symbolic_BIGNUM(BIGNUM* bn) {
 }
 
 // Check if EC_POINT is symbolic
-static int is_symbolic_EC_POINT(EC_POINT* p) {
+int is_symbolic_EC_POINT(EC_POINT* p) {
   void *retval = is_symbolic_BIGNUM(&(p->X));
   if (!retval)
     retval = is_symbolic_BIGNUM(&(p->Y));
@@ -153,12 +153,25 @@ static void make_EC_POINT_symbolic(EC_POINT* p) {
 
 DEFINE_MODEL(unsigned int, ktest_arc4random)
 {
+#if KTEST_ARC4RAND_PLAYBACK
   static int arc4rng_index = -1;
   unsigned int ret;
   int len = cliver_ktest_copy("arc4rng", arc4rng_index--, (char*)(&ret), sizeof(ret));
   assert(len == sizeof(unsigned int));
 
   return ret;
+#else
+  unsigned int ret;
+  klee_make_symbolic(&ret, sizeof(ret), "arc4rng");
+  return ret;
+#endif
+}
+
+DEFINE_MODEL(void, ktest_arc4random_stir, void)
+{
+  //we just want to skip this function entirely.
+  printf("klee's ktest_arc4random_stir\n");
+  return;
 }
 
 DEFINE_MODEL(int, RAND_status, void) {
