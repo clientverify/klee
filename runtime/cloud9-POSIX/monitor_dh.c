@@ -50,9 +50,7 @@ DEFINE_MODEL(int, ktest_verify_DH_generate_key, DH *dh){
   int priv_was_null = -1;
   if(dh->priv_key != NULL){
     priv_was_null = 0;
-    len = bn_to_buf(&to, dh->priv_key);
-    ktest_writesocket(verification_socket, to, len);
-    free(to);
+    ktest_writesocket(verification_socket, dh->priv_key->d, dh->priv_key->dmax);
   } else {
     priv_was_null = 1;
     ktest_writesocket(verification_socket, NULL, 0);

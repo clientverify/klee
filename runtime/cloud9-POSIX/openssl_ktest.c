@@ -352,6 +352,9 @@ DEFINE_MODEL(int, ktest_readsocket_or_error, int fd, void *buf, size_t count){
 
 //does not support verification of this socket.
 DEFINE_MODEL(int, ktest_writesocket, int fd, void *buf, size_t count){
+  assert(!klee_is_symbolic(count));
+  assert(!klee_is_symbolic(buf));
+  assert(!klee_is_symbolic(fd));
   printf("klee's ktest_writesocket entered\n");
   static int writesocket_index = -1;
 

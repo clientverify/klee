@@ -33,7 +33,7 @@ int verification_socket;
 
 // Enable for fully concrete model (requires ktest)
 #define KTEST_ARC4RAND_PLAYBACK 0
-#define KTEST_RAND_PLAYBACK 1
+#define KTEST_RAND_PLAYBACK 0
 #define KTEST_SELECT_PLAYBACK 1
 #define KTEST_STDIN_PLAYBACK 1  // if 1, overrides CLIVER_TLS_PREDICT_STDIN
 
