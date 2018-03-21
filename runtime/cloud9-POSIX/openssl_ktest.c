@@ -22,7 +22,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 
-verification_socket = -1;
+monitor_socket = -1;
 #define MAX_FDS 32  //total number of socket file descriptors we will support
 static int ktest_nfds = 0; //total number of socket file descriptors in system
 static int ktest_sockfds[MAX_FDS]; // descriptor of the sockets we're capturing
@@ -57,17 +57,17 @@ void klee_insert_ktest_sockfd(int sockfd){
   ktest_nfds++; //incriment the counter recording the number of sockets we're tracking
 }
 
-DEFINE_MODEL(int, ktest_verification_socket, int domain, int type, int protocol){
-  assert(verification_socket == -1); //should only be called once
-  verification_socket = socket(domain, type, protocol);
-  printf("ktest_socket adding verification_socket %d\n", verification_socket);
-  klee_insert_ktest_sockfd(verification_socket);
-  return verification_socket;
+DEFINE_MODEL(int, ktest_monitor_socket, int domain, int type, int protocol){
+  assert(monitor_socket == -1); //should only be called once
+  monitor_socket = socket(domain, type, protocol);
+  printf("ktest_socket adding monitor_socket %d\n", monitor_socket);
+  klee_insert_ktest_sockfd(monitor_socket);
+  return monitor_socket;
 }
 
 DEFINE_MODEL(int, ktest_socket, int domain, int type, int protocol){
   static int hack_fd = -1;
-  if(hack_fd == -1) hack_fd = verification_socket;
+  if(hack_fd == -1) hack_fd = monitor_socket;
   hack_fd++;
   printf("ktest_socket adding sockfd %d\n", hack_fd);
   klee_insert_ktest_sockfd(hack_fd);
@@ -317,7 +317,7 @@ DEFINE_MODEL(int, ktest_readsocket_or_error, int fd, void *buf, size_t count){
   const char* not_error_str = "not_error ";
   static int readsocket_or_error_name_index = -1;
 
-  assert(verification_socket != fd);
+  assert(monitor_socket != fd);
 
   char *bytes = (char *)calloc(count + strlen(not_error_str), sizeof(char));
   int res = cliver_ktest_copy("readsocket_or_error", readsocket_or_error_name_index--, bytes, count);
@@ -358,7 +358,7 @@ DEFINE_MODEL(int, ktest_writesocket, int fd, void *buf, size_t count){
   printf("klee's ktest_writesocket entered\n");
   static int writesocket_index = -1;
 
-  if (verification_socket == fd)
+  if (monitor_socket == fd)
     return ktest_verify_writesocket(fd, buf, count);
 
   char *bytes = (char *)calloc(count, sizeof(char));
@@ -401,7 +401,7 @@ DEFINE_MODEL(int, ktest_readsocket, int fd, void *buf, size_t count){
   printf("klee's ktest_readsocket entered\n");
   static int readsocket_index = -1;
 
-  if (verification_socket == fd)
+  if (monitor_socket == fd)
     return ktest_verify_readsocket(fd, buf, count);
 
   char *bytes = (char *)calloc(count, sizeof(char));

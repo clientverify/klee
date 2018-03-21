@@ -20,7 +20,7 @@
 #include "../../../openssl/crypto/aes/aes.h"
 #include "../../../openssl/crypto/sha/sha.h"
 
-int verification_socket;
+int monitor_socket;
 // Track symbolic data flow through modelled functions
 // see: copy_symbolic_buffer()
 #define OPENSSL_SYMBOLIC_TAINT 0
@@ -32,8 +32,8 @@ int verification_socket;
 #define DEBUG_OPENSSL_MODEL 1
 
 // Enable for fully concrete model (requires ktest)
-#define KTEST_ARC4RAND_PLAYBACK 0
-#define KTEST_RAND_PLAYBACK 0
+#define KTEST_ARC4RAND_PLAYBACK 1
+#define KTEST_RAND_PLAYBACK 1
 #define KTEST_SELECT_PLAYBACK 1
 #define KTEST_STDIN_PLAYBACK 1  // if 1, overrides CLIVER_TLS_PREDICT_STDIN
 
