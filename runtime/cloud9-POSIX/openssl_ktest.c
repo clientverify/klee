@@ -268,7 +268,6 @@ DEFINE_MODEL(int, ktest_register_signal_handler, int (*a)(int)){
   signal_handler = a;
 }
 
-#if KTEST_SELECT_PLAYBACK
 
 DEFINE_MODEL(int, ktest_waitpid_or_error, pid_t pid, int *status, int options){
   static int waitpid_index = -1;
@@ -456,6 +455,7 @@ static void print_fd_set(int nfds, fd_set *fds) {
 }
 
 
+#if KTEST_SELECT_PLAYBACK
 
 DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout) {
   printf("klee's select entered\n");
@@ -470,7 +470,6 @@ DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_
   // Parse the recorded select input/output.
   char *recorded_select = bytes;
   char *item, *tmp;
-  fd_set in_readfds, in_writefds, out_readfds, out_writefds;
   int ret = 0, recorded_ktest_nfds = 0, recorded_nfds = 0, active_fd_count = 0, i = 0;
 
   FD_ZERO(readfds); // output of select
@@ -510,15 +509,15 @@ DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_
   item = strtok(NULL, " ");
   assert(strlen(item) == (recorded_ktest_nfds + 3));
 
-  //set out_readfds
-  for (i = 0; i < 3; i++) { //0, 1, 2 set out_readfds
+  //set readfds
+  for (i = 0; i < 3; i++) { //0, 1, 2 set readfds
     if (item[i] == '1') {
       FD_SET(i, readfds);
       active_fd_count++;
     }
   }
   for (i = 0; i < recorded_ktest_nfds; i++) {
-    if (item[i + 3] == '1') {  //ktest_sockfds set out_readfds
+    if (item[i + 3] == '1') {  //ktest_sockfds set readfds
       FD_SET(ktest_sockfds[i], readfds);
       active_fd_count++;
     }
@@ -530,15 +529,15 @@ DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_
       assert(strcmp(tmp, "outW") == 0);
       item = strtok(NULL, " ");
       assert(strlen(item) == (recorded_ktest_nfds + 3));
-      //set out_writefds
-      for (i = 0; i < 3; i++) { //0, 1, 2 set out_writefds
+      //set writefds
+      for (i = 0; i < 3; i++) { //0, 1, 2 set writefds
           if (item[i] == '1') {
               FD_SET(i, writefds);
               active_fd_count++;
           }
       }
       for (i = 0; i < recorded_ktest_nfds; i++) {
-          if (item[i +3] == '1') { //ktest_sockfds set out_writefds
+          if (item[i +3] == '1') { //ktest_sockfds set writefds
               FD_SET(ktest_sockfds[i], writefds);
               active_fd_count++;
           }
@@ -563,6 +562,13 @@ DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_
   assert(active_fd_count == ret); // Did we miss anything?
   free(recorded_select);
 
+#if 0
+  klee_make_symbolic(readfds, sizeof(fd_set));
+  if(writefds) klee_make_symbolic(writefds, sizeof(fd_set));
+  int retval;
+  klee_make_symbolic(&retval, sizeof(retval));
+  return retval;
+#endif
   return ret;
 
 }
@@ -622,10 +628,6 @@ DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_
   assert(exceptfds == NULL);
   //DEBUG_PRINT("symbolic");
 
-  // OPENSSL: Assumption: no sockets ready for reading on the first call to select
-  static int first_select = 1;
-  assert( !(first_select == 1 && writefds == NULL));
-
   int i, retval, ret;
   fd_set in_readfds;
   fd_set in_writefds;
@@ -646,14 +648,12 @@ DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_
   fd_mask all_bits_or = 0;
 
   for (i = 0; i <= mask_count; ++i) {
-    if (first_select == 0) {
       if (in_readfds.fds_bits[i] != 0) {
         fd_mask symbolic_mask;
         klee_make_symbolic(&symbolic_mask, sizeof(fd_mask));
         readfds->fds_bits[i] = in_readfds.fds_bits[i] & symbolic_mask;
         all_bits_or |= readfds->fds_bits[i];
       }
-    }
   if(writefds != NULL){
     if (in_writefds.fds_bits[i] != 0) {
       fd_mask symbolic_mask;
@@ -662,11 +662,6 @@ DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_
       all_bits_or |= writefds->fds_bits[i];
     }
    }
-  }
-
-  // Set after first call to select
-  if (first_select == 1) {
-    first_select = 0;
   }
 
   klee_make_symbolic(&retval, sizeof(retval));
