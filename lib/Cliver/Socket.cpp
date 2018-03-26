@@ -85,9 +85,13 @@ void SocketEvent::init(const unsigned char* buf, unsigned len) {
 
 // Set the type of the socket by using the Ktest object's name
 void SocketEvent::set_type(const char* name) {
-	if (std::string(name) == KTEST_WRITE) {
+	if (std::string(name) == MONITOR_KTEST_WRITE) {
 		type = SocketEvent::SEND;
-	} else if (std::string(name) == KTEST_READ) {
+	} else if (std::string(name) == MONITOR_KTEST_READ) {
+		type = SocketEvent::RECV;
+  }else if (std::string(name) == NET_KTEST_WRITE) {
+		type = SocketEvent::SEND;
+	} else if (std::string(name) == NET_KTEST_READ) {
 		type = SocketEvent::RECV;
 	} else {
 		cv_error("Invalid socket event name: \"%s\"", name);
@@ -556,12 +560,14 @@ bool SocketSourceKTestText::try_loading_next_ktest() {
   while (is_) {
     KTestObject *obj = get_next_ktest(is_);
     if (obj) {
-      if (strcmp(obj->name, KTEST_WRITE.c_str()) != 0 &&
-          strcmp(obj->name, KTEST_READ.c_str()) != 0) { // Ignore non-network KTest events
+      if (strcmp(obj->name, MONITOR_KTEST_WRITE.c_str()) != 0 &&
+          strcmp(obj->name, MONITOR_KTEST_READ.c_str())  != 0 &&
+          strcmp(obj->name, NET_KTEST_WRITE.c_str())     != 0 &&
+          strcmp(obj->name, NET_KTEST_READ.c_str())      != 0) { // Ignore non-network KTest events
         delete_KTestObject(obj);
         continue;
       } else if (obj->numBytes == 0) { // TCP FIN
-        if (strcmp(obj->name, KTEST_WRITE.c_str()) == 0) {
+        if (strcmp(obj->name, MONITOR_KTEST_WRITE.c_str()) == 0) {
           c2s_tcp_fin_ = true;
         } else {
           s2c_tcp_fin_ = true;
@@ -575,7 +581,7 @@ bool SocketSourceKTestText::try_loading_next_ktest() {
         }
         continue;
       } else if (drop_s2c_tls_appdata_ && // Optionally drop s2c appdata
-                 strcmp(obj->name, KTEST_READ.c_str()) == 0) {
+                 strcmp(obj->name, MONITOR_KTEST_READ.c_str()) == 0) {
 
         // This s2c message contains a TLS header (1st read)
         if (next_s2c_is_header_) {
@@ -669,7 +675,7 @@ bool SocketSourceKTestText::is_s2c_tls_droppable(const KTestObject *obj) const {
 
   if (!obj)
     return false;
-  if (strcmp(obj->name, KTEST_WRITE.c_str()) != 0)
+  if (strcmp(obj->name, MONITOR_KTEST_WRITE.c_str()) != 0)
     return false;
 
   // last s2c was an alert/appdata header, this must be the payload

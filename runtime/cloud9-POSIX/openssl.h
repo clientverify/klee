@@ -21,6 +21,7 @@
 #include "../../../openssl/crypto/sha/sha.h"
 
 int monitor_socket;
+int net_socket;
 // Track symbolic data flow through modelled functions
 // see: copy_symbolic_buffer()
 #define OPENSSL_SYMBOLIC_TAINT 0

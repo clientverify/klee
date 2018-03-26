@@ -23,6 +23,7 @@
 
 
 monitor_socket = -1;
+net_socket = -1;
 #define MAX_FDS 32  //total number of socket file descriptors we will support
 static int ktest_nfds = 0; //total number of socket file descriptors in system
 static int ktest_sockfds[MAX_FDS]; // descriptor of the sockets we're capturing
@@ -170,6 +171,12 @@ DEFINE_MODEL(int, ktest_accept, int sockfd, struct sockaddr *addr, socklen_t *ad
   printf("ktest_accept adding %d to ktest_sockfds\n", accept_sock);
   assert(accept_sock >= 0);
   printf("accept() called on socket for TLS traffic (%d)\n", accept_sock);
+  if(accept_sock > -1){
+    printf("klee's ktest_accept setting net_socket %d from %d\n", accept_sock, net_socket);
+    assert(net_socket == -1);
+    net_socket = accept_sock;
+  }
+
   return accept_sock;
 
 }
@@ -357,7 +364,7 @@ DEFINE_MODEL(int, ktest_writesocket, int fd, void *buf, size_t count){
   printf("klee's ktest_writesocket entered\n");
   static int writesocket_index = -1;
 
-  if (monitor_socket == fd)
+  if (monitor_socket == fd || net_socket == fd)
     return ktest_verify_writesocket(fd, buf, count);
 
   char *bytes = (char *)calloc(count, sizeof(char));
@@ -400,7 +407,7 @@ DEFINE_MODEL(int, ktest_readsocket, int fd, void *buf, size_t count){
   printf("klee's ktest_readsocket entered\n");
   static int readsocket_index = -1;
 
-  if (monitor_socket == fd)
+  if (monitor_socket == fd || net_socket == fd)
     return ktest_verify_readsocket(fd, buf, count);
 
   char *bytes = (char *)calloc(count, sizeof(char));

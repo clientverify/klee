@@ -32,8 +32,11 @@ namespace cliver {
 #define SOCKET_STATES     X(IDLE), X(READING), X(WRITING), X(FINISHED)
 #define X(x) x
 
-const std::string KTEST_WRITE = "monitor_verify_sendsocket";
-const std::string KTEST_READ =  "monitor_verify_readsocket";
+const std::string MONITOR_KTEST_WRITE = "monitor_verify_sendsocket";
+const std::string MONITOR_KTEST_READ =  "monitor_verify_readsocket";
+const std::string NET_KTEST_WRITE = "net_verify_sendsocket";
+const std::string NET_KTEST_READ =  "net_verify_readsocket";
+
 
 class SocketEvent {
  public:
