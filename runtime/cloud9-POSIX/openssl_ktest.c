@@ -58,6 +58,11 @@ void klee_insert_ktest_sockfd(int sockfd){
   ktest_nfds++; //incriment the counter recording the number of sockets we're tracking
 }
 
+DEFINE_MODEL(int, ktest_close, int fd){
+  printf("klee's ktest_close doing nothing for fd %d\n", fd);
+  return 0;
+}
+
 DEFINE_MODEL(int, ktest_monitor_socket, int domain, int type, int protocol){
   assert(monitor_socket == -1); //should only be called once
   monitor_socket = socket(domain, type, protocol);
@@ -324,6 +329,7 @@ DEFINE_MODEL(int, ktest_readsocket_or_error, int fd, void *buf, size_t count){
   static int readsocket_or_error_name_index = -1;
 
   assert(monitor_socket != fd);
+  assert(net_socket != fd);
 
   char *bytes = (char *)calloc(count + strlen(not_error_str), sizeof(char));
   int res = cliver_ktest_copy("readsocket_or_error", readsocket_or_error_name_index--, bytes, count);
@@ -463,6 +469,9 @@ static void print_fd_set(int nfds, fd_set *fds) {
 
 
 #if KTEST_SELECT_PLAYBACK
+DEFINE_MODEL(int, ktest_select_and_signal, int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout) {
+  return ktest_select(nfds, readfds, writefds, exceptfds, timeout);
+}
 
 DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout) {
   printf("klee's select entered\n");
@@ -569,15 +578,7 @@ DEFINE_MODEL(int, ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_
   assert(active_fd_count == ret); // Did we miss anything?
   free(recorded_select);
 
-#if 0
-  klee_make_symbolic(readfds, sizeof(fd_set));
-  if(writefds) klee_make_symbolic(writefds, sizeof(fd_set));
-  int retval;
-  klee_make_symbolic(&retval, sizeof(retval));
-  return retval;
-#endif
   return ret;
-
 }
 
 DEFINE_MODEL(int, bssl_stdin_ktest_select, int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout){
@@ -627,6 +628,20 @@ DEFINE_MODEL(int, bssl_stdin_ktest_select, int nfds, fd_set *readfds, fd_set *wr
   }
 
   return retval;
+}
+
+DEFINE_MODEL(int, ktest_select_and_signal, int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout) {
+  printf("klee's ktest_select_and_signal calling signal_handler\n");
+  int signal_indicator;
+  klee_make_symbolic(&signal_indicator, sizeof(signal_indicator));
+  if(signal_indicator){
+    int signal_val;
+    klee_make_symbolic(&signal_val, sizeof(signal_val));
+    printf("klee's ktest_select_and_signal calling signal_handler\n");
+    signal_handler(signal_val);
+  }
+
+  return ktest_select(nfds, readfds, writefds, exceptfds, timeout);
 }
 
 
