@@ -323,13 +323,18 @@ DEFINE_MODEL(int, ktest_waitpid_or_error, pid_t pid, int *status, int options){
 
 //does not support verification of this socket.
 DEFINE_MODEL(int, ktest_readsocket_or_error, int fd, void *buf, size_t count){
+  assert(!klee_is_symbolic(count));
+  assert(!klee_is_symbolic(buf)); //the pointer shouldn't be symbolic.
+  assert(!klee_is_symbolic(fd));
+
+  assert(monitor_socket != fd);
+  assert(net_socket != fd);
+
+#if KTEST_READSOCKET_PLAYBACK
   printf("klee's ktest_readsocket_or_error entered\n");
   const char* error_str = "is_error ";
   const char* not_error_str = "not_error ";
   static int readsocket_or_error_name_index = -1;
-
-  assert(monitor_socket != fd);
-  assert(net_socket != fd);
 
   char *bytes = (char *)calloc(count + strlen(not_error_str), sizeof(char));
   int res = cliver_ktest_copy("readsocket_or_error", readsocket_or_error_name_index--, bytes, count);
@@ -359,20 +364,38 @@ DEFINE_MODEL(int, ktest_readsocket_or_error, int fd, void *buf, size_t count){
   printf("\n");
   //end error stuff
   return read_len;
+#else
+  int is_error;
+  char* is_error_str = "readsocket_or_error_is_error";
+  klee_make_symbolic(&is_error, sizeof(is_error), is_error_str);
+  if(is_error){
+    printf("readsocket_or_error returning error\n");
+    char* errno_str = "readsocket_or_error_errno";
+    klee_make_symbolic(&errno, sizeof(errno), errno_str);
+    //I've put this assert in the openssh code...
+    klee_assume(errno != EINTR);
+    klee_assume(errno != EAGAIN);
+    return -1;
+  } else { //if not error:
+    printf("readsocket_or_error returning ktest_readsocket\n");
+    return ktest_readsocket(fd, buf, count);
+  }
+#endif
 }
 
 
 //does not support verification of this socket.
 DEFINE_MODEL(int, ktest_writesocket, int fd, void *buf, size_t count){
   assert(!klee_is_symbolic(count));
-  assert(!klee_is_symbolic(buf));
+  assert(!klee_is_symbolic(buf)); //the pointer shouldn't be symbolic.
   assert(!klee_is_symbolic(fd));
   printf("klee's ktest_writesocket entered\n");
-  static int writesocket_index = -1;
 
   if (monitor_socket == fd || net_socket == fd)
     return ktest_verify_writesocket(fd, buf, count);
 
+#if KTEST_WRITESOCKET_PLAYBACK
+  static int writesocket_index = -1;
   char *bytes = (char *)calloc(count, sizeof(char));
   int res = cliver_ktest_copy("writesocket", writesocket_index--, bytes, count);
 
@@ -406,16 +429,23 @@ DEFINE_MODEL(int, ktest_writesocket, int fd, void *buf, size_t count){
     assert(0);
   }
   return res;
+#else
+  return count;
+#endif
 }
 
 //does not support verification of this socket.
 DEFINE_MODEL(int, ktest_readsocket, int fd, void *buf, size_t count){
+  assert(!klee_is_symbolic(count));
+  assert(!klee_is_symbolic(buf)); //the pointer shouldn't be symbolic.
+  assert(!klee_is_symbolic(fd));
   printf("klee's ktest_readsocket entered\n");
-  static int readsocket_index = -1;
 
   if (monitor_socket == fd || net_socket == fd)
     return ktest_verify_readsocket(fd, buf, count);
 
+#if KTEST_READSOCKET_PLAYBACK
+  static int readsocket_index = -1;
   char *bytes = (char *)calloc(count, sizeof(char));
   int res = cliver_ktest_copy("readsocket", readsocket_index--, bytes, count);
   if (res > count) {
@@ -436,6 +466,20 @@ DEFINE_MODEL(int, ktest_readsocket, int fd, void *buf, size_t count){
   printf("\n");
   //end error stuff
   return res;
+
+#else
+
+  char* buf_name = "ktest_readsocket";
+  klee_make_symbolic(buf, count, buf_name);
+
+  char* len_name = "ktest_readsocket_len";
+  size_t ret_len;
+  klee_make_symbolic(&ret_len, sizeof(ret_len), len_name);
+  klee_assume(ret_len <= count);
+  klee_assume(ret_len >= 0);
+  return ret_len;
+
+#endif
 }
 
 
