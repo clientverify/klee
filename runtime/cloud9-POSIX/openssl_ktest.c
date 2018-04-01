@@ -339,7 +339,8 @@ DEFINE_MODEL(int, ktest_readsocket_or_error, int fd, void *buf, size_t count){
   char *bytes = (char *)calloc(count + strlen(not_error_str), sizeof(char));
   int res = cliver_ktest_copy("readsocket_or_error", readsocket_or_error_name_index--, bytes, count);
   if(strncmp(bytes, error_str, strlen(error_str)) == 0){
-    errno = (int)bytes[strlen(error_str)];
+    char* tmp = strtok(bytes, " ");//eat error_str
+    errno = atoi(strtok(NULL, " "));
     fprintf(stderr, "ktest_readsocket error returning bytes: %d errno: %d\n", -1, errno);
     return -1;
   }
