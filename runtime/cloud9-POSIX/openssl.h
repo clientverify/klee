@@ -38,8 +38,8 @@ int net_socket;
 #define KTEST_SELECT_PLAYBACK 1
 //If we set readsocket to 0 but not write socket then we will pass a symbolic
 //lenth to write, which will make everything blow up.
-#define KTEST_WRITESOCKET_PLAYBACK 0
-#define KTEST_READSOCKET_PLAYBACK 0
+#define KTEST_WRITESOCKET_PLAYBACK 1
+#define KTEST_READSOCKET_PLAYBACK 1
 #define KTEST_STDIN_PLAYBACK 1  // if 1, overrides CLIVER_TLS_PREDICT_STDIN
 
 // Predict stdin length based on next client-to-server TLS record.

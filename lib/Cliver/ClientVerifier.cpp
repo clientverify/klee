@@ -365,38 +365,23 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
     if (ktest) {
 
       socket_events_.push_back(new SocketEventList());
-      unsigned s2c_count = 0;
-      unsigned s2c_used = 0;
-      unsigned net_s2c_count = 0;
-      unsigned net_s2c_used = 0;
-
-      // Variables used to track state of DropS2CTLSApplicationData
-      // Full explanation below.
-      bool drop_next_s2c = false;
-      bool next_s2c_is_header = true; // next read() is 5/7/13-byte header
-      unsigned int next_s2c_predicted_len = 0;
 
       for (unsigned i = 0; i < ktest->numObjects; ++i) {
         std::string obj_name(ktest->objects[i].name);
         if (obj_name == MONITOR_KTEST_READ) {
-          s2c_count++;
-
-          // Add this s2c message
           socket_events_.back()->push_back(
                 new SocketEvent(ktest->objects[i]));
-          s2c_used++;
-
         } else if (obj_name == MONITOR_KTEST_WRITE) {
           socket_events_.back()->push_back(new SocketEvent(ktest->objects[i]));
         } else if (obj_name == NET_KTEST_READ) {
-          net_s2c_count++;
-
-          // Add this s2c message
           socket_events_.back()->push_back(
                 new SocketEvent(ktest->objects[i]));
-          net_s2c_used++;
-
         } else if (obj_name == NET_KTEST_WRITE) {
+          socket_events_.back()->push_back(new SocketEvent(ktest->objects[i]));
+        } else if (obj_name == PTY_DUP_KTEST_READ) {
+          socket_events_.back()->push_back(
+                new SocketEvent(ktest->objects[i]));
+        } else if (obj_name == PTY_DUP_KTEST_WRITE) {
           socket_events_.back()->push_back(new SocketEvent(ktest->objects[i]));
         }
 
@@ -404,21 +389,6 @@ int ClientVerifier::read_socket_logs(std::vector<std::string> &logs) {
 
       cv_message("Opened socket log \"%s\" with %d objects", filename.c_str(),
                  ktest->numObjects);
-
-      if (s2c_count != s2c_used) {
-        CVMESSAGE("WARNING: Verifier is not using all server-to-client "
-                  "messages (see ClientVerifier::read_socket_logs for more "
-                  "information)");
-        CVMESSAGE("WARNING: Using " << s2c_used << " of " << s2c_count
-                                    << " server-to-client messages");
-      }
-      if (net_s2c_count != net_s2c_used) {
-        CVMESSAGE("WARNING: Verifier is not using all server-to-client "
-                  "messages (see ClientVerifier::read_socket_logs for more "
-                  "information)");
-        CVMESSAGE("WARNING: Using " << net_s2c_used << " of " << net_s2c_count
-                                    << " server-to-client messages");
-      }
 
       replay_objs_ = ktest;
     } else {

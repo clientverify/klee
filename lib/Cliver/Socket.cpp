@@ -93,6 +93,10 @@ void SocketEvent::set_type(const char* name) {
 		type = SocketEvent::SEND;
 	} else if (std::string(name) == NET_KTEST_READ) {
 		type = SocketEvent::RECV;
+	} else if (std::string(name) == PTY_DUP_KTEST_WRITE) {
+		type = SocketEvent::SEND;
+	} else if (std::string(name) == PTY_DUP_KTEST_READ) {
+		type =  SocketEvent::RECV;
 	} else {
 		cv_error("Invalid socket event name: \"%s\"", name);
 	}
@@ -563,7 +567,9 @@ bool SocketSourceKTestText::try_loading_next_ktest() {
       if (strcmp(obj->name, MONITOR_KTEST_WRITE.c_str()) != 0 &&
           strcmp(obj->name, MONITOR_KTEST_READ.c_str())  != 0 &&
           strcmp(obj->name, NET_KTEST_WRITE.c_str())     != 0 &&
-          strcmp(obj->name, NET_KTEST_READ.c_str())      != 0) { // Ignore non-network KTest events
+          strcmp(obj->name, NET_KTEST_READ.c_str())      != 0 &&
+          strcmp(obj->name, PTY_DUP_KTEST_WRITE.c_str()) != 0 &&
+          strcmp(obj->name, PTY_DUP_KTEST_READ.c_str())  != 0) { // Ignore non-network KTest events
         delete_KTestObject(obj);
         continue;
       } else if (obj->numBytes == 0) { // TCP FIN

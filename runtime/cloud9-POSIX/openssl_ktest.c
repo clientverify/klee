@@ -24,6 +24,8 @@
 
 monitor_socket = -1;
 net_socket = -1;
+pty_dup_socket = -1;
+pty_socket = -1;
 #define MAX_FDS 32  //total number of socket file descriptors we will support
 static int ktest_nfds = 0; //total number of socket file descriptors in system
 static int ktest_sockfds[MAX_FDS]; // descriptor of the sockets we're capturing
@@ -60,6 +62,14 @@ void klee_insert_ktest_sockfd(int sockfd){
 
 DEFINE_MODEL(int, ktest_close, int fd){
   printf("klee's ktest_close doing nothing for fd %d\n", fd);
+  if(fd == pty_socket){
+    printf("ktest_close closing pty_socket %d\n", pty_socket);
+    pty_socket = -1;
+  }
+  if(fd == pty_dup_socket){
+    printf("ktest_close closing pty_dup_socket %d\n", pty_dup_socket);
+    pty_dup_socket = -1;
+  }
   return 0;
 }
 
@@ -86,6 +96,13 @@ DEFINE_MODEL(int, ktest_dup, int oldfd){
   return newfd;
 }
 
+DEFINE_MODEL(int, ktest_dup_initialize_ptyfd, int oldfd){
+  assert(pty_socket == oldfd);
+  assert(pty_dup_socket == -1);
+  int newfd = ktest_dup(oldfd);
+  pty_dup_socket = newfd;
+  return newfd;
+}
 
 DEFINE_MODEL(int, ktest_socketpair, int domain, int type, int protocol, int sv[2]){
   sv[0] = ktest_socket(domain, type, protocol);
@@ -131,6 +148,7 @@ DEFINE_MODEL(int, ktest_openpty, int *ptyfd, int *ttyfd, char *name, const struc
   *ptyfd = ktest_socket(AF_INET, SOCK_STREAM, 0);
   *ttyfd = ktest_socket(AF_INET, SOCK_STREAM, 0);
 
+  pty_socket = *ptyfd;
   only_ttyfd = *ttyfd;
   printf("klee's ktest_openpty adding sockfds ptyfd %d ttyfd %d\n", *ptyfd, *ttyfd);
   return 0;
@@ -329,8 +347,7 @@ DEFINE_MODEL(int, ktest_readsocket_or_error, int fd, void *buf, size_t count){
   assert(!klee_is_symbolic(buf)); //the pointer shouldn't be symbolic.
   assert(!klee_is_symbolic(fd));
 
-  assert(monitor_socket != fd);
-  assert(net_socket != fd);
+  assert(pty_dup_socket == fd);
 
   printf("klee's ktest_readsocket_or_error entered\n");
   if(waitpid_had_ECHILD == 1){
@@ -349,7 +366,7 @@ DEFINE_MODEL(int, ktest_writesocket, int fd, void *buf, size_t count){
   assert(!klee_is_symbolic(fd));
   printf("klee's ktest_writesocket entered\n");
 
-  if (monitor_socket == fd || net_socket == fd)
+  if (monitor_socket == fd || net_socket == fd || pty_dup_socket == fd)
     return ktest_verify_writesocket(fd, buf, count);
 
 #if KTEST_WRITESOCKET_PLAYBACK
@@ -399,8 +416,9 @@ DEFINE_MODEL(int, ktest_readsocket, int fd, void *buf, size_t count){
   assert(!klee_is_symbolic(fd));
   printf("klee's ktest_readsocket entered\n");
 
-  if (monitor_socket == fd || net_socket == fd)
+  if (monitor_socket == fd || net_socket == fd || pty_dup_socket == fd){
     return ktest_verify_readsocket(fd, buf, count);
+  }
 
 #if KTEST_READSOCKET_PLAYBACK
   static int readsocket_index = -1;
