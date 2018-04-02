@@ -280,7 +280,7 @@ DEFINE_MODEL(int, ktest_register_signal_handler, int (*a)(int)){
   signal_handler = a;
 }
 
-
+static int waitpid_had_ECHILD = 0;
 DEFINE_MODEL(int, ktest_waitpid_or_error, pid_t pid, int *status, int options){
   static int waitpid_index = -1;
   printf("klee's ktest_waitpid_or_error entered\n");
@@ -306,6 +306,8 @@ DEFINE_MODEL(int, ktest_waitpid_or_error, pid_t pid, int *status, int options){
     printf("ktest_waitpid errno == %s\n", tmp);
     assert(strcmp(tmp, "errno") == 0);
     errno = atoi(strtok(NULL, " "));
+    assert(errno == ECHILD);
+    waitpid_had_ECHILD = 1;
     printf("ktest_waitpid error %d\n", errno);
   }
   free(recorded_select);
@@ -330,58 +332,13 @@ DEFINE_MODEL(int, ktest_readsocket_or_error, int fd, void *buf, size_t count){
   assert(monitor_socket != fd);
   assert(net_socket != fd);
 
-#if KTEST_READSOCKET_PLAYBACK
   printf("klee's ktest_readsocket_or_error entered\n");
-  const char* error_str = "is_error ";
-  const char* not_error_str = "not_error ";
-  static int readsocket_or_error_name_index = -1;
-
-  char *bytes = (char *)calloc(count + strlen(not_error_str), sizeof(char));
-  int res = cliver_ktest_copy("readsocket_or_error", readsocket_or_error_name_index--, bytes, count);
-  if(strncmp(bytes, error_str, strlen(error_str)) == 0){
-    char* tmp = strtok(bytes, " ");//eat error_str
-    errno = atoi(strtok(NULL, " "));
-    fprintf(stderr, "ktest_readsocket error returning bytes: %d errno: %d\n", -1, errno);
+  if(waitpid_had_ECHILD == 1){
+    errno = EIO;
     return -1;
-  }
-  assert(strncmp(bytes, not_error_str, strlen(not_error_str)) == 0);
-  int   read_len = res   - strlen(not_error_str);
-  char* read_buf = bytes + strlen(not_error_str);
-  if (read_len > count) {
-    fprintf(stderr,
-        "ktest_readsocket playback error: %zu byte destination buffer, "
-        "%d bytes recorded", count, read_len);
-    exit(2);
-  }
-  // Read recorded data into buffer
-  memcpy(buf, read_buf, read_len);
-
-  //error stuff:  
-  unsigned int i;
-  printf("readsocket playback [read_len %d size %d]", read_len, res);
-  for (i = 0; i < read_len; i++) {
-    printf(" %2.2x", ((unsigned char*)buf)[i]);
-  }
-  printf("\n");
-  //end error stuff
-  return read_len;
-#else
-  int is_error;
-  char* is_error_str = "readsocket_or_error_is_error";
-  klee_make_symbolic(&is_error, sizeof(is_error), is_error_str);
-  if(is_error){
-    printf("readsocket_or_error returning error\n");
-    char* errno_str = "readsocket_or_error_errno";
-    klee_make_symbolic(&errno, sizeof(errno), errno_str);
-    //I've put this assert in the openssh code...
-    klee_assume(errno != EINTR);
-    klee_assume(errno != EAGAIN);
-    return -1;
-  } else { //if not error:
-    printf("readsocket_or_error returning ktest_readsocket\n");
+  } else {
     return ktest_readsocket(fd, buf, count);
   }
-#endif
 }
 
 
