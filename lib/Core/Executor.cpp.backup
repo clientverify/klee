@@ -111,10 +111,6 @@ MemoryObject * prev_ctx_MO;
 
 void printCtx(ucontext_t ctx );
 
-enum trackTaintType : int {POISON, NO_POISON};
-enum trackTaintType track_taint = POISON;
-
-
 ExecutionState * GlobalExecutionStatePtr;
 extern klee::Interpreter * GlobalInterpreter;
 namespace {
@@ -2024,22 +2020,13 @@ Instruction *i = ki->inst;
 
   case Instruction::Load: {
     ref<Expr> base = eval(ki, 0, state).value;
-    if (track_taint == POISON) {
-      executeMemoryOperationPoison(state, false, base, 0, ki);
-    } else {
-      executeMemoryOperation(state, false, base, 0, ki);
-    }
+    executeMemoryOperation(state, false, base, 0, ki);
     break;
   }
   case Instruction::Store: {
     ref<Expr> base = eval(ki, 1, state).value;
     ref<Expr> value = eval(ki, 0, state).value;
-
-    if (track_taint == POISON) {
-      executeMemoryOperationPoison(state, true, base, value, 0);
-    } else {
-      executeMemoryOperation(state, true, base, value, 0);
-    }
+    executeMemoryOperation(state, true, base, value, 0);
     break;
   }
 
@@ -3372,7 +3359,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
       terminateStateEarly(state, "Query timed out (bounds check).");
       return;
     }
-    
+
     if (inBounds) {
       const ObjectState *os = op.second;
       if (isWrite) {
@@ -3385,138 +3372,12 @@ void Executor::executeMemoryOperation(ExecutionState &state,
           wos->write(offset, value);
         }          
       } else {
-	ref<Expr> result = os->read(offset, type);
-	
-	if (interpreterOpts.MakeConcreteSymbolic)
-	  result = replaceReadWithSymbolic(state, result);
-	
-	bindLocal(target, state, result);	
-      }
-      
-      return;
-    }
-  } 
-  
-  // we are on an error path (no resolution, multiple resolution, one
-  // resolution with out of bounds)
-  
-  ResolutionList rl;  
-  solver->setTimeout(coreSolverTimeout);
-  bool incomplete = state.addressSpace.resolve(state, solver, address, rl,
-                                               0, coreSolverTimeout);
-  solver->setTimeout(0);
-  
-  // XXX there is some query wasteage here. who cares?
-  ExecutionState *unbound = &state;
-  
-  for (ResolutionList::iterator i = rl.begin(), ie = rl.end(); i != ie; ++i) {
-    const MemoryObject *mo = i->first;
-    const ObjectState *os = i->second;
-    ref<Expr> inBounds = mo->getBoundsCheckPointer(address, bytes);
-    
-    StatePair branches = fork(*unbound, inBounds, true);
-    ExecutionState *bound = branches.first;
-
-    // bound can be 0 on failure or overlapped 
-    if (bound) {
-      if (isWrite) {
-        if (os->readOnly) {
-          terminateStateOnError(*bound, "memory error: object read only",
-                                ReadOnly);
-        } else {
-          ObjectState *wos = bound->addressSpace.getWriteable(mo, os);
-          wos->write(mo->getOffsetExpr(address), value);
-        }
-      } else {
-        ref<Expr> result = os->read(mo->getOffsetExpr(address), type);
-        bindLocal(target, *bound, result);
-      }
-    }
-
-    unbound = branches.second;
-    if (!unbound)
-      break;
-  }
-  
-  // XXX should we distinguish out of bounds and overlapped cases?
-  if (unbound) {
-    if (incomplete) {
-      terminateStateEarly(*unbound, "Query timed out (resolve).");
-    } else {
-      terminateStateOnError(*unbound, "memory error: out of bound pointer", Ptr,
-                            NULL, getAddressInfo(*unbound, address));
-    }
-  }
-}
-
-
-void Executor::executeMemoryOperationPoison(ExecutionState &state,
-                                      bool isWrite,
-                                      ref<Expr> address,
-                                      ref<Expr> value /* undef if read */,
-                                      KInstruction *target /* undef if write */) {
-  Expr::Width type = (isWrite ? value->getWidth() : 
-                     getWidthForLLVMType(target->inst->getType()));
-  unsigned bytes = Expr::getMinBytesForWidth(type);
-
-  if (SimplifySymIndices) {
-    if (!isa<ConstantExpr>(address))
-      address = state.constraints.simplifyExpr(address);
-    if (isWrite && !isa<ConstantExpr>(value))
-      value = state.constraints.simplifyExpr(value);
-  }
-
-  // fast path: single in-bounds resolution
-  ObjectPair op;
-  bool success;
-  solver->setTimeout(coreSolverTimeout);
-  printf("Calling resolveOne \n");
-  if (!state.addressSpace.resolveOne(state, solver, address, op, success)) {
-    address = toConstant(state, address, "resolveOne failure");
-    success = state.addressSpace.resolveOne(cast<ConstantExpr>(address), op);
-  }
-  solver->setTimeout(0);
-
-  if (success) {
-    const MemoryObject *mo = op.first;
-
-    if (MaxSymArraySize && mo->size>=MaxSymArraySize) {
-      address = toConstant(state, address, "max-sym-array-size");
-    }
-    
-    ref<Expr> offset = mo->getOffsetExpr(address);
-
-    bool inBounds;
-    solver->setTimeout(coreSolverTimeout);
-    bool success = solver->mustBeTrue(state, 
-                                      mo->getBoundsCheckOffset(offset, bytes),
-                                      inBounds);
-    solver->setTimeout(0);
-    if (!success) {
-      state.pc = state.prevPC;
-      terminateStateEarly(state, "Query timed out (bounds check).");
-      return;
-    }
-
-    if (inBounds) {
-      const ObjectState *os = op.second;
-      if (isWrite) { 
-        if (os->readOnly) {
-          terminateStateOnError(state, "memory error: object read only",
-                                ReadOnly);
-        } else {
-	  printf("Trying to write to MO representing buffer starting at %lu, hex %p \n ", (uint64_t) mo->address, (void *) mo->address);
-          ObjectState *wos = state.addressSpace.getWriteable(mo, os);
-          wos->writePoison(offset, value);
-        }          
-      } else { 
-	  ref<Expr> result = os->readPoison(offset, type);
-	  
-	  if (interpreterOpts.MakeConcreteSymbolic)
-	    result = replaceReadWithSymbolic(state, result);
-	  
-	  bindLocal(target, state, result);
-	
+        ref<Expr> result = os->read(offset, type);
+        
+        if (interpreterOpts.MakeConcreteSymbolic)
+          result = replaceReadWithSymbolic(state, result);
+        
+        bindLocal(target, state, result);
       }
 
       return;
@@ -3574,8 +3435,6 @@ void Executor::executeMemoryOperationPoison(ExecutionState &state,
     }
   }
 }
-
-
 
 void Executor::executeMakeSymbolic(ExecutionState &state, 
                                    const MemoryObject *mo,

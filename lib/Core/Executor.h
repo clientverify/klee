@@ -308,6 +308,16 @@ private:
                               ref<Expr> value /* undef if read */,
                               KInstruction *target /* undef if write */);
 
+
+  //AH: This is our customized function for accessing memory
+  //within our poison-based symbolic value tracking system.
+  void executeMemoryOperationPoison(ExecutionState &state,
+                              bool isWrite,
+                              ref<Expr> address,
+                              ref<Expr> value /* undef if read */,
+                              KInstruction *target /* undef if write */);
+
+  
   void executeMakeSymbolic(ExecutionState &state, const MemoryObject *mo,
                            const std::string &name);
 
