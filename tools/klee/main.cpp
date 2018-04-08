@@ -49,6 +49,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <sys/types.h>
 
 #include <cerrno>
 #include <fstream>
@@ -62,6 +63,12 @@
 extern "C" void begin_target_inner();
 extern "C" void klee_interp();
 //extern void ext_test();
+
+typedef struct  {
+  int workerPID;
+  uint64_t pc;
+  int childPID;
+} workerMessage;
 
 void * StackBase;
 uint64_t InitStackSize;
@@ -1253,6 +1260,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 
    StackBase = (void *) &target_stack;
    InitStackSize = 65536;
+   //Entry fn for our purposes is a dummy main function.
    Function *entryFn = interpModule->getFunction(EntryPoint);
 
    if (!entryFn){
@@ -1263,29 +1271,85 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    printf("Initializing interpretation structures ...\n");
    interpreter->initializeInterpretationStructures(entryFn);
    GlobalInterpreter = interpreter;
-   printf("---------------------SWAPPING TO TARGET CONTEXT------------------- \n");
 
    enum runType exec_mode = PURE_INTERP;
 
-   if (exec_mode == PURE_INTERP) {
-     printf("STARTING PURE INTERPRETER TEST \n");
-     //RIP hack is just for now.
-     target_ctx.uc_mcontext.gregs[REG_RIP] = 0x5b5000;
-     klee_interp();
-   } else if (exec_mode == TSX_NATIVE) {
-     swapcontext(&handler_ctx, &target_ctx);
-   } else if (exec_mode == VERIFICATION) {
-     swapcontext(&handler_ctx, &target_ctx);
-   }
-   else {
-     printf("ERROR: Run mode not specified \n");
+   int c2sFD [2];
+   
+   int pipeResult = pipe(c2sFD);
+
+   if (pipeResult != 0) {
+     printf("ERROR: Couldn't create c2sFD pipe\n");
      std::exit(EXIT_FAILURE);
    }
+   
+   int pid = fork();
+
+   if (pid == 0){
+
+     //Child path is here.
      
-   printf("RETURNING TO MAIN HANDLER \n");
-   
-   return 0;
-   
+     
+     printf("---------------------SWAPPING TO TARGET CONTEXT------------------- \n");
+     if (exec_mode == PURE_INTERP) {
+       printf("STARTING PURE INTERPRETER TEST \n");
+       //RIP hack is just for now.
+       target_ctx.uc_mcontext.gregs[REG_RIP] = 0x5b5000;
+       klee_interp();
+     } else if (exec_mode == TSX_NATIVE) {
+       swapcontext(&handler_ctx, &target_ctx);
+     } else if (exec_mode == VERIFICATION) {
+       swapcontext(&handler_ctx, &target_ctx);
+     }
+     else {
+       printf("ERROR: Run mode not specified \n");
+       std::exit(EXIT_FAILURE);
+     }
+     
+     printf("RETURNING TO MAIN HANDLER \n");
+     
+     return 0;
+     
+   } else {
+     //Code path here will hold the management code for the controller process.
+
+     while(true) {
+       //manage states
+       int numBytesRead;
+       char[sizeof(workerMessage)] workerMessageBuf;
+
+       //Get a "workerMessage-sized" number of bytes from the read end of the pipe.
+       numBytesRead =  read(c2sFD[0], workerMessageBuf, sizeof(workerMessageBuf));
+       if (numBytesRead != 0) {
+	 if (numBytesRead != sizeof(workerMessage)) {
+	   printf("Error: manager process encountered data from pipe with incorrect length %d \n",numBytesRead);
+	 }
+
+	 workerMessage msg = (workerMessage) workerMessageBuf;
+	 int result =  pickWorker(msg);
+	 if (result == 0)
+	   //Deschedule worker processes
+	 else if (result == 1)
+	   //Tell orig worker process to continue, desched child
+	 else if (result == 3)
+	   //Tell both orig and child process to continue
+	 else if (result == 2)
+	   //Tell orig process to freeze, sched child
+	 else 
+	   printf("ERROR: invalid result from pickWorker(msg) in manager \n"); std::exit(EXIT_FAILURE);
+	 
+	 
+	 //
+       }
+	 
+       //Determine if any workers are blocked.
+       
+       //If so, see why and determine if the worker should be able to fork.
+
+       //If worker forks, find the pid of the child and add it to the list.
+     }
+     
+   }
  
  }
  
