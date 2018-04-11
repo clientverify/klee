@@ -824,7 +824,8 @@ DEFINE_MODEL(int, lchown, const char *pathname, uid_t owner, gid_t group) {
 }
 
 DEFINE_MODEL(int, chdir, const char *pathname) {
-  _WRAP_FILE_SYSCALL_ERROR(chdir);
+  return 0;
+  //_WRAP_FILE_SYSCALL_ERROR(chdir);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -867,7 +868,8 @@ DEFINE_MODEL(int, fdatasync, int fd) {
 }
 
 DEFINE_MODEL(int, fchdir, int fd) {
-  _WRAP_FD_SYSCALL_ERROR(fchdir);
+  return 0;
+  //_WRAP_FD_SYSCALL_ERROR(fchdir);
 }
 
 DEFINE_MODEL(int, fchown, int fd, uid_t owner, gid_t group) {
