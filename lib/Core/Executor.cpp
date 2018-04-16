@@ -751,12 +751,6 @@ void Executor::branch(ExecutionState &state,
         processTree->split(es->ptreeNode, ns, es);
       ns->ptreeNode = res.first;
       es->ptreeNode = res.second;
-
-      std::pair<ProfileTree::Node*,ProfileTree::Node*> profile_pair = 
-        profileTree->split(es->profiletreeNode, ns, es);
-      ns->profiletreeNode = profile_pair.first;
-      es->profiletreeNode = profile_pair.second;
-
     }
   }
 

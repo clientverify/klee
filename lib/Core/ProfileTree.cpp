@@ -18,6 +18,7 @@
 
 using namespace klee;
 int ProfileTreeNode::total_ins_count = 0;
+int ProfileTree::total_branch_count = 0;
 
 ProfileTree::ProfileTree(const data_type &_root) : root(new Node(0,_root)) {
 }
@@ -29,7 +30,7 @@ std::pair<ProfileTreeNode*, ProfileTreeNode*>
 ProfileTree::split(Node *n, 
              const data_type &leftData, 
              const data_type &rightData) {
-  assert(0);
+  total_branch_count++;
   assert(n && !n->left && !n->right);
   n->data = 0;
   n->left = new Node(n, leftData);
@@ -116,6 +117,7 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
 ProfileTreeNode::~ProfileTreeNode() {
 }
 
+int  ProfileTree::get_total_branch_count(void){ return total_branch_count; }
 int  ProfileTreeNode::get_ins_count(void){ return ins_count; }
 int  ProfileTreeNode::get_total_ins_count(void){ return total_ins_count; }
 void ProfileTreeNode::increment_ins_count(void){

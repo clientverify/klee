@@ -33,6 +33,9 @@ namespace klee {
 
     void dump(llvm::raw_ostream &os);
     void dump(void);
+    int get_total_branch_count(void);
+  private:
+    static int total_branch_count;
 
   };
 

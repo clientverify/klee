@@ -431,6 +431,7 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
   //Run things
   run(*state);
   int my_total_instructions = profileTree->root->get_total_ins_count();
+  int my_total_branches = profileTree->get_total_branch_count();
 
   //Record process tree info, and delete
   delete processTree;
@@ -443,6 +444,7 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
 
   cv_->write_all_stats();
   printf("my_total_instructions %d\n", my_total_instructions);
+  printf("my_total_branches %d\n", my_total_branches);
 
   //// hack to clear memory objects
   //delete memory;
@@ -1029,6 +1031,11 @@ CVExecutor::fork(klee::ExecutionState &current,
 
     addConstraint(*trueState, condition);
     addConstraint(*falseState, klee::Expr::createIsZero(condition));
+
+    std::pair<klee::ProfileTree::Node*,klee::ProfileTree::Node*> profile_pair = 
+      profileTree->split(current.profiletreeNode, trueState, falseState);
+    trueState->profiletreeNode = profile_pair.first;
+    falseState->profiletreeNode = profile_pair.second;
 
     if (EnableStateRebuilding && !replayPath) {
       cv_->notify_all(ExecutionEvent(CV_STATE_FORK_FALSE, falseState));
