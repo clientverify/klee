@@ -77,14 +77,16 @@ ExecutionState::ExecutionState(KFunction *kf) :
     instsSinceCovNew(0),
     coveredNew(false),
     forkDisabled(false),
-    ptreeNode(0) {
+    ptreeNode(0),
+    profiletreeNode(0) {
   pushFrame(0, kf);
 }
 
 ExecutionState::ExecutionState(const std::vector<ref<Expr> > &assumptions)
-    : constraints(assumptions), queryCost(0.), ptreeNode(0) {}
+    : constraints(assumptions), queryCost(0.), ptreeNode(0), profiletreeNode(0) {}
 
 ExecutionState::~ExecutionState() {
+  assert(profiletreeNode != NULL);
   for (unsigned int i=0; i<symbolics.size(); i++)
   {
     const MemoryObject *mo = symbolics[i].first;
@@ -116,6 +118,7 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     forkDisabled(state.forkDisabled),
     coveredLines(state.coveredLines),
     ptreeNode(state.ptreeNode),
+    profiletreeNode(state.profiletreeNode),
     symbolics(state.symbolics),
     arrayNames(state.arrayNames)
 {
@@ -141,6 +144,7 @@ void ExecutionState::pushFrame(KInstIterator caller, KFunction *kf) {
 }
 
 void ExecutionState::popFrame() {
+  assert(profiletreeNode != NULL);
   StackFrame &sf = stack.back();
   for (std::vector<const MemoryObject*>::iterator it = sf.allocas.begin(), 
          ie = sf.allocas.end(); it != ie; ++it)
@@ -149,12 +153,14 @@ void ExecutionState::popFrame() {
 }
 
 void ExecutionState::addSymbolic(const MemoryObject *mo, const Array *array) { 
+  assert(profiletreeNode != NULL);
   mo->refCount++;
   symbolics.push_back(std::make_pair(mo, array));
 }
 ///
 
 std::string ExecutionState::getFnAlias(std::string fn) {
+  assert(profiletreeNode != NULL);
   std::map < std::string, std::string >::iterator it = fnAliases.find(fn);
   if (it != fnAliases.end())
     return it->second;
@@ -162,10 +168,12 @@ std::string ExecutionState::getFnAlias(std::string fn) {
 }
 
 void ExecutionState::addFnAlias(std::string old_fn, std::string new_fn) {
+  assert(profiletreeNode != NULL);
   fnAliases[old_fn] = new_fn;
 }
 
 void ExecutionState::removeFnAlias(std::string fn) {
+  assert(profiletreeNode != NULL);
   fnAliases.erase(fn);
 }
 
@@ -185,6 +193,7 @@ llvm::raw_ostream &klee::operator<<(llvm::raw_ostream &os, const MemoryMap &mm) 
 }
 
 bool ExecutionState::merge(const ExecutionState &b) {
+  assert(0);
   if (DebugLogStateMerge)
     llvm::errs() << "-- attempting merge of A:" << this << " with B:" << &b
                  << "--\n";

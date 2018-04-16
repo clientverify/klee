@@ -17,6 +17,7 @@
 #include "Memory.h"
 #include "MemoryManager.h"
 #include "PTree.h"
+#include "ProfileTree.h"
 #include "Searcher.h"
 #include "SeedInfo.h"
 #include "SpecialFunctionHandler.h"
@@ -750,6 +751,12 @@ void Executor::branch(ExecutionState &state,
         processTree->split(es->ptreeNode, ns, es);
       ns->ptreeNode = res.first;
       es->ptreeNode = res.second;
+
+      std::pair<ProfileTree::Node*,ProfileTree::Node*> profile_pair = 
+        profileTree->split(es->profiletreeNode, ns, es);
+      ns->profiletreeNode = profile_pair.first;
+      es->profiletreeNode = profile_pair.second;
+
     }
   }
 
@@ -1608,6 +1615,9 @@ static inline const llvm::fltSemantics * fpWidthToSemantics(unsigned width) {
 }
 
 void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
+  if(state.profiletreeNode != NULL){
+    state.profiletreeNode->increment_ins_count();
+  } else assert(0);
   Instruction *i = ki->inst;
   switch (i->getOpcode()) {
     // Control flow
@@ -3764,6 +3774,7 @@ void Executor::runFunctionAsMain(Function *f,
   initializeGlobals(*state);
 
   processTree = new PTree(state);
+  assert(0);
   state->ptreeNode = processTree->root;
   //if (UseThreads > 1)
     parallelRun(*state);

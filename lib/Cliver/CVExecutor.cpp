@@ -27,6 +27,7 @@
 #include "../Core/Memory.h"
 #include "../Core/MemoryManager.h"
 #include "../Core/PTree.h"
+#include "../Core/ProfileTree.h"
 #include "../Core/SeedInfo.h"
 #include "../Core/StatsTracker.h"
 #include "../Core/TimingSolver.h"
@@ -419,13 +420,29 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
   
   initializeGlobals(*state);
 
+  //Setting the initial execution state
   processTree = new PTree(state);
   state->ptreeNode = processTree->root;
+
+  profileTree = new ProfileTree(state);
+  state->profiletreeNode = profileTree->root;
+  assert(state->profiletreeNode != NULL);  
+
+  //Run things
   run(*state);
+  int my_total_instructions = profileTree->root->get_total_ins_count();
+
+  //Record process tree info, and delete
   delete processTree;
   processTree = 0;
 
+  //Record profile tree info, and delete
+  profileTree->dump();
+  delete profileTree;
+  profileTree = 0;
+
   cv_->write_all_stats();
+  printf("my_total_instructions %d\n", my_total_instructions);
 
   //// hack to clear memory objects
   //delete memory;
@@ -1046,6 +1063,7 @@ void CVExecutor::branch(klee::ExecutionState &state,
       processTree->split(es->ptreeNode, ns, es);
     ns->ptreeNode = res.first;
     es->ptreeNode = res.second;
+ 
     // TODO do we still need this event? can we just use Executor::branch()?
     cv_->notify_all(ExecutionEvent(CV_BRANCH, ns, es));
   }
