@@ -91,11 +91,13 @@
 
 #include <errno.h>
 #include <cxxabi.h>
-#include <ucontext.h>
+
 
 using namespace llvm;
 using namespace klee;
 
+//AH: Our additions below. --------------------------------------
+#include <ucontext.h>
 enum runType : int {PURE_INTERP, TSX_NATIVE, VERIFICATION};
 extern enum runType exec_mode;
 extern void * StackBase;
@@ -107,7 +109,9 @@ extern ucontext_t prev_ctx;
 extern Module * interpModule;
 
 MemoryObject * target_ctx_MO;
+ObjectState * target_ctx_OS;
 MemoryObject * prev_ctx_MO;
+ObjectState * prev_ctx_OS;
 
 void printCtx(ucontext_t ctx );
 
@@ -117,6 +121,15 @@ enum trackTaintType track_taint = POISON;
 
 ExecutionState * GlobalExecutionStatePtr;
 extern klee::Interpreter * GlobalInterpreter;
+
+//Temp hack
+//TO-DO:  Remove!!
+extern char message_test_buffer[256];
+ObjectState * rand_buf_OS;
+
+
+//AH: End of our additions. -----------------------------------
+
 namespace {
   cl::opt<bool>
   DumpStatesOnHalt("dump-states-on-halt",
@@ -3669,16 +3682,13 @@ KFunction * findInterpFunction (greg_t * registers, KModule * kmod ) {
 
   uint64_t nativePC = registers[REG_RIP];
   // printf("Looking up interp info for RIP  : %lld \n", nativePC);
-
+  //Arithmetic to find interpretation function.
   std::stringstream converter;
-  converter << std::hex << nativePC;
-  
+  converter << std::hex << nativePC;  
   std::string hexNativePCString(converter.str());
   std::string functionName =   "interp_fn_" + hexNativePCString;
-
   llvm::Function * interpFn = interpModule->getFunction(functionName);
   KFunction * KInterpFunction = kmod->functionMap[interpFn];
-
   printf(" Trying to find interp function for %s \n",functionName.c_str());
   
   if (!KInterpFunction)
@@ -3689,10 +3699,10 @@ KFunction * findInterpFunction (greg_t * registers, KModule * kmod ) {
 }
 //Here's the interface expected for the llvm interpretation function.
 
-// void @[PC Val here]_interp_fn( %struct.uc_mcontext_t * %target_ctx_ptr) {
+// void @interp_fn_PCValHere( %greg_t * %target_ctx_ptr) {
 
 //; Emulate the native code modeled in the function, including an
-//; updated program counter.  %target_ctx_ptr will take the initial uc_mcontext,
+//; updated program counter.  %target_ctx_ptr will take the initial greg_t ctx,
 //; and the necessary interpretation will occur in-place at the ctx pointed to. Also need 
 //; to perform loads and stores to main memory.  By this point, an llvm load/store to
 //; a given address in the interpreter will result in a load/store from/to the actual
@@ -3700,13 +3710,156 @@ KFunction * findInterpFunction (greg_t * registers, KModule * kmod ) {
 
 // }
 
+ void Executor::model_random() {
+   
+   //Get memory object representing the GPRs.
+   
+   printf("Modeling random \n");
+   
+   //Make buf have symbolic value.
+  void * randBuf = malloc(8);
+  //klee_make_symbolic (randBuf,8,"RandomSysCall");
+
+  //Get the MO, then call executeMakeSymbolic()
+  MemoryObject * randBuf_MO = memory->allocateFixed( (uint64_t) randBuf,8,NULL);
+
+  executeMakeSymbolic(*GlobalExecutionStatePtr, randBuf_MO, "modelRandomBuffer");
+  const ObjectState *constRandBufOS = GlobalExecutionStatePtr->addressSpace.findObject(randBuf_MO);
+  //Made rand_buf_OS global for now.  Gross.
+  //TO-DO: Fixit.
+  rand_buf_OS = GlobalExecutionStatePtr->addressSpace.getWriteable(randBuf_MO,constRandBufOS);
+
+
+  uint64_t raxOffset = ((uint64_t) &target_ctx) - ( (uint64_t) &(target_ctx.uc_mcontext.gregs[REG_RAX]));
+  ref<Expr> raxOffsetExpr = ConstantExpr::create( raxOffset,Expr::Int32);
+
+   //Assign read of randBuf into %rax.
+
+  //TO-DO: Add sanity check to make sure we're actually grabbing the
+  //symbolic value correctly from the GPR memory object.
+  
+  target_ctx_OS->writePoison(raxOffsetExpr, rand_buf_OS->readPoison(0,Expr::Int64));
+  
+  //TO-DO: Make this more robust later for call instructions with more than 5 bytes.
+  target_ctx.uc_mcontext.gregs[REG_RIP] = target_ctx.uc_mcontext.gregs[REG_RIP] +5;
+
+  //Modelling the "Ret" in the random() call to bring us back
+  //Check later to make sure it's plus eight, not plus four.
+  target_ctx.uc_mcontext.gregs[REG_RSP] = target_ctx.uc_mcontext.gregs[REG_RSP] + 8;
+  
+  
+  
+}
+
+void  Executor::model_jump() {
+  //Testing hack for now.
+  //We're pretending every jump goes to the apple case.
+  
+  ref<Expr> zeroExpr = ConstantExpr::create(0,Expr::Int64);
+  uint64_t appleAddr = 0x0000;
+  target_ctx.uc_mcontext.gregs[REG_RIP] = appleAddr;
+  ref<Expr> randReadExp =  rand_buf_OS->read8Poison(0);
+  addConstraint(*GlobalExecutionStatePtr,EqExpr::create(zeroExpr, randReadExp));
+
+  model_strncat();
+  return;
+}
+
+ void Executor::model_strncat() {
+   //In our testing for fruitbasket this represents a send point.
+
+   
+   
+   //Check to see if address of buf is symbolic, and if not, get the address.
+   //TO-DO add checks for determining if context contains symbolic values.
+   
+   uint64_t arg1Val = target_ctx.uc_mcontext.gregs[REG_RDI]; 
+   uint64_t arg2Val = target_ctx.uc_mcontext.gregs[REG_RSI];
+   uint64_t arg3Val = target_ctx.uc_mcontext.gregs[REG_RDX];
+    
+   
+   //Write value of string passed in (if concrete) to addr.
+
+   
+   
+   //Include bounds check on third arg.
+   
+   //Add contraint to global execution state ptr that message_test_buffer == value at addr. 
+
+   ref<Expr> randReadExp =  rand_buf_OS->read8Poison(0);
+
+   //AH Yet another hack
+   //TO-DO remove.
+   ref<Expr> bufReadExp = ConstantExpr::create(0,Expr::Int8);
+   
+   GlobalExecutionStatePtr->addConstraint(EqExpr::create(randReadExp,bufReadExp));
+   
+   //solve and signal back to parent process.
+
+   printf("Calling solver!!! \n");
+   std::vector< std::vector<unsigned char> > values;
+   std::vector<const Array*> objects;
+   for (unsigned i = 0; i != GlobalExecutionStatePtr->symbolics.size(); ++i)
+     objects.push_back(GlobalExecutionStatePtr->symbolics[i].second);
+   bool success = solver->getInitialValues(*GlobalExecutionStatePtr, objects, values);
+   std::exit(EXIT_SUCCESS);
+ }
+ 
+ bool Executor::gprsAreConcrete() {
+   //Flesh it out later.
+   return false;
+
+}
+
+bool Executor::instructionBeginsTransaction(uint64_t pc) {
+//Flesh it out later.
+return false;
+  
+}
+
+//This function determines if a given instruction (usually a call)
+//needs to be modeled within the interpreter.
+//We identify instructions for modeling based on PC value.
+bool Executor::instructionIsModeled() {
+  //TO-DO: Properly implement
+  
+  return true;
+  //hack for now based on e8 being used for CALLQ 0xaddress.
+  /*
+  uint8_t * bytePtr = (uint8_t *) pc;
+  if (*bytePtr == 0xe8 ) 
+    return true;
+  else
+     return false;
+
+  */
+  
+}
+
+
+//Function assumes PC has been incremented to point to next instruction
 bool Executor::resumeNativeExecution (){
-  if (exec_mode == PURE_INTERP) {
+  //if (gprsAreConcrete() && (instructionBeginsTransaction(registers[REG_RIP])) && (!instructionIsModeled(registers[REG_RIP]))  ) {
+  //  return true;
+  // } else {
+      return false;
+      // }
+}
+
+//Take in an instruction pointer rip, and
+//determine if it points to jump instruction
+//that may have more than one destination.
+bool isIndirectJump (uint64_t rip) {
+
+  //To-Do Fix this!
+  
+  uint8_t * oneBytePtr = (uint8_t *) rip;
+
+  if (*oneBytePtr == 0xff)
+    return true;
+  else
     return false;
-  } else {
-    printf("Encountered new exec mode.  Closing program \n");
-    exit(EXIT_FAILURE);
-  }
+    
 
 }
 
@@ -3718,44 +3871,59 @@ void Executor::klee_interp_internal () {
   for (int i = 0; i < 23; i++) {
     prev_ctx.uc_mcontext.gregs[i] = target_ctx.uc_mcontext.gregs[i];
   }
-  KFunction * interpFn = findInterpFunction (target_ctx.uc_mcontext.gregs, kmodule);
+  uint64_t rip = target_ctx.uc_mcontext.gregs[REG_RIP];
+  printf("RIP is %lu in decimal, %lx in hex.\n", rip, rip);
+
   
-  //Instruction *firstInst = &*(interpFn->function->begin()->begin());
+
+  if (instructionIsModeled()) {
+    printf("Attempting to executed modeled fn in interpreter\n");
+    if (rip == 0xBEEFBEEF)
+      model_random();
+    else if (rip == 0xDEEDDEED)
+      model_strncat();
+    else if (isIndirectJump(rip))
+      model_jump();
+  } else {
+    
+    KFunction * interpFn = findInterpFunction (target_ctx.uc_mcontext.gregs, kmodule);
   
-  //We have to manually push a frame on for the function we'll be
-  //interpreting through.  At this point, no other frames should exist
-  // on klee's interpretation "stack".
-  GlobalExecutionStatePtr->pushFrame(0,interpFn);
-  GlobalExecutionStatePtr->pc = interpFn->instructions ;
-  GlobalExecutionStatePtr->prevPC = GlobalExecutionStatePtr->pc;
+    //Instruction *firstInst = &*(interpFn->function->begin()->begin());
+    //We have to manually push a frame on for the function we'll be
+    //interpreting through.  At this point, no other frames should exist
+    // on klee's interpretation "stack".
+    GlobalExecutionStatePtr->pushFrame(0,interpFn);
+    GlobalExecutionStatePtr->pc = interpFn->instructions ;
+    GlobalExecutionStatePtr->prevPC = GlobalExecutionStatePtr->pc;
   
-  printf("Pushing back args ... \n");
-  std::vector<ref<Expr> > arguments;
+    printf("Pushing back args ... \n");
+    std::vector<ref<Expr> > arguments;
   
-  assert(target_ctx_MO);
-  //assert(prev_ctx_MO);
-  uint64_t regAddr = (uint64_t) target_ctx.uc_mcontext.gregs;
-  ref<ConstantExpr> regExpr = ConstantExpr::create(regAddr, Context::get().getPointerWidth());
-  arguments.push_back(regExpr);
-  //arguments.push_back(prev_ctx_MO->getBaseExpr());
+    assert(target_ctx_MO);
+    //assert(prev_ctx_MO);
+    uint64_t regAddr = (uint64_t) target_ctx.uc_mcontext.gregs;
+    ref<ConstantExpr> regExpr = ConstantExpr::create(regAddr, Context::get().getPointerWidth());
+    arguments.push_back(regExpr);
+    //arguments.push_back(prev_ctx_MO->getBaseExpr());
   
-  printf("Binding Args ... \n");
+    printf("Binding Args ... \n");
   
-  assert(GlobalExecutionStatePtr);
-  bindArgument(interpFn, 0, *GlobalExecutionStatePtr, arguments[0]);
-  //bindArgument(interpFn, 1, *GlobalExecutionStatePtr, arguments[1]);
-  printf("Calling statsTracker...\n");
-  if (statsTracker)
-    statsTracker->framePushed(*GlobalExecutionStatePtr, 0);
+    assert(GlobalExecutionStatePtr);
+    bindArgument(interpFn, 0, *GlobalExecutionStatePtr, arguments[0]);
+    //bindArgument(interpFn, 1, *GlobalExecutionStatePtr, arguments[1]);
+    printf("Calling statsTracker...\n");
+    if (statsTracker)
+      statsTracker->framePushed(*GlobalExecutionStatePtr, 0);
+    
+    //AH: This haltExecution thing is to exit out of the interpreter loop.
+    haltExecution = false;
+    printf("Calling run! \n ");
+    run(*GlobalExecutionStatePtr);
   
-  
-  //AH: This haltExecution thing is to exit out of the interpreter loop.
-  haltExecution = false;
-  printf("Calling run! \n ");
-  run(*GlobalExecutionStatePtr);
-  
-  if (statsTracker)
-    statsTracker->done();
+    if (statsTracker)
+      statsTracker->done();
+    
+  }
   
   printf("--------------RETURNING TO TARGET--------------------- \n");
   
@@ -3779,15 +3947,9 @@ void Executor::klee_interp_internal () {
   }  else {
     GlobalInterpreter->klee_interp_internal();
   }
-    
-    
-
-  
   
   return;
 }
-    
-
 
 
 void printCtx(ucontext_t ctx ) {
@@ -3827,7 +3989,8 @@ void Executor::initializeInterpretationStructures (Function *f) {
 
   printf("Creating new execution state \n");
   GlobalExecutionStatePtr = new ExecutionState(kmodule->functionMap[f]);
-  
+
+  //AH: We may not actually need this...
   printf("Initializing globals ... \n");
   initializeGlobals(*GlobalExecutionStatePtr);
   //initializeGlobals(*GlobalExecutionStatePtr);
@@ -3841,26 +4004,36 @@ void Executor::initializeInterpretationStructures (Function *f) {
   
   MemoryObject * stackMem = addExternalObject(*GlobalExecutionStatePtr,StackBase, sizeof(target_stack), false );
   const ObjectState *stackOS = GlobalExecutionStatePtr->addressSpace.findObject(stackMem);
-  ObjectState * stackOSWrite = GlobalExecutionStatePtr->addressSpace.getWriteable(stackMem,stackOS);
-  
+  ObjectState * stackOSWrite = GlobalExecutionStatePtr->addressSpace.getWriteable(stackMem,stackOS);  
   printf("Setting concrete store to point to target stack \n");
   stackOSWrite->concreteStore = (uint8_t *) StackBase;
 
   printf("Adding external object target_ctx_MO \n");
   target_ctx_MO = addExternalObject(*GlobalExecutionStatePtr, (void *) &target_ctx, sizeof (ucontext_t), false );
-
-  printf("Adding external object prev_ctx_MO \n");
-  prev_ctx_MO = addExternalObject(*GlobalExecutionStatePtr,(void *)&prev_ctx, sizeof(ucontext_t), false );
-  
   printf("target_ctx is address %lu, hex %p \n", (uint64_t) &target_ctx, (void *) &target_ctx);
   printf("target_ctx_MO represents address %lu, hex %p \n", (uint64_t) target_ctx_MO->address, (void *) &target_ctx);
+  printf("Setting concrete store in target_ctx_OS to target_ctx \n");
+  const ObjectState *targetCtxOS = GlobalExecutionStatePtr->addressSpace.findObject(target_ctx_MO);
+  target_ctx_OS = GlobalExecutionStatePtr->addressSpace.getWriteable(target_ctx_MO,targetCtxOS);
+  target_ctx_OS->concreteStore = (uint8_t *) &target_ctx;
+    
+  
+  
+  printf("Adding external object prev_ctx_MO \n");
+  prev_ctx_MO = addExternalObject(*GlobalExecutionStatePtr,(void *)&prev_ctx, sizeof(ucontext_t), false );
   printf("prev_ctx is address %lu, hex %p \n", (uint64_t) &prev_ctx, (void *) &prev_ctx);
   printf("prev_ctx_MO represents address %lu, hex %p \n", (uint64_t) prev_ctx_MO->address, (void *) &prev_ctx);
+  printf("Setting concrete store in prev_ctx_OS to prev_ctx \n");
+  const ObjectState *prevCtxOS = GlobalExecutionStatePtr->addressSpace.findObject(prev_ctx_MO);
+  prev_ctx_OS = GlobalExecutionStatePtr->addressSpace.getWriteable(prev_ctx_MO,prevCtxOS);
+  prev_ctx_OS->concreteStore = (uint8_t *) &prev_ctx;
 
+  assert( ((uint8_t *) &prev_ctx) == (prev_ctx_OS->concreteStore));
+  assert( ((uint8_t *) &target_ctx) == (target_ctx_OS->concreteStore)); 
 
+  
   //Get rid of the dummy function used for initialization
   GlobalExecutionStatePtr->popFrame();
-
   processTree = new PTree(GlobalExecutionStatePtr);
   GlobalExecutionStatePtr->ptreeNode = processTree->root;
   

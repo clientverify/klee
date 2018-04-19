@@ -60,6 +60,9 @@
 #include <stdlib.h>
 #include <ucontext.h>
 
+//---------------------------------------------------------
+//AH: BEGINNING OF OUR ADDITIONS (not including .h files)
+
 extern "C" void begin_target_inner();
 extern "C" void klee_interp();
 //extern void ext_test();
@@ -71,7 +74,7 @@ typedef struct  {
 } workerMessage;
 
 void * StackBase;
-uint64_t InitStackSize;
+uint64_t InitStackSize = 65536;
 llvm::Module * interpModule;
 //AH: Kind of gross.  We need to allocate X+1 bytes for an X byte stack, and note that it grows DOWNWARD.
 char target_stack[65537];
@@ -90,8 +93,13 @@ int glob_argc;
 char ** glob_argv;
 char ** glob_envp;
 
-//AH:  main_real() points to the original version of main from vanilla klee.  Not ideal but it works. 
-void main_real();
+//AH:  main_original_vanilla() points to the original version of main from vanilla klee.  Not ideal but it works. 
+void main_original_vanilla();
+
+char message_test_buffer [256];
+
+//AH: END OF OUR ADDITIONS
+//-----------------------------------
 
 using namespace llvm;
 using namespace klee;
@@ -1163,6 +1171,11 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    return;
  }
 
+ //Fill in later
+ int processWorkerMessage (workerMessage m) {
+   return 5;
+ }
+ 
  int main (int argc, char **argv, char **envp) {
 
    glob_argc = argc;
@@ -1259,7 +1272,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    externalsAndGlobalsCheck(finalModule);
 
    StackBase = (void *) &target_stack;
-   InitStackSize = 65536;
+   //InitStackSize = 65536;
    //Entry fn for our purposes is a dummy main function.
    Function *entryFn = interpModule->getFunction(EntryPoint);
 
@@ -1272,33 +1285,47 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    interpreter->initializeInterpretationStructures(entryFn);
    GlobalInterpreter = interpreter;
 
-   enum runType exec_mode = PURE_INTERP;
+   //This should be made global later.
+   enum runType exec_mode = VERIFICATION;
 
    int c2sFD [2];
-   
    int pipeResult = pipe(c2sFD);
-
    if (pipeResult != 0) {
      printf("ERROR: Couldn't create c2sFD pipe\n");
      std::exit(EXIT_FAILURE);
    }
-   
-   int pid = fork();
 
+   
+   //TO-DO: Remove later.  For test purposes
+   memset (message_test_buffer, 0, 256);
+   strncpy (message_test_buffer, "apple", 5);
+
+   
+   int pid;
+   if (exec_mode == PURE_INTERP)
+     pid = 0;
+   else if (exec_mode == TSX_NATIVE)
+     pid = 0;
+   else if (exec_mode == VERIFICATION) {
+     printf("CALLING FORK (TESTING, add fork later) \n\n"); pid = 0;}
+   else {
+     printf("ERROR: invalid exec_mode \n");  std::exit(EXIT_FAILURE); }
+   
    if (pid == 0){
 
      //Child path is here.
-     
-     
      printf("---------------------SWAPPING TO TARGET CONTEXT------------------- \n");
      if (exec_mode == PURE_INTERP) {
        printf("STARTING PURE INTERPRETER TEST \n");
        //RIP hack is just for now.
        target_ctx.uc_mcontext.gregs[REG_RIP] = 0x5b5000;
+       //target_ctx.uc_mcontext.gregs[REG_RIP] = ;
        klee_interp();
      } else if (exec_mode == TSX_NATIVE) {
+       printf("STARTING TSX_NATIVE EXECUTION TEST W/O SYMBOLIC VALUES \n");
        swapcontext(&handler_ctx, &target_ctx);
      } else if (exec_mode == VERIFICATION) {
+       printf("STARTING VERIFICATION \n");
        swapcontext(&handler_ctx, &target_ctx);
      }
      else {
@@ -1313,10 +1340,11 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    } else {
      //Code path here will hold the management code for the controller process.
 
+
      while(true) {
        //manage states
        int numBytesRead;
-       char[sizeof(workerMessage)] workerMessageBuf;
+       char workerMessageBuf[sizeof(workerMessage)];
 
        //Get a "workerMessage-sized" number of bytes from the read end of the pipe.
        numBytesRead =  read(c2sFD[0], workerMessageBuf, sizeof(workerMessageBuf));
@@ -1325,23 +1353,30 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 	   printf("Error: manager process encountered data from pipe with incorrect length %d \n",numBytesRead);
 	 }
 
-	 workerMessage msg = (workerMessage) workerMessageBuf;
-	 int result =  pickWorker(msg);
-	 if (result == 0)
-	   //Deschedule worker processes
-	 else if (result == 1)
-	   //Tell orig worker process to continue, desched child
-	 else if (result == 3)
-	   //Tell both orig and child process to continue
-	 else if (result == 2)
-	   //Tell orig process to freeze, sched child
+	 //Questionable.
+	 workerMessage * msg = (workerMessage *) &workerMessageBuf[0];
+	 
+	 int result =  processWorkerMessage(*msg);
+	 /* if (result == 0)
+	   //Freeze worker process
+	   else 
+	 if (result == 1)
+	   //Tell orig worker process to continue, fork and freeze child
 	 else 
+	 
+	 if (result == 3)
+	   //Tell both orig and child process to fork and continue
+	 else if (result == 2)
+	   //Tell orig process to freeze, but fork child first.
+	 else if (result == 5)
+	   std::exit(EXIT_SUCCESS);
+	 else
 	   printf("ERROR: invalid result from pickWorker(msg) in manager \n"); std::exit(EXIT_FAILURE);
-	 
-	 
-	 //
+	 */
+	 //Remove me.
+	 std::exit(EXIT_FAILURE);
        }
-	 
+     
        //Determine if any workers are blocked.
        
        //If so, see why and determine if the worker should be able to fork.
@@ -1353,7 +1388,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
  
  }
  
-void main_real() {
+void main_original_vanilla() {
   
   int argc = glob_argc;
   char ** argv = glob_argv;

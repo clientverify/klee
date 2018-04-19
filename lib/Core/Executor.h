@@ -309,6 +309,16 @@ private:
                               KInstruction *target /* undef if write */);
 
 
+  //AH: This is a customized addition.
+  void model_random();
+  void  model_jump();
+  void model_strncat();
+  bool gprsAreConcrete();
+  bool instructionBeginsTransaction(uint64_t pc);
+  bool instructionIsModeled();
+  //bool resumeNativeExecution ();
+  
+  
   //AH: This is our customized function for accessing memory
   //within our poison-based symbolic value tracking system.
   void executeMemoryOperationPoison(ExecutionState &state,
