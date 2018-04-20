@@ -316,6 +316,7 @@ private:
   bool gprsAreConcrete();
   bool instructionBeginsTransaction(uint64_t pc);
   bool instructionIsModeled();
+  void model_fn();
   //bool resumeNativeExecution ();
   
   

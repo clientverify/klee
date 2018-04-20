@@ -127,7 +127,8 @@ extern klee::Interpreter * GlobalInterpreter;
 extern char message_test_buffer[256];
 ObjectState * rand_buf_OS;
 
-
+extern "C" int random_lib_model_shim();
+extern "C" char * strncat_lib_model_shim(char *, const char *, size_t);
 
 //AH: End of our additions. -----------------------------------
 
@@ -3864,12 +3865,62 @@ bool isIndirectJump (uint64_t rip) {
 
 }
 
-void model_fn () {
-  return;
+void Executor::model_fn () {
+
+  uint64_t rip = target_ctx.uc_mcontext.gregs[REG_RIP];
+  
+  int callqOpc = 0xe8;
+  
+  uint8_t * oneBytePtr = (uint8_t *) rip;
+  if (*oneBytePtr != 0xe8)
+    return;
+  
+  //printf("Found Call. Checking to see if fn is modeled \n");
+  oneBytePtr++;
+
+  uint32_t * fourBytePtr = (uint32_t *) rip;
+  uint32_t offset = *fourBytePtr;
+
+  uint64_t dest = rip + (uint64_t) offset;
+
+  if (dest == (uint64_t) &random_lib_model_shim)
+    model_random();
+
+  if (dest == (uint64_t) &strncat_lib_model_shim) 
+    model_strncat();
+
+  
+  
 };
 
 bool isModeledFn (uint64_t rip) {
+
+
+  //TO-DO: Add more opcodes here later on.
+  int callqOpc = 0xe8;
+  
+  uint8_t * oneBytePtr = (uint8_t *) rip;
+  if (*oneBytePtr != 0xe8)
+    return false;
+  
+  printf("Found Call. Checking to see if fn is modeled \n");
+  oneBytePtr++;
+
+  uint32_t * fourBytePtr = (uint32_t *) rip;
+  uint32_t offset = *fourBytePtr;
+
+  uint64_t dest = rip + (uint64_t) offset;
+
+  //Checks are here to see if the dest is a function we model.
+  if (dest == (uint64_t) &random_lib_model_shim)
+    return true;
+  if (dest == (uint64_t) &strncat_lib_model_shim) 
+    return true;
+
+  //If we don't model the fun, return false.
+  printf("Found unmodeled fn defined at %lx \n", dest); 
   return false;
+
   
 }
 
