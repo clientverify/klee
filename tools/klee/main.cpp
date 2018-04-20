@@ -98,6 +98,64 @@ void main_original_vanilla();
 
 char message_test_buffer [256];
 
+//AH: From the tsgx folks.
+//TO-DO: Make sure this is properly cited and recognized.
+
+extern void * __bss_start;
+extern void * _end;
+void tsgx_init()
+{
+    //uint64_t *addr = &tsgx_init;
+    uint64_t addr = (uint64_t)tsgx_init & 0xfffffffffff00000;
+    uint64_t bcc_start, bcc_end;
+    unsigned access;
+    int i;
+
+    printf("text addr: %lx\n", addr);
+    // Code pages
+    //AH: Note that the number below is custom,
+    //and will change depending on the number of
+    //pages in the code section.
+    for (i = 0; i < 136; i++) {
+      access = *(uint64_t *)(addr);
+      addr += 4096;
+    }
+    printf("last text addr hit is: %lx\n", addr);
+    
+    
+    //AH I've removed the assignment to 1 below for the stack and bss
+    //sections.
+    
+    bcc_start = (uint64_t)&__bss_start & 0xfffffffffffff000;
+    bcc_end = (uint64_t)&_end & 0xfffffffffffff000;
+    //printf("bcc addr: %lx\n", bcc_start);
+    // Uninitialized data pages
+    while (bcc_start <= bcc_end) {
+      access = *(uint64_t *)(bcc_start);
+      //*(uint64_t *)(bcc_start) = 1;
+      bcc_start += 4096;
+    }
+
+    // stack
+    addr = (uint64_t)&addr & 0xfffffffffffff000;
+    //printf("stack addr: %lx\n", addr);
+    for (i = 0; i < 64; i++) {
+      access = *(uint64_t *)(addr);
+      //*(uint64_t *)(addr) = 1;
+      addr -= 4096;
+    }
+
+#if 0 // Seems we do not need to touch heap memory.
+    void *heap_base = get_heap_base();
+    printf("heap addr: %lx\n", (uint64_t)heap_base);
+
+    void *ptr;
+    ptr = malloc(8192);
+    printf("malloc addr: %lx\n", (uint64_t)ptr);
+#endif
+}
+
+
 //AH: END OF OUR ADDITIONS
 //-----------------------------------
 
@@ -1202,6 +1260,8 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    std::string errorMsg;
    LLVMContext ctx;
    interpModule = klee::loadModule(ctx, InputFile, errorMsg);
+
+   printf("Module has been loaded...\n");
    
    if (!interpModule) {
     klee_error("error loading program '%s': %s", InputFile.c_str(),
@@ -1300,7 +1360,15 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    memset (message_test_buffer, 0, 256);
    strncpy (message_test_buffer, "apple", 5);
 
-   
+   printf("Calling tsgx_init to map in pages \n");
+   //TO-DO: Make tsgx_init more robust instead of
+   //manually counting pages.
+   tsgx_init();
+   /*
+   printf("begin_target_inner located at %lx \n", &begin_target_inner); 
+   printf("client_run located at %lx \n", &client_run);
+   printf("springboard located at %lx \n" &springboard);
+   */
    int pid;
    if (exec_mode == PURE_INTERP)
      pid = 0;

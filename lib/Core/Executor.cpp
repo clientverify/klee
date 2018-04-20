@@ -128,6 +128,7 @@ extern char message_test_buffer[256];
 ObjectState * rand_buf_OS;
 
 
+
 //AH: End of our additions. -----------------------------------
 
 namespace {
@@ -3751,7 +3752,7 @@ KFunction * findInterpFunction (greg_t * registers, KModule * kmod ) {
   
 }
 
-void  Executor::model_jump() {
+void Executor::model_jump() {
   //Testing hack for now.
   //We're pretending every jump goes to the apple case.
   
@@ -3863,10 +3864,29 @@ bool isIndirectJump (uint64_t rip) {
 
 }
 
+void model_fn () {
+  return;
+};
+
+bool isModeledFn (uint64_t rip) {
+  return false;
+  
+}
+
 void Executor::klee_interp_internal () {
   static int interpCtr = 0;
   interpCtr++;
+  int max = 10;
+  if (interpCtr > max) {
+
+    printf("Hit interp counter %d times. Something is probably wrong. \n\n",interpCtr);
+    std::exit(EXIT_FAILURE);
+    
+    
+  }
   printf("Entering interpreter for time %d \n \n \n", interpCtr);
+
+  
   
   for (int i = 0; i < 23; i++) {
     prev_ctx.uc_mcontext.gregs[i] = target_ctx.uc_mcontext.gregs[i];
@@ -3876,15 +3896,13 @@ void Executor::klee_interp_internal () {
 
   
 
-  if (instructionIsModeled()) {
-    printf("Attempting to executed modeled fn in interpreter\n");
-    if (rip == 0xBEEFBEEF)
-      model_random();
-    else if (rip == 0xDEEDDEED)
-      model_strncat();
-    else if (isIndirectJump(rip))
-      model_jump();
-  } else {
+
+
+  if (isModeledFn(rip))
+    model_fn();
+  else if (isIndirectJump(rip))
+    model_jump();
+  else {
     
     KFunction * interpFn = findInterpFunction (target_ctx.uc_mcontext.gregs, kmodule);
   
@@ -3925,7 +3943,7 @@ void Executor::klee_interp_internal () {
     
   }
   
-  printf("--------------RETURNING TO TARGET--------------------- \n");
+  
   
   printf("Orig ctx was \n ");
   printCtx(prev_ctx);
@@ -3943,6 +3961,7 @@ void Executor::klee_interp_internal () {
   // prev_ctx.uc_mcontext.gregs[i] = restore_ctx.uc_mcontext.gregs[i];
   
   if (resumeNativeExecution()) {
+    printf("--------------RETURNING TO TARGET--------------------- \n");
     return;
   }  else {
     GlobalInterpreter->klee_interp_internal();
