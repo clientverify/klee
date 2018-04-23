@@ -29,7 +29,7 @@ namespace klee {
                                  const data_type &rightData);
 
     int get_total_branch_count(void);
-    void postorder(ProfileTreeNode* p, int indent=0);
+    int postorder(ProfileTreeNode* p, int indent=0);
   private:
     static int total_branch_count;
 

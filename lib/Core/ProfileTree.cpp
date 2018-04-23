@@ -40,15 +40,19 @@ ProfileTree::split(Node *n,
   return std::make_pair(n->left, n->right);
 }
 
-void ProfileTree::postorder(ProfileTreeNode* p, int indent){
+//returns instruction count for whole tree
+int ProfileTree::postorder(ProfileTreeNode* p, int indent){
+  int sub = 0;
   if(p != NULL) {
-    if(p->left) postorder(p->left, indent+4);
-    if(p->right) postorder(p->right, indent+4);
+    if(p->left)  sub += postorder(p->left, indent+4);
+    if(p->right) sub += postorder(p->right, indent+4);
     if (indent) {
       std::cout << std::setw(indent) << ' ';
     }
     std::cout << "number of instructions " <<p->ins_count << "\n";
+    sub += p->ins_count; 
   }
+  return sub;
 }
 
 ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent, 

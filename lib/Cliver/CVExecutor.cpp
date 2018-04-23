@@ -439,8 +439,9 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
 
   //Record profile tree info, and delete
   printf("postorder tree\n");
-  profileTree->postorder(profileTree->root, 0);
-  printf("my_total_instructions %d\n", my_total_instructions);
+  int postorder_ins_count = profileTree->postorder(profileTree->root, 0);
+  assert(postorder_ins_count == my_total_instructions);
+  printf("my_total_instructions %d postorder_ins_count %d\n", my_total_instructions, postorder_ins_count);
   printf("my_total_branches %d\n", my_total_branches);
   delete profileTree;
   profileTree = 0;
