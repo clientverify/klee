@@ -18,8 +18,6 @@ namespace klee {
     Mutex lock_;
 
   public:
-    //add this back, and put back lock semantics?
-//    typedef Guard<ProfileTree>::type Guard;
     typedef class ProfileTreeNode Node;
     Node *root;
 
@@ -29,11 +27,9 @@ namespace klee {
     std::pair<Node*,Node*> split(Node *n,
                                  const data_type &leftData,
                                  const data_type &rightData);
-    void remove(Node *n);
 
-    void dump(llvm::raw_ostream &os);
-    void dump(void);
     int get_total_branch_count(void);
+    void postorder(ProfileTreeNode* p, int indent=0);
   private:
     static int total_branch_count;
 

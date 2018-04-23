@@ -438,13 +438,14 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
   processTree = 0;
 
   //Record profile tree info, and delete
-  profileTree->dump();
+  printf("postorder tree\n");
+  profileTree->postorder(profileTree->root, 0);
+  printf("my_total_instructions %d\n", my_total_instructions);
+  printf("my_total_branches %d\n", my_total_branches);
   delete profileTree;
   profileTree = 0;
 
   cv_->write_all_stats();
-  printf("my_total_instructions %d\n", my_total_instructions);
-  printf("my_total_branches %d\n", my_total_branches);
 
   //// hack to clear memory objects
   //delete memory;

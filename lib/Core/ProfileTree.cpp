@@ -13,6 +13,8 @@
 #include <klee/util/ExprPPrinter.h>
 
 #include "llvm/Support/CommandLine.h"
+#include <iostream>
+#include <iomanip>
 
 #include <vector>
 
@@ -38,71 +40,16 @@ ProfileTree::split(Node *n,
   return std::make_pair(n->left, n->right);
 }
 
-void ProfileTree::dump() {
-  llvm::raw_fd_ostream *f;
-  std::string Error;
-  std::string path = "/playpen/cliver0/processtree.graph";
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3,5)
-  f = new llvm::raw_fd_ostream(path.c_str(), Error, llvm::sys::fs::F_None);
-#elif LLVM_VERSION_CODE >= LLVM_VERSION(3,4)
-  f = new llvm::raw_fd_ostream(path.c_str(), Error, llvm::sys::fs::F_Binary);
-#else
-  f = new llvm::raw_fd_ostream(path.c_str(), Error, llvm::raw_fd_ostream::F_Binary);
-#endif
-  assert(f);
-  if (!Error.empty()) {
-    printf("error opening file \"%s\".  KLEE may have run out of file "
-        "descriptors: try to increase the maximum number of open file "
-        "descriptors by using ulimit (%s).",
-        path.c_str(), Error.c_str());
-    delete f;
-    f = NULL;
-  }
-  if (f) {
-    dump(*f);
-    delete f;
+void ProfileTree::postorder(ProfileTreeNode* p, int indent){
+  if(p != NULL) {
+    if(p->left) postorder(p->left, indent+4);
+    if(p->right) postorder(p->right, indent+4);
+    if (indent) {
+      std::cout << std::setw(indent) << ' ';
+    }
+    std::cout << "number of instructions " <<p->ins_count << "\n";
   }
 }
-
-
-void ProfileTree::dump(llvm::raw_ostream &os) {
-  ExprPPrinter *pp = ExprPPrinter::create(os);
-  pp->setNewline("\\l");
-  os << "digraph G {\n";
-  os << "\tsize=\"10,7.5\";\n";
-  os << "\tratio=fill;\n";
-  os << "\trotate=90;\n";
-  os << "\tcenter = \"true\";\n";
-  os << "\tnode [style=\"filled\",width=.1,height=.1,fontname=\"Terminus\"]\n";
-  os << "\tedge [arrowsize=.3]\n";
-  std::vector<ProfileTree::Node*> stack;
-  stack.push_back(root);
-  while (!stack.empty()) {
-    ProfileTree::Node *n = stack.back();
-    stack.pop_back();
-    if (n->condition.isNull()) {
-      os << "\tn" << n << " [label=\"\"";
-    } else {
-      os << "\tn" << n << " [label=\"";
-      pp->print(n->condition);
-      os << "\",shape=diamond";
-    }
-    if (n->data)
-      os << ",fillcolor=green";
-    os << "];\n";
-    if (n->left) {
-      os << "\tn" << n << " -> n" << n->left << ";\n";
-      stack.push_back(n->left);
-    }
-    if (n->right) {
-      os << "\tn" << n << " -> n" << n->right << ";\n";
-      stack.push_back(n->right);
-    }
-  }
-  os << "}\n";
-  delete pp;
-}
-
 
 ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent, 
                      ExecutionState *_data) 
