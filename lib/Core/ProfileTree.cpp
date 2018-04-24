@@ -22,7 +22,7 @@
 
 using namespace klee;
 int ProfileTreeNode::total_ins_count = 0;
-int ProfileTree::total_branch_count = 0;
+int ProfileTreeNode::total_branch_count = 0;
 
 ProfileTree::ProfileTree(const data_type &_root) : root(new Node(0, _root, NULL)) {
 }
@@ -31,17 +31,17 @@ ProfileTree::~ProfileTree() {}
 
 
 std::pair<ProfileTreeNode*, ProfileTreeNode*>
-ProfileTree::split(Node *n, 
-             const data_type &leftData, 
-             const data_type &rightData,
+ProfileTreeNode::split(
+             ExecutionState* leftData,
+             ExecutionState* rightData,
              llvm::Instruction* ins) {
   total_branch_count++;
-  assert(n && n->children.size() == 0);
-  n->data = 0;
-  ProfileTreeNode* left  = new Node(n, leftData, ins);
-  ProfileTreeNode* right = new Node(n, rightData, ins);
-  n->children.push_back(left);
-  n->children.push_back(right);
+  assert(this->children.size() == 0);
+  this->data = 0;
+  ProfileTreeNode* left  = new ProfileTreeNode(this, leftData, ins);
+  ProfileTreeNode* right = new ProfileTreeNode(this, rightData, ins);
+  this->children.push_back(left);
+  this->children.push_back(right);
   return std::make_pair(left, right);
 }
 
@@ -68,7 +68,7 @@ int ProfileTree::postorder(ProfileTreeNode* p, int indent){
 }
 
 ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent, 
-                     ExecutionState *_data, llvm::Instruction* _ins) 
+                     ExecutionState *_data, llvm::Instruction *_ins)
   : parent(_parent),
     children(),
     data(_data),
@@ -80,7 +80,7 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
 ProfileTreeNode::~ProfileTreeNode() {
 }
 
-int  ProfileTree::get_total_branch_count(void){ return total_branch_count; }
+int  ProfileTreeNode::get_total_branch_count(void){ return total_branch_count; }
 int  ProfileTreeNode::get_ins_count(void){ return ins_count; }
 int  ProfileTreeNode::get_total_ins_count(void){ return total_ins_count; }
 void ProfileTreeNode::increment_ins_count(void){
