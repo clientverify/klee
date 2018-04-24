@@ -10,6 +10,8 @@
 
 #include <klee/Expr.h>
 #include <klee/util/Mutex.h>
+#include "llvm/IR/Instruction.h"
+#include <vector>
 namespace klee {
   class ExecutionState;
 
@@ -26,7 +28,8 @@ namespace klee {
     
     std::pair<Node*,Node*> split(Node *n,
                                  const data_type &leftData,
-                                 const data_type &rightData);
+                                 const data_type &rightData,
+                                 llvm::Instruction* ins);
 
     int get_total_branch_count(void);
     int postorder(ProfileTreeNode* p, int indent=0);
@@ -38,7 +41,8 @@ namespace klee {
   class ProfileTreeNode {
     friend class ProfileTree;
   public:
-    ProfileTreeNode *parent, *left, *right;
+    ProfileTreeNode *parent;
+    std::vector<ProfileTreeNode*> children;
     ExecutionState *data;
     ref<Expr> condition;
     void increment_ins_count(void);
@@ -46,10 +50,18 @@ namespace klee {
     int get_total_ins_count(void);
 
   private:
-    ProfileTreeNode(ProfileTreeNode *_parent, ExecutionState *_data);
+    ProfileTreeNode(ProfileTreeNode *_parent,
+                    ExecutionState *_data,
+                    llvm::Instruction* ins);
     ~ProfileTreeNode();
+    //All the instructions executed by this node's execution state
     int ins_count;
+    //All the instructions in the tree
     static int total_ins_count;
+    //The instruction associated with this node's creation.  E.g. branch
+    //node would have the branch instruction where this node's execution state
+    //was created.  Should only be NULL for root.
+    llvm::Instruction* my_instruction;
   };
 }
 

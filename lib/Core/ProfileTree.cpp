@@ -13,6 +13,8 @@
 #include <klee/util/ExprPPrinter.h>
 
 #include "llvm/Support/CommandLine.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/BasicBlock.h"
 #include <iostream>
 #include <iomanip>
 
@@ -22,7 +24,7 @@ using namespace klee;
 int ProfileTreeNode::total_ins_count = 0;
 int ProfileTree::total_branch_count = 0;
 
-ProfileTree::ProfileTree(const data_type &_root) : root(new Node(0,_root)) {
+ProfileTree::ProfileTree(const data_type &_root) : root(new Node(0, _root, NULL)) {
 }
 
 ProfileTree::~ProfileTree() {}
@@ -31,23 +33,33 @@ ProfileTree::~ProfileTree() {}
 std::pair<ProfileTreeNode*, ProfileTreeNode*>
 ProfileTree::split(Node *n, 
              const data_type &leftData, 
-             const data_type &rightData) {
+             const data_type &rightData,
+             llvm::Instruction* ins) {
   total_branch_count++;
-  assert(n && !n->left && !n->right);
+  assert(n && n->children.size() == 0);
   n->data = 0;
-  n->left = new Node(n, leftData);
-  n->right = new Node(n, rightData);
-  return std::make_pair(n->left, n->right);
+  ProfileTreeNode* left  = new Node(n, leftData, ins);
+  ProfileTreeNode* right = new Node(n, rightData, ins);
+  n->children.push_back(left);
+  n->children.push_back(right);
+  return std::make_pair(left, right);
 }
 
 //returns instruction count for whole tree
 int ProfileTree::postorder(ProfileTreeNode* p, int indent){
   int sub = 0;
   if(p != NULL) {
-    if(p->left)  sub += postorder(p->left, indent+4);
-    if(p->right) sub += postorder(p->right, indent+4);
+    std::vector <ProfileTreeNode*> :: iterator i;
+    for (i = p->children.begin(); i != p->children.end(); ++i)
+      sub += postorder(*i, indent + 4);
     if (indent) {
       std::cout << std::setw(indent) << ' ';
+    }
+    if(p->my_instruction != NULL) {
+      std::string function_name(p->my_instruction->getParent()->getParent()->getName().data());
+      std::cout << "function name: " << function_name << " ";
+    } else {
+      assert(p == this->root);
     }
     std::cout << "number of instructions " <<p->ins_count << "\n";
     sub += p->ins_count; 
@@ -56,13 +68,13 @@ int ProfileTree::postorder(ProfileTreeNode* p, int indent){
 }
 
 ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent, 
-                     ExecutionState *_data) 
+                     ExecutionState *_data, llvm::Instruction* _ins) 
   : parent(_parent),
-    left(0),
-    right(0),
+    children(),
     data(_data),
     condition(0),
-    ins_count(0) {
+    ins_count(0),
+    my_instruction(_ins){
 }
 
 ProfileTreeNode::~ProfileTreeNode() {

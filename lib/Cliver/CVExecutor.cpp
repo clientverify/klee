@@ -96,6 +96,7 @@
 #else
 #include "llvm/IR/CallSite.h"
 #endif
+#include "llvm/IR/Instruction.h"
 
 #include <cassert>
 #include <algorithm>
@@ -1034,8 +1035,9 @@ CVExecutor::fork(klee::ExecutionState &current,
     addConstraint(*trueState, condition);
     addConstraint(*falseState, klee::Expr::createIsZero(condition));
 
+    llvm::Instruction* current_inst = current.prevPC->inst;
     std::pair<klee::ProfileTree::Node*,klee::ProfileTree::Node*> profile_pair = 
-      profileTree->split(current.profiletreeNode, trueState, falseState);
+      profileTree->split(current.profiletreeNode, trueState, falseState, current_inst);
     trueState->profiletreeNode = profile_pair.first;
     falseState->profiletreeNode = profile_pair.second;
 
