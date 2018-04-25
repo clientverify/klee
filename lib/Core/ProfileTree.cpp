@@ -38,6 +38,7 @@ ProfileTreeNode::split(
              ExecutionState* rightData,
              llvm::Instruction* ins) {
   assert(this->children.size() == 0);
+  assert(this->my_type != leaf);
   this->data = 0;
   ProfileTreeNode* left  = new ProfileTreeNode(this, leftData, ins);
   ProfileTreeNode* right = new ProfileTreeNode(this, rightData, ins);
@@ -53,6 +54,8 @@ ProfileTreeNode::branch(
              llvm::Instruction* ins) {
   total_branch_count++;
   assert(leftData != rightData);
+  assert(this->my_type == leaf);
+  this->my_type = branch_parent;
   return split(leftData, rightData, ins);
 }
 
@@ -61,6 +64,7 @@ ProfileTreeNode::clone(
              ExecutionState* me_state,
              ExecutionState* clone_state,
              llvm::Instruction* ins) {
+  assert(this->my_type == leaf);
   assert(this == me_state->profiletreeNode);
   assert(this->data == me_state);
   assert(me_state != clone_state);
@@ -69,19 +73,18 @@ ProfileTreeNode::clone(
   total_clone_count++;
   std::pair<ProfileTreeNode*, ProfileTreeNode*> ret;
   if (this->get_ins_count() == 0 && this->parent != NULL) { //make sibling and add to parent
-    //assert parent's type == clone node
+    assert(this->parent->my_type == clone_parent);
     ProfileTreeNode* clone_node = new ProfileTreeNode(this->parent, clone_state, ins);
     this->parent->children.push_back(clone_node);
     ret = std::make_pair(this, clone_node);
-  } else if (this->get_ins_count() > 0) {
-    //assert n's type is terminal node
-    //set to clone node
+  } else if (this->get_ins_count() > 0) { //Split the current node
+    this->my_type = clone_parent;
+
     ret = this->split(me_state, clone_state, ins);
-  } else if (this->parent == NULL) {
-    //assert n's type is terminal node
-    //set to clone node
+  } else if (this->parent == NULL) { //Root case
     assert(this->get_ins_count() == 0);
-    //assert(root == this);
+    this->my_type = clone_parent;
+
     ret = this->split(me_state, clone_state, ins);
   } else {
     assert(0);
@@ -123,6 +126,7 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
     data(_data),
     condition(0),
     ins_count(0),
+    my_type(leaf),
     my_instruction(_ins){
 }
 

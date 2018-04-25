@@ -53,6 +53,12 @@ namespace klee {
 
 
   private:
+    //leaf: this is the type when a node hasn't split yet.
+    //clone_parent: this is the type when a node is split as a result of a clone
+    //  call
+    //branch_parent: this is the type when a node is split as a result of a branch
+    enum NodeType { leaf, clone_parent, branch_parent };
+    NodeType my_type;
     std::pair<ProfileTreeNode*, ProfileTreeNode*> split(
                                  ExecutionState* leftData,
                                  ExecutionState* rightData,
