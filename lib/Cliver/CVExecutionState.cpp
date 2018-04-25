@@ -17,6 +17,8 @@
 #include "klee/Internal/Support/ErrorHandling.h"
 #include "klee/Internal/Module/InstructionInfoTable.h"
 #include "klee/Internal/Module/KInstruction.h"
+#include "../Core/ProfileTree.h"
+#include "../Core/Executor.h"
 
 #include "llvm/ADT/StringExtras.h"
 
@@ -93,6 +95,16 @@ CVExecutionState* CVExecutionState::clone(ExecutionStateProperty* property) {
   cloned_state->array_name_index_map_ = array_name_index_map_;
 
   cloned_state->multi_pass_assignment_ = multi_pass_assignment_;
+
+
+  llvm::Instruction* current_inst = this->prevPC->inst;
+  std::pair<klee::ProfileTree::Node*,klee::ProfileTree::Node*> profile_pair =
+    this->profiletreeNode->clone(this, cloned_state, current_inst);
+  this->profiletreeNode         = profile_pair.first;
+  cloned_state->profiletreeNode = profile_pair.second;
+
+  assert(cloned_state == cloned_state->profiletreeNode->data);
+  assert(this         == this->profiletreeNode->data);
 
   return cloned_state;
 }

@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "ProfileTree.h"
+#include "klee/ExecutionState.h"
 
 #include <klee/Expr.h>
 #include <klee/util/ExprPPrinter.h>
@@ -23,6 +24,7 @@
 using namespace klee;
 int ProfileTreeNode::total_ins_count = 0;
 int ProfileTreeNode::total_branch_count = 0;
+int ProfileTreeNode::total_clone_count = 0;
 
 ProfileTree::ProfileTree(const data_type &_root) : root(new Node(0, _root, NULL)) {
 }
@@ -45,13 +47,51 @@ ProfileTreeNode::split(
   return std::make_pair(left, right);
 }
 
+std::pair<ProfileTreeNode*, ProfileTreeNode*>
+ProfileTreeNode::clone(
+             ExecutionState* me_state,
+             ExecutionState* clone_state,
+             llvm::Instruction* ins) {
+  assert(this == me_state->profiletreeNode);
+  assert(this->data == me_state);
+  assert(me_state != clone_state);
+  assert(this->children.size() == 0);
+
+  total_clone_count++;
+  std::pair<ProfileTreeNode*, ProfileTreeNode*> ret;
+  if (this->get_ins_count() == 0 && this->parent != NULL) { //make sibling and add to parent
+    //assert parent's type == clone node
+    ProfileTreeNode* clone_node = new ProfileTreeNode(this->parent, clone_state, ins);
+    this->parent->children.push_back(clone_node);
+    ret = std::make_pair(this, clone_node);
+  } else if (this->get_ins_count() > 0) {
+    //assert n's type is terminal node
+    //set to clone node
+    ret = this->split(me_state, clone_state, ins);
+  } else if (this->parent == NULL) {
+    //assert n's type is terminal node
+    //set to clone node
+    assert(this->get_ins_count() == 0);
+    //assert(root == this);
+    ret = this->split(me_state, clone_state, ins);
+  } else {
+    assert(0);
+  }
+  assert(ret.first != ret.second);
+  return ret;
+}
+
 //returns instruction count for whole tree
 int ProfileTree::postorder(ProfileTreeNode* p, int indent){
-  int sub = 0;
+  int sub = 0; //records the number of instructions
   if(p != NULL) {
+    //Recurse for children:
     std::vector <ProfileTreeNode*> :: iterator i;
-    for (i = p->children.begin(); i != p->children.end(); ++i)
+    for (i = p->children.begin(); i != p->children.end(); ++i) {
       sub += postorder(*i, indent + 4);
+    }
+
+    //Printing for this node:
     if (indent) {
       std::cout << std::setw(indent) << ' ';
     }

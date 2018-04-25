@@ -1612,6 +1612,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   if(state.profiletreeNode != NULL){
     state.profiletreeNode->increment_ins_count();
   } else assert(0);
+  assert(&state == state.profiletreeNode->data);
   Instruction *i = ki->inst;
   switch (i->getOpcode()) {
     // Control flow

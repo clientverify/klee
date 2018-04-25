@@ -118,7 +118,7 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     forkDisabled(state.forkDisabled),
     coveredLines(state.coveredLines),
     ptreeNode(state.ptreeNode),
-    profiletreeNode(state.profiletreeNode),
+    profiletreeNode(0),
     symbolics(state.symbolics),
     arrayNames(state.arrayNames)
 {

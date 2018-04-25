@@ -27,7 +27,6 @@ namespace klee {
     ~ProfileTree();
     
     int postorder(ProfileTreeNode* p, int indent=0);
-
   };
 
   class ProfileTreeNode {
@@ -42,6 +41,10 @@ namespace klee {
                                  ExecutionState* rightData,
                                  llvm::Instruction* ins);
 
+    std::pair<ProfileTreeNode*, ProfileTreeNode*> clone(
+                                 ExecutionState* me_state,
+                                 ExecutionState* clone_state,
+                                 llvm::Instruction* ins);
     void increment_ins_count(void);
     int get_ins_count(void);
     int get_total_ins_count(void);
@@ -63,6 +66,7 @@ namespace klee {
     //All the instructions in the tree
     static int total_ins_count;
     static int total_branch_count;
+    static int total_clone_count;
   };
 }
 

@@ -1041,6 +1041,9 @@ CVExecutor::fork(klee::ExecutionState &current,
     trueState->profiletreeNode = profile_pair.first;
     falseState->profiletreeNode = profile_pair.second;
 
+    assert(trueState  == trueState->profiletreeNode->data);
+    assert(falseState == falseState->profiletreeNode->data);
+
     if (EnableStateRebuilding && !replayPath) {
       cv_->notify_all(ExecutionEvent(CV_STATE_FORK_FALSE, falseState));
       cv_->notify_all(ExecutionEvent(CV_STATE_FORK_TRUE, trueState));
