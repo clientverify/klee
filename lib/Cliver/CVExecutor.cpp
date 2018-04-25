@@ -1040,11 +1040,6 @@ CVExecutor::fork(klee::ExecutionState &current,
     llvm::Instruction* current_inst = current.prevPC->inst;
     std::pair<klee::ProfileTree::Node*,klee::ProfileTree::Node*> profile_pair = 
       current.profiletreeNode->branch(trueState, falseState, current_inst);
-    trueState->profiletreeNode = profile_pair.first;
-    falseState->profiletreeNode = profile_pair.second;
-
-    assert(trueState  == trueState->profiletreeNode->data);
-    assert(falseState == falseState->profiletreeNode->data);
 
     if (EnableStateRebuilding && !replayPath) {
       cv_->notify_all(ExecutionEvent(CV_STATE_FORK_FALSE, falseState));

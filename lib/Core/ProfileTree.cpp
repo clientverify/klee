@@ -56,7 +56,15 @@ ProfileTreeNode::branch(
   assert(leftData != rightData);
   assert(this->my_type == leaf);
   this->my_type = branch_parent;
-  return split(leftData, rightData, ins);
+  std::pair<ProfileTreeNode*, ProfileTreeNode*> ret = split(leftData, rightData, ins);
+  leftData->profiletreeNode = ret.first;
+  rightData->profiletreeNode = ret.second;
+
+  assert(leftData  == ret.first->data);
+  assert(rightData == ret.second->data);
+  assert(ret.first->parent == ret.second->parent);
+
+  return ret;
 }
 
 std::pair<ProfileTreeNode*, ProfileTreeNode*>
@@ -90,6 +98,12 @@ ProfileTreeNode::clone(
     assert(0);
   }
   assert(ret.first != ret.second);
+  assert(me_state    == ret.first->data);
+  assert(clone_state == ret.second->data);
+  assert(ret.first->parent == ret.second->parent);
+
+  me_state->profiletreeNode = ret.first;
+  clone_state->profiletreeNode = ret.second;
   return ret;
 }
 

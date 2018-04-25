@@ -100,11 +100,6 @@ CVExecutionState* CVExecutionState::clone(ExecutionStateProperty* property) {
   llvm::Instruction* current_inst = this->prevPC->inst;
   std::pair<klee::ProfileTree::Node*,klee::ProfileTree::Node*> profile_pair =
     this->profiletreeNode->clone(this, cloned_state, current_inst);
-  this->profiletreeNode         = profile_pair.first;
-  cloned_state->profiletreeNode = profile_pair.second;
-
-  assert(cloned_state == cloned_state->profiletreeNode->data);
-  assert(this         == this->profiletreeNode->data);
 
   return cloned_state;
 }
