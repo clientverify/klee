@@ -432,7 +432,8 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
   //Run things
   run(*state);
   int my_total_instructions = profileTree->root->get_total_ins_count();
-  int my_total_branches = profileTree->root->get_total_branch_count();
+  int my_clones             = profileTree->root->get_total_clone_count();
+  int my_total_branches     = profileTree->root->get_total_branch_count();
 
   //Record process tree info, and delete
   delete processTree;
@@ -444,6 +445,7 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
   assert(postorder_ins_count == my_total_instructions);
   printf("my_total_instructions %d postorder_ins_count %d\n", my_total_instructions, postorder_ins_count);
   printf("my_total_branches %d\n", my_total_branches);
+  printf("my_total_clones %d\n", my_clones);
   delete profileTree;
   profileTree = 0;
 
@@ -1037,7 +1039,7 @@ CVExecutor::fork(klee::ExecutionState &current,
 
     llvm::Instruction* current_inst = current.prevPC->inst;
     std::pair<klee::ProfileTree::Node*,klee::ProfileTree::Node*> profile_pair = 
-      current.profiletreeNode->split(trueState, falseState, current_inst);
+      current.profiletreeNode->branch(trueState, falseState, current_inst);
     trueState->profiletreeNode = profile_pair.first;
     falseState->profiletreeNode = profile_pair.second;
 

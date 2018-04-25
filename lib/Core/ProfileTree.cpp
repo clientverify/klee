@@ -37,7 +37,6 @@ ProfileTreeNode::split(
              ExecutionState* leftData,
              ExecutionState* rightData,
              llvm::Instruction* ins) {
-  total_branch_count++;
   assert(this->children.size() == 0);
   this->data = 0;
   ProfileTreeNode* left  = new ProfileTreeNode(this, leftData, ins);
@@ -45,6 +44,16 @@ ProfileTreeNode::split(
   this->children.push_back(left);
   this->children.push_back(right);
   return std::make_pair(left, right);
+}
+
+std::pair<ProfileTreeNode*, ProfileTreeNode*>
+ProfileTreeNode::branch(
+             ExecutionState* leftData,
+             ExecutionState* rightData,
+             llvm::Instruction* ins) {
+  total_branch_count++;
+  assert(leftData != rightData);
+  return split(leftData, rightData, ins);
 }
 
 std::pair<ProfileTreeNode*, ProfileTreeNode*>
@@ -123,6 +132,7 @@ ProfileTreeNode::~ProfileTreeNode() {
 int  ProfileTreeNode::get_total_branch_count(void){ return total_branch_count; }
 int  ProfileTreeNode::get_ins_count(void){ return ins_count; }
 int  ProfileTreeNode::get_total_ins_count(void){ return total_ins_count; }
+int  ProfileTreeNode::get_total_clone_count(void){ return total_clone_count; }
 void ProfileTreeNode::increment_ins_count(void){
   total_ins_count++;
   ins_count++;

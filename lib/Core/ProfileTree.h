@@ -36,7 +36,7 @@ namespace klee {
     std::vector<ProfileTreeNode*> children;
     ExecutionState *data;
     ref<Expr> condition;
-    std::pair<ProfileTreeNode*, ProfileTreeNode*> split(
+    std::pair<ProfileTreeNode*, ProfileTreeNode*> branch(
                                  ExecutionState* leftData,
                                  ExecutionState* rightData,
                                  llvm::Instruction* ins);
@@ -48,10 +48,16 @@ namespace klee {
     void increment_ins_count(void);
     int get_ins_count(void);
     int get_total_ins_count(void);
+    int get_total_clone_count(void);
     int get_total_branch_count(void);
 
 
   private:
+    std::pair<ProfileTreeNode*, ProfileTreeNode*> split(
+                                 ExecutionState* leftData,
+                                 ExecutionState* rightData,
+                                 llvm::Instruction* ins);
+
     ProfileTreeNode(ProfileTreeNode *_parent,
                     ExecutionState *_data,
                     llvm::Instruction* ins);
