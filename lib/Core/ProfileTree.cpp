@@ -80,20 +80,20 @@ ProfileTreeNode::clone(
 
   total_clone_count++;
   std::pair<ProfileTreeNode*, ProfileTreeNode*> ret;
-  if (this->get_ins_count() == 0 && this->parent != NULL) { //make sibling and add to parent
+  if (this->parent == NULL) { //Root case
+    assert(this->get_ins_count() == 0);
+
+    this->my_type = clone_parent;
+    ret = this->split(me_state, clone_state, ins);
+  } else if (this->get_ins_count() > 0) { //Split the current node
+    this->my_type = clone_parent;
+    ret = this->split(me_state, clone_state, ins);
+  } else if (this->get_ins_count() == 0) { //make sibling and add to parent
     assert(this->parent->my_type == clone_parent);
+
     ProfileTreeNode* clone_node = new ProfileTreeNode(this->parent, clone_state, ins);
     this->parent->children.push_back(clone_node);
     ret = std::make_pair(this, clone_node);
-  } else if (this->get_ins_count() > 0) { //Split the current node
-    this->my_type = clone_parent;
-
-    ret = this->split(me_state, clone_state, ins);
-  } else if (this->parent == NULL) { //Root case
-    assert(this->get_ins_count() == 0);
-    this->my_type = clone_parent;
-
-    ret = this->split(me_state, clone_state, ins);
   } else {
     assert(0);
   }
