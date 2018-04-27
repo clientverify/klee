@@ -25,12 +25,39 @@ using namespace klee;
 int ProfileTreeNode::total_ins_count = 0;
 int ProfileTreeNode::total_branch_count = 0;
 int ProfileTreeNode::total_clone_count = 0;
+int ProfileTreeNode::total_function_call_count = 0;
 
 ProfileTree::ProfileTree(const data_type &_root) : root(new Node(0, _root, NULL)) {
 }
 
 ProfileTree::~ProfileTree() {}
 
+ProfileTreeNode*
+ProfileTreeNode::link(
+             ExecutionState* data,
+             llvm::Instruction* ins) {
+  assert(this->data            == data);
+  assert(this->children.size() == 0);
+  assert(this->my_type         == function_parent);
+
+  this->data = 0;
+  ProfileTreeNode* kid  = new ProfileTreeNode(this, data, ins);
+  this->children.push_back(kid);
+  return kid;
+}
+
+void ProfileTreeNode::function_call(
+             ExecutionState* data,
+             llvm::Instruction* ins) {
+  total_function_call_count++;
+  assert(this->my_type == leaf);
+  this->my_type         = function_parent;
+  ProfileTreeNode* kid  = link(data, ins);
+  data->profiletreeNode = kid;
+
+  assert(data  == kid->data);
+  assert(kid->parent == this);
+}
 
 std::pair<ProfileTreeNode*, ProfileTreeNode*>
 ProfileTreeNode::split(
@@ -85,7 +112,8 @@ ProfileTreeNode::clone(
 
     this->my_type = clone_parent;
     ret = this->split(me_state, clone_state, ins);
-  } else if (this->get_ins_count() > 0) { //Split the current node
+  } else if (this->get_ins_count() > 0 ||
+      this->parent->my_type == function_parent ) { //Split the current node
     this->my_type = clone_parent;
     ret = this->split(me_state, clone_state, ins);
   } else if (this->get_ins_count() == 0) { //make sibling and add to parent
@@ -155,3 +183,5 @@ void ProfileTreeNode::increment_ins_count(void){
   total_ins_count++;
   ins_count++;
 }
+enum ProfileTreeNode::NodeType  ProfileTreeNode::get_type(void){ return my_type; }
+llvm::Instruction* ProfileTreeNode::get_instruction(void){ return my_instruction; }

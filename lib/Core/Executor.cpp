@@ -1613,6 +1613,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     state.profiletreeNode->increment_ins_count();
   } else assert(0);
   assert(&state == state.profiletreeNode->data);
+  assert(state.profiletreeNode->get_type() == ProfileTreeNode::NodeType::leaf);
   Instruction *i = ki->inst;
   switch (i->getOpcode()) {
     // Control flow
@@ -1866,6 +1867,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 
   case Instruction::Invoke:
   case Instruction::Call: {
+    state.profiletreeNode->function_call(&state, i);
     CallSite cs(i);
 
     unsigned numArgs = cs.arg_size();
@@ -1970,6 +1972,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
         free = res.second;
       } while (free);
     }
+
     break;
   }
   case Instruction::PHI: {

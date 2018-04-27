@@ -36,6 +36,10 @@ namespace klee {
     std::vector<ProfileTreeNode*> children;
     ExecutionState *data;
     ref<Expr> condition;
+    void function_call(
+        ExecutionState* data,
+        llvm::Instruction* ins);
+
     std::pair<ProfileTreeNode*, ProfileTreeNode*> branch(
                                  ExecutionState* leftData,
                                  ExecutionState* rightData,
@@ -51,14 +55,22 @@ namespace klee {
     int get_total_clone_count(void);
     int get_total_branch_count(void);
 
+    enum NodeType { leaf, clone_parent, branch_parent, function_parent };
+    enum NodeType get_type(void);
+    llvm::Instruction* get_instruction(void);
+
+
 
   private:
     //leaf: this is the type when a node hasn't split yet.
     //clone_parent: this is the type when a node is split as a result of a clone
     //  call
     //branch_parent: this is the type when a node is split as a result of a branch
-    enum NodeType { leaf, clone_parent, branch_parent };
     NodeType my_type;
+    ProfileTreeNode* link(
+        ExecutionState* data,
+        llvm::Instruction* ins);
+
     std::pair<ProfileTreeNode*, ProfileTreeNode*> split(
                                  ExecutionState* leftData,
                                  ExecutionState* rightData,
@@ -79,6 +91,7 @@ namespace klee {
     static int total_ins_count;
     static int total_branch_count;
     static int total_clone_count;
+    static int total_function_call_count;
   };
 }
 
