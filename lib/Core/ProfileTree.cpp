@@ -23,9 +23,11 @@
 
 using namespace klee;
 int ProfileTreeNode::total_ins_count = 0;
+int ProfileTreeNode::total_node_count = 0;
 int ProfileTreeNode::total_branch_count = 0;
 int ProfileTreeNode::total_clone_count = 0;
 int ProfileTreeNode::total_function_call_count = 0;
+int ProfileTreeNode::total_function_ret_count = 0;
 
 ProfileTree::ProfileTree(const data_type &_root) : root(new Node(0, _root, NULL)) {
 }
@@ -36,9 +38,10 @@ ProfileTreeNode*
 ProfileTreeNode::link(
              ExecutionState* data,
              llvm::Instruction* ins) {
+  assert(ins != NULL);
   assert(this->data            == data);
   assert(this->children.size() == 0);
-  assert(this->my_type         == function_parent);
+  assert(this->my_type == function_parent || this->my_type == function_return_parent);
 
   this->data = 0;
   ProfileTreeNode* kid  = new ProfileTreeNode(this, data, ins);
@@ -52,6 +55,19 @@ void ProfileTreeNode::function_call(
   total_function_call_count++;
   assert(this->my_type == leaf);
   this->my_type         = function_parent;
+  ProfileTreeNode* kid  = link(data, ins);
+  data->profiletreeNode = kid;
+
+  assert(data  == kid->data);
+  assert(kid->parent == this);
+}
+
+void ProfileTreeNode::function_return(
+             ExecutionState* data,
+             llvm::Instruction* ins) {
+  total_function_ret_count++;
+  assert(this->my_type == leaf);
+  this->my_type         = function_return_parent;
   ProfileTreeNode* kid  = link(data, ins);
   data->profiletreeNode = kid;
 
@@ -137,6 +153,32 @@ ProfileTreeNode::clone(
 
 //returns instruction count for whole tree
 int ProfileTree::postorder(ProfileTreeNode* p, int indent){
+  static int nodes_traversed = 0;
+  if(p->parent) assert(p->parent->my_node_number < p->my_node_number);
+  nodes_traversed++;
+
+  printf("postorder nodes: %d children %d type ", p->my_node_number, p->children.size());
+  if(p->get_type() == ProfileTreeNode::NodeType::leaf){
+    assert(p->children.size() == 0);
+    printf("leaf\n");
+  }
+  if(p->get_type() == ProfileTreeNode::NodeType::branch_parent){
+    assert(p->children.size() == 2);
+    printf("branch\n");
+  }
+  if(p->get_type() == ProfileTreeNode::NodeType::function_return_parent){
+    assert(p->children.size() == 1);
+    printf("return\n");
+  }
+  if(p->get_type() == ProfileTreeNode::NodeType::function_parent){
+    assert(p->children.size() == 1);
+    printf("call\n");
+  }
+  if(p->get_type() == ProfileTreeNode::NodeType::clone_parent){
+    assert(p->children.size() > 0);
+    printf("clone\n");
+  }
+
   int sub = 0; //records the number of instructions
   if(p != NULL) {
     //Recurse for children:
@@ -147,15 +189,15 @@ int ProfileTree::postorder(ProfileTreeNode* p, int indent){
 
     //Printing for this node:
     if (indent) {
-      std::cout << std::setw(indent) << ' ';
+      //std::cout << std::setw(indent) << ' ';
     }
     if(p->my_instruction != NULL) {
       std::string function_name(p->my_instruction->getParent()->getParent()->getName().data());
-      std::cout << "function name: " << function_name << " ";
+      //std::cout << "function name: " << function_name << " ";
     } else {
       assert(p == this->root);
     }
-    std::cout << "number of instructions " <<p->ins_count << "\n";
+    //std::cout << "number of instructions " <<p->ins_count << "\n";
     sub += p->ins_count; 
   }
   return sub;
@@ -170,6 +212,9 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
     ins_count(0),
     my_type(leaf),
     my_instruction(_ins){
+      my_node_number = total_node_count;
+      if(_parent) assert(_parent->my_node_number < my_node_number);
+      total_node_count++;
 }
 
 ProfileTreeNode::~ProfileTreeNode() {
@@ -178,6 +223,9 @@ ProfileTreeNode::~ProfileTreeNode() {
 int  ProfileTreeNode::get_total_branch_count(void){ return total_branch_count; }
 int  ProfileTreeNode::get_ins_count(void){ return ins_count; }
 int  ProfileTreeNode::get_total_ins_count(void){ return total_ins_count; }
+int  ProfileTreeNode::get_total_node_count(void){ return total_node_count; }
+int  ProfileTreeNode::get_total_ret_count(void){ return total_function_ret_count; }
+int  ProfileTreeNode::get_total_call_count(void){ return total_function_call_count; }
 int  ProfileTreeNode::get_total_clone_count(void){ return total_clone_count; }
 void ProfileTreeNode::increment_ins_count(void){
   total_ins_count++;

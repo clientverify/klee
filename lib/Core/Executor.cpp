@@ -1614,10 +1614,15 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   } else assert(0);
   assert(&state == state.profiletreeNode->data);
   assert(state.profiletreeNode->get_type() == ProfileTreeNode::NodeType::leaf);
+  if(state.profiletreeNode->get_type() ==
+      ProfileTreeNode::NodeType::branch_parent)
+    assert(state.profiletreeNode->get_instruction()->getParent()->getParent()
+        == ki->inst->getParent()->getParent());
   Instruction *i = ki->inst;
   switch (i->getOpcode()) {
     // Control flow
   case Instruction::Ret: {
+    state.profiletreeNode->function_return(&state, i);
     ReturnInst *ri = cast<ReturnInst>(i);
     KInstIterator kcaller = state.stack.back().caller;
     Instruction *caller = kcaller ? kcaller->inst : 0;

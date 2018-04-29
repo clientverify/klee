@@ -431,21 +431,32 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
 
   //Run things
   run(*state);
-  int my_total_instructions = profileTree->root->get_total_ins_count();
-  int my_clones             = profileTree->root->get_total_clone_count();
-  int my_total_branches     = profileTree->root->get_total_branch_count();
 
   //Record process tree info, and delete
   delete processTree;
   processTree = 0;
 
+
   //Record profile tree info, and delete
+  int my_total_instructions = profileTree->root->get_total_ins_count();
+  int my_total_node         = profileTree->root->get_total_node_count();
+  int my_total_branches     = profileTree->root->get_total_branch_count();
+  int my_clones             = profileTree->root->get_total_clone_count();
+  int my_returns            = profileTree->root->get_total_ret_count();
+  int my_calls              = profileTree->root->get_total_call_count();
+
+  printf("my_total_instructions %d\n", my_total_instructions);
+  printf("my_total_node %d\n", my_total_node);
+  printf("my_total_branches %d\n", my_total_branches);
+  printf("my_total_clones %d\n", my_clones);
+  printf("my_total_returns %d\n", my_returns);
+  printf("my_total_calls %d\n", my_calls);
+
   printf("postorder tree\n");
   int postorder_ins_count = profileTree->postorder(profileTree->root, 0);
   assert(postorder_ins_count == my_total_instructions);
   printf("my_total_instructions %d postorder_ins_count %d\n", my_total_instructions, postorder_ins_count);
-  printf("my_total_branches %d\n", my_total_branches);
-  printf("my_total_clones %d\n", my_clones);
+
   delete profileTree;
   profileTree = 0;
 
