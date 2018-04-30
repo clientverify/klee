@@ -17,7 +17,6 @@ namespace klee {
 
   class ProfileTree { 
     typedef ExecutionState* data_type;
-    Mutex lock_;
 
   public:
     typedef class ProfileTreeNode Node;
@@ -26,7 +25,7 @@ namespace klee {
     ProfileTree(const data_type &_root);
     ~ProfileTree();
     
-    int postorder(ProfileTreeNode* p, int indent=0);
+    int dfs(ProfileTreeNode *root);
   };
 
   class ProfileTreeNode {

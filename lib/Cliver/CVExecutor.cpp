@@ -453,7 +453,7 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
   printf("my_total_calls %d\n", my_calls);
 
   printf("postorder tree\n");
-  int postorder_ins_count = profileTree->postorder(profileTree->root, 0);
+  int postorder_ins_count = profileTree->dfs(profileTree->root);
   assert(postorder_ins_count == my_total_instructions);
   printf("my_total_instructions %d postorder_ins_count %d\n", my_total_instructions, postorder_ins_count);
 

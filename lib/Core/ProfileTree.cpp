@@ -153,61 +153,73 @@ void ProfileTreeNode::clone(
   clone_state->profiletreeNode = ret.second;
 }
 
-//returns instruction count for whole tree
-//I think this might be a recursive function using all of the stack space?
-int ProfileTree::postorder(ProfileTreeNode* p, int indent){
-  static int nodes_traversed = 0;
-  if(p->parent) assert(p->parent->my_node_number < p->my_node_number);
-  nodes_traversed++;
+//Returns instruction count for whole tree
+int ProfileTree::dfs(ProfileTreeNode *root){
+  //Tree statistic collection:
+  int nodes_traversed = 0;
+  int total_instr = 0; //records the number of instructions
 
-  printf("postorder nodes: %d children %d type ", p->my_node_number, p->children.size());
-  if(p->get_type() == ProfileTreeNode::NodeType::leaf){
-    assert(p->children.size() == 0);
-    printf("leaf\n");
-  }
-  if(p->get_type() == ProfileTreeNode::NodeType::branch_parent){
-    assert(p->children.size() == 2);
-    printf("branch\n");
-  }
-  if(p->get_type() == ProfileTreeNode::NodeType::function_return_parent){
-    assert(p->children.size() == 1);
-    assert(p->my_return_to != NULL);
-    printf("return\n");
-  }else
-    assert(p->my_return_to == NULL);
-  if(p->get_type() == ProfileTreeNode::NodeType::function_parent){
-    assert(p->children.size() == 1);
-    assert(p->my_target != NULL);
-    printf("call\n");
-  }else
-    assert(p->my_target == NULL);
-  if(p->get_type() == ProfileTreeNode::NodeType::clone_parent){
-    assert(p->children.size() > 0);
-    printf("clone\n");
-  }
+  std::stack <ProfileTreeNode*> nodes_to_visit;
+  nodes_to_visit.push(root); //add children to the end
+  while( nodes_to_visit.size() > 0 ) {
+    //Handling DFS traversal:
+    ProfileTreeNode* p = nodes_to_visit.top(); //get last element
+    nodes_to_visit.pop(); //remove last element
 
-  int sub = 0; //records the number of instructions
-  if(p != NULL) {
-    //Recurse for children:
     std::vector <ProfileTreeNode*> :: iterator i;
-    for (i = p->children.begin(); i != p->children.end(); ++i) {
-      sub += postorder(*i, indent + 4);
+    for (i = p->children.begin(); i != p->children.end(); ++i)
+      nodes_to_visit.push(*i); //add children
+
+    //Statistics:
+    total_instr += p->ins_count;
+    nodes_traversed++;
+
+    //Asserts and print outs (looking inside the node):
+    assert(p != NULL);
+    if(p->parent) assert(p->parent->my_node_number < p->my_node_number);
+    if(p->get_type() != ProfileTreeNode::NodeType::function_return_parent)
+      assert(p->my_return_to == NULL);
+    if(p->get_type() != ProfileTreeNode::NodeType::function_parent)
+      assert(p->my_target == NULL);
+
+    printf("dfs node#: %d children: %d type: ", p->my_node_number, p->children.size());
+    switch(p->get_type()) {
+      case ProfileTreeNode::NodeType::leaf:
+        assert(p->children.size() == 0);
+        printf("leaf ");
+        break;
+      case ProfileTreeNode::NodeType::branch_parent:
+        assert(p->children.size() == 2);
+        printf("branch ");
+        break;
+      case ProfileTreeNode::NodeType::function_return_parent:
+        assert(p->children.size() == 1);
+        assert(p->my_return_to != NULL);
+        printf("return ");
+        break;
+      case ProfileTreeNode::NodeType::function_parent:
+        assert(p->children.size() == 1);
+        assert(p->my_target != NULL);
+        printf("call ");
+        break;
+      case ProfileTreeNode::NodeType::clone_parent:
+        assert(p->children.size() > 0);
+        printf("clone ");
+        break;
+      default:
+        assert(0);
     }
 
-    //Printing for this node:
-    if (indent) {
-      //std::cout << std::setw(indent) << ' ';
-    }
     if(p->my_instruction != NULL) {
-      std::string function_name(p->my_instruction->getParent()->getParent()->getName().data());
-      //std::cout << "function name: " << function_name << " ";
+      const char *function_name = p->my_instruction->getParent()->getParent()->getName().data();
+      printf("function name: %s", function_name);
     } else {
       assert(p == this->root);
     }
-    //std::cout << "number of instructions " <<p->ins_count << "\n";
-    sub += p->ins_count; 
+
+    printf("\n");
   }
-  return sub;
+  return total_instr;
 }
 
 ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent, 
