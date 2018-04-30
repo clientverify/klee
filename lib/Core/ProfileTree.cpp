@@ -51,10 +51,13 @@ ProfileTreeNode::link(
 
 void ProfileTreeNode::function_call(
              ExecutionState* data,
-             llvm::Instruction* ins) {
+             llvm::Instruction* ins,
+             llvm::Function* target) {
   total_function_call_count++;
+  assert(target != NULL);
   assert(this->my_type == leaf);
   this->my_type         = function_parent;
+  this->my_target          = target;
   ProfileTreeNode* kid  = link(data, ins);
   data->profiletreeNode = kid;
 
@@ -64,10 +67,14 @@ void ProfileTreeNode::function_call(
 
 void ProfileTreeNode::function_return(
              ExecutionState* data,
-             llvm::Instruction* ins) {
+             llvm::Instruction* ins,
+             llvm::Instruction* to) {
   total_function_ret_count++;
   assert(this->my_type == leaf);
+  if(this->my_type == function_parent)
+    assert(to->getParent() == this->my_instruction->getParent());
   this->my_type         = function_return_parent;
+  this->my_return_to    = to;
   ProfileTreeNode* kid  = link(data, ins);
   data->profiletreeNode = kid;
 
@@ -90,8 +97,7 @@ ProfileTreeNode::split(
   return std::make_pair(left, right);
 }
 
-std::pair<ProfileTreeNode*, ProfileTreeNode*>
-ProfileTreeNode::branch(
+void ProfileTreeNode::branch(
              ExecutionState* leftData,
              ExecutionState* rightData,
              llvm::Instruction* ins) {
@@ -106,12 +112,9 @@ ProfileTreeNode::branch(
   assert(leftData  == ret.first->data);
   assert(rightData == ret.second->data);
   assert(ret.first->parent == ret.second->parent);
-
-  return ret;
 }
 
-std::pair<ProfileTreeNode*, ProfileTreeNode*>
-ProfileTreeNode::clone(
+void ProfileTreeNode::clone(
              ExecutionState* me_state,
              ExecutionState* clone_state,
              llvm::Instruction* ins) {
@@ -148,10 +151,10 @@ ProfileTreeNode::clone(
 
   me_state->profiletreeNode = ret.first;
   clone_state->profiletreeNode = ret.second;
-  return ret;
 }
 
 //returns instruction count for whole tree
+//I think this might be a recursive function using all of the stack space?
 int ProfileTree::postorder(ProfileTreeNode* p, int indent){
   static int nodes_traversed = 0;
   if(p->parent) assert(p->parent->my_node_number < p->my_node_number);
@@ -168,12 +171,16 @@ int ProfileTree::postorder(ProfileTreeNode* p, int indent){
   }
   if(p->get_type() == ProfileTreeNode::NodeType::function_return_parent){
     assert(p->children.size() == 1);
+    assert(p->my_return_to != NULL);
     printf("return\n");
-  }
+  }else
+    assert(p->my_return_to == NULL);
   if(p->get_type() == ProfileTreeNode::NodeType::function_parent){
     assert(p->children.size() == 1);
+    assert(p->my_target != NULL);
     printf("call\n");
-  }
+  }else
+    assert(p->my_target == NULL);
   if(p->get_type() == ProfileTreeNode::NodeType::clone_parent){
     assert(p->children.size() > 0);
     printf("clone\n");
@@ -211,7 +218,9 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
     condition(0),
     ins_count(0),
     my_type(leaf),
-    my_instruction(_ins){
+    my_instruction(_ins),
+    my_target(0),
+    my_return_to(0){ //target is only for function call nodes
       my_node_number = total_node_count;
       if(_parent) assert(_parent->my_node_number < my_node_number);
       total_node_count++;

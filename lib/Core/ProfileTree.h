@@ -38,21 +38,23 @@ namespace klee {
     ref<Expr> condition;
     void function_call(
         ExecutionState* data,
-        llvm::Instruction* ins);
+        llvm::Instruction* ins,
+        llvm::Function* target);
 
     void function_return(
         ExecutionState* data,
+        llvm::Instruction* ins,
+        llvm::Instruction* to);
+
+    void branch(
+        ExecutionState* leftData,
+        ExecutionState* rightData,
         llvm::Instruction* ins);
 
-    std::pair<ProfileTreeNode*, ProfileTreeNode*> branch(
-                                 ExecutionState* leftData,
-                                 ExecutionState* rightData,
-                                 llvm::Instruction* ins);
-
-    std::pair<ProfileTreeNode*, ProfileTreeNode*> clone(
-                                 ExecutionState* me_state,
-                                 ExecutionState* clone_state,
-                                 llvm::Instruction* ins);
+    void clone(
+        ExecutionState* me_state,
+        ExecutionState* clone_state,
+        llvm::Instruction* ins);
     void increment_ins_count(void);
     int get_ins_count(void);
     int get_total_ins_count(void);
@@ -94,6 +96,9 @@ namespace klee {
     //node would have the branch instruction where this node's execution state
     //was created.  Should only be NULL for root.
     llvm::Instruction* my_instruction;
+    //Only used for function nodes.  Indicates the function being called.
+    llvm::Function* my_target;
+    llvm::Instruction* my_return_to;
 
     //All the instructions in the tree
     static int total_ins_count;

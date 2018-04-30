@@ -1622,12 +1622,14 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   switch (i->getOpcode()) {
     // Control flow
   case Instruction::Ret: {
-    state.profiletreeNode->function_return(&state, i);
     ReturnInst *ri = cast<ReturnInst>(i);
     KInstIterator kcaller = state.stack.back().caller;
     Instruction *caller = kcaller ? kcaller->inst : 0;
     bool isVoidReturn = (ri->getNumOperands() == 0);
     ref<Expr> result = ConstantExpr::alloc(0, Expr::Bool);
+
+
+    state.profiletreeNode->function_return(&state, i, kcaller->inst);
     
     if (!isVoidReturn) {
       result = eval(ki, 0, state).value;
@@ -1872,7 +1874,6 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 
   case Instruction::Invoke:
   case Instruction::Call: {
-    state.profiletreeNode->function_call(&state, i);
     CallSite cs(i);
 
     unsigned numArgs = cs.arg_size();
@@ -1937,6 +1938,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
         }
       }
 
+      state.profiletreeNode->function_call(&state, i, f);
       executeCall(state, ki, f, arguments);
     } else {
       ref<Expr> v = eval(ki, 0, state).value;
@@ -1952,6 +1954,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
         bool success = solver->getValue(*free, v, value);
         assert(success && "FIXME: Unhandled solver failure");
         (void) success;
+        //this is going to give us a symbolic branch.  The function node will
+        //appear afterwards to allow us to record the target function.
         StatePair res = fork(*free, EqExpr::create(v, value), true);
         if (res.first) {
           uint64_t addr = value->getZExtValue();
@@ -1964,6 +1968,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
                                 "resolved symbolic function pointer to: %s",
                                 f->getName().data());
 
+            state.profiletreeNode->function_call(&state, i, f);
             executeCall(*res.first, ki, f, arguments);
           } else {
             if (!hasInvalid) {
