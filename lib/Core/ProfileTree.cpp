@@ -28,6 +28,7 @@ int ProfileTreeNode::total_branch_count = 0;
 int ProfileTreeNode::total_clone_count = 0;
 int ProfileTreeNode::total_function_call_count = 0;
 int ProfileTreeNode::total_function_ret_count = 0;
+int ProfileTreeNode::total_winners = 0;
 
 ProfileTree::ProfileTree(const data_type &_root) : root(new Node(0, _root, NULL)) {
 }
@@ -181,6 +182,16 @@ int ProfileTree::dfs(ProfileTreeNode *root){
       assert(p->my_return_to == NULL);
     if(p->get_type() != ProfileTreeNode::NodeType::function_parent)
       assert(p->my_target == NULL);
+    if(p->get_winner()){
+      if(p->get_type() == ProfileTreeNode::NodeType::clone_parent){
+        assert(p->ins_count == 0);
+        assert(p->children.size() == 2);
+      }else{
+        assert(p->ins_count == 0);
+        assert(p->get_type() == ProfileTreeNode::NodeType::leaf);
+        assert(p->parent->get_winner());
+      }
+    }
 
     printf("dfs node#: %d children: %d type: ", p->my_node_number, p->children.size());
     switch(p->get_type()) {
@@ -219,6 +230,7 @@ int ProfileTree::dfs(ProfileTreeNode *root){
 
     printf("\n");
   }
+  printf("total_winners %d\n",root->total_winners );
   return total_instr;
 }
 
@@ -227,14 +239,18 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
   : parent(_parent),
     children(),
     data(_data),
-    condition(0),
     ins_count(0),
     my_type(leaf),
     my_instruction(_ins),
-    my_target(0),
-    my_return_to(0){ //target is only for function call nodes
+    my_target(0), //target is only for function call nodes
+    my_return_to(0),
+    winner(false){
       my_node_number = total_node_count;
       if(_parent) assert(_parent->my_node_number < my_node_number);
+      if(_parent && _parent->winner){
+        assert(!_parent->parent->winner);
+        set_winner();
+      }
       total_node_count++;
 }
 
@@ -254,3 +270,9 @@ void ProfileTreeNode::increment_ins_count(void){
 }
 enum ProfileTreeNode::NodeType  ProfileTreeNode::get_type(void){ return my_type; }
 llvm::Instruction* ProfileTreeNode::get_instruction(void){ return my_instruction; }
+bool ProfileTreeNode::get_winner(void){ return winner; }
+void ProfileTreeNode::set_winner(void){
+  total_winners++;
+  assert(!winner);
+  winner = true;
+}

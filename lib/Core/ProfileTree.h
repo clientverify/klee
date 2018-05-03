@@ -34,7 +34,6 @@ namespace klee {
     ProfileTreeNode *parent;
     std::vector<ProfileTreeNode*> children;
     ExecutionState *data;
-    ref<Expr> condition;
     void function_call(
         ExecutionState* data,
         llvm::Instruction* ins,
@@ -62,8 +61,11 @@ namespace klee {
     int get_total_ret_count(void);
     int get_total_call_count(void);
     int get_total_branch_count(void);
+    void set_winner(void);
+    bool get_winner(void);
 
-    enum NodeType { leaf, clone_parent, branch_parent, function_parent, function_return_parent };
+    enum NodeType { leaf, clone_parent, branch_parent, function_parent,
+      function_return_parent };
     enum NodeType get_type(void);
     llvm::Instruction* get_instruction(void);
 
@@ -91,6 +93,8 @@ namespace klee {
     //All the instructions executed by this node's execution state
     int ins_count;
     int my_node_number;
+    bool winner;
+    static int total_winners;
     //The instruction associated with this node's creation.  E.g. branch
     //node would have the branch instruction where this node's execution state
     //was created.  Should only be NULL for root.
