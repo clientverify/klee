@@ -52,6 +52,21 @@ ProfileTreeNode::link(
 }
 
 #define DEBUG_FUNCTION_DIR 1
+const char* get_instruction_directory(llvm::Instruction* target_ins){
+  assert(target_ins  != NULL);
+  const char *function_name = target_ins->getParent()->getParent()->getName().data();
+  assert(function_name  != NULL);
+  llvm::MDNode *metadata = target_ins->getMetadata("dbg");
+  if (!metadata) {
+    if(DEBUG_FUNCTION_DIR) printf("function_call/return not adding info for %s no metadata\n", function_name);
+    return NULL;
+  }
+
+  llvm::DILocation loc(metadata); // DILocation is in DebugInfo.h
+  const char  *dir  = loc.getDirectory().data();
+  return dir;
+}
+
 const char* get_function_directory(llvm::Function* target){
   assert(target != NULL);
   const char *target_name = target->getName().data();
@@ -62,15 +77,7 @@ const char* get_function_directory(llvm::Function* target){
   }
   llvm::Instruction *target_ins = target->getEntryBlock().begin();
   assert(target_ins  != NULL);
-  llvm::MDNode *metadata = target_ins->getMetadata("dbg");
-  if (!metadata) {
-    if(DEBUG_FUNCTION_DIR) printf("function_call not adding %s no metadata\n", target_name);
-    return NULL;
-  }
-
-  llvm::DILocation loc(metadata); // DILocation is in DebugInfo.h
-  const char  *dir  = loc.getDirectory().data();
-  return dir;
+  return get_instruction_directory(target_ins);
 }
 
 #define FUNC_NODE_DIR "/playpen/cliver0/src/openssh"
@@ -107,10 +114,24 @@ void ProfileTreeNode::function_return(
              ExecutionState* data,
              llvm::Instruction* ins,
              llvm::Instruction* to) {
-  total_function_ret_count++;
   assert(this->my_type == leaf);
   if(this->my_type == function_parent)
     assert(to->getParent() == this->my_instruction->getParent());
+
+  //check if the return instruction comes from the directory we want to record
+  //the functions of.
+  const char* dir = get_instruction_directory(ins);
+  const char *ret_func_name = ins->getParent()->getParent()->getName().data();
+  if(dir == NULL) return;
+  if(strcmp(dir, FUNC_NODE_DIR) != 0) {
+    if(DEBUG_FUNCTION_DIR) printf("function_call not adding %s wrong dir %s\n", ret_func_name, dir);
+    return;
+  }
+
+  //function is in the correct directory, add the node
+  if(DEBUG_FUNCTION_DIR) printf("function call adding: %s %s\n", dir, ret_func_name);
+
+  total_function_ret_count++;
   this->my_type         = function_return_parent;
   this->my_return_to    = to;
   ProfileTreeNode* kid  = link(data, ins);
