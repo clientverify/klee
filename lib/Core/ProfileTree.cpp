@@ -16,6 +16,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/DebugInfo.h"
 #include <iostream>
 #include <iomanip>
 
@@ -50,13 +51,49 @@ ProfileTreeNode::link(
   return kid;
 }
 
+#define DEBUG_FUNCTION_DIR 1
+const char* get_function_directory(llvm::Function* target){
+  assert(target != NULL);
+  const char *target_name = target->getName().data();
+  assert(target_name != NULL);
+  if(target->size() <= 0){
+    if(DEBUG_FUNCTION_DIR) printf("function_call %s has no basic blocks\n", target_name);
+    return NULL;
+  }
+  llvm::Instruction *target_ins = target->getEntryBlock().begin();
+  assert(target_ins  != NULL);
+  llvm::MDNode *metadata = target_ins->getMetadata("dbg");
+  if (!metadata) {
+    if(DEBUG_FUNCTION_DIR) printf("function_call not adding %s no metadata\n", target_name);
+    return NULL;
+  }
+
+  llvm::DILocation loc(metadata); // DILocation is in DebugInfo.h
+  const char  *dir  = loc.getDirectory().data();
+  return dir;
+}
+
+#define FUNC_NODE_DIR "/playpen/cliver0/src/openssh"
 void ProfileTreeNode::function_call(
              ExecutionState* data,
              llvm::Instruction* ins,
              llvm::Function* target) {
-  total_function_call_count++;
   assert(target != NULL);
   assert(this->my_type == leaf);
+
+  //check if the function comes from the directory we want to record the
+  //functions of.
+  const char* dir = get_function_directory(target);
+  const char *target_name = target->getName().data();
+  if(dir == NULL) return;
+  if(strcmp(dir, FUNC_NODE_DIR) != 0) {
+    if(DEBUG_FUNCTION_DIR) printf("function_call not adding %s wrong dir %s\n", target_name, dir);
+    return;
+  }
+
+  //function is in the correct directory, add the node
+  if(DEBUG_FUNCTION_DIR) printf("function call adding: %s %s\n", dir, target_name);
+  total_function_call_count++;
   this->my_type         = function_parent;
   this->my_target          = target;
   ProfileTreeNode* kid  = link(data, ins);
@@ -184,7 +221,6 @@ int ProfileTree::dfs(ProfileTreeNode *root){
       assert(p->my_target == NULL);
     if(p->get_winner()){
       if(p->get_type() == ProfileTreeNode::NodeType::clone_parent){
-        assert(p->ins_count == 0);
         assert(p->children.size() == 2);
       }else{
         assert(p->ins_count == 0);
