@@ -65,7 +65,7 @@ namespace klee {
     void set_winner(void);
     bool get_winner(void);
 
-    enum NodeType { leaf, clone_parent, branch_parent, function_parent,
+    enum NodeType { leaf, clone_parent, branch_parent, function_parent, root,
       function_return_parent };
     enum NodeType get_type(void);
     llvm::Instruction* get_instruction(void);

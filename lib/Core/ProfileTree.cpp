@@ -51,7 +51,7 @@ ProfileTreeNode::link(
   return kid;
 }
 
-#define DEBUG_FUNCTION_DIR 1
+#define DEBUG_FUNCTION_DIR 0
 const char* get_instruction_directory(llvm::Instruction* target_ins){
   assert(target_ins  != NULL);
   const char *function_name = target_ins->getParent()->getParent()->getName().data();
@@ -81,6 +81,8 @@ const char* get_function_directory(llvm::Function* target){
 }
 
 #define FUNC_NODE_DIR "/playpen/cliver0/src/openssh"
+#define MODEL_NODE_DIR "/playpen/cliver0/build/klee/runtime/cloud9-POSIX"
+
 void ProfileTreeNode::function_call(
              ExecutionState* data,
              llvm::Instruction* ins,
@@ -93,7 +95,8 @@ void ProfileTreeNode::function_call(
   const char* dir = get_function_directory(target);
   const char *target_name = target->getName().data();
   if(dir == NULL) return;
-  if(strcmp(dir, FUNC_NODE_DIR) != 0) {
+  if(strcmp(dir, FUNC_NODE_DIR) != 0 &&
+     strcmp(dir, MODEL_NODE_DIR) != 0) {
     if(DEBUG_FUNCTION_DIR) printf("function_call not adding %s wrong dir %s\n", target_name, dir);
     return;
   }
@@ -123,7 +126,8 @@ void ProfileTreeNode::function_return(
   const char* dir = get_instruction_directory(ins);
   const char *ret_func_name = ins->getParent()->getParent()->getName().data();
   if(dir == NULL) return;
-  if(strcmp(dir, FUNC_NODE_DIR) != 0) {
+  if(strcmp(dir, FUNC_NODE_DIR) != 0 &&
+     strcmp(dir, MODEL_NODE_DIR) != 0) {
     if(DEBUG_FUNCTION_DIR) printf("function_call not adding %s wrong dir %s\n", ret_func_name, dir);
     return;
   }
@@ -177,7 +181,7 @@ void ProfileTreeNode::clone(
              ExecutionState* me_state,
              ExecutionState* clone_state,
              llvm::Instruction* ins) {
-  assert(this->my_type == leaf);
+  assert(this->my_type == leaf || this->my_type == root);
   assert(this == me_state->profiletreeNode);
   assert(this->data == me_state);
   assert(me_state != clone_state);
@@ -213,6 +217,7 @@ void ProfileTreeNode::clone(
 }
 
 //Returns instruction count for whole tree
+#define DFS_DEBUG 0
 int ProfileTree::dfs(ProfileTreeNode *root){
   //Tree statistic collection:
   int nodes_traversed = 0;
@@ -250,29 +255,32 @@ int ProfileTree::dfs(ProfileTreeNode *root){
       }
     }
 
-    printf("dfs node#: %d children: %d type: ", p->my_node_number, p->children.size());
+    if(DFS_DEBUG) printf("dfs node#: %d children: %d type: ", p->my_node_number, p->children.size());
     switch(p->get_type()) {
+      case ProfileTreeNode::NodeType::root:
+        if(DFS_DEBUG) printf("root ");
+        break;
       case ProfileTreeNode::NodeType::leaf:
         assert(p->children.size() == 0);
-        printf("leaf ");
+        if(DFS_DEBUG) printf("leaf ");
         break;
       case ProfileTreeNode::NodeType::branch_parent:
         assert(p->children.size() == 2);
-        printf("branch ");
+        if(DFS_DEBUG) printf("branch ");
         break;
       case ProfileTreeNode::NodeType::function_return_parent:
         assert(p->children.size() == 1);
         assert(p->my_return_to != NULL);
-        printf("return ");
+        if(DFS_DEBUG) printf("return ");
         break;
       case ProfileTreeNode::NodeType::function_parent:
         assert(p->children.size() == 1);
         assert(p->my_target != NULL);
-        printf("call ");
+        if(DFS_DEBUG) printf("call ");
         break;
       case ProfileTreeNode::NodeType::clone_parent:
         assert(p->children.size() > 0);
-        printf("clone ");
+        if(DFS_DEBUG) printf("clone ");
         break;
       default:
         assert(0);
@@ -280,12 +288,12 @@ int ProfileTree::dfs(ProfileTreeNode *root){
 
     if(p->my_instruction != NULL) {
       const char *function_name = p->my_instruction->getParent()->getParent()->getName().data();
-      printf("function name: %s", function_name);
+      if(DFS_DEBUG) printf("function name: %s", function_name);
     } else {
       assert(p == this->root);
     }
 
-    printf("\n");
+    if(DFS_DEBUG) printf("\n");
   }
   printf("total_winners %d\n",root->total_winners );
   return total_instr;
@@ -303,10 +311,14 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
     my_return_to(0),
     winner(false){
       my_node_number = total_node_count;
-      if(_parent) assert(_parent->my_node_number < my_node_number);
-      if(_parent && _parent->winner){
-        assert(!_parent->parent->winner);
-        set_winner();
+      if(_parent == NULL){
+        my_type = root;
+      } else {
+        assert(_parent->my_node_number < my_node_number);
+        if(_parent->winner){
+          assert(!_parent->parent->winner);
+          set_winner();
+        }
       }
       total_node_count++;
 }
