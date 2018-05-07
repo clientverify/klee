@@ -160,7 +160,7 @@ void ProfileTreeNode::branch(
              ExecutionState* leftData,
              ExecutionState* rightData,
              llvm::Instruction* ins) {
-  total_branch_count++;
+  this->increment_branch_count();
   assert(leftData != rightData);
   assert(this->my_type == leaf);
   this->my_type = branch_parent;
@@ -324,6 +324,9 @@ int  ProfileTreeNode::get_total_clone_count(void){ return total_clone_count; }
 void ProfileTreeNode::increment_ins_count(void){
   total_ins_count++;
   ins_count++;
+}
+void ProfileTreeNode::increment_branch_count(void){
+  total_branch_count++;
 }
 enum ProfileTreeNode::NodeType  ProfileTreeNode::get_type(void){ return my_type; }
 llvm::Instruction* ProfileTreeNode::get_instruction(void){ return my_instruction; }

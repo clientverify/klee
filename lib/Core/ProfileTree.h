@@ -54,6 +54,7 @@ namespace klee {
         ExecutionState* clone_state,
         llvm::Instruction* ins);
     void increment_ins_count(void);
+    void increment_branch_count(void);
     int get_ins_count(void);
     int get_total_ins_count(void);
     int get_total_node_count(void);
