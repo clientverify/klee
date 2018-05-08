@@ -103,55 +103,71 @@ char message_test_buffer [256];
 
 extern void * __bss_start;
 extern void * _end;
-void tsgx_init()
+//Start and end of text section
+extern char  __executable_start;
+extern char  __etext;
+
+void tsx_init()
 {
-    //uint64_t *addr = &tsgx_init;
-    uint64_t addr = (uint64_t)tsgx_init & 0xfffffffffff00000;
-    uint64_t bcc_start, bcc_end;
-    unsigned access;
-    int i;
-
-    printf("text addr: %lx\n", addr);
-    // Code pages
-    //AH: Note that the number below is custom,
-    //and will change depending on the number of
-    //pages in the code section.
-    for (i = 0; i < 136; i++) {
-      access = *(uint64_t *)(addr);
-      addr += 4096;
-    }
-    printf("last text addr hit is: %lx\n", addr);
+  //uint64_t *addr = &tsx_init;
+  uint64_t addr = (uint64_t)tsx_init & 0xfffffffffff00000;
+  uint64_t bcc_start, bcc_end;
+  unsigned access;
+  int i;
+  
     
-    
-    //AH I've removed the assignment to 1 below for the stack and bss
-    //sections.
-    
-    bcc_start = (uint64_t)&__bss_start & 0xfffffffffffff000;
-    bcc_end = (uint64_t)&_end & 0xfffffffffffff000;
-    //printf("bcc addr: %lx\n", bcc_start);
-    // Uninitialized data pages
-    while (bcc_start <= bcc_end) {
-      access = *(uint64_t *)(bcc_start);
-      //*(uint64_t *)(bcc_start) = 1;
-      bcc_start += 4096;
-    }
+  //Hitting code pages---------------------------
 
-    // stack
-    addr = (uint64_t)&addr & 0xfffffffffffff000;
-    //printf("stack addr: %lx\n", addr);
-    for (i = 0; i < 64; i++) {
-      access = *(uint64_t *)(addr);
-      //*(uint64_t *)(addr) = 1;
-      addr -= 4096;
-    }
+  uint64_t start_page_address = ((uint64_t) (&__executable_start))  & 0xfffffffffffff000;
+  uint64_t end_page_address = ((uint64_t) (&__etext) ) & 0xfffffffffffff000;
+  printf("__executable_start at 0x%lx \n", start_page_address);
+  printf("__etext at 0x%lx \n", end_page_address);
+  uint64_t numCodePages = ( end_page_address - start_page_address)/4096  +1;
+  uint64_t garbageVal = 1234;
+  uint64_t check_page_address =  start_page_address; 
+  printf("Found %lu code pages from __executable_start to __etext \n",numCodePages);  
+  for (int i = 0; i < numCodePages; i++) {
+    //Read a value to make sure the page is mapped in.
+    printf("Checking page at hex %lx \n", check_page_address);
+    garbageVal = * ((uint64_t *)check_page_address);
+    check_page_address += 4096;
+  }
+  //Don't want the compiler to eliminate the loop above
+  //as dead code
+  printf(" Garbage is %lu \n",garbageVal);
+  //-----------------------------------------------  
+    
+  //AH I've removed the assignment to 1 below for the stack and bss
+  //sections.
 
+  //Hitting bss pages---------------------------------------
+  bcc_start = (uint64_t)&__bss_start & 0xfffffffffffff000;
+  bcc_end = (uint64_t)&_end & 0xfffffffffffff000;
+  //printf("bcc addr: %lx\n", bcc_start);
+  // Uninitialized data pages
+  while (bcc_start <= bcc_end) {
+    access = *(uint64_t *)(bcc_start);
+    //*(uint64_t *)(bcc_start) = 1;
+    bcc_start += 4096;
+  }
+  //-------------------------------------------------------
+  
+  // Hitting stack pages----------------------------------
+  addr = (uint64_t)&addr & 0xfffffffffffff000;
+  //printf("stack addr: %lx\n", addr);
+  for (i = 0; i < 64; i++) {
+    access = *(uint64_t *)(addr);
+    //*(uint64_t *)(addr) = 1;
+    addr -= 4096;
+  }
+  //------------------------------------------------------
 #if 0 // Seems we do not need to touch heap memory.
-    void *heap_base = get_heap_base();
-    printf("heap addr: %lx\n", (uint64_t)heap_base);
-
-    void *ptr;
-    ptr = malloc(8192);
-    printf("malloc addr: %lx\n", (uint64_t)ptr);
+  void *heap_base = get_heap_base();
+  printf("heap addr: %lx\n", (uint64_t)heap_base);
+  
+  void *ptr;
+  ptr = malloc(8192);
+  printf("malloc addr: %lx\n", (uint64_t)ptr);
 #endif
 }
 
@@ -1360,10 +1376,8 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    memset (message_test_buffer, 0, 256);
    strncpy (message_test_buffer, "apple", 5);
 
-   printf("Calling tsgx_init to map in pages \n");
-   //TO-DO: Make tsgx_init more robust instead of
-   //manually counting pages.
-   tsgx_init();
+   printf("Calling tsx_init to map in pages \n");
+   tsx_init();
    /*
    printf("begin_target_inner located at %lx \n", &begin_target_inner); 
    printf("client_run located at %lx \n", &client_run);
@@ -1386,8 +1400,10 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      if (exec_mode == PURE_INTERP) {
        printf("STARTING PURE INTERPRETER TEST \n");
        //RIP hack is just for now.
-       target_ctx.uc_mcontext.gregs[REG_RIP] = 0x5b5000;
-       //target_ctx.uc_mcontext.gregs[REG_RIP] = ;
+       
+       
+       // target_ctx.uc_mcontext.gregs[REG_RIP] = 0x5b5000;
+       target_ctx.uc_mcontext.gregs[REG_RIP] =  (uint64_t) &begin_target_inner;
        klee_interp();
      } else if (exec_mode == TSX_NATIVE) {
        printf("STARTING TSX_NATIVE EXECUTION TEST W/O SYMBOLIC VALUES \n");

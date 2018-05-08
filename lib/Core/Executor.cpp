@@ -3395,7 +3395,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
           terminateStateOnError(state, "memory error: object read only",
                                 ReadOnly);
         } else {
-	  printf("Trying to write to MO representing buffer starting at %lu, hex %p \n ", (uint64_t) mo->address, (void *) mo->address);
+	  printf("Trying to write to MO representing buffer starting at %lu, hex 0x%p \n ", (uint64_t) mo->address, (void *) mo->address);
           ObjectState *wos = state.addressSpace.getWriteable(mo, os);
           wos->write(offset, value);
         }          
@@ -3520,7 +3520,7 @@ void Executor::executeMemoryOperationPoison(ExecutionState &state,
           terminateStateOnError(state, "memory error: object read only",
                                 ReadOnly);
         } else {
-	  printf("Trying to write to MO representing buffer starting at %lu, hex %p \n ", (uint64_t) mo->address, (void *) mo->address);
+	  printf("Trying to write to MO representing buffer starting at %lu, hex 0x%p \n ", (uint64_t) mo->address, (void *) mo->address);
           ObjectState *wos = state.addressSpace.getWriteable(mo, os);
           wos->writePoison(offset, value);
         }          
@@ -3683,7 +3683,7 @@ extern "C" void klee_interp () {
 KFunction * findInterpFunction (greg_t * registers, KModule * kmod ) {
 
   uint64_t nativePC = registers[REG_RIP];
-  // printf("Looking up interp info for RIP  : %lld \n", nativePC);
+  // printf("Looking up interp info for RIP : decimal %lld, hex 0x%p \n", nativePC, nativePC);
   //Arithmetic to find interpretation function.
   std::stringstream converter;
   converter << std::hex << nativePC;  
@@ -3694,7 +3694,7 @@ KFunction * findInterpFunction (greg_t * registers, KModule * kmod ) {
   printf(" Trying to find interp function for %s \n",functionName.c_str());
   
   if (!KInterpFunction)
-    printf("Unable to find interp function for entrypoint PC %lx \n", nativePC);
+    printf("Unable to find interp function for entrypoint PC 0x%lx \n", nativePC);
   
   return KInterpFunction;
   
@@ -3943,7 +3943,7 @@ void Executor::klee_interp_internal () {
     prev_ctx.uc_mcontext.gregs[i] = target_ctx.uc_mcontext.gregs[i];
   }
   uint64_t rip = target_ctx.uc_mcontext.gregs[REG_RIP];
-  printf("RIP is %lu in decimal, %lx in hex.\n", rip, rip);
+  printf("RIP is %lu in decimal, 0x%lx in hex.\n", rip, rip);
 
   
 
@@ -4080,8 +4080,8 @@ void Executor::initializeInterpretationStructures (Function *f) {
 
   printf("Adding external object target_ctx_MO \n");
   target_ctx_MO = addExternalObject(*GlobalExecutionStatePtr, (void *) &target_ctx, sizeof (ucontext_t), false );
-  printf("target_ctx is address %lu, hex %p \n", (uint64_t) &target_ctx, (void *) &target_ctx);
-  printf("target_ctx_MO represents address %lu, hex %p \n", (uint64_t) target_ctx_MO->address, (void *) &target_ctx);
+  printf("target_ctx is address %lu, hex 0x%p \n", (uint64_t) &target_ctx, (void *) &target_ctx);
+  printf("target_ctx_MO represents address %lu, hex 0x%p \n", (uint64_t) target_ctx_MO->address, (void *) &target_ctx);
   printf("Setting concrete store in target_ctx_OS to target_ctx \n");
   const ObjectState *targetCtxOS = GlobalExecutionStatePtr->addressSpace.findObject(target_ctx_MO);
   target_ctx_OS = GlobalExecutionStatePtr->addressSpace.getWriteable(target_ctx_MO,targetCtxOS);
@@ -4091,8 +4091,8 @@ void Executor::initializeInterpretationStructures (Function *f) {
   
   printf("Adding external object prev_ctx_MO \n");
   prev_ctx_MO = addExternalObject(*GlobalExecutionStatePtr,(void *)&prev_ctx, sizeof(ucontext_t), false );
-  printf("prev_ctx is address %lu, hex %p \n", (uint64_t) &prev_ctx, (void *) &prev_ctx);
-  printf("prev_ctx_MO represents address %lu, hex %p \n", (uint64_t) prev_ctx_MO->address, (void *) &prev_ctx);
+  printf("prev_ctx is address %lu, hex 0x%p \n", (uint64_t) &prev_ctx, (void *) &prev_ctx);
+  printf("prev_ctx_MO represents address %lu, hex 0x%p \n", (uint64_t) prev_ctx_MO->address, (void *) &prev_ctx);
   printf("Setting concrete store in prev_ctx_OS to prev_ctx \n");
   const ObjectState *prevCtxOS = GlobalExecutionStatePtr->addressSpace.findObject(prev_ctx_MO);
   prev_ctx_OS = GlobalExecutionStatePtr->addressSpace.getWriteable(prev_ctx_MO,prevCtxOS);
