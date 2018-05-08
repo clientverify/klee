@@ -79,17 +79,14 @@ namespace klee {
     //branch_parent: this is the type when a node is split as a result of a branch
     NodeType my_type;
     ProfileTreeNode* link(
-        ExecutionState* data,
-        llvm::Instruction* ins);
+        ExecutionState* data);
 
     std::pair<ProfileTreeNode*, ProfileTreeNode*> split(
                                  ExecutionState* leftData,
-                                 ExecutionState* rightData,
-                                 llvm::Instruction* ins);
+                                 ExecutionState* rightData);
 
     ProfileTreeNode(ProfileTreeNode *_parent,
-                    ExecutionState *_data,
-                    llvm::Instruction* ins);
+                    ExecutionState *_data);
     ~ProfileTreeNode();
     //All the instructions executed by this node's execution state
     int ins_count;

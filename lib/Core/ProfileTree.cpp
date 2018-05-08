@@ -31,22 +31,20 @@ int ProfileTreeNode::total_function_call_count = 0;
 int ProfileTreeNode::total_function_ret_count = 0;
 int ProfileTreeNode::total_winners = 0;
 
-ProfileTree::ProfileTree(const data_type &_root) : root(new Node(0, _root, NULL)) {
+ProfileTree::ProfileTree(const data_type &_root) : root(new Node(0, _root)) {
 }
 
 ProfileTree::~ProfileTree() {}
 
 ProfileTreeNode*
 ProfileTreeNode::link(
-             ExecutionState* data,
-             llvm::Instruction* ins) {
-  assert(ins != NULL);
+             ExecutionState* data) {
   assert(this->data            == data);
   assert(this->children.size() == 0);
   assert(this->my_type == call_ins || this->my_type == return_ins);
 
   this->data = 0;
-  ProfileTreeNode* kid  = new ProfileTreeNode(this, data, ins);
+  ProfileTreeNode* kid  = new ProfileTreeNode(this, data);
   this->children.push_back(kid);
   return kid;
 }
@@ -90,6 +88,7 @@ void ProfileTreeNode::function_call(
   assert(target != NULL);
   assert(this->my_type == leaf);
 
+#if 0
   //check if the function comes from the directory we want to record the
   //functions of.
   const char* dir = get_function_directory(target);
@@ -103,10 +102,12 @@ void ProfileTreeNode::function_call(
 
   //function is in the correct directory, add the node
   if(DEBUG_FUNCTION_DIR) printf("function call adding: %s %s\n", dir, target_name);
+#endif
   total_function_call_count++;
   this->my_type         = call_ins;
+  this->my_instruction  = ins;
   this->my_target          = target;
-  ProfileTreeNode* kid  = link(data, ins);
+  ProfileTreeNode* kid  = link(data);
   data->profiletreeNode = kid;
 
   assert(data  == kid->data);
@@ -120,7 +121,7 @@ void ProfileTreeNode::function_return(
   assert(this->my_type == leaf);
   if(this->my_type == call_ins)
     assert(to->getParent() == this->my_instruction->getParent());
-
+#if 0
   //check if the return instruction comes from the directory we want to record
   //the functions of.
   const char* dir = get_instruction_directory(ins);
@@ -134,11 +135,13 @@ void ProfileTreeNode::function_return(
 
   //function is in the correct directory, add the node
   if(DEBUG_FUNCTION_DIR) printf("function call adding: %s %s\n", dir, ret_func_name);
+#endif
 
   total_function_ret_count++;
   this->my_type         = return_ins;
+  this->my_instruction  = ins;
   this->my_return_to    = to;
-  ProfileTreeNode* kid  = link(data, ins);
+  ProfileTreeNode* kid  = link(data);
   data->profiletreeNode = kid;
 
   assert(data  == kid->data);
@@ -148,13 +151,12 @@ void ProfileTreeNode::function_return(
 std::pair<ProfileTreeNode*, ProfileTreeNode*>
 ProfileTreeNode::split(
              ExecutionState* leftData,
-             ExecutionState* rightData,
-             llvm::Instruction* ins) {
+             ExecutionState* rightData) {
   assert(this->children.size() == 0);
   assert(this->my_type != leaf);
   this->data = 0;
-  ProfileTreeNode* left  = new ProfileTreeNode(this, leftData, ins);
-  ProfileTreeNode* right = new ProfileTreeNode(this, rightData, ins);
+  ProfileTreeNode* left  = new ProfileTreeNode(this, leftData);
+  ProfileTreeNode* right = new ProfileTreeNode(this, rightData);
   this->children.push_back(left);
   this->children.push_back(right);
   return std::make_pair(left, right);
@@ -168,7 +170,8 @@ void ProfileTreeNode::branch(
   assert(leftData != rightData);
   assert(this->my_type == leaf);
   this->my_type = branch_parent;
-  std::pair<ProfileTreeNode*, ProfileTreeNode*> ret = split(leftData, rightData, ins);
+  this->my_instruction  = ins;
+  std::pair<ProfileTreeNode*, ProfileTreeNode*> ret = split(leftData, rightData);
   leftData->profiletreeNode = ret.first;
   rightData->profiletreeNode = ret.second;
 
@@ -193,15 +196,17 @@ void ProfileTreeNode::clone(
     assert(this->get_ins_count() == 0);
 
     this->my_type = clone_parent;
-    ret = this->split(me_state, clone_state, ins);
+    this->my_instruction  = ins;
+    ret = this->split(me_state, clone_state);
   } else if (this->get_ins_count() > 0 ||
       this->parent->my_type == call_ins ) { //Split the current node
     this->my_type = clone_parent;
-    ret = this->split(me_state, clone_state, ins);
+    this->my_instruction  = ins;
+    ret = this->split(me_state, clone_state);
   } else if (this->get_ins_count() == 0) { //make sibling and add to parent
     assert(this->parent->my_type == clone_parent);
 
-    ProfileTreeNode* clone_node = new ProfileTreeNode(this->parent, clone_state, ins);
+    ProfileTreeNode* clone_node = new ProfileTreeNode(this->parent, clone_state);
     this->parent->children.push_back(clone_node);
     ret = std::make_pair(this, clone_node);
   } else {
@@ -258,27 +263,33 @@ int ProfileTree::dfs(ProfileTreeNode *root){
     if(DFS_DEBUG) printf("dfs node#: %d children: %d type: ", p->my_node_number, p->children.size());
     switch(p->get_type()) {
       case ProfileTreeNode::NodeType::root:
+        assert(p->my_instruction == NULL);
         if(DFS_DEBUG) printf("root ");
         break;
       case ProfileTreeNode::NodeType::leaf:
+        assert(p->my_instruction == NULL);
         assert(p->children.size() == 0);
         if(DFS_DEBUG) printf("leaf ");
         break;
       case ProfileTreeNode::NodeType::branch_parent:
+        assert(p->my_instruction != NULL);
         assert(p->children.size() == 2);
         if(DFS_DEBUG) printf("branch ");
         break;
       case ProfileTreeNode::NodeType::return_ins:
+        assert(p->my_instruction != NULL);
         assert(p->children.size() == 1);
         assert(p->my_return_to != NULL);
         if(DFS_DEBUG) printf("return ");
         break;
       case ProfileTreeNode::NodeType::call_ins:
+        assert(p->my_instruction != NULL);
         assert(p->children.size() == 1);
         assert(p->my_target != NULL);
         if(DFS_DEBUG) printf("call ");
         break;
       case ProfileTreeNode::NodeType::clone_parent:
+        assert(p->my_instruction != NULL);
         assert(p->children.size() > 0);
         if(DFS_DEBUG) printf("clone ");
         break;
@@ -289,8 +300,6 @@ int ProfileTree::dfs(ProfileTreeNode *root){
     if(p->my_instruction != NULL) {
       const char *function_name = p->my_instruction->getParent()->getParent()->getName().data();
       if(DFS_DEBUG) printf("function name: %s", function_name);
-    } else {
-      assert(p == this->root);
     }
 
     if(DFS_DEBUG) printf("\n");
@@ -300,13 +309,13 @@ int ProfileTree::dfs(ProfileTreeNode *root){
 }
 
 ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent, 
-                     ExecutionState *_data, llvm::Instruction *_ins)
+                     ExecutionState *_data)
   : parent(_parent),
     children(),
     data(_data),
     ins_count(0),
     my_type(leaf),
-    my_instruction(_ins),
+    my_instruction(0),
     my_target(0), //target is only for function call nodes
     my_return_to(0),
     winner(false){
