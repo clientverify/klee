@@ -43,7 +43,7 @@ ProfileTreeNode::link(
   assert(ins != NULL);
   assert(this->data            == data);
   assert(this->children.size() == 0);
-  assert(this->my_type == function_parent || this->my_type == function_return_parent);
+  assert(this->my_type == call_ins || this->my_type == return_ins);
 
   this->data = 0;
   ProfileTreeNode* kid  = new ProfileTreeNode(this, data, ins);
@@ -104,7 +104,7 @@ void ProfileTreeNode::function_call(
   //function is in the correct directory, add the node
   if(DEBUG_FUNCTION_DIR) printf("function call adding: %s %s\n", dir, target_name);
   total_function_call_count++;
-  this->my_type         = function_parent;
+  this->my_type         = call_ins;
   this->my_target          = target;
   ProfileTreeNode* kid  = link(data, ins);
   data->profiletreeNode = kid;
@@ -118,7 +118,7 @@ void ProfileTreeNode::function_return(
              llvm::Instruction* ins,
              llvm::Instruction* to) {
   assert(this->my_type == leaf);
-  if(this->my_type == function_parent)
+  if(this->my_type == call_ins)
     assert(to->getParent() == this->my_instruction->getParent());
 
   //check if the return instruction comes from the directory we want to record
@@ -136,7 +136,7 @@ void ProfileTreeNode::function_return(
   if(DEBUG_FUNCTION_DIR) printf("function call adding: %s %s\n", dir, ret_func_name);
 
   total_function_ret_count++;
-  this->my_type         = function_return_parent;
+  this->my_type         = return_ins;
   this->my_return_to    = to;
   ProfileTreeNode* kid  = link(data, ins);
   data->profiletreeNode = kid;
@@ -195,7 +195,7 @@ void ProfileTreeNode::clone(
     this->my_type = clone_parent;
     ret = this->split(me_state, clone_state, ins);
   } else if (this->get_ins_count() > 0 ||
-      this->parent->my_type == function_parent ) { //Split the current node
+      this->parent->my_type == call_ins ) { //Split the current node
     this->my_type = clone_parent;
     ret = this->split(me_state, clone_state, ins);
   } else if (this->get_ins_count() == 0) { //make sibling and add to parent
@@ -241,9 +241,9 @@ int ProfileTree::dfs(ProfileTreeNode *root){
     //Asserts and print outs (looking inside the node):
     assert(p != NULL);
     if(p->parent) assert(p->parent->my_node_number < p->my_node_number);
-    if(p->get_type() != ProfileTreeNode::NodeType::function_return_parent)
+    if(p->get_type() != ProfileTreeNode::NodeType::return_ins)
       assert(p->my_return_to == NULL);
-    if(p->get_type() != ProfileTreeNode::NodeType::function_parent)
+    if(p->get_type() != ProfileTreeNode::NodeType::call_ins)
       assert(p->my_target == NULL);
     if(p->get_winner()){
       if(p->get_type() == ProfileTreeNode::NodeType::clone_parent){
@@ -268,12 +268,12 @@ int ProfileTree::dfs(ProfileTreeNode *root){
         assert(p->children.size() == 2);
         if(DFS_DEBUG) printf("branch ");
         break;
-      case ProfileTreeNode::NodeType::function_return_parent:
+      case ProfileTreeNode::NodeType::return_ins:
         assert(p->children.size() == 1);
         assert(p->my_return_to != NULL);
         if(DFS_DEBUG) printf("return ");
         break;
-      case ProfileTreeNode::NodeType::function_parent:
+      case ProfileTreeNode::NodeType::call_ins:
         assert(p->children.size() == 1);
         assert(p->my_target != NULL);
         if(DFS_DEBUG) printf("call ");
