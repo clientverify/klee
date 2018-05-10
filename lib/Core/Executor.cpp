@@ -1610,7 +1610,7 @@ static inline const llvm::fltSemantics * fpWidthToSemantics(unsigned width) {
 
 void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   if(state.profiletreeNode != NULL){
-    state.profiletreeNode->increment_ins_count();
+    state.profiletreeNode->increment_ins_count(ki->inst);
   } else assert(0);
   assert(&state == state.profiletreeNode->data);
   assert(state.profiletreeNode->get_type() == ProfileTreeNode::NodeType::leaf);

@@ -14,6 +14,7 @@
 #include <klee/util/ExprPPrinter.h>
 
 #include "llvm/Support/CommandLine.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/DebugInfo.h"
@@ -88,21 +89,17 @@ void ProfileTreeNode::function_call(
   assert(target != NULL);
   assert(this->my_type == leaf);
 
-#if 0
-  //check if the function comes from the directory we want to record the
-  //functions of.
-  const char* dir = get_function_directory(target);
-  const char *target_name = target->getName().data();
-  if(dir == NULL) return;
-  if(strcmp(dir, FUNC_NODE_DIR) != 0 &&
-     strcmp(dir, MODEL_NODE_DIR) != 0) {
-    if(DEBUG_FUNCTION_DIR) printf("function_call not adding %s wrong dir %s\n", target_name, dir);
+  //llvm.va_start has no basic blocks and no return.
+  //External functions are executed (not interpreted) in klee.
+  //They don't have a return, which breaks the call return semantics
+  //for the tree.
+  if( target->size() <= 0 ||
+      (target->isDeclaration() &&
+      target->getIntrinsicID() == llvm::Intrinsic::not_intrinsic)){
     return;
   }
 
-  //function is in the correct directory, add the node
-  if(DEBUG_FUNCTION_DIR) printf("function call adding: %s %s\n", dir, target_name);
-#endif
+
   total_function_call_count++;
   this->my_type         = call_ins;
   this->my_instruction  = ins;
@@ -112,6 +109,8 @@ void ProfileTreeNode::function_call(
 
   assert(data  == kid->data);
   assert(kid->parent == this);
+  if(my_function && my_function->my_target)
+    assert(ins->getParent()->getParent() == my_function->my_target);
 }
 
 void ProfileTreeNode::function_return(
@@ -119,23 +118,6 @@ void ProfileTreeNode::function_return(
              llvm::Instruction* ins,
              llvm::Instruction* to) {
   assert(this->my_type == leaf);
-  if(this->my_type == call_ins)
-    assert(to->getParent() == this->my_instruction->getParent());
-#if 0
-  //check if the return instruction comes from the directory we want to record
-  //the functions of.
-  const char* dir = get_instruction_directory(ins);
-  const char *ret_func_name = ins->getParent()->getParent()->getName().data();
-  if(dir == NULL) return;
-  if(strcmp(dir, FUNC_NODE_DIR) != 0 &&
-     strcmp(dir, MODEL_NODE_DIR) != 0) {
-    if(DEBUG_FUNCTION_DIR) printf("function_call not adding %s wrong dir %s\n", ret_func_name, dir);
-    return;
-  }
-
-  //function is in the correct directory, add the node
-  if(DEBUG_FUNCTION_DIR) printf("function call adding: %s %s\n", dir, ret_func_name);
-#endif
 
   total_function_ret_count++;
   this->my_type         = return_ins;
@@ -146,6 +128,8 @@ void ProfileTreeNode::function_return(
 
   assert(data  == kid->data);
   assert(kid->parent == this);
+  if(my_function && my_function->my_target)
+    assert(ins->getParent()->getParent() == my_function->my_target);
 }
 
 std::pair<ProfileTreeNode*, ProfileTreeNode*>
@@ -178,6 +162,9 @@ void ProfileTreeNode::branch(
   assert(leftData  == ret.first->data);
   assert(rightData == ret.second->data);
   assert(ret.first->parent == ret.second->parent);
+
+  if(my_function && my_function->my_target)
+    assert(ins->getParent()->getParent() == my_function->my_target);
 }
 
 void ProfileTreeNode::clone(
@@ -219,6 +206,8 @@ void ProfileTreeNode::clone(
 
   me_state->profiletreeNode = ret.first;
   clone_state->profiletreeNode = ret.second;
+  if(my_function && my_function->my_target)
+    assert(ins->getParent()->getParent() == my_function->my_target);
 }
 
 //Returns instruction count for whole tree
@@ -318,6 +307,7 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
     my_instruction(0),
     my_target(0), //target is only for function call nodes
     my_return_to(0),
+    my_function(0),
     winner(false){
       my_node_number = total_node_count;
       if(_parent == NULL){
@@ -328,6 +318,18 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
           assert(!_parent->parent->winner);
           set_winner();
         }
+
+        //handle function we belong to:
+        if(_parent->my_type == call_ins){
+          my_function = _parent;
+        } else if ( _parent->my_function == NULL ){
+          my_function = NULL;
+        } else if(_parent->my_type == return_ins){
+          my_function = _parent->my_function->my_function;
+        } else {
+          my_function = _parent->my_function;
+        }
+
       }
       total_node_count++;
 }
@@ -342,7 +344,12 @@ int  ProfileTreeNode::get_total_node_count(void){ return total_node_count; }
 int  ProfileTreeNode::get_total_ret_count(void){ return total_function_ret_count; }
 int  ProfileTreeNode::get_total_call_count(void){ return total_function_call_count; }
 int  ProfileTreeNode::get_total_clone_count(void){ return total_clone_count; }
-void ProfileTreeNode::increment_ins_count(void){
+void ProfileTreeNode::increment_ins_count(llvm::Instruction *i){
+  assert(i != NULL);
+  if(my_function != NULL){
+    assert(my_function->my_target != NULL);
+    assert(i->getParent()->getParent() == my_function->my_target);
+  }
   total_ins_count++;
   ins_count++;
 }

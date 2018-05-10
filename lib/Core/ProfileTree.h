@@ -53,7 +53,7 @@ namespace klee {
         ExecutionState* me_state,
         ExecutionState* clone_state,
         llvm::Instruction* ins);
-    void increment_ins_count(void);
+    void increment_ins_count(llvm::Instruction *i);
     void increment_branch_count(void);
     int get_ins_count(void);
     int get_total_ins_count(void);
@@ -99,7 +99,11 @@ namespace klee {
     llvm::Instruction* my_instruction;
     //Only used for function nodes.  Indicates the function being called.
     llvm::Function* my_target;
+    //Only used for return nodes.  Indicates the function being returned to.
     llvm::Instruction* my_return_to;
+    //Used by most nodes.  Should be a function node, or root node indicating
+    //the function executing in.
+    ProfileTreeNode* my_function;
 
     //All the instructions in the tree
     static int total_ins_count;
