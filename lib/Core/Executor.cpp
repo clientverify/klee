@@ -126,6 +126,8 @@ extern klee::Interpreter * GlobalInterpreter;
 //TO-DO:  Remove!!
 extern char message_test_buffer[256];
 ObjectState * rand_buf_OS;
+extern int MESSAGE_COUNT;
+extern int BASKET_SIZE;
 
 extern "C" int random_lib_model_shim();
 extern "C" char * strncat_lib_model_shim(char *, const char *, size_t);
@@ -1483,7 +1485,7 @@ static inline const llvm::fltSemantics * fpWidthToSemantics(unsigned width) {
 }
 
 void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
-  printf( " KI is %s \n" , (ki->printFileLine()).c_str());
+  //printf( " KI is %s \n" , (ki->printFileLine()).c_str());
 
 Instruction *i = ki->inst;
   switch (i->getOpcode()) {
@@ -2782,13 +2784,13 @@ void Executor::run(ExecutionState  & initialState) {
 
     updateStates(&state);
     */
-    printf("Entering main execution loop ... \n");
+    //printf("Entering main execution loop ... \n");
     //ExecutionState &state = searcher->selectState();
     KInstruction *ki = state.pc;
-    printf("Calling stepInstruction ... \n");
+    //printf("Calling stepInstruction ... \n");
     stepInstruction(state);
 
-    printf("Calling execute instruction ... \n");
+    //printf("Calling execute instruction ... \n");
     executeInstruction(state, ki);
     processTimers(&state, MaxInstructionTime);
 
@@ -3360,7 +3362,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
   ObjectPair op;
   bool success;
   solver->setTimeout(coreSolverTimeout);
-  printf("Calling resolveOne \n");
+  //printf("Calling resolveOne \n");
   if (!state.addressSpace.resolveOne(state, solver, address, op, success)) {
     address = toConstant(state, address, "resolveOne failure");
     success = state.addressSpace.resolveOne(cast<ConstantExpr>(address), op);
@@ -3395,7 +3397,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
           terminateStateOnError(state, "memory error: object read only",
                                 ReadOnly);
         } else {
-	  printf("Trying to write to MO representing buffer starting at %lu, hex 0x%p \n ", (uint64_t) mo->address, (void *) mo->address);
+	  //printf("Trying to write to MO representing buffer starting at %lu, hex 0x%p \n ", (uint64_t) mo->address, (void *) mo->address);
           ObjectState *wos = state.addressSpace.getWriteable(mo, os);
           wos->write(offset, value);
         }          
@@ -3485,7 +3487,7 @@ void Executor::executeMemoryOperationPoison(ExecutionState &state,
   ObjectPair op;
   bool success;
   solver->setTimeout(coreSolverTimeout);
-  printf("Calling resolveOne \n");
+  //printf("Calling resolveOne \n");
   if (!state.addressSpace.resolveOne(state, solver, address, op, success)) {
     address = toConstant(state, address, "resolveOne failure");
     success = state.addressSpace.resolveOne(cast<ConstantExpr>(address), op);
@@ -3520,7 +3522,7 @@ void Executor::executeMemoryOperationPoison(ExecutionState &state,
           terminateStateOnError(state, "memory error: object read only",
                                 ReadOnly);
         } else {
-	  printf("Trying to write to MO representing buffer starting at %lu, hex 0x%p \n ", (uint64_t) mo->address, (void *) mo->address);
+	  //printf("Trying to write to MO representing buffer starting at %lu, hex 0x%p \n ", (uint64_t) mo->address, (void *) mo->address);
           ObjectState *wos = state.addressSpace.getWriteable(mo, os);
           wos->writePoison(offset, value);
         }          
@@ -3691,7 +3693,7 @@ KFunction * findInterpFunction (greg_t * registers, KModule * kmod ) {
   std::string functionName =   "interp_fn_" + hexNativePCString;
   llvm::Function * interpFn = interpModule->getFunction(functionName);
   KFunction * KInterpFunction = kmod->functionMap[interpFn];
-  printf(" Trying to find interp function for %s \n",functionName.c_str());
+  //printf(" Trying to find interp function for %s \n",functionName.c_str());
   
   if (!KInterpFunction)
     printf("Unable to find interp function for entrypoint PC 0x%lx \n", nativePC);
@@ -3716,22 +3718,32 @@ KFunction * findInterpFunction (greg_t * registers, KModule * kmod ) {
    
    //Get memory object representing the GPRs.
    
-   printf("Modeling random \n");
+   printf("INTERPRETER: calling model_random() \n");
    
    //Make buf have symbolic value.
   void * randBuf = malloc(8);
   //klee_make_symbolic (randBuf,8,"RandomSysCall");
-
+  printf(" Called malloc to create buf at 0x%lx \n", (uint64_t) randBuf);
+  
   //Get the MO, then call executeMakeSymbolic()
   MemoryObject * randBuf_MO = memory->allocateFixed( (uint64_t) randBuf,8,NULL);
 
+  printf("Called allocateFixed(randBuf,8,NULL) \n");
+  
   executeMakeSymbolic(*GlobalExecutionStatePtr, randBuf_MO, "modelRandomBuffer");
+
+  printf("Called executeMakeSymbolic \n");
+  
   const ObjectState *constRandBufOS = GlobalExecutionStatePtr->addressSpace.findObject(randBuf_MO);
   //Made rand_buf_OS global for now.  Gross.
   //TO-DO: Fixit.
+
+  printf("Called find Object \n");
   rand_buf_OS = GlobalExecutionStatePtr->addressSpace.getWriteable(randBuf_MO,constRandBufOS);
 
+  printf(" Called getWritable \n");
 
+  /*
   uint64_t raxOffset = ((uint64_t) &target_ctx) - ( (uint64_t) &(target_ctx.uc_mcontext.gregs[REG_RAX]));
   ref<Expr> raxOffsetExpr = ConstantExpr::create( raxOffset,Expr::Int32);
 
@@ -3739,16 +3751,18 @@ KFunction * findInterpFunction (greg_t * registers, KModule * kmod ) {
 
   //TO-DO: Add sanity check to make sure we're actually grabbing the
   //symbolic value correctly from the GPR memory object.
-  
+  printf(" Made raxOffsetExpr \n");
   target_ctx_OS->writePoison(raxOffsetExpr, rand_buf_OS->readPoison(0,Expr::Int64));
-  
+  printf("Called writePoison in model_rand \n");
   //TO-DO: Make this more robust later for call instructions with more than 5 bytes.
+
+  */
   target_ctx.uc_mcontext.gregs[REG_RIP] = target_ctx.uc_mcontext.gregs[REG_RIP] +5;
 
   //Modelling the "Ret" in the random() call to bring us back
   //Check later to make sure it's plus eight, not plus four.
   target_ctx.uc_mcontext.gregs[REG_RSP] = target_ctx.uc_mcontext.gregs[REG_RSP] + 8;
-  
+  printf("INTERPRETER: Exiting model_random \n");
   
   
 }
@@ -3763,13 +3777,13 @@ void Executor::model_jump() {
   ref<Expr> randReadExp =  rand_buf_OS->read8Poison(0);
   addConstraint(*GlobalExecutionStatePtr,EqExpr::create(zeroExpr, randReadExp));
 
-  model_strncat();
+  //model_strncat();
   return;
 }
 
  void Executor::model_strncat() {
    //In our testing for fruitbasket this represents a send point.
-
+   printf("INTERPRETER: Entering model_strncat() \n");
    
    
    //Check to see if address of buf is symbolic, and if not, get the address.
@@ -3780,21 +3794,18 @@ void Executor::model_jump() {
    uint64_t arg3Val = target_ctx.uc_mcontext.gregs[REG_RDX];
     
    
-   //Write value of string passed in (if concrete) to addr.
-
-   
-   
-   //Include bounds check on third arg.
-   
-   //Add contraint to global execution state ptr that message_test_buffer == value at addr. 
-
    ref<Expr> randReadExp =  rand_buf_OS->read8Poison(0);
 
+   printf("Created randReadExp \n");
    //AH Yet another hack
    //TO-DO remove.
    ref<Expr> bufReadExp = ConstantExpr::create(0,Expr::Int8);
+
+   printf("Created bufReadExp \n");
    
    GlobalExecutionStatePtr->addConstraint(EqExpr::create(randReadExp,bufReadExp));
+
+  
    
    //solve and signal back to parent process.
 
@@ -3871,30 +3882,42 @@ void Executor::model_fn () {
   
   int callqOpc = 0xe8;
   
+  
+
   uint8_t * oneBytePtr = (uint8_t *) rip;
-  if (*oneBytePtr != 0xe8)
-    return;
+  if (*oneBytePtr != 0xe8) {
+    printf("Something is wrong in model_fn() !!! \n");
+    std::exit(EXIT_FAILURE);
+  }
+    
   
-  //printf("Found Call. Checking to see if fn is modeled \n");
+  printf("INTERPRETER: Modeling model_fn call \n");
+
+  //This is ugly, but we need to check to see if the 
+  //function we're calling is explicitly modeled in our interpreter.
+  //That means we have to add the number after the call instruction
+  //to the current instruction pointer.
   oneBytePtr++;
-
-  uint32_t * fourBytePtr = (uint32_t *) rip;
+  uint32_t * fourBytePtr = (uint32_t *) oneBytePtr;
+  //printf("fourBytePtr is 0x%lx \n", fourBytePtr);
   uint32_t offset = *fourBytePtr;
+  //printf("offset is 0x%lx \n",offset);
+  //Must add 5 to account for call 0xe8 opcode and the 4 bytes for offset
+  uint64_t dest = rip + (uint64_t) offset + 5;
+  //printf("strncat_lib_model_shim located at 0x%lx \n", &strncat_lib_model_shim);
 
-  uint64_t dest = rip + (uint64_t) offset;
-
-  if (dest == (uint64_t) &random_lib_model_shim)
+  //Checks are here to see if the dest is a function we model.
+  if (dest == (uint64_t) &random_lib_model_shim) {
     model_random();
-
-  if (dest == (uint64_t) &strncat_lib_model_shim) 
+  }else if (dest == (uint64_t) &strncat_lib_model_shim) {
     model_strncat();
-
-  
-  
+  }else {
+    printf("INTERPRETER: Couldn't find function model \n");
+    std::exit(EXIT_FAILURE);
+  }
 };
 
 bool isModeledFn (uint64_t rip) {
-
 
   //TO-DO: Add more opcodes here later on.
   int callqOpc = 0xe8;
@@ -3904,21 +3927,31 @@ bool isModeledFn (uint64_t rip) {
     return false;
   
   printf("Found Call. Checking to see if fn is modeled \n");
+
+  //This is ugly, but we need to check to see if the 
+  //function we're calling is explicitly modeled in our interpreter.
+  //That means we have to add the number after the call instruction
+  //to the current instruction pointer.
   oneBytePtr++;
-
-  uint32_t * fourBytePtr = (uint32_t *) rip;
+  uint32_t * fourBytePtr = (uint32_t *) oneBytePtr;
+  printf("fourBytePtr is 0x%lx \n", fourBytePtr);
   uint32_t offset = *fourBytePtr;
-
-  uint64_t dest = rip + (uint64_t) offset;
-
+  printf("offset is 0x%lx \n",offset);
+  //Must add 5 to account for call 0xe8 opcode and the 4 bytes for offset
+  uint64_t dest = rip + (uint64_t) offset + 5;
+  printf("strncat_lib_model_shim located at 0x%lx \n", &strncat_lib_model_shim);
+  printf("random_lib_model_shim located at 0x%lx \n", &random_lib_model_shim);
   //Checks are here to see if the dest is a function we model.
-  if (dest == (uint64_t) &random_lib_model_shim)
+  if (dest == (uint64_t) &random_lib_model_shim) {
+    printf("Found RANDOM lib call \n");
     return true;
-  if (dest == (uint64_t) &strncat_lib_model_shim) 
+  }
+  if (dest == (uint64_t) &strncat_lib_model_shim) {
+    printf("Found STRNCAT lib call \n");
     return true;
-
+  }
   //If we don't model the fun, return false.
-  printf("Found unmodeled fn defined at %lx \n", dest); 
+  printf("Found unmodeled fn defined at 0x%lx \n", dest); 
   return false;
 
   
@@ -3927,7 +3960,7 @@ bool isModeledFn (uint64_t rip) {
 void Executor::klee_interp_internal () {
   static int interpCtr = 0;
   interpCtr++;
-  int max = 10;
+  int max = 2500;
   if (interpCtr > max) {
 
     printf("Hit interp counter %d times. Something is probably wrong. \n\n",interpCtr);
@@ -3965,7 +3998,7 @@ void Executor::klee_interp_internal () {
     GlobalExecutionStatePtr->pc = interpFn->instructions ;
     GlobalExecutionStatePtr->prevPC = GlobalExecutionStatePtr->pc;
   
-    printf("Pushing back args ... \n");
+    //printf("Pushing back args ... \n");
     std::vector<ref<Expr> > arguments;
   
     assert(target_ctx_MO);
@@ -3975,18 +4008,18 @@ void Executor::klee_interp_internal () {
     arguments.push_back(regExpr);
     //arguments.push_back(prev_ctx_MO->getBaseExpr());
   
-    printf("Binding Args ... \n");
+    //printf("Binding Args ... \n");
   
     assert(GlobalExecutionStatePtr);
     bindArgument(interpFn, 0, *GlobalExecutionStatePtr, arguments[0]);
     //bindArgument(interpFn, 1, *GlobalExecutionStatePtr, arguments[1]);
-    printf("Calling statsTracker...\n");
+    //printf("Calling statsTracker...\n");
     if (statsTracker)
       statsTracker->framePushed(*GlobalExecutionStatePtr, 0);
     
     //AH: This haltExecution thing is to exit out of the interpreter loop.
     haltExecution = false;
-    printf("Calling run! \n ");
+    //printf("Calling run! \n ");
     run(*GlobalExecutionStatePtr);
   
     if (statsTracker)
@@ -3995,13 +4028,13 @@ void Executor::klee_interp_internal () {
   }
   
   
-  
+  /*
   printf("Orig ctx was \n ");
   printCtx(prev_ctx);
   
   printf("New ctx is \n ");
   printCtx(target_ctx);
-  
+  */
   
   //FINISHED WITH THE CURRENT INTERP LOOP
   //Need to figure out if we should go back

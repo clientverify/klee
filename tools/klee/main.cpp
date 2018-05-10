@@ -1375,9 +1375,13 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    //TO-DO: Remove later.  For test purposes
    memset (message_test_buffer, 0, 256);
    strncpy (message_test_buffer, "apple", 5);
-
+   
+   
+   
    printf("Calling tsx_init to map in pages \n");
    tsx_init();
+
+   //printf("Message size and basket size are %d and %d and etc %d %d %d \n\n", MESSAGE_COUNT,BASKET_SIZE, ENCRYPT_ENABLED, EXTRA_WORK, CHEAT_MODE);
    /*
    printf("begin_target_inner located at %lx \n", &begin_target_inner); 
    printf("client_run located at %lx \n", &client_run);

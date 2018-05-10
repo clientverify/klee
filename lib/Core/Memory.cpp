@@ -467,7 +467,7 @@ void ObjectState::write8Poison(unsigned offset, uint8_t value) {
   markByteConcrete(offset);
   markByteUnflushed(offset);
   
-  printf("Writing PSN  %u to concrete store at addr %lu, hex %p  \n",value, ((void *) &concreteStore[offset]  ), (void *) &concreteStore[offset] );
+  //printf("Writing PSN  %u to concrete store at addr %lu, hex %p  \n",value, ((void *) &concreteStore[offset]  ), (void *) &concreteStore[offset] );
 }
 
 void ObjectState::write8(unsigned offset, ref<Expr> value) {
@@ -723,12 +723,33 @@ void ObjectState::writePoison(unsigned offset, ref<Expr> value) {
       if (w == Expr::Int8 || w == Expr::Bool) {
 	printf("Encountered single byte write.  Address this \n");
 
-	uint16_t * rawBufPtr = (uint16_t *) (&(this->concreteStore[offset]));
+
 	uint16_t * bufRepPtr = get_rep_buf(&(this->concreteStore[offset]));
 
+	unsigned idx1 = offset % 2;
+	unsigned idx2;
+	//Even or odd?
+	if (idx1 ==1 ) {
+	  idx2 = idx1;
+	  idx1--;
+	} else {
+	  idx2 = idx1 +1;
+	}
+	
+	
+	if ((*bufRepPtr == poison_val) && !(isByteConcrete(idx1) && isByteConcrete(idx2) )) {
+	  printf("FOUND concrete write of 1 byte into symbolic buffer.  Address this. \n");
+	  std::exit(EXIT_FAILURE);
+	  
+	}
+
+	 write8Poison(offset,val);   
+	    
+	/*
+	uint16_t * rawBufPtr = (uint16_t *) (&(this->concreteStore[offset]));
+	uint16_t * bufRepPtr = get_rep_buf(&(this->concreteStore[offset]));
 	uint8_t * writePtr;
 	uint8_t * concWritePtr;
-	
 	uint8_t concVal;
 	unsigned concOffset;
 	
@@ -746,20 +767,19 @@ void ObjectState::writePoison(unsigned offset, ref<Expr> value) {
 	//Get the conc byte
 	concVal = *concWritePtr;
 	
-	
- 	
-	
 	//Poison the buffer
-	*bufRepPtr = poison_val;
+	//*bufRepPtr = poison_val;
 	//Add the conc constraint
 	ref<ConstantExpr> concExpr =  ConstantExpr::create(concVal, Expr::Int8);
 
 	setKnownSymbolic(concOffset, concExpr.get()); 
 	markByteSymbolic(concOffset);
 	markByteUnflushed(concOffset);
+
+	*/
 	
 	//Do the intended symbolic write.
-	write8Poison(offset,val);
+	
 
 	return;
 	
