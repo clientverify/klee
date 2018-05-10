@@ -102,6 +102,10 @@ void ProfileTreeNode::function_call(
 
   total_function_call_count++;
   this->my_type         = call_ins;
+  //add myself to my_function's list of calls
+  if(this->my_function) {
+    this->my_function->my_calls.push_back(this);
+  }
   this->my_instruction  = ins;
   this->my_target          = target;
   ProfileTreeNode* kid  = link(data);
@@ -213,6 +217,9 @@ void ProfileTreeNode::clone(
 //Returns instruction count for whole tree
 #define DFS_DEBUG 0
 int ProfileTree::dfs(ProfileTreeNode *root){
+  //this updates all the function nodes with the instruction statistics for
+  //the functions they call.
+  root->postorder_function_update_statistics();
   //Tree statistic collection:
   int nodes_traversed = 0;
   int total_instr = 0; //records the number of instructions
@@ -253,22 +260,26 @@ int ProfileTree::dfs(ProfileTreeNode *root){
     switch(p->get_type()) {
       case ProfileTreeNode::NodeType::root:
         assert(p->my_instruction == NULL);
+        assert(p->my_calls.size() == 0);
         if(DFS_DEBUG) printf("root ");
         break;
       case ProfileTreeNode::NodeType::leaf:
         assert(p->my_instruction == NULL);
         assert(p->children.size() == 0);
+        assert(p->my_calls.size() == 0);
         if(DFS_DEBUG) printf("leaf ");
         break;
       case ProfileTreeNode::NodeType::branch_parent:
         assert(p->my_instruction != NULL);
         assert(p->children.size() == 2);
+        assert(p->my_calls.size() == 0);
         if(DFS_DEBUG) printf("branch ");
         break;
       case ProfileTreeNode::NodeType::return_ins:
         assert(p->my_instruction != NULL);
         assert(p->children.size() == 1);
         assert(p->my_return_to != NULL);
+        assert(p->my_calls.size() == 0);
         if(DFS_DEBUG) printf("return ");
         break;
       case ProfileTreeNode::NodeType::call_ins:
@@ -280,6 +291,7 @@ int ProfileTree::dfs(ProfileTreeNode *root){
       case ProfileTreeNode::NodeType::clone_parent:
         assert(p->my_instruction != NULL);
         assert(p->children.size() > 0);
+        assert(p->my_calls.size() == 0);
         if(DFS_DEBUG) printf("clone ");
         break;
       default:
@@ -297,12 +309,41 @@ int ProfileTree::dfs(ProfileTreeNode *root){
   return total_instr;
 }
 
+void ProfileTreeNode::postorder_function_update_statistics(){
+  //Recurse for children
+  if(my_type == call_ins){
+    std::vector <ProfileTreeNode*> :: iterator i;
+    for (i = my_calls.begin(); i != my_calls.end(); ++i) {
+      assert((*i)->my_type == call_ins);
+      (*i)->postorder_function_update_statistics();
+    }
+    for (i = my_calls.begin(); i != my_calls.end(); ++i) {
+      function_calls_ins_count += (*i)->function_ins_count;
+      function_calls_ins_count += (*i)->function_calls_ins_count;
+    }
+    const char *function_name = my_instruction->getParent()->getParent()->getName().data();
+    std::cout << function_name << " instructions executed in this function "
+      << function_ins_count << " instructions executed in subtree "
+      << function_calls_ins_count << "\n";
+
+  } else {
+    std::vector <ProfileTreeNode*> :: iterator i;
+    for (i = children.begin(); i != children.end(); ++i) {
+      (*i)->postorder_function_update_statistics();
+    }
+  }
+}
+
+
 ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent, 
                      ExecutionState *_data)
   : parent(_parent),
     children(),
+    my_calls(),
     data(_data),
     ins_count(0),
+    function_ins_count(0), //only used by call node, keeps track of instructions executed in target from this call
+    function_calls_ins_count(0), //only used by call node, keeps track of all instructions executed in the functions this function calls
     my_type(leaf),
     my_instruction(0),
     my_target(0), //target is only for function call nodes
@@ -349,6 +390,7 @@ void ProfileTreeNode::increment_ins_count(llvm::Instruction *i){
   if(my_function != NULL){
     assert(my_function->my_target != NULL);
     assert(i->getParent()->getParent() == my_function->my_target);
+    my_function->function_ins_count++;
   }
   total_ins_count++;
   ins_count++;
