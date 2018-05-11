@@ -255,6 +255,8 @@ int ProfileTree::dfs(ProfileTreeNode *root){
         assert(p->parent->get_winner());
       }
     }
+    assert(p->function_calls_branch_count <= p->total_branch_count);
+    assert(p->function_branch_count <= p->total_branch_count);
 
     if(DFS_DEBUG) printf("dfs node#: %d children: %d type: ", p->my_node_number, p->children.size());
     switch(p->get_type()) {
@@ -320,12 +322,16 @@ void ProfileTreeNode::postorder_function_update_statistics(){
     for (i = my_calls.begin(); i != my_calls.end(); ++i) {
       function_calls_ins_count += (*i)->function_ins_count;
       function_calls_ins_count += (*i)->function_calls_ins_count;
+      function_calls_branch_count += (*i)->function_branch_count;
+      function_calls_branch_count += (*i)->function_calls_branch_count;
     }
-    const char *function_name = my_instruction->getParent()->getParent()->getName().data();
+    assert(my_target != NULL);
+    const char *function_name = my_target->getName().data();
     std::cout << function_name << " instructions executed in this function "
       << function_ins_count << " instructions executed in subtree "
-      << function_calls_ins_count << "\n";
-
+      << function_calls_ins_count << " symbolic branches in this function "
+      << function_branch_count << " symbolic branches executed in subtree "
+      << function_calls_branch_count << "\n";
   } else {
     std::vector <ProfileTreeNode*> :: iterator i;
     for (i = children.begin(); i != children.end(); ++i) {
@@ -344,6 +350,8 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
     ins_count(0),
     function_ins_count(0), //only used by call node, keeps track of instructions executed in target from this call
     function_calls_ins_count(0), //only used by call node, keeps track of all instructions executed in the functions this function calls
+    function_branch_count(0), //only used by call node, keeps track of symbolic branches executed in target from this call
+    function_calls_branch_count(0), //only used by call node, keeps track of all symbolic branches executed in the functions this function calls
     my_type(leaf),
     my_instruction(0),
     my_target(0), //target is only for function call nodes
@@ -370,7 +378,6 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
         } else {
           my_function = _parent->my_function;
         }
-
       }
       total_node_count++;
 }
@@ -397,6 +404,9 @@ void ProfileTreeNode::increment_ins_count(llvm::Instruction *i){
 }
 void ProfileTreeNode::increment_branch_count(void){
   total_branch_count++;
+  assert(my_function->function_branch_count >= 0);
+  assert(my_function->function_branch_count < total_branch_count);
+  my_function->function_branch_count++;
 }
 enum ProfileTreeNode::NodeType  ProfileTreeNode::get_type(void){ return my_type; }
 llvm::Instruction* ProfileTreeNode::get_instruction(void){ return my_instruction; }

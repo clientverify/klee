@@ -101,6 +101,12 @@ namespace klee {
     //Only used by call_ins, counts the instructions executed by my_target's
     //subfunctions
     int function_calls_ins_count;
+    //Only used by call_ins, counts the symbolic branches executed in that call to
+    //my_target.
+    int function_branch_count;
+    //Only used by call_ins, counts the symbolic branches executed by my_target's
+    //subfunctions
+    int function_calls_branch_count;
     int my_node_number;
     bool winner;
     static int total_winners;
