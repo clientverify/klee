@@ -26,10 +26,12 @@ namespace klee {
     ~ProfileTree();
     
     int dfs(ProfileTreeNode *root);
+    void consolidateFunctionData();
   };
 
   class ProfileTreeNode {
     friend class ProfileTree;
+    friend class FunctionStatstics;
   public:
     ProfileTreeNode *parent;
     std::vector<ProfileTreeNode*> children;
@@ -77,7 +79,7 @@ namespace klee {
 
 
 
-  private:
+  protected:
     //leaf: this is the type when a node hasn't split yet.
     //clone_parent: this is the type when a node is split as a result of a clone
     //  call
@@ -130,6 +132,20 @@ namespace klee {
     static int total_clone_count;
     static int total_function_call_count;
     static int total_function_ret_count;
+  };
+
+  class FunctionStatstics{
+    public:
+      FunctionStatstics(ProfileTreeNode *n);
+      ~FunctionStatstics();
+      int ins_count;
+      int sub_ins_count;
+      int branch_count;
+      int sub_branch_count;
+      int times_called;
+      int num_called;
+      llvm::Function* function;
+      void add(ProfileTreeNode* n);
   };
 }
 

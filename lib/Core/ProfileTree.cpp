@@ -307,12 +307,14 @@ int ProfileTree::dfs(ProfileTreeNode *root){
 
     if(DFS_DEBUG) printf("\n");
   }
+  consolidateFunctionData();
   printf("total_winners %d\n",root->total_winners );
   return total_instr;
 }
 
 void ProfileTreeNode::postorder_function_update_statistics(){
   //Recurse for children
+  std::cout << "\nPostorder Function Statistics\n";
   if(my_type == call_ins){
     std::vector <ProfileTreeNode*> :: iterator i;
     for (i = my_calls.begin(); i != my_calls.end(); ++i) {
@@ -327,10 +329,10 @@ void ProfileTreeNode::postorder_function_update_statistics(){
     }
     assert(my_target != NULL);
     const char *function_name = my_target->getName().data();
-    std::cout << function_name << " instructions executed in this function "
-      << function_ins_count << " instructions executed in subtree "
-      << function_calls_ins_count << " symbolic branches in this function "
-      << function_branch_count << " symbolic branches executed in subtree "
+    std::cout << function_name << " my ins "
+      << function_ins_count << " subtree ins "
+      << function_calls_ins_count << " my symbolic branches "
+      << function_branch_count << " subtree symbolic branches "
       << function_calls_branch_count << "\n";
   } else {
     std::vector <ProfileTreeNode*> :: iterator i;
@@ -340,6 +342,81 @@ void ProfileTreeNode::postorder_function_update_statistics(){
   }
 }
 
+void FunctionStatstics::add(ProfileTreeNode *n){
+  ins_count += n->function_ins_count;
+  sub_ins_count += n->function_calls_ins_count;
+  branch_count += n->function_branch_count;
+  sub_branch_count += n->function_calls_branch_count;
+  times_called++;
+  num_called += n->my_calls.size();
+  assert(function == n->my_target);
+}
+
+void ProfileTree::consolidateFunctionData(){
+  std::unordered_map<std::string, FunctionStatstics*> stats;
+  std::stack <ProfileTreeNode*> nodes_to_visit;
+  nodes_to_visit.push(root); //add children to the end
+  while( nodes_to_visit.size() > 0 ) {
+    //Handling DFS traversal:
+    ProfileTreeNode* p = nodes_to_visit.top(); //get last element
+    nodes_to_visit.pop(); //remove last element
+
+    std::vector <ProfileTreeNode*> :: iterator i;
+    if(p->get_type() == ProfileTreeNode::NodeType::call_ins){
+      for (i = p->my_calls.begin(); i != p->my_calls.end(); ++i)
+        nodes_to_visit.push(*i); //add call nodes
+
+
+      //statistic collection
+      std::string key = p->my_target->getName().data();
+      std::unordered_map<std::string,FunctionStatstics*>::const_iterator itr
+        = stats.find(key);
+      if (itr == stats.end()){
+        //add new record, this function doesn't exist yet.
+        FunctionStatstics* fs = new FunctionStatstics(p);
+        stats[key] = fs;
+      } else {
+        (*itr).second->add(p);
+      }
+    } else {
+      for (i = p->children.begin(); i != p->children.end(); ++i)
+        nodes_to_visit.push(*i); //add children
+    }
+  }
+  std::cout << "\nConsolidated Function Data: \n";
+  std::unordered_map<std::string,FunctionStatstics*>::const_iterator itr;
+  for (itr = stats.begin(); itr != stats.end(); itr++) {
+    const char* dir = get_function_directory(itr->second->function);
+
+    if(dir && strcmp(dir, FUNC_NODE_DIR) == 0) {
+      // itr works as a pointer to pair<string, double>
+      // type itr->first stores the key part  and
+      // itr->second stroes the value part
+      std::cout << itr->first <<
+        " #times called " << itr->second->times_called <<
+        " #child calls " << itr->second->num_called <<
+        " ins count " << itr->second->ins_count <<
+        " sub_ins_count " << itr->second->sub_ins_count <<
+        " branch count " << itr->second->branch_count <<
+        " sub_branch_count " << itr->second->sub_branch_count <<
+        "\n";
+    }
+  }
+}
+
+
+FunctionStatstics::FunctionStatstics(ProfileTreeNode *n)
+  : ins_count(n->function_ins_count),
+    sub_ins_count(n->function_calls_ins_count),
+    branch_count(n->function_branch_count),
+    sub_branch_count(n->function_calls_branch_count),
+    times_called(1),
+    num_called(n->my_calls.size()),
+    function(n->my_target){
+      assert(n != NULL);
+      assert(n->get_type() == ProfileTreeNode::NodeType::call_ins);
+      assert(function != NULL);
+}
 
 ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent, 
                      ExecutionState *_data)
