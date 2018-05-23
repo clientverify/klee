@@ -219,6 +219,7 @@ void ProfileTreeNode::clone(
 int ProfileTree::dfs(ProfileTreeNode *root){
   //this updates all the function nodes with the instruction statistics for
   //the functions they call.
+  std::cout << "\nPostorder Function Statistics\n";
   root->postorder_function_update_statistics();
   //Tree statistic collection:
   int nodes_traversed = 0;
@@ -314,7 +315,6 @@ int ProfileTree::dfs(ProfileTreeNode *root){
 
 void ProfileTreeNode::postorder_function_update_statistics(){
   //Recurse for children
-  std::cout << "\nPostorder Function Statistics\n";
   if(my_type == call_ins){
     std::vector <ProfileTreeNode*> :: iterator i;
     for (i = my_calls.begin(); i != my_calls.end(); ++i) {
@@ -388,18 +388,22 @@ void ProfileTree::consolidateFunctionData(){
   for (itr = stats.begin(); itr != stats.end(); itr++) {
     const char* dir = get_function_directory(itr->second->function);
 
-    if(dir && strcmp(dir, FUNC_NODE_DIR) == 0) {
-      // itr works as a pointer to pair<string, double>
-      // type itr->first stores the key part  and
-      // itr->second stroes the value part
-      std::cout << itr->first <<
-        " #times called " << itr->second->times_called <<
-        " #child calls " << itr->second->num_called <<
-        " ins count " << itr->second->ins_count <<
-        " sub_ins_count " << itr->second->sub_ins_count <<
-        " branch count " << itr->second->branch_count <<
-        " sub_branch_count " << itr->second->sub_branch_count <<
-        "\n";
+    // itr works as a pointer to pair<string, double>
+    // type itr->first stores the key part  and
+    // itr->second stroes the value part
+    if(dir)
+      std::cout << dir << " ";
+    else
+      std::cout << "no_dir ";
+
+    std::cout << itr->first <<
+      " #times called " << itr->second->times_called <<
+      " #child calls " << itr->second->num_called <<
+      " ins count " << itr->second->ins_count <<
+      " sub_ins_count " << itr->second->sub_ins_count <<
+      " branch count " << itr->second->branch_count <<
+      " sub_branch_count " << itr->second->sub_branch_count <<
+      "\n";
     }
   }
 }
@@ -492,4 +496,81 @@ void ProfileTreeNode::set_winner(void){
   total_winners++;
   assert(!winner);
   winner = true;
+}
+
+
+
+
+void ProfileTree::dump() {
+  llvm::raw_fd_ostream *f;
+  std::string Error;
+  std::string path = "/playpen/cliver0/processtree.graph";
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3,5)
+  f = new llvm::raw_fd_ostream(path.c_str(), Error, llvm::sys::fs::F_None);
+#elif LLVM_VERSION_CODE >= LLVM_VERSION(3,4)
+  f = new llvm::raw_fd_ostream(path.c_str(), Error, llvm::sys::fs::F_Binary);
+#else
+  f = new llvm::raw_fd_ostream(path.c_str(), Error, llvm::raw_fd_ostream::F_Binary);
+#endif
+  assert(f);
+  if (!Error.empty()) {
+    printf("error opening file \"%s\".  KLEE may have run out of file "
+        "descriptors: try to increase the maximum number of open file "
+        "descriptors by using ulimit (%s).",
+        path.c_str(), Error.c_str());
+    delete f;
+    f = NULL;
+  }
+  if (f) {
+    dump(*f);
+    delete f;
+  }
+}
+
+//currently dumps the functions in FUNC_NODE_DIR in the call graph.
+void ProfileTree::dump(llvm::raw_ostream &os) {
+  ExprPPrinter *pp = ExprPPrinter::create(os);
+  pp->setNewline("\\l");
+  os << "digraph G {\n";
+  os << "\tsize=\"10,7.5\";\n";
+  os << "\tratio=fill;\n";
+  os << "\trotate=90;\n";
+  os << "\tcenter = \"true\";\n";
+  os << "\tnode [style=\"filled\",width=.1,height=.1,fontname=\"Terminus\"]\n";
+  os << "\tedge [arrowsize=.3]\n";
+  std::vector<ProfileTree::Node*> stack;
+  stack.push_back(root);
+  while (!stack.empty()) {
+    ProfileTree::Node *n = stack.back();
+    stack.pop_back();
+    os << "\tn" << n << " [label=\"\"";
+    if (n->data)
+      os << ",fillcolor=green";
+    os << "];\n";
+
+    if(n->my_type == ProfileTreeNode::call_ins){
+      const char* dir = get_function_directory(n->my_target);
+      std::vector <ProfileTreeNode*> :: iterator i;
+      for (i = n->my_calls.begin(); i != n->my_calls.end(); ++i){
+        if(dir && strcmp(dir, FUNC_NODE_DIR) == 0) {
+          const char* child_dir = get_function_directory((*i)->my_target);
+          if(child_dir && strcmp(child_dir, FUNC_NODE_DIR) == 0) {
+            os << "\tn" << n << " -> n" << *i << ";\n";
+            stack.push_back(*i); //add children
+          }
+        }else{
+          os << "\tn" << n << " -> n" << *i << ";\n";
+          stack.push_back(*i); //add children
+        }
+      }
+    }else{
+      std::vector <ProfileTreeNode*> :: iterator i;
+      for (i = n->children.begin(); i != n->children.end(); ++i){
+        os << "\tn" << n << " -> n" << *i << ";\n";
+        stack.push_back(*i); //add children
+      }
+    }
+  }
+  os << "}\n";
+  delete pp;
 }
