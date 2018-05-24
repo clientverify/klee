@@ -158,11 +158,14 @@ void ProfileTreeNode::branch(
   assert(leftData != rightData);
   assert(this->my_type == leaf);
   this->my_type = branch_parent;
+  this->my_branch_or_clone->my_branches_or_clones.push_back(this);
   this->my_instruction  = ins;
   std::pair<ProfileTreeNode*, ProfileTreeNode*> ret = split(leftData, rightData);
   leftData->profiletreeNode = ret.first;
   rightData->profiletreeNode = ret.second;
 
+  assert(ret.first->my_branch_or_clone == this);
+  assert(ret.second->my_branch_or_clone == this);
   assert(leftData  == ret.first->data);
   assert(rightData == ret.second->data);
   assert(ret.first->parent == ret.second->parent);
@@ -189,11 +192,17 @@ void ProfileTreeNode::clone(
     this->my_type = clone_parent;
     this->my_instruction  = ins;
     ret = this->split(me_state, clone_state);
+    assert(ret.first->my_branch_or_clone == this);
+    assert(ret.second->my_branch_or_clone == this);
   } else if (this->get_ins_count() > 0 ||
       this->parent->my_type == call_ins ) { //Split the current node
     this->my_type = clone_parent;
+    assert(my_branch_or_clone != NULL);
+    this->my_branch_or_clone->my_branches_or_clones.push_back(this);
     this->my_instruction  = ins;
     ret = this->split(me_state, clone_state);
+    assert(ret.first->my_branch_or_clone == this);
+    assert(ret.second->my_branch_or_clone == this);
   } else if (this->get_ins_count() == 0) { //make sibling and add to parent
     assert(this->parent->my_type == clone_parent);
 
@@ -310,7 +319,29 @@ int ProfileTree::dfs(ProfileTreeNode *root){
   }
   consolidateFunctionData();
   printf("total_winners %d\n",root->total_winners );
+  int num_branches = root->postorder_branch_or_clone_count();
+  printf("dfs check: total_branches %d\n", num_branches);
   return total_instr;
+}
+
+//Returns the total number of branches/clones
+int ProfileTreeNode::postorder_branch_or_clone_count(){
+  //Recurse for children
+  int ret = 0;
+  if(my_type == branch_parent || my_type == clone_parent){
+    ret++; //we have another branch or clone
+    std::vector <ProfileTreeNode*> :: iterator i;
+    for (i = my_branches_or_clones.begin(); i != my_branches_or_clones.end(); ++i) {
+      assert((*i)->my_type == branch_parent || (*i)->my_type == clone_parent);
+      ret += (*i)->postorder_branch_or_clone_count();
+    }
+  } else {
+    std::vector <ProfileTreeNode*> :: iterator i;
+    for (i = children.begin(); i != children.end(); ++i) {
+      (*i)->postorder_branch_or_clone_count();
+    }
+  }
+  return ret;
 }
 
 void ProfileTreeNode::postorder_function_update_statistics(){
@@ -329,11 +360,13 @@ void ProfileTreeNode::postorder_function_update_statistics(){
     }
     assert(my_target != NULL);
     const char *function_name = my_target->getName().data();
+#if 0
     std::cout << function_name << " my ins "
       << function_ins_count << " subtree ins "
       << function_calls_ins_count << " my symbolic branches "
       << function_branch_count << " subtree symbolic branches "
       << function_calls_branch_count << "\n";
+#endif
   } else {
     std::vector <ProfileTreeNode*> :: iterator i;
     for (i = children.begin(); i != children.end(); ++i) {
@@ -388,6 +421,7 @@ void ProfileTree::consolidateFunctionData(){
   for (itr = stats.begin(); itr != stats.end(); itr++) {
     const char* dir = get_function_directory(itr->second->function);
 
+#if 0
     // itr works as a pointer to pair<string, double>
     // type itr->first stores the key part  and
     // itr->second stroes the value part
@@ -404,7 +438,7 @@ void ProfileTree::consolidateFunctionData(){
       " branch count " << itr->second->branch_count <<
       " sub_branch_count " << itr->second->sub_branch_count <<
       "\n";
-    }
+#endif
   }
 }
 
@@ -427,6 +461,7 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
   : parent(_parent),
     children(),
     my_calls(),
+    my_branches_or_clones(),
     data(_data),
     ins_count(0),
     function_ins_count(0), //only used by call node, keeps track of instructions executed in target from this call
@@ -447,6 +482,13 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
         if(_parent->winner){
           assert(!_parent->parent->winner);
           set_winner();
+        }
+
+        //handle branch or clone we belong to:
+        if(_parent->my_type == branch_parent || _parent->my_type == clone_parent){
+          my_branch_or_clone = _parent;
+        } else {
+          my_branch_or_clone = _parent->my_branch_or_clone;
         }
 
         //handle function we belong to:
@@ -527,6 +569,7 @@ void ProfileTree::dump() {
   }
 }
 
+#if 0
 //currently dumps the functions in FUNC_NODE_DIR in the call graph.
 void ProfileTree::dump(llvm::raw_ostream &os) {
   ExprPPrinter *pp = ExprPPrinter::create(os);
@@ -562,6 +605,48 @@ void ProfileTree::dump(llvm::raw_ostream &os) {
           os << "\tn" << n << " -> n" << *i << ";\n";
           stack.push_back(*i); //add children
         }
+      }
+    }else{
+      std::vector <ProfileTreeNode*> :: iterator i;
+      for (i = n->children.begin(); i != n->children.end(); ++i){
+        os << "\tn" << n << " -> n" << *i << ";\n";
+        stack.push_back(*i); //add children
+      }
+    }
+  }
+  os << "}\n";
+  delete pp;
+}
+#endif
+
+//Writes graph of clone and branch nodes.
+void ProfileTree::dump(llvm::raw_ostream &os) {
+  ExprPPrinter *pp = ExprPPrinter::create(os);
+  pp->setNewline("\\l");
+  os << "digraph G {\n";
+  os << "\tsize=\"10,7.5\";\n";
+  os << "\tratio=fill;\n";
+  os << "\trotate=90;\n";
+  os << "\tcenter = \"true\";\n";
+  os << "\tnode [style=\"filled\",width=.1,height=.1,fontname=\"Terminus\"]\n";
+  os << "\tedge [arrowsize=.3]\n";
+  std::vector<ProfileTree::Node*> stack;
+  stack.push_back(root);
+  while (!stack.empty()) {
+    ProfileTree::Node *n = stack.back();
+    stack.pop_back();
+    os << "\tn" << n << " [label=\"\"";
+    if(n->my_type == ProfileTreeNode::branch_parent)
+      os << ",fillcolor=green";
+    else
+      os << ",fillcolor=blue";
+    os << "];\n";
+
+    if(n->my_type == ProfileTreeNode::branch_parent || n->my_type == ProfileTreeNode::clone_parent){
+      std::vector <ProfileTreeNode*> :: iterator i;
+      for (i = n->my_branches_or_clones.begin(); i != n->my_branches_or_clones.end(); ++i){
+        os << "\tn" << n << " -> n" << *i << ";\n";
+        stack.push_back(*i); //add children
       }
     }else{
       std::vector <ProfileTreeNode*> :: iterator i;
