@@ -27,8 +27,8 @@ namespace klee {
     
     int dfs(ProfileTreeNode *root);
     void consolidateFunctionData();
-    void dump(void);
-    void dump(llvm::raw_ostream &os);
+    void dump_branch_clone_graph(std::string path);
+    void dump_function_call_graph(std::string path);
   };
 
   class ProfileTreeNode {

@@ -541,12 +541,9 @@ void ProfileTreeNode::set_winner(void){
 }
 
 
-
-
-void ProfileTree::dump() {
+llvm::raw_fd_ostream* get_fd_ostream(std::string path) {
   llvm::raw_fd_ostream *f;
   std::string Error;
-  std::string path = "/playpen/cliver0/processtree.graph";
 #if LLVM_VERSION_CODE >= LLVM_VERSION(3,5)
   f = new llvm::raw_fd_ostream(path.c_str(), Error, llvm::sys::fs::F_None);
 #elif LLVM_VERSION_CODE >= LLVM_VERSION(3,4)
@@ -563,15 +560,12 @@ void ProfileTree::dump() {
     delete f;
     f = NULL;
   }
-  if (f) {
-    dump(*f);
-    delete f;
-  }
+  return f;
 }
 
-#if 0
 //currently dumps the functions in FUNC_NODE_DIR in the call graph.
-void ProfileTree::dump(llvm::raw_ostream &os) {
+void ProfileTree::dump_function_call_graph(std::string path) {
+  llvm::raw_ostream &os = *(get_fd_ostream(path));
   ExprPPrinter *pp = ExprPPrinter::create(os);
   pp->setNewline("\\l");
   os << "digraph G {\n";
@@ -617,10 +611,10 @@ void ProfileTree::dump(llvm::raw_ostream &os) {
   os << "}\n";
   delete pp;
 }
-#endif
 
 //Writes graph of clone and branch nodes.
-void ProfileTree::dump(llvm::raw_ostream &os) {
+void ProfileTree::dump_branch_clone_graph(std::string path) {
+  llvm::raw_ostream &os = *(get_fd_ostream(path));
   ExprPPrinter *pp = ExprPPrinter::create(os);
   pp->setNewline("\\l");
   os << "digraph G {\n";
