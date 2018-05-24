@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "ProfileTree.h"
+#include "Util.h"
 #include "klee/ExecutionState.h"
 
 #include <klee/Expr.h>
@@ -50,34 +51,6 @@ ProfileTreeNode::link(
   return kid;
 }
 
-#define DEBUG_FUNCTION_DIR 0
-const char* get_instruction_directory(llvm::Instruction* target_ins){
-  assert(target_ins  != NULL);
-  const char *function_name = target_ins->getParent()->getParent()->getName().data();
-  assert(function_name  != NULL);
-  llvm::MDNode *metadata = target_ins->getMetadata("dbg");
-  if (!metadata) {
-    if(DEBUG_FUNCTION_DIR) printf("function_call/return not adding info for %s no metadata\n", function_name);
-    return NULL;
-  }
-
-  llvm::DILocation loc(metadata); // DILocation is in DebugInfo.h
-  const char  *dir  = loc.getDirectory().data();
-  return dir;
-}
-
-const char* get_function_directory(llvm::Function* target){
-  assert(target != NULL);
-  const char *target_name = target->getName().data();
-  assert(target_name != NULL);
-  if(target->size() <= 0){
-    if(DEBUG_FUNCTION_DIR) printf("function_call %s has no basic blocks\n", target_name);
-    return NULL;
-  }
-  llvm::Instruction *target_ins = target->getEntryBlock().begin();
-  assert(target_ins  != NULL);
-  return get_instruction_directory(target_ins);
-}
 
 #define FUNC_NODE_DIR "/playpen/cliver0/src/openssh"
 #define MODEL_NODE_DIR "/playpen/cliver0/build/klee/runtime/cloud9-POSIX"
@@ -344,6 +317,7 @@ int ProfileTreeNode::postorder_branch_or_clone_count(){
   return ret;
 }
 
+#define PRINT_FUNC_STATS 1
 void ProfileTreeNode::postorder_function_update_statistics(){
   //Recurse for children
   if(my_type == call_ins){
@@ -360,7 +334,7 @@ void ProfileTreeNode::postorder_function_update_statistics(){
     }
     assert(my_target != NULL);
     const char *function_name = my_target->getName().data();
-#if 0
+#if PRINT_FUNC_STATS
     std::cout << function_name << " my ins "
       << function_ins_count << " subtree ins "
       << function_calls_ins_count << " my symbolic branches "
@@ -385,6 +359,7 @@ void FunctionStatstics::add(ProfileTreeNode *n){
   assert(function == n->my_target);
 }
 
+#define RECORD_ONLY_SSH_FUNCTION_STATS 1
 void ProfileTree::consolidateFunctionData(){
   std::unordered_map<std::string, FunctionStatstics*> stats;
   std::stack <ProfileTreeNode*> nodes_to_visit;
@@ -421,7 +396,7 @@ void ProfileTree::consolidateFunctionData(){
   for (itr = stats.begin(); itr != stats.end(); itr++) {
     const char* dir = get_function_directory(itr->second->function);
 
-#if 0
+#if RECORD_ONLY_SSH_FUNCTION_STATS
     // itr works as a pointer to pair<string, double>
     // type itr->first stores the key part  and
     // itr->second stroes the value part
@@ -540,28 +515,6 @@ void ProfileTreeNode::set_winner(void){
   winner = true;
 }
 
-
-llvm::raw_fd_ostream* get_fd_ostream(std::string path) {
-  llvm::raw_fd_ostream *f;
-  std::string Error;
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3,5)
-  f = new llvm::raw_fd_ostream(path.c_str(), Error, llvm::sys::fs::F_None);
-#elif LLVM_VERSION_CODE >= LLVM_VERSION(3,4)
-  f = new llvm::raw_fd_ostream(path.c_str(), Error, llvm::sys::fs::F_Binary);
-#else
-  f = new llvm::raw_fd_ostream(path.c_str(), Error, llvm::raw_fd_ostream::F_Binary);
-#endif
-  assert(f);
-  if (!Error.empty()) {
-    printf("error opening file \"%s\".  KLEE may have run out of file "
-        "descriptors: try to increase the maximum number of open file "
-        "descriptors by using ulimit (%s).",
-        path.c_str(), Error.c_str());
-    delete f;
-    f = NULL;
-  }
-  return f;
-}
 
 //currently dumps the functions in FUNC_NODE_DIR in the call graph.
 void ProfileTree::dump_function_call_graph(std::string path) {
