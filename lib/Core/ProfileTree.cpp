@@ -77,17 +77,16 @@ void ProfileTreeNode::function_call(
   this->my_type         = call_ins;
   //add myself to my_function's list of calls
   if(this->my_function) {
-    this->my_function->my_calls.push_back(this);
+    ((ContainerCallIns*)this->my_function->container)->my_calls.push_back(this);
   }
-  this->my_instruction  = ins;
-  this->my_target          = target;
+  this->container = new ContainerCallIns(ins, target);
   ProfileTreeNode* kid  = link(data);
   data->profiletreeNode = kid;
 
   assert(data  == kid->data);
   assert(kid->parent == this);
-  if(my_function && my_function->my_target)
-    assert(ins->getParent()->getParent() == my_function->my_target);
+  if(my_function && ((ContainerCallIns*)my_function->container)->my_target)
+    assert(ins->getParent()->getParent() == ((ContainerCallIns*)my_function->container)->my_target);
 }
 
 void ProfileTreeNode::function_return(
@@ -98,15 +97,14 @@ void ProfileTreeNode::function_return(
 
   total_function_ret_count++;
   this->my_type         = return_ins;
-  this->my_instruction  = ins;
-  this->my_return_to    = to;
+  this->container = new ContainerRetIns(ins, to);
   ProfileTreeNode* kid  = link(data);
   data->profiletreeNode = kid;
 
   assert(data  == kid->data);
   assert(kid->parent == this);
-  if(my_function && my_function->my_target)
-    assert(ins->getParent()->getParent() == my_function->my_target);
+  if(my_function && ((ContainerCallIns*)my_function->container)->my_target)
+    assert(ins->getParent()->getParent() == ((ContainerCallIns*)my_function->container)->my_target);
 }
 
 std::pair<ProfileTreeNode*, ProfileTreeNode*>
@@ -131,8 +129,8 @@ void ProfileTreeNode::branch(
   assert(leftData != rightData);
   assert(this->my_type == leaf);
   this->my_type = branch_parent;
-  this->my_branch_or_clone->my_branches_or_clones.push_back(this);
-  this->my_instruction  = ins;
+  ((ContainerBranchClone*)this->my_branch_or_clone->container)->my_branches_or_clones.push_back(this);
+  this->container = new ContainerBranchClone(ins);
   std::pair<ProfileTreeNode*, ProfileTreeNode*> ret = split(leftData, rightData);
   leftData->profiletreeNode = ret.first;
   rightData->profiletreeNode = ret.second;
@@ -143,8 +141,8 @@ void ProfileTreeNode::branch(
   assert(rightData == ret.second->data);
   assert(ret.first->parent == ret.second->parent);
 
-  if(my_function && my_function->my_target)
-    assert(ins->getParent()->getParent() == my_function->my_target);
+  if(my_function && ((ContainerCallIns*)my_function->container)->my_target)
+    assert(ins->getParent()->getParent() == ((ContainerCallIns*)my_function->container)->my_target);
 }
 
 void ProfileTreeNode::clone(
@@ -163,7 +161,7 @@ void ProfileTreeNode::clone(
     assert(this->get_ins_count() == 0);
 
     this->my_type = clone_parent;
-    this->my_instruction  = ins;
+    this->container = new ContainerBranchClone(ins);
     ret = this->split(me_state, clone_state);
     assert(ret.first->my_branch_or_clone == this);
     assert(ret.second->my_branch_or_clone == this);
@@ -171,8 +169,8 @@ void ProfileTreeNode::clone(
       this->parent->my_type == call_ins ) { //Split the current node
     this->my_type = clone_parent;
     assert(my_branch_or_clone != NULL);
-    this->my_branch_or_clone->my_branches_or_clones.push_back(this);
-    this->my_instruction  = ins;
+    ((ContainerBranchClone*)this->my_branch_or_clone->container)->my_branches_or_clones.push_back(this);
+    this->container = new ContainerBranchClone(ins);
     ret = this->split(me_state, clone_state);
     assert(ret.first->my_branch_or_clone == this);
     assert(ret.second->my_branch_or_clone == this);
@@ -192,8 +190,8 @@ void ProfileTreeNode::clone(
 
   me_state->profiletreeNode = ret.first;
   clone_state->profiletreeNode = ret.second;
-  if(my_function && my_function->my_target)
-    assert(ins->getParent()->getParent() == my_function->my_target);
+  if(my_function && ((ContainerCallIns*)my_function->container)->my_target)
+    assert(ins->getParent()->getParent() == ((ContainerCallIns*)my_function->container)->my_target);
 }
 
 //Returns instruction count for whole tree
@@ -225,10 +223,10 @@ int ProfileTree::dfs(ProfileTreeNode *root){
     //Asserts and print outs (looking inside the node):
     assert(p != NULL);
     if(p->parent) assert(p->parent->my_node_number < p->my_node_number);
-    if(p->get_type() != ProfileTreeNode::NodeType::return_ins)
-      assert(p->my_return_to == NULL);
-    if(p->get_type() != ProfileTreeNode::NodeType::call_ins)
-      assert(p->my_target == NULL);
+    if(p->get_type() == ProfileTreeNode::NodeType::return_ins)
+      assert(dynamic_cast<ContainerRetIns*>(p->container) != NULL);
+    if(p->get_type() == ProfileTreeNode::NodeType::call_ins)
+      assert(dynamic_cast<ContainerCallIns*>(p->container) != NULL);
     if(p->get_winner()){
       if(p->get_type() == ProfileTreeNode::NodeType::clone_parent){
         assert(p->children.size() == 2);
@@ -238,53 +236,50 @@ int ProfileTree::dfs(ProfileTreeNode *root){
         assert(p->parent->get_winner());
       }
     }
-    assert(p->function_calls_branch_count <= p->total_branch_count);
-    assert(p->function_branch_count <= p->total_branch_count);
+    if(p->get_type() == ProfileTreeNode::NodeType::call_ins){
+      assert(((ContainerCallIns*)p->container)->function_calls_branch_count <= p->total_branch_count);
+      assert(((ContainerCallIns*)p->container)->function_branch_count <= p->total_branch_count);
+    }
 
     if(DFS_DEBUG) printf("dfs node#: %d children: %d type: ", p->my_node_number, p->children.size());
     switch(p->get_type()) {
       case ProfileTreeNode::NodeType::root:
-        assert(p->my_instruction == NULL);
-        assert(p->my_calls.size() == 0);
+        assert(p->container == NULL);
         if(DFS_DEBUG) printf("root ");
         break;
       case ProfileTreeNode::NodeType::leaf:
-        assert(p->my_instruction == NULL);
+        assert(p->container == NULL);
         assert(p->children.size() == 0);
-        assert(p->my_calls.size() == 0);
         if(DFS_DEBUG) printf("leaf ");
         break;
       case ProfileTreeNode::NodeType::branch_parent:
-        assert(p->my_instruction != NULL);
+        assert(p->get_instruction() != NULL);
         assert(p->children.size() == 2);
-        assert(p->my_calls.size() == 0);
         if(DFS_DEBUG) printf("branch ");
         break;
       case ProfileTreeNode::NodeType::return_ins:
-        assert(p->my_instruction != NULL);
+        assert(p->get_instruction() != NULL);
         assert(p->children.size() == 1);
-        assert(p->my_return_to != NULL);
-        assert(p->my_calls.size() == 0);
+        assert(p->container != NULL);
         if(DFS_DEBUG) printf("return ");
         break;
       case ProfileTreeNode::NodeType::call_ins:
-        assert(p->my_instruction != NULL);
+        assert(p->get_instruction() != NULL);
         assert(p->children.size() == 1);
-        assert(p->my_target != NULL);
+        assert(((ContainerCallIns*)p->container)->my_target != NULL);
         if(DFS_DEBUG) printf("call ");
         break;
       case ProfileTreeNode::NodeType::clone_parent:
-        assert(p->my_instruction != NULL);
+        assert(p->get_instruction() != NULL);
         assert(p->children.size() > 0);
-        assert(p->my_calls.size() == 0);
         if(DFS_DEBUG) printf("clone ");
         break;
       default:
         assert(0);
     }
 
-    if(p->my_instruction != NULL) {
-      const char *function_name = p->my_instruction->getParent()->getParent()->getName().data();
+    if(p->container != NULL) {
+      const char *function_name = p->get_instruction()->getParent()->getParent()->getName().data();
       if(DFS_DEBUG) printf("function name: %s", function_name);
     }
 
@@ -304,7 +299,8 @@ int ProfileTreeNode::postorder_branch_or_clone_count(){
   if(my_type == branch_parent || my_type == clone_parent){
     ret++; //we have another branch or clone
     std::vector <ProfileTreeNode*> :: iterator i;
-    for (i = my_branches_or_clones.begin(); i != my_branches_or_clones.end(); ++i) {
+    for (i = ((ContainerBranchClone*)container)->my_branches_or_clones.begin();
+        i != ((ContainerBranchClone*)container)->my_branches_or_clones.end(); ++i) {
       assert((*i)->my_type == branch_parent || (*i)->my_type == clone_parent);
       ret += (*i)->postorder_branch_or_clone_count();
     }
@@ -317,29 +313,30 @@ int ProfileTreeNode::postorder_branch_or_clone_count(){
   return ret;
 }
 
-#define PRINT_FUNC_STATS 1
+#define PRINT_FUNC_STATS 0
 void ProfileTreeNode::postorder_function_update_statistics(){
   //Recurse for children
   if(my_type == call_ins){
     std::vector <ProfileTreeNode*> :: iterator i;
-    for (i = my_calls.begin(); i != my_calls.end(); ++i) {
+    for (i = ((ContainerCallIns*)container)->my_calls.begin(); i != ((ContainerCallIns*)container)->my_calls.end(); ++i) {
       assert((*i)->my_type == call_ins);
       (*i)->postorder_function_update_statistics();
     }
-    for (i = my_calls.begin(); i != my_calls.end(); ++i) {
-      function_calls_ins_count += (*i)->function_ins_count;
-      function_calls_ins_count += (*i)->function_calls_ins_count;
-      function_calls_branch_count += (*i)->function_branch_count;
-      function_calls_branch_count += (*i)->function_calls_branch_count;
+    for (i = ((ContainerCallIns*)container)->my_calls.begin(); i != ((ContainerCallIns*)container)->my_calls.end(); ++i) {
+      ContainerCallIns* ic = ((ContainerCallIns*)(*i)->container);
+      ((ContainerCallIns*)container)->function_calls_ins_count += ic->function_ins_count;
+      ((ContainerCallIns*)container)->function_calls_ins_count += ic->function_calls_ins_count;
+      ((ContainerCallIns*)container)->function_calls_branch_count += ic->function_branch_count;
+      ((ContainerCallIns*)container)->function_calls_branch_count += ic->function_calls_branch_count;
     }
-    assert(my_target != NULL);
-    const char *function_name = my_target->getName().data();
+    assert(((ContainerCallIns*)container)->my_target != NULL);
+    const char *function_name = ((ContainerCallIns*)container)->my_target->getName().data();
 #if PRINT_FUNC_STATS
     std::cout << function_name << " my ins "
-      << function_ins_count << " subtree ins "
-      << function_calls_ins_count << " my symbolic branches "
-      << function_branch_count << " subtree symbolic branches "
-      << function_calls_branch_count << "\n";
+      << ((ContainerCallIns*)container)->function_ins_count << " subtree ins "
+      << ((ContainerCallIns*)container)->function_calls_ins_count << " my symbolic branches "
+      << ((ContainerCallIns*)container)->function_branch_count << " subtree symbolic branches "
+      << ((ContainerCallIns*)container)->function_calls_branch_count << "\n";
 #endif
   } else {
     std::vector <ProfileTreeNode*> :: iterator i;
@@ -349,17 +346,17 @@ void ProfileTreeNode::postorder_function_update_statistics(){
   }
 }
 
-void FunctionStatstics::add(ProfileTreeNode *n){
-  ins_count += n->function_ins_count;
-  sub_ins_count += n->function_calls_ins_count;
-  branch_count += n->function_branch_count;
-  sub_branch_count += n->function_calls_branch_count;
+void FunctionStatstics::add(ContainerCallIns* c){
+  ins_count += c->function_ins_count;
+  sub_ins_count += c->function_calls_ins_count;
+  branch_count += c->function_branch_count;
+  sub_branch_count += c->function_calls_branch_count;
   times_called++;
-  num_called += n->my_calls.size();
-  assert(function == n->my_target);
+  num_called += c->my_calls.size();
+  assert(function == c->my_target);
 }
 
-#define RECORD_ONLY_SSH_FUNCTION_STATS 1
+#define RECORD_ONLY_SSH_FUNCTION_STATS 0
 void ProfileTree::consolidateFunctionData(){
   std::unordered_map<std::string, FunctionStatstics*> stats;
   std::stack <ProfileTreeNode*> nodes_to_visit;
@@ -371,20 +368,21 @@ void ProfileTree::consolidateFunctionData(){
 
     std::vector <ProfileTreeNode*> :: iterator i;
     if(p->get_type() == ProfileTreeNode::NodeType::call_ins){
-      for (i = p->my_calls.begin(); i != p->my_calls.end(); ++i)
+      ContainerCallIns* c = (ContainerCallIns*) p->container;
+      for (i = c->my_calls.begin(); i != c->my_calls.end(); ++i)
         nodes_to_visit.push(*i); //add call nodes
 
 
       //statistic collection
-      std::string key = p->my_target->getName().data();
+      std::string key = c->my_target->getName().data();
       std::unordered_map<std::string,FunctionStatstics*>::const_iterator itr
         = stats.find(key);
       if (itr == stats.end()){
         //add new record, this function doesn't exist yet.
-        FunctionStatstics* fs = new FunctionStatstics(p);
+        FunctionStatstics* fs = new FunctionStatstics(c);
         stats[key] = fs;
       } else {
-        (*itr).second->add(p);
+        (*itr).second->add(c);
       }
     } else {
       for (i = p->children.begin(); i != p->children.end(); ++i)
@@ -418,35 +416,55 @@ void ProfileTree::consolidateFunctionData(){
 }
 
 
-FunctionStatstics::FunctionStatstics(ProfileTreeNode *n)
-  : ins_count(n->function_ins_count),
-    sub_ins_count(n->function_calls_ins_count),
-    branch_count(n->function_branch_count),
-    sub_branch_count(n->function_calls_branch_count),
+FunctionStatstics::FunctionStatstics(ContainerCallIns* c)
+  : ins_count(c->function_ins_count),
+    sub_ins_count(c->function_calls_ins_count),
+    branch_count(c->function_branch_count),
+    sub_branch_count(c->function_calls_branch_count),
     times_called(1),
-    num_called(n->my_calls.size()),
-    function(n->my_target){
-      assert(n != NULL);
-      assert(n->get_type() == ProfileTreeNode::NodeType::call_ins);
+    num_called(c->my_calls.size()),
+    function(c->my_target){
       assert(function != NULL);
+}
+
+ContainerNode::ContainerNode(llvm::Instruction* i)
+  : my_instruction(i){
+    assert(i != NULL);
+}
+
+ContainerCallIns::ContainerCallIns(llvm::Instruction* i, llvm::Function* target)
+  : ContainerNode(i),
+    my_target(target),
+    my_calls(),
+    function_ins_count(0), //counts instructions executed in target from this call
+    function_calls_ins_count(0), //counts instructions executed in this function's subtree
+    function_branch_count(0), //counts symbolic branches executed in target from this call
+    function_calls_branch_count(0){ //counts symbolic branches executed in subtree
+  assert(i != NULL);
+  assert(my_target != NULL);
+}
+
+ContainerRetIns::ContainerRetIns(llvm::Instruction* i, llvm::Instruction* return_to)
+  : ContainerNode(i),
+    my_return_to(return_to) {
+  assert(i != NULL);
+  assert(my_return_to != NULL);
+}
+
+ContainerBranchClone::ContainerBranchClone(llvm::Instruction* i)
+  : ContainerNode(i),
+    my_branches_or_clones() {
+  assert(i != NULL);
 }
 
 ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent, 
                      ExecutionState *_data)
   : parent(_parent),
     children(),
-    my_calls(),
-    my_branches_or_clones(),
+    container(0),
     data(_data),
     ins_count(0),
-    function_ins_count(0), //only used by call node, keeps track of instructions executed in target from this call
-    function_calls_ins_count(0), //only used by call node, keeps track of all instructions executed in the functions this function calls
-    function_branch_count(0), //only used by call node, keeps track of symbolic branches executed in target from this call
-    function_calls_branch_count(0), //only used by call node, keeps track of all symbolic branches executed in the functions this function calls
     my_type(leaf),
-    my_instruction(0),
-    my_target(0), //target is only for function call nodes
-    my_return_to(0),
     my_function(0),
     winner(false){
       my_node_number = total_node_count;
@@ -493,21 +511,25 @@ int  ProfileTreeNode::get_total_clone_count(void){ return total_clone_count; }
 void ProfileTreeNode::increment_ins_count(llvm::Instruction *i){
   assert(i != NULL);
   if(my_function != NULL){
-    assert(my_function->my_target != NULL);
-    assert(i->getParent()->getParent() == my_function->my_target);
-    my_function->function_ins_count++;
+    assert(((ContainerCallIns*)my_function->container)->my_target != NULL);
+    assert(i->getParent()->getParent() == ((ContainerCallIns*)my_function->container)->my_target);
+    ((ContainerCallIns*)my_function->container)->function_ins_count++;
   }
   total_ins_count++;
   ins_count++;
 }
 void ProfileTreeNode::increment_branch_count(void){
   total_branch_count++;
-  assert(my_function->function_branch_count >= 0);
-  assert(my_function->function_branch_count < total_branch_count);
-  my_function->function_branch_count++;
+  assert(((ContainerCallIns*)my_function->container)->function_branch_count >= 0);
+  assert(((ContainerCallIns*)my_function->container)->function_branch_count < total_branch_count);
+  ((ContainerCallIns*)my_function->container)->function_branch_count++;
 }
 enum ProfileTreeNode::NodeType  ProfileTreeNode::get_type(void){ return my_type; }
-llvm::Instruction* ProfileTreeNode::get_instruction(void){ return my_instruction; }
+llvm::Instruction* ProfileTreeNode::get_instruction(void){
+  assert(container);
+  assert(container->my_instruction);
+  return container->my_instruction;
+}
 bool ProfileTreeNode::get_winner(void){ return winner; }
 void ProfileTreeNode::set_winner(void){
   total_winners++;
@@ -539,11 +561,11 @@ void ProfileTree::dump_function_call_graph(std::string path) {
     os << "];\n";
 
     if(n->my_type == ProfileTreeNode::call_ins){
-      const char* dir = get_function_directory(n->my_target);
+      const char* dir = get_function_directory(((ContainerCallIns*)n->container)->my_target);
       std::vector <ProfileTreeNode*> :: iterator i;
-      for (i = n->my_calls.begin(); i != n->my_calls.end(); ++i){
+      for (i = ((ContainerCallIns*)n->container)->my_calls.begin(); i != ((ContainerCallIns*)n->container)->my_calls.end(); ++i){
         if(dir && strcmp(dir, FUNC_NODE_DIR) == 0) {
-          const char* child_dir = get_function_directory((*i)->my_target);
+          const char* child_dir = get_function_directory(((ContainerCallIns*)(*i)->container)->my_target);
           if(child_dir && strcmp(child_dir, FUNC_NODE_DIR) == 0) {
             os << "\tn" << n << " -> n" << *i << ";\n";
             stack.push_back(*i); //add children
@@ -591,7 +613,7 @@ void ProfileTree::dump_branch_clone_graph(std::string path) {
 
     if(n->my_type == ProfileTreeNode::branch_parent || n->my_type == ProfileTreeNode::clone_parent){
       std::vector <ProfileTreeNode*> :: iterator i;
-      for (i = n->my_branches_or_clones.begin(); i != n->my_branches_or_clones.end(); ++i){
+      for (i = ((ContainerBranchClone*)n->container)->my_branches_or_clones.begin(); i != ((ContainerBranchClone*)n->container)->my_branches_or_clones.end(); ++i){
         os << "\tn" << n << " -> n" << *i << ";\n";
         stack.push_back(*i); //add children
       }
