@@ -38,6 +38,10 @@ ProfileTree::ProfileTree(const data_type &_root) : root(new Node(0, _root)) {
 
 ProfileTree::~ProfileTree() {}
 
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////// Tree Additions //////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
 ProfileTreeNode*
 ProfileTreeNode::link(
              ExecutionState* data) {
@@ -71,7 +75,6 @@ void ProfileTreeNode::function_call(
       target->getIntrinsicID() == llvm::Intrinsic::not_intrinsic)){
     return;
   }
-
 
   total_function_call_count++;
   this->my_type         = call_ins;
@@ -193,6 +196,10 @@ void ProfileTreeNode::clone(
   if(my_function && ((ContainerCallIns*)my_function->container)->my_target)
     assert(ins->getParent()->getParent() == ((ContainerCallIns*)my_function->container)->my_target);
 }
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////// Processing And Traversal ////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
 
 //Returns instruction count for whole tree
 #define DFS_DEBUG 0
@@ -356,7 +363,7 @@ void FunctionStatstics::add(ContainerCallIns* c){
   assert(function == c->my_target);
 }
 
-#define RECORD_ONLY_SSH_FUNCTION_STATS 0
+#define RECORD_ONLY_SSH_FUNCTION_STATS 1
 void ProfileTree::consolidateFunctionData(){
   std::unordered_map<std::string, FunctionStatstics*> stats;
   std::stack <ProfileTreeNode*> nodes_to_visit;
@@ -415,6 +422,10 @@ void ProfileTree::consolidateFunctionData(){
   }
 }
 
+
+///////////////////////////////////////////////////////////////////////////////
+/////////////////////// Constructors //////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
 
 FunctionStatstics::FunctionStatstics(ContainerCallIns* c)
   : ins_count(c->function_ins_count),
@@ -501,6 +512,11 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
 ProfileTreeNode::~ProfileTreeNode() {
 }
 
+
+///////////////////////////////////////////////////////////////////////////////
+////////////////// Getters, Setters, Incrimenting /////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
 int  ProfileTreeNode::get_total_branch_count(void){ return total_branch_count; }
 int  ProfileTreeNode::get_ins_count(void){ return ins_count; }
 int  ProfileTreeNode::get_total_ins_count(void){ return total_ins_count; }
@@ -536,6 +552,11 @@ void ProfileTreeNode::set_winner(void){
   assert(!winner);
   winner = true;
 }
+
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////// Write Graphs ////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
 
 
 //currently dumps the functions in FUNC_NODE_DIR in the call graph.
@@ -614,12 +635,14 @@ void ProfileTree::dump_branch_clone_graph(std::string path) {
     if(n->my_type == ProfileTreeNode::branch_parent || n->my_type == ProfileTreeNode::clone_parent){
       std::vector <ProfileTreeNode*> :: iterator i;
       for (i = ((ContainerBranchClone*)n->container)->my_branches_or_clones.begin(); i != ((ContainerBranchClone*)n->container)->my_branches_or_clones.end(); ++i){
+        assert(*i != NULL);
         os << "\tn" << n << " -> n" << *i << ";\n";
         stack.push_back(*i); //add children
       }
     }else{
       std::vector <ProfileTreeNode*> :: iterator i;
       for (i = n->children.begin(); i != n->children.end(); ++i){
+        assert(*i != NULL);
         os << "\tn" << n << " -> n" << *i << ";\n";
         stack.push_back(*i); //add children
       }
