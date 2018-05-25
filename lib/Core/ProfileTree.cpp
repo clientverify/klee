@@ -606,6 +606,7 @@ void ProfileTree::dump_function_call_graph(std::string path) {
   }
   os << "}\n";
   delete pp;
+  delete &os;
 }
 
 //Writes graph of clone and branch nodes.
@@ -650,4 +651,5 @@ void ProfileTree::dump_branch_clone_graph(std::string path) {
   }
   os << "}\n";
   delete pp;
+  delete &os;
 }
