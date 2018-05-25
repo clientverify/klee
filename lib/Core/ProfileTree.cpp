@@ -219,8 +219,7 @@ int ProfileTree::dfs(ProfileTreeNode *root){
     ProfileTreeNode* p = nodes_to_visit.top(); //get last element
     nodes_to_visit.pop(); //remove last element
 
-    std::vector <ProfileTreeNode*> :: iterator i;
-    for (i = p->children.begin(); i != p->children.end(); ++i)
+    for (auto i = p->children.begin(); i != p->children.end(); ++i)
       nodes_to_visit.push(*i); //add children
 
     //Statistics:
@@ -305,15 +304,13 @@ int ProfileTreeNode::postorder_branch_or_clone_count(){
   int ret = 0;
   if(my_type == branch_parent || my_type == clone_parent){
     ret++; //we have another branch or clone
-    std::vector <ProfileTreeNode*> :: iterator i;
-    for (i = ((ContainerBranchClone*)container)->my_branches_or_clones.begin();
+    for (auto i = ((ContainerBranchClone*)container)->my_branches_or_clones.begin();
         i != ((ContainerBranchClone*)container)->my_branches_or_clones.end(); ++i) {
       assert((*i)->my_type == branch_parent || (*i)->my_type == clone_parent);
       ret += (*i)->postorder_branch_or_clone_count();
     }
   } else {
-    std::vector <ProfileTreeNode*> :: iterator i;
-    for (i = children.begin(); i != children.end(); ++i) {
+    for (auto i = children.begin(); i != children.end(); ++i) {
       (*i)->postorder_branch_or_clone_count();
     }
   }
@@ -324,12 +321,11 @@ int ProfileTreeNode::postorder_branch_or_clone_count(){
 void ProfileTreeNode::postorder_function_update_statistics(){
   //Recurse for children
   if(my_type == call_ins){
-    std::vector <ProfileTreeNode*> :: iterator i;
-    for (i = ((ContainerCallIns*)container)->my_calls.begin(); i != ((ContainerCallIns*)container)->my_calls.end(); ++i) {
+    for (auto i = ((ContainerCallIns*)container)->my_calls.begin(); i != ((ContainerCallIns*)container)->my_calls.end(); ++i) {
       assert((*i)->my_type == call_ins);
       (*i)->postorder_function_update_statistics();
     }
-    for (i = ((ContainerCallIns*)container)->my_calls.begin(); i != ((ContainerCallIns*)container)->my_calls.end(); ++i) {
+    for (auto i = ((ContainerCallIns*)container)->my_calls.begin(); i != ((ContainerCallIns*)container)->my_calls.end(); ++i) {
       ContainerCallIns* ic = ((ContainerCallIns*)(*i)->container);
       ((ContainerCallIns*)container)->function_calls_ins_count += ic->function_ins_count;
       ((ContainerCallIns*)container)->function_calls_ins_count += ic->function_calls_ins_count;
@@ -346,8 +342,7 @@ void ProfileTreeNode::postorder_function_update_statistics(){
       << ((ContainerCallIns*)container)->function_calls_branch_count << "\n";
 #endif
   } else {
-    std::vector <ProfileTreeNode*> :: iterator i;
-    for (i = children.begin(); i != children.end(); ++i) {
+    for (auto i = children.begin(); i != children.end(); ++i) {
       (*i)->postorder_function_update_statistics();
     }
   }
@@ -373,10 +368,9 @@ void ProfileTree::consolidateFunctionData(){
     ProfileTreeNode* p = nodes_to_visit.top(); //get last element
     nodes_to_visit.pop(); //remove last element
 
-    std::vector <ProfileTreeNode*> :: iterator i;
     if(p->get_type() == ProfileTreeNode::NodeType::call_ins){
       ContainerCallIns* c = (ContainerCallIns*) p->container;
-      for (i = c->my_calls.begin(); i != c->my_calls.end(); ++i)
+      for (auto i = c->my_calls.begin(); i != c->my_calls.end(); ++i)
         nodes_to_visit.push(*i); //add call nodes
 
 
@@ -392,13 +386,12 @@ void ProfileTree::consolidateFunctionData(){
         (*itr).second->add(c);
       }
     } else {
-      for (i = p->children.begin(); i != p->children.end(); ++i)
+      for (auto i = p->children.begin(); i != p->children.end(); ++i)
         nodes_to_visit.push(*i); //add children
     }
   }
   std::cout << "\nConsolidated Function Data: \n";
-  std::unordered_map<std::string,FunctionStatstics*>::const_iterator itr;
-  for (itr = stats.begin(); itr != stats.end(); itr++) {
+  for (auto itr = stats.begin(); itr != stats.end(); itr++) {
     const char* dir = get_function_directory(itr->second->function);
 
 #if RECORD_ONLY_SSH_FUNCTION_STATS
@@ -583,8 +576,7 @@ void ProfileTree::dump_function_call_graph(std::string path) {
 
     if(n->my_type == ProfileTreeNode::call_ins){
       const char* dir = get_function_directory(((ContainerCallIns*)n->container)->my_target);
-      std::vector <ProfileTreeNode*> :: iterator i;
-      for (i = ((ContainerCallIns*)n->container)->my_calls.begin(); i != ((ContainerCallIns*)n->container)->my_calls.end(); ++i){
+      for (auto i = ((ContainerCallIns*)n->container)->my_calls.begin(); i != ((ContainerCallIns*)n->container)->my_calls.end(); ++i){
         if(dir && strcmp(dir, FUNC_NODE_DIR) == 0) {
           const char* child_dir = get_function_directory(((ContainerCallIns*)(*i)->container)->my_target);
           if(child_dir && strcmp(child_dir, FUNC_NODE_DIR) == 0) {
@@ -597,8 +589,7 @@ void ProfileTree::dump_function_call_graph(std::string path) {
         }
       }
     }else{
-      std::vector <ProfileTreeNode*> :: iterator i;
-      for (i = n->children.begin(); i != n->children.end(); ++i){
+      for (auto i = n->children.begin(); i != n->children.end(); ++i){
         os << "\tn" << n << " -> n" << *i << ";\n";
         stack.push_back(*i); //add children
       }
@@ -634,15 +625,13 @@ void ProfileTree::dump_branch_clone_graph(std::string path) {
     os << "];\n";
 
     if(n->my_type == ProfileTreeNode::branch_parent || n->my_type == ProfileTreeNode::clone_parent){
-      std::vector <ProfileTreeNode*> :: iterator i;
-      for (i = ((ContainerBranchClone*)n->container)->my_branches_or_clones.begin(); i != ((ContainerBranchClone*)n->container)->my_branches_or_clones.end(); ++i){
+      for (auto i = ((ContainerBranchClone*)n->container)->my_branches_or_clones.begin(); i != ((ContainerBranchClone*)n->container)->my_branches_or_clones.end(); ++i){
         assert(*i != NULL);
         os << "\tn" << n << " -> n" << *i << ";\n";
         stack.push_back(*i); //add children
       }
     }else{
-      std::vector <ProfileTreeNode*> :: iterator i;
-      for (i = n->children.begin(); i != n->children.end(); ++i){
+      for (auto i = n->children.begin(); i != n->children.end(); ++i){
         assert(*i != NULL);
         os << "\tn" << n << " -> n" << *i << ";\n";
         stack.push_back(*i); //add children
