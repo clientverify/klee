@@ -117,6 +117,7 @@ namespace klee {
     int get_total_branch_count(void);
     void set_winner(void);
     bool get_winner(void);
+    void process_winner_parents(void);
     void postorder_function_update_statistics(void);
     //Returns the total number of branches/clones.  A not useful traversal
     //for now.

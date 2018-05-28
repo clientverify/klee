@@ -224,6 +224,7 @@ int ProfileTree::dfs(ProfileTreeNode *root){
 
   std::stack <ProfileTreeNode*> nodes_to_visit;
   nodes_to_visit.push(root); //add children to the end
+  ProfileTreeNode* winner = NULL; 
   while( nodes_to_visit.size() > 0 ) {
     //Handling DFS traversal:
     ProfileTreeNode* p = nodes_to_visit.top(); //get last element
@@ -246,6 +247,7 @@ int ProfileTree::dfs(ProfileTreeNode *root){
     if(p->get_winner()){
       if(p->get_type() == ProfileTreeNode::NodeType::clone_parent){
         assert(p->children.size() == 2);
+        winner = p;
       }else{
         assert(p->ins_count == 0);
         assert(p->get_type() == ProfileTreeNode::NodeType::leaf);
@@ -302,10 +304,22 @@ int ProfileTree::dfs(ProfileTreeNode *root){
     if(DFS_DEBUG) printf("\n");
   }
   consolidateFunctionData();
+  winner->process_winner_parents();
   printf("total_winners %d\n",root->total_winners );
   int num_branches = root->postorder_branch_or_clone_count();
   printf("dfs check: total_branches %d\n", num_branches);
   return total_instr;
+}
+
+void ProfileTreeNode::process_winner_parents(){
+  assert(winner);
+
+  ProfileTreeNode* ancestor = parent;
+  while(ancestor != NULL){
+    assert(ancestor->get_winner() == false);
+    ancestor->set_winner();
+    ancestor = ancestor->parent;
+  }
 }
 
 //Returns the total number of branches/clones
@@ -642,7 +656,10 @@ void ProfileTree::dump_branch_clone_graph(std::string path) {
       os << "\tn" << n << " [label=" << ((ContainerBranchClone*)n->container)->subtree_ins_count;
     else
       os << "\tn" << n << " [label=\"\"";
-    if(n->my_type == ProfileTreeNode::branch_parent)
+
+    if(n->get_winner())
+      os << ",fillcolor=red";
+    else if(n->my_type == ProfileTreeNode::branch_parent)
       os << ",fillcolor=green";
     else if (n->my_type == ProfileTreeNode::clone_parent)
       os << ",fillcolor=yellow";
