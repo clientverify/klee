@@ -74,6 +74,8 @@ namespace klee {
     virtual ~ContainerBranchClone() = default;
     //branches/clones immedidiately following this in the graph.
     std::vector<ProfileTreeNode*> my_branches_or_clones;
+    //counts the instructions executed by this node's subtree
+    int subtree_ins_count;
   };
 
   class ProfileTreeNode {
@@ -151,6 +153,8 @@ namespace klee {
     ProfileTreeNode* my_function;
     //points to the last branch or clone node
     ProfileTreeNode* my_branch_or_clone;
+    //#instructions on a straight line between branches/clones
+    int edge_ins_count;
 
     //All the instructions in the tree
     static int total_ins_count;

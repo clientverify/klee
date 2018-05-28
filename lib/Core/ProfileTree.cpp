@@ -188,6 +188,7 @@ void ProfileTreeNode::clone(
     assert(ret.second->my_branch_or_clone == this);
   } else if (this->get_ins_count() == 0) { //make sibling and add to parent
     assert(this->parent->my_type == clone_parent);
+    assert(parent == my_branch_or_clone);
 
     ProfileTreeNode* clone_node = new ProfileTreeNode(this->parent, clone_state);
     this->parent->children.push_back(clone_node);
@@ -316,7 +317,11 @@ int ProfileTreeNode::postorder_branch_or_clone_count(){
     for (auto i = ((ContainerBranchClone*)container)->my_branches_or_clones.begin();
         i != ((ContainerBranchClone*)container)->my_branches_or_clones.end(); ++i) {
       assert((*i)->my_type == branch_parent || (*i)->my_type == clone_parent || (*i)->my_type == leaf);
+
       ret += (*i)->postorder_branch_or_clone_count();
+      if((*i)->my_type == branch_parent || (*i)->my_type == clone_parent)
+        ((ContainerBranchClone*)container)->subtree_ins_count += ((ContainerBranchClone*)(*i)->container)->subtree_ins_count;
+      ((ContainerBranchClone*)container)->subtree_ins_count += (*i)->edge_ins_count;
     }
   } else {
     for (auto i = children.begin(); i != children.end(); ++i) {
@@ -466,6 +471,7 @@ ContainerRetIns::ContainerRetIns(llvm::Instruction* i, llvm::Instruction* return
 
 ContainerBranchClone::ContainerBranchClone(llvm::Instruction* i)
   : ContainerNode(i),
+    subtree_ins_count(0),
     my_branches_or_clones() {
   assert(i != NULL);
 }
@@ -477,6 +483,7 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
     container(0),
     data(_data),
     ins_count(0),
+    edge_ins_count(0),
     my_type(leaf),
     my_function(0),
     winner(false){
@@ -495,6 +502,7 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
           my_branch_or_clone = _parent;
         } else {
           my_branch_or_clone = _parent->my_branch_or_clone;
+          edge_ins_count = parent->edge_ins_count;
         }
         ((ContainerBranchClone*)my_branch_or_clone->container)->my_branches_or_clones.push_back(this);
 
@@ -534,8 +542,10 @@ void ProfileTreeNode::increment_ins_count(llvm::Instruction *i){
     assert(i->getParent()->getParent() == ((ContainerCallIns*)my_function->container)->my_target);
     ((ContainerCallIns*)my_function->container)->function_ins_count++;
   }
+
   total_ins_count++;
   ins_count++;
+  edge_ins_count++;
 }
 void ProfileTreeNode::increment_branch_count(void){
   total_branch_count++;
@@ -628,11 +638,14 @@ void ProfileTree::dump_branch_clone_graph(std::string path) {
     ProfileTree::Node *n = stack.back();
     stack.pop_back();
 
-    os << "\tn" << n << " [label=\"\"";
+    if(n->my_type == ProfileTreeNode::branch_parent || n->my_type == ProfileTreeNode::clone_parent)
+      os << "\tn" << n << " [label=" << ((ContainerBranchClone*)n->container)->subtree_ins_count;
+    else
+      os << "\tn" << n << " [label=\"\"";
     if(n->my_type == ProfileTreeNode::branch_parent)
       os << ",fillcolor=green";
     else if (n->my_type == ProfileTreeNode::clone_parent)
-      os << ",fillcolor=blue";
+      os << ",fillcolor=yellow";
     os << "];\n";
 
     if(n->my_type == ProfileTreeNode::branch_parent || n->my_type == ProfileTreeNode::clone_parent){
