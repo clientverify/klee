@@ -76,6 +76,12 @@ void ProfileTreeNode::function_call(
     return;
   }
 
+  //remove this from the branch or clone
+  std::vector<ProfileTreeNode*>* v= &(((ContainerBranchClone*)this->my_branch_or_clone->container)->my_branches_or_clones);
+  auto first = std::find(v->begin(), v->end(), this);
+  assert(*first == this);
+  v->erase(first);
+
   total_function_call_count++;
   this->my_type         = call_ins;
   //add myself to my_function's list of calls
@@ -97,6 +103,11 @@ void ProfileTreeNode::function_return(
              llvm::Instruction* ins,
              llvm::Instruction* to) {
   assert(this->my_type == leaf);
+  //remove this from the branch or clone
+  std::vector<ProfileTreeNode*>* v= &(((ContainerBranchClone*)this->my_branch_or_clone->container)->my_branches_or_clones);
+  auto first = std::find(v->begin(), v->end(), this);
+  assert(*first == this);
+  v->erase(first);
 
   total_function_ret_count++;
   this->my_type         = return_ins;
@@ -132,7 +143,6 @@ void ProfileTreeNode::branch(
   assert(leftData != rightData);
   assert(this->my_type == leaf);
   this->my_type = branch_parent;
-  ((ContainerBranchClone*)this->my_branch_or_clone->container)->my_branches_or_clones.push_back(this);
   this->container = new ContainerBranchClone(ins);
   std::pair<ProfileTreeNode*, ProfileTreeNode*> ret = split(leftData, rightData);
   leftData->profiletreeNode = ret.first;
@@ -172,7 +182,6 @@ void ProfileTreeNode::clone(
       this->parent->my_type == call_ins ) { //Split the current node
     this->my_type = clone_parent;
     assert(my_branch_or_clone != NULL);
-    ((ContainerBranchClone*)this->my_branch_or_clone->container)->my_branches_or_clones.push_back(this);
     this->container = new ContainerBranchClone(ins);
     ret = this->split(me_state, clone_state);
     assert(ret.first->my_branch_or_clone == this);
@@ -306,7 +315,7 @@ int ProfileTreeNode::postorder_branch_or_clone_count(){
     ret++; //we have another branch or clone
     for (auto i = ((ContainerBranchClone*)container)->my_branches_or_clones.begin();
         i != ((ContainerBranchClone*)container)->my_branches_or_clones.end(); ++i) {
-      assert((*i)->my_type == branch_parent || (*i)->my_type == clone_parent);
+      assert((*i)->my_type == branch_parent || (*i)->my_type == clone_parent || (*i)->my_type == leaf);
       ret += (*i)->postorder_branch_or_clone_count();
     }
   } else {
@@ -487,6 +496,7 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
         } else {
           my_branch_or_clone = _parent->my_branch_or_clone;
         }
+        ((ContainerBranchClone*)my_branch_or_clone->container)->my_branches_or_clones.push_back(this);
 
         //handle function we belong to:
         if(_parent->my_type == call_ins){
@@ -617,16 +627,21 @@ void ProfileTree::dump_branch_clone_graph(std::string path) {
   while (!stack.empty()) {
     ProfileTree::Node *n = stack.back();
     stack.pop_back();
+
     os << "\tn" << n << " [label=\"\"";
     if(n->my_type == ProfileTreeNode::branch_parent)
       os << ",fillcolor=green";
-    else
+    else if (n->my_type == ProfileTreeNode::clone_parent)
       os << ",fillcolor=blue";
     os << "];\n";
 
     if(n->my_type == ProfileTreeNode::branch_parent || n->my_type == ProfileTreeNode::clone_parent){
       for (auto i = ((ContainerBranchClone*)n->container)->my_branches_or_clones.begin(); i != ((ContainerBranchClone*)n->container)->my_branches_or_clones.end(); ++i){
         assert(*i != NULL);
+        //these lines revert it back to the origional graph of just clones and
+        //branches:
+        //if((*i)->my_type == ProfileTreeNode::leaf)
+        //  continue;
         os << "\tn" << n << " -> n" << *i << ";\n";
         stack.push_back(*i); //add children
       }
