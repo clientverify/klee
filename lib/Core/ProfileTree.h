@@ -29,6 +29,7 @@ namespace klee {
     void consolidateFunctionData();
     void dump_branch_clone_graph(std::string path);
     void dump_function_call_graph(std::string path);
+    void bizarre_bfs_make_sibling_lists(void);
   };
 
   class ContainerNode{
@@ -84,6 +85,7 @@ namespace klee {
   public:
     ProfileTreeNode *parent;
     std::vector<ProfileTreeNode*> children;
+    std::vector<ProfileTreeNode*> siblings;
     ContainerNode* container;
 
     ExecutionState *data;
@@ -115,6 +117,7 @@ namespace klee {
     int get_total_ret_count(void);
     int get_total_call_count(void);
     int get_total_branch_count(void);
+    int get_depth();
     void set_winner(void);
     bool get_winner(void);
     void process_winner_parents(void);
@@ -156,6 +159,7 @@ namespace klee {
     ProfileTreeNode* my_branch_or_clone;
     //#instructions on a straight line between branches/clones
     int edge_ins_count;
+    int depth;
 
     //All the instructions in the tree
     static int total_ins_count;

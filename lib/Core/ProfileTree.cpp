@@ -308,7 +308,62 @@ int ProfileTree::dfs(ProfileTreeNode *root){
   printf("total_winners %d\n",root->total_winners );
   int num_branches = root->postorder_branch_or_clone_count();
   printf("dfs check: total_branches %d\n", num_branches);
+
+  bizarre_bfs_make_sibling_lists();
   return total_instr;
+}
+
+static bool customCompare(ProfileTreeNode* x, ProfileTreeNode* y){
+  return (x->get_depth() <= y->get_depth());
+}
+
+
+void ProfileTree::bizarre_bfs_make_sibling_lists(void){
+  std::vector <ProfileTreeNode*> v;
+  v.push_back(root);
+  while(v.size() > 0){
+    ProfileTreeNode* n = v[0];
+    v.erase(v.begin());
+    //Initialize n's siblings:
+    for(auto i = v.begin(); i != v.end(); i++){
+      if((*i)->parent){
+        assert(n->get_depth() >= (*i)->parent->get_depth());
+      }
+      assert(n->get_depth() <= (*i)->get_depth());
+      n->siblings.push_back(*i);
+
+      //if *i and n have the same depth, we want to make sure that they both
+      //have pointers to eachother:
+      if((*i)->depth == n->depth)
+        (*i)->siblings.push_back(n);
+    }
+
+    //Add n's first decendents with differing depth
+    for(auto i = n->children.begin(); i != n->children.end(); i++){
+      //The depth doesn't change between i and n, i gets n's siblings, and we
+      //do not search i in the bfs search.
+      //Search for decendents of n with greater depth.
+      std::vector <ProfileTreeNode*> decendents;
+      decendents.push_back(*i);
+      while(decendents.size() > 0){
+        ProfileTreeNode* d = decendents[0];
+        decendents.erase(decendents.begin());
+        //if the depth is the same:
+        //  set the child's siblings be the same as the parent's
+        //  add child to the search.
+        if(d->get_depth() == d->parent->get_depth()){
+          d->siblings = d->parent->siblings;
+          for(auto j = d->children.begin(); j != d->children.end(); j++){
+            decendents.push_back(*j);
+          }
+        //Otherwise add the child to the general search
+        } else {
+          v.push_back(d);
+        }
+      }
+    }
+    sort(v.begin(), v.end(), customCompare);
+  }
 }
 
 void ProfileTreeNode::process_winner_parents(){
@@ -498,6 +553,7 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
     data(_data),
     ins_count(0),
     edge_ins_count(0),
+    depth(0),
     my_type(leaf),
     my_function(0),
     winner(false){
@@ -506,6 +562,7 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
         my_type = root;
       } else {
         assert(_parent->my_node_number < my_node_number);
+        depth = _parent->depth;
         if(_parent->winner){
           assert(!_parent->parent->winner);
           set_winner();
@@ -559,7 +616,10 @@ void ProfileTreeNode::increment_ins_count(llvm::Instruction *i){
 
   total_ins_count++;
   ins_count++;
+  depth++;
   edge_ins_count++;
+  if(parent)
+    assert(depth == ins_count + parent->depth);
 }
 void ProfileTreeNode::increment_branch_count(void){
   total_branch_count++;
@@ -580,6 +640,7 @@ void ProfileTreeNode::set_winner(void){
   winner = true;
 }
 
+int ProfileTreeNode::get_depth() { return depth; }
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////// Write Graphs ////////////////////////////////////////
