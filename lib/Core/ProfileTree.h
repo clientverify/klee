@@ -122,6 +122,7 @@ namespace klee {
     bool get_winner(void);
     void process_winner_parents(void);
     void postorder_function_update_statistics(void);
+    void update_subtree_count(void);
     //Returns the total number of branches/clones.  A not useful traversal
     //for now.
     int postorder_branch_or_clone_count(void);
@@ -159,7 +160,11 @@ namespace klee {
     ProfileTreeNode* my_branch_or_clone;
     //#instructions on a straight line between branches/clones
     int edge_ins_count;
+    //the number of instructions executed along the path from the root to this
+    //node
     int depth;
+    //the number of instructions executed in this instruction's subtree
+    int sub_tree_ins_count;
 
     //All the instructions in the tree
     static int total_ins_count;

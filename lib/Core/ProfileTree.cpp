@@ -216,6 +216,7 @@ void ProfileTreeNode::clone(
 int ProfileTree::dfs(ProfileTreeNode *root){
   //this updates all the function nodes with the instruction statistics for
   //the functions they call.
+  root->update_subtree_count();
   std::cout << "\nPostorder Function Statistics\n";
   root->postorder_function_update_statistics();
   //Tree statistic collection:
@@ -374,6 +375,15 @@ void ProfileTreeNode::process_winner_parents(){
     assert(ancestor->get_winner() == false);
     ancestor->set_winner();
     ancestor = ancestor->parent;
+  }
+}
+
+void ProfileTreeNode::update_subtree_count(void){
+  sub_tree_ins_count = 0;
+  for (auto i = children.begin(); i != children.end(); ++i) {
+    (*i)->update_subtree_count();
+    sub_tree_ins_count += (*i)->sub_tree_ins_count;
+    sub_tree_ins_count += (*i)->ins_count;
   }
 }
 
@@ -713,10 +723,12 @@ void ProfileTree::dump_branch_clone_graph(std::string path) {
     ProfileTree::Node *n = stack.back();
     stack.pop_back();
 
-    if(n->my_type == ProfileTreeNode::branch_parent || n->my_type == ProfileTreeNode::clone_parent)
+    if(n->my_type == ProfileTreeNode::branch_parent || n->my_type == ProfileTreeNode::clone_parent){
       os << "\tn" << n << " [label=" << ((ContainerBranchClone*)n->container)->subtree_ins_count;
-    else
+      assert(((ContainerBranchClone*)n->container)->subtree_ins_count == n->sub_tree_ins_count);
+    }else{
       os << "\tn" << n << " [label=\"\"";
+    }
 
     if(n->get_winner())
       os << ",fillcolor=red";
