@@ -26,10 +26,10 @@ namespace klee {
     ~ProfileTree();
     
     int dfs(ProfileTreeNode *root);
-    void consolidateFunctionData();
+    void consolidate_function_data();
     void dump_branch_clone_graph(std::string path);
     void dump_function_call_graph(std::string path);
-    void bizarre_bfs_make_sibling_lists(void);
+    void make_sibling_lists(void);
   };
 
   class ContainerNode{
@@ -75,8 +75,6 @@ namespace klee {
     virtual ~ContainerBranchClone() = default;
     //branches/clones immedidiately following this in the graph.
     std::vector<ProfileTreeNode*> my_branches_or_clones;
-    //counts the instructions executed by this node's subtree
-    int subtree_ins_count;
   };
 
   class ProfileTreeNode {
@@ -121,11 +119,8 @@ namespace klee {
     void set_winner(void);
     bool get_winner(void);
     void process_winner_parents(void);
-    void postorder_function_update_statistics(void);
+    void update_function_statistics(void);
     void update_subtree_count(void);
-    //Returns the total number of branches/clones.  A not useful traversal
-    //for now.
-    int postorder_branch_or_clone_count(void);
 
     enum NodeType { leaf, clone_parent, branch_parent, call_ins, root,
       return_ins };

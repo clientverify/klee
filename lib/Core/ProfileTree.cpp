@@ -215,10 +215,11 @@ void ProfileTreeNode::clone(
 #define DFS_DEBUG 0
 int ProfileTree::dfs(ProfileTreeNode *root){
   //this updates all the function nodes with the instruction statistics for
-  //the functions they call.
+  //the functions they call. Must be called before
+  //postorder_function_update_statistics().
   root->update_subtree_count();
   std::cout << "\nPostorder Function Statistics\n";
-  root->postorder_function_update_statistics();
+  root->update_function_statistics();
   //Tree statistic collection:
   int nodes_traversed = 0;
   int total_instr = 0; //records the number of instructions
@@ -304,13 +305,11 @@ int ProfileTree::dfs(ProfileTreeNode *root){
 
     if(DFS_DEBUG) printf("\n");
   }
-  consolidateFunctionData();
+  consolidate_function_data();
   winner->process_winner_parents();
   printf("total_winners %d\n",root->total_winners );
-  int num_branches = root->postorder_branch_or_clone_count();
-  printf("dfs check: total_branches %d\n", num_branches);
 
-  bizarre_bfs_make_sibling_lists();
+  make_sibling_lists();
   return total_instr;
 }
 
@@ -319,7 +318,7 @@ static bool customCompare(ProfileTreeNode* x, ProfileTreeNode* y){
 }
 
 
-void ProfileTree::bizarre_bfs_make_sibling_lists(void){
+void ProfileTree::make_sibling_lists(void){
   std::vector <ProfileTreeNode*> v;
   v.push_back(root);
   while(v.size() > 0){
@@ -387,56 +386,35 @@ void ProfileTreeNode::update_subtree_count(void){
   }
 }
 
-//Returns the total number of branches/clones
-int ProfileTreeNode::postorder_branch_or_clone_count(){
-  //Recurse for children
-  int ret = 0;
-  if(my_type == branch_parent || my_type == clone_parent){
-    ret++; //we have another branch or clone
-    for (auto i = ((ContainerBranchClone*)container)->my_branches_or_clones.begin();
-        i != ((ContainerBranchClone*)container)->my_branches_or_clones.end(); ++i) {
-      assert((*i)->my_type == branch_parent || (*i)->my_type == clone_parent || (*i)->my_type == leaf);
-
-      ret += (*i)->postorder_branch_or_clone_count();
-      if((*i)->my_type == branch_parent || (*i)->my_type == clone_parent)
-        ((ContainerBranchClone*)container)->subtree_ins_count += ((ContainerBranchClone*)(*i)->container)->subtree_ins_count;
-      ((ContainerBranchClone*)container)->subtree_ins_count += (*i)->edge_ins_count;
-    }
-  } else {
-    for (auto i = children.begin(); i != children.end(); ++i) {
-      (*i)->postorder_branch_or_clone_count();
-    }
-  }
-  return ret;
-}
 
 #define PRINT_FUNC_STATS 0
-void ProfileTreeNode::postorder_function_update_statistics(){
+void ProfileTreeNode::update_function_statistics(){
   //Recurse for children
   if(my_type == call_ins){
-    for (auto i = ((ContainerCallIns*)container)->my_calls.begin(); i != ((ContainerCallIns*)container)->my_calls.end(); ++i) {
+    ContainerCallIns* call_container = ((ContainerCallIns*)container);
+    for (auto i = call_container->my_calls.begin(); i != call_container->my_calls.end(); ++i) {
       assert((*i)->my_type == call_ins);
-      (*i)->postorder_function_update_statistics();
+      (*i)->update_function_statistics();
     }
-    for (auto i = ((ContainerCallIns*)container)->my_calls.begin(); i != ((ContainerCallIns*)container)->my_calls.end(); ++i) {
+    for (auto i = call_container->my_calls.begin(); i != call_container->my_calls.end(); ++i) {
       ContainerCallIns* ic = ((ContainerCallIns*)(*i)->container);
-      ((ContainerCallIns*)container)->function_calls_ins_count += ic->function_ins_count;
-      ((ContainerCallIns*)container)->function_calls_ins_count += ic->function_calls_ins_count;
-      ((ContainerCallIns*)container)->function_calls_branch_count += ic->function_branch_count;
-      ((ContainerCallIns*)container)->function_calls_branch_count += ic->function_calls_branch_count;
+      call_container->function_calls_ins_count    += ic->function_ins_count;
+      call_container->function_calls_ins_count    += ic->function_calls_ins_count;
+      call_container->function_calls_branch_count += ic->function_branch_count;
+      call_container->function_calls_branch_count += ic->function_calls_branch_count;
     }
-    assert(((ContainerCallIns*)container)->my_target != NULL);
-    const char *function_name = ((ContainerCallIns*)container)->my_target->getName().data();
+    assert(call_container->my_target != NULL);
+    const char *function_name = call_container->my_target->getName().data();
 #if PRINT_FUNC_STATS
     std::cout << function_name << " my ins "
-      << ((ContainerCallIns*)container)->function_ins_count << " subtree ins "
-      << ((ContainerCallIns*)container)->function_calls_ins_count << " my symbolic branches "
-      << ((ContainerCallIns*)container)->function_branch_count << " subtree symbolic branches "
-      << ((ContainerCallIns*)container)->function_calls_branch_count << "\n";
+      << call_container->function_ins_count << " subtree ins "
+      << call_container->function_calls_ins_count << " my symbolic branches "
+      << call_container->function_branch_count << " subtree symbolic branches "
+      << call_container->function_calls_branch_count << "\n";
 #endif
   } else {
     for (auto i = children.begin(); i != children.end(); ++i) {
-      (*i)->postorder_function_update_statistics();
+      (*i)->update_function_statistics();
     }
   }
 }
@@ -452,7 +430,7 @@ void FunctionStatstics::add(ContainerCallIns* c){
 }
 
 #define RECORD_ONLY_SSH_FUNCTION_STATS 1
-void ProfileTree::consolidateFunctionData(){
+void ProfileTree::consolidate_function_data(){
   std::unordered_map<std::string, FunctionStatstics*> stats;
   std::stack <ProfileTreeNode*> nodes_to_visit;
   nodes_to_visit.push(root); //add children to the end
@@ -550,7 +528,6 @@ ContainerRetIns::ContainerRetIns(llvm::Instruction* i, llvm::Instruction* return
 
 ContainerBranchClone::ContainerBranchClone(llvm::Instruction* i)
   : ContainerNode(i),
-    subtree_ins_count(0),
     my_branches_or_clones() {
   assert(i != NULL);
 }
@@ -724,8 +701,7 @@ void ProfileTree::dump_branch_clone_graph(std::string path) {
     stack.pop_back();
 
     if(n->my_type == ProfileTreeNode::branch_parent || n->my_type == ProfileTreeNode::clone_parent){
-      os << "\tn" << n << " [label=" << ((ContainerBranchClone*)n->container)->subtree_ins_count;
-      assert(((ContainerBranchClone*)n->container)->subtree_ins_count == n->sub_tree_ins_count);
+      os << "\tn" << n << " [label=" << n->sub_tree_ins_count;
     }else{
       os << "\tn" << n << " [label=\"\"";
     }
