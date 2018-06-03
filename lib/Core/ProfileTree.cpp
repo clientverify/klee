@@ -218,8 +218,7 @@ int ProfileTree::dfs(ProfileTreeNode *root){
   //the functions they call. Must be called before
   //postorder_function_update_statistics().
   root->update_subtree_count();
-  std::cout << "\nPostorder Function Statistics\n";
-  root->update_function_statistics();
+
   //Tree statistic collection:
   int nodes_traversed = 0;
   int total_instr = 0; //records the number of instructions
@@ -305,11 +304,15 @@ int ProfileTree::dfs(ProfileTreeNode *root){
 
     if(DFS_DEBUG) printf("\n");
   }
-  consolidate_function_data();
+
   winner->process_winner_parents();
   printf("total_winners %d\n",root->total_winners );
 
   make_sibling_lists();
+  std::cout << "\nupdate_function_statistics:\n";
+  root->update_function_statistics();
+  consolidate_function_data();
+
   return total_instr;
 }
 
@@ -387,6 +390,8 @@ void ProfileTreeNode::update_subtree_count(void){
 }
 
 
+//traverses call graph updating variables in ContainerCallIns.  Assumes node's
+//subtree_ins_count is accurate. Assumes winner path has been propagated up.
 #define PRINT_FUNC_STATS 0
 void ProfileTreeNode::update_function_statistics(){
   //Recurse for children
@@ -404,13 +409,44 @@ void ProfileTreeNode::update_function_statistics(){
       call_container->function_calls_branch_count += ic->function_calls_branch_count;
     }
     assert(call_container->my_target != NULL);
+
+    call_container->migration_savings_ins_count = 0;
+    for (auto s = siblings.begin(); s != siblings.end(); ++s) {
+      call_container->migration_savings_ins_count += ((*s)->depth - this->depth) + (*s)->sub_tree_ins_count;
+    }
+    //assume it dies if we're not on the winning path...
+    call_container->migration_savings_ins_count += this->sub_tree_ins_count;
+    //find and subtract the winning return's subtree:
+    if(winner){
+      ProfileTreeNode* p = this;
+      while(p){
+        ProfileTreeNode* c = NULL;
+        //get winning child
+        for (auto i = p->children.begin(); i != p->children.end(); ++i) {
+          c = *i;
+          if(c->winner) break;
+        }
+        //check if winning child is a leaf node (then we're done)
+        if(c == NULL || c->my_type == leaf) break;
+        //check if winning child is the return node (this is what we're looking
+        //  for)
+        if(c->my_type == return_ins && c->my_function == this){
+          call_container->migration_savings_ins_count -= c->sub_tree_ins_count;
+          break;
+        }
+        p = c;
+      }
+    }
+
+
     const char *function_name = call_container->my_target->getName().data();
 #if PRINT_FUNC_STATS
-    std::cout << function_name << " my ins "
-      << call_container->function_ins_count << " subtree ins "
-      << call_container->function_calls_ins_count << " my symbolic branches "
-      << call_container->function_branch_count << " subtree symbolic branches "
-      << call_container->function_calls_branch_count << "\n";
+    std::cout << function_name << " my_ins "
+      << call_container->function_ins_count << " subtree_ins "
+      << call_container->function_calls_ins_count << " my_symbolic_branches "
+      << call_container->function_branch_count << " subtree_symbolic_branches "
+      << call_container->function_calls_branch_count << " migration_savings_ins_count "
+      << call_container->migration_savings_ins_count << "\n";
 #endif
   } else {
     for (auto i = children.begin(); i != children.end(); ++i) {
@@ -429,7 +465,7 @@ void FunctionStatstics::add(ContainerCallIns* c){
   assert(function == c->my_target);
 }
 
-#define RECORD_ONLY_SSH_FUNCTION_STATS 1
+#define PRINT_CONSOLIDATED_SSH_FUNCTION_STATS 0
 void ProfileTree::consolidate_function_data(){
   std::unordered_map<std::string, FunctionStatstics*> stats;
   std::stack <ProfileTreeNode*> nodes_to_visit;
@@ -465,7 +501,7 @@ void ProfileTree::consolidate_function_data(){
   for (auto itr = stats.begin(); itr != stats.end(); itr++) {
     const char* dir = get_function_directory(itr->second->function);
 
-#if RECORD_ONLY_SSH_FUNCTION_STATS
+#if PRINT_CONSOLIDATED_SSH_FUNCTION_STATS
     // itr works as a pointer to pair<string, double>
     // type itr->first stores the key part  and
     // itr->second stroes the value part
@@ -651,7 +687,11 @@ void ProfileTree::dump_function_call_graph(std::string path) {
   while (!stack.empty()) {
     ProfileTree::Node *n = stack.back();
     stack.pop_back();
-    os << "\tn" << n << " [label=\"\"";
+
+    if(n->my_type == ProfileTreeNode::call_ins)
+      os << "\tn" << n << " [label=" << ((ContainerCallIns*)n->container)->migration_savings_ins_count;
+    else
+      os << "\tn" << n << " [label=\"\"";
     if (n->data)
       os << ",fillcolor=green";
     os << "];\n";

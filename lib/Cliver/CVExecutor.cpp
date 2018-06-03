@@ -456,7 +456,8 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
   int postorder_ins_count = profileTree->dfs(profileTree->root);
   assert(postorder_ins_count == my_total_instructions);
   printf("my_total_instructions %d postorder_ins_count %d\n", my_total_instructions, postorder_ins_count);
-  profileTree->dump_branch_clone_graph("/playpen/cliver0/processtree.graph");
+  profileTree->dump_branch_clone_graph("/playpen/cliver0/branch_clone_processtree.graph");
+  profileTree->dump_function_call_graph("/playpen/cliver0/function_call_processtree.graph");
 
   delete profileTree;
   profileTree = 0;

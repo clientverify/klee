@@ -58,7 +58,9 @@ namespace klee {
     int function_branch_count;
     //counts the symbolic branches executed by my_target's subfunctions
     int function_calls_branch_count;
-
+    //the number of instructions the verifier won't have to execute if this
+    //function call is moved to the verifier.
+    int migration_savings_ins_count;
   };
 
   class ContainerRetIns: public ContainerNode{
