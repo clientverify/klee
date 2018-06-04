@@ -182,6 +182,7 @@ namespace klee {
       int sub_branch_count;
       int times_called;
       int num_called;
+      int migration_savings_ins_count;
       llvm::Function* function;
       void add(ContainerCallIns* c);
   };
