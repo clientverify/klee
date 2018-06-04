@@ -339,23 +339,15 @@ void ProfileTree::make_sibling_lists(void){
     //Initialize n's siblings:
     for(auto i = v.begin(); i != v.end(); i++){
       //Asserts:
-      if((*i)->parent){
+      if((*i)->parent)
         assert(n->get_depth() >= (*i)->parent->get_depth());
-        if(n->get_depth() == (*i)->parent->get_depth()){
-          auto exists2 = std::find(v.begin(), v.end(), (*i)->parent);
-          assert(exists2 == v.end());
-        }
-      }
       assert(n->get_depth() <= (*i)->get_depth());
 
       //add sibling:
       bool add = true;
       for(auto j = n->siblings.begin(); j != n->siblings.end(); j++){
-        if(is_ancestor(*i, *j)){
-          assert((*j)->get_depth() == n->get_depth());
-          assert((*j)->get_depth()  < (*i)->get_depth());
+        if(is_ancestor(*i, *j))
           add = false;
-        }
         assert(!is_ancestor(*j, *i));
       }
 
@@ -389,10 +381,6 @@ void ProfileTree::make_sibling_lists(void){
         //Otherwise add the child to the general search
         } else {
           assert(d->get_depth() > d->parent->get_depth());
-          for(auto i = v.begin(); i != v.end(); i++){
-            assert(!is_ancestor(d, *i));
-            assert(!is_ancestor(*i, d));
-          }
           v.push_back(d);
         }
       }
@@ -443,23 +431,12 @@ void ProfileTreeNode::update_function_statistics(){
 
     call_container->migration_savings_ins_count = 0;
     for (auto s = siblings.begin(); s != siblings.end(); ++s) {
-      assert((*s) != this);
       call_container->migration_savings_ins_count += ((*s)->depth - this->depth) + (*s)->sub_tree_ins_count;
-      assert((*s)->depth >= this->depth);
-      if((*s)->parent){
-        assert((*s)->depth > (*s)->parent->depth);
-        assert(this->depth >= (*s)->parent->depth);
-        auto exists = std::find(siblings.begin(), siblings.end(), (*s)->parent);
-        assert(exists == siblings.end());
-        exists = std::find(siblings.begin(), siblings.end(), parent);
-        assert(exists == siblings.end());
-      }
       assert(call_container->migration_savings_ins_count <= total_ins_count);
     }
     //assume it dies if we're not on the winning path...
     call_container->migration_savings_ins_count += this->sub_tree_ins_count;
     assert(call_container->migration_savings_ins_count <= total_ins_count);
-    assert(call_container->migration_savings_ins_count >= 0);
 
     //find and subtract the winning return's subtree:
     if(winner){
@@ -478,7 +455,6 @@ void ProfileTreeNode::update_function_statistics(){
         if(c->my_type == return_ins && c->my_function == this){
           call_container->migration_savings_ins_count -= c->sub_tree_ins_count;
           assert(call_container->migration_savings_ins_count <= total_ins_count);
-          assert(call_container->migration_savings_ins_count >= 0);
           break;
         }
         p = c;
@@ -508,7 +484,6 @@ void FunctionStatstics::add(ContainerCallIns* c){
   branch_count += c->function_branch_count;
   sub_branch_count += c->function_calls_branch_count;
   migration_savings_ins_count = std::max(c->migration_savings_ins_count, migration_savings_ins_count);
-  assert(migration_savings_ins_count >= 0);
   times_called++;
   num_called += c->my_calls.size();
   assert(function == c->my_target);
