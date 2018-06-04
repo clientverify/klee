@@ -58,7 +58,7 @@ bool AddressSpace::resolveOne(const ref<ConstantExpr> &addr,
                               ObjectPair &result) {
   uint64_t address = addr->getZExtValue();
   MemoryObject hack(address);
-  printf("Calling resolveOne on memory address %lu hex %lx \n", address, address);
+  //printf("Calling resolveOne on memory address %lu hex %lx \n", address, address);
   if (const MemoryMap::value_type *res = objects.lookup_previous(&hack)) {
     const MemoryObject *mo = res->first;
     // Check if the provided address is between start and end of the object

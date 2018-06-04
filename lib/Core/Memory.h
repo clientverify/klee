@@ -197,26 +197,17 @@ public:
   ref<Expr> read(unsigned offset, Expr::Width width) const;
   ref<Expr> read8(unsigned offset) const;
 
-  ref<Expr> readPoison(ref<Expr> offset, Expr::Width width) const;
-  ref<Expr> readPoison(unsigned offset, Expr::Width width) const;
-  ref<Expr> read8Poison(unsigned offset) const;
   
   // return bytes written.
   void write(unsigned offset, ref<Expr> value);
   void write(ref<Expr> offset, ref<Expr> value);
 
-  void write8(unsigned offset, uint8_t value);
+  void write8(unsigned offset, uint8_t value, bool twoByteAligned = false );
   void write16(unsigned offset, uint16_t value);
   void write32(unsigned offset, uint32_t value);
   void write64(unsigned offset, uint64_t value);
 
-  void writePoison(unsigned offset, ref<Expr> value);
-  void writePoison(ref<Expr> offset, ref<Expr> value);
-
-  void write8Poison(unsigned offset, uint8_t value);
-  void write16Poison(unsigned offset, uint16_t value);
-  void write32Poison(unsigned offset, uint32_t value);
-  void write64Poison(unsigned offset, uint64_t value);
+void print();
   
 private:
   const UpdateList &getUpdates() const;
@@ -224,10 +215,6 @@ private:
   void makeConcrete();
 
   void makeSymbolic();
-
-  ref<Expr> read8Poison(ref<Expr> offset) const;
-  void write8Poison(unsigned offset, ref<Expr> value);
-  void write8Poison(ref<Expr> offset, ref<Expr> value);
 
   ref<Expr> read8(ref<Expr> offset) const;
   void write8(unsigned offset, ref<Expr> value);
@@ -248,7 +235,7 @@ private:
   void markByteUnflushed(unsigned offset);
   void setKnownSymbolic(unsigned offset, Expr *value);
 
-  void print();
+  
   ArrayCache *getArrayCache() const;
 };
   

@@ -508,6 +508,8 @@ public:
     usingSeeds = seeds;
   }
 
+  virtual bool isSymbolicJump ();
+  
   virtual void klee_interp_internal ();
   
   virtual bool resumeNativeExecution ();

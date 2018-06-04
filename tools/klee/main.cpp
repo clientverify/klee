@@ -96,7 +96,9 @@ char ** glob_envp;
 //AH:  main_original_vanilla() points to the original version of main from vanilla klee.  Not ideal but it works. 
 void main_original_vanilla();
 
-char message_test_buffer [256];
+//TODO: Get rid of this third pound define for buffer size!
+#define BUFFER_SIZE 256
+char message_test_buffer [BUFFER_SIZE];
 
 //AH: From the tsgx folks.
 //TO-DO: Make sure this is properly cited and recognized.
@@ -128,7 +130,7 @@ void tsx_init()
   printf("Found %lu code pages from __executable_start to __etext \n",numCodePages);  
   for (int i = 0; i < numCodePages; i++) {
     //Read a value to make sure the page is mapped in.
-    printf("Checking page at hex %lx \n", check_page_address);
+    //printf("Checking page at hex %lx \n", check_page_address);
     garbageVal = * ((uint64_t *)check_page_address);
     check_page_address += 4096;
   }
@@ -185,7 +187,7 @@ namespace {
   cl::opt<std::string>
   EntryPoint("entry-point",
                cl::desc("Consider the function with the given name as the entrypoint"),
-               cl::init("main"));
+               cl::init("_Z9dummyMainv"));
 
   cl::opt<std::string>
   RunInDir("run-in", cl::desc("Change to the given directory prior to executing"));
@@ -1237,10 +1239,12 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 }
 #endif
 
+ extern "C" void enter_taser(void (*) ());
+ 
 //This is a hack to allow us to call a function with c naming/linkage 
 //called begin_target_inner();
  void begin_target () {
-   begin_target_inner();
+   enter_taser(&begin_target_inner);
 
    return;
  }
@@ -1284,6 +1288,8 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
                errorMsg.c_str());
   }
 
+   
+   
    ///////////////////////Arg Parsing section
 
    int pArgc;
@@ -1336,6 +1342,8 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      theInterpreter = Interpreter::create(ctx, IOpts, handler);
    handler->setInterpreter(interpreter);
    
+   //llvm::Function * dummyMain = llvm::Function::Create( llvm::FunctionType::get(llvm::Type::getVoidTy(ctx),false), llvm::Function::ExternalLinkage, "dummyMain",interpModule);
+   //assert(dummyMain != NULL);
    
    std::string LibraryDir = KleeHandler::getRunTimeLibraryPath(argv[0]);
    Interpreter::ModuleOptions Opts(LibraryDir.c_str(), EntryPoint,
@@ -1348,7 +1356,9 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    externalsAndGlobalsCheck(finalModule);
 
    StackBase = (void *) &target_stack;
-   //InitStackSize = 65536;
+
+   
+   
    //Entry fn for our purposes is a dummy main function.
    Function *entryFn = interpModule->getFunction(EntryPoint);
 
@@ -1377,7 +1387,8 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    strncpy (message_test_buffer, "apple", 5);
    
    
-   
+   //TODO: Make tsx_init() work for global variables
+   //and double check the implementation.
    printf("Calling tsx_init to map in pages \n");
    tsx_init();
 
@@ -1387,6 +1398,8 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    printf("client_run located at %lx \n", &client_run);
    printf("springboard located at %lx \n" &springboard);
    */
+
+
    int pid;
    if (exec_mode == PURE_INTERP)
      pid = 0;
