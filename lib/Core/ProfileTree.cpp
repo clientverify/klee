@@ -431,7 +431,8 @@ void ProfileTreeNode::update_function_statistics(){
 
     call_container->migration_savings_ins_count = 0;
     for (auto s = siblings.begin(); s != siblings.end(); ++s) {
-      call_container->migration_savings_ins_count += ((*s)->depth - this->depth) + (*s)->sub_tree_ins_count;
+      if(!(*s)->get_winner())
+        call_container->migration_savings_ins_count += ((*s)->depth - this->depth) + (*s)->sub_tree_ins_count;
       assert(call_container->migration_savings_ins_count <= total_ins_count);
     }
     //assume it dies if we're not on the winning path...
