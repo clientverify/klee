@@ -26,6 +26,7 @@
 
 using namespace klee;
 int ProfileTreeNode::total_ins_count = 0;
+int ProfileTreeNode::total_winning_ins_count = 0;
 int ProfileTreeNode::total_node_count = 0;
 int ProfileTreeNode::total_branch_count = 0;
 int ProfileTreeNode::total_clone_count = 0;
@@ -307,6 +308,7 @@ int ProfileTree::dfs(ProfileTreeNode *root){
 
   winner->process_winner_parents();
   printf("total_winners %d\n",root->total_winners );
+  printf("total_winning_ins_count %d\n", root->total_winning_ins_count );
 
   make_sibling_lists();
   std::cout << "\nupdate_function_statistics:\n";
@@ -441,13 +443,18 @@ void ProfileTreeNode::update_function_statistics(){
 
     //find and subtract the winning return's subtree:
     if(winner){
+      assert(call_container->winning_ins_count == 0);
+
       ProfileTreeNode* p = this;
       while(p){
         ProfileTreeNode* c = NULL;
         //get winning child
         for (auto i = p->children.begin(); i != p->children.end(); ++i) {
           c = *i;
-          if(c->winner) break;
+          if(c->winner){
+            call_container->winning_ins_count += c->ins_count;
+            break;
+          }
         }
         //check if winning child is a leaf node (then we're done)
         if(c == NULL || c->my_type == leaf) break;
@@ -469,7 +476,8 @@ void ProfileTreeNode::update_function_statistics(){
       << call_container->function_ins_count << " subtree_ins "
       << call_container->function_calls_ins_count << " my_symbolic_branches "
       << call_container->function_branch_count << " subtree_symbolic_branches "
-      << call_container->function_calls_branch_count << " migration_savings_ins_count "
+      << call_container->function_calls_branch_count << " winning_ins_count "
+      << call_container->winning_ins_count << " migration_savings_ins_count "
       << call_container->migration_savings_ins_count << "\n";
 #endif
   } else {
@@ -484,6 +492,7 @@ void FunctionStatstics::add(ContainerCallIns* c){
   sub_ins_count += c->function_calls_ins_count;
   branch_count += c->function_branch_count;
   sub_branch_count += c->function_calls_branch_count;
+  winning_ins_count += c->winning_ins_count;
   migration_savings_ins_count = std::max(c->migration_savings_ins_count, migration_savings_ins_count);
   times_called++;
   num_called += c->my_calls.size();
@@ -542,6 +551,7 @@ void ProfileTree::consolidate_function_data(){
       " sub_ins_count " << itr->second->sub_ins_count <<
       " branch_count " << itr->second->branch_count <<
       " sub_branch_count " << itr->second->sub_branch_count <<
+      " winning_ins_count " << itr->second->winning_ins_count <<
       " migration_savings_ins_count " << itr->second->migration_savings_ins_count <<
       "\n";
 #endif
@@ -560,6 +570,7 @@ FunctionStatstics::FunctionStatstics(ContainerCallIns* c)
     sub_branch_count(c->function_calls_branch_count),
     times_called(1),
     num_called(c->my_calls.size()),
+    winning_ins_count(c->winning_ins_count),
     migration_savings_ins_count(c->migration_savings_ins_count),
     function(c->my_target){
       assert(function != NULL);
@@ -577,7 +588,9 @@ ContainerCallIns::ContainerCallIns(llvm::Instruction* i, llvm::Function* target)
     function_ins_count(0), //counts instructions executed in target from this call
     function_calls_ins_count(0), //counts instructions executed in this function's subtree
     function_branch_count(0), //counts symbolic branches executed in target from this call
-    function_calls_branch_count(0){ //counts symbolic branches executed in subtree
+    function_calls_branch_count(0),
+    winning_ins_count(0),
+    migration_savings_ins_count(0) { //counts symbolic branches executed in subtree
   assert(i != NULL);
   assert(my_target != NULL);
 }
@@ -652,6 +665,7 @@ ProfileTreeNode::~ProfileTreeNode() {
 int  ProfileTreeNode::get_total_branch_count(void){ return total_branch_count; }
 int  ProfileTreeNode::get_ins_count(void){ return ins_count; }
 int  ProfileTreeNode::get_total_ins_count(void){ return total_ins_count; }
+int  ProfileTreeNode::get_total_winning_ins_count(void){ return total_winning_ins_count; }
 int  ProfileTreeNode::get_total_node_count(void){ return total_node_count; }
 int  ProfileTreeNode::get_total_ret_count(void){ return total_function_ret_count; }
 int  ProfileTreeNode::get_total_call_count(void){ return total_function_call_count; }
@@ -686,6 +700,7 @@ llvm::Instruction* ProfileTreeNode::get_instruction(void){
 bool ProfileTreeNode::get_winner(void){ return winner; }
 void ProfileTreeNode::set_winner(void){
   total_winners++;
+  total_winning_ins_count += ins_count;
   assert(!winner);
   winner = true;
 }

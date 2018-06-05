@@ -61,6 +61,9 @@ namespace klee {
     //the number of instructions the verifier won't have to execute if this
     //function call is moved to the verifier.
     int migration_savings_ins_count;
+    //counts the winning instructions executed between this call and the
+    //winning return (so it counts instructions executed in sub calls too).
+    int winning_ins_count;
   };
 
   class ContainerRetIns: public ContainerNode{
@@ -112,6 +115,7 @@ namespace klee {
     void increment_branch_count(void);
     int get_ins_count(void);
     int get_total_ins_count(void);
+    int get_total_winning_ins_count(void);
     int get_total_node_count(void);
     int get_total_clone_count(void);
     int get_total_ret_count(void);
@@ -165,6 +169,7 @@ namespace klee {
 
     //All the instructions in the tree
     static int total_ins_count;
+    static int total_winning_ins_count;
     static int total_node_count;
     static int total_branch_count;
     static int total_clone_count;
@@ -183,6 +188,9 @@ namespace klee {
       int times_called;
       int num_called;
       int migration_savings_ins_count;
+      //counts the winning instructions executed between this call and the
+      //winning return (so it counts instructions executed in sub calls too).
+      int winning_ins_count;
       llvm::Function* function;
       void add(ContainerCallIns* c);
   };
