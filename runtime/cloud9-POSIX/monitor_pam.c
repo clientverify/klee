@@ -149,3 +149,20 @@ DEFINE_MODEL(int, ktest_verify_pam_end, int flags){
   ktest_readsocket(monitor_socket, &ret, sizeof(ret));
   return ret;
 }
+
+DEFINE_MODEL(char*, ktest_verify_auth_get_socket_name){
+  printf("klee's ktest_verify_auth_get_socket_name entered\n");
+  int dummy = 0;
+  int set_sz = 200;
+  ktest_writesocket(monitor_socket, (char*)&dummy, sizeof(dummy));
+  char* ret = malloc(set_sz);
+  assert(ret != NULL);
+  int sz = ktest_readsocket(monitor_socket, &ret, set_sz);
+  assert(sz < set_sz);
+  if(sz == 0){
+    free(ret);
+    return NULL;
+  } else {
+    return ret;
+  }
+}

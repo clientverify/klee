@@ -306,7 +306,8 @@ int ProfileTree::dfs(ProfileTreeNode *root){
     if(DFS_DEBUG) printf("\n");
   }
 
-  winner->process_winner_parents();
+  if(winner)
+    winner->process_winner_parents();
   printf("total_winners %d\n",root->total_winners );
   printf("total_winning_ins_count %d\n", root->total_winning_ins_count );
 
@@ -392,6 +393,7 @@ void ProfileTree::make_sibling_lists(void){
 
 void ProfileTreeNode::process_winner_parents(){
   assert(winner);
+  assert(parent);
 
   ProfileTreeNode* ancestor = parent;
   while(ancestor != NULL){
