@@ -128,8 +128,8 @@ extern klee::Interpreter * GlobalInterpreter;
 //TODO Be careful, as BUFFER_SIZE is a macro we're defining twice now.
 #define BUFFER_SIZE 256
 extern char message_test_buffer[BUFFER_SIZE];
-//TODO Make this dynamically work.  Hardcoded to 6 for "orange".
-uint64_t message_buf_length = 5;
+//TODO Test verification with automatic message_buf_length stuff now..
+extern uint64_t message_buf_length;
 uint64_t bytes_printed = 0;
 
 extern int MESSAGE_COUNT;
@@ -3767,7 +3767,6 @@ void Executor::model_strncat() {
      /*
      for (i = 0 ; i < len && (src[i] != '\0'); i++) {
        dest[destLength + i] = src[i];
-       
      }
      dest[destLength + i] = '\0';
      */
@@ -3797,8 +3796,6 @@ void Executor::model_strncat() {
      std::exit(EXIT_FAILURE);
    }
      
-     
-   
    if (solve) {
      printf("Creating constraints between bytes printed in verifier and buffer to verify \n");
      for (int j = 0; j < message_buf_length; j++) {
@@ -3824,8 +3821,16 @@ void Executor::model_strncat() {
  }
    
 bool Executor::gprsAreConcrete() {
-  //Flesh it out later.
-  return false;
+  //Check each byte in the gpr object state to see if any bytes are symbolic.
+  //Todo: In the future, add a fast path check here to see if individual bytes
+  //have the poison value.
+  for (int i = 0; i < (target_ctx.uc_mcontext.gregs * 8) ; i++) {
+    if (!(target_ctx_gregs_OS->isByteConcrete(i)))
+      return false;
+  }
+  
+
+  return true;
   
 }
 
@@ -3835,79 +3840,14 @@ bool Executor::instructionBeginsTransaction(uint64_t pc) {
   
 }
 
-//This function determines if a given instruction (usually a call)
-//needs to be modeled within the interpreter.
-//We identify instructions for modeling based on PC value.
-bool Executor::instructionIsModeled() {
-  //TO-DO: Properly implement
-  
-  return true;
-  //hack for now based on e8 being used for CALLQ 0xaddress.
-  /*
-  uint8_t * bytePtr = (uint8_t *) pc;
-  if (*bytePtr == 0xe8 ) 
-    return true;
-  else
-     return false;
-
-  */
-  
-}
-
 
 //Function assumes PC has been incremented to point to next instruction
 bool Executor::resumeNativeExecution (){
-  //if (gprsAreConcrete() && (instructionBeginsTransaction(registers[REG_RIP])) && (!instructionIsModeled(registers[REG_RIP]))  ) {
-  //  return true;
-  // } else {
+if (gprsAreConcrete() && (instructionBeginsTransaction(registers[REG_RIP]))  ) {
+   return true;
+   } else {
       return false;
-      // }
-}
-
-//Take in an instruction pointer rip, and
-//determine if it points to jump instruction
-//that may have more than one destination
-//due to symbolic taint in flags or any other
-//register.
-bool Executor::isSymbolicJump () {
-  
-  printf("Entering isSymbolicJump() \n");
-
-  //Just worrying about jne for now
-  //TODO make this work for all control flow instructions
-  
-  uint64_t rip = target_ctx.uc_mcontext.gregs[REG_RIP];
-  uint8_t * oneBytePtr = (uint8_t *) rip;
-
-  if (*oneBytePtr == 0x75) {
-    printf("FOUND JNE \n\n");
-
-    printf(" Ctx is \n ");
-    printCtx(target_ctx);
-    target_ctx_gregs_OS->print();
-    //std::exit(EXIT_SUCCESS);
-
-  }
-  //Need to multiply reg_efl by 8 because that's the size of each reg in gregs in bytes.
-  //X86 little-endianness should give us the two bottom bytes "first" for flags.
-  //uint64_t efl_offset =  (uint64_t) &target_ctx.uc_mcontext.gregs[REG_EFL] - (uint64_t) &target_ctx ;
-  ref<Expr> efl_expr = target_ctx_gregs_OS->read(REG_EFL * 8, Expr::Int16);
-
-  //Make this legit later.  Need to check bitmap in case efl is concrete and DEAD.
-  bool eflIsPSN = * ((uint16_t *) &target_ctx.uc_mcontext.gregs[REG_EFL]) == 0xDEAD;
-  
-  
-  if (eflIsPSN  && *oneBytePtr == 0x75) {
-
-    printf("FOUND POISON IN EFL with JNE \n\n");
-    std::exit(EXIT_SUCCESS);
-    //return true;
-  }
-  
-  return false;
-  
- 
- 
+   }
 }
 
 void Executor::model_fn () {
@@ -3916,8 +3856,6 @@ void Executor::model_fn () {
   
   int callqOpc = 0xe8;
   
-  
-
   uint8_t * oneBytePtr = (uint8_t *) rip;
   if (*oneBytePtr != 0xe8) {
     printf("Something is wrong in model_fn() !!! \n");
@@ -3988,8 +3926,8 @@ bool isModeledFn (uint64_t rip) {
   //If we don't model the function, return false.
   printf("Found unmodeled fn defined at 0x%lx \n", dest); 
   return false;
+  //Look up code in IR table as prefix.  If it's sub_modeled, read eax and find out where to go.  Will have function marked in IR.
 
-  
 }
 
 void Executor::klee_interp_internal () {
@@ -4147,7 +4085,7 @@ void Executor::initializeInterpretationStructures (Function *f) {
   target_ctx_gregs_OS->concreteStore = (uint8_t *) &target_ctx.uc_mcontext.gregs;
     
   
-  printf("Adding external object prev_ctx_MO \n");
+  printf("Adding external object prev_ctx_gregs_MO \n");
   prev_ctx_gregs_MO = addExternalObject(*GlobalExecutionStatePtr,(void *)&prev_ctx.uc_mcontext.gregs, sizeof(prev_ctx.uc_mcontext.gregs), false );
   printf("prev_ctx is address %lu, hex 0x%p \n", (uint64_t) &prev_ctx, (void *) &prev_ctx);
   printf("prev_ctx_gregs_MO represents address %lu, hex 0x%p \n", (uint64_t) prev_ctx_gregs_MO->address, (void *) &prev_ctx.uc_mcontext.gregs);
@@ -4166,14 +4104,56 @@ void Executor::initializeInterpretationStructures (Function *f) {
   basket_OS = GlobalExecutionStatePtr->addressSpace.getWriteable(basket_MO,basketOS);
   basket_OS->concreteStore = (uint8_t *) &basket;
   
-  /*
-  printf("Adding gprs_MO structure to track GPRs \n");
+  //Map in globals into klee from .vars file.
+  //Todo: Needs to be tested after we get everything compiling again.
+  //Also need to make a non-hardcoded file path and project name below.
+  char * varsFileLocation = "/playpen/humphries/tase/TASE/parseltongue86/fruit_basket.vars";
+  FILE * externalsFile = fopen (varsFileLocation, "r+");
 
-  gprs_MO = addExternalObject(*GlobalExecutionStatePtr, (void *)&target_ctx.uc_mcontext.gregs, sizeof(target_ctx.uc_mcontext.gregs), false);
-  const ObjectState * const_gprs_OS = GlobalExecutionStatePtr->addressSpace.findObject(gprs_MO);
-  gprs_OS = GlobalExecutionStatePtr->addressSpace.getWriteable(gprs_MO,const_gprs_OS);
-  gprs_OS->concreteStore = (uint8_t *) &target_ctx.uc_mcontext.gregs;
-  */
+  if (externalsFile == NULL) {
+    printf("Error reading externals file within initializeInterpretationStructures() \n");
+    std::exit(EXIT_FAILURE);
+  }
+  
+  while (true) {
+    char addr [30];
+    char size [30];
+
+    if ( fscanf (externalsFile, "%s", addr) != EOF)
+      printf("Found global var with addr %s ", addr);
+    else
+      break;
+    
+    if (fscanf (externalsFile, "%s", size) != EOF)
+      printf("and size %s \n", size);
+    else
+      break;
+
+    uint64_t addrVal;
+    uint64_t sizeVal;
+    
+    std::stringstream addrStream;
+    addrStream << std::hex << addr;
+    addrStream >> addrVal;
+
+    std::stringstream sizeStream;
+    sizeStream << std::hex << size;
+    sizeStream >> sizeVal;
+    
+    printf ("After parsing,  global addr is 0x%lx, ", addrVal);
+    printf (" and sizeVal is 0x%lx \n", sizeVal);
+
+    GlobalVarMO = addExternalObject(*GlobalExecutionStatePtr,(void *) addrVal, sizeVal, false );
+    const ObjectState * ConstGlobalVarOS = GlobalExecutionStatePtr->addressSpace.findObject(GlobalVarMO);
+    ObjectState * GlobalVarOS = GlobalExecutionStatePtr->getWriteable(GlobalVarMO,ConstGlobalVarOS);
+    //Technically I think this is redundant, with addExternalObject changed in tase. 
+    GlobalVarOS->concreteStore = (uint8_t *) addrVal;
+    
+  }
+
+
+
+   
 
 
   //Get rid of the dummy function used for initialization

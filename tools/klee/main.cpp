@@ -96,13 +96,19 @@ char ** glob_envp;
 //AH:  main_original_vanilla() points to the original version of main from vanilla klee.  Not ideal but it works. 
 void main_original_vanilla();
 
+
+//Fruit basket specific code.
 //TODO: Get rid of this third pound define for buffer size!
 #define BUFFER_SIZE 256
 char message_test_buffer [BUFFER_SIZE];
+uint64_t message_buf_length;
+
 
 //AH: From the tsgx folks.
 //TO-DO: Make sure this is properly cited and recognized.
-
+//Todo:  I'm not actually sure we're mapping in everything.
+//Believe we need to hit the initialized global vars in .DATA
+//too.
 extern void * __bss_start;
 extern void * _end;
 //Start and end of text section
@@ -155,6 +161,8 @@ void tsx_init()
   //-------------------------------------------------------
   
   // Hitting stack pages----------------------------------
+  //AH: Actually, I don't think this does anything anymore.
+  //We really only care about the target stack anyway.
   addr = (uint64_t)&addr & 0xfffffffffffff000;
   //printf("stack addr: %lx\n", addr);
   for (i = 0; i < 64; i++) {
@@ -1351,15 +1359,20 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
                                   /*CheckDivZero=*/CheckDivZero,
                                   /*CheckOvershift=*/CheckOvershift);
 
+
+   //Todo:  See if we can rip some of the code below out for externalsAndGlobalsCheck.
+   // We're already doing the work of mapping in globals for tase in
+   // initializeInterpretationStructures().
    printf("Setting module and checking externals and globals... \n");
    const Module *finalModule = interpreter->setModule(interpModule, Opts);
    externalsAndGlobalsCheck(finalModule);
 
-   StackBase = (void *) &target_stack;
 
-   
-   
+   StackBase = (void *) &target_stack;
    //Entry fn for our purposes is a dummy main function.
+   // It's specified in parseltongue86 as dummyMain and
+   // as_Z9dummyMainv in "EntryPoint" because of cpp name mangling.
+  
    Function *entryFn = interpModule->getFunction(EntryPoint);
 
    if (!entryFn){
@@ -1370,7 +1383,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    printf("Initializing interpretation structures ...\n");
    interpreter->initializeInterpretationStructures(entryFn);
    GlobalInterpreter = interpreter;
-
+   
    //This should be made global later.
    enum runType exec_mode = VERIFICATION;
 
@@ -1383,8 +1396,14 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 
    
    //TO-DO: Remove later.  For test purposes
+   //Really ought to be able to add in longer
+   //strings with multiple fruits now that
+   //the stupid simple "apple" case is working.
+   
    memset (message_test_buffer, 0, 256);
    strncpy (message_test_buffer, "apple", 5);
+
+   message_buf_length = strlen(message_test_buffer);
    
    
    //TODO: Make tsx_init() work for global variables
