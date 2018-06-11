@@ -98,7 +98,10 @@ CVExecutionState* CVExecutionState::clone(ExecutionStateProperty* property) {
 
 
   llvm::Instruction* current_inst = this->prevPC->inst;
-  this->profiletreeNode->clone(this, cloned_state, current_inst);
+  if(current_inst->getOpcode() == llvm::Instruction::Br)
+    this->profiletreeNode->branch(this, cloned_state, current_inst);
+  else
+    this->profiletreeNode->clone(this, cloned_state, current_inst);
 
   return cloned_state;
 }

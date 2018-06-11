@@ -1051,12 +1051,16 @@ CVExecutor::fork(klee::ExecutionState &current,
     addConstraint(*falseState, klee::Expr::createIsZero(condition));
 
     llvm::Instruction* current_inst = current.prevPC->inst;
-    current.profiletreeNode->branch(trueState, falseState, current_inst);
 
     if (EnableStateRebuilding && !replayPath) {
       cv_->notify_all(ExecutionEvent(CV_STATE_FORK_FALSE, falseState));
       cv_->notify_all(ExecutionEvent(CV_STATE_FORK_TRUE, trueState));
     }
+
+    assert(trueState->profiletreeNode->parent == falseState->profiletreeNode->parent);
+    assert(trueState->profiletreeNode->parent->get_type() == klee::ProfileTreeNode::branch_parent);
+    assert(trueState->profiletreeNode->get_type() == klee::ProfileTreeNode::leaf);
+    assert(falseState->profiletreeNode->get_type() == klee::ProfileTreeNode::leaf);
 
     return StatePair(trueState, falseState);
   }
