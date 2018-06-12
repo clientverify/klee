@@ -87,6 +87,7 @@ namespace klee {
     friend class FunctionStatstics;
   public:
     ProfileTreeNode *parent;
+    ProfileTreeNode *last_clone;
     std::vector<ProfileTreeNode*> children;
     std::vector<ProfileTreeNode*> siblings;
     ContainerNode* container;
@@ -164,6 +165,7 @@ namespace klee {
     //the number of instructions executed along the path from the root to this
     //node
     int depth;
+    int clone_depth;
     //the number of instructions executed in this instruction's subtree
     int sub_tree_ins_count;
 

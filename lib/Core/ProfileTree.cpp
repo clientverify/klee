@@ -241,7 +241,12 @@ int ProfileTree::dfs(ProfileTreeNode *root){
 
     //Asserts and print outs (looking inside the node):
     assert(p != NULL);
-    if(p->parent) assert(p->parent->my_node_number < p->my_node_number);
+    assert(p->clone_depth >= 0);
+    assert(p->clone_depth >= p->ins_count);
+    if(p->parent){
+      assert(p->parent->my_node_number < p->my_node_number);
+      assert(p->clone_parent);
+    }
     if(p->get_type() == ProfileTreeNode::NodeType::return_ins)
       assert(dynamic_cast<ContainerRetIns*>(p->container) != NULL);
     if(p->get_type() == ProfileTreeNode::NodeType::call_ins)
@@ -613,12 +618,14 @@ ContainerBranchClone::ContainerBranchClone(llvm::Instruction* i)
 ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent, 
                      ExecutionState *_data)
   : parent(_parent),
+    last_clone(NULL),
     children(),
     container(0),
     data(_data),
     ins_count(0),
     edge_ins_count(0),
     depth(0),
+    clone_depth(0),
     my_type(leaf),
     my_function(0),
     winner(false){
@@ -628,6 +635,15 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
       } else {
         assert(_parent->my_node_number < my_node_number);
         depth = _parent->depth;
+        //handle the last clone, and the depth from the last clone
+        //initializations:
+        if(_parent->my_type != clone_parent && _parent->my_type != root){
+          clone_depth = _parent->clone_depth;
+          last_clone  = _parent->last_clone;
+        }else{
+          last_clone  = _parent;
+        }
+
         if(_parent->winner){
           assert(!_parent->parent->winner);
           set_winner();
@@ -683,6 +699,7 @@ void ProfileTreeNode::increment_ins_count(llvm::Instruction *i){
   total_ins_count++;
   ins_count++;
   depth++;
+  clone_depth++;
   edge_ins_count++;
   if(parent)
     assert(depth == ins_count + parent->depth);
