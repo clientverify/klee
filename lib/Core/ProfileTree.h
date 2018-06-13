@@ -29,7 +29,7 @@ namespace klee {
     void consolidate_function_data();
     void dump_branch_clone_graph(std::string path);
     void dump_function_call_graph(std::string path);
-    void make_sibling_lists(void);
+    void make_sibling_lists(ProfileTreeNode *start);
   };
 
   class ContainerNode{

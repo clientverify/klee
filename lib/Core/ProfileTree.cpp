@@ -246,6 +246,7 @@ int ProfileTree::dfs(ProfileTreeNode *root){
     if(p->parent){
       assert(p->parent->my_node_number < p->my_node_number);
       assert(p->clone_parent);
+      assert(p->last_clone->depth + p->clone_depth == p->depth);
     }
     if(p->get_type() == ProfileTreeNode::NodeType::return_ins)
       assert(dynamic_cast<ContainerRetIns*>(p->container) != NULL);
@@ -316,7 +317,23 @@ int ProfileTree::dfs(ProfileTreeNode *root){
   printf("total_winners %d\n",root->total_winners );
   printf("total_winning_ins_count %d\n", root->total_winning_ins_count );
 
-  make_sibling_lists();
+
+  assert(nodes_to_visit.size() == 0);
+  nodes_to_visit.push(root); //add children to the end
+  while( nodes_to_visit.size() > 0 ) {
+    //Handling DFS traversal:
+    ProfileTreeNode* p = nodes_to_visit.top(); //get last element
+    nodes_to_visit.pop(); //remove last element
+    for (auto i = p->children.begin(); i != p->children.end(); ++i)
+      nodes_to_visit.push(*i); //add children
+
+    //visit clone and root children:
+    if(p->get_type() == ProfileTreeNode::NodeType::clone_parent ||
+       p->get_type() == ProfileTreeNode::NodeType::root){
+      for (auto i = p->children.begin(); i != p->children.end(); ++i)
+        make_sibling_lists(*i);
+    }
+  }
   std::cout << "\nupdate_function_statistics:\n";
   root->update_function_statistics();
   consolidate_function_data();
@@ -336,9 +353,11 @@ bool is_ancestor(ProfileTreeNode* c, ProfileTreeNode* ancestor){
   return false;
 }
 
-void ProfileTree::make_sibling_lists(void){
+void ProfileTree::make_sibling_lists(ProfileTreeNode* start){
+  assert(start->parent->get_type() == ProfileTreeNode::clone_parent || start->parent->get_type() == ProfileTreeNode::root);
+  assert(start->parent == start->last_clone);
   std::vector <ProfileTreeNode*> v;
-  v.push_back(root);
+  v.push_back(start);
   while(v.size() > 0){
     sort(v.begin(), v.end(), customCompare);
     ProfileTreeNode* n = v[0];
@@ -347,6 +366,7 @@ void ProfileTree::make_sibling_lists(void){
     //Initialize n's siblings:
     for(auto i = v.begin(); i != v.end(); i++){
       //Asserts:
+      assert((*i)->last_clone == start->last_clone);
       if((*i)->parent){
         assert(n->get_depth() >= (*i)->parent->get_depth());
         if(n->get_depth() == (*i)->parent->get_depth()){
@@ -376,34 +396,21 @@ void ProfileTree::make_sibling_lists(void){
         (*i)->siblings.push_back(n);
     }
 
-    //Add n's first decendents with differing depth
+    //Add n's first decedents with same last_clone
     for(auto i = n->children.begin(); i != n->children.end(); i++){
-      //The depth doesn't change between i and n, i gets n's siblings, and we
-      //do not search i in the bfs search.
-      //Search for decendents of n with greater depth.
-      std::vector <ProfileTreeNode*> decendents;
-      decendents.push_back(*i);
-      while(decendents.size() > 0){
-        ProfileTreeNode* d = decendents[0];
-        decendents.erase(decendents.begin());
-        //if the depth is the same:
-        //  set the child's siblings be the same as the parent's
-        //  add child to the search.
-        if(d->get_depth() == d->parent->get_depth()){
-          d->siblings = d->parent->siblings;
-          for(auto j = d->children.begin(); j != d->children.end(); j++){
-            decendents.push_back(*j);
-          }
-        //Otherwise add the child to the general search
-        } else {
-          assert(d->get_depth() > d->parent->get_depth());
-          for(auto i = v.begin(); i != v.end(); i++){
-            assert(!is_ancestor(d, *i));
-            assert(!is_ancestor(*i, d));
-          }
-          v.push_back(d);
-        }
+      //ignore leaves with 0 instruction count
+      if((*i)->get_type() == ProfileTreeNode::leaf &&
+          (*i)->depth == (*i)->parent->depth){
+        assert((*i)->ins_count == 0);
+        continue;
       }
+      if((*i)->get_type() != ProfileTreeNode::clone_parent)
+        assert((*i)->depth > (*i)->parent->depth);
+      if((*i)->parent->get_type() == ProfileTreeNode::clone_parent)
+        assert((*i)->last_clone == (*i)->parent);
+
+      if((*i)->last_clone == start->last_clone)
+        v.push_back(*i);
     }
   }
 }
