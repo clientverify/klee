@@ -18,6 +18,21 @@ const char* get_instruction_directory(llvm::Instruction* target_ins){
   return dir;
 }
 
+int get_instruction_line_num(llvm::Instruction* target_ins){
+  assert(target_ins  != NULL);
+  const char *function_name = target_ins->getParent()->getParent()->getName().data();
+  assert(function_name  != NULL);
+  llvm::MDNode *metadata = target_ins->getMetadata("dbg");
+  if (!metadata) {
+    if(DEBUG_FUNCTION_DIR) printf("function_call/return not adding info for %s no metadata\n", function_name);
+    return -1;
+  }
+
+  llvm::DILocation loc(metadata); // DILocation is in DebugInfo.h
+  int line_num  = loc.getLineNumber();
+  return line_num;
+}
+
 const char* get_function_directory(llvm::Function* target){
   assert(target != NULL);
   const char *target_name = target->getName().data();

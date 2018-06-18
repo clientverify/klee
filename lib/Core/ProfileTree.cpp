@@ -7,6 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "cliver/CVExecutor.h"
+#include "cliver/SearcherStage.h"
 #include "ProfileTree.h"
 #include "Util.h"
 #include "klee/ExecutionState.h"
@@ -144,7 +146,7 @@ void ProfileTreeNode::branch(
   assert(leftData != rightData);
   assert(this->my_type == leaf);
   this->my_type = branch_parent;
-  this->container = new ContainerBranchClone(ins);
+  this->container = new ContainerBranchClone(ins, NULL);
   std::pair<ProfileTreeNode*, ProfileTreeNode*> ret = split(leftData, rightData);
   leftData->profiletreeNode = ret.first;
   rightData->profiletreeNode = ret.second;
@@ -162,7 +164,8 @@ void ProfileTreeNode::branch(
 void ProfileTreeNode::clone(
              ExecutionState* me_state,
              ExecutionState* clone_state,
-             llvm::Instruction* ins) {
+             llvm::Instruction* ins,
+             cliver::SearcherStage *stage) {
   assert(this->my_type == leaf || this->my_type == root);
   assert(this == me_state->profiletreeNode);
   assert(this->data == me_state);
@@ -175,7 +178,7 @@ void ProfileTreeNode::clone(
     assert(this->get_ins_count() == 0);
 
     this->my_type = clone_parent;
-    this->container = new ContainerBranchClone(ins);
+    this->container = new ContainerBranchClone(ins, stage);
     ret = this->split(me_state, clone_state);
     assert(ret.first->my_branch_or_clone == this);
     assert(ret.second->my_branch_or_clone == this);
@@ -183,13 +186,14 @@ void ProfileTreeNode::clone(
       this->parent->my_type == call_ins ) { //Split the current node
     this->my_type = clone_parent;
     assert(my_branch_or_clone != NULL);
-    this->container = new ContainerBranchClone(ins);
+    this->container = new ContainerBranchClone(ins, stage);
     ret = this->split(me_state, clone_state);
     assert(ret.first->my_branch_or_clone == this);
     assert(ret.second->my_branch_or_clone == this);
   } else if (this->get_ins_count() == 0) { //make sibling and add to parent
     assert(this->parent->my_type == clone_parent);
     assert(parent == my_branch_or_clone);
+    assert(((ContainerBranchClone*)parent->container)->stage == stage);
 
     ProfileTreeNode* clone_node = new ProfileTreeNode(this->parent, clone_state);
     this->parent->children.push_back(clone_node);
@@ -266,6 +270,8 @@ int ProfileTree::dfs(ProfileTreeNode *root){
       assert(((ContainerCallIns*)p->container)->function_calls_branch_count <= p->total_branch_count);
       assert(((ContainerCallIns*)p->container)->function_branch_count <= p->total_branch_count);
     }
+    if(p->get_ins_count() > 0 && p->container != NULL)
+      assert(p->get_instruction() == p->last_instruction);
 
     if(DFS_DEBUG) printf("dfs node#: %d children: %d type: ", p->my_node_number, p->children.size());
     switch(p->get_type()) {
@@ -641,8 +647,9 @@ ContainerRetIns::ContainerRetIns(llvm::Instruction* i, llvm::Instruction* return
   assert(my_return_to != NULL);
 }
 
-ContainerBranchClone::ContainerBranchClone(llvm::Instruction* i)
+ContainerBranchClone::ContainerBranchClone(llvm::Instruction* i, cliver::SearcherStage *s)
   : ContainerNode(i),
+    stage(s),
     my_branches_or_clones() {
   assert(i != NULL);
 }
@@ -651,6 +658,7 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
                      ExecutionState *_data)
   : parent(_parent),
     last_clone(NULL),
+    last_instruction(NULL),
     children(),
     container(0),
     data(_data),
@@ -727,6 +735,7 @@ void ProfileTreeNode::increment_ins_count(llvm::Instruction *i){
     assert(i->getParent()->getParent() == ((ContainerCallIns*)my_function->container)->my_target);
     ((ContainerCallIns*)my_function->container)->function_ins_count++;
   }
+  last_instruction = i;
 
   total_ins_count++;
   ins_count++;
@@ -833,18 +842,32 @@ void ProfileTree::dump_branch_clone_graph(std::string path) {
     ProfileTree::Node *n = stack.back();
     stack.pop_back();
 
+    if(n->my_type == ProfileTreeNode::clone_parent)
+      assert(n->winner || n->parent == NULL || ((ContainerBranchClone*)n->container)->stage != NULL);
     if(n->my_type == ProfileTreeNode::branch_parent || n->my_type == ProfileTreeNode::clone_parent){
-      os << "\tn" << n << " [label=" << n->sub_tree_ins_count;
-    }else{
+      const char *function_name = n->get_instruction()->getParent()->getParent()->getName().data();
+      int line_num = get_instruction_line_num(n->get_instruction());
+      os << "\tn" << n << " [label=\"" << function_name << "-" << line_num << "-" << n->depth << "\"";
+    }else if(n->get_ins_count() > 0){
+      assert(n->last_instruction != 0);
+      const char *function_name = n->last_instruction->getParent()->getParent()->getName().data();
+      int line_num = get_instruction_line_num(n->last_instruction);
+      os << "\tn" << n << " [label=\"" << function_name << "-" << line_num << "-" << n->depth << "\"";
+    }else {
       os << "\tn" << n << " [label=\"\"";
     }
 
-    if(n->get_winner())
-      os << ",fillcolor=red";
-    else if(n->my_type == ProfileTreeNode::branch_parent)
-      os << ",fillcolor=green";
-    else if (n->my_type == ProfileTreeNode::clone_parent)
-      os << ",fillcolor=yellow";
+    if(n->my_type == ProfileTreeNode::branch_parent){
+      if(n->get_winner())
+         os << ",fillcolor=purple";
+      else
+         os << ",fillcolor=blue";
+    }else if (n->my_type == ProfileTreeNode::clone_parent){
+      if(n->get_winner())
+         os << ",fillcolor=orange";
+      else
+         os << ",fillcolor=yellow";
+    }
     os << "];\n";
 
     if(n->my_type == ProfileTreeNode::branch_parent || n->my_type == ProfileTreeNode::clone_parent){

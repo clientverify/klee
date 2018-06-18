@@ -12,6 +12,10 @@
 #include <klee/util/Mutex.h>
 #include "llvm/IR/Instruction.h"
 #include <vector>
+namespace cliver {
+      class SearcherStage;
+}
+
 namespace klee {
   class ExecutionState;
 
@@ -76,10 +80,11 @@ namespace klee {
 
   class ContainerBranchClone: public ContainerNode{
   public:
-    ContainerBranchClone(llvm::Instruction* i);
+    ContainerBranchClone(llvm::Instruction* i, cliver::SearcherStage *s);
     virtual ~ContainerBranchClone() = default;
     //branches/clones immedidiately following this in the graph.
     std::vector<ProfileTreeNode*> my_branches_or_clones;
+    cliver::SearcherStage *stage;
   };
 
   class ProfileTreeNode {
@@ -91,6 +96,7 @@ namespace klee {
     std::vector<ProfileTreeNode*> children;
     std::vector<ProfileTreeNode*> siblings;
     ContainerNode* container;
+    llvm::Instruction* last_instruction;
 
     ExecutionState *data;
     void function_call(
@@ -111,7 +117,8 @@ namespace klee {
     void clone(
         ExecutionState* me_state,
         ExecutionState* clone_state,
-        llvm::Instruction* ins);
+        llvm::Instruction* ins,
+        cliver::SearcherStage* stage);
     void increment_ins_count(llvm::Instruction *i);
     void increment_branch_count(void);
     int get_ins_count(void);

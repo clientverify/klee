@@ -96,12 +96,11 @@ CVExecutionState* CVExecutionState::clone(ExecutionStateProperty* property) {
 
   cloned_state->multi_pass_assignment_ = multi_pass_assignment_;
 
-
   llvm::Instruction* current_inst = this->prevPC->inst;
   if(current_inst->getOpcode() == llvm::Instruction::Br)
     this->profiletreeNode->branch(this, cloned_state, current_inst);
   else
-    this->profiletreeNode->clone(this, cloned_state, current_inst);
+    this->profiletreeNode->clone(this, cloned_state, current_inst, searcher_stage_);
 
   return cloned_state;
 }
