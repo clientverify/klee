@@ -103,10 +103,12 @@ extern enum runType exec_mode;
 extern void * StackBase;
 extern char target_stack[65537];
 extern uint64_t InitStackSize;
-extern Function * AddFunction;
-extern ucontext_t target_ctx;
-extern ucontext_t prev_ctx;
 extern Module * interpModule;
+
+extern "C" void * enter_modeled();
+
+extern gregset_t target_ctx_gregs;
+extern gregset_t prev_ctx_gregs;
 
 MemoryObject * target_ctx_gregs_MO;
 ObjectState * target_ctx_gregs_OS;
@@ -116,7 +118,7 @@ bool hasForked = false;
 std::ofstream debugFile;
 
 
-void printCtx(ucontext_t ctx );
+void printCtx(gregset_t ctx );
 
 
 ExecutionState * GlobalExecutionStatePtr;
@@ -138,8 +140,6 @@ extern char basket[BUFFER_SIZE];
 ObjectState * basket_OS;
 MemoryObject * basket_MO;
 
-extern "C" int random_lib_model_shim();
-extern "C" char * strncat_lib_model_shim(char *, const char *, size_t);
 
 //AH: End of our additions. -----------------------------------
 
@@ -1067,7 +1067,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
        printf("Solver checked sanity \n");
      else {
        printf("Solver found invalid path \n");
-       printCtx(target_ctx);
+       printCtx(target_ctx_gregs);
      }
     
     //Orig code:
@@ -3637,7 +3637,7 @@ extern "C" void klee_interp () {
 //This function's purpose is to take a context from native execution 
 //and return an llvm function for interpretation.  It's OK for now if
 // this returns a KFunction with LLVM IR for only one machine instruction at a time. 
-KFunction * findInterpFunction (greg_t * registers, KModule * kmod ) {
+KFunction * findInterpFunction (greg_t * registers, KModule * kmod) {
 
   uint64_t nativePC = registers[REG_RIP];
    printf("Looking up interp info for RIP : decimal %lld, hex  %p \n", nativePC, nativePC);
@@ -3709,14 +3709,14 @@ void Executor::model_random() {
   //TODO: Make this more robust later for call instructions with more than 5 bytes.
   //TODO: Add asserts to make sure RIP and RSP aren't symbolic.
   */
-  target_ctx.uc_mcontext.gregs[REG_RIP] = target_ctx.uc_mcontext.gregs[REG_RIP] +5;
+  target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_RIP] +5;
   //Modelling the "Ret" in the random() call to bring us back
   //Check later to make sure it's plus eight for the SP bump, not plus four.
-  target_ctx.uc_mcontext.gregs[REG_RSP] = target_ctx.uc_mcontext.gregs[REG_RSP] + 8;
+  target_ctx_gregs[REG_RSP] = target_ctx_gregs[REG_RSP] + 8;
   printf("INTERPRETER: Exiting model_random \n");
   
   printf("Ctx after modeling is ... \n");
-  printCtx(target_ctx);  
+  printCtx(target_ctx_gregs);  
   
 }
 
@@ -3725,9 +3725,9 @@ void Executor::model_strncat() {
   //In our testing for fruitbasket this represents a send point.
   printf("INTERPRETER: Entering model_strncat() \n");
   
-   uint64_t rawArg1Val = target_ctx.uc_mcontext.gregs[REG_RDI]; 
-   uint64_t rawArg2Val = target_ctx.uc_mcontext.gregs[REG_RSI];
-   uint64_t rawArg3Val = target_ctx.uc_mcontext.gregs[REG_RDX];
+   uint64_t rawArg1Val = target_ctx_gregs[REG_RDI]; 
+   uint64_t rawArg2Val = target_ctx_gregs[REG_RSI];
+   uint64_t rawArg3Val = target_ctx_gregs[REG_RDX];
    ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
    ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
    ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64); 
@@ -3744,32 +3744,38 @@ void Executor::model_strncat() {
       ) {
 
      //Do the copying (using implementation from https://linux.die.net/man/3/strncat)
-     char * dest = (char *) rawArg1Val;
-     char * src  = (char *) rawArg2Val;
-     uint64_t len = rawArg3Val;
-     uint64_t destLength = strlen(dest);
-     int i;
-     
-     actualLength = std::min(len, strlen(src));
-     for (i = 0; i < actualLength; i++) {
-       ref<Expr> destAddressExpr = ConstantExpr::create( ((uint64_t) dest) + i, Expr::Int64);
-       ref<Expr> valueExpr       = ConstantExpr::create( (uint8_t)(*(src + i)), Expr::Int8);
-       executeMemoryOperation(*GlobalExecutionStatePtr, /*isWrite*/ true,  destAddressExpr, valueExpr, /*not used for write*/ NULL);
-     }
-
-     //Return address of dest in RAX.  In this case, should be concrete.
-     ref<Expr> nullCharExpr = ConstantExpr::create(0, Expr::Int8);
-     ref<Expr> lastAddress = ConstantExpr::create( ((uint64_t) dest) + i, Expr::Int64);
-     executeMemoryOperation(*GlobalExecutionStatePtr, /*isWrite*/ true, lastAddress, nullCharExpr, /*not used for write */ NULL);
-     ref<Expr> destAddr = ConstantExpr::create( (uint64_t) dest, Expr::Int64);
-     target_ctx_gregs_OS->write(REG_RAX * 8, destAddr);
-
-     /*
+      /*
      for (i = 0 ; i < len && (src[i] != '\0'); i++) {
        dest[destLength + i] = src[i];
      }
      dest[destLength + i] = '\0';
      */
+
+     char * dest = (char *) rawArg1Val;
+     char * src  = (char *) rawArg2Val;
+     uint64_t len = rawArg3Val;
+     uint64_t destLength = strlen(dest);
+     uint64_t destFirstAvailableByte = rawArg1Val + destLength;
+     int i;
+
+     //Actual number of bytes to copy into dest
+     actualLength = std::min(len, strlen(src));
+     for (i = 0; i < actualLength; i++) {
+       ref<Expr> destAddressExpr = ConstantExpr::create( destFirstAvailableByte + i, Expr::Int64);
+       ref<Expr> valueExpr       = ConstantExpr::create( (uint8_t)(*(src + i)), Expr::Int8);
+       executeMemoryOperation(*GlobalExecutionStatePtr, /*isWrite*/ true,  destAddressExpr, valueExpr, /*not used for write*/ NULL);
+     }
+     
+     //Write the last value into dest, which is the null terminator
+     ref<Expr> nullCharExpr = ConstantExpr::create(0, Expr::Int8);     
+     ref<Expr> lastAddress = ConstantExpr::create(  destFirstAvailableByte + i, Expr::Int64);
+     executeMemoryOperation(*GlobalExecutionStatePtr, /*isWrite*/ true, lastAddress, nullCharExpr, /*not used for write */ NULL);
+
+     //Return address of dest in RAX.  In this case, should be concrete.
+     //Todo: Should this actually be the last byte written to in dest, as opposed to the beginning of the array?
+     ref<Expr> destAddr = ConstantExpr::create( (uint64_t) dest, Expr::Int64);
+     target_ctx_gregs_OS->write(REG_RAX * 8, destAddr);
+
 
    } else {
      //Case 2:  Some args are symbolic.  Not implemented yet.
@@ -3824,8 +3830,12 @@ bool Executor::gprsAreConcrete() {
   //Check each byte in the gpr object state to see if any bytes are symbolic.
   //Todo: In the future, add a fast path check here to see if individual bytes
   //have the poison value.
-  for (int i = 0; i < (target_ctx.uc_mcontext.gregs * 8) ; i++) {
-    if (!(target_ctx_gregs_OS->isByteConcrete(i)))
+  int numberOfGPRS = 23;
+
+  for (int i = 0; i < (numberOfGPRS * 8) ; i++) {
+
+    //Need to expose isByteConcrete for external use
+    //if (!(target_ctx_gregs_OS->isByteConcrete(i)))
       return false;
   }
   
@@ -3843,6 +3853,8 @@ bool Executor::instructionBeginsTransaction(uint64_t pc) {
 
 //Function assumes PC has been incremented to point to next instruction
 bool Executor::resumeNativeExecution (){
+  greg_t * registers = target_ctx_gregs;
+
 if (gprsAreConcrete() && (instructionBeginsTransaction(registers[REG_RIP]))  ) {
    return true;
    } else {
@@ -3852,7 +3864,7 @@ if (gprsAreConcrete() && (instructionBeginsTransaction(registers[REG_RIP]))  ) {
 
 void Executor::model_fn () {
 
-  uint64_t rip = target_ctx.uc_mcontext.gregs[REG_RIP];
+  uint64_t rip = target_ctx_gregs[REG_RIP];
   
   int callqOpc = 0xe8;
   
@@ -3861,7 +3873,7 @@ void Executor::model_fn () {
     printf("Something is wrong in model_fn() !!! \n");
     std::exit(EXIT_FAILURE);
   }
-    
+  
   
   printf("INTERPRETER: Modeling model_fn call \n");
 
@@ -3879,9 +3891,9 @@ void Executor::model_fn () {
   //printf("strncat_lib_model_shim located at 0x%lx \n", &strncat_lib_model_shim);
 
   //Checks are here to see if the dest is a function we model.
-  if (dest == (uint64_t) &random_lib_model_shim) {
+  if (dest == (uint64_t) &random) {
     model_random();
-  }else if (dest == (uint64_t) &strncat_lib_model_shim) {
+  }else if (dest == (uint64_t) &strncat) {
     model_strncat();
   }else {
     printf("INTERPRETER: Couldn't find function model \n");
@@ -3912,21 +3924,16 @@ bool isModeledFn (uint64_t rip) {
   //printf("offset is 0x%lx \n",offset);
   //Must add 5 to account for call 0xe8 opcode and the 4 bytes for offset
   uint64_t dest = rip + (uint64_t) offset + 5;
-  printf("strncat_lib_model_shim located at 0x%lx \n", &strncat_lib_model_shim);
-  printf("random_lib_model_shim located at 0x%lx \n", &random_lib_model_shim);
+  printf("enter_modeled located at 0x%lx \n", &enter_modeled);
   //Checks are here to see if the dest is a function we model.
-  if (dest == (uint64_t) &random_lib_model_shim) {
-    printf("Found RANDOM lib call \n");
+  if (dest == (uint64_t) &enter_modeled) {
+    printf("Found modeled call \n");
     return true;
   }
-  if (dest == (uint64_t) &strncat_lib_model_shim) {
-    printf("Found STRNCAT lib call \n");
-    return true;
-  }
+
   //If we don't model the function, return false.
   printf("Found unmodeled fn defined at 0x%lx \n", dest); 
   return false;
-  //Look up code in IR table as prefix.  If it's sub_modeled, read eax and find out where to go.  Will have function marked in IR.
 
 }
 
@@ -3946,12 +3953,13 @@ void Executor::klee_interp_internal () {
   }
   printf("Entering interpreter for time %d \n \n \n", interpCtr);
  
-  uint64_t rip = target_ctx.uc_mcontext.gregs[REG_RIP];
+  uint64_t rip = target_ctx_gregs[REG_RIP];
   printf("RIP is %lu in decimal, 0x%lx in hex.\n", rip, rip);
 
   //for (int i = 0; i < 23; i++) 
-  // prev_ctx.uc_mcontext.gregs[i] = target_ctx.uc_mcontext.gregs[i];
+  // prev_ctx_gregs[i] = target_ctx_gregs[i];
   
+  // We entered the interpreter through an xabort.
   if (isModeledFn(rip))
     model_fn();
   else {
@@ -3962,8 +3970,8 @@ void Executor::klee_interp_internal () {
     }
     
     printf("Calling findInterpFunction() .... \n");
-    KFunction * interpFn = findInterpFunction (target_ctx.uc_mcontext.gregs, kmodule);
-    
+    KFunction * interpFn = findInterpFunction (target_ctx_gregs, kmodule);
+  
     //Instruction *firstInst = &*(interpFn->function->begin()->begin());
     //We have to manually push a frame on for the function we'll be
     //interpreting through.  At this point, no other frames should exist
@@ -3976,7 +3984,7 @@ void Executor::klee_interp_internal () {
     std::vector<ref<Expr> > arguments;
     
     assert(target_ctx_gregs_MO);
-    uint64_t regAddr = (uint64_t) &target_ctx.uc_mcontext.gregs;
+    uint64_t regAddr = (uint64_t) &target_ctx_gregs;
     ref<ConstantExpr> regExpr = ConstantExpr::create(regAddr, Context::get().getPointerWidth());
     arguments.push_back(regExpr);
 
@@ -4000,9 +4008,9 @@ void Executor::klee_interp_internal () {
   
   /*
   printf("Orig ctx was \n ");
-  printCtx(prev_ctx);  
+  printCtx(prev_ctx_gregs);  
   printf("New ctx is \n ");
-  printCtx(target_ctx);
+  printCtx(target_ctx_gregs);
   */
   
   if (resumeNativeExecution()) {
@@ -4015,9 +4023,7 @@ void Executor::klee_interp_internal () {
 }
 
 
-void printCtx(ucontext_t ctx ) {
-  greg_t * registers;
-  registers  = ctx.uc_mcontext.gregs;
+void printCtx(gregset_t registers ) {
 
   printf("R8   : 0x%llx \n", registers[REG_R8]);
   printf("R9   : 0x%llx \n", registers[REG_R9]);
@@ -4062,7 +4068,6 @@ void Executor::initializeInterpretationStructures (Function *f) {
   //Need to be careful here.  The buffer we allocate for the stack is char [X] target_stack. It
   // starts at address StackBase and covers up to StackBase + sizeof(target_stack) -1.
   
-
   printf("Adding structures to track target stack starting at %x with size %d \n", StackBase, sizeof(target_stack));
   
   MemoryObject * stackMem = addExternalObject(*GlobalExecutionStatePtr,StackBase, sizeof(target_stack), false );
@@ -4072,30 +4077,29 @@ void Executor::initializeInterpretationStructures (Function *f) {
   stackOSWrite->concreteStore = (uint8_t *) StackBase;
 
   printf("Adding external object target_ctx_gregs_MO \n");
-  target_ctx_gregs_MO = addExternalObject(*GlobalExecutionStatePtr, (void *) &target_ctx.uc_mcontext.gregs, sizeof (target_ctx.uc_mcontext.gregs), false );
-  printf("target_ctx is address %lu, hex 0x%p \n", (uint64_t) &target_ctx, (void *) &target_ctx);
-  printf("target_ctx.uc_mcontext.gregs is located at address %llu, hex 0x%p \n", (uint64_t) (&target_ctx.uc_mcontext.gregs), (void *) &target_ctx.uc_mcontext.gregs);
-  printf("target_ctx_gregs_MO represents address %lu, hex 0x%p \n", (uint64_t) target_ctx_gregs_MO->address, (void *) &target_ctx.uc_mcontext.gregs);
+  target_ctx_gregs_MO = addExternalObject(*GlobalExecutionStatePtr, (void *) &target_ctx_gregs, sizeof (target_ctx_gregs), false );
+  printf("target_ctx_gregs is address %lu, hex 0x%p \n", (uint64_t) &target_ctx_gregs, (void *) &target_ctx_gregs);
+  printf("target_ctx_gregs is located at address %llu, hex 0x%p \n", (uint64_t) (&target_ctx_gregs), (void *) &target_ctx_gregs);
+  printf("target_ctx_gregs_MO represents address %lu, hex 0x%p \n", (uint64_t) target_ctx_gregs_MO->address, (void *) &target_ctx_gregs);
 
-  printf("Size of gregs is %d \n", sizeof(target_ctx.uc_mcontext.gregs));
+  printf("Size of gregs is %d \n", sizeof(target_ctx_gregs));
   
-  printf("Setting concrete store in target_ctx_gregs_OS to target_ctx.uc_mcontext.gregs \n");
+  printf("Setting concrete store in target_ctx_gregs_OS to target_ctx_gregs \n");
   const ObjectState *targetCtxOS = GlobalExecutionStatePtr->addressSpace.findObject(target_ctx_gregs_MO);
   target_ctx_gregs_OS = GlobalExecutionStatePtr->addressSpace.getWriteable(target_ctx_gregs_MO,targetCtxOS);
-  target_ctx_gregs_OS->concreteStore = (uint8_t *) &target_ctx.uc_mcontext.gregs;
-    
+  target_ctx_gregs_OS->concreteStore = (uint8_t *) &target_ctx_gregs;
   
   printf("Adding external object prev_ctx_gregs_MO \n");
-  prev_ctx_gregs_MO = addExternalObject(*GlobalExecutionStatePtr,(void *)&prev_ctx.uc_mcontext.gregs, sizeof(prev_ctx.uc_mcontext.gregs), false );
-  printf("prev_ctx is address %lu, hex 0x%p \n", (uint64_t) &prev_ctx, (void *) &prev_ctx);
-  printf("prev_ctx_gregs_MO represents address %lu, hex 0x%p \n", (uint64_t) prev_ctx_gregs_MO->address, (void *) &prev_ctx.uc_mcontext.gregs);
-  printf("Setting concrete store in prev_ctx_gregs_OS to prev_ctx.uc_mcontext.gregs \n");
+  prev_ctx_gregs_MO = addExternalObject(*GlobalExecutionStatePtr,(void *)&prev_ctx_gregs, sizeof(prev_ctx_gregs), false );
+  printf("prev_ctx_gregs is address %lu, hex 0x%p \n", (uint64_t) &prev_ctx_gregs, (void *) &prev_ctx_gregs);
+  printf("prev_ctx_gregs_MO represents address %lu, hex 0x%p \n", (uint64_t) prev_ctx_gregs_MO->address, (void *) &prev_ctx_gregs);
+  printf("Setting concrete store in prev_ctx_gregs_OS to prev_ctx_gregs \n");
   const ObjectState *prevCtxOS = GlobalExecutionStatePtr->addressSpace.findObject(prev_ctx_gregs_MO);
   prev_ctx_gregs_OS = GlobalExecutionStatePtr->addressSpace.getWriteable(prev_ctx_gregs_MO,prevCtxOS);
-  prev_ctx_gregs_OS->concreteStore = (uint8_t *) &prev_ctx.uc_mcontext.gregs;
+  prev_ctx_gregs_OS->concreteStore = (uint8_t *) &prev_ctx_gregs;
 
-  assert( ((uint8_t *) &prev_ctx.uc_mcontext.gregs) == (prev_ctx_gregs_OS->concreteStore));
-  assert( ((uint8_t *) &target_ctx.uc_mcontext.gregs) == (target_ctx_gregs_OS->concreteStore)); 
+  assert( ((uint8_t *) &prev_ctx_gregs) == (prev_ctx_gregs_OS->concreteStore));
+  assert( ((uint8_t *) &target_ctx_gregs) == (target_ctx_gregs_OS->concreteStore)); 
 
 
   printf("Adding structure to track verification message output \n");
@@ -4143,9 +4147,9 @@ void Executor::initializeInterpretationStructures (Function *f) {
     printf ("After parsing,  global addr is 0x%lx, ", addrVal);
     printf (" and sizeVal is 0x%lx \n", sizeVal);
 
-    GlobalVarMO = addExternalObject(*GlobalExecutionStatePtr,(void *) addrVal, sizeVal, false );
+    MemoryObject * GlobalVarMO = addExternalObject(*GlobalExecutionStatePtr,(void *) addrVal, sizeVal, false );
     const ObjectState * ConstGlobalVarOS = GlobalExecutionStatePtr->addressSpace.findObject(GlobalVarMO);
-    ObjectState * GlobalVarOS = GlobalExecutionStatePtr->getWriteable(GlobalVarMO,ConstGlobalVarOS);
+    ObjectState * GlobalVarOS = GlobalExecutionStatePtr->addressSpace.getWriteable(GlobalVarMO,ConstGlobalVarOS);
     //Technically I think this is redundant, with addExternalObject changed in tase. 
     GlobalVarOS->concreteStore = (uint8_t *) addrVal;
     

@@ -58,13 +58,14 @@
 #include <sstream>
 
 #include <stdlib.h>
-#include <ucontext.h>
 
 //---------------------------------------------------------
 //AH: BEGINNING OF OUR ADDITIONS (not including .h files)
 
 extern "C" void begin_target_inner();
 extern "C" void klee_interp();
+extern "C" void enter_tase_initial();
+extern "C" void enter_tase(void (*) ());
 //extern void ext_test();
 
 typedef struct  {
@@ -79,19 +80,27 @@ llvm::Module * interpModule;
 //AH: Kind of gross.  We need to allocate X+1 bytes for an X byte stack, and note that it grows DOWNWARD.
 char target_stack[65537];
 char interp_stack[65537];
-char temp_stack[65537];
-char * temp_stack_begin_ptr = &temp_stack[65536];
-char * interp_stack_begin_ptr = &interp_stack[65536];
+char * target_stack_begin_ptr = &target_stack[65536];
 
 klee::Interpreter * GlobalInterpreter;
 
 enum runType : int {PURE_INTERP, TSX_NATIVE, VERIFICATION};
 enum runType exec_mode;
-ucontext_t handler_ctx, target_ctx, interp_ctx, prev_ctx;
+gregset_t target_ctx_gregs;
+gregset_t prev_ctx_gregs;
 uint64_t targetMemAddr;
 int glob_argc;
 char ** glob_argv;
 char ** glob_envp;
+
+void transferToTarget() {
+  target_ctx_gregs[REG_RDI] = reinterpret_cast<greg_t>(&begin_target_inner);
+  target_ctx_gregs[REG_R15] = reinterpret_cast<greg_t>(&enter_tase);
+  //hope this is right.  Changed from "interp_stack_begin_ptr"
+  target_ctx_gregs[REG_RSP] = reinterpret_cast<greg_t>(target_stack_begin_ptr);
+
+  enter_tase_initial();
+}
 
 //AH:  main_original_vanilla() points to the original version of main from vanilla klee.  Not ideal but it works. 
 void main_original_vanilla();
@@ -163,12 +172,10 @@ void tsx_init()
   // Hitting stack pages----------------------------------
   //AH: Actually, I don't think this does anything anymore.
   //We really only care about the target stack anyway.
-  addr = (uint64_t)&addr & 0xfffffffffffff000;
+  addr = (uint64_t)&target_stack;
   //printf("stack addr: %lx\n", addr);
-  for (i = 0; i < 64; i++) {
-    access = *(uint64_t *)(addr);
-    //*(uint64_t *)(addr) = 1;
-    addr -= 4096;
+  for (i = 0; i < 65536; i += 4096) {
+    access = *(uint64_t *)(addr + i);
   }
   //------------------------------------------------------
 #if 0 // Seems we do not need to touch heap memory.
@@ -1247,12 +1254,11 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 }
 #endif
 
- extern "C" void enter_taser(void (*) ());
  
 //This is a hack to allow us to call a function with c naming/linkage 
 //called begin_target_inner();
  void begin_target () {
-   enter_taser(&begin_target_inner);
+   enter_tase(&begin_target_inner);
 
    return;
  }
@@ -1269,18 +1275,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    glob_envp = envp;
    
    printf("Initializing interp and target contexts... \n");
-   getcontext(&target_ctx);
-   target_ctx.uc_stack.ss_sp = &target_stack;
-   target_ctx.uc_stack.ss_size = sizeof(target_stack);
-   target_ctx.uc_link = &handler_ctx;
-   makecontext(&target_ctx, begin_target,0);
 
-   getcontext(&interp_ctx);
-   interp_ctx.uc_stack.ss_sp = &interp_stack;
-   interp_ctx.uc_stack.ss_size = sizeof(interp_stack);
-   interp_ctx.uc_link = &target_ctx;
-   makecontext(&interp_ctx, klee_interp, 0);
-   
    llvm::InitializeNativeTarget();
    parseArguments(argc, argv);
    
@@ -1437,16 +1432,15 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
        printf("STARTING PURE INTERPRETER TEST \n");
        //RIP hack is just for now.
        
-       
-       // target_ctx.uc_mcontext.gregs[REG_RIP] = 0x5b5000;
-       target_ctx.uc_mcontext.gregs[REG_RIP] =  (uint64_t) &begin_target_inner;
        klee_interp();
      } else if (exec_mode == TSX_NATIVE) {
        printf("STARTING TSX_NATIVE EXECUTION TEST W/O SYMBOLIC VALUES \n");
-       swapcontext(&handler_ctx, &target_ctx);
+       //swapcontext(&handler_ctx, &target_ctx);
      } else if (exec_mode == VERIFICATION) {
        printf("STARTING VERIFICATION \n");
-       swapcontext(&handler_ctx, &target_ctx);
+       transferToTarget();
+       //swapcontext(&handler_ctx, &target_ctx);
+       
      }
      else {
        printf("ERROR: Run mode not specified \n");
