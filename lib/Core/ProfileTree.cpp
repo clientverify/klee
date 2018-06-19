@@ -9,9 +9,10 @@
 
 #include "cliver/CVExecutor.h"
 #include "cliver/SearcherStage.h"
+#include "cliver/ClientVerifier.h"
 #include "ProfileTree.h"
 #include "Util.h"
-#include "klee/ExecutionState.h"
+#include "cliver/CVExecutionState.h"
 
 #include <klee/Expr.h>
 #include <klee/util/ExprPPrinter.h>
@@ -48,6 +49,7 @@ ProfileTree::~ProfileTree() {}
 ProfileTreeNode*
 ProfileTreeNode::link(
              ExecutionState* data) {
+  assert(data != NULL);
   assert(this->data            == data);
   assert(this->children.size() == 0);
   assert(this->my_type == call_ins || this->my_type == return_ins);
@@ -128,6 +130,8 @@ std::pair<ProfileTreeNode*, ProfileTreeNode*>
 ProfileTreeNode::split(
              ExecutionState* leftData,
              ExecutionState* rightData) {
+  assert(leftData != NULL);
+  assert(rightData != NULL);
   assert(this->children.size() == 0);
   assert(this->my_type != leaf);
   this->data = 0;
@@ -180,6 +184,8 @@ void ProfileTreeNode::clone(
     this->my_type = clone_parent;
     this->container = new ContainerBranchClone(ins, stage);
     ret = this->split(me_state, clone_state);
+    assert(ret.first->stage == stage);
+    assert(ret.second->stage == stage);
     assert(ret.first->my_branch_or_clone == this);
     assert(ret.second->my_branch_or_clone == this);
   } else if (this->get_ins_count() > 0 ||
@@ -188,12 +194,14 @@ void ProfileTreeNode::clone(
     assert(my_branch_or_clone != NULL);
     this->container = new ContainerBranchClone(ins, stage);
     ret = this->split(me_state, clone_state);
+    assert(ret.first->stage == stage);
+    assert(ret.second->stage == stage);
     assert(ret.first->my_branch_or_clone == this);
     assert(ret.second->my_branch_or_clone == this);
   } else if (this->get_ins_count() == 0) { //make sibling and add to parent
     assert(this->parent->my_type == clone_parent);
     assert(parent == my_branch_or_clone);
-    assert(((ContainerBranchClone*)parent->container)->stage == stage);
+    assert(parent->stage == stage);
 
     ProfileTreeNode* clone_node = new ProfileTreeNode(this->parent, clone_state);
     this->parent->children.push_back(clone_node);
@@ -649,7 +657,6 @@ ContainerRetIns::ContainerRetIns(llvm::Instruction* i, llvm::Instruction* return
 
 ContainerBranchClone::ContainerBranchClone(llvm::Instruction* i, cliver::SearcherStage *s)
   : ContainerNode(i),
-    stage(s),
     my_branches_or_clones() {
   assert(i != NULL);
 }
@@ -669,6 +676,8 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
     my_type(leaf),
     my_function(0),
     winner(false){
+      assert(data != NULL);
+      stage = ((cliver::CVExecutionState*)data)->searcher_stage();
       my_node_number = total_node_count;
       if(_parent == NULL){
         my_type = root;
@@ -825,7 +834,7 @@ void ProfileTree::dump_function_call_graph(std::string path) {
 }
 
 //Writes graph of clone and branch nodes.
-void ProfileTree::dump_branch_clone_graph(std::string path) {
+void ProfileTree::dump_branch_clone_graph(std::string path, cliver::ClientVerifier* cv_) {
   llvm::raw_ostream &os = *(get_fd_ostream(path));
   ExprPPrinter *pp = ExprPPrinter::create(os);
   pp->setNewline("\\l");
@@ -843,16 +852,35 @@ void ProfileTree::dump_branch_clone_graph(std::string path) {
     stack.pop_back();
 
     if(n->my_type == ProfileTreeNode::clone_parent)
-      assert(n->winner || n->parent == NULL || ((ContainerBranchClone*)n->container)->stage != NULL);
+      assert(n->winner || n->parent == NULL || n->stage != NULL);
+//      assert(n->winner || n->parent == NULL || ((ContainerBranchClone*)n->container)->stage != NULL);
     if(n->my_type == ProfileTreeNode::branch_parent || n->my_type == ProfileTreeNode::clone_parent){
       const char *function_name = n->get_instruction()->getParent()->getParent()->getName().data();
       int line_num = get_instruction_line_num(n->get_instruction());
-      os << "\tn" << n << " [label=\"" << function_name << "-" << line_num << "-" << n->depth << "\"";
+      if(n->stage != NULL){
+        assert(cv_->sm() != NULL);
+        cliver::SearcherStage* ss = n->stage;
+        assert(ss        != NULL);
+        uint64_t rn  = cv_->sm()->get_stage_statistic(ss, "RoundNumber");
+        uint64_t btc = cv_->sm()->get_stage_statistic(ss, "BackTrackCount");
+        uint64_t pct = cv_->sm()->get_stage_statistic(ss, "PassCount");
+        os << "\tn" << n << " [label=\"" << function_name << "-" << line_num << "-" << n->depth << "-rn-" << rn << "-bct-" << btc << "-pct-" << pct << "\"";
+      } else
+        os << "\tn" << n << " [label=\"" << function_name << "-" << line_num << "-" << n->depth << "\"";
     }else if(n->get_ins_count() > 0){
       assert(n->last_instruction != 0);
       const char *function_name = n->last_instruction->getParent()->getParent()->getName().data();
       int line_num = get_instruction_line_num(n->last_instruction);
-      os << "\tn" << n << " [label=\"" << function_name << "-" << line_num << "-" << n->depth << "\"";
+      if(n->stage != NULL){
+        assert(cv_->sm() != NULL);
+        cliver::SearcherStage* ss = n->stage;
+        assert(ss        != NULL);
+        uint64_t rn  = cv_->sm()->get_stage_statistic(ss, "RoundNumber");
+        uint64_t btc = cv_->sm()->get_stage_statistic(ss, "BackTrackCount");
+        uint64_t pct = cv_->sm()->get_stage_statistic(ss, "PassCount");
+        os << "\tn" << n << " [label=\"" << function_name << "-" << line_num << "-" << n->depth << "-rn-" << rn << "-bct-" << btc << "-pct-" << pct << "\"";
+      }else
+        os << "\tn" << n << " [label=\"" << function_name << "-" << line_num << "-" << n->depth << "\"";
     }else {
       os << "\tn" << n << " [label=\"\"";
     }
@@ -861,7 +889,7 @@ void ProfileTree::dump_branch_clone_graph(std::string path) {
       if(n->get_winner())
          os << ",fillcolor=purple";
       else
-         os << ",fillcolor=blue";
+         os << ",fillcolor=cyan";
     }else if (n->my_type == ProfileTreeNode::clone_parent){
       if(n->get_winner())
          os << ",fillcolor=orange";

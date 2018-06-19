@@ -456,7 +456,7 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
   int postorder_ins_count = profileTree->dfs(profileTree->root);
   assert(postorder_ins_count == my_total_instructions);
   printf("my_total_instructions %d postorder_ins_count %d\n", my_total_instructions, postorder_ins_count);
-  profileTree->dump_branch_clone_graph("/playpen/cliver0/branch_clone_processtree.graph");
+  profileTree->dump_branch_clone_graph("/playpen/cliver0/branch_clone_processtree.graph", cv_);
   profileTree->dump_function_call_graph("/playpen/cliver0/function_call_processtree.graph");
 
   delete profileTree;
@@ -945,7 +945,7 @@ void CVExecutor::executeMakeSymbolic(klee::ExecutionState &state,
   if (cvstate->property()->pass_count > 0 && multipass) {
     bindings = cvstate->multi_pass_assignment().getBindings(array_name);
 
-    CVDEBUG("Multi-pass: Binding variable:" << array->name 
+    CVDEBUG("Multi-pass: Binding variable:" << array->name
             << " with concrete assignment of length "
             << mo->size << " with bindings size " 
             << (bindings ? bindings->size() : 0));

@@ -14,6 +14,7 @@
 #include <vector>
 namespace cliver {
       class SearcherStage;
+      class ClientVerifier;
 }
 
 namespace klee {
@@ -31,7 +32,7 @@ namespace klee {
     
     int dfs(ProfileTreeNode *root);
     void consolidate_function_data();
-    void dump_branch_clone_graph(std::string path);
+    void dump_branch_clone_graph(std::string path, cliver::ClientVerifier* cv_);
     void dump_function_call_graph(std::string path);
     void make_sibling_lists(ProfileTreeNode *start);
   };
@@ -84,7 +85,6 @@ namespace klee {
     virtual ~ContainerBranchClone() = default;
     //branches/clones immedidiately following this in the graph.
     std::vector<ProfileTreeNode*> my_branches_or_clones;
-    cliver::SearcherStage *stage;
   };
 
   class ProfileTreeNode {
@@ -97,6 +97,7 @@ namespace klee {
     std::vector<ProfileTreeNode*> siblings;
     ContainerNode* container;
     llvm::Instruction* last_instruction;
+    cliver::SearcherStage *stage;
 
     ExecutionState *data;
     void function_call(
