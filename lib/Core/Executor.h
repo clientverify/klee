@@ -507,8 +507,6 @@ public:
   virtual void useSeeds(const std::vector<struct KTest *> *seeds) { 
     usingSeeds = seeds;
   }
-
-  virtual bool isSymbolicJump ();
   
   virtual void klee_interp_internal ();
   

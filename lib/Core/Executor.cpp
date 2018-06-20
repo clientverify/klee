@@ -98,13 +98,15 @@ using namespace klee;
 
 //AH: Our additions below. --------------------------------------
 #include <ucontext.h>
+#include <iostream>
 enum runType : int {PURE_INTERP, TSX_NATIVE, VERIFICATION};
 extern enum runType exec_mode;
 extern void * StackBase;
 extern char target_stack[65537];
 extern uint64_t InitStackSize;
 extern Module * interpModule;
-
+extern char * target_stack_begin_ptr;
+extern char * interp_stack_begin_ptr;
 extern "C" void * enter_modeled();
 
 extern gregset_t target_ctx_gregs;
@@ -1568,12 +1570,12 @@ static inline const llvm::fltSemantics * fpWidthToSemantics(unsigned width) {
 
 void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   //printf( " KI is %s \n" , (ki->printFileLine()).c_str());
-
+  //printf("Calling executeInstruction \n ");
 Instruction *i = ki->inst;
   switch (i->getOpcode()) {
     // Control flow
   case Instruction::Ret: {
-    //printf("\n Entering ret instruction \n");
+    printf("\n Entering ret instruction \n");
     ReturnInst *ri = cast<ReturnInst>(i);
     KInstIterator kcaller = state.stack.back().caller;
     Instruction *caller = kcaller ? kcaller->inst : 0;
@@ -1587,9 +1589,11 @@ Instruction *i = ki->inst;
     if (state.stack.size() <= 1) {
       assert(!caller && "caller set on initial stack frame");
       //printf("Choosing not to call terminateStateOnExit(state) \n \n ");
-      //printf("Found bottom call frame  \n");
+      printf("Found bottom call frame  \n");
       //terminateStateOnExit(state);
+      
       state.popFrame();
+      printf("state.stack.size() is %d \n", state.stack.size());
       haltExecution = true;
       break;
     } else {
@@ -1597,8 +1601,8 @@ Instruction *i = ki->inst;
 
       if (statsTracker)
         statsTracker->framePopped(state);
-      //printf("state.stack.size() is %d \n", state.stack.size());
-      //printf(" Found ret instruction (early) \n");
+      printf("state.stack.size() is %d \n", state.stack.size());
+      printf(" Found ret instruction (early) \n");
       //haltExecution = true;
       //break;
       if (InvokeInst *ii = dyn_cast<InvokeInst>(caller)) {
@@ -2132,9 +2136,11 @@ Instruction *i = ki->inst;
     break;
   }
   case Instruction::Store: {
+    //printf("Entering store \n");
     ref<Expr> base = eval(ki, 1, state).value;
     ref<Expr> value = eval(ki, 0, state).value;
-
+    //base->dump();
+    
     executeMemoryOperation(state, true, base, value, 0);
     
     break;
@@ -3477,7 +3483,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
           terminateStateOnError(state, "memory error: object read only",
                                 ReadOnly);
         } else {
-	  //printf("Trying to write to MO representing buffer starting at %lu, hex 0x%p \n ", (uint64_t) mo->address, (void *) mo->address);
+	  printf("Trying to write to MO representing buffer starting at %lu, hex 0x%p \n ", (uint64_t) mo->address, (void *) mo->address);
           ObjectState *wos = state.addressSpace.getWriteable(mo, os);
           wos->write(offset, value);
         }          
@@ -3942,6 +3948,8 @@ void Executor::klee_interp_internal () {
   interpCtr++;
   int max = 2500;
 
+  printCtx(target_ctx_gregs);
+  
   if (hasForked) {
     debugFile << "Hit interp counter " <<interpCtr<< " times \n";
     debugFile.flush();
@@ -4068,7 +4076,9 @@ void Executor::initializeInterpretationStructures (Function *f) {
   //Need to be careful here.  The buffer we allocate for the stack is char [X] target_stack. It
   // starts at address StackBase and covers up to StackBase + sizeof(target_stack) -1.
   
-  printf("Adding structures to track target stack starting at %x with size %d \n", StackBase, sizeof(target_stack));
+  printf("Adding structures to track target stack starting at 0x%llx with size %d \n", StackBase, sizeof(target_stack));
+  printf("target stack base ptr is 0x%llx \n", target_stack_begin_ptr);
+  printf("interp stack base ptr is 0x%llx \n", interp_stack_begin_ptr);
   
   MemoryObject * stackMem = addExternalObject(*GlobalExecutionStatePtr,StackBase, sizeof(target_stack), false );
   const ObjectState *stackOS = GlobalExecutionStatePtr->addressSpace.findObject(stackMem);
@@ -4118,6 +4128,11 @@ void Executor::initializeInterpretationStructures (Function *f) {
     printf("Error reading externals file within initializeInterpretationStructures() \n");
     std::exit(EXIT_FAILURE);
   }
+
+  /*
+  if (1) {
+    std::exit(EXIT_SUCCESS);
+    }*/
   
   while (true) {
     char addr [30];

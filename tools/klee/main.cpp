@@ -64,7 +64,7 @@
 
 extern "C" void begin_target_inner();
 extern "C" void klee_interp();
-extern "C" void enter_tase_initial();
+extern "C" void ENTERTASEINITIAL();
 extern "C" void enter_tase(void (*) ());
 //extern void ext_test();
 
@@ -81,7 +81,7 @@ llvm::Module * interpModule;
 char target_stack[65537];
 char interp_stack[65537];
 char * target_stack_begin_ptr = &target_stack[65536];
-
+char * interp_stack_begin_ptr = &interp_stack[65536];
 klee::Interpreter * GlobalInterpreter;
 
 enum runType : int {PURE_INTERP, TSX_NATIVE, VERIFICATION};
@@ -96,10 +96,10 @@ char ** glob_envp;
 void transferToTarget() {
   target_ctx_gregs[REG_RDI] = reinterpret_cast<greg_t>(&begin_target_inner);
   target_ctx_gregs[REG_R15] = reinterpret_cast<greg_t>(&enter_tase);
-  //hope this is right.  Changed from "interp_stack_begin_ptr"
+  //hope this is right.  AH changed from "interp_stack_begin_ptr"
   target_ctx_gregs[REG_RSP] = reinterpret_cast<greg_t>(target_stack_begin_ptr);
 
-  enter_tase_initial();
+  ENTERTASEINITIAL();
 }
 
 //AH:  main_original_vanilla() points to the original version of main from vanilla klee.  Not ideal but it works. 
