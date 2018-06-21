@@ -185,7 +185,8 @@ void ProfileTreeNode::clone(
     this->container = new ContainerBranchClone(ins, stage);
     ret = this->split(me_state, clone_state);
     assert(ret.first->stage == stage);
-    assert(ret.second->stage == stage);
+    assert(ret.second->stage == ((cliver::CVExecutionState*)clone_state)->searcher_stage());
+    assert(ret.first->stage  == ((cliver::CVExecutionState*)me_state)->searcher_stage());
     assert(ret.first->my_branch_or_clone == this);
     assert(ret.second->my_branch_or_clone == this);
   } else if (this->get_ins_count() > 0 ||
@@ -195,13 +196,17 @@ void ProfileTreeNode::clone(
     this->container = new ContainerBranchClone(ins, stage);
     ret = this->split(me_state, clone_state);
     assert(ret.first->stage == stage);
-    assert(ret.second->stage == stage);
+    assert(ret.second->stage == ((cliver::CVExecutionState*)clone_state)->searcher_stage());
+    assert(ret.first->stage  == ((cliver::CVExecutionState*)me_state)->searcher_stage());
     assert(ret.first->my_branch_or_clone == this);
     assert(ret.second->my_branch_or_clone == this);
   } else if (this->get_ins_count() == 0) { //make sibling and add to parent
     assert(this->parent->my_type == clone_parent);
     assert(parent == my_branch_or_clone);
     assert(parent->stage == stage);
+
+    if(parent && parent->data)
+      assert(((cliver::CVExecutionState*)parent->data)->searcher_stage() == stage);
 
     ProfileTreeNode* clone_node = new ProfileTreeNode(this->parent, clone_state);
     this->parent->children.push_back(clone_node);
@@ -683,6 +688,8 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
         my_type = root;
       } else {
         assert(_parent->my_node_number < my_node_number);
+        if(parent->data)
+          assert(((cliver::CVExecutionState*)parent->data)->searcher_stage() == stage);
         depth = _parent->depth;
         //handle the last clone, and the depth from the last clone
         //initializations:
@@ -853,7 +860,6 @@ void ProfileTree::dump_branch_clone_graph(std::string path, cliver::ClientVerifi
 
     if(n->my_type == ProfileTreeNode::clone_parent)
       assert(n->winner || n->parent == NULL || n->stage != NULL);
-//      assert(n->winner || n->parent == NULL || ((ContainerBranchClone*)n->container)->stage != NULL);
     if(n->my_type == ProfileTreeNode::branch_parent || n->my_type == ProfileTreeNode::clone_parent){
       const char *function_name = n->get_instruction()->getParent()->getParent()->getName().data();
       int line_num = get_instruction_line_num(n->get_instruction());
@@ -864,11 +870,11 @@ void ProfileTree::dump_branch_clone_graph(std::string path, cliver::ClientVerifi
         uint64_t rn  = cv_->sm()->get_stage_statistic(ss, "RoundNumber");
         uint64_t btc = cv_->sm()->get_stage_statistic(ss, "BackTrackCount");
         uint64_t pct = cv_->sm()->get_stage_statistic(ss, "PassCount");
-        os << "\tn" << n << " [label=\"" << function_name << "-" << line_num << "-" << n->depth << "-rn-" << rn << "-bct-" << btc << "-pct-" << pct << "\"";
+        os << "\tn" << n << " [label=\"" << function_name << "-" << line_num << "-rn-" << rn << "-bct-" << btc << "\"";
       } else
         os << "\tn" << n << " [label=\"" << function_name << "-" << line_num << "-" << n->depth << "\"";
     }else if(n->get_ins_count() > 0){
-      assert(n->last_instruction != 0);
+      assert(n->last_instruction != NULL);
       const char *function_name = n->last_instruction->getParent()->getParent()->getName().data();
       int line_num = get_instruction_line_num(n->last_instruction);
       if(n->stage != NULL){
@@ -878,7 +884,7 @@ void ProfileTree::dump_branch_clone_graph(std::string path, cliver::ClientVerifi
         uint64_t rn  = cv_->sm()->get_stage_statistic(ss, "RoundNumber");
         uint64_t btc = cv_->sm()->get_stage_statistic(ss, "BackTrackCount");
         uint64_t pct = cv_->sm()->get_stage_statistic(ss, "PassCount");
-        os << "\tn" << n << " [label=\"" << function_name << "-" << line_num << "-" << n->depth << "-rn-" << rn << "-bct-" << btc << "-pct-" << pct << "\"";
+        os << "\tn" << n << " [label=\"" << function_name << "-" << line_num << "-rn-" << rn << "-bct-" << btc << "\"";
       }else
         os << "\tn" << n << " [label=\"" << function_name << "-" << line_num << "-" << n->depth << "\"";
     }else {
