@@ -30,6 +30,7 @@ static const char *warningPrefix = "WARNING";
 static const char *warningOncePrefix = "WARNING ONCE";
 static const char *errorPrefix = "ERROR";
 static const char *notePrefix = "NOTE";
+static const char *tasePrefix = "TASE";
 
 namespace {
 cl::opt<bool> WarningsOnlyToFile(
@@ -83,6 +84,12 @@ static void klee_vfmessage(FILE *fp, const char *pfx, const char *msg,
       fdos.changeColor(llvm::raw_ostream::WHITE,
                        /*bold=*/true,
                        /*bg=*/false);
+
+    // TASE
+    if (shouldSetColor(pfx, msg, tasePrefix))
+      fdos.changeColor(llvm::raw_ostream::YELLOW,
+                       /*bold=*/true,
+                       /*bg=*/false);
   }
 
   fdos << "KLEE: ";
@@ -134,6 +141,13 @@ void klee::klee_message_to_file(const char *msg, ...) {
   va_list ap;
   va_start(ap, msg);
   klee_vmessage(NULL, true, msg, ap);
+  va_end(ap);
+}
+
+void klee::klee_message_tase(const char *msg, ...) {
+  va_list ap;
+  va_start(ap, msg);
+  klee_vmessage(tasePrefix, WarningsOnlyToFile, msg, ap);
   va_end(ap);
 }
 
