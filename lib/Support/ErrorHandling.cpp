@@ -144,13 +144,14 @@ void klee::klee_message_to_file(const char *msg, ...) {
   va_end(ap);
 }
 
+/*
 void klee::klee_message_tase(const char *msg, ...) {
   va_list ap;
   va_start(ap, msg);
   klee_vmessage(tasePrefix, WarningsOnlyToFile, msg, ap);
   va_end(ap);
 }
-
+*/
 void klee::klee_error(const char *msg, ...) {
   va_list ap;
   va_start(ap, msg);

@@ -109,11 +109,11 @@ extern char * target_stack_begin_ptr;
 extern char * interp_stack_begin_ptr;
 extern uint32_t springboard_flags;
 
-extern "C" void * sbentertran();
-extern "C" void * sbexittran();
-extern "C" void * sbreopentran();
+extern "C" void * sb_entertran();
+extern "C" void * sb_exittran();
+extern "C" void * sb_reopen();
 //AH: Todo -- see if we need to change prototype of enter_modeled
-extern "C" void * enter_modeled();
+extern "C" void * sb_enter_modeled();
 extern gregset_t target_ctx_gregs;
 extern gregset_t prev_ctx_gregs;
 
@@ -3803,7 +3803,7 @@ void Executor::model_strncat() {
      printf("INTERPRETER: printed more bytes in verification (%llu) than message_buf_length (%llu) \n", bytes_printed, message_buf_length);
      std::exit(EXIT_FAILURE);
    }
-
+   
    //basket_OS->print();
 
    //At this point, either invoke the solver or get back to execution by bumping RIP.
@@ -3961,11 +3961,11 @@ void Executor::model_inst () {
       uint64_t dest = rip + (uint64_t) offset + 5;
       
       //Checks are here to see if the dest is a label we model.
-      if (dest == (uint64_t) &sbentertran) {
+      if (dest == (uint64_t) &sb_entertran) {
 	model_entertran();
-      }else if (dest == (uint64_t) &sbexittran) {
+      }else if (dest == (uint64_t) &sb_exittran) {
 	model_exittran();
-      }else if (dest == (uint64_t) &sbreopentran) {
+      }else if (dest == (uint64_t) &sb_reopen) {
 	model_reopentran();
       }else {
 	printf("INTERPRETER: Couldn't find  model \n");
@@ -4000,11 +4000,11 @@ void Executor::model_inst () {
       //printf("offset is 0x%lx \n",offset);
       //Must add 6 to account for jmpq 0x0f8e opcode and the 4 bytes for offset
       uint64_t dest = rip + (uint64_t) offset + 6;
-      if (dest == (uint64_t) &(sbentertran) ) {
+      if (dest == (uint64_t) &(sb_entertran) ) {
 	model_entertran();
-      } else if ( dest == (uint64_t) &(sbexittran)) {
+      } else if ( dest == (uint64_t) &(sb_exittran)) {
 	model_exittran();
-      } else if ( dest == (uint64_t) &(sbreopentran) ) {
+      } else if ( dest == (uint64_t) &(sb_reopen) ) {
 	model_reopentran();
       } else {
 	printf("Something is wrong \n");
@@ -4052,7 +4052,7 @@ bool isSpecialInst (uint64_t rip) {
      //Must add 5 to account for call 0xe8 opcode and the 4 bytes for offset
      uint64_t dest = rip + (uint64_t) offset + 5;
      //Checks are here to see if the dest is a function we model.
-     if (dest == (uint64_t) &enter_modeled) {
+     if (dest == (uint64_t) &sb_enter_modeled) {
        return true;
      } else {
        return false;
@@ -4073,7 +4073,7 @@ bool isSpecialInst (uint64_t rip) {
      //printf("offset is 0x%lx \n",offset);
      //Must add 5 to account for jmpq 0xe9 opcode and the 4 bytes for offset
      uint64_t dest = rip + (uint64_t) offset + 5;
-     if (dest == (uint64_t) &(sbentertran) || dest == (uint64_t) &(sbexittran) || dest == (uint64_t) &(sbreopentran)) {
+     if (dest == (uint64_t) &(sb_entertran) || dest == (uint64_t) &(sb_exittran) || dest == (uint64_t) &(sb_reopen)) {
        printf("Found jmp to special label from interpreter \n");
        return true;
      } else {
@@ -4094,7 +4094,7 @@ bool isSpecialInst (uint64_t rip) {
      //printf("offset is 0x%lx \n",offset);
      //Must add 6 to account for jmpq 0x0f8e opcode and the 4 bytes for offset
      uint64_t dest = rip + (uint64_t) offset + 6;
-     if (dest == (uint64_t) &(sbentertran) || dest == (uint64_t) &(sbexittran) || dest == (uint64_t) &(sbreopentran)) {
+     if (dest == (uint64_t) &(sb_entertran) || dest == (uint64_t) &(sb_exittran) || dest == (uint64_t) &(sb_reopen)) {
        printf("Found jmp to special label from interpreter \n");
        return true;
      } else {
