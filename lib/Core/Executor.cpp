@@ -107,8 +107,13 @@ extern uint64_t InitStackSize;
 extern Module * interpModule;
 extern char * target_stack_begin_ptr;
 extern char * interp_stack_begin_ptr;
-extern "C" void * enter_modeled();
+extern uint32_t springboard_flags;
 
+extern "C" void * sbentertran();
+extern "C" void * sbexittran();
+extern "C" void * sbreopentran();
+//AH: Todo -- see if we need to change prototype of enter_modeled
+extern "C" void * enter_modeled();
 extern gregset_t target_ctx_gregs;
 extern gregset_t prev_ctx_gregs;
 
@@ -138,7 +143,7 @@ uint64_t bytes_printed = 0;
 
 extern int MESSAGE_COUNT;
 extern int BASKET_SIZE;
-extern char basket[BUFFER_SIZE];
+char basket[BUFFER_SIZE];
 ObjectState * basket_OS;
 MemoryObject * basket_MO;
 
@@ -1575,7 +1580,7 @@ Instruction *i = ki->inst;
   switch (i->getOpcode()) {
     // Control flow
   case Instruction::Ret: {
-    printf("\n Entering ret instruction \n");
+
     ReturnInst *ri = cast<ReturnInst>(i);
     KInstIterator kcaller = state.stack.back().caller;
     Instruction *caller = kcaller ? kcaller->inst : 0;
@@ -1589,11 +1594,9 @@ Instruction *i = ki->inst;
     if (state.stack.size() <= 1) {
       assert(!caller && "caller set on initial stack frame");
       //printf("Choosing not to call terminateStateOnExit(state) \n \n ");
-      printf("Found bottom call frame  \n");
       //terminateStateOnExit(state);
-      
       state.popFrame();
-      printf("state.stack.size() is %d \n", state.stack.size());
+      
       haltExecution = true;
       break;
     } else {
@@ -1601,10 +1604,6 @@ Instruction *i = ki->inst;
 
       if (statsTracker)
         statsTracker->framePopped(state);
-      printf("state.stack.size() is %d \n", state.stack.size());
-      printf(" Found ret instruction (early) \n");
-      //haltExecution = true;
-      //break;
       if (InvokeInst *ii = dyn_cast<InvokeInst>(caller)) {
         transferToBasicBlock(ii->getNormalDest(), caller->getParent(), state);
       } else {
@@ -2136,13 +2135,10 @@ Instruction *i = ki->inst;
     break;
   }
   case Instruction::Store: {
-    //printf("Entering store \n");
     ref<Expr> base = eval(ki, 1, state).value;
     ref<Expr> value = eval(ki, 0, state).value;
     //base->dump();
-    
     executeMemoryOperation(state, true, base, value, 0);
-    
     break;
   }
 
@@ -2886,7 +2882,7 @@ void Executor::run(ExecutionState  & initialState) {
     
   }
   
-  printf("Finished main instruction interpretation loop \n ...");
+  printf("Finished main instruction interpretation loop \n ");
 
   //delete searcher;
   //searcher = 0;
@@ -3483,7 +3479,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
           terminateStateOnError(state, "memory error: object read only",
                                 ReadOnly);
         } else {
-	  printf("Trying to write to MO representing buffer starting at %lu, hex 0x%p \n ", (uint64_t) mo->address, (void *) mo->address);
+	  //printf("Trying to write to MO representing buffer starting at %lu, hex 0x%p \n ", (uint64_t) mo->address, (void *) mo->address);
           ObjectState *wos = state.addressSpace.getWriteable(mo, os);
           wos->write(offset, value);
         }          
@@ -3726,7 +3722,6 @@ void Executor::model_random() {
   
 }
 
-
 void Executor::model_strncat() {
   //In our testing for fruitbasket this represents a send point.
   printf("INTERPRETER: Entering model_strncat() \n");
@@ -3739,6 +3734,9 @@ void Executor::model_strncat() {
    ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64); 
 
    printf("Detecting write of %s \n ", (char *) rawArg2Val);
+   printf(" Write is directed at buffer based at 0x%lx \n ",rawArg1Val );
+   printf("Basket is located at 0x%lx \n", &basket);
+   
    
    //Variable is used to determine number of chars printed.
    uint64_t actualLength;
@@ -3792,8 +3790,6 @@ void Executor::model_strncat() {
      
    }
    //place dest in return value RAX
-
-
    bytes_printed += actualLength;
    
    //printf("Created randReadExp \n");
@@ -3807,13 +3803,21 @@ void Executor::model_strncat() {
      printf("INTERPRETER: printed more bytes in verification (%llu) than message_buf_length (%llu) \n", bytes_printed, message_buf_length);
      std::exit(EXIT_FAILURE);
    }
-     
+
+   //basket_OS->print();
+
+   //At this point, either invoke the solver or get back to execution by bumping RIP.
+   //RAX already has received the return value.
+   
    if (solve) {
      printf("Creating constraints between bytes printed in verifier and buffer to verify \n");
      for (int j = 0; j < message_buf_length; j++) {
+       
        ref<Expr> messageBufByteExpr = ConstantExpr::create(message_test_buffer[j],Expr::Int8);
+       //messageBufByteExpr->dump();
+       
        ref<Expr> verifierBytePrinted = basket_OS->read(j,Expr::Int8);
-	 
+       //verifierBytePrinted->dump();
        GlobalExecutionStatePtr->addConstraint(EqExpr::create(messageBufByteExpr,verifierBytePrinted));     
        //solve and signal back to parent process.
      }
@@ -3829,9 +3833,43 @@ void Executor::model_strncat() {
        printf("Solver didn't succeed \n");
      
      std::exit(EXIT_SUCCESS);
+   } else {
+     //Need to increment RIP and get back to execution
+     target_ctx_gregs[REG_RIP] += 5;
+     
    }
- }
+
    
+   
+ }
+
+void Executor::model_entertran() {
+//Movb 0x0 into springboard_flags -- todo: double check this later
+  *((uint8_t *) &springboard_flags) = 0;
+  //Jump to address in r15
+  target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_R15];
+  
+}
+
+  //Set the next instruction to the value in R15, since that's what would happen
+  //in sb.exittran (along with poison checks we don't care about for the intepreter)
+void Executor::model_exittran() {
+  //Todo: add an assert later that R15 isn't symbolic, and if it is, potentially fork.
+  printf("Entered model_exittran() \n ");
+  target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_R15];
+  return;
+
+
+}
+
+void Executor::model_reopentran() {
+  printf("Calling model_reopentran() \n ");
+//Movb 0x1 into springboard_flags -- todo: double check this later
+  *((uint8_t *) &springboard_flags) = 1;
+  //Jump to address in r15
+  target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_R15];
+}
+
 bool Executor::gprsAreConcrete() {
   //Check each byte in the gpr object state to see if any bytes are symbolic.
   //Todo: In the future, add a fast path check here to see if individual bytes
@@ -3851,7 +3889,7 @@ bool Executor::gprsAreConcrete() {
 }
 
 bool Executor::instructionBeginsTransaction(uint64_t pc) {
-  //Flesh it out later.
+  //Todo: Flesh it out later.
   return false;
   
 }
@@ -3868,79 +3906,206 @@ if (gprsAreConcrete() && (instructionBeginsTransaction(registers[REG_RIP]))  ) {
    }
 }
 
-void Executor::model_fn () {
+
+//Look for a model for the current instruction at target_ctx_gregs[REG_RIP]
+//and call the model.
+void Executor::model_inst () {
 
   uint64_t rip = target_ctx_gregs[REG_RIP];
-  
-  int callqOpc = 0xe8;
+  int  callqOpc = 0xe8;
+  int  jmpqOpc = 0xe9;
+  uint16_t jleOpc = 0x8e0f;  //reversed from 0x0f8e due to endianness
   
   uint8_t * oneBytePtr = (uint8_t *) rip;
-  if (*oneBytePtr != 0xe8) {
-    printf("Something is wrong in model_fn() !!! \n");
-    std::exit(EXIT_FAILURE);
-  }
+  uint8_t firstByte = *oneBytePtr;
+  uint16_t firstTwoBytes = *((uint16_t *) rip);
   
-  
-  printf("INTERPRETER: Modeling model_fn call \n");
+  if (firstByte == callqOpc)  { 
+    printf("INTERPRETER: Modeling call \n");
+    //This is ugly, but we need to check to see if the 
+    //function we're calling is explicitly modeled in our interpreter.
+    //That means we have to add the number after the call instruction
+    //to the current instruction pointer.
+    //oneBytePtr++;
+    //uint32_t * fourBytePtr = (uint32_t *) oneBytePtr;
+    //printf("fourBytePtr is 0x%lx \n", fourBytePtr);
+    //uint32_t offset = *fourBytePtr;
+    //printf("offset is 0x%lx \n",offset);
+    //Must add 5 to account for call 0xe8 opcode and the 4 bytes for offset
+    //uint64_t dest = rip + (uint64_t) offset + 5;
+    //Checks are here to see if the dest is a function we model.
 
-  //This is ugly, but we need to check to see if the 
-  //function we're calling is explicitly modeled in our interpreter.
-  //That means we have to add the number after the call instruction
-  //to the current instruction pointer.
-  oneBytePtr++;
-  uint32_t * fourBytePtr = (uint32_t *) oneBytePtr;
-  //printf("fourBytePtr is 0x%lx \n", fourBytePtr);
-  uint32_t offset = *fourBytePtr;
-  //printf("offset is 0x%lx \n",offset);
-  //Must add 5 to account for call 0xe8 opcode and the 4 bytes for offset
-  uint64_t dest = rip + (uint64_t) offset + 5;
-  //printf("strncat_lib_model_shim located at 0x%lx \n", &strncat_lib_model_shim);
+    //Grab address of func to model from rax
+    uint64_t dest = target_ctx_gregs[REG_RAX];
+    
+    if (dest == (uint64_t) &random) {
+      model_random();
+    }else if (dest == (uint64_t) &strncat) {
+      model_strncat();
+    }else {
+      printf("INTERPRETER: Couldn't find function model \n");
+      std::exit(EXIT_FAILURE);
+    }
+    return;
+  } else if (firstByte == jmpqOpc) {
+      //This is ugly, but we need to check to see if the 
+      //label we're jumping to is explicitly modeled in our interpreter.
+      //That means we have to add the number after the jmpq instruction
+      //to the current instruction pointer.
+      oneBytePtr++;
+      uint32_t * fourBytePtr = (uint32_t *) oneBytePtr;
+      //printf("fourBytePtr is 0x%lx \n", fourBytePtr);
+      uint32_t offset = *fourBytePtr;
+      //printf("offset is 0x%lx \n",offset);
+      //Must add 5 to account for call 0xe8 opcode and the 4 bytes for offset
+      uint64_t dest = rip + (uint64_t) offset + 5;
+      
+      //Checks are here to see if the dest is a label we model.
+      if (dest == (uint64_t) &sbentertran) {
+	model_entertran();
+      }else if (dest == (uint64_t) &sbexittran) {
+	model_exittran();
+      }else if (dest == (uint64_t) &sbreopentran) {
+	model_reopentran();
+      }else {
+	printf("INTERPRETER: Couldn't find  model \n");
+	std::exit(EXIT_FAILURE);
+      }
+      return; 
+  } else if (firstTwoBytes == jleOpc) {
 
-  //Checks are here to see if the dest is a function we model.
-  if (dest == (uint64_t) &random) {
-    model_random();
-  }else if (dest == (uint64_t) &strncat) {
-    model_strncat();
-  }else {
-    printf("INTERPRETER: Couldn't find function model \n");
-    std::exit(EXIT_FAILURE);
+    //jump if zf ==1 or sf != of
+    //todo: check to make sure eflags isn't poison
+
+    
+    
+    //I swear to god
+    uint16_t eflags = *((uint16_t *) &target_ctx_gregs[REG_EFL]);
+    bool zf = eflags & (0x0040); 
+    bool sf = eflags & (0x0080);
+    bool of = eflags & (0x0800);
+
+    if ( zf == 1 || sf != of) {
+      //do the jump
+      printf("Doing jump in model_inst() \n");
+      //This is also ugly, but we need to check to see if the 
+      //address we're jumping to is a special label.
+      //That means we have to add the number after the jmp instruction
+      //to the current instruction pointer.
+      oneBytePtr++;
+      oneBytePtr++;
+      uint32_t * fourBytePtr = (uint32_t *) oneBytePtr;
+      //printf("fourBytePtr is 0x%lx \n", fourBytePtr);
+      uint32_t offset = *fourBytePtr;
+      //printf("offset is 0x%lx \n",offset);
+      //Must add 6 to account for jmpq 0x0f8e opcode and the 4 bytes for offset
+      uint64_t dest = rip + (uint64_t) offset + 6;
+      if (dest == (uint64_t) &(sbentertran) ) {
+	model_entertran();
+      } else if ( dest == (uint64_t) &(sbexittran)) {
+	model_exittran();
+      } else if ( dest == (uint64_t) &(sbreopentran) ) {
+	model_reopentran();
+      } else {
+	printf("Something is wrong \n");
+	std::exit(EXIT_FAILURE);
+      }
+    } else {
+      //Go to the next instruction
+      target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_RIP] + 6;
+    }
+    return;
+
+  } else {
+      printf("Something is wrong in model_inst() \n");
+      std::exit(EXIT_FAILURE);
   }
-};
+}
 
-bool isModeledFn (uint64_t rip) {
 
-  //printf("Entering isModeledFn() \n");
+bool isSpecialInst (uint64_t rip) {
+
+  //printf("Entering isSpecialInst() \n");
   //TO-DO: Add more opcodes here later on.
-  int callqOpc = 0xe8;
+  uint8_t callqOpc = 0xe8;
+  uint8_t jmpqOpc = 0xe9;
+  uint16_t jleOpc = 0x8e0f;  //reversed from 0x0f8e because of endianness.  Gross
   
   uint8_t * oneBytePtr = (uint8_t *) rip;
-  if (*oneBytePtr != 0xe8)
-    return false;
+  uint8_t firstByte = *oneBytePtr;
+  uint16_t firstTwoBytes = *((uint16_t *) rip);
+
+
   
-  printf("Found Call. Checking to see if fn is modeled \n");
+  if (firstByte == callqOpc)  { 
+     printf("Found Call. Checking to see if fn is modeled \n");
 
-  //This is ugly, but we need to check to see if the 
-  //function we're calling is explicitly modeled in our interpreter.
-  //That means we have to add the number after the call instruction
-  //to the current instruction pointer.
-  oneBytePtr++;
-  uint32_t * fourBytePtr = (uint32_t *) oneBytePtr;
-  //printf("fourBytePtr is 0x%lx \n", fourBytePtr);
-  uint32_t offset = *fourBytePtr;
-  //printf("offset is 0x%lx \n",offset);
-  //Must add 5 to account for call 0xe8 opcode and the 4 bytes for offset
-  uint64_t dest = rip + (uint64_t) offset + 5;
-  printf("enter_modeled located at 0x%lx \n", &enter_modeled);
-  //Checks are here to see if the dest is a function we model.
-  if (dest == (uint64_t) &enter_modeled) {
-    printf("Found modeled call \n");
-    return true;
+     //This is ugly, but we need to check to see if the 
+     //function we're calling is explicitly modeled in our interpreter.
+     //That means we have to add the number after the call instruction
+     //to the current instruction pointer.
+     oneBytePtr++;
+     uint32_t * fourBytePtr = (uint32_t *) oneBytePtr;
+     //printf("fourBytePtr is 0x%lx \n", fourBytePtr);
+     uint32_t offset = *fourBytePtr;
+     //printf("offset is 0x%lx \n",offset);
+     //Must add 5 to account for call 0xe8 opcode and the 4 bytes for offset
+     uint64_t dest = rip + (uint64_t) offset + 5;
+     //Checks are here to see if the dest is a function we model.
+     if (dest == (uint64_t) &enter_modeled) {
+       return true;
+     } else {
+       return false;
+     }
+
+  } else if (firstByte == jmpqOpc ) {
+      //Check to see if rip could be a jump to the springboard
+
+      
+    //This is also ugly, but we need to check to see if the 
+     //address we're jumping to is a special label.
+     //That means we have to add the number after the jmp instruction
+     //to the current instruction pointer.
+     oneBytePtr++;
+     uint32_t * fourBytePtr = (uint32_t *) oneBytePtr;
+     //printf("fourBytePtr is 0x%lx \n", fourBytePtr);
+     uint32_t offset = *fourBytePtr;
+     //printf("offset is 0x%lx \n",offset);
+     //Must add 5 to account for jmpq 0xe9 opcode and the 4 bytes for offset
+     uint64_t dest = rip + (uint64_t) offset + 5;
+     if (dest == (uint64_t) &(sbentertran) || dest == (uint64_t) &(sbexittran) || dest == (uint64_t) &(sbreopentran)) {
+       printf("Found jmp to special label from interpreter \n");
+       return true;
+     } else {
+       printf("Doesn't appear to be a jmpq to springboard \n");
+       return false;
+     }
+  } else if (firstTwoBytes == jleOpc) {
+    
+      //This is also ugly, but we need to check to see if the 
+     //address we're jumping to is a special label.
+     //That means we have to add the number after the jmp instruction
+     //to the current instruction pointer.
+     oneBytePtr++;
+     oneBytePtr++;
+     uint32_t * fourBytePtr = (uint32_t *) oneBytePtr;
+     //printf("fourBytePtr is 0x%lx \n", fourBytePtr);
+     uint32_t offset = *fourBytePtr;
+     //printf("offset is 0x%lx \n",offset);
+     //Must add 6 to account for jmpq 0x0f8e opcode and the 4 bytes for offset
+     uint64_t dest = rip + (uint64_t) offset + 6;
+     if (dest == (uint64_t) &(sbentertran) || dest == (uint64_t) &(sbexittran) || dest == (uint64_t) &(sbreopentran)) {
+       printf("Found jmp to special label from interpreter \n");
+       return true;
+     } else {
+       printf("Doesn't appear to be a jmpq to springboard \n");
+       return false;
+     }
+      
+
+    }  else {
+      return false;
   }
-
-  //If we don't model the function, return false.
-  printf("Found unmodeled fn defined at 0x%lx \n", dest); 
-  return false;
-
 }
 
 void Executor::klee_interp_internal () {
@@ -3948,8 +4113,6 @@ void Executor::klee_interp_internal () {
   interpCtr++;
   int max = 2500;
 
-  printCtx(target_ctx_gregs);
-  
   if (hasForked) {
     debugFile << "Hit interp counter " <<interpCtr<< " times \n";
     debugFile.flush();
@@ -3959,25 +4122,28 @@ void Executor::klee_interp_internal () {
     printf("Hit interp counter %d times. Something is probably wrong. \n\n",interpCtr);
     std::exit(EXIT_FAILURE);
   }
+  printf("------------------------------------------- \n");
   printf("Entering interpreter for time %d \n \n \n", interpCtr);
- 
-  uint64_t rip = target_ctx_gregs[REG_RIP];
+   uint64_t rip = target_ctx_gregs[REG_RIP];
   printf("RIP is %lu in decimal, 0x%lx in hex.\n", rip, rip);
-
+  printf("Initial ctx BEFORE interpretation is \n");
+  printCtx(target_ctx_gregs);
+  printf("\n");
   //for (int i = 0; i < 23; i++) 
   // prev_ctx_gregs[i] = target_ctx_gregs[i];
   
-  // We entered the interpreter through an xabort.
-  if (isModeledFn(rip))
-    model_fn();
-  else {
+
+  if (isSpecialInst(rip)) {
+    printf("INTERPRETER: FOUND SPECIAL MODELED INST \n");
+    model_inst();
+  } else {
     if (hasForked) {
       debugFile << "looking for findInterpFunction() for " << std::hex << rip << " \n";
       debugFile.flush();
       debugFile << std::dec;
     }
     
-    printf("Calling findInterpFunction() .... \n");
+    printf("INTERPRETER: FOUND NORMAL USER INST \n");
     KFunction * interpFn = findInterpFunction (target_ctx_gregs, kmodule);
   
     //Instruction *firstInst = &*(interpFn->function->begin()->begin());
@@ -4020,9 +4186,12 @@ void Executor::klee_interp_internal () {
   printf("New ctx is \n ");
   printCtx(target_ctx_gregs);
   */
+
+  printf("Finished round %d of interpretation. \n", interpCtr);
+  printf("-------------------------------------------\n");
   
   if (resumeNativeExecution()) {
-    printf("--------------RETURNING TO TARGET--------------------- \n");
+    printf("--------RETURNING TO TARGET--------------------- \n");
     return;
   }  else {
     GlobalInterpreter->klee_interp_internal();
@@ -4121,7 +4290,7 @@ void Executor::initializeInterpretationStructures (Function *f) {
   //Map in globals into klee from .vars file.
   //Todo: Needs to be tested after we get everything compiling again.
   //Also need to make a non-hardcoded file path and project name below.
-  char * varsFileLocation = "/playpen/humphries/tase/TASE/parseltongue86/fruit_basket.vars";
+  char * varsFileLocation = "/playpen/humphries/tase/TASE/test/fruit_basket.vars";
   FILE * externalsFile = fopen (varsFileLocation, "r+");
 
   if (externalsFile == NULL) {

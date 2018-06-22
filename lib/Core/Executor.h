@@ -309,16 +309,20 @@ private:
                               KInstruction *target /* undef if write */);
 
 
-  //AH: This is a customized addition.
-  void model_random();
-  void  model_jump();
-  void model_strncat();
+  //AH: Tase additions below.
+  
   bool gprsAreConcrete();
   bool instructionBeginsTransaction(uint64_t pc);
   bool instructionIsModeled();
-  void model_fn();
-  //bool resumeNativeExecution ();
-  
+
+  void model_inst();
+  void model_entertran();
+  void model_exittran();
+  void model_reopentran();
+
+  //AH: Modeled functions
+  void model_random();
+  void model_strncat();
   
   //AH: This is our customized function for accessing memory
   //within our poison-based symbolic value tracking system.

@@ -1396,7 +1396,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    //the stupid simple "apple" case is working.
    
    memset (message_test_buffer, 0, 256);
-   strncpy (message_test_buffer, "apple", 5);
+   strncpy (message_test_buffer, "appleapple", 10);
 
    message_buf_length = strlen(message_test_buffer);
    

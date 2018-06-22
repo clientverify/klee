@@ -463,6 +463,8 @@ void ObjectState::setKnownSymbolic(unsigned offset,
 /***/
 
 ref<Expr> ObjectState::read8(unsigned offset) const {
+
+
   if (isByteConcrete(offset)) {
     return ConstantExpr::create(concreteStore[offset], Expr::Int8);
   } else if (isByteKnownSymbolic(offset)) {
@@ -478,18 +480,13 @@ ref<Expr> ObjectState::read8(unsigned offset) const {
 
 //AH: Made this helper function to find the representative 2-byte aligned buffer for a byte.
 uint16_t * get_rep_buf (uint8_t  * val_ptr) {
-
   uint64_t raw_address = (uint64_t) val_ptr;
-
   if (raw_address % 2 == 0)
     return (uint16_t *)  val_ptr;
   else {
     raw_address = raw_address - 1;
     return (uint16_t *) raw_address;
   }
-    
-  
-
 }
 
 
@@ -650,6 +647,7 @@ ref<Expr> ObjectState::read(ref<Expr> offset, Expr::Width width) const {
 
 ref<Expr> ObjectState::read(unsigned offset, Expr::Width width) const {
   // Treat bool specially, it is the only non-byte sized write we allow.
+
   if (width == Expr::Bool)
     return ExtractExpr::create(read8(offset), 0, Expr::Bool);
 
@@ -658,6 +656,7 @@ ref<Expr> ObjectState::read(unsigned offset, Expr::Width width) const {
   assert(width == NumBytes * 8 && "Invalid width for read size!");
   ref<Expr> Res(0);
   for (unsigned i = 0; i != NumBytes; ++i) {
+
     unsigned idx = Context::get().isLittleEndian() ? i : (NumBytes - i - 1);
     ref<Expr> Byte = read8(offset + idx);
     Res = i ? ConcatExpr::create(Byte, Res) : Byte;
