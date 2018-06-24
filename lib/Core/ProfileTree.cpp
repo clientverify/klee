@@ -337,6 +337,7 @@ int ProfileTree::dfs(ProfileTreeNode *root){
   printf("total_winning_ins_count %d\n", root->total_winning_ins_count );
 
 
+  //this stuff makes sibling lists...
   assert(nodes_to_visit.size() == 0);
   nodes_to_visit.push(root); //add children to the end
   while( nodes_to_visit.size() > 0 ) {
@@ -446,12 +447,29 @@ void ProfileTreeNode::process_winner_parents(){
   }
 }
 
+//iterative postorder traversal.  Too many nodes for recursive :(.
+//http://tech-queries.blogspot.com/2010/12/iterative-post-order-traversal-of_05.html
 void ProfileTreeNode::update_subtree_count(void){
-  sub_tree_ins_count = 0;
-  for (auto i = children.begin(); i != children.end(); ++i) {
-    (*i)->update_subtree_count();
-    sub_tree_ins_count += (*i)->sub_tree_ins_count;
-    sub_tree_ins_count += (*i)->ins_count;
+  assert(parent == NULL);
+  std::stack<ProfileTreeNode*> s1;
+  std::stack<ProfileTreeNode*> s2;
+  s1.push(this);
+  while(!s1.empty()){
+    ProfileTreeNode* n = s1.top();
+    s2.push(n);
+    s1.pop();
+    for (auto i = n->children.begin(); i != n->children.end(); ++i)
+      s1.push(*i);
+  }
+
+  while (!s2.empty()){
+    auto n = s2.top();
+    s2.pop();
+    assert(n->sub_tree_ins_count == 0);
+    for (auto i = n->children.begin(); i != n->children.end(); ++i) {
+      n->sub_tree_ins_count += (*i)->sub_tree_ins_count;
+      n->sub_tree_ins_count += (*i)->ins_count;
+    }
   }
 }
 
@@ -675,6 +693,7 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
     container(0),
     data(_data),
     ins_count(0),
+    sub_tree_ins_count(0),
     edge_ins_count(0),
     depth(0),
     clone_depth(0),
