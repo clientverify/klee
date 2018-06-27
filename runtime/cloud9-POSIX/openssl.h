@@ -33,6 +33,7 @@ int net_socket;
 #define DEBUG_OPENSSL_MODEL 1
 
 // Enable for fully concrete model (requires ktest)
+#define KTEST_WAITPID 1
 #define KTEST_ARC4RAND_PLAYBACK 1
 #define KTEST_RAND_PLAYBACK 1
 #define KTEST_SELECT_PLAYBACK 1

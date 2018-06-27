@@ -300,6 +300,7 @@ DEFINE_MODEL(int, ktest_register_signal_handler, int (*a)(int)){
 
 static int waitpid_had_ECHILD = 0;
 DEFINE_MODEL(int, ktest_waitpid_or_error, pid_t pid, int *status, int options){
+#if KTEST_WAITPID
   static int waitpid_index = -1;
   printf("klee's ktest_waitpid_or_error entered\n");
 
@@ -328,17 +329,50 @@ DEFINE_MODEL(int, ktest_waitpid_or_error, pid_t pid, int *status, int options){
     waitpid_had_ECHILD = 1;
     printf("ktest_waitpid error %d\n", errno);
   }
+  static int ret_pid = 0;
   free(recorded_select);
   if(ret_val == 0){
     printf("ktest_waitpid returning 0\n");
     return 0;
   } else if(ret_val <  0){
+    assert(ret_pid == 1);
     return -1;
   } else {
     printf("ktest_waitpid returning pid %d status %d\n",
         KTEST_FORK_DUMMY_CHILD_PID, *status);
+    assert(ret_pid == 0);
+    ret_pid = 1;
     return KTEST_FORK_DUMMY_CHILD_PID;
   }
+#else
+  printf("klee's symbolic ktest_waitpid_or_error entered\n");
+  static int call_num = 0;
+  call_num++;
+  static int ret_pid = 0; //indicates if we've returned the pid yet...
+  int induce_branch;
+  klee_make_symbolic(&induce_branch, sizeof(induce_branch), "");
+  //Issue: we're not actually recording every fork (e.g. happening in a library
+  //call), so we get 2 signals, one from the sigchld from a fork that I think
+  //happens in pam, and another from the forking behavior in sshd.
+  if(ret_pid == 1){ //if we've returned it then don't return anything
+    printf("ktest_waitpid returning -1\n");
+    errno = ECHILD;
+    waitpid_had_ECHILD = 1;
+    printf("ktest_waitpid error %d\n", errno);
+    return -1;
+  } else if(induce_branch == 0){ //if we've not had the sigchld
+    printf("ktest_waitpid returning 0\n");
+    return 0;
+  } else { //if we've not returned the dead child's pid yet...
+    printf("ktest_waitpid returning 37\n");
+    ret_pid = 1;
+    //assume status indicates WIFEXITED, normal process exit.
+    //the other one that is tested for in session_exit_message is: WIFSIGNALED
+    //and an else case.
+    *status = 0;
+    return KTEST_FORK_DUMMY_CHILD_PID;
+  }
+#endif
 }
 
 //does not support verification of this socket.
