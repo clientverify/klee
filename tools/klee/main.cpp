@@ -66,7 +66,11 @@ extern "C" void begin_target_inner();
 extern "C" void klee_interp();
 extern "C" void ENTERTASEINITIAL();
 extern "C" void enter_tase(void (*) ());
+std::stringstream workerIDStream;
+
 //extern void ext_test();
+
+
 
 typedef struct  {
   int workerPID;
@@ -75,14 +79,19 @@ typedef struct  {
 } workerMessage;
 
 void * StackBase;
-uint64_t InitStackSize = 65536;
 llvm::Module * interpModule;
 //AH: Kind of gross.  We need to allocate X+1 bytes for an X byte stack, and note that it grows DOWNWARD.
-char target_stack[65537];
-char interp_stack[65537];
-char * target_stack_begin_ptr = &target_stack[65536];
-char * interp_stack_begin_ptr = &interp_stack[65536];
+
+// ugly ugly ugly.  Should just do a tase.h file
+// with stack_size defined only once.
+#define STACK_SIZE 131072
+char target_stack[STACK_SIZE + 1];
+char interp_stack[STACK_SIZE + 1];
+char * target_stack_begin_ptr = &target_stack[STACK_SIZE];
+char * interp_stack_begin_ptr = &interp_stack[STACK_SIZE];
 klee::Interpreter * GlobalInterpreter;
+
+
 
 enum runType : int {PURE_INTERP, TSX_NATIVE, VERIFICATION};
 enum runType exec_mode;
@@ -174,7 +183,7 @@ void tsx_init()
   //We really only care about the target stack anyway.
   addr = (uint64_t)&target_stack;
   //printf("stack addr: %lx\n", addr);
-  for (i = 0; i < 65536; i += 4096) {
+  for (i = 0; i < STACK_SIZE; i += 1) {
     access = *(uint64_t *)(addr + i);
   }
   //------------------------------------------------------
@@ -194,6 +203,7 @@ void tsx_init()
 
 using namespace llvm;
 using namespace klee;
+
 
 namespace {
   cl::opt<std::string>
@@ -1270,6 +1280,15 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
  
  int main (int argc, char **argv, char **envp) {
 
+
+   //Redirect stdout messages to a file called "Monitor".
+   //Later, calls to unix fork in executor create new filenames
+   //after each fork.
+   workerIDStream << "Monitor";
+   std::string IDString;
+   IDString = workerIDStream.str();
+   freopen(IDString.c_str(),"w", stdout);
+   
    glob_argc = argc;
    glob_argv = argv;
    glob_envp = envp;
@@ -1345,9 +1364,6 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      theInterpreter = Interpreter::create(ctx, IOpts, handler);
    handler->setInterpreter(interpreter);
    
-   //llvm::Function * dummyMain = llvm::Function::Create( llvm::FunctionType::get(llvm::Type::getVoidTy(ctx),false), llvm::Function::ExternalLinkage, "dummyMain",interpModule);
-   //assert(dummyMain != NULL);
-   
    std::string LibraryDir = KleeHandler::getRunTimeLibraryPath(argv[0]);
    Interpreter::ModuleOptions Opts(LibraryDir.c_str(), EntryPoint,
                                   /*Optimize=*/OptimizeModule,
@@ -1375,6 +1391,8 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      std::exit(EXIT_FAILURE);
    }
 
+  
+   
    printf("Initializing interpretation structures ...\n");
    interpreter->initializeInterpretationStructures(entryFn);
    GlobalInterpreter = interpreter;
@@ -1396,7 +1414,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    //the stupid simple "apple" case is working.
    
    memset (message_test_buffer, 0, 256);
-   strncpy (message_test_buffer, "appleapple", 10);
+   strncpy (message_test_buffer, "appleappleapple", 15);
 
    message_buf_length = strlen(message_test_buffer);
    
@@ -1406,13 +1424,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    printf("Calling tsx_init to map in pages \n");
    tsx_init();
 
-   //printf("Message size and basket size are %d and %d and etc %d %d %d \n\n", MESSAGE_COUNT,BASKET_SIZE, ENCRYPT_ENABLED, EXTRA_WORK, CHEAT_MODE);
-   /*
-   printf("begin_target_inner located at %lx \n", &begin_target_inner); 
-   printf("client_run located at %lx \n", &client_run);
-   printf("springboard located at %lx \n" &springboard);
-   */
-
+   
 
    int pid;
    if (exec_mode == PURE_INTERP)
@@ -1420,7 +1432,8 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    else if (exec_mode == TSX_NATIVE)
      pid = 0;
    else if (exec_mode == VERIFICATION) {
-     printf("CALLING FORK (TESTING, add fork later) \n\n"); pid = 0;}
+     pid = fork();
+   }
    else {
      printf("ERROR: invalid exec_mode \n");  std::exit(EXIT_FAILURE); }
    
@@ -1454,7 +1467,11 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    } else {
      //Code path here will hold the management code for the controller process.
 
-
+     while (true) {
+       //spin
+     }
+     
+     
      while(true) {
        //manage states
        int numBytesRead;
@@ -1496,7 +1513,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
        //If so, see why and determine if the worker should be able to fork.
 
        //If worker forks, find the pid of the child and add it to the list.
-     }
+     } 
      
    }
  
