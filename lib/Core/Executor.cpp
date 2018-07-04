@@ -105,7 +105,7 @@ extern void * StackBase;
 //extern const uint64_t stack_size;
 // ugly ugly ugly.  Should just do a tase.h file
 // with stack_size defined only once.
-#define STACK_SIZE 131072
+#define STACK_SIZE 524288
 extern char target_stack[STACK_SIZE +1];
 
 extern Module * interpModule;
@@ -3896,26 +3896,14 @@ void Executor::model_reopentran() {
 }
 
 bool Executor::gprsAreConcrete() {
-  //Check each byte in the gpr object state to see if any bytes are symbolic.
-  //Todo: In the future, add a fast path check here to see if individual bytes
-  //have the poison value.
-  int numberOfGPRS = 23;
-
-  for (int i = 0; i < (numberOfGPRS * 8) ; i++) {
-
-    //Need to expose isByteConcrete for external use
-    //if (!(target_ctx_gregs_OS->isByteConcrete(i)))
-      return false;
-  }
-  
-
-  return true;
-  
+  return target_ctx_gregs_OS->isObjectEntirelyConcrete();
 }
 
 bool Executor::instructionBeginsTransaction(uint64_t pc) {
-  //Todo: Flesh it out later.
-  return false;
+   if ( pc == (uint64_t) &sb_entertran || pc == (uint64_t) &sb_reopen ) {
+    return true;
+  } else
+     return false;
   
 }
 
@@ -3947,24 +3935,8 @@ void Executor::model_inst () {
   
   if (firstByte == callqOpc)  { 
     printf("INTERPRETER: Modeling call \n");
-    //This is ugly, but we need to check to see if the 
-    //function we're calling is explicitly modeled in our interpreter.
-    //That means we have to add the number after the call instruction
-    //to the current instruction pointer.
-    //oneBytePtr++;
-    //uint32_t * fourBytePtr = (uint32_t *) oneBytePtr;
-    //printf("fourBytePtr is 0x%lx \n", fourBytePtr);
-    //uint32_t offset = *fourBytePtr;
-    //printf("offset is 0x%lx \n",offset);
-    //Must add 5 to account for call 0xe8 opcode and the 4 bytes for offset
-    //uint64_t dest = rip + (uint64_t) offset + 5;
-    //Checks are here to see if the dest is a function we model.
-
-    //Grab address of func to model from rax
-    uint64_t dest = target_ctx_gregs[REG_RAX];
-   
-
-    
+    uint64_t dest = target_ctx_gregs[REG_RAX]; //Grab address of func to model from rax
+       
     if (dest == (uint64_t) &random) {
       model_random();
     }else if (dest == (uint64_t) &strncat) {
@@ -4000,8 +3972,6 @@ bool isSpecialInst (uint64_t rip) {
   uint8_t * oneBytePtr = (uint8_t *) rip;
   uint8_t firstByte = *oneBytePtr;
   uint16_t firstTwoBytes = *((uint16_t *) rip);
-
-
   
   if (firstByte == callqOpc)  { 
      printf("Found Call. Checking to see if fn is modeled \n");
@@ -4026,8 +3996,6 @@ bool isSpecialInst (uint64_t rip) {
 
   } else if ((uint64_t)rip == (uint64_t) &sb_entertran || (uint64_t)rip == (uint64_t) &sb_reopen || (uint64_t)rip == (uint64_t) &sb_exittran  ) {
     return true;
-      
-
   }  else {
     return false;
   }
@@ -4051,8 +4019,6 @@ void Executor::klee_interp_internal () {
   printf("\n");
   //for (int i = 0; i < 23; i++) 
   // prev_ctx_gregs[i] = target_ctx_gregs[i];
-  
-
 
   //  printf("target_ctx_gregs conc store at %llx \n",&(target_ctx_gregs_OS->concreteStore[0]));
   if (isSpecialInst(rip)) {
@@ -4079,7 +4045,6 @@ void Executor::klee_interp_internal () {
     ref<ConstantExpr> regExpr = ConstantExpr::create(regAddr, Context::get().getPointerWidth());
     arguments.push_back(regExpr);
 
-
     assert(GlobalExecutionStatePtr);
     bindArgument(interpFn, 0, *GlobalExecutionStatePtr, arguments[0]);
     //printf("Calling statsTracker...\n");
@@ -4095,7 +4060,6 @@ void Executor::klee_interp_internal () {
       statsTracker->done();
     
   }
-  
   
   /*
   printf("Orig ctx was \n ");

@@ -84,7 +84,7 @@ llvm::Module * interpModule;
 
 // ugly ugly ugly.  Should just do a tase.h file
 // with stack_size defined only once.
-#define STACK_SIZE 131072
+#define STACK_SIZE 524288
 char target_stack[STACK_SIZE + 1];
 char interp_stack[STACK_SIZE + 1];
 char * target_stack_begin_ptr = &target_stack[STACK_SIZE];
@@ -1414,7 +1414,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    //the stupid simple "apple" case is working.
    
    memset (message_test_buffer, 0, 256);
-   strncpy (message_test_buffer, "appleappleapple", 15);
+   strncpy (message_test_buffer, "appleappleorangeapple", 21);
 
    message_buf_length = strlen(message_test_buffer);
    

@@ -401,6 +401,21 @@ bool ObjectState::isByteKnownSymbolic(unsigned offset) const {
   //return knownSymbolics && knownSymbolics[offset].get();
 }
 
+
+//ABH:  Created this to make gprsAreConcrete() easier to implement.
+  //Check each byte in the gpr object state to see if any bytes are symbolic.
+  //Todo: In the future, add a fast path check here to see if individual bytes
+  //have the poison value.
+bool ObjectState::isObjectEntirelyConcrete() {
+  for (int i = 0; i < this->size ; i++) {
+    if (!isByteConcrete(i))
+      return false;
+  }
+  return true;
+
+}
+
+
 //Updated for TASE
 //We should be marking 2 bytes at a time as concrete.
 //Need to be careful when calling because of this.

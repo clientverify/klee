@@ -207,7 +207,10 @@ public:
   void write32(unsigned offset, uint32_t value);
   void write64(unsigned offset, uint64_t value);
 
-void print();
+  //ABH added this to make areGPRsConcrete easier to implement
+  bool isObjectEntirelyConcrete();
+       
+  void print();
   
 private:
   const UpdateList &getUpdates() const;
