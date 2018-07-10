@@ -392,7 +392,6 @@ DEFINE_MODEL(int, ktest_readsocket_or_error, int fd, void *buf, size_t count){
   }
 }
 
-
 //does not support verification of this socket.
 DEFINE_MODEL(int, ktest_writesocket, int fd, void *buf, size_t count){
   assert(!klee_is_symbolic(count));
@@ -443,12 +442,24 @@ DEFINE_MODEL(int, ktest_writesocket, int fd, void *buf, size_t count){
 #endif
 }
 
+#define NET_READ_SUMBOLIC_CONTENTS 0
 //does not support verification of this socket.
 DEFINE_MODEL(int, ktest_readsocket, int fd, void *buf, size_t count){
   assert(!klee_is_symbolic(count));
   assert(!klee_is_symbolic(buf)); //the pointer shouldn't be symbolic.
   assert(!klee_is_symbolic(fd));
   printf("klee's ktest_readsocket entered\n");
+
+#if NET_READ_SUMBOLIC_CONTENTS
+  if (net_socket == fd){
+    int len = ktest_verify_readsocket(fd, buf, count);
+    char* buf2 = malloc(len);
+    klee_make_symbolic(buf2, len, "");
+    memcpy(buf, buf2, len);
+    free(buf2);
+    return len;
+  }
+#endif
 
   if (monitor_socket == fd || net_socket == fd || pty_dup_socket == fd){
     return ktest_verify_readsocket(fd, buf, count);

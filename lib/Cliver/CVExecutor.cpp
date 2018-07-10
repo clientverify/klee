@@ -1058,7 +1058,8 @@ CVExecutor::fork(klee::ExecutionState &current,
     }
 
     assert(trueState->profiletreeNode->parent == falseState->profiletreeNode->parent);
-    assert(trueState->profiletreeNode->parent->get_type() == klee::ProfileTreeNode::branch_parent);
+    assert(trueState->profiletreeNode->parent->get_type() == klee::ProfileTreeNode::branch_parent ||
+        trueState->profiletreeNode->parent->get_type() == klee::ProfileTreeNode::clone_parent);
     assert(trueState->profiletreeNode->get_type() == klee::ProfileTreeNode::leaf);
     assert(falseState->profiletreeNode->get_type() == klee::ProfileTreeNode::leaf);
 

@@ -99,8 +99,6 @@ void ProfileTreeNode::function_call(
 
   assert(data  == kid->data);
   assert(kid->parent == this);
-  if(my_function && ((ContainerCallIns*)my_function->container)->my_target)
-    assert(ins->getParent()->getParent() == ((ContainerCallIns*)my_function->container)->my_target);
 }
 
 void ProfileTreeNode::function_return(
@@ -122,8 +120,6 @@ void ProfileTreeNode::function_return(
 
   assert(data  == kid->data);
   assert(kid->parent == this);
-  if(my_function && ((ContainerCallIns*)my_function->container)->my_target)
-    assert(ins->getParent()->getParent() == ((ContainerCallIns*)my_function->container)->my_target);
 }
 
 std::pair<ProfileTreeNode*, ProfileTreeNode*>
@@ -160,9 +156,6 @@ void ProfileTreeNode::branch(
   assert(leftData  == ret.first->data);
   assert(rightData == ret.second->data);
   assert(ret.first->parent == ret.second->parent);
-
-  if(my_function && ((ContainerCallIns*)my_function->container)->my_target)
-    assert(ins->getParent()->getParent() == ((ContainerCallIns*)my_function->container)->my_target);
 }
 
 void ProfileTreeNode::clone(
@@ -203,7 +196,6 @@ void ProfileTreeNode::clone(
   } else if (this->get_ins_count() == 0) { //make sibling and add to parent
     assert(this->parent->my_type == clone_parent);
     assert(parent == my_branch_or_clone);
-    assert(parent->stage == stage);
 
     if(parent && parent->data)
       assert(((cliver::CVExecutionState*)parent->data)->searcher_stage() == stage);
@@ -221,8 +213,6 @@ void ProfileTreeNode::clone(
 
   me_state->profiletreeNode = ret.first;
   clone_state->profiletreeNode = ret.second;
-  if(my_function && ((ContainerCallIns*)my_function->container)->my_target)
-    assert(ins->getParent()->getParent() == ((ContainerCallIns*)my_function->container)->my_target);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -425,7 +415,7 @@ void ProfileTree::make_sibling_lists(ProfileTreeNode* start){
         continue;
       }
       if((*i)->get_type() != ProfileTreeNode::clone_parent)
-        assert((*i)->depth > (*i)->parent->depth);
+        assert((*i)->depth >= (*i)->parent->depth);
       if((*i)->parent->get_type() == ProfileTreeNode::clone_parent)
         assert((*i)->last_clone == (*i)->parent);
 
@@ -767,7 +757,6 @@ void ProfileTreeNode::increment_ins_count(llvm::Instruction *i){
   assert(i != NULL);
   if(my_function != NULL){
     assert(((ContainerCallIns*)my_function->container)->my_target != NULL);
-    assert(i->getParent()->getParent() == ((ContainerCallIns*)my_function->container)->my_target);
     ((ContainerCallIns*)my_function->container)->function_ins_count++;
   }
   last_instruction = i;
