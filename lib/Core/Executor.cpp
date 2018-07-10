@@ -92,20 +92,19 @@
 #include <errno.h>
 #include <cxxabi.h>
 
-
 using namespace llvm;
 using namespace klee;
 
 //AH: Our additions below. --------------------------------------
 #include <ucontext.h>
 #include <iostream>
+
+extern int c2sFD [2];
+#include "klee/tase_constants.h"
 enum runType : int {PURE_INTERP, TSX_NATIVE, VERIFICATION};
 extern enum runType exec_mode;
 extern void * StackBase;
-//extern const uint64_t stack_size;
-// ugly ugly ugly.  Should just do a tase.h file
-// with stack_size defined only once.
-#define STACK_SIZE 524288
+
 extern char target_stack[STACK_SIZE +1];
 
 extern Module * interpModule;
@@ -1044,6 +1043,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     printf("DBG: FRK 3\n");
     int pid  = ::fork();
     hasForked = true;
+    printf("Forking at 0x%llx \n", target_ctx_gregs[REG_RIP]);
     if (pid ==0 ) {
       int i = getpid();
       
@@ -1055,8 +1055,6 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
       freopen(pidString.c_str(),"w",stderr);
       printf("DEBUG:  Child process created\n");
       addConstraint(*GlobalExecutionStatePtr, Expr::createIsZero(condition));
-      //debugFile.open("FalseState.txt");
-      //debugFile.rdbuf()->pubsetbuf(0,0);
     } else {
       int i = getpid();
       workerIDStream << ".";
@@ -1067,12 +1065,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
       freopen(pidString.c_str(),"w",stderr);
       printf("DEBUG: Parent process continues \n");
       addConstraint(*GlobalExecutionStatePtr, condition);
-      //debugFile.open("TrueState.txt");
-      //debugFile.rdbuf()->pubsetbuf(0,0);
     }
-    
-    //debugFile << "First line after fork \n ";
-    //debugFile.flush();
     
     //Call to solver to make sure we're legit on this branch.
 
@@ -3827,12 +3820,13 @@ void Executor::model_strncat() {
   
   //At this point, invoke the solver and  get back to execution by bumping RIP if necessary.
   //RAX already has received the return value.
-  
+  printf("Adding constraints between test and verifier buffers \n");
   for (int j = 0; j < bytes_printed; j++) {
     ref<Expr> messageBufByteExpr = ConstantExpr::create(message_test_buffer[j],Expr::Int8);
     ref<Expr> verifierBytePrinted = basket_OS->read(j,Expr::Int8);
     ref<Expr> equalsExpr = EqExpr::create(messageBufByteExpr,verifierBytePrinted);
     addConstraint(*GlobalExecutionStatePtr, equalsExpr);
+    //equalsExpr->dump();
     //solve and signal back to parent process.
   }
 
@@ -3853,6 +3847,13 @@ void Executor::model_strncat() {
   
   if (bytes_printed == message_buf_length  && success) {
     printf("SUCCESS: All messages accounted for \n");
+
+    std::string successIDString = "SUCCESS." +  workerIDStream.str(); // pre-pend "SUCCESS." to process ID string
+    freopen(successIDString.c_str(),"w",stdout);
+    freopen(successIDString.c_str(),"w",stderr);
+
+    write(c2sFD[1], "SUCCESS", 8);
+    printf("Just wrote? \n");
     for ( int k =0; k < GlobalExecutionStatePtr->symbolics.size(); k++) {
       printf("Symbolic var name: %s \n", GlobalExecutionStatePtr->symbolics[k].first->name.c_str());
       printf("Symbolic var solution: ");
@@ -3865,6 +3866,7 @@ void Executor::model_strncat() {
     target_ctx_gregs[REG_RIP] += 5;  //Increment RIP and get back to execution
   } else {
     printf("ERROR in model strncat() \n"); //Fallthrough case should never be reached
+    std::exit(EXIT_FAILURE);
   }
 
 }

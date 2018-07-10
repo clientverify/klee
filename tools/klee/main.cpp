@@ -62,6 +62,8 @@
 //---------------------------------------------------------
 //AH: BEGINNING OF OUR ADDITIONS (not including .h files)
 
+#include "klee/tase_constants.h"
+
 extern "C" void begin_target_inner();
 extern "C" void klee_interp();
 extern "C" void ENTERTASEINITIAL();
@@ -82,9 +84,9 @@ void * StackBase;
 llvm::Module * interpModule;
 //AH: Kind of gross.  We need to allocate X+1 bytes for an X byte stack, and note that it grows DOWNWARD.
 
-// ugly ugly ugly.  Should just do a tase.h file
-// with stack_size defined only once.
-#define STACK_SIZE 524288
+//  stack_size defined in tase.h
+int c2sFD [2];
+
 char target_stack[STACK_SIZE + 1];
 char interp_stack[STACK_SIZE + 1];
 char * target_stack_begin_ptr = &target_stack[STACK_SIZE];
@@ -117,7 +119,7 @@ void main_original_vanilla();
 
 //Fruit basket specific code.
 //TODO: Get rid of this third pound define for buffer size!
-#define BUFFER_SIZE 256
+
 char message_test_buffer [BUFFER_SIZE];
 uint64_t message_buf_length;
 
@@ -1302,14 +1304,12 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    std::string errorMsg;
    LLVMContext ctx;
    interpModule = klee::loadModule(ctx, InputFile, errorMsg);
-
    printf("Module has been loaded...\n");
    
    if (!interpModule) {
     klee_error("error loading program '%s': %s", InputFile.c_str(),
                errorMsg.c_str());
   }
-
    
    
    ///////////////////////Arg Parsing section
@@ -1356,7 +1356,6 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    ///////////////////// End of Arg Parsing Section
    
    printf("Creating interpreter... \n");
-   
    Interpreter::InterpreterOptions IOpts;
    //IOpts.MakeConcreteSymbolic = MakeConcreteSymbolic;
    KleeHandler *handler = new KleeHandler(pArgc, pArgv);
@@ -1391,8 +1390,6 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      std::exit(EXIT_FAILURE);
    }
 
-  
-   
    printf("Initializing interpretation structures ...\n");
    interpreter->initializeInterpretationStructures(entryFn);
    GlobalInterpreter = interpreter;
@@ -1400,7 +1397,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    //This should be made global later.
    enum runType exec_mode = VERIFICATION;
 
-   int c2sFD [2];
+
    int pipeResult = pipe(c2sFD);
    if (pipeResult != 0) {
      printf("ERROR: Couldn't create c2sFD pipe\n");
@@ -1414,7 +1411,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    //the stupid simple "apple" case is working.
    
    memset (message_test_buffer, 0, 256);
-   strncpy (message_test_buffer, "appleappleorangeapple", 21);
+   strncpy (message_test_buffer, "appleorangeappleorange", 22);
 
    message_buf_length = strlen(message_test_buffer);
    
@@ -1469,6 +1466,19 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 
      while (true) {
        //spin
+       int numBytesRead;
+       char workerMessageBuf[20];
+
+       numBytesRead =  read(c2sFD[0], workerMessageBuf, sizeof(workerMessageBuf));
+       if (numBytesRead != 0) {
+	 printf("Master found something in the pipe \n");
+	 char message[20];
+
+	 strncpy(message,workerMessageBuf,20);
+	 printf("Master received message %s \n", message);
+	 
+	 std::exit(EXIT_SUCCESS);
+       }
      }
      
      

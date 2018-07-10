@@ -1,0 +1,2 @@
+#define BUFFER_SIZE 256
+#define STACK_SIZE 2097152
