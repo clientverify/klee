@@ -69,10 +69,9 @@ extern "C" void klee_interp();
 extern "C" void ENTERTASEINITIAL();
 extern "C" void enter_tase(void (*) ());
 std::stringstream workerIDStream;
+std::stringstream globalLogStream;
 
 //extern void ext_test();
-
-
 
 typedef struct  {
   int workerPID;
@@ -83,7 +82,6 @@ typedef struct  {
 void * StackBase;
 llvm::Module * interpModule;
 //AH: Kind of gross.  We need to allocate X+1 bytes for an X byte stack, and note that it grows DOWNWARD.
-
 //  stack_size defined in tase.h
 int c2sFD [2];
 
@@ -92,8 +90,6 @@ char interp_stack[STACK_SIZE + 1];
 char * target_stack_begin_ptr = &target_stack[STACK_SIZE];
 char * interp_stack_begin_ptr = &interp_stack[STACK_SIZE];
 klee::Interpreter * GlobalInterpreter;
-
-
 
 enum runType : int {PURE_INTERP, TSX_NATIVE, VERIFICATION};
 enum runType exec_mode;
@@ -116,13 +112,11 @@ void transferToTarget() {
 //AH:  main_original_vanilla() points to the original version of main from vanilla klee.  Not ideal but it works. 
 void main_original_vanilla();
 
-
 //Fruit basket specific code.
 //TODO: Get rid of this third pound define for buffer size!
 
 char message_test_buffer [BUFFER_SIZE];
 uint64_t message_buf_length;
-
 
 //AH: From the tsgx folks.
 //TO-DO: Make sure this is properly cited and recognized.
@@ -143,7 +137,6 @@ void tsx_init()
   unsigned access;
   int i;
   
-    
   //Hitting code pages---------------------------
 
   uint64_t start_page_address = ((uint64_t) (&__executable_start))  & 0xfffffffffffff000;
@@ -1282,7 +1275,6 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
  
  int main (int argc, char **argv, char **envp) {
 
-
    //Redirect stdout messages to a file called "Monitor".
    //Later, calls to unix fork in executor create new filenames
    //after each fork.
@@ -1296,10 +1288,9 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    glob_envp = envp;
    
    printf("Initializing interp and target contexts... \n");
-
    llvm::InitializeNativeTarget();
    parseArguments(argc, argv);
-   
+
    // Load the bytecode...
    std::string errorMsg;
    LLVMContext ctx;
@@ -1310,8 +1301,6 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
     klee_error("error loading program '%s': %s", InputFile.c_str(),
                errorMsg.c_str());
   }
-   
-   
    ///////////////////////Arg Parsing section
 
    int pArgc;
@@ -1339,8 +1328,6 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      pEnvp = envp;
    }
    
-   
-
    pArgc = InputArgv.size() + 1;
    pArgv = new char *[pArgc];
    for (unsigned i=0; i<InputArgv.size()+1; i++) {
@@ -1369,15 +1356,12 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
                                   /*CheckDivZero=*/CheckDivZero,
                                   /*CheckOvershift=*/CheckOvershift);
 
-
    //Todo:  See if we can rip some of the code below out for externalsAndGlobalsCheck.
    // We're already doing the work of mapping in globals for tase in
    // initializeInterpretationStructures().
    printf("Setting module and checking externals and globals... \n");
    const Module *finalModule = interpreter->setModule(interpModule, Opts);
    externalsAndGlobalsCheck(finalModule);
-
-
    StackBase = (void *) &target_stack;
    //Entry fn for our purposes is a dummy main function.
    // It's specified in parseltongue86 as dummyMain and
@@ -1394,9 +1378,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    interpreter->initializeInterpretationStructures(entryFn);
    GlobalInterpreter = interpreter;
    
-   //This should be made global later.
-   enum runType exec_mode = VERIFICATION;
-
+   enum runType exec_mode = VERIFICATION; //This should be made global later.
 
    int pipeResult = pipe(c2sFD);
    if (pipeResult != 0) {
@@ -1404,7 +1386,6 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      std::exit(EXIT_FAILURE);
    }
 
-   
    //TO-DO: Remove later.  For test purposes
    //Really ought to be able to add in longer
    //strings with multiple fruits now that
@@ -1412,17 +1393,12 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    
    memset (message_test_buffer, 0, 256);
    strncpy (message_test_buffer, "appleorangeappleorange", 22);
-
    message_buf_length = strlen(message_test_buffer);
-   
    
    //TODO: Make tsx_init() work for global variables
    //and double check the implementation.
    printf("Calling tsx_init to map in pages \n");
    tsx_init();
-
-   
-
    int pid;
    if (exec_mode == PURE_INTERP)
      pid = 0;
@@ -1432,33 +1408,38 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      pid = fork();
    }
    else {
-     printf("ERROR: invalid exec_mode \n");  std::exit(EXIT_FAILURE); }
-   
+     printf("ERROR: invalid exec_mode \n");
+     std::exit(EXIT_FAILURE);
+   }
    if (pid == 0){
 
      //Child path is here.
      printf("---------------------SWAPPING TO TARGET CONTEXT------------------- \n");
      if (exec_mode == PURE_INTERP) {
-       printf("STARTING PURE INTERPRETER TEST \n");
-       //RIP hack is just for now.
-       
+       printf("STARTING PURE INTERPRETER TEST \n");    
        klee_interp();
      } else if (exec_mode == TSX_NATIVE) {
        printf("STARTING TSX_NATIVE EXECUTION TEST W/O SYMBOLIC VALUES \n");
        //swapcontext(&handler_ctx, &target_ctx);
      } else if (exec_mode == VERIFICATION) {
+       
+       int i = getpid();
+       workerIDStream << ".";
+       workerIDStream << i;
+       std::string pidString ;
+       pidString = workerIDStream.str();
+       freopen(pidString.c_str(),"w",stdout);
+       freopen(pidString.c_str(),"w",stderr);
+       
        printf("STARTING VERIFICATION \n");
        transferToTarget();
        //swapcontext(&handler_ctx, &target_ctx);
-       
      }
      else {
        printf("ERROR: Run mode not specified \n");
        std::exit(EXIT_FAILURE);
      }
-     
      printf("RETURNING TO MAIN HANDLER \n");
-     
      return 0;
      
    } else {
@@ -1480,7 +1461,6 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 	 std::exit(EXIT_SUCCESS);
        }
      }
-     
      
      while(true) {
        //manage states
@@ -1517,16 +1497,11 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 	 //Remove me.
 	 std::exit(EXIT_FAILURE);
        }
-     
-       //Determine if any workers are blocked.
-       
+       //Determine if any workers are blocked.  
        //If so, see why and determine if the worker should be able to fork.
-
        //If worker forks, find the pid of the child and add it to the list.
      } 
-     
    }
- 
  }
  
 void main_original_vanilla() {

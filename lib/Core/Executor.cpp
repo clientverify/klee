@@ -99,6 +99,7 @@ using namespace klee;
 #include <ucontext.h>
 #include <iostream>
 
+extern std::stringstream globalLogStream;
 extern int c2sFD [2];
 #include "klee/tase_constants.h"
 enum runType : int {PURE_INTERP, TSX_NATIVE, VERIFICATION};
@@ -2889,6 +2890,7 @@ void Executor::run(ExecutionState  & initialState) {
     KInstruction *ki = state.pc;
     stepInstCtr++;
     printf("Calling stepInstruction time %d ... \n", stepInstCtr);
+    std::cout.flush();
     stepInstruction(state);
 
     //printf("Calling execute instruction ... \n");
@@ -3716,7 +3718,6 @@ void Executor::model_random() {
   const ObjectState *constRandBufOS = GlobalExecutionStatePtr->addressSpace.findObject(randBuf_MO);
   ObjectState * rand_buf_OS = GlobalExecutionStatePtr->addressSpace.getWriteable(randBuf_MO,constRandBufOS);
 
-  
   ref <Expr> psnRand = rand_buf_OS->read(0,Expr::Int32);
   
   int objSize = rand_buf_OS->size;
@@ -3876,7 +3877,6 @@ void Executor::model_entertran() {
   *((uint8_t *) &springboard_flags) = 0;
   //Jump to address in r15
   target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_R15];
-  
 }
 
   //Set the next instruction to the value in R15, since that's what would happen
@@ -3886,7 +3886,6 @@ void Executor::model_exittran() {
   printf("Entered model_exittran() \n ");
   target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_R15];
   return;
-
 }
 
 void Executor::model_reopentran() {
@@ -3902,11 +3901,10 @@ bool Executor::gprsAreConcrete() {
 }
 
 bool Executor::instructionBeginsTransaction(uint64_t pc) {
-   if ( pc == (uint64_t) &sb_entertran || pc == (uint64_t) &sb_reopen ) {
+  if (pc == (uint64_t) &sb_entertran || pc == (uint64_t) &sb_reopen) 
     return true;
-  } else
-     return false;
-  
+  else
+    return false; 
 }
 
 
@@ -3920,7 +3918,6 @@ if (gprsAreConcrete() && (instructionBeginsTransaction(registers[REG_RIP]))  ) {
       return false;
    }
 }
-
 
 //Look for a model for the current instruction at target_ctx_gregs[REG_RIP]
 //and call the model.
@@ -3937,8 +3934,7 @@ void Executor::model_inst () {
   
   if (firstByte == callqOpc)  { 
     printf("INTERPRETER: Modeling call \n");
-    uint64_t dest = target_ctx_gregs[REG_RAX]; //Grab address of func to model from rax
-       
+    uint64_t dest = target_ctx_gregs[REG_RAX]; //Grab address of func to model from rax    
     if (dest == (uint64_t) &random) {
       model_random();
     }else if (dest == (uint64_t) &strncat) {
@@ -3948,18 +3944,18 @@ void Executor::model_inst () {
       std::exit(EXIT_FAILURE);
     }
     return;
-  } else if  (rip == (uint64_t) &sb_entertran) {
-	model_entertran();
+  }else if (rip == (uint64_t) &sb_entertran) {
+    model_entertran();
   }else if (rip == (uint64_t) &sb_exittran) {
     model_exittran();
   }else if (rip == (uint64_t) &sb_reopen) {
     model_reopentran();
   }else {
-	printf("INTERPRETER: Couldn't find  model \n");
-	std::exit(EXIT_FAILURE);
+    printf("INTERPRETER: Couldn't find  model \n");
+    std::exit(EXIT_FAILURE);
   }
   return;
-
+  
 }
 
 
@@ -4022,13 +4018,19 @@ void Executor::klee_interp_internal () {
   //for (int i = 0; i < 23; i++) 
   // prev_ctx_gregs[i] = target_ctx_gregs[i];
 
+  std::cout.flush();
+
+  printf("DEBUG 1 \n");
+  
   //  printf("target_ctx_gregs conc store at %llx \n",&(target_ctx_gregs_OS->concreteStore[0]));
   if (isSpecialInst(rip)) {
     printf("INTERPRETER: FOUND SPECIAL MODELED INST \n");
+    std::cout.flush();
     model_inst();
   } else {
     
     printf("INTERPRETER: FOUND NORMAL USER INST \n");
+    std::cout.flush();
     KFunction * interpFn = findInterpFunction (target_ctx_gregs, kmodule);
   
     //Instruction *firstInst = &*(interpFn->function->begin()->begin());
@@ -4039,9 +4041,9 @@ void Executor::klee_interp_internal () {
     GlobalExecutionStatePtr->pc = interpFn->instructions ;
     GlobalExecutionStatePtr->prevPC = GlobalExecutionStatePtr->pc;
     
-    //printf("Pushing back args ... \n");
+    printf("Pushing back args ... \n");
     std::vector<ref<Expr> > arguments;
-    
+    std::cout.flush();
     assert(target_ctx_gregs_MO);
     uint64_t regAddr = (uint64_t) &target_ctx_gregs;
     ref<ConstantExpr> regExpr = ConstantExpr::create(regAddr, Context::get().getPointerWidth());
@@ -4052,29 +4054,50 @@ void Executor::klee_interp_internal () {
     //printf("Calling statsTracker...\n");
     if (statsTracker)
       statsTracker->framePushed(*GlobalExecutionStatePtr, 0);
-    
+
+    std::cout.flush();
     //AH: This haltExecution thing is to exit out of the interpreter loop.
     haltExecution = false;
     printf("Calling run! \n ");
     run(*GlobalExecutionStatePtr);
-  
+    std::cout.flush();
     if (statsTracker)
       statsTracker->done();
-    
   }
   
   /*
-  printf("Orig ctx was \n ");
-  printCtx(prev_ctx_gregs);  
-  printf("New ctx is \n ");
-  printCtx(target_ctx_gregs);
+    printf("Orig ctx was \n ");
+    printCtx(prev_ctx_gregs);  
+    printf("New ctx is \n ");
+    printCtx(target_ctx_gregs);
   */
-
+  
   assert( (uint64_t) target_ctx_gregs_OS->concreteStore == (uint64_t) &target_ctx_gregs);
+
+  std::cout.flush();
+  //We always require a completely concrete RIP for execution, so deal with it here
+  //if it's a symbolic expression we didn't fork on.
+
+  ref<Expr> RIPExpr = target_ctx_gregs_OS->read(REG_RIP * 8, Expr::Int64);
+  if (!(isa<ConstantExpr>(RIPExpr))) {
+    printf("Found symbolic RIPExpr \n");
+    std::cout.flush();
+    printf("Calling forkOnPossibleRIPValues() \n");
+    std::cout.flush();
+    forkOnPossibleRIPValues(RIPExpr);
+    std::cout.flush();
+  }
+  
+  ref<Expr> FinalRIPExpr = target_ctx_gregs_OS->read(REG_RIP * 8, Expr::Int64);
+  //Safety check
+  if (!(isa<ConstantExpr>(FinalRIPExpr))) {
+    printf("ERROR: Failed to concretize RIP \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
 
   printf("Finished round %d of interpretation. \n", interpCtr);
   printf("-------------------------------------------\n");
-  
   if (resumeNativeExecution()) {
     printf("--------RETURNING TO TARGET--------------------- \n");
     return;
@@ -4084,6 +4107,52 @@ void Executor::klee_interp_internal () {
   return;
 }
 
+//Take an Expr and find all the possible concrete solutions.
+//Hopefully there's a better builtin function in klee that we can
+//use, but if not this should do the trick.  Intended to be used
+//to help us get all possible concrete values of RIP (has dependency on RIP).
+void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr) {
+
+  int maxSolutions = 2; //Completely arbitrary.  Should not be more than 2 for our use cases in TASE
+  //or we're in trouble anyway.
+
+  int numSolutions = 0;
+  
+  while (true) {
+    ref<ConstantExpr> solution;
+    numSolutions++;
+    printf("Looking at solution number %d in forkOnPossibleRIPValues() \n", numSolutions);
+    if (numSolutions > maxSolutions) {
+      printf("Found too many symbolic values for RIP \n ");
+      std::exit(EXIT_FAILURE);
+    }
+      
+    bool success = solver->getValue(*GlobalExecutionStatePtr, inputExpr, solution);
+    if (!success) {
+      printf("ERROR: couldn't get initial value in forkOnPossibleRIPValues \n");
+      std::cout.flush();
+      std::exit(EXIT_FAILURE);
+    } 
+
+    int pid = ::fork();
+    int i = getpid();
+    workerIDStream << ".";
+    workerIDStream << i;
+    std::string pidString ;
+    pidString = workerIDStream.str();
+    freopen(pidString.c_str(),"w",stdout);
+    freopen(pidString.c_str(),"w",stderr);
+
+    if (pid == 0) { //Rule out latest solution and see if more exist
+      ref<Expr> notEqualsSolution = NotExpr::create(EqExpr::create(inputExpr,solution));
+      addConstraint(*GlobalExecutionStatePtr, notEqualsSolution);
+    } else { // Take the concrete value of solution and explore that path.  
+      addConstraint(*GlobalExecutionStatePtr, EqExpr::create(inputExpr, solution));
+      target_ctx_gregs_OS->write(REG_RIP*8, solution);
+      break;
+    }
+  }
+}
 
 void printCtx(gregset_t registers ) {
 

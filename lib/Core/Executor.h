@@ -513,6 +513,8 @@ public:
   }
   
   virtual void klee_interp_internal ();
+
+  virtual void forkOnPossibleRIPValues (ref <Expr> inputExpr);
   
   virtual bool resumeNativeExecution ();
 
