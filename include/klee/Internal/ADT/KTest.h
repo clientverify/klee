@@ -10,17 +10,33 @@
 #ifndef __COMMON_KTEST_H__
 #define __COMMON_KTEST_H__
 
+#include <time.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+  // Capture mode
+  enum kTestMode {KTEST_NONE, KTEST_RECORD, KTEST_PLAYBACK};
+  
   typedef struct KTestObject KTestObject;
   struct KTestObject {
     char *name;
+    struct timeval timestamp;
     unsigned numBytes;
     unsigned char *bytes;
   };
+
+  typedef struct KTestObjectVector {
+    KTestObject *objects;
+    int size;
+    int capacity; // capacity >= size
+    int playback_index; // starts at 0
+  } KTestObjectVector;
+
+  KTestObject* KTOV_next_object(KTestObjectVector *ov, const char *name);
+  
+  
   
   typedef struct KTest KTest;
   struct KTest {
@@ -55,8 +71,12 @@ extern "C" {
 
   void  kTest_free(KTest *);
 
+  void ktest_start(const char *filename, enum kTestMode mode);
+  void ktest_finish();     // write capture to file
 #ifdef __cplusplus
 }
+
+ 
 #endif
 
 #endif

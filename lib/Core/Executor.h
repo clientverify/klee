@@ -321,6 +321,8 @@ private:
   void model_reopentran();
 
   //AH: Modeled functions
+  void model_read();
+  void model_write();
   void model_random();
   void model_strncat();
   

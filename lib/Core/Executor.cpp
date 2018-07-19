@@ -112,6 +112,7 @@ extern Module * interpModule;
 extern char * target_stack_begin_ptr;
 extern char * interp_stack_begin_ptr;
 extern uint32_t springboard_flags;
+extern KTestObjectVector ktov;
 
 extern "C" void * sb_entertran();
 extern "C" void * sb_exittran();
@@ -3682,16 +3683,120 @@ KFunction * findInterpFunction (greg_t * registers, KModule * kmod) {
 //Here's the interface expected for the llvm interpretation function.
 
 // void @interp_fn_PCValHere( %greg_t * %target_ctx_ptr) {
-
 //; Emulate the native code modeled in the function, including an
 //; updated program counter.  %target_ctx_ptr will take the initial greg_t ctx,
 //; and the necessary interpretation will occur in-place at the ctx pointed to. Also need 
 //; to perform loads and stores to main memory.  By this point, an llvm load/store to
 //; a given address in the interpreter will result in a load/store from/to the actual
 //; native memory address.
-
 // }
 
+
+//write model ------------- 
+//ssize_t write (int filedes, const void *buffer, size_t size)
+//https://www.gnu.org/software/libc/manual/html_node/I_002fO-Primitives.html
+void Executor::model_write() {
+  
+  //Get the input args per system V linux ABI.
+  uint64_t rawArg1Val = target_ctx_gregs[REG_RDI]; //fd
+  uint64_t rawArg2Val = target_ctx_gregs[REG_RSI]; //address of buf to copy
+  uint64_t rawArg3Val = target_ctx_gregs[REG_RDX]; //len to copy
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
+  
+  if (
+      (isa<ConstantExpr>(arg1Expr)) &&
+      (isa<ConstantExpr>(arg2Expr)) &&
+      (isa<ConstantExpr>(arg3Expr)) 
+      ){
+    
+    //Note that we just verify against the actual number of bytes that
+    //would be printed, and ignore null terminators in the src buffer.
+    //Write can non-deterministically print up to X chars, depending
+    //on state of network stack buffers at time of call.
+    //Believe this is the behavior intended by the posix spec
+
+    //Get correct message buffer to verify against based on fd
+    KTestObject *o = KTOV_next_object(&ktov,
+				      "c2s");
+    if (o->numBytes > rawArg3Val) {
+      fprintf(stderr,
+	      "ktest_writesocket playback error: %zu bytes of input, "
+	      "%d bytes recorded", rawArg3Val, o->numBytes);
+      exit(EXIT_FAILURE);
+    }
+    // Since this is a write, compare for equality.
+    if (o->numBytes > 0 && memcmp((void *) rawArg2Val, o->bytes, o->numBytes) != 0) {
+      fprintf(stderr, "WARNING: ktest_writesocket playback - data mismatch\n");
+    }
+    
+    unsigned char * wireMessageRecord = o->bytes;
+    int wireMessageLength = o->numBytes;
+    //For multipass, may need to get a sequence of these constraints to pass back to another process.
+    //For now, just adding them directly.
+    for (int j = 0; j < wireMessageLength; j++) {
+      ref<Expr> srcCandidateAddressExpr = ConstantExpr::create((uint64_t) rawArg2Val + j, Expr::Int64);
+
+      //Find a better way to do this.  Using logic from Executor::executeMemoryOperation
+      //begin gross------------------
+      ObjectPair op;
+      bool success;
+      if (! GlobalExecutionStatePtr->addressSpace.resolveOne(*GlobalExecutionStatePtr,solver,srcCandidateAddressExpr, op, success) ) {
+	printf("ERROR in verification: Couldn't resolve candidate message location to fixed value \n");
+	std::exit(EXIT_FAILURE);
+      }
+      ref<Expr> offset = op.first->getOffsetExpr(srcCandidateAddressExpr);
+      ref<Expr> srcCandidateVal = op.second->read(offset, Expr::Int8);
+      //end gross----------------------------
+      
+      ref<ConstantExpr> wireMessageVal = ConstantExpr::create( *((uint8_t *) wireMessageRecord + j), Expr::Int8);
+      ref<Expr> equalsExpr = EqExpr::create(srcCandidateVal,wireMessageVal);
+      addConstraint(*GlobalExecutionStatePtr, equalsExpr);
+    }
+
+    //Wrap up and get back to execution.
+    //Return number of bytes sent and bump RIP.
+    ref<ConstantExpr> bytesWrittenExpr = ConstantExpr::create(wireMessageLength, Expr::Int64);
+    target_ctx_gregs_OS->write(REG_RAX * 8, bytesWrittenExpr);
+    target_ctx_gregs[REG_RIP] += 5;
+    
+  } else {   
+    printf("Found symbolic argument to model_send \n");
+    std::exit(EXIT_FAILURE);
+  } 
+
+}
+
+
+//read model --------
+//ssize_t read (int filedes, void *buffer, size_t size)
+//https://www.gnu.org/software/libc/manual/html_node/I_002fO-Primitives.html
+//Can be read from stdin or from socket
+void Executor::model_read() {
+
+  //Get the input args per system V linux ABI.
+  uint64_t rawArg1Val = target_ctx_gregs[REG_RDI]; //fd
+  uint64_t rawArg2Val = target_ctx_gregs[REG_RSI]; //address of dest buf 
+  uint64_t rawArg3Val = target_ctx_gregs[REG_RDX]; //max len to read in
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
+  
+  if (
+      (isa<ConstantExpr>(arg1Expr)) &&
+      (isa<ConstantExpr>(arg2Expr)) &&
+      (isa<ConstantExpr>(arg3Expr)) 
+      ){
+
+    
+    
+  } else  {   
+    printf("Found symbolic argument to model_read \n");
+    std::exit(EXIT_FAILURE);
+  } 
+
+}
 
 //TODO: Determine if this is always a 4 byte return value in eax
 //or if it's ever an 8 byte return into rax.
@@ -3702,7 +3807,6 @@ void Executor::model_random() {
 
   printf("INTERPRETER: calling model_random() \n");   
   printf(" DEBUG 1: conc store at 0x%llx \n", target_ctx_gregs_OS->concreteStore );
-
 
   //Make buf have symbolic value.
   void * randBuf = malloc(4);
