@@ -64,6 +64,7 @@
 
 #include "klee/tase_constants.h"
 
+extern KTestObjectVector ktov;
 extern "C" void begin_target_inner();
 extern "C" void klee_interp();
 extern "C" void ENTERTASEINITIAL();
@@ -1361,7 +1362,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    // initializeInterpretationStructures().
    printf("Setting module and checking externals and globals... \n");
    const Module *finalModule = interpreter->setModule(interpModule, Opts);
-   externalsAndGlobalsCheck(finalModule);
+   //externalsAndGlobalsCheck(finalModule);
    StackBase = (void *) &target_stack;
    //Entry fn for our purposes is a dummy main function.
    // It's specified in parseltongue86 as dummyMain and
@@ -1394,6 +1395,9 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    memset (message_test_buffer, 0, 256);
    strncpy (message_test_buffer, "appleorangeappleorange", 22);
    message_buf_length = strlen(message_test_buffer);
+
+   //Load ktest file into ktov.
+   ktest_start("friday.ktest", KTEST_PLAYBACK);
    
    //TODO: Make tsx_init() work for global variables
    //and double check the implementation.

@@ -17,10 +17,11 @@
 #include <stdint.h>
 #include <sys/time.h>
 
-
-#define KTEST_VERSION 3
+//Changed for TASE
+#define KTEST_VERSION 4
 #define KTEST_MAGIC_SIZE 5
 #define KTEST_MAGIC "KTEST"
+#include <cstdlib>
 
 // for compatibility reasons
 #define BOUT_MAGIC "BOUT\n"
@@ -165,10 +166,16 @@ KTest *kTest_fromFile(const char *path) {
     KTestObject *o = &res->objects[i];
     if (!read_string(f, &o->name))
       goto error;
+    if (res->version >= 4) { // Cliver-specific version 4
+      if (!read_uint64(f, (uint64_t*)&o->timestamp.tv_sec))
+	goto error;
+      if (!read_uint64(f, (uint64_t*)&o->timestamp.tv_usec))
+	goto error;
+    }
     if (!read_uint32(f, &o->numBytes))
       goto error;
     o->bytes = (unsigned char*) malloc(o->numBytes);
-    if (fread(o->bytes, o->numBytes, 1, f)!=1)
+    if (o->numBytes && fread(o->bytes, o->numBytes, 1, f)!=1)
       goto error;
   }
 
@@ -200,6 +207,7 @@ KTest *kTest_fromFile(const char *path) {
 
   return 0;
 }
+
 
 int kTest_toFile(KTest *bo, const char *path) {
   FILE *f = fopen(path, "wb");
@@ -473,5 +481,14 @@ void ktest_finish() {
 
   else if (ktest_mode == KTEST_PLAYBACK) {
     // TODO: nothing except maybe cleanup?
+  }
+}
+
+KTestObject * peekNextKTestObject () {
+  if (ktov.playback_index >= ktov.size){
+    printf("Tried to peek for nonexistent KTestObject \n");
+    std::exit(EXIT_FAILURE);
+  }else {
+    return &(ktov.objects[ktov.playback_index]);
   }
 }

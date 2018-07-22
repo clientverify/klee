@@ -322,6 +322,9 @@ private:
 
   //AH: Modeled functions
   void model_read();
+  void model_readstdin();
+  void model_readsocket();
+  int tls_predict_stdin_size (uint64_t fd, uint64_t maxLen);
   void model_write();
   void model_random();
   void model_strncat();

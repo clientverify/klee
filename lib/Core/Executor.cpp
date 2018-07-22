@@ -3717,18 +3717,19 @@ void Executor::model_write() {
     //on state of network stack buffers at time of call.
     //Believe this is the behavior intended by the posix spec
 
+    //TODO: check fd to make sure the write goes to server before we get c2s server
+    
     //Get correct message buffer to verify against based on fd
     KTestObject *o = KTOV_next_object(&ktov,
 				      "c2s");
     if (o->numBytes > rawArg3Val) {
-      fprintf(stderr,
-	      "ktest_writesocket playback error: %zu bytes of input, "
-	      "%d bytes recorded", rawArg3Val, o->numBytes);
-      exit(EXIT_FAILURE);
+      printf("ktest_writesocket playback error: %d bytes of input, %d bytes recorded", rawArg3Val, o->numBytes);
+      std::exit(EXIT_FAILURE);
     }
     // Since this is a write, compare for equality.
     if (o->numBytes > 0 && memcmp((void *) rawArg2Val, o->bytes, o->numBytes) != 0) {
-      fprintf(stderr, "WARNING: ktest_writesocket playback - data mismatch\n");
+      printf("WARNING: ktest_writesocket playback - data mismatch\n");
+      std::exit(EXIT_FAILURE);
     }
     
     unsigned char * wireMessageRecord = o->bytes;
@@ -3743,7 +3744,7 @@ void Executor::model_write() {
       ObjectPair op;
       bool success;
       if (! GlobalExecutionStatePtr->addressSpace.resolveOne(*GlobalExecutionStatePtr,solver,srcCandidateAddressExpr, op, success) ) {
-	printf("ERROR in verification: Couldn't resolve candidate message location to fixed value \n");
+	printf("ERROR in model_write: Couldn't resolve candidate message location to fixed value \n");
 	std::exit(EXIT_FAILURE);
       }
       ref<Expr> offset = op.first->getOffsetExpr(srcCandidateAddressExpr);
@@ -3772,9 +3773,12 @@ void Executor::model_write() {
 //read model --------
 //ssize_t read (int filedes, void *buffer, size_t size)
 //https://www.gnu.org/software/libc/manual/html_node/I_002fO-Primitives.html
-//Can be read from stdin or from socket
+//Can be read from stdin or from socket -- modeled separately to break up the code.
 void Executor::model_read() {
+  printf("model_read still being implemented \n");
+  std::exit(EXIT_FAILURE);
 
+  
   //Get the input args per system V linux ABI.
   uint64_t rawArg1Val = target_ctx_gregs[REG_RDI]; //fd
   uint64_t rawArg2Val = target_ctx_gregs[REG_RSI]; //address of dest buf 
@@ -3788,14 +3792,175 @@ void Executor::model_read() {
       (isa<ConstantExpr>(arg2Expr)) &&
       (isa<ConstantExpr>(arg3Expr)) 
       ){
-
-    
-    
+    //Get correct message buffer to verify against based on fd
+    //TODO: Find a better way to do this.
+    if (rawArg1Val != 0) 
+      model_readsocket();
+    else
+      model_readstdin();    
   } else  {   
     printf("Found symbolic argument to model_read \n");
     std::exit(EXIT_FAILURE);
   } 
 
+}
+
+void Executor::model_readsocket() {
+
+//Get the input args per system V linux ABI.
+  uint64_t rawArg1Val = target_ctx_gregs[REG_RDI]; //fd
+  uint64_t rawArg2Val = target_ctx_gregs[REG_RSI]; //address of dest buf 
+  uint64_t rawArg3Val = target_ctx_gregs[REG_RDX]; //max len to read in
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
+  
+  if (
+      (isa<ConstantExpr>(arg1Expr)) &&
+      (isa<ConstantExpr>(arg2Expr)) &&
+      (isa<ConstantExpr>(arg3Expr)) 
+      ){
+
+    KTestObject *o = KTOV_next_object(&ktov, "s2c");
+    if (o->numBytes > rawArg3Val) {
+      printf("readsocket error: %zu byte destination buffer, %d bytes recorded", rawArg3Val, o->numBytes);
+      std::exit(EXIT_FAILURE);
+    }
+    
+    memcpy((void *) rawArg2Val, o->bytes, o->numBytes);
+    
+    //Return number of bytes read and bump RIP.
+    ref<ConstantExpr> bytesReadExpr = ConstantExpr::create(o->numBytes, Expr::Int64);
+    target_ctx_gregs_OS->write(REG_RAX * 8, bytesReadExpr);
+    target_ctx_gregs[REG_RIP] += 5;
+    return; 
+  } else {
+    printf("Found symbolic args to model_readsocket \n");
+    std::exit(EXIT_FAILURE);
+  }
+}
+
+void Executor::model_readstdin() {
+  //Get the input args per system V linux ABI.
+  uint64_t rawArg1Val = target_ctx_gregs[REG_RDI]; //fd
+  uint64_t rawArg2Val = target_ctx_gregs[REG_RSI]; //address of dest buf 
+  uint64_t rawArg3Val = target_ctx_gregs[REG_RDX]; //max len to read in
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
+
+  if (
+      (isa<ConstantExpr>(arg1Expr)) &&
+      (isa<ConstantExpr>(arg2Expr)) &&
+      (isa<ConstantExpr>(arg3Expr)) 
+      ){
+
+    bool replay = false;
+    
+    
+    if (replay) {
+      //flesh this out later
+    } else {
+
+      int numSymBytes = tls_predict_stdin_size(rawArg1Val, rawArg3Val);
+      void * stdInBuf = malloc(numSymBytes);
+      MemoryObject * stdinMO = memory->allocateFixed( (uint64_t) stdInBuf, numSymBytes,NULL);
+      
+      static int timesReadStdinCalled = 0;
+      timesReadStdinCalled++;
+      std::string nameString = "stdinRead" + std::to_string(timesReadStdinCalled);
+      stdinMO->name = nameString;
+      executeMakeSymbolic(*GlobalExecutionStatePtr, stdinMO, "stdinMO");
+      const ObjectState *conststdinOS = GlobalExecutionStatePtr->addressSpace.findObject(stdinMO);
+      ObjectState * stdinOS = GlobalExecutionStatePtr->addressSpace.getWriteable(stdinMO,conststdinOS);
+
+      
+      //Copy from symbolic buffer into dest buffer
+      for (int j = 0; j < numSymBytes; j++) {
+	ref <Expr> srcByte = stdinOS->read8(j);
+	ref <Expr> destAddressExpr = ConstantExpr::create( rawArg2Val + j, Expr::Int64);
+	executeMemoryOperation(*GlobalExecutionStatePtr, /*isWrite*/ true,  destAddressExpr, srcByte, /*not used for write*/ NULL);
+      }
+      
+      //Return number of bytes read and bump RIP.
+      ref<ConstantExpr> bytesReadExpr = ConstantExpr::create(numSymBytes, Expr::Int64);
+      target_ctx_gregs_OS->write(REG_RAX * 8, bytesReadExpr);
+      target_ctx_gregs[REG_RIP] += 5;
+    }
+
+    
+  } else {
+    printf("Found symbolic args to model_readstdin \n");
+    std::exit(EXIT_FAILURE);
+
+  }
+  
+}
+
+//Reworked from cliver's CVExecutor.cpp.
+// Predict size of stdin read based on the size of the next
+// client-to-server TLS record, assuming the negotiated symmetric
+// ciphersuite is AES128-GCM.
+//
+// Case 1: (OpenSSL and BoringSSL) The next c2s TLS application data
+//         record [byte#1 = 23] is 29 bytes longer than stdin.
+//
+// Case 2: (OpenSSL only) The stdin read is 0, i.e., Control-D on a
+//         blank line, thereby closing the connection.  In this case,
+//         the subsequent c2s TLS alert record [byte#1 = 21] has
+//         length 31.
+//
+// Case 3: (BoringSSL only) The stdin read is 0, i.e., Control-D on a
+//         blank line, thereby closing the connection.  There is no
+//         subsequent c2s TLS alert record in this case; instead we
+//         simply see the connection close.
+//
+// Any other situation terminates the state (stdin read disallowed).
+int Executor::tls_predict_stdin_size (uint64_t fd, uint64_t maxLen) {
+
+  const uint8_t TLS_ALERT = 21;
+  const uint8_t TLS_APPDATA = 23;
+
+  int stdin_len;
+    
+  if (fd != 0) {
+    printf("tls_predict_stdin_size() called with unknown fd %d \n", fd);
+    std::exit(EXIT_FAILURE);
+  }
+
+  KTestObject * kto = peekNextKTestObject();
+  //Todo: Figure out better way to handle case 3
+  
+  if (kto == NULL) { //Case 3
+
+    printf("Warning: no c2s record found in peekNextKTestObject()\n");
+    stdin_len = 0;
+
+  } else if (kto->name == "c2s" &&
+	     kto->bytes[0] == TLS_ALERT &&
+	     kto->numBytes == 31) { //Case 2
+    
+    stdin_len = 0;
+    
+  } else if (kto->name == "c2s" &&
+	     kto->bytes[0] == TLS_APPDATA &&
+	     kto->numBytes > 29) {//Case 1
+    
+    stdin_len = kto->numBytes - 29;
+    
+  } else {
+
+    printf("Error in tls_predict_stdin_size \n");
+    std::exit(EXIT_FAILURE);
+    
+  }
+  
+  if ( stdin_len > maxLen) {
+    printf("ERROR: tls_predict_stdin_size returned value larger than maxLen \n");
+    std::exit(EXIT_FAILURE);
+  }else {
+    return stdin_len;
+  }
 }
 
 //TODO: Determine if this is always a 4 byte return value in eax
@@ -4030,7 +4195,6 @@ void Executor::model_inst () {
   uint64_t rip = target_ctx_gregs[REG_RIP];
   int  callqOpc = 0xe8;
   int  jmpqOpc = 0xe9;
-  uint16_t jleOpc = 0x8e0f;  //reversed from 0x0f8e due to endianness
   
   uint8_t * oneBytePtr = (uint8_t *) rip;
   uint8_t firstByte = *oneBytePtr;
@@ -4062,14 +4226,12 @@ void Executor::model_inst () {
   
 }
 
-
 bool isSpecialInst (uint64_t rip) {
 
   //printf("Entering isSpecialInst() \n");
   //TO-DO: Add more opcodes here later on.
   uint8_t callqOpc = 0xe8;
   uint8_t jmpqOpc = 0xe9;
-  uint16_t jleOpc = 0x8e0f;  //reversed from 0x0f8e because of endianness.  Gross
   
   uint8_t * oneBytePtr = (uint8_t *) rip;
   uint8_t firstByte = *oneBytePtr;
@@ -4107,7 +4269,6 @@ void Executor::klee_interp_internal () {
   static int interpCtr = 0;
   interpCtr++;
   int max = 1000;
-   
   if (interpCtr > max) {
     printf("Hit interp counter %d times. Something is probably wrong. \n\n",interpCtr);
     std::exit(EXIT_FAILURE);
@@ -4119,14 +4280,8 @@ void Executor::klee_interp_internal () {
   printf("Initial ctx BEFORE interpretation is \n");
   printCtx(target_ctx_gregs);
   printf("\n");
-  //for (int i = 0; i < 23; i++) 
-  // prev_ctx_gregs[i] = target_ctx_gregs[i];
-
   std::cout.flush();
-
-  printf("DEBUG 1 \n");
   
-  //  printf("target_ctx_gregs conc store at %llx \n",&(target_ctx_gregs_OS->concreteStore[0]));
   if (isSpecialInst(rip)) {
     printf("INTERPRETER: FOUND SPECIAL MODELED INST \n");
     std::cout.flush();
@@ -4137,7 +4292,6 @@ void Executor::klee_interp_internal () {
     std::cout.flush();
     KFunction * interpFn = findInterpFunction (target_ctx_gregs, kmodule);
   
-    //Instruction *firstInst = &*(interpFn->function->begin()->begin());
     //We have to manually push a frame on for the function we'll be
     //interpreting through.  At this point, no other frames should exist
     // on klee's interpretation "stack".
@@ -4168,32 +4322,18 @@ void Executor::klee_interp_internal () {
     if (statsTracker)
       statsTracker->done();
   }
-  
-  /*
-    printf("Orig ctx was \n ");
-    printCtx(prev_ctx_gregs);  
-    printf("New ctx is \n ");
-    printCtx(target_ctx_gregs);
-  */
-  
-  assert( (uint64_t) target_ctx_gregs_OS->concreteStore == (uint64_t) &target_ctx_gregs);
 
-  std::cout.flush();
   //We always require a completely concrete RIP for execution, so deal with it here
   //if it's a symbolic expression we didn't fork on.
 
   ref<Expr> RIPExpr = target_ctx_gregs_OS->read(REG_RIP * 8, Expr::Int64);
   if (!(isa<ConstantExpr>(RIPExpr))) {
-    printf("Found symbolic RIPExpr \n");
-    std::cout.flush();
     printf("Calling forkOnPossibleRIPValues() \n");
     std::cout.flush();
     forkOnPossibleRIPValues(RIPExpr);
-    std::cout.flush();
   }
   
   ref<Expr> FinalRIPExpr = target_ctx_gregs_OS->read(REG_RIP * 8, Expr::Int64);
-  //Safety check
   if (!(isa<ConstantExpr>(FinalRIPExpr))) {
     printf("ERROR: Failed to concretize RIP \n");
     std::cout.flush();
@@ -4399,8 +4539,7 @@ void Executor::initializeInterpretationStructures (Function *f) {
       printf("Found basket while mapping extern symbols \n ");
       continue;
     }
-      
-    
+          
     MemoryObject * GlobalVarMO = addExternalObject(*GlobalExecutionStatePtr,(void *) addrVal, sizeVal, false );
     const ObjectState * ConstGlobalVarOS = GlobalExecutionStatePtr->addressSpace.findObject(GlobalVarMO);
     ObjectState * GlobalVarOS = GlobalExecutionStatePtr->addressSpace.getWriteable(GlobalVarMO,ConstGlobalVarOS);
@@ -4409,9 +4548,6 @@ void Executor::initializeInterpretationStructures (Function *f) {
     
   }
 
-
-
-   
   printf("PRIOR TO INITIALIZEINTERPSTRUCTS:  target_ctx_gregs conc store at %llx \n",&(target_ctx_gregs_OS->concreteStore[0]));
 
   //Get rid of the dummy function used for initialization
@@ -4421,12 +4557,7 @@ void Executor::initializeInterpretationStructures (Function *f) {
 
   printf("END OF INITIALIZEINTERPSTRUCTS:  target_ctx_gregs conc store at %llx \n",&(target_ctx_gregs_OS->concreteStore[0]));
 
-  
- 
   //std::exit(EXIT_SUCCESS);
- 
-
- 
   
 }
 				   

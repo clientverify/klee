@@ -53,7 +53,9 @@ extern "C" {
     KTestObject *objects;
   };
 
-  
+  //Added to tase to peek at next kto when predicting stdin length
+  KTestObject* peekNextKTestObject ();
+
   /* returns the current .ktest file format version */
   unsigned kTest_getCurrentVersion();
   
