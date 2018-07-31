@@ -315,7 +315,19 @@ private:
   bool instructionBeginsTransaction(uint64_t pc);
   bool instructionIsModeled();
 
+  //Tase helper to write an expr directly to an addr.  Width
+  //(1/2/4/8 bytes) is inferred based on type of val.
+  //Written because KLEE typically requires mem ops in terms of an
+  //object's base & offset rather than direct addr.
+  void tase_helper_write (uint64_t addr, ref<Expr> val);
+  //Tase helper to read an expr directly from addr with 1/2/4/8 bytes.
+  //Written because KLEE typically requires mem ops in terms of an
+  //object's base & offset rather than direct addr.
+  ref<Expr> tase_helper_read (uint64_t addr, uint8_t byteWidth);
+  
   void model_inst();
+
+  //AH: Special modeled labels added during our instrumentation.
   void model_entertran();
   void model_exittran();
   void model_reopentran();
@@ -324,18 +336,13 @@ private:
   void model_read();
   void model_readstdin();
   void model_readsocket();
+  void model_select();
   int tls_predict_stdin_size (uint64_t fd, uint64_t maxLen);
   void model_write();
   void model_random();
   void model_strncat();
+  void model_tls1_generate_master_secret ();
   
-  //AH: This is our customized function for accessing memory
-  //within our poison-based symbolic value tracking system.
-  void executeMemoryOperationPoison(ExecutionState &state,
-                              bool isWrite,
-                              ref<Expr> address,
-                              ref<Expr> value /* undef if read */,
-                              KInstruction *target /* undef if write */);
 
   
   void executeMakeSymbolic(ExecutionState &state, const MemoryObject *mo,

@@ -154,6 +154,19 @@ MemoryObject * basket_MO;
 
 extern std::stringstream workerIDStream;
 
+// FIXME: need internal openssl data types
+#include "/playpen/humphries/cliver/gsec-support/src/openssl/include/openssl/ssl.h"
+#include "/playpen/humphries/cliver/gsec-support/src/openssl/include/openssl/evp.h"
+#include "/playpen/humphries/cliver/gsec-support/src/openssl/include/openssl/ssl3.h"
+#include "/playpen/humphries/cliver/gsec-support/src/openssl/include/openssl/sha.h"
+#include "/playpen/humphries/cliver/gsec-support/src/openssl/include/openssl/ec.h"
+#include "/playpen/humphries/cliver/gsec-support/src/openssl/include/openssl/ossl_typ.h"
+// modes_lcl.h redfines objects included here
+//#include "../../../openssl/include/openssl/modes.h"
+#include "/playpen/humphries/cliver/gsec-support/src/openssl/crypto/ec/ec_lcl.h"
+#include "/playpen/humphries/cliver/gsec-support/src/openssl/crypto/modes/modes_lcl.h"
+#include "/playpen/humphries/cliver/gsec-support/src/openssl/crypto/aes/aes.h"
+#include "/playpen/humphries/cliver/gsec-support/src/openssl/crypto/sha/sha.h"
 
 //AH: End of our additions. -----------------------------------
 
@@ -3650,7 +3663,6 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
 
 /***/
 
-
 extern "C" void klee_interp () {
   printf("---------------ENTERING KLEE_INTERP ---------------------- \n");
   assert (GlobalInterpreter);
@@ -3676,7 +3688,6 @@ KFunction * findInterpFunction (greg_t * registers, KModule * kmod) {
   
   if (!KInterpFunction)
     printf("Unable to find interp function for entrypoint PC 0x%lx \n", nativePC);
-  
   return KInterpFunction;
   
 }
@@ -3737,36 +3748,20 @@ void Executor::model_write() {
     //For multipass, may need to get a sequence of these constraints to pass back to another process.
     //For now, just adding them directly.
     for (int j = 0; j < wireMessageLength; j++) {
-      ref<Expr> srcCandidateAddressExpr = ConstantExpr::create((uint64_t) rawArg2Val + j, Expr::Int64);
-
-      //Find a better way to do this.  Using logic from Executor::executeMemoryOperation
-      //begin gross------------------
-      ObjectPair op;
-      bool success;
-      if (! GlobalExecutionStatePtr->addressSpace.resolveOne(*GlobalExecutionStatePtr,solver,srcCandidateAddressExpr, op, success) ) {
-	printf("ERROR in model_write: Couldn't resolve candidate message location to fixed value \n");
-	std::exit(EXIT_FAILURE);
-      }
-      ref<Expr> offset = op.first->getOffsetExpr(srcCandidateAddressExpr);
-      ref<Expr> srcCandidateVal = op.second->read(offset, Expr::Int8);
-      //end gross----------------------------
-      
+      ref<Expr> srcCandidateVal = tase_helper_read((uint64_t) (rawArg2Val + j), 1);  //Get 1 byte from addr rawArg2Val + j
       ref<ConstantExpr> wireMessageVal = ConstantExpr::create( *((uint8_t *) wireMessageRecord + j), Expr::Int8);
       ref<Expr> equalsExpr = EqExpr::create(srcCandidateVal,wireMessageVal);
       addConstraint(*GlobalExecutionStatePtr, equalsExpr);
     }
-
     //Wrap up and get back to execution.
     //Return number of bytes sent and bump RIP.
     ref<ConstantExpr> bytesWrittenExpr = ConstantExpr::create(wireMessageLength, Expr::Int64);
     target_ctx_gregs_OS->write(REG_RAX * 8, bytesWrittenExpr);
     target_ctx_gregs[REG_RIP] += 5;
-    
   } else {   
     printf("Found symbolic argument to model_send \n");
     std::exit(EXIT_FAILURE);
   } 
-
 }
 
 
@@ -3778,7 +3773,6 @@ void Executor::model_read() {
   printf("model_read still being implemented \n");
   std::exit(EXIT_FAILURE);
 
-  
   //Get the input args per system V linux ABI.
   uint64_t rawArg1Val = target_ctx_gregs[REG_RDI]; //fd
   uint64_t rawArg2Val = target_ctx_gregs[REG_RSI]; //address of dest buf 
@@ -3856,8 +3850,7 @@ void Executor::model_readstdin() {
       ){
 
     bool replay = false;
-    
-    
+     
     if (replay) {
       //flesh this out later
     } else {
@@ -3873,7 +3866,6 @@ void Executor::model_readstdin() {
       executeMakeSymbolic(*GlobalExecutionStatePtr, stdinMO, "stdinMO");
       const ObjectState *conststdinOS = GlobalExecutionStatePtr->addressSpace.findObject(stdinMO);
       ObjectState * stdinOS = GlobalExecutionStatePtr->addressSpace.getWriteable(stdinMO,conststdinOS);
-
       
       //Copy from symbolic buffer into dest buffer
       for (int j = 0; j < numSymBytes; j++) {
@@ -3888,12 +3880,192 @@ void Executor::model_readstdin() {
       target_ctx_gregs[REG_RIP] += 5;
     }
 
-    
   } else {
     printf("Found symbolic args to model_readstdin \n");
     std::exit(EXIT_FAILURE);
-
   }
+}
+
+//int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout)
+//https://www.gnu.org/software/libc/manual/html_node/Waiting-for-I_002fO.html
+//We examine fds 0 to ndfs-1.  Don't model the results of exceptfds, at least not yet.
+void Executor::model_select() {
+  static int times_model_select_called = 0;
+  times_model_select_called++;
+  
+  //Get the input args per system V linux ABI.
+  uint64_t nfds = target_ctx_gregs[REG_RDI]; // int nfds
+  fd_set * readfds = (fd_set *) target_ctx_gregs[REG_RSI]; // fd_set * readfds
+  fd_set * writefds = (fd_set *) target_ctx_gregs[REG_RDX]; // fd_set * writefds
+  fd_set * exceptfds = (fd_set *) target_ctx_gregs[REG_RCX]; // fd_set * exceptfds
+  struct timeval * timeout = (struct timeval *) target_ctx_gregs[REG_R8];  // struct timeval * timeout
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
+  ref<Expr> arg4Expr = target_ctx_gregs_OS->read(REG_RCX * 8, Expr::Int64);
+  ref<Expr> arg5Expr = target_ctx_gregs_OS->read(REG_R8 * 8, Expr::Int64);
+
+  if (  (isa<ConstantExpr>(arg1Expr)) &&
+	(isa<ConstantExpr>(arg2Expr)) &&
+	(isa<ConstantExpr>(arg3Expr)) &&
+	(isa<ConstantExpr>(arg4Expr)) &&
+	(isa<ConstantExpr>(arg5Expr))
+	) {
+
+    //Safety check for some low-level operations done later.
+    //Probably can move this out later when we're getting perf numbers.
+    /*
+    if (sizeof(fds_bits) != 1) {
+      printf("ERROR: Size of fds_bits is not a byte \n");
+      std::exit(EXIT_FAILURE);
+      }*/
+
+    bool make_readfds_symbolic [nfds];
+    bool make_writefds_symbolic [nfds];
+
+    ref<Expr> bitsSetExpr = ConstantExpr::create(0, Expr::Int8);
+    
+    //Go through each fd.  Really out to be able to handle a symbolic
+    //indicator var for a given fds_bits entry, but not worried about that for now.
+    for (int i = 0; i < nfds ; i++) {
+      //if given fd is set in readfds, return sym val 
+      ref<Expr> isReadFDSetExpr = tase_helper_read((uint64_t) &(readfds->fds_bits[i]), Expr::Int8);
+      if (isa<ConstantExpr>(isReadFDSetExpr)) {
+	if (FD_ISSET(i,readfds)) {
+	  make_readfds_symbolic[i] = true;
+	} else {
+	  make_readfds_symbolic[i] = false;
+	}
+      } else {
+	printf("Found symbolic readfdset bit indicator in model_select.  Not implemented yet \n");
+	std::exit(EXIT_FAILURE);
+      }
+
+      //if given fd is set in writefds,  return sym val
+      ref<Expr> isWriteFDSetExpr = tase_helper_read((uint64_t) &(writefds->fds_bits[i]), Expr::Int8);
+      if (isa<ConstantExpr>(isWriteFDSetExpr) ) {
+	if (FD_ISSET(i,writefds)) {
+	  make_writefds_symbolic[i] = true;
+	} else {
+	  make_writefds_symbolic[i] = false;
+	} 
+      } else {
+	printf("Found symbolic writefdset bit indicator in model_select.  Not implemented yet \n");
+	std::exit(EXIT_FAILURE);
+      }
+    }
+
+    //Now, actually make the appropriate bits in readfdset and writefdset symbolic.
+    for (int j = 0; j < nfds; j++) {
+      if (make_readfds_symbolic[j]) {
+
+	void * readFDResultBuf = malloc(4); //Technically this only needs to be a bit or byte
+	//Get the MO, then call executeMakeSymbolic()
+	MemoryObject * readFDResultBuf_MO = memory->allocateFixed( (uint64_t) readFDResultBuf ,4,NULL);
+	std::string nameString = "readFDSymVar " + std::to_string(times_model_select_called) + " " + std::to_string(j);
+	readFDResultBuf_MO->name = nameString;
+	executeMakeSymbolic(*GlobalExecutionStatePtr, readFDResultBuf_MO, nameString);
+	
+	const ObjectState *constreadFDResultBuf_OS = GlobalExecutionStatePtr->addressSpace.findObject(readFDResultBuf_MO);
+	ObjectState * readFDResultBuf_OS = GlobalExecutionStatePtr->addressSpace.getWriteable(readFDResultBuf_MO,constreadFDResultBuf_OS);
+
+	//Got to be a better way to write this... but we basically constrain the
+	//sym var representing readfds[j] to be 0 or 1.
+	ref <Expr> readFDExpr = readFDResultBuf_OS->read(0,Expr::Int8);
+	ref <ConstantExpr> zero = ConstantExpr::create(0, Expr::Int8);
+	ref <ConstantExpr> one = ConstantExpr::create(1, Expr::Int8);
+	ref<Expr> equalsZeroExpr = EqExpr::create(readFDExpr,zero);
+	ref<Expr> equalsOneExpr = EqExpr::create(readFDExpr, one);
+	ref<Expr> equalsZeroOrOneExpr = OrExpr::create(equalsZeroExpr, equalsOneExpr);
+	addConstraint(*GlobalExecutionStatePtr, equalsZeroOrOneExpr);
+
+	tase_helper_write((uint64_t) &(readfds->fds_bits[j]), readFDExpr);
+
+	bitsSetExpr = AddExpr::create(bitsSetExpr, readFDExpr);
+	
+      } else {
+	ref <ConstantExpr> zeroVal = ConstantExpr::create(0, Expr::Int8);
+	tase_helper_write((uint64_t)&(readfds->fds_bits[j]), zeroVal);
+      }
+
+      if (make_writefds_symbolic[j]) {
+	void * writeFDResultBuf = malloc(4); //Technically this only needs to be a bit or byte
+	//Get the MO, then call executeMakeSymbolic()
+	MemoryObject * writeFDResultBuf_MO = memory->allocateFixed( (uint64_t) writeFDResultBuf ,4,NULL);
+	std::string nameString = "writeFDSymVar " + std::to_string(times_model_select_called) + " " + std::to_string(j);
+	writeFDResultBuf_MO->name = nameString;
+	executeMakeSymbolic(*GlobalExecutionStatePtr, writeFDResultBuf_MO, nameString);
+	
+	const ObjectState *constwriteFDResultBuf_OS = GlobalExecutionStatePtr->addressSpace.findObject(writeFDResultBuf_MO);
+	ObjectState * writeFDResultBuf_OS = GlobalExecutionStatePtr->addressSpace.getWriteable(writeFDResultBuf_MO,constwriteFDResultBuf_OS);
+
+	//Got to be a better way to write this... but we basically constrain the
+	//sym var representing writefds[j] to be 0 or 1.
+	ref <Expr> writeFDExpr = writeFDResultBuf_OS->read(0,Expr::Int8);
+	ref <ConstantExpr> zero = ConstantExpr::create(0, Expr::Int8);
+	ref <ConstantExpr> one = ConstantExpr::create(1, Expr::Int8);
+	ref<Expr> equalsZeroExpr = EqExpr::create(writeFDExpr,zero);
+	ref<Expr> equalsOneExpr = EqExpr::create(writeFDExpr, one);
+	ref<Expr> equalsZeroOrOneExpr = OrExpr::create(equalsZeroExpr, equalsOneExpr);
+	addConstraint(*GlobalExecutionStatePtr, equalsZeroOrOneExpr);
+	tase_helper_write((uint64_t)&(writefds->fds_bits[j]), writeFDExpr);
+	bitsSetExpr = AddExpr::create(bitsSetExpr, writeFDExpr);
+	
+      } else {
+	ref <ConstantExpr> zeroVal = ConstantExpr::create(0, Expr::Int8);
+	tase_helper_write((uint64_t) &(writefds->fds_bits[j]), zeroVal);
+      }
+
+    }
+
+    //For now, just model with a successful return.  But we could make this symbolic.
+    target_ctx_gregs_OS->write(REG_RAX * 8, bitsSetExpr);
+    //bump RIP and interpret next instruction
+    target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_RIP] +5;
+    printf("INTERPRETER: Exiting model_select \n");
+    
+  } else {
+    printf("ERROR: Found symbolic input to model_select()");
+    std::exit(EXIT_FAILURE);
+  } 
+  
+}
+
+void Executor::model_tls1_generate_master_secret () {
+
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //SSL * s
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); //unsigned char * out
+  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64); //unsigned char * p
+  ref<Expr> arg4Expr = target_ctx_gregs_OS->read(REG_RCX * 8, Expr::Int64); //int len
+
+  if (  (isa<ConstantExpr>(arg1Expr)) &&
+	(isa<ConstantExpr>(arg2Expr)) &&
+	(isa<ConstantExpr>(arg3Expr)) &&
+	(isa<ConstantExpr>(arg4Expr)) ) {
+
+    //Interestingly, the implementation of tls1_generate_master_secret in ssl/t1_enc.c in OpenSSL
+    //doesn't actually write the master secret to out; it instead writes to s->session->master_key
+    //Todo -- this may be different in BoringSSL; find out if out is actually used there.
+
+    SSL * s = (SSL *) target_ctx_gregs[REG_RDI];
+    char * secretFileName = "master_secret.txt";
+    FILE * secretFile = fopen (secretFileName, "r");
+    char secret[48];
+    fgets(secret,48,secretFile);
+    fwrite(s->session->master_key, SSL3_MASTER_SECRET_SIZE, 1,secretFile);
+
+    //return value is size of tls master secret macro
+    ref<ConstantExpr> masterSecretSize = ConstantExpr::create(SSL3_MASTER_SECRET_SIZE,Expr::Int32); //May want to adjust size for different int sizes
+    target_ctx_gregs_OS->write(REG_RAX * 8, masterSecretSize);
+    //bump RIP and interpret next instruction
+    target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_RIP] +5;
+    printf("INTERPRETER: Exiting model_tls1_generate_master_secret \n");
+    
+  } else {
+    printf("ERROR: symbolic arg passed to tls1_generate_master_secret \n");
+    std::exit(EXIT_FAILURE);
+  }
+  
   
 }
 
@@ -3958,6 +4130,7 @@ int Executor::tls_predict_stdin_size (uint64_t fd, uint64_t maxLen) {
   if ( stdin_len > maxLen) {
     printf("ERROR: tls_predict_stdin_size returned value larger than maxLen \n");
     std::exit(EXIT_FAILURE);
+
   }else {
     return stdin_len;
   }
@@ -4165,6 +4338,80 @@ void Executor::model_reopentran() {
   target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_R15];
 }
 
+
+//Todo:  Make fastpath lookup where we leverage poison checking instead of
+//full lookup.
+//tase_helper_read: This func exists because reads and writes to
+//object states in klee need to happen as offsets to buffers that have
+//already been allocatated.  
+ref<Expr> Executor::tase_helper_read (uint64_t addr, uint8_t byteWidth) {
+
+  ref<Expr> addrExpr = ConstantExpr::create(addr, Expr::Int64);
+
+  //Find a better way to do this.  Using logic from Executor::executeMemoryOperation
+  //begin gross------------------
+  ObjectPair op;
+  bool success;
+  if (! GlobalExecutionStatePtr->addressSpace.resolveOne(*GlobalExecutionStatePtr,solver,addrExpr, op, success) ) {
+    printf("ERROR in tase_helper_read: Couldn't resolve addr to fixed value \n");
+    std::exit(EXIT_FAILURE);
+  }
+  ref<Expr> offset = op.first->getOffsetExpr(addrExpr);
+  //end gross----------------------------
+  ref<Expr> returnVal;
+
+  ObjectState *wos = GlobalExecutionStatePtr->addressSpace.getWriteable(op.first, op.second);
+  switch (byteWidth) {
+  case 1:
+    returnVal = wos->read(offset, Expr::Int8);  
+    break;
+  case 2:
+    returnVal = wos->read(offset, Expr::Int16);
+    break;
+  case 4:
+    returnVal = wos->read(offset, Expr::Int32);
+    break;
+  case 8:
+    returnVal = wos->read(offset, Expr::Int64);
+    break;
+  default:
+    printf("Unrecognized byteWidth in tase_helper_read: %u \n", byteWidth);
+    std::exit(EXIT_FAILURE);
+  }
+
+  if (returnVal != NULL) 
+    return returnVal;
+  else {
+    printf("ERROR: Returned NULL from tase_helper_read() \n");
+    std::exit(EXIT_FAILURE);
+  }
+    
+}
+
+//Todo: See if we can make this faster with the poison checking scheme.
+//tase_helper_write: Helper function similar to tase_helper_read
+//that helps us avoid rewriting the offset-lookup logic over and over.
+void Executor::tase_helper_write (uint64_t addr, ref<Expr> val) {
+  
+  ref<Expr> addrExpr = ConstantExpr::create(addr, Expr::Int64);
+
+  //Find a better way to do this.  Using logic from Executor::executeMemoryOperation
+  //begin gross------------------
+  ObjectPair op;
+  bool success;
+  if (! GlobalExecutionStatePtr->addressSpace.resolveOne(*GlobalExecutionStatePtr,solver,addrExpr, op, success) ) {
+    printf("ERROR in tase_helper_write: Couldn't resolve addr to fixed value \n");
+    std::exit(EXIT_FAILURE);
+  }
+  ref<Expr> offset = op.first->getOffsetExpr(addrExpr);
+  //end gross----------------------------
+  ObjectState *wos = GlobalExecutionStatePtr->addressSpace.getWriteable(op.first, op.second);
+  
+  wos->write(offset, val);  
+}
+  
+  
+ 
 bool Executor::gprsAreConcrete() {
   return target_ctx_gregs_OS->isObjectEntirelyConcrete();
 }
@@ -4340,6 +4587,9 @@ void Executor::klee_interp_internal () {
     std::exit(EXIT_FAILURE);
   }
 
+  //Todo -- Add check to make sure we haven't made more than one execution state.
+
+  
   printf("Finished round %d of interpretation. \n", interpCtr);
   printf("-------------------------------------------\n");
   if (resumeNativeExecution()) {
