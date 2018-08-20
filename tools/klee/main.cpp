@@ -64,6 +64,102 @@
 
 #include "klee/tase_constants.h"
 
+bool enableMultipass = true;
+
+
+//CVAssignment-------------------------------------------------------
+#include "klee/CVAssignment.h"
+#include "klee/util/ExprUtil.h" 
+//Todo: Need to move this out into its own cpp file.
+
+CVAssignment::CVAssignment(std::vector<const klee::Array*> &objects, 
+                           std::vector< std::vector<unsigned char> > &values) {
+  addBindings(objects, values);
+}
+
+void CVAssignment::addBindings(std::vector<const klee::Array*> &objects, 
+                                std::vector< std::vector<unsigned char> > &values) {
+
+  std::vector< std::vector<unsigned char> >::iterator valIt = 
+    values.begin();
+  for (std::vector<const klee::Array*>::iterator it = objects.begin(),
+          ie = objects.end(); it != ie; ++it) {
+    const klee::Array *os = *it;
+    std::vector<unsigned char> &arr = *valIt;
+    bindings.insert(std::make_pair(os, arr));
+    name_bindings.insert(std::make_pair(os->name, os));
+    ++valIt;
+  }
+}
+
+void CVAssignment::solveForBindings(klee::Solver* solver, 
+                                    klee::ref<klee::Expr> &expr) {
+  std::vector<const klee::Array*> arrays;
+  std::vector< std::vector<unsigned char> > initial_values;
+
+  klee::findSymbolicObjects(expr, arrays);
+  klee::ConstraintManager cm;
+  cm.addConstraint(expr);
+
+  klee::Query query(cm, klee::ConstantExpr::alloc(0, klee::Expr::Bool));
+
+  solver->getInitialValues(query, arrays, initial_values);
+
+  klee::ref<klee::Expr> value_disjunction
+		= klee::ConstantExpr::alloc(0, klee::Expr::Bool);
+
+  for (unsigned i=0; i<arrays.size(); ++i) {
+    for (unsigned j=0; j<initial_values[i].size(); ++j) {
+
+      klee::ref<klee::Expr> read = 
+        klee::ReadExpr::create(klee::UpdateList(arrays[i], 0),
+          klee::ConstantExpr::create(j, klee::Expr::Int32));
+
+      klee::ref<klee::Expr> neq_expr = 
+        klee::NotExpr::create(
+          klee::EqExpr::create(read,
+            klee::ConstantExpr::create(initial_values[i][j], klee::Expr::Int8)));
+
+      value_disjunction = klee::OrExpr::create(value_disjunction, neq_expr);
+    }
+  }
+
+  // This may be a null-op how this interaction works needs to be better
+  // understood
+  value_disjunction = cm.simplifyExpr(value_disjunction);
+
+  if (value_disjunction->getKind() == klee::Expr::Constant
+      && cast<klee::ConstantExpr>(value_disjunction)->isFalse()) {
+    addBindings(arrays, initial_values);
+  } else {
+    cm.addConstraint(value_disjunction);
+
+    bool result;
+    solver->mayBeTrue(klee::Query(cm,
+      klee::ConstantExpr::alloc(0, klee::Expr::Bool)), result);
+
+    if (result) {
+      printf("INVALID solver concretization!");
+      std::exit(EXIT_FAILURE);
+    } else {
+      //TODO Test this path
+      addBindings(arrays, initial_values);
+    }
+  }
+}
+//End CVAssignment --------------------------------------------
+
+
+
+typedef struct {  
+  uint64_t messageNumber; // Number of message M in ktest log currently being verified
+  uint64_t passNumber;    // Number of times N we've executed verification for current message M
+  CVAssignment currMultipassAssignment;  //information on assignments learned up to and including current pass N
+  CVAssignment prevMultipassAssignment; //information on assignments learned up to and including previous pass N-1
+  uint64_t roundRootPid; // Root pid that we use as our anchor for verification of M.  We return to this
+  //pid's state after successive passes generate additional info on symbolic variable assignments.
+} multipassInfo;
+
 extern KTestObjectVector ktov;
 extern "C" void begin_target_inner();
 extern "C" void klee_interp();
@@ -1360,7 +1456,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    //Todo:  See if we can rip some of the code below out for externalsAndGlobalsCheck.
    // We're already doing the work of mapping in globals for tase in
    // initializeInterpretationStructures().
-   printf("Setting module and checking externals and globals... \n");
+   printf("Setting module  \n");
    const Module *finalModule = interpreter->setModule(interpModule, Opts);
    //externalsAndGlobalsCheck(finalModule);
    StackBase = (void *) &target_stack;
@@ -1369,7 +1465,6 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    // as_Z9dummyMainv in "EntryPoint" because of cpp name mangling.
   
    Function *entryFn = interpModule->getFunction(EntryPoint);
-
    if (!entryFn){
      printf("ERROR: Couldn't locate entryFn \n");
      std::exit(EXIT_FAILURE);
@@ -1449,6 +1544,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    } else {
      //Code path here will hold the management code for the controller process.
 
+     
      while (true) {
        //spin
        int numBytesRead;
@@ -1459,12 +1555,14 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 	 printf("Master found something in the pipe \n");
 	 char message[20];
 
-	 strncpy(message,workerMessageBuf,20);
+	 memcpy(message,workerMessageBuf,20);
 	 printf("Master received message %s \n", message);
 	 
 	 std::exit(EXIT_SUCCESS);
        }
      }
+     
+     
      
      while(true) {
        //manage states
@@ -1504,7 +1602,8 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
        //Determine if any workers are blocked.  
        //If so, see why and determine if the worker should be able to fork.
        //If worker forks, find the pid of the child and add it to the list.
-     } 
+     }
+     
    }
  }
  

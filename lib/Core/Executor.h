@@ -32,6 +32,24 @@
 
 struct KTest;
 
+//AH: I'd really rather not include the openssl stuff here but I guess we need it
+// for the make_BN_symbolic declaration since it references a bignum struct
+// FIXME: need internal openssl data types
+#include "/playpen/humphries/cliver/gsec-support/src/openssl/include/openssl/ssl.h"
+#include "/playpen/humphries/cliver/gsec-support/src/openssl/include/openssl/evp.h"
+#include "/playpen/humphries/cliver/gsec-support/src/openssl/include/openssl/ssl3.h"
+#include "/playpen/humphries/cliver/gsec-support/src/openssl/include/openssl/sha.h"
+#include "/playpen/humphries/cliver/gsec-support/src/openssl/include/openssl/ec.h"
+#include "/playpen/humphries/cliver/gsec-support/src/openssl/include/openssl/ossl_typ.h"
+// modes_lcl.h redfines objects included here
+//#include "../../../openssl/include/openssl/modes.h"
+#include "/playpen/humphries/cliver/gsec-support/src/openssl/crypto/ec/ec_lcl.h"
+#include "/playpen/humphries/cliver/gsec-support/src/openssl/crypto/modes/modes_lcl.h"
+#include "/playpen/humphries/cliver/gsec-support/src/openssl/crypto/aes/aes.h"
+#include "/playpen/humphries/cliver/gsec-support/src/openssl/crypto/sha/sha.h"
+
+
+
 namespace llvm {
   class BasicBlock;
   class BranchInst;
@@ -308,9 +326,9 @@ private:
                               ref<Expr> value /* undef if read */,
                               KInstruction *target /* undef if write */);
 
-
-  //AH: Tase additions below.
-  
+  ////////////////////////////////////////////////////////////
+  //AH: Tase additions below ---------------------------------
+  ////////////////////////////////////////////////////////////
   bool gprsAreConcrete();
   bool instructionBeginsTransaction(uint64_t pc);
   bool instructionIsModeled();
@@ -332,18 +350,49 @@ private:
   void model_exittran();
   void model_reopentran();
 
-  //AH: Modeled functions
+  //AH: Internal helper functions
+  ref<Expr> tase_helper_read (uint64_t address, uint8_t byteWidth);
+  void tase_helper_write (uint64_t address, ref<Expr> val);
+  void tase_make_symbolic (uint64_t addr, uint64_t len, char * name);
+  
+  //AH: Modeled io functions
   void model_read();
   void model_readstdin();
   void model_readsocket();
-  void model_select();
-  int tls_predict_stdin_size (uint64_t fd, uint64_t maxLen);
   void model_write();
   void model_random();
   void model_strncat();
-  void model_tls1_generate_master_secret ();
-  
+  void model_select();
 
+  //AH: Modeling specific to tls
+  
+  void model_tls1_generate_master_secret();
+
+  void model_AES_encrypt();
+  void model_gcm_ghash_4bit();
+  void model_gcm_gmult_4bit();
+  
+  void model_SHA1_Update();
+  void model_SHA1_Final();
+  void model_SHA256_Update();
+  void model_SHA256_Final();
+
+  void model_EC_KEY_generate_key();
+  void model_ECDH_compute_key();
+  void model_EC_POINT_point2oct(); 
+  
+  uint64_t tls_predict_stdin_size (uint64_t fd, uint64_t maxLen);
+  void make_BN_symbolic(BIGNUM * bn);
+
+  //AH: RNG modeling
+
+  void model_RAND_bytes();
+  void model_RAND_pseudo_bytes();
+  void model_RAND_poll();
+  
+  //////////////////////////////////////////////////////////
+  //END Tase additions--------------------------------------
+  //////////////////////////////////////////////////////////
   
   void executeMakeSymbolic(ExecutionState &state, const MemoryObject *mo,
                            const std::string &name);
