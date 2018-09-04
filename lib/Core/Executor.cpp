@@ -100,7 +100,7 @@ using namespace klee;
 #include <iostream>
 
 extern std::stringstream globalLogStream;
-extern int c2sFD [2];
+extern int worker2managerFD [2];
 #include "klee/tase_constants.h"
 enum runType : int {PURE_INTERP, TSX_NATIVE, VERIFICATION};
 extern enum runType exec_mode;
@@ -154,6 +154,92 @@ MemoryObject * basket_MO;
 
 extern std::stringstream workerIDStream;
 
+#include "klee/CVAssignment.h"
+#include "klee/util/ExprUtil.h"
+//Todo: Need to move this out into its own cpp file.
+
+CVAssignment::CVAssignment(std::vector<const klee::Array*> &objects, 
+                           std::vector< std::vector<unsigned char> > &values) {
+  addBindings(objects, values);
+}
+
+void CVAssignment::addBindings(std::vector<const klee::Array*> &objects, 
+                                std::vector< std::vector<unsigned char> > &values) {
+
+  std::vector< std::vector<unsigned char> >::iterator valIt = 
+    values.begin();
+  for (std::vector<const klee::Array*>::iterator it = objects.begin(),
+          ie = objects.end(); it != ie; ++it) {
+    const klee::Array *os = *it;
+    std::vector<unsigned char> &arr = *valIt;
+    bindings.insert(std::make_pair(os, arr));
+    name_bindings.insert(std::make_pair(os->name, os));
+    ++valIt;
+  }
+}
+
+//Extended for TASE to include ExecStatePtr
+void CVAssignment::solveForBindings(klee::Solver* solver, 
+                                    klee::ref<klee::Expr> &expr,
+				    klee::ExecutionState * ExecStatePtr) {
+  std::vector<const klee::Array*> arrays;
+  std::vector< std::vector<unsigned char> > initial_values;
+
+  klee::findSymbolicObjects(expr, arrays);
+  //ABH: It needs to be the case that the write condition was added to
+  //exec state's constraints before solveForBindings was called.
+  //Todo:  Make this simpler and less prone to misuse.
+  klee::ConstraintManager cm(ExecStatePtr->constraints);
+  
+
+  klee::Query query(cm, klee::ConstantExpr::alloc(0, klee::Expr::Bool));
+
+  solver->getInitialValues(query, arrays, initial_values);
+
+  klee::ref<klee::Expr> value_disjunction
+		= klee::ConstantExpr::alloc(0, klee::Expr::Bool);
+
+  for (unsigned i=0; i<arrays.size(); ++i) {
+    for (unsigned j=0; j<initial_values[i].size(); ++j) {
+
+      klee::ref<klee::Expr> read = 
+        klee::ReadExpr::create(klee::UpdateList(arrays[i], 0),
+          klee::ConstantExpr::create(j, klee::Expr::Int32));
+
+      klee::ref<klee::Expr> neq_expr = 
+        klee::NotExpr::create(
+          klee::EqExpr::create(read,
+            klee::ConstantExpr::create(initial_values[i][j], klee::Expr::Int8)));
+
+      value_disjunction = klee::OrExpr::create(value_disjunction, neq_expr);
+    }
+  }
+
+  // This may be a null-op how this interaction works needs to be better
+  // understood
+  value_disjunction = cm.simplifyExpr(value_disjunction);
+
+  if (value_disjunction->getKind() == klee::Expr::Constant
+      && cast<klee::ConstantExpr>(value_disjunction)->isFalse()) {
+    addBindings(arrays, initial_values);
+  } else {
+    cm.addConstraint(value_disjunction);
+
+    bool result;
+    solver->mayBeTrue(klee::Query(cm,
+      klee::ConstantExpr::alloc(0, klee::Expr::Bool)), result);
+
+    if (result) {
+      printf("INVALID solver concretization!");
+      std::exit(EXIT_FAILURE);
+    } else {
+      //TODO Test this path
+      addBindings(arrays, initial_values);
+    }
+  }
+}
+
+extern multipassRecord multipassInfo;
 
 //AH: End of our additions. -----------------------------------
 
@@ -3582,7 +3668,7 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
 
   std::string array_name = name;
   
-  klee::Array * array = NULL;
+  const klee::Array * array = NULL;
   if (!unnamed)
     array = multipassInfo.currMultipassAssignment.getArray(array_name);
 
@@ -3591,13 +3677,12 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
     multipass = true;
   } else {
     if (!unnamed) {
-    }
+    } //Todo: handle array creation with a unique name for unnamed arrays.
     array = arrayCache.CreateArray(array_name, mo->size);
   }
 
   bindObjectInState(state, mo, false, array);
 
-  std::vector<unsigned char> *bindings = NULL;
   if (multipassInfo.passCount > 0 && multipass) {
     bindings = multipassInfo.currMultipassAssignment.getBindings(array_name);
 
@@ -3609,12 +3694,12 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
       klee::ObjectState *wos = state.addressSpace.getWriteable(mo, os);
       assert(wos && "Writeable object is NULL!");
       unsigned idx = 0;
-      foreach (unsigned char b, *bindings) {
-        wos->write8(idx, b);
-        idx++;
+
+      for (std::vector<unsigned char>::iterator it = bindings->begin(), ie = bindings->end(); it != ie; ++it) {
+	wos->write8(idx, *it);
+	idx++;
       }
     }
-
 
   } else {
     state.addSymbolic(mo, array);
@@ -3623,8 +3708,6 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
   //End AH Addition---------------------
   //(orig code)
   
-
-
 
   // Create a new object state for the memory object (instead of a copy).
   if (!replayKTest) {
@@ -3782,19 +3865,53 @@ void Executor::model_write() {
     
     unsigned char * wireMessageRecord = o->bytes;
     int wireMessageLength = o->numBytes;
-    //For multipass, may need to get a sequence of these constraints to pass back to another process.
-    //For now, just adding them directly.
+
+    ref<Expr> writeCondition = ConstantExpr::create(1,Expr::Bool);
+    
     for (int j = 0; j < wireMessageLength; j++) {
       ref<Expr> srcCandidateVal = tase_helper_read((uint64_t) (rawArg2Val + j), 1);  //Get 1 byte from addr rawArg2Val + j
       ref<ConstantExpr> wireMessageVal = ConstantExpr::create( *((uint8_t *) wireMessageRecord + j), Expr::Int8);
       ref<Expr> equalsExpr = EqExpr::create(srcCandidateVal,wireMessageVal);
-      addConstraint(*GlobalExecutionStatePtr, equalsExpr);
+      writeCondition = AndExpr::create(writeCondition, equalsExpr);
     }
+
+    //Todo -- Double check if this is actually needed if we implement solveForBindings to
+    //be aware of global constraints
+    bool result;
+    //Changed below from cliver because we don't have a definition for compute_false
+    //compute_false(GlobalExecutionStatePtr, writeCondition, result);
+    solver->mustBeFalse(*GlobalExecutionStatePtr, writeCondition, result);
+    if (result) {
+      printf("ERROR: model_write detected inconsistency in state \n");
+      std::exit(EXIT_FAILURE);
+    }
+    
+    addConstraint(*GlobalExecutionStatePtr, writeCondition);
     //Wrap up and get back to execution.
     //Return number of bytes sent and bump RIP.
     ref<ConstantExpr> bytesWrittenExpr = ConstantExpr::create(wireMessageLength, Expr::Int64);
     target_ctx_gregs_OS->write(REG_RAX * 8, bytesWrittenExpr);
     target_ctx_gregs[REG_RIP] += 5;
+
+    //Determine if we can infer new bindings based on current round of execution.
+    //If not, it's time to move on to next round.
+
+    multipassInfo.currMultipassAssignment.clear();
+    multipassInfo.currMultipassAssignment.solveForBindings( solver->solver, writeCondition,GlobalExecutionStatePtr);
+
+    if (multipassInfo.currMultipassAssignment.bindings.size() && multipassInfo.currMultipassAssignment.bindings.size() !=
+	multipassInfo.prevMultipassAssignment.bindings.size()) {
+
+      //Todo -- IMPLEMENT
+      //Request a new process to run through this stage of multipass and provide all the new details of multipass info
+      //ex new pass count, "old" CVAssignment, current message number.
+
+      
+    } else {
+      //increment message count to indicate we've reached a new stage of verification and keep going.
+      //todo -- IMPLEMENT
+    }
+    
   } else {   
     printf("Found symbolic argument to model_send \n");
     std::exit(EXIT_FAILURE);
@@ -3828,10 +3945,10 @@ void Executor::model_read() {
     //uint64_t rawArg2Val = target_ctx_gregs[REG_RSI]; //address of dest buf  NOT USED
     //uint64_t rawArg3Val = target_ctx_gregs[REG_RDX]; //max len to read in NOT USED
     
-    if (rawArg1Val != 0) 
-      model_readsocket();
-    else
+    if (rawArg1Val == STDIN_FD)
       model_readstdin();    
+    else if (rawArg1Val == SOCKET_FD)
+      model_readsocket();
   } else  {   
     printf("Found symbolic argument to model_read \n");
     std::exit(EXIT_FAILURE);
@@ -3876,15 +3993,17 @@ void Executor::model_readsocket() {
 
 void spinAndAwaitForkRequest() {
   while (true) {
-    forkRequest FR = getForkRequest(fd);
-    if (FR) {
-      int pid = fork();
+    //Todo: Implement fork request mechanism, probably via named pipes
+    //forkRequest FR = getForkRequest(fd);
+    //if (FR) {
+    if (false) {
+      int pid = ::fork();
       if (pid ==0) {
-	multipassInfo.roundRootPID = FR.roundRootPID;
-	multipassInfo.prevMultipassAssignment = FR.currMultipassAssignment;
-	multipassInfo.currMultipassAssignment = FR.currMultipassAssignment;
-	multipassInfo.messageNumber = FR.messageNumber;
-	multipassInfo.passNumber = FR.passNumber;
+	//multipassInfo.roundRootPID = FR.roundRootPID;
+	//multipassInfo.prevMultipassAssignment = FR.currMultipassAssignment;
+	//multipassInfo.currMultipassAssignment = FR.currMultipassAssignment;
+	//multipassInfo.messageNumber = FR.messageNumber;
+	//multipassInfo.passCount = FR.passCount;
 	return;
       } else {
 	//just continue handling fork requests.
@@ -3896,9 +4015,9 @@ void spinAndAwaitForkRequest() {
 
 void Executor::model_readstdin() {
   //Get the input args per system V linux ABI.
-  uint64_t rawArg1Val = target_ctx_gregs[REG_RDI]; //fd
-  uint64_t rawArg2Val = target_ctx_gregs[REG_RSI]; //address of dest buf 
-  uint64_t rawArg3Val = target_ctx_gregs[REG_RDX]; //max len to read in
+  uint64_t fd = target_ctx_gregs[REG_RDI]; //fd
+  uint64_t dest = target_ctx_gregs[REG_RSI]; //address of dest buf 
+  uint64_t maxlen = target_ctx_gregs[REG_RDX]; //max len to read in
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
@@ -3908,47 +4027,41 @@ void Executor::model_readstdin() {
       (isa<ConstantExpr>(arg2Expr)) &&
       (isa<ConstantExpr>(arg3Expr)) 
       ){
-
-   
     
     if (enableMultipass) {
-      //BEGIN NEW VERIFICATION ROUND =====>
-      //At this point, should have cleared old multipass assignment info.
 
       
-      multipassInfo.messagenumber++;  
-      int pid = fork();
+      
+      //BEGIN NEW VERIFICATION STAGE =====>
+      //clear old multipass assignment info.
+
+      multipassInfo.prevMultipassAssignment.clear();
+      multipassInfo.currMultipassAssignment.clear();
+      multipassInfo.messageNumber++;
+      multipassInfo.passCount = 0;
+      multipassInfo.roundRootPID = getpid();
+      
+      int pid = ::fork();
       if (pid == 0) {
-	spinAndAwaitForkRequest();  //Make our root PID for this round's verification.
+	//Continue on 
       }else {
-	multipassInfo.roundRootPID = pid;  //Should only hit this code once.
+	spinAndAwaitForkRequest();  //Should only hit this code once.
       }
 
       //BEGIN NEW VERIFICATION PASS =====>
       //Entry point is here from spinAndAwaitForkRequest().  At this point,
-      //pass number info and the latest multipass assignment info should have been entered.
-      
+      //pass number info and the latest multipass assignment info should have been entered.     
     }
 
-    uint64_t numSymBytes = tls_predict_stdin_size(rawArg1Val, rawArg3Val);
-    void * stdInBuf = malloc(numSymBytes);
-    MemoryObject * stdinMO = memory->allocateFixed( (uint64_t) stdInBuf, numSymBytes,NULL);
-      
-    static int timesReadStdinCalled = 0;
-    timesReadStdinCalled++;
-    std::string nameString = "stdinRead" + std::to_string(timesReadStdinCalled);
-    stdinMO->name = nameString;
-    executeMakeSymbolic(*GlobalExecutionStatePtr, stdinMO, "stdinMO");
-    const ObjectState *conststdinOS = GlobalExecutionStatePtr->addressSpace.findObject(stdinMO);
-    ObjectState * stdinOS = GlobalExecutionStatePtr->addressSpace.getWriteable(stdinMO,conststdinOS);
-      
-    //Copy from symbolic buffer into dest buffer
-    for (uint64_t j = 0; j < numSymBytes; j++) {
-      ref <Expr> srcByte = stdinOS->read8(j);
-      ref <Expr> destAddressExpr = ConstantExpr::create( rawArg2Val + j, Expr::Int64);
-      executeMemoryOperation(*GlobalExecutionStatePtr, /*isWrite*/ true,  destAddressExpr, srcByte, /*not used for write*/ NULL);
+    uint64_t numSymBytes = tls_predict_stdin_size(fd, maxlen);
+    
+    if (numSymBytes <= maxlen) // redundant based on tls_predict_stdin_size's logic.
+      tase_make_symbolic(dest, numSymBytes, "stdinRead");
+    else {
+      printf("ERROR: detected too many bytes in stdin read within model_readstdin() \n");
+      std::exit(EXIT_FAILURE);
     }
-      
+ 
     //Return number of bytes read and bump RIP.
     ref<ConstantExpr> bytesReadExpr = ConstantExpr::create(numSymBytes, Expr::Int64);
     target_ctx_gregs_OS->write(REG_RAX * 8, bytesReadExpr);
@@ -5101,7 +5214,7 @@ void Executor::model_strncat() {
     
     freopen(successIDString.c_str(),"w",stderr);
 
-    write(c2sFD[1], "SUCCESS", 8);
+    write(worker2managerFD[1], "SUCCESS", 8);
     printf("Just wrote? \n");
     for ( unsigned k =0; k < GlobalExecutionStatePtr->symbolics.size(); k++) {
       printf("Symbolic var name: %s \n", GlobalExecutionStatePtr->symbolics[k].first->name.c_str());

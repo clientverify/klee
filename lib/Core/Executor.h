@@ -332,16 +332,6 @@ private:
   bool gprsAreConcrete();
   bool instructionBeginsTransaction(uint64_t pc);
   bool instructionIsModeled();
-
-  //Tase helper to write an expr directly to an addr.  Width
-  //(1/2/4/8 bytes) is inferred based on type of val.
-  //Written because KLEE typically requires mem ops in terms of an
-  //object's base & offset rather than direct addr.
-  void tase_helper_write (uint64_t addr, ref<Expr> val);
-  //Tase helper to read an expr directly from addr with 1/2/4/8 bytes.
-  //Written because KLEE typically requires mem ops in terms of an
-  //object's base & offset rather than direct addr.
-  ref<Expr> tase_helper_read (uint64_t addr, uint8_t byteWidth);
   
   void model_inst();
 
@@ -350,12 +340,19 @@ private:
   void model_exittran();
   void model_reopentran();
 
-  //AH: Internal helper functions
-  ref<Expr> tase_helper_read (uint64_t address, uint8_t byteWidth);
+  //AH: Internal helper functions--------------------------
+  //Tase helper to write an expr directly to an addr.  Width
+  //(1/2/4/8 bytes) is inferred based on type of val.
+  //Written because KLEE typically requires mem ops in terms of an
+  //object's base & offset rather than direct addr.
   void tase_helper_write (uint64_t address, ref<Expr> val);
+  //Tase helper to read an expr directly from addr with 1/2/4/8 bytes.
+  //Written because KLEE typically requires mem ops in terms of an
+  //object's base & offset rather than direct addr.
+  ref<Expr> tase_helper_read (uint64_t address, uint8_t byteWidth);
   void tase_make_symbolic (uint64_t addr, uint64_t len, char * name);
   
-  //AH: Modeled io functions
+  //AH: Modeled io functions--------------------------------
   void model_read();
   void model_readstdin();
   void model_readsocket();
@@ -364,7 +361,7 @@ private:
   void model_strncat();
   void model_select();
 
-  //AH: Modeling specific to tls
+  //AH: Modeling specific to tls---------------------------
   
   void model_tls1_generate_master_secret();
 
@@ -384,7 +381,7 @@ private:
   uint64_t tls_predict_stdin_size (uint64_t fd, uint64_t maxLen);
   void make_BN_symbolic(BIGNUM * bn);
 
-  //AH: RNG modeling
+  //AH: RNG modeling---------------------------------------
 
   void model_RAND_bytes();
   void model_RAND_pseudo_bytes();
@@ -574,11 +571,8 @@ public:
   }
   
   virtual void klee_interp_internal ();
-
-  virtual void forkOnPossibleRIPValues (ref <Expr> inputExpr);
-  
   virtual bool resumeNativeExecution ();
-
+  virtual void forkOnPossibleRIPValues(ref <Expr> RIPExpr);
   virtual void initializeInterpretationStructures (llvm::Function *f);
 
   virtual void runFunctionAsMain(llvm::Function *f,

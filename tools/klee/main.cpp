@@ -66,99 +66,17 @@
 
 bool enableMultipass = true;
 
-
-//CVAssignment-------------------------------------------------------
 #include "klee/CVAssignment.h"
 #include "klee/util/ExprUtil.h" 
-//Todo: Need to move this out into its own cpp file.
 
-CVAssignment::CVAssignment(std::vector<const klee::Array*> &objects, 
-                           std::vector< std::vector<unsigned char> > &values) {
-  addBindings(objects, values);
-}
+multipassRecord multipassInfo;
 
-void CVAssignment::addBindings(std::vector<const klee::Array*> &objects, 
-                                std::vector< std::vector<unsigned char> > &values) {
-
-  std::vector< std::vector<unsigned char> >::iterator valIt = 
-    values.begin();
-  for (std::vector<const klee::Array*>::iterator it = objects.begin(),
-          ie = objects.end(); it != ie; ++it) {
-    const klee::Array *os = *it;
-    std::vector<unsigned char> &arr = *valIt;
-    bindings.insert(std::make_pair(os, arr));
-    name_bindings.insert(std::make_pair(os->name, os));
-    ++valIt;
-  }
-}
-
-void CVAssignment::solveForBindings(klee::Solver* solver, 
-                                    klee::ref<klee::Expr> &expr) {
-  std::vector<const klee::Array*> arrays;
-  std::vector< std::vector<unsigned char> > initial_values;
-
-  klee::findSymbolicObjects(expr, arrays);
-  klee::ConstraintManager cm;
-  cm.addConstraint(expr);
-
-  klee::Query query(cm, klee::ConstantExpr::alloc(0, klee::Expr::Bool));
-
-  solver->getInitialValues(query, arrays, initial_values);
-
-  klee::ref<klee::Expr> value_disjunction
-		= klee::ConstantExpr::alloc(0, klee::Expr::Bool);
-
-  for (unsigned i=0; i<arrays.size(); ++i) {
-    for (unsigned j=0; j<initial_values[i].size(); ++j) {
-
-      klee::ref<klee::Expr> read = 
-        klee::ReadExpr::create(klee::UpdateList(arrays[i], 0),
-          klee::ConstantExpr::create(j, klee::Expr::Int32));
-
-      klee::ref<klee::Expr> neq_expr = 
-        klee::NotExpr::create(
-          klee::EqExpr::create(read,
-            klee::ConstantExpr::create(initial_values[i][j], klee::Expr::Int8)));
-
-      value_disjunction = klee::OrExpr::create(value_disjunction, neq_expr);
-    }
-  }
-
-  // This may be a null-op how this interaction works needs to be better
-  // understood
-  value_disjunction = cm.simplifyExpr(value_disjunction);
-
-  if (value_disjunction->getKind() == klee::Expr::Constant
-      && cast<klee::ConstantExpr>(value_disjunction)->isFalse()) {
-    addBindings(arrays, initial_values);
-  } else {
-    cm.addConstraint(value_disjunction);
-
-    bool result;
-    solver->mayBeTrue(klee::Query(cm,
-      klee::ConstantExpr::alloc(0, klee::Expr::Bool)), result);
-
-    if (result) {
-      printf("INVALID solver concretization!");
-      std::exit(EXIT_FAILURE);
-    } else {
-      //TODO Test this path
-      addBindings(arrays, initial_values);
-    }
-  }
-}
-//End CVAssignment --------------------------------------------
-
-
-
-typedef struct {  
-  uint64_t messageNumber; // Number of message M in ktest log currently being verified
-  uint64_t passNumber;    // Number of times N we've executed verification for current message M
-  CVAssignment currMultipassAssignment;  //information on assignments learned up to and including current pass N
-  CVAssignment prevMultipassAssignment; //information on assignments learned up to and including previous pass N-1
-  uint64_t roundRootPid; // Root pid that we use as our anchor for verification of M.  We return to this
-  //pid's state after successive passes generate additional info on symbolic variable assignments.
-} multipassInfo;
+//Todo: Later, generalize for when we have more than 8 cores available.
+int max_scheduled_workers = 8;
+std::vector<int> scheduledWorkers;
+int max_workers = 200;
+std::vector<int> unscheduledWorkers;
+int max_depth;
 
 extern KTestObjectVector ktov;
 extern "C" void begin_target_inner();
@@ -171,16 +89,25 @@ std::stringstream globalLogStream;
 //extern void ext_test();
 
 typedef struct  {
-  int workerPID;
-  uint64_t pc;
-  int childPID;
+  int senderPID; //Mandatory
+  int stageNumber; //Mandatory
+  uint64_t pc; //Mandatory
+  int messageType; //Mandatory
+  int childPID; //Optional
+  int stageRootPID; //Optional
 } workerMessage;
+
+//messageType:
+//0 Successfully verified message
+//1 Notification of termination
+//2 Request to fork (path exploration)
+//3 Request for multipass clone of stage 
 
 void * StackBase;
 llvm::Module * interpModule;
 //AH: Kind of gross.  We need to allocate X+1 bytes for an X byte stack, and note that it grows DOWNWARD.
 //  stack_size defined in tase.h
-int c2sFD [2];
+int worker2managerFD [2];
 
 char target_stack[STACK_SIZE + 1];
 char interp_stack[STACK_SIZE + 1];
@@ -190,6 +117,8 @@ klee::Interpreter * GlobalInterpreter;
 
 enum runType : int {PURE_INTERP, TSX_NATIVE, VERIFICATION};
 enum runType exec_mode;
+enum workerSelectionMode : int {RANDOM, DEPTH_FIRST};
+enum workerSelectionMode workerSelectionType = RANDOM;
 gregset_t target_ctx_gregs;
 gregset_t prev_ctx_gregs;
 uint64_t targetMemAddr;
@@ -1365,11 +1294,80 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    return;
  }
 
- //Fill in later
- int processWorkerMessage (workerMessage m) {
-   return 5;
- }
  
+ //Fill in later
+ void processWorkerMessage (workerMessage m) {
+
+   int messageType = m.messageType;
+   switch (messageType) {
+
+   case 0: //Successfully verified message 
+     {
+     if (m.stageNumber > max_depth)
+       max_depth = m.stageNumber;
+     break;}
+   case 1: //Termination
+     {
+       kill(m.senderPID,SIGKILL);
+       std::vector<int>::iterator UWpos = std::find(unscheduledWorkers.begin(), unscheduledWorkers.end(), m.senderPID);
+       unscheduledWorkers.erase(UWpos);
+       std::vector<int>::iterator SWpos = std::find(scheduledWorkers.begin(), scheduledWorkers.end(), m.senderPID);
+       scheduledWorkers.erase(SWpos);
+       //scheduleNewWorkerAfterTerm(); //todo: implement
+       break;
+     }
+   case 2: //Request to fork (exploration)
+     {
+       if (unscheduledWorkers.size() + scheduledWorkers.size() < max_workers) {
+	 
+	 
+       } else {
+	 printf("WARNING: maximum worker number exceeded \n");
+	 std::exit(EXIT_FAILURE);
+       }
+     
+     
+       break;
+     }
+   case 3: //Request for a replay (multipass)
+     {
+       break;
+     }
+   default:
+     {
+       printf("ERROR: unrecognized messageType in processWorkerMessage \n");
+       std::exit(EXIT_FAILURE);
+     }
+   } 
+     
+ }
+   
+ void scheduleNewWorkerAfterTerm() {
+
+   if (unscheduledWorkers.size() == 0)
+       return;
+   
+   if (workerSelectionType == RANDOM) {
+
+     double randFraction = rand()/RAND_MAX;
+     int randIndex = floor(randFraction * unscheduledWorkers.size());
+     int workerToSched = unscheduledWorkers.at(randIndex);
+     //Todo: Add logic for sched_setaffinity to handle affinity pinning
+     kill(workerToSched, SIGCONT);
+     std::vector<int>::iterator UWpos = std::find(unscheduledWorkers.begin(), unscheduledWorkers.end(), workerToSched);
+     unscheduledWorkers.erase(UWpos);
+     scheduledWorkers.push_back(workerToSched);
+     
+   } else if (workerSelectionType == DEPTH_FIRST) {
+     printf("ERROR: DFS not implemented yet \n");
+     std::exit(EXIT_FAILURE);
+   } else {
+     printf("ERROR: Unrecognized workerSelectionType \n");
+     std::exit(EXIT_FAILURE);
+   }
+   
+ }
+   
  int main (int argc, char **argv, char **envp) {
 
    //Redirect stdout messages to a file called "Monitor".
@@ -1476,9 +1474,9 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    
    enum runType exec_mode = VERIFICATION; //This should be made global later.
 
-   int pipeResult = pipe(c2sFD);
+   int pipeResult = pipe(worker2managerFD);
    if (pipeResult != 0) {
-     printf("ERROR: Couldn't create c2sFD pipe\n");
+     printf("ERROR: Couldn't create worker2managerFD pipe\n");
      std::exit(EXIT_FAILURE);
    }
 
@@ -1510,6 +1508,16 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      printf("ERROR: invalid exec_mode \n");
      std::exit(EXIT_FAILURE);
    }
+
+   if (pid != 0 ) {
+     scheduledWorkers.push_back(pid);
+     //Todo: Determine if we should
+     //add assert or something so that workerlist and scheduledWorkers
+     // are always disjoint sets.
+     //workerList.insert(pid);
+     max_depth = 0;
+   }
+   
    if (pid == 0){
 
      //Child path is here.
@@ -1545,12 +1553,15 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      //Code path here will hold the management code for the controller process.
 
      
+
+     
+     /*
      while (true) {
-       //spin
+       
        int numBytesRead;
        char workerMessageBuf[20];
 
-       numBytesRead =  read(c2sFD[0], workerMessageBuf, sizeof(workerMessageBuf));
+       numBytesRead =  read(worker2managerFD[0], workerMessageBuf, sizeof(workerMessageBuf));
        if (numBytesRead != 0) {
 	 printf("Master found something in the pipe \n");
 	 char message[20];
@@ -1560,9 +1571,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 	 
 	 std::exit(EXIT_SUCCESS);
        }
-     }
-     
-     
+       }*/
      
      while(true) {
        //manage states
@@ -1570,34 +1579,16 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
        char workerMessageBuf[sizeof(workerMessage)];
 
        //Get a "workerMessage-sized" number of bytes from the read end of the pipe.
-       numBytesRead =  read(c2sFD[0], workerMessageBuf, sizeof(workerMessageBuf));
+       numBytesRead =  read(worker2managerFD[0], workerMessageBuf, sizeof(workerMessageBuf));
        if (numBytesRead != 0) {
 	 if (numBytesRead != sizeof(workerMessage)) {
 	   printf("Error: manager process encountered data from pipe with incorrect length %d \n",numBytesRead);
 	 }
 
 	 //Questionable.
-	 workerMessage * msg = (workerMessage *) &workerMessageBuf[0];
-	 
-	 int result =  processWorkerMessage(*msg);
-	 /* if (result == 0)
-	   //Freeze worker process
-	   else 
-	 if (result == 1)
-	   //Tell orig worker process to continue, fork and freeze child
-	 else 
-	 
-	 if (result == 3)
-	   //Tell both orig and child process to fork and continue
-	 else if (result == 2)
-	   //Tell orig process to freeze, but fork child first.
-	 else if (result == 5)
-	   std::exit(EXIT_SUCCESS);
-	 else
-	   printf("ERROR: invalid result from pickWorker(msg) in manager \n"); std::exit(EXIT_FAILURE);
-	 */
-	 //Remove me.
-	 std::exit(EXIT_FAILURE);
+	 workerMessage * msg = (workerMessage *) &workerMessageBuf[0]; 
+         processWorkerMessage(*msg);
+        
        }
        //Determine if any workers are blocked.  
        //If so, see why and determine if the worker should be able to fork.
