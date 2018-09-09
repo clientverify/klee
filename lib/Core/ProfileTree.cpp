@@ -139,6 +139,7 @@ void ProfileTreeNode::branch(
              ExecutionState* leftData,
              ExecutionState* rightData,
              llvm::Instruction* ins) {
+
   this->increment_branch_count();
   assert(leftData != rightData);
   assert(this->my_type == leaf);
@@ -263,7 +264,8 @@ int ProfileTree::dfs(ProfileTreeNode *root){
       }else{
         assert(p->ins_count == 0);
         assert(p->get_type() == ProfileTreeNode::NodeType::leaf);
-        assert(p->parent->get_winner());
+        if(!p->parent->get_winner())
+            winner = p;
       }
     }
     if(p->get_type() == ProfileTreeNode::NodeType::call_ins){
@@ -721,7 +723,7 @@ ProfileTreeNode::~ProfileTreeNode() {
 
 
 ///////////////////////////////////////////////////////////////////////////////
-////////////////// Getters, Setters, Incrimenting /////////////////////////////
+////////////////// Getters, Setters, Incrementing /////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
 int  ProfileTreeNode::get_total_branch_count(void){ return total_branch_count; }
