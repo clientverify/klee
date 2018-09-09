@@ -31,6 +31,7 @@ struct KFunction;
 struct KInstruction;
 class MemoryObject;
 class PTreeNode;
+class ProfileTreeNode;
 struct InstructionInfo;
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const MemoryMap &mm);
@@ -133,6 +134,7 @@ public:
 
   /// @brief Pointer to the process tree of the current state
   PTreeNode *ptreeNode;
+  ProfileTreeNode *profiletreeNode;
 
   /// @brief Ordered list of symbolics: used to generate test cases.
   //
@@ -153,7 +155,7 @@ public:
   void removeFnAlias(std::string fn);
 
 private:
-  ExecutionState() : ptreeNode(0) {}
+  ExecutionState() : ptreeNode(0), profiletreeNode(0) {}
 
 public:
   ExecutionState(KFunction *kf);

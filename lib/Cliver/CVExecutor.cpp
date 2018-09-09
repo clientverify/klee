@@ -27,6 +27,7 @@
 #include "../Core/Memory.h"
 #include "../Core/MemoryManager.h"
 #include "../Core/PTree.h"
+#include "../Core/ProfileTree.h"
 #include "../Core/SeedInfo.h"
 #include "../Core/StatsTracker.h"
 #include "../Core/TimingSolver.h"
@@ -95,6 +96,7 @@
 #else
 #include "llvm/IR/CallSite.h"
 #endif
+#include "llvm/IR/Instruction.h"
 
 #include <cassert>
 #include <algorithm>
@@ -419,11 +421,46 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
   
   initializeGlobals(*state);
 
+  //Setting the initial execution state
   processTree = new PTree(state);
   state->ptreeNode = processTree->root;
+
+  profileTree = new ProfileTree(state);
+  state->profiletreeNode = profileTree->root;
+  assert(state->profiletreeNode != NULL);  
+
+  //Run things
   run(*state);
+
+  //Record process tree info, and delete
   delete processTree;
   processTree = 0;
+
+
+  //Record profile tree info, and delete
+  int my_total_instructions = profileTree->root->get_total_ins_count();
+  int my_total_node         = profileTree->root->get_total_node_count();
+  int my_total_branches     = profileTree->root->get_total_branch_count();
+  int my_clones             = profileTree->root->get_total_clone_count();
+  int my_returns            = profileTree->root->get_total_ret_count();
+  int my_calls              = profileTree->root->get_total_call_count();
+
+  printf("my_total_instructions %d\n", my_total_instructions);
+  printf("my_total_node %d\n", my_total_node);
+  printf("my_total_branches %d\n", my_total_branches);
+  printf("my_total_clones %d\n", my_clones);
+  printf("my_total_returns %d\n", my_returns);
+  printf("my_total_calls %d\n", my_calls);
+
+  printf("postorder tree\n");
+  int postorder_ins_count = profileTree->dfs(profileTree->root);
+  assert(postorder_ins_count == my_total_instructions);
+  printf("my_total_instructions %d postorder_ins_count %d\n", my_total_instructions, postorder_ins_count);
+  profileTree->dump_branch_clone_graph("/playpen/cliver0/branch_clone_processtree.graph", cv_);
+  profileTree->dump_function_call_graph("/playpen/cliver0/function_call_processtree.graph");
+
+  delete profileTree;
+  profileTree = 0;
 
   cv_->write_all_stats();
 
@@ -908,7 +945,7 @@ void CVExecutor::executeMakeSymbolic(klee::ExecutionState &state,
   if (cvstate->property()->pass_count > 0 && multipass) {
     bindings = cvstate->multi_pass_assignment().getBindings(array_name);
 
-    CVDEBUG("Multi-pass: Binding variable:" << array->name 
+    CVDEBUG("Multi-pass: Binding variable:" << array->name
             << " with concrete assignment of length "
             << mo->size << " with bindings size " 
             << (bindings ? bindings->size() : 0));
@@ -1013,10 +1050,18 @@ CVExecutor::fork(klee::ExecutionState &current,
     addConstraint(*trueState, condition);
     addConstraint(*falseState, klee::Expr::createIsZero(condition));
 
+    llvm::Instruction* current_inst = current.prevPC->inst;
+
     if (EnableStateRebuilding && !replayPath) {
       cv_->notify_all(ExecutionEvent(CV_STATE_FORK_FALSE, falseState));
       cv_->notify_all(ExecutionEvent(CV_STATE_FORK_TRUE, trueState));
     }
+
+    assert(trueState->profiletreeNode->parent == falseState->profiletreeNode->parent);
+    assert(trueState->profiletreeNode->parent->get_type() == klee::ProfileTreeNode::branch_parent ||
+        trueState->profiletreeNode->parent->get_type() == klee::ProfileTreeNode::clone_parent);
+    assert(trueState->profiletreeNode->get_type() == klee::ProfileTreeNode::leaf);
+    assert(falseState->profiletreeNode->get_type() == klee::ProfileTreeNode::leaf);
 
     return StatePair(trueState, falseState);
   }
@@ -1046,6 +1091,7 @@ void CVExecutor::branch(klee::ExecutionState &state,
       processTree->split(es->ptreeNode, ns, es);
     ns->ptreeNode = res.first;
     es->ptreeNode = res.second;
+ 
     // TODO do we still need this event? can we just use Executor::branch()?
     cv_->notify_all(ExecutionEvent(CV_BRANCH, ns, es));
   }
@@ -1100,6 +1146,8 @@ void CVExecutor::terminateStateOnExit(klee::ExecutionState &state) {
       cvstate->network_manager()->socket() &&
       !cvstate->network_manager()->socket()->is_open()) {
     // TODO process finished state here instead of Searcher
+
+    cvstate->profiletreeNode->set_winner();
     cv_->notify_all(ExecutionEvent(CV_FINISH, cvstate));
   } else {
     terminateState(state);
