@@ -323,24 +323,6 @@ int ProfileTree::dfs(ProfileTreeNode *root){
   printf("total_winners %d\n",root->total_winners );
   printf("total_winning_ins_count %d\n", root->total_winning_ins_count );
 
-
-  //this stuff makes sibling lists...
-  assert(nodes_to_visit.size() == 0);
-  nodes_to_visit.push(root); //add children to the end
-  while( nodes_to_visit.size() > 0 ) {
-    //Handling DFS traversal:
-    ProfileTreeNode* p = nodes_to_visit.top(); //get last element
-    nodes_to_visit.pop(); //remove last element
-    for (auto i = p->children.begin(); i != p->children.end(); ++i)
-      nodes_to_visit.push(*i); //add children
-
-    //visit clone and root children:
-    if(p->get_type() == ProfileTreeNode::NodeType::clone_parent ||
-       p->get_type() == ProfileTreeNode::NodeType::root){
-      for (auto i = p->children.begin(); i != p->children.end(); ++i)
-        make_sibling_lists(*i);
-    }
-  }
   std::cout << "\nupdate_function_statistics:\n";
   root->update_function_statistics();
   consolidate_function_data();
