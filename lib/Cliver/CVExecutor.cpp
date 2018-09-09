@@ -1146,7 +1146,6 @@ void CVExecutor::terminateStateOnExit(klee::ExecutionState &state) {
       !cvstate->network_manager()->socket()->is_open()) {
     // TODO process finished state here instead of Searcher
 
-    cvstate->profiletreeNode->set_winner();
     cv_->notify_all(ExecutionEvent(CV_FINISH, cvstate));
   } else {
     terminateState(state);

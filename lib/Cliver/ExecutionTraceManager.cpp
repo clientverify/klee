@@ -20,6 +20,7 @@
 #include "cliver/SocketEventMeasurement.h"
 #include "cliver/Training.h"
 #include "cliver/TrainingCluster.h"
+#include "../Core/ProfileTree.h"
 
 #include "CVCommon.h"
 
@@ -337,6 +338,7 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
 
       if (cv_->executor()->finished_states().count(parent_property)) {
         CVMESSAGE("Verification complete");
+        state->profiletreeNode->set_winner();
         assert(get_stage(parent_property) != NULL);
         cv_->executor()->setHaltExecution(true);
       }
@@ -1229,6 +1231,7 @@ void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {
 
       if (cv_->executor()->finished_states().count(parent_property)) {
         CVMESSAGE("Verification complete");
+        state->profiletreeNode->set_winner();
         cv_->executor()->setHaltExecution(true);
       } else {
 
