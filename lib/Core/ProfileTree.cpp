@@ -217,6 +217,38 @@ void ProfileTreeNode::clone(
 ///////////////////// Processing And Traversal ////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
+void print_winning_path(ProfileTreeNode *root){
+  assert(root->get_winner());
+  ProfileTreeNode *current_winner = root;
+  while(current_winner->get_type() != ProfileTreeNode::NodeType::leaf){
+    int num_kids = current_winner->children.size();
+    ProfileTreeNode *winner_child = NULL;
+    if(num_kids > 1){
+        int i;
+        for(i = 0; i < num_kids; i++){
+            if(current_winner->children[i]->get_winner()){
+                assert(winner_child == NULL);
+                winner_child = current_winner->children[i];
+                if(current_winner->get_type() == ProfileTreeNode::NodeType::branch_parent){
+                    std::cout <<"branchs_child: "<< i <<
+                        " line_num " << get_instruction_line_num(current_winner->container->my_instruction) << " " <<
+                        " function " << current_winner->container->my_instruction->getParent()->getParent()->getName().data() << "\n";
+                    current_winner->container->my_instruction->print(llvm::outs());
+                    std::cout << "\n";
+                }
+            }
+        }
+    } else {
+        assert(num_kids > 0);
+        winner_child =  current_winner->children[0];
+    }
+    assert(winner_child->get_winner());
+    current_winner = winner_child;
+
+  }
+
+}
+
 //Returns instruction count for whole tree
 #define DFS_DEBUG 0
 int ProfileTree::dfs(ProfileTreeNode *root){
@@ -324,6 +356,8 @@ int ProfileTree::dfs(ProfileTreeNode *root){
     winner->process_winner_parents();
   printf("total_winners %d\n",root->total_winners );
   printf("total_winning_ins_count %d\n", root->total_winning_ins_count );
+  if(winner)
+    print_winning_path(root);
 
   std::cout << "\nupdate_function_statistics:\n";
   root->update_function_statistics();
