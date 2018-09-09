@@ -27,6 +27,7 @@
 
 #include "llvm/ADT/Twine.h"
 
+
 #include <vector>
 #include <string>
 #include <map>
@@ -67,6 +68,7 @@ namespace klee {
   class MemoryObject;
   class ObjectState;
   class PTree;
+  class ProfileTree;
   class Searcher;
   class SeedInfo;
   class SpecialFunctionHandler;
@@ -159,6 +161,7 @@ protected:
   SpecialFunctionHandler *specialFunctionHandler;
   std::vector<TimerInfo*> timers;
   PTree *processTree;
+  ProfileTree *profileTree;
 
   /// Used to communicate to other threads when new states have been added
   ConditionVariable searcherCond;

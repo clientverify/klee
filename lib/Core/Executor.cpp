@@ -17,6 +17,7 @@
 #include "Memory.h"
 #include "MemoryManager.h"
 #include "PTree.h"
+#include "ProfileTree.h"
 #include "Searcher.h"
 #include "SeedInfo.h"
 #include "SpecialFunctionHandler.h"
@@ -1608,6 +1609,15 @@ static inline const llvm::fltSemantics * fpWidthToSemantics(unsigned width) {
 }
 
 void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
+  if(state.profiletreeNode != NULL){
+    state.profiletreeNode->increment_ins_count(ki->inst);
+  } else assert(0);
+  assert(&state == state.profiletreeNode->data);
+  assert(state.profiletreeNode->get_type() == ProfileTreeNode::NodeType::leaf);
+  if(state.profiletreeNode->get_type() ==
+      ProfileTreeNode::NodeType::branch_parent)
+    assert(state.profiletreeNode->get_instruction()->getParent()->getParent()
+        == ki->inst->getParent()->getParent());
   Instruction *i = ki->inst;
   switch (i->getOpcode()) {
     // Control flow
@@ -1617,6 +1627,9 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     Instruction *caller = kcaller ? kcaller->inst : 0;
     bool isVoidReturn = (ri->getNumOperands() == 0);
     ref<Expr> result = ConstantExpr::alloc(0, Expr::Bool);
+
+
+    state.profiletreeNode->function_return(&state, i, kcaller->inst);
     
     if (!isVoidReturn) {
       result = eval(ki, 0, state).value;
@@ -1925,6 +1938,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
         }
       }
 
+      state.profiletreeNode->function_call(&state, i, f);
       executeCall(state, ki, f, arguments);
     } else {
       ref<Expr> v = eval(ki, 0, state).value;
@@ -1940,6 +1954,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
         bool success = solver->getValue(*free, v, value);
         assert(success && "FIXME: Unhandled solver failure");
         (void) success;
+        //this is going to give us a symbolic branch.  The function node will
+        //appear afterwards to allow us to record the target function.
         StatePair res = fork(*free, EqExpr::create(v, value), true);
         if (res.first) {
           uint64_t addr = value->getZExtValue();
@@ -1952,6 +1968,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
                                 "resolved symbolic function pointer to: %s",
                                 f->getName().data());
 
+            state.profiletreeNode->function_call(&state, i, f);
             executeCall(*res.first, ki, f, arguments);
           } else {
             if (!hasInvalid) {
@@ -1965,6 +1982,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
         free = res.second;
       } while (free);
     }
+
     break;
   }
   case Instruction::PHI: {
@@ -3764,6 +3782,7 @@ void Executor::runFunctionAsMain(Function *f,
   initializeGlobals(*state);
 
   processTree = new PTree(state);
+  assert(0);
   state->ptreeNode = processTree->root;
   //if (UseThreads > 1)
     parallelRun(*state);
