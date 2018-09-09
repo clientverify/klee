@@ -61,9 +61,6 @@ ProfileTreeNode::link(
 }
 
 
-#define FUNC_NODE_DIR "/playpen/cliver0/src/openssh"
-#define MODEL_NODE_DIR "/playpen/cliver0/build/klee/runtime/cloud9-POSIX"
-
 void ProfileTreeNode::function_call(
              ExecutionState* data,
              llvm::Instruction* ins,
@@ -795,58 +792,6 @@ int ProfileTreeNode::get_depth() { return depth; }
 ///////////////////////// Write Graphs ////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
-
-//currently dumps the functions in FUNC_NODE_DIR in the call graph.
-void ProfileTree::dump_function_call_graph(std::string path) {
-  llvm::raw_ostream &os = *(get_fd_ostream(path));
-  ExprPPrinter *pp = ExprPPrinter::create(os);
-  pp->setNewline("\\l");
-  os << "digraph G {\n";
-  os << "\tsize=\"10,7.5\";\n";
-  os << "\tratio=fill;\n";
-  os << "\trotate=90;\n";
-  os << "\tcenter = \"true\";\n";
-  os << "\tnode [style=\"filled\",width=.1,height=.1,fontname=\"Terminus\"]\n";
-  os << "\tedge [arrowsize=.3]\n";
-  std::vector<ProfileTree::Node*> stack;
-  stack.push_back(root);
-  while (!stack.empty()) {
-    ProfileTree::Node *n = stack.back();
-    stack.pop_back();
-
-    if(n->my_type == ProfileTreeNode::call_ins)
-      os << "\tn" << n << " [label=" << ((ContainerCallIns*)n->container)->migration_savings_ins_count;
-    else
-      os << "\tn" << n << " [label=\"\"";
-    if (n->data)
-      os << ",fillcolor=green";
-    os << "];\n";
-
-    if(n->my_type == ProfileTreeNode::call_ins){
-      const char* dir = get_function_directory(((ContainerCallIns*)n->container)->my_target);
-      for (auto i = ((ContainerCallIns*)n->container)->my_calls.begin(); i != ((ContainerCallIns*)n->container)->my_calls.end(); ++i){
-        if(dir && strcmp(dir, FUNC_NODE_DIR) == 0) {
-          const char* child_dir = get_function_directory(((ContainerCallIns*)(*i)->container)->my_target);
-          if(child_dir && strcmp(child_dir, FUNC_NODE_DIR) == 0) {
-            os << "\tn" << n << " -> n" << *i << ";\n";
-            stack.push_back(*i); //add children
-          }
-        }else{
-          os << "\tn" << n << " -> n" << *i << ";\n";
-          stack.push_back(*i); //add children
-        }
-      }
-    }else{
-      for (auto i = n->children.begin(); i != n->children.end(); ++i){
-        os << "\tn" << n << " -> n" << *i << ";\n";
-        stack.push_back(*i); //add children
-      }
-    }
-  }
-  os << "}\n";
-  delete pp;
-  delete &os;
-}
 
 //Writes graph of clone and branch nodes.
 void ProfileTree::dump_branch_clone_graph(std::string path, cliver::ClientVerifier* cv_) {
