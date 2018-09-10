@@ -378,68 +378,6 @@ bool is_ancestor(ProfileTreeNode* c, ProfileTreeNode* ancestor){
   return false;
 }
 
-void ProfileTree::make_sibling_lists(ProfileTreeNode* start){
-  assert(start->parent->get_type() == ProfileTreeNode::clone_parent || start->parent->get_type() == ProfileTreeNode::root);
-  assert(start->parent == start->last_clone);
-  std::vector <ProfileTreeNode*> v;
-  v.push_back(start);
-  while(v.size() > 0){
-    sort(v.begin(), v.end(), customCompare);
-    ProfileTreeNode* n = v[0];
-    v.erase(v.begin());
-
-    //Initialize n's siblings:
-    for(auto i = v.begin(); i != v.end(); i++){
-      //Asserts:
-      assert((*i)->last_clone == start->last_clone);
-      if((*i)->parent){
-        assert(n->get_depth() >= (*i)->parent->get_depth());
-        if(n->get_depth() == (*i)->parent->get_depth()){
-          auto exists2 = std::find(v.begin(), v.end(), (*i)->parent);
-          assert(exists2 == v.end());
-        }
-      }
-      assert(n->get_depth() <= (*i)->get_depth());
-
-      //add sibling:
-      bool add = true;
-      for(auto j = n->siblings.begin(); j != n->siblings.end(); j++){
-        if(is_ancestor(*i, *j)){
-          assert((*j)->get_depth() == n->get_depth());
-          assert((*j)->get_depth()  < (*i)->get_depth());
-          add = false;
-        }
-        assert(!is_ancestor(*j, *i));
-      }
-
-      if(add)
-        n->siblings.push_back(*i);
-
-      //if *i and n have the same depth, we want to make sure that they both
-      //have pointers to eachother:
-      if((*i)->depth == n->depth)
-        (*i)->siblings.push_back(n);
-    }
-
-    //Add n's first decedents with same last_clone
-    for(auto i = n->children.begin(); i != n->children.end(); i++){
-      //ignore leaves with 0 instruction count
-      if((*i)->get_type() == ProfileTreeNode::leaf &&
-          (*i)->depth == (*i)->parent->depth){
-        assert((*i)->ins_count == 0);
-        continue;
-      }
-      if((*i)->get_type() != ProfileTreeNode::clone_parent)
-        assert((*i)->depth >= (*i)->parent->depth);
-      if((*i)->parent->get_type() == ProfileTreeNode::clone_parent)
-        assert((*i)->last_clone == (*i)->parent);
-
-      if((*i)->last_clone == start->last_clone)
-        v.push_back(*i);
-    }
-  }
-}
-
 void ProfileTreeNode::process_winner_parents(){
   assert(winner);
   assert(parent);
@@ -499,27 +437,6 @@ void ProfileTreeNode::update_function_statistics(){
     }
     assert(call_container->my_target != NULL);
 
-    call_container->migration_savings_ins_count = 0;
-    for (auto s = siblings.begin(); s != siblings.end(); ++s) {
-      assert((*s) != this);
-      if(!(*s)->get_winner())
-        call_container->migration_savings_ins_count += ((*s)->depth - this->depth) + (*s)->sub_tree_ins_count;
-      assert((*s)->depth >= this->depth);
-      if((*s)->parent){
-        assert((*s)->depth > (*s)->parent->depth);
-        assert(this->depth >= (*s)->parent->depth);
-        auto exists = std::find(siblings.begin(), siblings.end(), (*s)->parent);
-        assert(exists == siblings.end());
-        exists = std::find(siblings.begin(), siblings.end(), parent);
-        assert(exists == siblings.end());
-      }
-      assert(call_container->migration_savings_ins_count <= total_ins_count);
-    }
-    //assume it dies if we're not on the winning path...
-    call_container->migration_savings_ins_count += this->sub_tree_ins_count;
-    assert(call_container->migration_savings_ins_count <= total_ins_count);
-    assert(call_container->migration_savings_ins_count >= 0);
-
     //find and subtract the winning return's subtree:
     if(winner){
       assert(call_container->winning_ins_count == 0);
@@ -539,12 +456,7 @@ void ProfileTreeNode::update_function_statistics(){
         if(c == NULL || c->my_type == leaf) break;
         //check if winning child is the return node (this is what we're looking
         //  for)
-        if(c->my_type == return_ins && c->my_function == this){
-          call_container->migration_savings_ins_count -= c->sub_tree_ins_count;
-          assert(call_container->migration_savings_ins_count <= total_ins_count);
-          assert(call_container->migration_savings_ins_count >= 0);
-          break;
-        }
+        if(c->my_type == return_ins && c->my_function == this) break;
         p = c;
       }
     }
@@ -557,8 +469,7 @@ void ProfileTreeNode::update_function_statistics(){
       << call_container->function_calls_ins_count << " my_symbolic_branches "
       << call_container->function_branch_count << " subtree_symbolic_branches "
       << call_container->function_calls_branch_count << " winning_ins_count "
-      << call_container->winning_ins_count << " migration_savings_ins_count "
-      << call_container->migration_savings_ins_count << "\n";
+      << call_container->winning_ins_count << "\n";
 #endif
   } else {
     for (auto i = children.begin(); i != children.end(); ++i) {
@@ -573,8 +484,6 @@ void FunctionStatstics::add(ContainerCallIns* c){
   branch_count += c->function_branch_count;
   sub_branch_count += c->function_calls_branch_count;
   winning_ins_count += c->winning_ins_count;
-  migration_savings_ins_count = std::max(c->migration_savings_ins_count, migration_savings_ins_count);
-  assert(migration_savings_ins_count >= 0);
   times_called++;
   num_called += c->my_calls.size();
   assert(function == c->my_target);
@@ -633,7 +542,6 @@ void ProfileTree::consolidate_function_data(){
       " branch_count " << itr->second->branch_count <<
       " sub_branch_count " << itr->second->sub_branch_count <<
       " winning_ins_count " << itr->second->winning_ins_count <<
-      " migration_savings_ins_count " << itr->second->migration_savings_ins_count <<
       "\n";
 #endif
   }
@@ -652,7 +560,6 @@ FunctionStatstics::FunctionStatstics(ContainerCallIns* c)
     times_called(1),
     num_called(c->my_calls.size()),
     winning_ins_count(c->winning_ins_count),
-    migration_savings_ins_count(c->migration_savings_ins_count),
     function(c->my_target){
       assert(function != NULL);
 }
@@ -670,8 +577,7 @@ ContainerCallIns::ContainerCallIns(llvm::Instruction* i, llvm::Function* target)
     function_calls_ins_count(0), //counts instructions executed in this function's subtree
     function_branch_count(0), //counts symbolic branches executed in target from this call
     function_calls_branch_count(0),
-    winning_ins_count(0),
-    migration_savings_ins_count(0) { //counts symbolic branches executed in subtree
+    winning_ins_count(0) {
   assert(i != NULL);
   assert(my_target != NULL);
 }
