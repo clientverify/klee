@@ -33,7 +33,6 @@ namespace klee {
     int dfs(ProfileTreeNode *root);
     void consolidate_function_data();
     void dump_branch_clone_graph(std::string path, cliver::ClientVerifier* cv_);
-    void make_sibling_lists(ProfileTreeNode *start);
   };
 
   class ContainerNode{
@@ -62,9 +61,6 @@ namespace klee {
     int function_branch_count;
     //counts the symbolic branches executed by my_target's subfunctions
     int function_calls_branch_count;
-    //the number of instructions the verifier won't have to execute if this
-    //function call is moved to the verifier.
-    int migration_savings_ins_count;
     //counts the winning instructions executed between this call and the
     //winning return (so it counts instructions executed in sub calls too).
     int winning_ins_count;
@@ -93,7 +89,6 @@ namespace klee {
     ProfileTreeNode *parent;
     ProfileTreeNode *last_clone;
     std::vector<ProfileTreeNode*> children;
-    std::vector<ProfileTreeNode*> siblings;
     ContainerNode* container;
     llvm::Instruction* last_instruction;
     cliver::SearcherStage *stage;
@@ -196,7 +191,6 @@ namespace klee {
       int sub_branch_count;
       int times_called;
       int num_called;
-      int migration_savings_ins_count;
       //counts the winning instructions executed between this call and the
       //winning return (so it counts instructions executed in sub calls too).
       int winning_ins_count;
