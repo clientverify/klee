@@ -62,7 +62,7 @@
 //---------------------------------------------------------
 //AH: BEGINNING OF OUR ADDITIONS (not including .h files)
 
-#include "klee/tase_constants.h"
+#include "tase/tase_constants.h"
 
 bool enableMultipass = true;
 

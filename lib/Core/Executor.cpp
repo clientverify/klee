@@ -101,7 +101,7 @@ using namespace klee;
 
 extern std::stringstream globalLogStream;
 extern int worker2managerFD [2];
-#include "klee/tase_constants.h"
+#include "tase/tase_constants.h"
 enum runType : int {PURE_INTERP, TSX_NATIVE, VERIFICATION};
 extern enum runType exec_mode;
 extern void * StackBase;
