@@ -6,10 +6,11 @@
 # License. See LICENSE.TXT for details.
 #
 #===------------------------------------------------------------------------===#
-add_subdirectory(Basic)
-add_subdirectory(Support)
-add_subdirectory(Expr)
-add_subdirectory(Solver)
-add_subdirectory(Module)
-add_subdirectory(Core)
-add_subdirectory(Tase)
+klee_add_component(kleeTase
+  CVAssignment.cpp
+)
+
+target_link_libraries(kleeTase PRIVATE ${ZLIB_LIBRARIES})
+
+klee_get_llvm_libs(LLVM_LIBS ${LLVM_COMPONENTS})
+target_link_libraries(kleeTase PUBLIC ${LLVM_LIBS})

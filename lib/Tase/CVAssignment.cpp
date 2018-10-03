@@ -1,0 +1,91 @@
+#include "klee/ExecutionState.h"
+#include "klee/CVAssignment.h"
+#include "klee/util/ExprUtil.h"
+#include "klee/TimerStatIncrementer.h"
+#include "klee/util/ExprPPrinter.h"
+#include "klee/Constraints.h"
+#include "../Core/ImpliedValue.h"
+#include "klee/Internal/Support/ErrorHandling.h"
+#include "llvm/Support/CommandLine.h"
+
+
+CVAssignment::CVAssignment(std::vector<const klee::Array*> &objects,
+			   std::vector< std::vector<unsigned char> > &values) {
+  addBindings(objects, values);
+}
+
+void CVAssignment::addBindings(std::vector<const klee::Array*> &objects,
+			       std::vector< std::vector<unsigned char> > &values) {
+
+  std::vector< std::vector<unsigned char> >::iterator valIt =
+    values.begin();
+  for (std::vector<const klee::Array*>::iterator it = objects.begin(),
+	 ie = objects.end(); it != ie; ++it) {
+    const klee::Array *os = *it;
+    std::vector<unsigned char> &arr = *valIt;
+    bindings.insert(std::make_pair(os, arr));
+    name_bindings.insert(std::make_pair(os->name, os));
+    ++valIt;
+  }
+}
+
+//Extended for TASE to include ExecStatePtr
+void CVAssignment::solveForBindings(klee::Solver* solver,
+				    klee::ref<klee::Expr> &expr,
+				    klee::ExecutionState * ExecStatePtr) {
+  std::vector<const klee::Array*> arrays;
+  std::vector< std::vector<unsigned char> > initial_values;
+
+  klee::findSymbolicObjects(expr, arrays);
+  //ABH: It needs to be the case that the write condition was added to
+  //exec state's constraints before solveForBindings was called.
+  //Todo:  Make this simpler and less prone to misuse.
+  klee::ConstraintManager cm(ExecStatePtr->constraints);
+
+
+  klee::Query query(cm, klee::ConstantExpr::alloc(0, klee::Expr::Bool));
+
+  solver->getInitialValues(query, arrays, initial_values);
+
+  klee::ref<klee::Expr> value_disjunction
+    = klee::ConstantExpr::alloc(0, klee::Expr::Bool);
+
+  for (unsigned i=0; i<arrays.size(); ++i) {
+    for (unsigned j=0; j<initial_values[i].size(); ++j) {
+
+      klee::ref<klee::Expr> read =
+	klee::ReadExpr::create(klee::UpdateList(arrays[i], 0),
+			       klee::ConstantExpr::create(j, klee::Expr::Int32));
+
+      klee::ref<klee::Expr> neq_expr =
+	klee::NotExpr::create(
+			      klee::EqExpr::create(read,
+						   klee::ConstantExpr::create(initial_values[i][j], klee::Expr::Int8)));
+
+      value_disjunction = klee::OrExpr::create(value_disjunction, neq_expr);
+    }
+  }
+
+  // This may be a null-op how this interaction works needs to be better
+  // understood
+  value_disjunction = cm.simplifyExpr(value_disjunction);
+
+  if (value_disjunction->getKind() == klee::Expr::Constant
+      && cast<klee::ConstantExpr>(value_disjunction)->isFalse()) {
+    addBindings(arrays, initial_values);
+  } else {
+    cm.addConstraint(value_disjunction);
+
+    bool result;
+    solver->mayBeTrue(klee::Query(cm,
+				  klee::ConstantExpr::alloc(0, klee::Expr::Bool)), result);
+
+    if (result) {
+      printf("INVALID solver concretization!");
+      std::exit(EXIT_FAILURE);
+    } else {
+      //TODO Test this path
+      addBindings(arrays, initial_values);
+    }
+  }
+}

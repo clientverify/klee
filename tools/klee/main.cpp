@@ -63,32 +63,57 @@
 //AH: BEGINNING OF OUR ADDITIONS (not including .h files)
 
 #include "klee/tase_constants.h"
+#include <sys/time.h>
+#include <iostream>
+struct timeval taseStartTime;
+struct timeval targetStartTime;
+struct timeval targetEndTime;
+
+gregset_t target_ctx_gregs;
+gregset_t prev_ctx_gregs;
+uint64_t targetMemAddr;
+int glob_argc;
+char ** glob_argv;
+char ** glob_envp;
+extern KTestObjectVector ktov;
+extern "C" void begin_target_inner();
+extern "C" void klee_interp();
+extern "C" void ENTERTASEINITIAL();
+extern "C" void enter_tase(void (*) ());
+extern "C" void target_exit ();
+std::stringstream workerIDStream;
+std::stringstream globalLogStream;
+char target_stack[STACK_SIZE + 1];
+char interp_stack[STACK_SIZE + 1];
+char * target_stack_begin_ptr = &target_stack[STACK_SIZE];
+char * interp_stack_begin_ptr = &interp_stack[STACK_SIZE];
+klee::Interpreter * GlobalInterpreter;
+void * StackBase;
+llvm::Module * interpModule;
+//AH: Kind of gross.  We need to allocate X+1 bytes for an X byte stack, and note that it grows DOWNWARD.
+//  stack_size defined in tase.h
+
+bool taseDebug;
+enum runType : int {INTERP_ONLY, MIXED};
+enum runType exec_mode;
+enum testType : int {EXPLORATION, VERIFICATION};
+enum testType test_type;
+bool forkOffManager;
+
+extern int numEntries;
 
 bool enableMultipass = true;
-
 #include "klee/CVAssignment.h"
 #include "klee/util/ExprUtil.h" 
-
+int worker2managerFD [2];
 multipassRecord multipassInfo;
-
 //Todo: Later, generalize for when we have more than 8 cores available.
 int max_scheduled_workers = 8;
 std::vector<int> scheduledWorkers;
 int max_workers = 200;
 std::vector<int> unscheduledWorkers;
 int max_depth;
-
-extern KTestObjectVector ktov;
-extern "C" void begin_target_inner();
-extern "C" void klee_interp();
-extern "C" void ENTERTASEINITIAL();
-extern "C" void enter_tase(void (*) ());
-std::stringstream workerIDStream;
-std::stringstream globalLogStream;
-
-//extern void ext_test();
-
-typedef struct  {
+typedef struct __attribute__((__packed__))  {
   int senderPID; //Mandatory
   int stageNumber; //Mandatory
   uint64_t pc; //Mandatory
@@ -96,43 +121,35 @@ typedef struct  {
   int childPID; //Optional
   int stageRootPID; //Optional
 } workerMessage;
-
 //messageType:
 //0 Successfully verified message
 //1 Notification of termination
 //2 Request to fork (path exploration)
-//3 Request for multipass clone of stage 
-
-void * StackBase;
-llvm::Module * interpModule;
-//AH: Kind of gross.  We need to allocate X+1 bytes for an X byte stack, and note that it grows DOWNWARD.
-//  stack_size defined in tase.h
-int worker2managerFD [2];
-
-char target_stack[STACK_SIZE + 1];
-char interp_stack[STACK_SIZE + 1];
-char * target_stack_begin_ptr = &target_stack[STACK_SIZE];
-char * interp_stack_begin_ptr = &interp_stack[STACK_SIZE];
-klee::Interpreter * GlobalInterpreter;
-
-enum runType : int {PURE_INTERP, TSX_NATIVE, VERIFICATION};
-enum runType exec_mode;
+//3 Request for multipass clone of stage
 enum workerSelectionMode : int {RANDOM, DEPTH_FIRST};
 enum workerSelectionMode workerSelectionType = RANDOM;
-gregset_t target_ctx_gregs;
-gregset_t prev_ctx_gregs;
-uint64_t targetMemAddr;
-int glob_argc;
-char ** glob_argv;
-char ** glob_envp;
 
 void transferToTarget() {
+
   target_ctx_gregs[REG_RDI] = reinterpret_cast<greg_t>(&begin_target_inner);
   target_ctx_gregs[REG_R15] = reinterpret_cast<greg_t>(&enter_tase);
-  //hope this is right.  AH changed from "interp_stack_begin_ptr"
   target_ctx_gregs[REG_RSP] = reinterpret_cast<greg_t>(target_stack_begin_ptr);
+  gettimeofday(&targetStartTime,NULL);
 
-  ENTERTASEINITIAL();
+  //push on a return address for the end of execution in the target
+  target_ctx_gregs[REG_RSP] -= 8;
+  *(uint64_t *) target_ctx_gregs[REG_RSP] = (uint64_t) &target_exit;
+
+  if (exec_mode == MIXED) 
+    ENTERTASEINITIAL();
+  else if (exec_mode == INTERP_ONLY) {
+    target_ctx_gregs[REG_RIP] = (uint64_t) &enter_tase;
+    klee_interp();
+  } else {
+    printf("Unrecognized exec_mode \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
 }
 
 //AH:  main_original_vanilla() points to the original version of main from vanilla klee.  Not ideal but it works. 
@@ -140,7 +157,6 @@ void main_original_vanilla();
 
 //Fruit basket specific code.
 //TODO: Get rid of this third pound define for buffer size!
-
 char message_test_buffer [BUFFER_SIZE];
 uint64_t message_buf_length;
 
@@ -230,6 +246,20 @@ namespace {
   cl::opt<std::string>
   InputFile(cl::desc("<input bytecode>"), cl::Positional, cl::init("-"));
 
+  //enum runType : int {INTERP_ONLY, MIXED};
+  cl::opt<runType>
+  execModeArg("execMode", cl::desc("INTERP_ONLY or MIXED (native and interpretation)"), cl::init(MIXED));
+  
+  //enum testType : int {EXPLORATION, VERIFICATION};
+  cl::opt<testType>
+  testTypeArg("testType", cl::desc("EXPLORATION or VERIFICATION"), cl::init(EXPLORATION));
+  
+  cl::opt<bool>
+  forkOffManagerArg("forkOffManager", cl::desc("Fork off a manager process in TASE.  Expect a fork bomb if false."), cl::init(false));
+  
+  cl::opt<bool>
+  taseDebugArg("taseDebug", cl::desc("Verbose logging in TASE"), cl::init(false));
+  
   cl::opt<std::string>
   EntryPoint("entry-point",
                cl::desc("Consider the function with the given name as the entrypoint"),
@@ -1290,86 +1320,52 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 //called begin_target_inner();
  void begin_target () {
    enter_tase(&begin_target_inner);
-
    return;
  }
 
+ void printTASEArgs(runType rt, testType tt, bool fm, bool dbg) {
+
+   printf("TASE args... \n");
+   if (rt == MIXED) 
+     printf("\t Running MIXED mode \n");
+   else if (rt == INTERP_ONLY)
+     printf("\t Running INTERP_ONLY mode \n");
+   else
+     printf("ERROR: unrecognized execMode \n");
+
+   if (tt == EXPLORATION)
+     printf("\t Test type is EXPLORATION (running through all paths) \n");
+   else if (tt == VERIFICATION )
+     printf("\t Test type is VERIFICATION \n");
+   else
+     printf("ERROR: unrecognized testType \n");
+
+   printf("\t forkOffManager: %d \n", fm);
+   printf("\t taseDebug output: %d \n", dbg);
+
+ }
  
- //Fill in later
- void processWorkerMessage (workerMessage m) {
-
-   int messageType = m.messageType;
-   switch (messageType) {
-
-   case 0: //Successfully verified message 
-     {
-     if (m.stageNumber > max_depth)
-       max_depth = m.stageNumber;
-     break;}
-   case 1: //Termination
-     {
-       kill(m.senderPID,SIGKILL);
-       std::vector<int>::iterator UWpos = std::find(unscheduledWorkers.begin(), unscheduledWorkers.end(), m.senderPID);
-       unscheduledWorkers.erase(UWpos);
-       std::vector<int>::iterator SWpos = std::find(scheduledWorkers.begin(), scheduledWorkers.end(), m.senderPID);
-       scheduledWorkers.erase(SWpos);
-       //scheduleNewWorkerAfterTerm(); //todo: implement
-       break;
-     }
-   case 2: //Request to fork (exploration)
-     {
-       if (unscheduledWorkers.size() + scheduledWorkers.size() < max_workers) {
-	 
-	 
-       } else {
-	 printf("WARNING: maximum worker number exceeded \n");
-	 std::exit(EXIT_FAILURE);
-       }
-     
-     
-       break;
-     }
-   case 3: //Request for a replay (multipass)
-     {
-       break;
-     }
-   default:
-     {
-       printf("ERROR: unrecognized messageType in processWorkerMessage \n");
-       std::exit(EXIT_FAILURE);
-     }
-   } 
-     
- }
-   
- void scheduleNewWorkerAfterTerm() {
-
-   if (unscheduledWorkers.size() == 0)
-       return;
-   
-   if (workerSelectionType == RANDOM) {
-
-     double randFraction = rand()/RAND_MAX;
-     int randIndex = floor(randFraction * unscheduledWorkers.size());
-     int workerToSched = unscheduledWorkers.at(randIndex);
-     //Todo: Add logic for sched_setaffinity to handle affinity pinning
-     kill(workerToSched, SIGCONT);
-     std::vector<int>::iterator UWpos = std::find(unscheduledWorkers.begin(), unscheduledWorkers.end(), workerToSched);
-     unscheduledWorkers.erase(UWpos);
-     scheduledWorkers.push_back(workerToSched);
-     
-   } else if (workerSelectionType == DEPTH_FIRST) {
-     printf("ERROR: DFS not implemented yet \n");
-     std::exit(EXIT_FAILURE);
-   } else {
-     printf("ERROR: Unrecognized workerSelectionType \n");
-     std::exit(EXIT_FAILURE);
-   }
-   
- }
-   
  int main (int argc, char **argv, char **envp) {
+   
+   
+   gettimeofday(&taseStartTime,NULL);
+   glob_argc = argc;
+   glob_argv = argv;
+   glob_envp = envp;
+   
+   //printf("Initializing interp and target contexts... \n");
+   llvm::InitializeNativeTarget();
+   parseArguments(argc, argv);
+   std::cout.flush();
 
+   exec_mode = execModeArg;
+   test_type = testTypeArg;
+   forkOffManager = forkOffManagerArg;
+   taseDebug = taseDebugArg;
+
+   if (taseDebug)
+     printTASEArgs(exec_mode, test_type, forkOffManager, taseDebug);
+   
    //Redirect stdout messages to a file called "Monitor".
    //Later, calls to unix fork in executor create new filenames
    //after each fork.
@@ -1377,20 +1373,13 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    std::string IDString;
    IDString = workerIDStream.str();
    freopen(IDString.c_str(),"w", stdout);
-   
-   glob_argc = argc;
-   glob_argv = argv;
-   glob_envp = envp;
-   
-   printf("Initializing interp and target contexts... \n");
-   llvm::InitializeNativeTarget();
-   parseArguments(argc, argv);
-
+      
    // Load the bytecode...
    std::string errorMsg;
    LLVMContext ctx;
    interpModule = klee::loadModule(ctx, InputFile, errorMsg);
    printf("Module has been loaded...\n");
+   std::cout.flush();
    
    if (!interpModule) {
     klee_error("error loading program '%s': %s", InputFile.c_str(),
@@ -1451,17 +1440,13 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
                                   /*CheckDivZero=*/CheckDivZero,
                                   /*CheckOvershift=*/CheckOvershift);
 
-   //Todo:  See if we can rip some of the code below out for externalsAndGlobalsCheck.
-   // We're already doing the work of mapping in globals for tase in
-   // initializeInterpretationStructures().
-   printf("Setting module  \n");
+
    const Module *finalModule = interpreter->setModule(interpModule, Opts);
-   //externalsAndGlobalsCheck(finalModule);
    StackBase = (void *) &target_stack;
-   //Entry fn for our purposes is a dummy main function.
+
+   //ABH: Entry fn for our purposes is a dummy main function.
    // It's specified in parseltongue86 as dummyMain and
-   // as_Z9dummyMainv in "EntryPoint" because of cpp name mangling.
-  
+   // as_Z9dummyMainv in "EntryPoint" because of cpp name mangling.  
    Function *entryFn = interpModule->getFunction(EntryPoint);
    if (!entryFn){
      printf("ERROR: Couldn't locate entryFn \n");
@@ -1471,90 +1456,58 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    printf("Initializing interpretation structures ...\n");
    interpreter->initializeInterpretationStructures(entryFn);
    GlobalInterpreter = interpreter;
-   
-   enum runType exec_mode = VERIFICATION; //This should be made global later.
 
-   int pipeResult = pipe(worker2managerFD);
-   if (pipeResult != 0) {
-     printf("ERROR: Couldn't create worker2managerFD pipe\n");
-     std::exit(EXIT_FAILURE);
+   
+   
+   if (forkOffManager) {
+     int pipeResult = pipe(worker2managerFD);
+     if (pipeResult != 0) {
+       printf("ERROR: Couldn't create worker2managerFD pipe\n");
+       std::exit(EXIT_FAILURE);
+     } 
+     //TO-DO: Remove later.  For test purposes
+     //Really ought to be able to add in longer
+     //strings with multiple fruits now that
+     //the stupid simple "apple" case is working.
+     
+     memset (message_test_buffer, 0, 256);
+     strncpy (message_test_buffer, "appleorangeappleorange", 22);
+     message_buf_length = strlen(message_test_buffer);
+     
+     //Load ktest file into ktov.
+     ktest_start("friday.ktest", KTEST_PLAYBACK);
+     
+     //TODO: Make tsx_init() work for global variables
+     //and double check the implementation.
    }
 
-   //TO-DO: Remove later.  For test purposes
-   //Really ought to be able to add in longer
-   //strings with multiple fruits now that
-   //the stupid simple "apple" case is working.
-   
-   memset (message_test_buffer, 0, 256);
-   strncpy (message_test_buffer, "appleorangeappleorange", 22);
-   message_buf_length = strlen(message_test_buffer);
-
-   //Load ktest file into ktov.
-   ktest_start("friday.ktest", KTEST_PLAYBACK);
-   
-   //TODO: Make tsx_init() work for global variables
-   //and double check the implementation.
+   printf("numEntries is %d \n", numEntries);
    printf("Calling tsx_init to map in pages \n");
    tsx_init();
    int pid;
-   if (exec_mode == PURE_INTERP)
-     pid = 0;
-   else if (exec_mode == TSX_NATIVE)
-     pid = 0;
-   else if (exec_mode == VERIFICATION) {
-     pid = fork();
-   }
-   else {
-     printf("ERROR: invalid exec_mode \n");
-     std::exit(EXIT_FAILURE);
-   }
-
-   if (pid != 0 ) {
-     scheduledWorkers.push_back(pid);
-     //Todo: Determine if we should
-     //add assert or something so that workerlist and scheduledWorkers
-     // are always disjoint sets.
-     //workerList.insert(pid);
-     max_depth = 0;
-   }
+   if (forkOffManager) 
+     pid = ::fork();
+   else
+     pid =0;
    
    if (pid == 0){
-
-     //Child path is here.
-     printf("---------------------SWAPPING TO TARGET CONTEXT------------------- \n");
-     if (exec_mode == PURE_INTERP) {
-       printf("STARTING PURE INTERPRETER TEST \n");    
-       klee_interp();
-     } else if (exec_mode == TSX_NATIVE) {
-       printf("STARTING TSX_NATIVE EXECUTION TEST W/O SYMBOLIC VALUES \n");
-       //swapcontext(&handler_ctx, &target_ctx);
-     } else if (exec_mode == VERIFICATION) {
-       
+     printf("----------------SWAPPING TO TARGET CONTEXT------------------ \n");
+     std::cout.flush();
+     if (forkOffManager) {
        int i = getpid();
        workerIDStream << ".";
        workerIDStream << i;
        std::string pidString ;
        pidString = workerIDStream.str();
        freopen(pidString.c_str(),"w",stdout);
-       freopen(pidString.c_str(),"w",stderr);
-       
-       printf("STARTING VERIFICATION \n");
-       transferToTarget();
-       //swapcontext(&handler_ctx, &target_ctx);
+       freopen(pidString.c_str(),"w",stderr); 
      }
-     else {
-       printf("ERROR: Run mode not specified \n");
-       std::exit(EXIT_FAILURE);
-     }
+     transferToTarget();
      printf("RETURNING TO MAIN HANDLER \n");
      return 0;
-     
+
    } else {
-     //Code path here will hold the management code for the controller process.
-
-     
-
-     
+     //Code path here will hold the management code for the controller process. 
      /*
      while (true) {
        
@@ -1572,28 +1525,6 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 	 std::exit(EXIT_SUCCESS);
        }
        }*/
-     
-     while(true) {
-       //manage states
-       int numBytesRead;
-       char workerMessageBuf[sizeof(workerMessage)];
-
-       //Get a "workerMessage-sized" number of bytes from the read end of the pipe.
-       numBytesRead =  read(worker2managerFD[0], workerMessageBuf, sizeof(workerMessageBuf));
-       if (numBytesRead != 0) {
-	 if (numBytesRead != sizeof(workerMessage)) {
-	   printf("Error: manager process encountered data from pipe with incorrect length %d \n",numBytesRead);
-	 }
-
-	 //Questionable.
-	 workerMessage * msg = (workerMessage *) &workerMessageBuf[0]; 
-         processWorkerMessage(*msg);
-        
-       }
-       //Determine if any workers are blocked.  
-       //If so, see why and determine if the worker should be able to fork.
-       //If worker forks, find the pid of the child and add it to the list.
-     }
      
    }
  }

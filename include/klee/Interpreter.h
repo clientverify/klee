@@ -128,7 +128,7 @@ public:
   virtual void useSeeds(const std::vector<struct KTest *> *seeds) = 0;
 
   virtual void klee_interp_internal () = 0;
-
+  
   virtual void initializeInterpretationStructures (llvm::Function *f) = 0;
   
   virtual bool resumeNativeExecution () = 0;

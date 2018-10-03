@@ -132,6 +132,8 @@ public:
     Unhandled
   };
 
+  
+  
 private:
   static const char *TerminateReasonNames[];
 
@@ -332,9 +334,12 @@ private:
   bool gprsAreConcrete();
   bool instructionBeginsTransaction(uint64_t pc);
   bool instructionIsModeled();
-  
+  void model_taseMakeSymbolic();
   void model_inst();
-
+  void deadRegisterFlush();
+  void printDebugInterpHeader();
+  void printDebugInterpFooter();
+  
   //AH: Special modeled labels added during our instrumentation.
   void model_entertran();
   void model_exittran();
