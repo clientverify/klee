@@ -98,9 +98,10 @@ using namespace klee;
 //AH: Our additions below. --------------------------------------
 #include <ucontext.h>
 #include <iostream>
+
 #include "klee/CVAssignment.h"
 #include "klee/util/ExprUtil.h"
-#include "klee/tase_constants.h"
+#include "tase/tase_constants.h"
 
 //Multipass
 extern multipassRecord multipassInfo;
@@ -108,6 +109,7 @@ extern KTestObjectVector ktov;
 extern bool enableMultipass;
 
 enum runType : int {INTERP_ONLY, MIXED};
+
 extern enum runType exec_mode;
 extern int worker2managerFD [2];
 extern void * StackBase;
