@@ -108,6 +108,7 @@ extern multipassRecord multipassInfo;
 extern KTestObjectVector ktov;
 extern bool enableMultipass;
 
+//TASE internals
 enum runType : int {INTERP_ONLY, MIXED};
 
 extern enum runType exec_mode;
@@ -120,32 +121,25 @@ extern char * interp_stack_begin_ptr;
 extern uint32_t springboard_flags;
 extern gregset_t target_ctx_gregs;
 extern gregset_t prev_ctx_gregs;
+extern klee::Interpreter * GlobalInterpreter;
 MemoryObject * target_ctx_gregs_MO;
 ObjectState * target_ctx_gregs_OS;
 MemoryObject * prev_ctx_gregs_MO;
 ObjectState * prev_ctx_gregs_OS;
-bool hasForked = false;
 ExecutionState * GlobalExecutionStatePtr;
-extern klee::Interpreter * GlobalInterpreter;
-
 extern "C" void * sb_entertran();
 extern "C" void * sb_exittran();
 extern "C" void * sb_reopen();
 extern "C" void * sb_enter_modeled();
 extern "C" void taseMakeSymbolic(void * addr, int size);
 extern "C" void enter_tase(void (*) ());
-void printCtx(gregset_t ctx );
 
 //For add microbenchmark
-extern uint8_t * addBMResultPtr;
-extern int numEntries;
-extern int loopCtr;
-int forkSolverCalls = 0;
+//extern uint8_t * addBMResultPtr;
+//extern int numEntries;
+//extern int loopCtr;
 
-//Optimization variables
-bool killFlagsOnSpringboard = true;
-bool simplifyExprsOnSpringboard = false;
-bool killFlagsBeforeCmp = true;
+int initialize_semaphore(int semKey);
 
 //Fruitbasket 
 //TODO Be careful, as BUFFER_SIZE is a macro we're defining twice now.
@@ -160,24 +154,27 @@ char basket[BUFFER_SIZE];
 ObjectState * basket_OS;
 MemoryObject * basket_MO;
 
-extern std::stringstream globalLogStream;
-extern std::stringstream workerIDStream;
+//Optimization variables
+bool killFlagsOnSpringboard = true;
+bool simplifyExprsOnSpringboard = false;
+bool killFlagsBeforeCmp = true;
 
 #include <sys/time.h>
 extern struct timeval taseStartTime;
 extern struct timeval targetStartTime;
 extern struct timeval targetEndTime;
 
-//Debug vars
+//Debug info
 extern bool taseDebug;
 uint64_t interpCtr =0;
 uint64_t instCtr=0;
+int forkSolverCalls = 0;
+void printCtx(gregset_t ctx );
+extern std::stringstream globalLogStream;
+extern std::stringstream workerIDStream;
 
-int tase_fork() {
-  printf("TASE FORKING! \n");
-  int pid = ::fork();
-  return pid;
-}
+#include "klee/TASEControl.h"
+
 
 //AH: End of our additions. -----------------------------------
 
@@ -875,7 +872,6 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     ++stats::forks;
     //ABH: Here's where we fork in TASE.
     int pid  = tase_fork();
-    hasForked = true;
     printf("TASE Forking at 0x%llx \n", target_ctx_gregs[REG_RIP]);
     if (pid ==0 ) {
       int i = getpid(); 
@@ -3398,22 +3394,18 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
   }
 }
 
-/***/
-
-
 extern "C" void target_exit() {
   printf("Target exited \n");
   printf("Executed %lu total interp instructions \n", instCtr);
   printf("Execution State has stack size %d \n", GlobalExecutionStatePtr->stack.size());
   printf("Found %d calls to solver in fork \n", forkSolverCalls);
-  
-  
+  /*
   uint8_t * bytePtr = addBMResultPtr;
   for (int k = 0; k < numEntries +1; k++) {
     printf("Result byte %d \n", *bytePtr);
     bytePtr++;
   }
-  
+  */
   std::cout.flush();
   std::exit(EXIT_SUCCESS);
 
@@ -3568,9 +3560,8 @@ void Executor::model_write() {
 //https://www.gnu.org/software/libc/manual/html_node/I_002fO-Primitives.html
 //Can be read from stdin or from socket -- modeled separately to break up the code.
 void Executor::model_read() {
-  printf("model_read still being implemented \n");
-  std::exit(EXIT_FAILURE);
-
+  printf("Entering model_read \n");
+  std::cout.flush();
   //Get the input args per system V linux ABI.
   
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
@@ -3846,7 +3837,6 @@ void Executor::model_select() {
 	ref <ConstantExpr> zeroVal = ConstantExpr::create(0, Expr::Int8);
 	tase_helper_write((uint64_t) &(writefds->fds_bits[j]), zeroVal);
       }
-
     }
 
     //For now, just model with a successful return.  But we could make this symbolic.
@@ -4704,7 +4694,6 @@ void Executor::model_random() {
   printf("INTERPRETER: calling model_random() \n");   
   //printf(" DEBUG 1: conc store at 0x%llx \n", target_ctx_gregs_OS->concreteStore );
 
-  //Make buf have symbolic value.
   void * randBuf = malloc(4);
   //klee_make_symbolic (randBuf,4,"RandomSysCall");
   printf(" Called malloc to create buf at 0x%lx \n", (uint64_t) randBuf);
@@ -4725,14 +4714,7 @@ void Executor::model_random() {
     printf("in obj location %d is val 0x%x \n", i, rand_buf_OS->concreteStore[i]);
   }
   
-  //printf(" conc store is at 0x%llx, obj represents 0x%llx \n", &rand_buf_OS->concreteStore, rand_buf_OS->getObject()->address);
-  //rand_buf_OS->print();
-  //printf("Finished print call \n");
-  //printf("conc store at 0x%llx \n", target_ctx_gregs_OS->concreteStore );
-  
   target_ctx_gregs_OS->write(REG_RAX * 8,psnRand );
-  //printf("Called write in model_rand \n");
-  //target_ctx_gregs_OS->print();
   
   /*
   //TODO: Make this more robust later for call instructions with more than 5 bytes.
@@ -4746,7 +4728,23 @@ void Executor::model_random() {
   
 }
 
+void Executor::model_malloc() {
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
 
+  if (isa<ConstantExpr>(arg1Expr)) {
+    uint64_t sizeArg = (uint64_t) target_ctx_gregs[REG_RDI];
+    void * buf = malloc(sizeArg);
+    MemoryObject * heapMem = addExternalObject(*GlobalExecutionStatePtr,buf, sizeArg, false );
+    const ObjectState *heapOS = GlobalExecutionStatePtr->addressSpace.findObject(heapMem);
+    ObjectState * heapOSWrite = GlobalExecutionStatePtr->addressSpace.getWriteable(heapMem,heapOS);  
+    heapOSWrite->concreteStore = (uint8_t *) buf;
+    
+  } else {
+    printf("INTERPRETER: CALLING MODEL_MALLOC WITH SYMBOLIC ARGS.  NOT IMPLMENTED \n");
+    target_ctx_gregs_OS->print();
+    std::exit(EXIT_FAILURE);
+  }
+}
 
 
 //strncat model-------
@@ -5067,9 +5065,13 @@ void Executor::model_inst () {
     uint64_t dest = target_ctx_gregs[REG_RAX]; //Grab address of func to model from rax    
     if (dest == (uint64_t) &random) {
       model_random();
-    } else if (dest == (uint64_t) &taseMakeSymbolic) {
-      model_taseMakeSymbolic();
-    }else if ( dest == (uint64_t) &target_exit) {
+      //} else if (dest == (uint64_t) &taseMakeSymbolic) {
+      //model_taseMakeSymbolic();
+    } else if (dest == (uint64_t) &read) {
+
+      model_read();
+
+    } else if ( dest == (uint64_t) &target_exit) {
       printf("Found call to target_exit in interpreter \n");
       std::cout.flush();
       target_exit();
@@ -5120,7 +5122,7 @@ bool isSpecialInst (uint64_t rip) {
      //Must add 5 to account for call 0xe8 opcode and the 4 bytes for offset
      uint64_t dest = rip + (uint64_t) offset + 5;
      //Checks are here to see if the dest is a function we model.
-     if (dest == (uint64_t) &sb_enter_modeled || dest == (uint64_t) &target_exit) {
+     if (dest == (uint64_t) &sb_enter_modeled || dest == (uint64_t) &target_exit || dest == (uint64_t) &read)  {
        return true;
      } else {
        return false;

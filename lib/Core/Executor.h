@@ -345,6 +345,8 @@ private:
   void model_exittran();
   void model_reopentran();
 
+  void model_malloc();
+  
   //AH: Internal helper functions--------------------------
   //Tase helper to write an expr directly to an addr.  Width
   //(1/2/4/8 bytes) is inferred based on type of val.

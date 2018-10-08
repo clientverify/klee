@@ -63,7 +63,12 @@
 //AH: BEGINNING OF OUR ADDITIONS (not including .h files)
 
 
+
 #include "tase/tase_constants.h"
+#include "klee/CVAssignment.h"
+#include "klee/util/ExprUtil.h"
+#include "klee/TASEControl.h"
+
 #include <sys/time.h>
 #include <iostream>
 struct timeval taseStartTime;
@@ -100,13 +105,8 @@ enum runType : int {INTERP_ONLY, MIXED};
 enum runType exec_mode;
 enum testType : int {EXPLORATION, VERIFICATION};
 enum testType test_type;
-bool forkOffManager;
 
-extern int numEntries;
-
-bool enableMultipass = true;
-#include "klee/CVAssignment.h"
-#include "klee/util/ExprUtil.h" 
+bool enableMultipass = true; 
 int worker2managerFD [2];
 multipassRecord multipassInfo;
 //Todo: Later, generalize for when we have more than 8 cores available.
@@ -114,6 +114,9 @@ int max_scheduled_workers = 8;
 std::vector<int> scheduledWorkers;
 int max_workers = 200;
 std::vector<int> unscheduledWorkers;
+
+
+
 int max_depth;
 typedef struct __attribute__((__packed__))  {
   int senderPID; //Mandatory
@@ -257,7 +260,7 @@ namespace {
   testTypeArg("testType", cl::desc("EXPLORATION or VERIFICATION"), cl::init(EXPLORATION));
   
   cl::opt<bool>
-  forkOffManagerArg("forkOffManager", cl::desc("Fork off a manager process in TASE.  Expect a fork bomb if false."), cl::init(false));
+  taseManagerArg("taseManager", cl::desc("Fork off a manager process in TASE.  Expect a fork bomb if false."), cl::init(false));
   
   cl::opt<bool>
   taseDebugArg("taseDebug", cl::desc("Verbose logging in TASE"), cl::init(false));
@@ -1317,14 +1320,6 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 }
 #endif
 
- 
-//This is a hack to allow us to call a function with c naming/linkage 
-//called begin_target_inner();
- void begin_target () {
-   enter_tase(&begin_target_inner);
-   return;
- }
-
  void printTASEArgs(runType rt, testType tt, bool fm, bool dbg) {
 
    printf("TASE args... \n");
@@ -1342,10 +1337,12 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    else
      printf("ERROR: unrecognized testType \n");
 
-   printf("\t forkOffManager: %d \n", fm);
+   printf("\t taseManager: %d \n", fm);
    printf("\t taseDebug output: %d \n", dbg);
 
  }
+
+ 
  
  int main (int argc, char **argv, char **envp) {
    
@@ -1355,18 +1352,16 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    glob_argv = argv;
    glob_envp = envp;
    
-   //printf("Initializing interp and target contexts... \n");
    llvm::InitializeNativeTarget();
    parseArguments(argc, argv);
-   std::cout.flush();
 
    exec_mode = execModeArg;
    test_type = testTypeArg;
-   forkOffManager = forkOffManagerArg;
+   taseManager = taseManagerArg;
    taseDebug = taseDebugArg;
 
    if (taseDebug)
-     printTASEArgs(exec_mode, test_type, forkOffManager, taseDebug);
+     printTASEArgs(exec_mode, test_type, taseManager, taseDebug);
    
    //Redirect stdout messages to a file called "Monitor".
    //Later, calls to unix fork in executor create new filenames
@@ -1380,8 +1375,10 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    std::string errorMsg;
    LLVMContext ctx;
    interpModule = klee::loadModule(ctx, InputFile, errorMsg);
-   printf("Module has been loaded...\n");
-   std::cout.flush();
+   if (taseDebug){
+     printf("Module has been loaded...\n");
+     std::cout.flush();
+   }
    
    if (!interpModule) {
     klee_error("error loading program '%s': %s", InputFile.c_str(),
@@ -1442,7 +1439,6 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
                                   /*CheckDivZero=*/CheckDivZero,
                                   /*CheckOvershift=*/CheckOvershift);
 
-
    const Module *finalModule = interpreter->setModule(interpModule, Opts);
    StackBase = (void *) &target_stack;
 
@@ -1454,19 +1450,22 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      printf("ERROR: Couldn't locate entryFn \n");
      std::exit(EXIT_FAILURE);
    }
-
-   printf("Initializing interpretation structures ...\n");
+   if (taseDebug) {
+     printf("Initializing interpretation structures ...\n");
+     std::cout.flush();
+   }
    interpreter->initializeInterpretationStructures(entryFn);
    GlobalInterpreter = interpreter;
-
    
-   
-   if (forkOffManager) {
+   if (taseManager) {
      int pipeResult = pipe(worker2managerFD);
      if (pipeResult != 0) {
        printf("ERROR: Couldn't create worker2managerFD pipe\n");
        std::exit(EXIT_FAILURE);
-     } 
+     }
+
+     initManagerStructures();
+     
      //TO-DO: Remove later.  For test purposes
      //Really ought to be able to add in longer
      //strings with multiple fruits now that
@@ -1477,17 +1476,13 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      message_buf_length = strlen(message_test_buffer);
      
      //Load ktest file into ktov.
-     ktest_start("friday.ktest", KTEST_PLAYBACK);
-     
-     //TODO: Make tsx_init() work for global variables
-     //and double check the implementation.
+     ktest_start("friday.net.ktest", KTEST_PLAYBACK);
    }
 
-   printf("numEntries is %d \n", numEntries);
    printf("Calling tsx_init to map in pages \n");
    tsx_init();
    int pid;
-   if (forkOffManager) 
+   if (taseManager) 
      pid = ::fork();
    else
      pid =0;
@@ -1495,40 +1490,57 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    if (pid == 0){
      printf("----------------SWAPPING TO TARGET CONTEXT------------------ \n");
      std::cout.flush();
-     if (forkOffManager) {
+     if (taseManager) {
        int i = getpid();
        workerIDStream << ".";
        workerIDStream << i;
        std::string pidString ;
        pidString = workerIDStream.str();
        freopen(pidString.c_str(),"w",stdout);
-       freopen(pidString.c_str(),"w",stderr); 
+       freopen(pidString.c_str(),"w",stderr);
+
+       //Add self to queue
+       get_sem_lock();
+       int offset = *ms_QR_size_ptr;
+       *(ms_QR_base + offset) = getpid();
+       offset++;
+       *ms_QR_size_ptr = offset;
+       release_sem_lock();
+
      }
+
+     
      transferToTarget();
      printf("RETURNING TO MAIN HANDLER \n");
      return 0;
 
    } else {
-     //Code path here will hold the management code for the controller process. 
-     /*
-     while (true) {
-       
-       int numBytesRead;
-       char workerMessageBuf[20];
-
-       numBytesRead =  read(worker2managerFD[0], workerMessageBuf, sizeof(workerMessageBuf));
-       if (numBytesRead != 0) {
-	 printf("Master found something in the pipe \n");
-	 char message[20];
-
-	 memcpy(message,workerMessageBuf,20);
-	 printf("Master received message %s \n", message);
-	 
-	 std::exit(EXIT_SUCCESS);
-       }
-       }*/
-     
+     //manage_workers();
    }
+ }
+
+ void  manageWorkers () {
+   //I give up
+   
+   //Code path here will hold the management code for the controller process. 
+   /*
+     while (true) {
+     
+     int numBytesRead;
+     char workerMessageBuf[20];
+     
+     numBytesRead =  read(worker2managerFD[0], workerMessageBuf, sizeof(workerMessageBuf));
+     if (numBytesRead != 0) {
+     printf("Master found something in the pipe \n");
+     char message[20];
+     
+     memcpy(message,workerMessageBuf,20);
+     printf("Master received message %s \n", message);
+     
+     std::exit(EXIT_SUCCESS);
+     }
+     }*/
+   
  }
  
 void main_original_vanilla() {

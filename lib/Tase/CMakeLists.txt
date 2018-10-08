@@ -8,6 +8,7 @@
 #===------------------------------------------------------------------------===#
 klee_add_component(kleeTase
   CVAssignment.cpp
+  TASEControl.cpp
 )
 
 target_link_libraries(kleeTase PRIVATE ${ZLIB_LIBRARIES})
