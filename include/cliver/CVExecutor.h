@@ -147,6 +147,9 @@ class CVExecutor : public klee::Executor {
 
   virtual void executeEvent(klee::ExecutionState &state, unsigned int type,
                             long int value);
+  void reset_round_functions();
+  void print_round_functions(int round, int event_type);
+
 
  public:
   //klee::Atomic<size_t>::type live_threads_; // # of threads not waiting

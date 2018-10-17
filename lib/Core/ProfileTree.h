@@ -33,6 +33,7 @@ namespace klee {
     int dfs(ProfileTreeNode *root);
     void consolidate_function_data();
     void dump_branch_clone_graph(std::string path, cliver::ClientVerifier* cv_);
+    void print_winning_path(cliver::ClientVerifier* cv_);
   };
 
   class ContainerNode{
