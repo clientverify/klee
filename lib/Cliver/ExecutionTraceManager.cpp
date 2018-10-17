@@ -252,7 +252,6 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
     case CV_BASICBLOCK_ENTRY: {
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
       ExecutionStage* stage = get_stage(property);
-
       if (!property->is_recv_processing) {
         if (stage->etrace_tree) {
           if (state->basic_block_tracking() || !BasicBlockDisabling) {
@@ -296,6 +295,11 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
 
     case CV_SEARCHER_NEW_STAGE: {
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
+      //I think this is where we'd want to print the set of functions called
+      //during this stage
+      cv_->executor()->print_round_functions(stats::round_number, stats::socket_event_type);
+      cv_->executor()->reset_round_functions();
+
 
       ExecutionStage *new_stage = new ExecutionStage();
       new_stage->etrace_tree = new ExecutionTraceTree();
@@ -333,7 +337,6 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
         new_stage->parent_stage->socket_event = 
             const_cast<SocketEvent*>(&socket->previous_event());
       }
-
       set_stage(property, new_stage);
 
       if (cv_->executor()->finished_states().count(parent_property)) {
