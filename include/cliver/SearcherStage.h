@@ -260,6 +260,11 @@ class SearcherStageThreadedImpl : public SearcherStage {
     return cache_.root_state();
   }
 
+  long stage_fifo_num = 0;
+  long new_stage_fifo_num(){
+    return ++stage_fifo_num;
+  }
+
   CVExecutionState* next_state() {
 
     if (empty())
@@ -282,7 +287,12 @@ class SearcherStageThreadedImpl : public SearcherStage {
     ExecutionStateProperty* next = collection_.top();
     collection_.pop();
     live_set_.insert(next);
-
+    assert(collection_.size() == 0 ||
+        next->round         > collection_.top()->round ||
+        next->client_round  > collection_.top()->client_round ||
+        next->pass_count    > collection_.top()->pass_count ||
+        next->symbolic_vars < collection_.top()->symbolic_vars ||
+        next->fifo_num      < collection_.top()->fifo_num);
     return cache_[next];
   }
 
@@ -297,6 +307,7 @@ class SearcherStageThreadedImpl : public SearcherStage {
       cache_.insert(std::make_pair(state->property(),state));
     }
 
+    state->property()->fifo_num = new_stage_fifo_num();
     if (cache_.rebuild_property() == NULL) {
       collection_.push(state->property());
       ++size_;
