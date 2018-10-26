@@ -771,42 +771,91 @@ void ProfileTree::dump_branch_clone_graph(std::string path, cliver::ClientVerifi
   delete &os;
 }
 
-
+//XXX: These two functions should be combined with options to print different types
 void ProfileTree::print_winning_path(cliver::ClientVerifier* cv_){
   assert(root->get_winner());
   ProfileTreeNode *current_winner = root;
   while(current_winner->get_type() != ProfileTreeNode::NodeType::leaf){
+    ProfileTreeNode *winner_child = NULL;
+    int which_child = -1;
+    for(int i = 0; i < current_winner->children.size(); i++){
+        if(current_winner->children[i]->get_winner()){
+            assert(winner_child == NULL && which_child == -1);
+            winner_child = current_winner->children[i];
+            which_child = i;
+        }
+    }
+    assert(winner_child && winner_child->get_winner());
+
+    if(current_winner->get_type() == ProfileTreeNode::NodeType::branch_parent){
+      assert(current_winner->children.size() == 2);
+      uint64_t rn = 0;
+      if(current_winner->stage != NULL){
+        assert(cv_->sm() != NULL);
+        cliver::SearcherStage* ss = current_winner->stage;
+        assert(ss        != NULL);
+        rn  = cv_->sm()->get_stage_statistic(ss, "RoundNumber");
+      }
+      std::cout <<"branchs_child: "<< which_child <<
+        " round_num " << rn << //" node number " << current_winner->my_node_number <<
+        " function " << current_winner->container->my_instruction->getParent()->getParent()->getName().data() << "\n";
+      current_winner->container->my_instruction->print(llvm::outs());
+      std::cout << "\n";
+    }
+
+    current_winner = winner_child;
+  }
+}
+
+void ProfileTree::print_winning_call_sequence(cliver::ClientVerifier* cv_){
+  std::cout << "entered print_winning_call_sequence\n";
+  assert(root->get_winner());
+  ProfileTreeNode *current_winner = root;
+  while(current_winner->get_type() != ProfileTreeNode::NodeType::leaf){
+    uint64_t rn = 0;
+    if(current_winner->stage != NULL){
+        assert(cv_->sm() != NULL);
+        cliver::SearcherStage* ss = current_winner->stage;
+        assert(ss        != NULL);
+        rn  = cv_->sm()->get_stage_statistic(ss, "RoundNumber");
+    }
+    std::cout << " round_num " << rn <<
+        " function " << current_winner->container->my_instruction->getParent()->getParent()->getName().data();
+    switch(current_winner->get_type()){
+        case ProfileTreeNode::NodeType::leaf:
+            std::cout << "leaf ";
+            break;
+        case ProfileTreeNode::NodeType::clone_parent:
+            std::cout << "clone_parent ";
+            break;
+        case ProfileTreeNode::NodeType::branch_parent:
+            std::cout << "branch_parent ";
+            break;
+        case ProfileTreeNode::NodeType::call_ins:
+        {
+            auto target_name =
+                ((ContainerCallIns*)current_winner->container)->my_target->getName().data();
+            std::cout << "call_ins target: " << target_name;
+            break;
+        }
+        case ProfileTreeNode::NodeType::root:
+            std::cout << "root ";
+            break;
+        case ProfileTreeNode::NodeType::return_ins:
+            std::cout << "return_ins ";
+            break;
+    }
+    std::cout << "\n";
+
     int num_kids = current_winner->children.size();
     ProfileTreeNode *winner_child = NULL;
-    if(num_kids > 1){
-        int i;
-        for(i = 0; i < num_kids; i++){
-            if(current_winner->children[i]->get_winner()){
-                assert(winner_child == NULL);
-                winner_child = current_winner->children[i];
-                if(current_winner->get_type() == ProfileTreeNode::NodeType::branch_parent){
-                    uint64_t rn = 0;
-                    if(current_winner->stage != NULL){
-                      assert(cv_->sm() != NULL);
-                      cliver::SearcherStage* ss = current_winner->stage;
-                      assert(ss        != NULL);
-                      rn  = cv_->sm()->get_stage_statistic(ss, "RoundNumber");
-                    }
-                    std::cout <<"branchs_child: "<< i <<
-                        " round_num " << rn << //" node number " << current_winner->my_node_number <<
-                        " function " << current_winner->container->my_instruction->getParent()->getParent()->getName().data() << "\n";
-                    current_winner->container->my_instruction->print(llvm::outs());
-                    std::cout << "\n";
-                }
-            }
+    for(int i = 0; i < num_kids; i++){
+        if(current_winner->children[i]->get_winner()){
+            assert(winner_child == NULL);
+            winner_child = current_winner->children[i];
         }
-    } else {
-        assert(num_kids > 0);
-        winner_child =  current_winner->children[0];
     }
-    assert(winner_child->get_winner());
+    assert(winner_child && winner_child->get_winner());
     current_winner = winner_child;
-
   }
-
 }

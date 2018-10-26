@@ -106,7 +106,7 @@
 #include <sstream>
 #include <vector>
 #include <string>
-#include <set>
+#include <map>
 
 #include <sys/mman.h>
 #include <errno.h>
@@ -222,13 +222,17 @@ CVExecutor::CVExecutor(const InterpreterOptions &opts, klee::InterpreterHandler 
 
 CVExecutor::~CVExecutor() {}
 
-std::set <std::string> f_called_this_round;
+std::map <std::string, int> f_called_this_round;
 void CVExecutor::print_round_functions(int round, int event_type){
-  // printing set
-  std::set<std::string>::iterator itr;
+  std::map<std::string, int>::iterator itr;
   std::cout << "\nThe set functions for this round " << round << " event type " << event_type <<" are: ";
+  std::cout << std::endl;
   for (itr = f_called_this_round.begin(); itr != f_called_this_round.end(); ++itr) {
-    std::cout << *itr << ", ";
+    std::cout << itr->first << ", ";
+  }
+  std::cout << std::endl;
+  for (itr = f_called_this_round.begin(); itr != f_called_this_round.end(); ++itr) {
+    std::cout << itr->second << ", ";
   }
   std::cout << std::endl;
 }
@@ -246,7 +250,12 @@ void CVExecutor::executeCall(klee::ExecutionState &state,
               << std::string(state.stack.size(), '-') << f->getName().str());
   }
   std::string str(f->getName().data());
-  f_called_this_round.insert(str);
+
+  std::map<std::string, int>::iterator it = f_called_this_round.find(str);
+  if(it == f_called_this_round.end())
+    f_called_this_round.insert(std::make_pair(str, 1));
+  else
+    it->second++;
 
   std::string XWidgetStr("Widget_");
   if (NoXWindows && f->getName().substr(0,XWidgetStr.size()) == XWidgetStr) {
@@ -476,6 +485,7 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
   printf("my_total_instructions %d postorder_ins_count %d\n", my_total_instructions, postorder_ins_count);
 //  profileTree->dump_branch_clone_graph("/playpen/cliver0/branch_clone_processtree.graph", cv_);
   profileTree->print_winning_path(cv_);
+  profileTree->print_winning_call_sequence(cv_);
 
   delete profileTree;
   profileTree = 0;
