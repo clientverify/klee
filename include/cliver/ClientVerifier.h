@@ -135,7 +135,7 @@ class ClientVerifier : public klee::InterpreterHandler {
   // Observers
   void hook(ExecutionObserver* observer);
   void unhook(ExecutionObserver* observer);
-  void notify_all(ExecutionEvent ev);
+  void notify_all(ExecutionEvent *ev);
  
 	// Accessors
 	CVSearcher* searcher();

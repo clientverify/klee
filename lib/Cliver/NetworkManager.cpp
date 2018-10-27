@@ -350,7 +350,8 @@ void NetworkManager::execute_write(CVExecutor* executor,
 
 
 		socket.advance();
-    state_->cv()->notify_all(ExecutionEvent(CV_SOCKET_ADVANCE, state_));
+    ExecutionEvent *e = new ExecutionEvent(CV_SOCKET_ADVANCE, state_);
+    state_->cv()->notify_all(e);
 	} else {
 		socket.set_state(Socket::WRITING);
 		RETURN_FAILURE_OBJ("send", "no data left");
@@ -431,7 +432,8 @@ void NetworkManager::execute_read(CVExecutor* executor,
 		RETURN_FAILURE("read", "bytes remain len=" << len);
 
 	socket.advance();
-  state_->cv()->notify_all(ExecutionEvent(CV_SOCKET_ADVANCE, state_));
+  ExecutionEvent *e = new ExecutionEvent(CV_SOCKET_ADVANCE, state_);
+  state_->cv()->notify_all(e);
 
   //state_->property()->is_recv_processing = true;
 	RETURN_SUCCESS("read", bytes_written);
@@ -479,7 +481,8 @@ void NetworkManagerXpilot::execute_read(CVExecutor* executor,
 
 	if (!socket.has_data()) {
 		socket.advance();
-    state_->cv()->notify_all(ExecutionEvent(CV_SOCKET_ADVANCE, state_));
+    ExecutionEvent *e = new ExecutionEvent(CV_SOCKET_ADVANCE, state_);
+    state_->cv()->notify_all(e);
   }
 
   if (UseRecvProcessingFlag)
@@ -535,7 +538,8 @@ void NetworkManagerXpilot::execute_write(CVExecutor* executor,
 
 	if (!socket.has_data()) {
 		socket.advance();
-    state_->cv()->notify_all(ExecutionEvent(CV_SOCKET_ADVANCE, state_));
+    ExecutionEvent *e = new ExecutionEvent(CV_SOCKET_ADVANCE, state_);
+    state_->cv()->notify_all(e);
 	} else {
 		socket.set_state(Socket::WRITING);
 		RETURN_FAILURE_OBJ("send", "no data left");

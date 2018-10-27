@@ -12,6 +12,7 @@
 #include "klee/ExecutionState.h"
 #include "cliver/CVAssignment.h"
 #include "cliver/LazyConstraint.h"
+#include "cliver/ExecutionObserver.h"
 
 #include <list>
 #include <sstream>
@@ -63,8 +64,14 @@ class CVExecutionState : public klee::ExecutionState {
   bool basic_block_tracking() { return basic_block_tracking_; }
   void set_basic_block_tracking(bool b) { basic_block_tracking_ = b; }
 
+  ExecutionEvent *ev = NULL;
   bool event_flag() { return event_flag_; }
-  void set_event_flag(bool b) { event_flag_ = b; }
+  void set_event_flag(bool b, ExecutionEvent *ee) {
+    event_flag_ = b;
+    ev = ee;
+    if(b == false) assert(ev == NULL);
+    else           assert(ev != NULL);
+  }
 
   SearcherStage* searcher_stage() { return searcher_stage_; }
   void set_searcher_stage(SearcherStage* s) { searcher_stage_ = s; }

@@ -89,8 +89,10 @@ CVExecutionState* CVExecutionState::clone(ExecutionStateProperty* property) {
   cloned_state->cv_ = cv_;
   cloned_state->basic_block_tracking_ = basic_block_tracking_;
 
-  if (property == NULL)
-    cv_->notify_all(ExecutionEvent(CV_STATE_CLONE, cloned_state, this));
+  if (property == NULL){
+    ExecutionEvent *e = new ExecutionEvent(CV_STATE_CLONE, cloned_state, this);
+    cv_->notify_all(e);
+  }
 
   cloned_state->array_name_index_map_ = array_name_index_map_;
 

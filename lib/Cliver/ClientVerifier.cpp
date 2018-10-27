@@ -597,17 +597,17 @@ void ClientVerifier::unhook(ExecutionObserver* observer) {
   observers_.remove(observer);
 }
 
-void ClientVerifier::notify_all(ExecutionEvent ev) {
+void ClientVerifier::notify_all(ExecutionEvent *ev) {
   foreach (ExecutionObserver* observer, observers_) {
-    observer->notify(ev);
+    observer->notify(*ev);
   }
   // We set the event flag if this event relates to a state
   // To minimize the number of events, we don't set if the event_type
   // is BASICBLOCK_ENTRY (unless this is explicitly disabled by
   // BasicBlockEventFlag (false by default)
-  if (ev.state) {
-    if (ev.event_type != CV_BASICBLOCK_ENTRY || BasicBlockEventFlag) {
-      ev.state->set_event_flag(true);
+  if (ev->state) {
+    if (ev->event_type != CV_BASICBLOCK_ENTRY || BasicBlockEventFlag) {
+      ev->state->set_event_flag(true, ev);
     }
   }
 }

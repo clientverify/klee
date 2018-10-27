@@ -517,7 +517,8 @@ SearcherStage* VerifySearcher::get_new_stage(CVExecutionState* state) {
 
   // Notify
   //lock_.unlock();
-  cv_->notify_all(ExecutionEvent(CV_SEARCHER_NEW_STAGE, next_state, parent_state));
+  ExecutionEvent *e = new ExecutionEvent(CV_SEARCHER_NEW_STAGE, next_state, parent_state);
+  cv_->notify_all(e);
   //lock_.lock();
 
   // Reset property values
@@ -641,7 +642,6 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
           pending_states_.push_back(new_state);
 
         } else {
-
           if (socket->previous_event().type != SocketEvent::RECV)
             property->is_recv_processing = false;
 

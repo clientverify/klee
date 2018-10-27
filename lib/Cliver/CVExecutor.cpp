@@ -542,7 +542,7 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
     if (statePtr != NULL && !haltExecution) {
       klee::ExecutionState &state = *statePtr;
 
-      static_cast<CVExecutionState*>(&state)->set_event_flag(false);
+      static_cast<CVExecutionState*>(&state)->set_event_flag(false, NULL);
 
       // This is the main execution loop where most of the time is spent.
       // Note that executeInstruction() might fork a new state, which is
@@ -574,7 +574,8 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
 
       // Notify all if a state was removed
       foreach (klee::ExecutionState* rstate, context.removedStates) {
-        cv_->notify_all(ExecutionEvent(CV_STATE_REMOVED, rstate));
+        ExecutionEvent *e = new ExecutionEvent(CV_STATE_REMOVED, rstate);
+        cv_->notify_all(e);
       }
 
       // Update searcher with new states and get next state to execute, if
@@ -747,7 +748,8 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
   // Alert threads to wake up if there are no more states to execute
   searcherCond.notify_all();
 
-  cv_->notify_all(ExecutionEvent(CV_HALT_EXECUTION));
+  ExecutionEvent *e = new ExecutionEvent(CV_HALT_EXECUTION);
+  cv_->notify_all(e);
 
   // Release TSS memory (i.e., don't destroy with thread); the memory manager
   // for this thread may still be needed in dumpState
@@ -892,7 +894,8 @@ void CVExecutor::handle_post_execution_events(klee::ExecutionState &state) {
 				}
 			}
 			if (function_call_events_.find(f) != function_call_events_.end()) {
-        cv_->notify_all(ExecutionEvent(function_call_events_[f], &state));
+        ExecutionEvent *e = new ExecutionEvent(function_call_events_[f], &state);
+        cv_->notify_all(e);
 			}
       break;
     }
@@ -908,7 +911,8 @@ void CVExecutor::handle_post_execution_events(klee::ExecutionState &state) {
     unsigned basic_block_id = bb_entry_it->second;
 
     if (ki == kf->instructions[basic_block_id]) {
-      cv_->notify_all(ExecutionEvent(CV_BASICBLOCK_ENTRY, &state));
+      ExecutionEvent *e = new ExecutionEvent(CV_BASICBLOCK_ENTRY, &state);
+      cv_->notify_all(e);
     }
   }
 
@@ -1045,8 +1049,10 @@ CVExecutor::fork(klee::ExecutionState &current,
     //                       << " [fork|always-true] @ " << *current.prevPC);
     // }
 
-    if (EnableStateRebuilding && !replayPath)
-      cv_->notify_all(ExecutionEvent(CV_STATE_FORK_TRUE, &current));
+    if (EnableStateRebuilding && !replayPath){
+      ExecutionEvent *e = new ExecutionEvent(CV_STATE_FORK_TRUE, &current);
+      cv_->notify_all(e);
+    }
 
     return StatePair(&current, 0);
 
@@ -1057,8 +1063,10 @@ CVExecutor::fork(klee::ExecutionState &current,
     //                       << " [fork|always-false] @ " << *current.prevPC);
     // }
 
-    if (EnableStateRebuilding && !replayPath)
-      cv_->notify_all(ExecutionEvent(CV_STATE_FORK_FALSE, &current));
+    if (EnableStateRebuilding && !replayPath){
+      ExecutionEvent *e = new ExecutionEvent(CV_STATE_FORK_FALSE, &current);
+      cv_->notify_all(e);
+    }
 
     return StatePair(0, &current);
   } else {
@@ -1081,8 +1089,10 @@ CVExecutor::fork(klee::ExecutionState &current,
     llvm::Instruction* current_inst = current.prevPC->inst;
 
     if (EnableStateRebuilding && !replayPath) {
-      cv_->notify_all(ExecutionEvent(CV_STATE_FORK_FALSE, falseState));
-      cv_->notify_all(ExecutionEvent(CV_STATE_FORK_TRUE, trueState));
+      ExecutionEvent *e1 = new ExecutionEvent(CV_STATE_FORK_FALSE, falseState);
+      ExecutionEvent *e2 = new ExecutionEvent(CV_STATE_FORK_TRUE, trueState);
+      cv_->notify_all(e1);
+      cv_->notify_all(e2);
     }
 
     assert(trueState->profiletreeNode->parent == falseState->profiletreeNode->parent);
@@ -1121,7 +1131,8 @@ void CVExecutor::branch(klee::ExecutionState &state,
     es->ptreeNode = res.second;
  
     // TODO do we still need this event? can we just use Executor::branch()?
-    cv_->notify_all(ExecutionEvent(CV_BRANCH, ns, es));
+    ExecutionEvent *e = new ExecutionEvent(CV_BRANCH, ns, es);
+    cv_->notify_all(e);
   }
 
   for (unsigned i=0; i<N; ++i)
@@ -1175,7 +1186,8 @@ void CVExecutor::terminateStateOnExit(klee::ExecutionState &state) {
       !cvstate->network_manager()->socket()->is_open()) {
     // TODO process finished state here instead of Searcher
 
-    cv_->notify_all(ExecutionEvent(CV_FINISH, cvstate));
+    ExecutionEvent *e = new ExecutionEvent(CV_FINISH, cvstate);
+    cv_->notify_all(e);
   } else {
     terminateState(state);
   }
@@ -1186,7 +1198,8 @@ void CVExecutor::terminate_state(CVExecutionState* state) {
 }
 
 void CVExecutor::remove_state_internal(CVExecutionState* state) {
-  cv_->notify_all(ExecutionEvent(CV_STATE_REMOVED, state));
+  ExecutionEvent *e = new ExecutionEvent(CV_STATE_REMOVED, state);
+  cv_->notify_all(e);
   {
     klee::LockGuard guard(statesMutex);
     states.erase(state);
