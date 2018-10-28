@@ -292,6 +292,7 @@ class SearcherStageThreadedImpl : public SearcherStage {
         next->client_round  > collection_.top()->client_round ||
         next->pass_count    > collection_.top()->pass_count ||
         next->symbolic_vars < collection_.top()->symbolic_vars ||
+        next->processing_select_event ||
         next->fifo_num      < collection_.top()->fifo_num);
     return cache_[next];
   }

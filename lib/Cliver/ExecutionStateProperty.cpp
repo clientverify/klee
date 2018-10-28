@@ -34,7 +34,7 @@ ExecutionStateProperty::ExecutionStateProperty()
     inst_count(0), pass_count(0), bb_count(0),
     tracker_node(NULL), tracker_cloned(false),
     execution_stage(NULL), ed_tree(NULL),
-    fifo_num(-1) {}
+    processing_select_event(false), fifo_num(-1) {}
 
 void ExecutionStateProperty::clone_helper(ExecutionStateProperty* p) { 
   p->round = round;
@@ -93,6 +93,11 @@ int ExecutionStateProperty::compare(const ExecutionStateProperty *b) const {
   // Reversed for priority queue!
 	if (_b->symbolic_vars != symbolic_vars)
 		return _b->symbolic_vars - symbolic_vars;
+
+    assert(!this->processing_select_event);
+    if (b->processing_select_event){
+        return -1;
+    }
 
     assert(fifo_num > -1 && _b->fifo_num > -1);
     assert(fifo_num != _b->fifo_num);

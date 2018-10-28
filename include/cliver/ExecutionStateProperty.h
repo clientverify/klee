@@ -64,6 +64,7 @@ class ExecutionStateProperty {
   size_t inst_count; // number of instructions in this round from this state
   int pass_count; // How many passes has this round been executed
   int bb_count; // how many basic blocks has this path executed since last recompute
+  bool processing_select_event;
   long fifo_num;
 
   // For concurrent processing of events in ExecutionTraceManager

@@ -608,12 +608,24 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
 
         // Update searcher with new states and get next state to execute
         // (if supported by searcher)
+        if(static_cast<CVExecutionState*>(&state)->event_flag() &&
+            static_cast<CVExecutionState*>(&state)->ev->event_type == CV_SELECT_EVENT)
+            static_cast<CVExecutionState*>(&state)->property()->processing_select_event = true;
+
         statePtr = searcher->updateAndTrySelectState(&state,
                                                      context.addedStates,
                                                      context.removedStates);
 
         // Update Executor state tracking (stateCount already updated above)
         parallelUpdateStates(&state, false);
+
+        if(static_cast<CVExecutionState*>(&state)->event_flag() &&
+            static_cast<CVExecutionState*>(&state)->ev->event_type == CV_SELECT_EVENT){
+            assert(statePtr == &state);
+            assert(static_cast<CVExecutionState*>(&state)->property()->processing_select_event);
+            static_cast<CVExecutionState*>(statePtr)->property()->processing_select_event = false;
+        }
+        assert(!static_cast<CVExecutionState*>(statePtr)->property()->processing_select_event);
       }
     }
 
