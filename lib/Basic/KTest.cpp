@@ -425,6 +425,7 @@ void ktest_start(const char *filename, enum kTestMode mode) {
       exit(1);
     }
     ktov.size = ktov.capacity = ktest->numObjects;
+    printf("Found %d ktov entries \n", ktov.size);
     ktov.objects = (KTestObject*)malloc(sizeof(KTestObject) * ktov.size);
     int i;
     for (i = 0; i < ktov.size; i++) {

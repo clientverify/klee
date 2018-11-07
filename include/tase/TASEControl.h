@@ -7,6 +7,7 @@ int initialize_semaphore(int semkey);
 void initManagerStructures();
 void manage_workers();
 int tase_fork();
+void tase_exit();
 
 extern bool taseManager;
 

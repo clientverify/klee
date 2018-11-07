@@ -9,9 +9,19 @@
 klee_add_component(kleeTase
   CVAssignment.cpp
   TASEControl.cpp
+  TASESysModels.cpp
 )
 
 target_link_libraries(kleeTase PRIVATE ${ZLIB_LIBRARIES})
 
 klee_get_llvm_libs(LLVM_LIBS ${LLVM_COMPONENTS})
 target_link_libraries(kleeTase PUBLIC ${LLVM_LIBS})
+
+target_link_libraries(kleeTase PRIVATE
+  kleeBasic
+  kleeCore
+  kleeModule
+  kleaverSolver
+  kleaverExpr
+  kleeSupport
+  )

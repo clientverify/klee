@@ -67,8 +67,8 @@
 #include "tase/tase_constants.h"
 #include "klee/CVAssignment.h"
 #include "klee/util/ExprUtil.h"
-#include "klee/TASEControl.h"
-
+#include "tase/TASEControl.h"
+#include <sys/prctl.h>
 #include <sys/time.h>
 #include <iostream>
 struct timeval taseStartTime;
@@ -105,6 +105,7 @@ enum runType : int {INTERP_ONLY, MIXED};
 enum runType exec_mode;
 enum testType : int {EXPLORATION, VERIFICATION};
 enum testType test_type;
+std::string project;
 
 bool enableMultipass = true; 
 int worker2managerFD [2];
@@ -115,6 +116,8 @@ std::vector<int> scheduledWorkers;
 int max_workers = 200;
 std::vector<int> unscheduledWorkers;
 
+extern int * target_started_ptr;
+extern int masterPID;
 
 
 int max_depth;
@@ -251,9 +254,13 @@ namespace {
   cl::opt<std::string>
   InputFile(cl::desc("<input bytecode>"), cl::Positional, cl::init("-"));
 
-  //enum runType : int {INTERP_ONLY, MIXED};
   cl::opt<runType>
-  execModeArg("execMode", cl::desc("INTERP_ONLY or MIXED (native and interpretation)"), cl::init(MIXED));
+  execModeArg("execMode", cl::desc("INTERP_ONLY or MIXED (native and interpretation)"),
+	      cl::values(clEnumValN(INTERP_ONLY, "INTERP_ONLY", "only execute via interpreter"),
+                  clEnumValN(MIXED, "MIXED", "execute natively in transactions and interpret ")
+		  KLEE_LLVM_CL_VAL_END),
+
+	      cl::init(MIXED));
   
   //enum testType : int {EXPLORATION, VERIFICATION};
   cl::opt<testType>
@@ -264,6 +271,9 @@ namespace {
   
   cl::opt<bool>
   taseDebugArg("taseDebug", cl::desc("Verbose logging in TASE"), cl::init(false));
+
+  cl::opt<std::string>
+  projectArg("project", cl::desc("Name of project in TASE"), cl::init("-"));
   
   cl::opt<std::string>
   EntryPoint("entry-point",
@@ -1320,7 +1330,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 }
 #endif
 
- void printTASEArgs(runType rt, testType tt, bool fm, bool dbg) {
+ void printTASEArgs(runType rt, testType tt, bool fm, bool dbg, std::string projName) {
 
    printf("TASE args... \n");
    if (rt == MIXED) 
@@ -1337,6 +1347,8 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    else
      printf("ERROR: unrecognized testType \n");
 
+   printf("\t TASE project name: %s \n", projName.c_str());
+   
    printf("\t taseManager: %d \n", fm);
    printf("\t taseDebug output: %d \n", dbg);
 
@@ -1345,7 +1357,6 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
  
  
  int main (int argc, char **argv, char **envp) {
-   
    
    gettimeofday(&taseStartTime,NULL);
    glob_argc = argc;
@@ -1359,9 +1370,10 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    test_type = testTypeArg;
    taseManager = taseManagerArg;
    taseDebug = taseDebugArg;
-
+   project = projectArg;
+   
    if (taseDebug)
-     printTASEArgs(exec_mode, test_type, taseManager, taseDebug);
+     printTASEArgs(exec_mode, test_type, taseManager, taseDebug, project);
    
    //Redirect stdout messages to a file called "Monitor".
    //Later, calls to unix fork in executor create new filenames
@@ -1456,8 +1468,13 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    }
    interpreter->initializeInterpretationStructures(entryFn);
    GlobalInterpreter = interpreter;
+
    
+  
    if (taseManager) {
+     
+      masterPID = getpid();
+      signal(SIGCHLD,SIG_IGN);
      int pipeResult = pipe(worker2managerFD);
      if (pipeResult != 0) {
        printf("ERROR: Couldn't create worker2managerFD pipe\n");
@@ -1475,11 +1492,19 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      strncpy (message_test_buffer, "appleorangeappleorange", 22);
      message_buf_length = strlen(message_test_buffer);
      
-     //Load ktest file into ktov.
-     ktest_start("friday.net.ktest", KTEST_PLAYBACK);
    }
-
+   
+   printf("Loading in ktest file \n");
+   std::cout.flush();
+   //Load ktest file into ktov.
+   //ktest_start("friday.net.ktest", KTEST_PLAYBACK);
+   if (taseDebug) {
+     printf("Loaded ktest file \n");
+     std::cout.flush();
+   }
+   
    printf("Calling tsx_init to map in pages \n");
+   std::cout.flush();
    tsx_init();
    int pid;
    if (taseManager) 
@@ -1501,7 +1526,16 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 
        //Add self to queue
        get_sem_lock();
+
+       int res = prctl(PR_SET_CHILD_SUBREAPER, 1);
+       if (res == -1)
+	 perror("Initial prctl error ");
+
+       
+       printf("Adding self to queue \n");
+       *target_started_ptr = 1;
        int offset = *ms_QR_size_ptr;
+       printf("offset is %d \n", offset);
        *(ms_QR_base + offset) = getpid();
        offset++;
        *ms_QR_size_ptr = offset;
@@ -1509,13 +1543,18 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 
      }
 
-     
+     if (taseDebug) {
+       printf("Calling transferToTarget() \n");
+       std::cout.flush();
+     }
      transferToTarget();
      printf("RETURNING TO MAIN HANDLER \n");
      return 0;
 
    } else {
-     //manage_workers();
+     while (true) {
+       manage_workers();
+     }
    }
  }
 

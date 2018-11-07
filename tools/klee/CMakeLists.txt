@@ -14,8 +14,8 @@ set(KLEE_LIBS
   kleeCore
 )
 
-target_link_libraries(klee ${KLEE_LIBS})
-
+target_link_libraries(klee  /playpen/humphries/tase/TASE/build_klee/lib/proj.a ${KLEE_LIBS} )
+#target_link_libraries(klee ${KLEE_LIBS} ) 
 install(TARGETS klee RUNTIME DESTINATION bin)
 
 # The KLEE binary depends on the runtimes

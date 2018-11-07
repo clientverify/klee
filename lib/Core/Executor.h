@@ -359,7 +359,9 @@ private:
   ref<Expr> tase_helper_read (uint64_t address, uint8_t byteWidth);
   void tase_make_symbolic (uint64_t addr, uint64_t len, char * name);
   
-  //AH: Modeled io functions--------------------------------
+  //AH: Modeled sys functions--------------------------------
+  void model_socket();
+  void model_connect();
   void model_read();
   void model_readstdin();
   void model_readsocket();
@@ -367,7 +369,7 @@ private:
   void model_random();
   void model_strncat();
   void model_select();
-
+  void model_signal();
   //AH: Modeling specific to tls---------------------------
   
   void model_tls1_generate_master_secret();
@@ -385,7 +387,7 @@ private:
   void model_ECDH_compute_key();
   void model_EC_POINT_point2oct(); 
   
-  uint64_t tls_predict_stdin_size (uint64_t fd, uint64_t maxLen);
+  uint64_t tls_predict_stdin_size (int fd, uint64_t maxLen);
   void make_BN_symbolic(BIGNUM * bn);
 
   //AH: RNG modeling---------------------------------------
