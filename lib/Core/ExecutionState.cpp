@@ -379,6 +379,10 @@ void ExecutionState::dumpStack(llvm::raw_ostream &out) const {
   }
 }
 
+//This function does not always return the correct file line
+//number.  I suspect that this is a result of klee optimization passes
+//to the llvm IR.
 void ExecutionState::dumpStack() const {
   dumpStack(llvm::outs());
+  llvm::outs().flush();
 }
