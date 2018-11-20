@@ -3,6 +3,7 @@
 // Unit tests for the LazyConstraint and LazyConstraintDispatcher classes.
 //
 //===----------------------------------------------------------------------===//
+#ifdef ENABLE_STP
 
 #include <iostream>
 #include "gtest/gtest.h"
@@ -695,3 +696,4 @@ TEST_F(LazyConstraintDispatcherTest, ThreeLazyThreeTriggerEquiv) {
 ////////////////////////////////////////////////////////////////////////////////
 
 } // end anonymous namespace
+#endif // ENABLE_STP
