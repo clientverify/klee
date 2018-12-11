@@ -36,6 +36,8 @@ void CVStatisticsManager::initialize() {
   statistics_.push_back(&(klee::stats::solverTime));
   statistics_.push_back(&(klee::stats::queryTime));
   statistics_.push_back(&(klee::stats::cexCacheTime));
+  statistics_.push_back(&(klee::stats::queryCexCacheHits));
+  statistics_.push_back(&(klee::stats::queryCexCacheMisses));
   statistics_.push_back(&(klee::stats::queryConstructTime));
   statistics_.push_back(&(klee::stats::resolveTime));
   statistics_.push_back(&(klee::stats::queries));
