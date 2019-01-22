@@ -90,6 +90,9 @@ extern "C" void enter_tase(void (*) ());
 extern "C" void target_exit ();
 std::stringstream workerIDStream;
 std::stringstream globalLogStream;
+FILE * heapMemLog; 
+FILE * LHlog; //Used for debugging openssl's lhash symbol/name mapping
+FILE * modelLog;
 char target_stack[STACK_SIZE + 1];
 char interp_stack[STACK_SIZE + 1];
 char * target_stack_begin_ptr = &target_stack[STACK_SIZE];
@@ -1382,7 +1385,16 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    std::string IDString;
    IDString = workerIDStream.str();
    freopen(IDString.c_str(),"w", stdout);
-      
+
+   //Debugging for heap mem ops -- not ready for multiworker yet
+   heapMemLog = fopen("heaplog.txt", "w");
+
+   //Debugging for OpenSSL's lhash name/symbol lookup tables
+   LHlog = fopen("lhlog.txt", "w");
+
+   //Debugging for modeled fn calls
+   modelLog = fopen("modellog.txt", "w");
+   
    // Load the bytecode...
    std::string errorMsg;
    LLVMContext ctx;
@@ -1436,6 +1448,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      pArgv[i] = pArg;
    }
    ///////////////////// End of Arg Parsing Section
+
    
    printf("Creating interpreter... \n");
    Interpreter::InterpreterOptions IOpts;
@@ -1558,30 +1571,6 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    }
  }
 
- void  manageWorkers () {
-   //I give up
-   
-   //Code path here will hold the management code for the controller process. 
-   /*
-     while (true) {
-     
-     int numBytesRead;
-     char workerMessageBuf[20];
-     
-     numBytesRead =  read(worker2managerFD[0], workerMessageBuf, sizeof(workerMessageBuf));
-     if (numBytesRead != 0) {
-     printf("Master found something in the pipe \n");
-     char message[20];
-     
-     memcpy(message,workerMessageBuf,20);
-     printf("Master received message %s \n", message);
-     
-     std::exit(EXIT_SUCCESS);
-     }
-     }*/
-   
- }
- 
 void main_original_vanilla() {
   
   int argc = glob_argc;

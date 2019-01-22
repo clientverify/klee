@@ -78,6 +78,10 @@ using namespace klee;
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <netdb.h>
+#include <fcntl.h>
 
 extern gregset_t target_ctx_gregs;
 extern gregset_t prev_ctx_gregs;
@@ -86,18 +90,29 @@ extern MemoryObject * target_ctx_gregs_MO;
 extern ObjectState * target_ctx_gregs_OS;
 extern ExecutionState * GlobalExecutionStatePtr;
 
+extern FILE * heapMemLog;
+extern FILE * modelLog;
+
 enum testType : int {EXPLORATION, VERIFICATION};
 extern enum testType test_type;
 
+extern uint64_t interpCtr;
+
 //Multipass
 extern multipassRecord multipassInfo;
-KTestObjectVector ktov;
+extern KTestObjectVector ktov;
 extern bool enableMultipass;
 extern void spinAndAwaitForkRequest();
+
+bool roundUpHeapAllocations = true; //Round the size Arg of malloc, realloc, and calloc up to a multiple of 8
+//This matters because it controls the size of the MemoryObjects allocated in klee.  Reads executed by
+//some library functions (ex memcpy) may copy 4 or 8 byte-chunks of data at a time that cross over the edge
+//of memory object buffers that aren't 4 or 8 byte aligned.
 
 int maxFDs = 10;
 int openFD = 3;
 
+/*
 KTestObject * peekNextKTestObject () {
   if (ktov.playback_index >= ktov.size){
     printf("Tried to peek for nonexistent KTestObject \n");
@@ -106,7 +121,7 @@ KTestObject * peekNextKTestObject () {
     return &(ktov.objects[ktov.playback_index]);
   }
 }
-
+*/
 
 /*
 enum FDStat_ty = {Ready, Blocked, Err}; //Oversimplification for now
@@ -124,10 +139,689 @@ bool initializeFDTracking () {
 
 }
 */
+
+// Network capture for Cliver
+extern "C" { int ktest_connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
+  int ktest_select(int nfds, fd_set *readfds, fd_set *writefds,
+		   fd_set *exceptfds, struct timeval *timeout);
+  ssize_t ktest_writesocket(int fd, const void *buf, size_t count);
+  ssize_t ktest_readsocket(int fd, void *buf, size_t count);
+
+  // stdin capture for Cliver
+  int ktest_raw_read_stdin(void *buf, int siz);
+
+  // Random number generator capture for Cliver
+  int ktest_RAND_bytes(unsigned char *buf, int num);
+  int ktest_RAND_pseudo_bytes(unsigned char *buf, int num);
+
+  // Time capture for Cliver (actually unnecessary!)
+  time_t ktest_time(time_t *t);
+
+  // TLS Master Secret capture for Cliver
+  void ktest_master_secret(unsigned char *ms, int len);
+
+  void ktest_start(const char *filename, enum kTestMode mode);
+  void ktest_finish();               // write capture to file
+}
+
+extern int * __errno_location();
+extern int __isoc99_sscanf ( const char * s, const char * format, ...);
+
+//Todo: don't just skip, even though this is only for printing, change ret size
+
+void Executor::model_sprintf() {
+  printf("Entering model_sprintf at RIP 0x%llx \n", target_ctx_gregs[REG_RIP]);
+  fprintf(modelLog,"Calling model_sprintf on string %s at interpCtr %lu \n", (char *) target_ctx_gregs[REG_RDI], interpCtr);
+
+  int res = 1;
+  ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+  target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+
+  //fake a ret
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+  target_ctx_gregs[REG_RIP] = retAddr;
+  target_ctx_gregs[REG_RSP] += 8;
+  
+}
+
+//Todo: don't just skip, even though this is only for printing, change ret size
+void Executor::model_vfprintf(){
+
+  printf("Entering model_vfprintf at RIP 0x%llx \n", target_ctx_gregs[REG_RIP]);
+  
+  int res = 1;
+  ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+  target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+
+  //fake a ret
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+  target_ctx_gregs[REG_RIP] = retAddr;
+  target_ctx_gregs[REG_RSP] += 8;
+  
+}
+
+void Executor::model___errno_location() {
+  printf("Entering model for __errno_location \n");
+  std::cout.flush();
+
+  //Perform the call
+  int * res = __errno_location();
+  ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+  target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+
+  //If it doesn't exit, back errno with a memory object.
+  ObjectPair OP;
+  ref<ConstantExpr> addrExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+  if (GlobalExecutionStatePtr->addressSpace.resolveOne(addrExpr, OP)) {
+    printf("errno var appears to have MO already backing it \n");
+    std::cout.flush();
+    
+  } else {
+    printf("Creating MO to back errno at 0x%llx with size 0x%x \n", (uint64_t) res, sizeof(int));
+    std::cout.flush();
+    MemoryObject * newMO = addExternalObject(*GlobalExecutionStatePtr, (void *) res, sizeof(int), false);
+    const ObjectState * newOSConst = GlobalExecutionStatePtr->addressSpace.findObject(newMO);
+    ObjectState *newOS = GlobalExecutionStatePtr->addressSpace.getWriteable(newMO,newOSConst);
+    newOS->concreteStore = (uint8_t *) res;
+  }
+  
+  //fake a ret
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+  target_ctx_gregs[REG_RIP] = retAddr;
+  target_ctx_gregs[REG_RSP] += 8;
+  
+}
+
+void Executor::model_ktest_master_secret(  ) {
+
+  printf("Entering model_ktest_master_secret \n");
+
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+
+  if  (
+       (isa<ConstantExpr>(arg1Expr)) &&
+       (isa<ConstantExpr>(arg2Expr))
+       ){
+
+    ktest_master_secret( (unsigned char *) target_ctx_gregs[REG_RDI], (int) target_ctx_gregs[REG_RSI]);
+    
+    //fake a ret
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+    target_ctx_gregs[REG_RIP] = retAddr;
+    target_ctx_gregs[REG_RSP] += 8;
+
+  } else {
+    printf("ERROR Found symbolic input to model_ktest_master_secret \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+
+
+}
+
+void Executor::model_ktest_start() {
+
+  printf("Entering model_ktest_start \n");
+  fprintf(modelLog,"Entering model_ktest_start at interpCtr %lu \n",interpCtr);
+  //fprintf(modelLog,"ktest_start args are 
+  
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+
+  if  (
+       (isa<ConstantExpr>(arg1Expr)) &&
+       (isa<ConstantExpr>(arg2Expr)) 
+       ){
+  
+    ktest_start( (char *)target_ctx_gregs[REG_RDI], KTEST_PLAYBACK);
+
+    //Fake a ret
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+    target_ctx_gregs[REG_RIP] = retAddr;
+    target_ctx_gregs[REG_RSP] += 8;
+    
+    //return
+  } else {
+    printf("ERROR in ktest_start -- symbolic args \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+    
+}
+
+void Executor::model_ktest_writesocket() {
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
+
+  printf("Entering model_ktest_writesocket \n");
+  fprintf(modelLog, "Entering writesocket call at PC 0x%lx, interpCtr %lu", target_ctx_gregs[REG_RIP], interpCtr);
+  
+  if  (
+       (isa<ConstantExpr>(arg1Expr)) &&
+       (isa<ConstantExpr>(arg2Expr)) &&
+       (isa<ConstantExpr>(arg3Expr))
+       ){
+
+    //Get result of call
+    ssize_t res = ktest_writesocket((int) target_ctx_gregs[REG_RDI], (void *) target_ctx_gregs[REG_RSI], (size_t) target_ctx_gregs[REG_RDX]);
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+
+    //fake a ret
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+    target_ctx_gregs[REG_RIP] = retAddr;
+    target_ctx_gregs[REG_RSP] += 8;
+    
+  } else {
+    printf("ERROR in model_ktest_writesocket - symbolic arg \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+
+}
+
+void Executor::model_ktest_readsocket() {
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
+
+  printf("Entering model_ktest_readsocket \n");
+  fprintf(modelLog,"Entering model_ktest_readsocket \n");
+
+  
+  if  (
+       (isa<ConstantExpr>(arg1Expr)) &&
+       (isa<ConstantExpr>(arg2Expr)) &&
+       (isa<ConstantExpr>(arg3Expr))
+       ){
+
+    //Return result of call
+    ssize_t res = ktest_readsocket((int) target_ctx_gregs[REG_RDI], (void *) target_ctx_gregs[REG_RSI], (size_t) target_ctx_gregs[REG_RDX]);
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+    
+    //fake a ret
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+    target_ctx_gregs[REG_RIP] = retAddr;
+    target_ctx_gregs[REG_RSP] += 8;
+    
+  } else {
+    printf("ERROR in model_ktest_readsocket - symbolic arg \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+
+}
+
+void Executor::model_ktest_raw_read_stdin() {
+  printf("Entering model_ktest_raw_read_stdin \n");
+  fprintf(modelLog,"Entering model_ktest_raw_read_stdin at interpCtr %lu \n", interpCtr);
+  
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+
+  if  (
+       (isa<ConstantExpr>(arg1Expr)) &&
+       (isa<ConstantExpr>(arg2Expr))
+       ){
+
+    //return result of call
+    int res = ktest_raw_read_stdin((void *) target_ctx_gregs[REG_RDI], (int) target_ctx_gregs[REG_RSI]);
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+    
+    //Fake a ret
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+    target_ctx_gregs[REG_RIP] = retAddr;
+    target_ctx_gregs[REG_RSP] += 8;
+    
+  } else {
+    printf("ERROR in ktest_raw_read_stdin -- symbolic args \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+    
+}
+
+void Executor::model_ktest_connect() {
+
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+
+  printf("Calling model_ktest_connect \n");
+
+  if  (
+       (isa<ConstantExpr>(arg1Expr)) &&
+       (isa<ConstantExpr>(arg2Expr)) ) {
+
+    //return result
+    int res = ktest_connect((int) target_ctx_gregs[REG_RDI], (struct sockaddr *) target_ctx_gregs[REG_RSI], (socklen_t) target_ctx_gregs[REG_RDX]);
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+
+    //Fake a return
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+    target_ctx_gregs[REG_RIP] = retAddr;
+    target_ctx_gregs[REG_RSP] += 8;
+  } else {
+    printf("ERROR in model_ktest_connect -- symbolic args \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+      
+  }
+}
+
+
+//https://linux.die.net/man/2/shutdown
+//int shutdown(int sockfd, int how);
+void Executor::model_shutdown() {
+
+  printf("Entering model_shutdown \n");
+  fprintf(modelLog,"Entering model_shutdown at interpCtr %lu ", interpCtr);
+  std::cout.flush();
+  fflush(modelLog);
+
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+
+  if (  (isa<ConstantExpr>(arg1Expr)) &&
+	(isa<ConstantExpr>(arg2Expr))
+	) {
+
+    std::cerr << " Entered model_shutdown call on FD %lu \n ", target_ctx_gregs[REG_RDI];
+    
+    if (ktov.size == ktov.playback_index) {
+      std::cerr << "All playback messages retrieved \n";
+      fprintf(modelLog, "All playback messages retrieved \n");
+      fflush(modelLog);
+      std::exit(EXIT_SUCCESS);
+      
+    } else {
+      std::cerr << "ERROR: playback message index wrong at shutdown \n";
+      fprintf(modelLog, "ERROR: playback message index wrong at shutdown \n");
+      fflush(modelLog);
+      std::exit(EXIT_FAILURE);
+    }
+    
+  } else {
+    printf("ERROR in model_shutdown -- symbolic args \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+
+  }
+
+}
+
+void Executor::model_ktest_select() {
+
+  printf("Entering model_ktest_select \n");
+  fprintf(modelLog,"Entering model_ktest_select at interpCtr %lu ", interpCtr);
+  std::cout.flush();
+  fflush(modelLog);
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
+  ref<Expr> arg4Expr = target_ctx_gregs_OS->read(REG_RCX * 8, Expr::Int64);
+  ref<Expr> arg5Expr = target_ctx_gregs_OS->read(REG_R8 * 8, Expr::Int64);
+
+  if (  (isa<ConstantExpr>(arg1Expr)) &&
+	(isa<ConstantExpr>(arg2Expr)) &&
+	(isa<ConstantExpr>(arg3Expr)) &&
+	(isa<ConstantExpr>(arg4Expr)) &&
+	(isa<ConstantExpr>(arg5Expr))
+	) {
+
+    fprintf(modelLog, "Before ktest_select, readfds is 0x%lx, writefds is 0x%lx \n", *( (uint64_t *) target_ctx_gregs[REG_RSI]), *( (uint64_t *) target_ctx_gregs[REG_RDX]));
+    fflush(modelLog);
+    
+    int res = ktest_select((int) target_ctx_gregs[REG_RDI], (fd_set *) target_ctx_gregs[REG_RSI], (fd_set *) target_ctx_gregs[REG_RDX], (fd_set *) target_ctx_gregs[REG_RCX], (struct timeval *) target_ctx_gregs[REG_R8]);
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+
+    fprintf(modelLog, "After ktest_select, readfds is 0x%lx, writefds is 0x%lx \n", *( (uint64_t *) target_ctx_gregs[REG_RSI]), *( (uint64_t *) target_ctx_gregs[REG_RDX]));
+    fflush(modelLog);
+    
+    //Fake a return
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+    target_ctx_gregs[REG_RIP] = retAddr;
+    target_ctx_gregs[REG_RSP] += 8;
+    
+  } else {
+    printf("ERROR in model_ktest_select -- symbolic args \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }    
+}
+
+//void *memcpy(void *dest, const void *src, size_t n);
+void Executor::model_memcpy() {
+  fprintf(modelLog,"Entering model memcpy: Moving 0x%lx bytes from 0x%lx to 0x%lx \n",(size_t) target_ctx_gregs[REG_RDX],  (void *) target_ctx_gregs[REG_RSI] ,  (void*) target_ctx_gregs[REG_RDI]  );
+  fflush(modelLog);
+  void * res = memcpy((void*) target_ctx_gregs[REG_RDI], (void *) target_ctx_gregs[REG_RSI], (size_t) target_ctx_gregs[REG_RDX]);
+  ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+  target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+  
+  //Fake a return
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+  target_ctx_gregs[REG_RIP] = retAddr;
+  target_ctx_gregs[REG_RSP] += 8;
+
+}
+
+void Executor::model_ktest_RAND_bytes() {
+
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+
+  printf("Calling model_ktest_RAND_bytes \n");
+  fprintf(modelLog,"Calling model_ktest_RAND_bytes at %lu \n", interpCtr);
+  
+  
+  if  (
+       (isa<ConstantExpr>(arg1Expr)) &&
+       (isa<ConstantExpr>(arg2Expr)) ) {
+
+    //return val
+    int res = ktest_RAND_bytes((unsigned char *) target_ctx_gregs[REG_RDI], (int) target_ctx_gregs[REG_RSI]);
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+    
+    //Fake a return
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+    target_ctx_gregs[REG_RIP] = retAddr;
+    target_ctx_gregs[REG_RSP] += 8;
+
+  } else {
+    printf("ERROR in model_ktest_RAND_bytes \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+    
+}
+
+void Executor::model_ktest_RAND_pseudo_bytes() {
+
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+
+  printf("Calling model_test_RAND_pseudo_bytes \n");
+  fprintf(modelLog,"Calling model_ktest_RAND_PSEUDO_bytes at %lu \n", interpCtr);
+  
+  if  (
+       (isa<ConstantExpr>(arg1Expr)) &&
+       (isa<ConstantExpr>(arg2Expr)) ) {
+
+    //return result of call
+    int res = ktest_RAND_pseudo_bytes((unsigned char *) target_ctx_gregs[REG_RDI], (int) target_ctx_gregs[REG_RSI]);
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+  
+    
+    
+    //Fake a return
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+    target_ctx_gregs[REG_RIP] = retAddr;
+    target_ctx_gregs[REG_RSP] += 8;
+
+  } else {
+    printf("ERROR in model_test_RAND_pseudo_bytes \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+    
+  }
+}
+
+//https://linux.die.net/man/3/fileno
+//int fileno(FILE *stream); 
+void Executor::model_fileno() {
+  
+  printf("Entering model_fileno \n");
+  std::cout.flush();
+  fprintf(modelLog,"Entering fileno model at %d \n",interpCtr);
+  fflush(modelLog);
+  
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  if  (
+       (isa<ConstantExpr>(arg1Expr)) 
+       ){
+    
+    //return res of call
+    int res = fileno((FILE *) target_ctx_gregs[REG_RDI]);
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+
+    fprintf(modelLog,"fileno model returned %d \n", res);
+    fflush(modelLog);
+    
+    //Fake a return
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+    target_ctx_gregs[REG_RIP] = retAddr;
+    target_ctx_gregs[REG_RSP] += 8;
+    
+  } else {
+    printf("ERROR in model_test_RAND_pseudo_bytes \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE); 
+  }
+}
+
+//http://man7.org/linux/man-pages/man2/fcntl.2.html
+//int fcntl(int fd, int cmd, ... /* arg */ );
+void Executor::model_fcntl() {
+  fprintf(modelLog, "Entering model_fcntl at interpCtr %lu \n", interpCtr);
+  fflush(modelLog);
+  
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
+  
+  if  (
+       (isa<ConstantExpr>(arg1Expr)) &&
+       (isa<ConstantExpr>(arg2Expr)) &&
+       (isa<ConstantExpr>(arg3Expr)) 
+       ){
+
+
+    if ( (int) target_ctx_gregs[REG_RSI] == F_SETFL && (int) target_ctx_gregs[REG_RDX] == O_NONBLOCK) {
+      fprintf(modelLog,"fcntl call to set fd as nonblocking \n");
+      fflush(modelLog);
+    } else {
+      fprintf(modelLog,"fcntrl called with unmodeled args \n");
+    }
+
+    int res = 0;
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+    
+    //Fake a return
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+    target_ctx_gregs[REG_RIP] = retAddr;
+    target_ctx_gregs[REG_RSP] += 8;
+
+  } else {
+    printf("ERROR in model_fcntl -- symbolic args \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+
+  }
+  
+}
+
+
+//http://man7.org/linux/man-pages/man2/stat.2.html
+//int stat(const char *pathname, struct stat *statbuf);
+//Todo: Make option to return symbolic result, and proprerly inspect input
+void Executor::model_stat() {
+  printf("Entering model_stat \n");
+  std::cout.flush();
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+
+  if  (
+       (isa<ConstantExpr>(arg1Expr)) &&
+       (isa<ConstantExpr>(arg2Expr))
+       ){
+
+    //return res of call
+    int res = stat((char *) target_ctx_gregs[REG_RDI], (struct stat *) target_ctx_gregs[REG_RSI]);
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+
+    
+    //Fake a ret
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+    target_ctx_gregs[REG_RIP] = retAddr;
+    target_ctx_gregs[REG_RSP] += 8;
+    
+  } else {
+    printf("ERROR in model_start -- symbolic args \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+  
+}
+
+//uid_t getuid(void)
+//http://man7.org/linux/man-pages/man2/getuid.2.html
+//Todo -- determine if we should fix result, see if uid_t is ever > 64 bits
+void Executor::model_getuid() {
+
+  printf("Calling model_getuid \n");
+  
+  uid_t uidResult = getuid();
+  ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) uidResult, Expr::Int64);
+  target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+  
+  //Fake a ret
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+  target_ctx_gregs[REG_RIP] = retAddr;
+  target_ctx_gregs[REG_RSP] += 8;
+  
+}
+
+//uid_t geteuid(void)
+//http://man7.org/linux/man-pages/man2/geteuid.2.html
+//Todo -- determine if we should fix result prior to forking, see if uid_t is ever > 64 bits
+void Executor::model_geteuid() {
+
+  printf("Calling model_geteuid() \n");
+  
+  uid_t euidResult = geteuid();
+  ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) euidResult, Expr::Int64);
+  target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+
+  //Fake a ret
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+  target_ctx_gregs[REG_RIP] = retAddr;
+  target_ctx_gregs[REG_RSP] += 8;
+
+}
+
+//gid_t getgid(void)
+//http://man7.org/linux/man-pages/man2/getgid.2.html
+//Todo -- determine if we should fix result, see if gid_t is ever > 64 bits
+void Executor::model_getgid() {
+
+  printf("Calling model_getgid() \n");
+  
+  gid_t gidResult = getgid();
+  ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) gidResult, Expr::Int64);
+  target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+
+  //Fake a ret
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+  target_ctx_gregs[REG_RIP] = retAddr;
+  target_ctx_gregs[REG_RSP] += 8;
+
+}
+
+//gid_t getegid(void)
+//http://man7.org/linux/man-pages/man2/getegid.2.html
+//Todo -- determine if we should fix result, see if gid_t is ever > 64 bits
+void Executor::model_getegid() {
+
+  printf("Calling model_getegid() \n");
+  
+  gid_t egidResult = getegid();
+  ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) egidResult, Expr::Int64);
+  target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+
+  //Fake a ret
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+  target_ctx_gregs[REG_RIP] = retAddr;
+  target_ctx_gregs[REG_RSP] += 8;
+
+}
+
+//char * getenv(const char * name)
+//http://man7.org/linux/man-pages/man3/getenv.3.html
+//Todo: This should be generalized, and also technically should inspect the input string's bytes
+void Executor::model_getenv() {
+
+  printf("Entering model_getenv \n");
+  std::cout.flush();
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+
+  if  (
+       (isa<ConstantExpr>(arg1Expr)) 
+       ){
+
+    char * res = getenv((char *) target_ctx_gregs[REG_RDI]);
+
+    printf("Called getenv on 0x%llx, returned 0x%llx \n", target_ctx_gregs[REG_RDI], (uint64_t) res);
+    std::cout.flush();
+    
+    //Create MO to represent the env entry
+    /*
+    int len;
+    if (res != NULL)
+      len = strlen(res);
+    else
+      len = 0;
+    
+    printf("Called strlen \n");
+    std::cout.flush();
+    
+    if (len %2 ==1)
+      len++;
+
+    
+    if ( len > 0 ) {
+    
+      MemoryObject * envMO = addExternalObject(*GlobalExecutionStatePtr, (void *) res, len, true);
+      const ObjectState * envOSConst = GlobalExecutionStatePtr->addressSpace.findObject(envMO);
+      ObjectState *envOS = GlobalExecutionStatePtr->addressSpace.getWriteable(envMO,envOSConst);
+      envOS->concreteStore = (uint8_t *) res;
+      printf("added MO \n");
+      std::cout.flush();
+      } */
+    
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+    
+    //Fake a ret
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+    target_ctx_gregs[REG_RIP] = retAddr;
+    target_ctx_gregs[REG_RSP] += 8;
+    printf("Leaving model_getenv \n");
+    std::cout.flush();
+  } else {
+
+    printf("Found symbolic argument to model_getenv \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+    
+  }
+}
+
 //int socket(int domain, int type, int protocol);
 //http://man7.org/linux/man-pages/man2/socket.2.html
 void Executor::model_socket() {
-
+  printf("Entering model_socket \n");
+  std::cerr << "Entering model_socket \n";
+  
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
@@ -141,18 +835,366 @@ void Executor::model_socket() {
     //Todo: Verify domain, type, protocol args.
     
     //Todo:  Generalize for better FD tracking
-    ref<ConstantExpr> FDExpr = ConstantExpr::create(openFD, Expr::Int64);
+    int res = 3;
+    fprintf(modelLog,"Setting socket FD to %d \n", res);
+    
+    ref<ConstantExpr> FDExpr = ConstantExpr::create(res, Expr::Int64);
     target_ctx_gregs_OS->write(REG_RAX * 8, FDExpr);
     target_ctx_gregs[REG_RIP] += 5;
-    openFD++;
+    //openFD++;
   } else {
     printf("Found symbolic argument to model_socket \n");
     std::exit(EXIT_FAILURE);
   }
 }
 
-//Todo -- Determine if it's worthwhile to
-//allocate memory object with page-aligned result
+
+//This is here temporarily until we emit code without bswap assembly instructions
+void Executor::model_htonl () {
+
+  fprintf(modelLog,"Entering model_htonl at in interpCtr %lu \n", interpCtr);
+  
+  uint32_t res = htonl((uint32_t) target_ctx_gregs[REG_RDI]);
+  ref<ConstantExpr> FDExpr = ConstantExpr::create(res, Expr::Int64);
+  target_ctx_gregs_OS->write(REG_RAX * 8, FDExpr);
+
+  //fake a ret
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+  target_ctx_gregs[REG_RIP] = retAddr;
+  target_ctx_gregs[REG_RSP] += 8;
+}
+
+
+
+
+//Todo: Check input for symbolic args, or generalize to make not openssl-specific
+void Executor::model_BIO_printf() {
+
+  fprintf(modelLog,"Entered bio_printf at interp Ctr %lu \n", interpCtr);
+  
+  
+  char * errMsg = (char *) target_ctx_gregs[REG_RSI];
+
+  int arg3 = (int) target_ctx_gregs[REG_RDX];
+  
+  fprintf(modelLog, " %s \n", errMsg);
+  
+  fflush(modelLog);
+  
+  std::cerr << errMsg;
+  std::cerr << " | First arg as int: ";
+  std::cerr << arg3;
+  std::cerr << " | interpCtr: ";
+  std::cerr << interpCtr;
+  std::cerr << "\n";
+  
+  //fake a ret
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+  target_ctx_gregs[REG_RIP] = retAddr;
+  target_ctx_gregs[REG_RSP] += 8;
+
+}
+
+//Todo: Check input for symbolic args, or generalize to make not openssl-specific
+void Executor::model_BIO_snprintf() {
+
+  fprintf(modelLog,"Entered bio_snprintf at interp Ctr %lu \n", interpCtr);
+  
+  
+  char * errMsg = (char *) target_ctx_gregs[REG_RDX];
+
+  fprintf(modelLog, " %s \n", errMsg);
+  fprintf(modelLog, "First snprintf arg as int: %lu \n", target_ctx_gregs[REG_RCX]);
+  fflush(modelLog);
+
+  if (strcmp("error:%08lX:%s:%s:%s", errMsg) == 0) {
+
+    fprintf(modelLog, " %s \n", (char *) target_ctx_gregs[REG_R8]);
+    fprintf(modelLog, " %s \n", (char *) target_ctx_gregs[REG_R9]);
+
+  }
+  
+  
+  std::cerr << errMsg;
+  
+
+  //fake a ret
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+  target_ctx_gregs[REG_RIP] = retAddr;
+  target_ctx_gregs[REG_RSP] += 8;
+
+}
+
+
+//time_t time(time_t *tloc);
+// http://man7.org/linux/man-pages/man2/time.2.html
+void Executor::model_time() {
+  printf("Entering model_time() \n");
+  std::cout.flush();
+  fprintf(modelLog, "Entering call to time at interpCtr %lu \n", interpCtr);
+  
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  
+  if  (
+       (isa<ConstantExpr>(arg1Expr)) ) {
+    time_t res = time( (time_t *) target_ctx_gregs[REG_RDI]);
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+
+    char * timeString = ctime(&res);
+    fprintf(modelLog,"timeString is %s \n", timeString);
+    fprintf(modelLog,"Size of timeVal is %d \n", sizeof(time_t));
+    fflush(modelLog);
+    
+    target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+    //fake a ret
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+    target_ctx_gregs[REG_RIP] = retAddr;
+    target_ctx_gregs[REG_RSP] += 8;
+    
+  } else {
+    printf("Found symbolic argument to model_time \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+  
+}
+
+
+
+//struct tm *gmtime(const time_t *timep);
+//https://linux.die.net/man/3/gmtime
+void Executor::model_gmtime() {
+ printf("Entering model_gmtime() \n");
+  std::cout.flush();
+  fprintf(modelLog, "Entering call to gmtime at interpCtr %lu \n", interpCtr);
+  
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  
+  if  (
+       (isa<ConstantExpr>(arg1Expr)) ) {
+    //Do call
+    struct tm * res = gmtime( (time_t *) target_ctx_gregs[REG_RDI]);
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    char timeBuf[30];
+    strftime(timeBuf, 30, "%Y-%m-%d %H:%M:%S", res);
+
+    fprintf(modelLog, "gmtime result is %s \n", timeBuf);
+    fflush(modelLog);
+    
+    
+    //If it doesn't exit, back returned struct with a memory object.
+    ObjectPair OP;
+    ref<ConstantExpr> addrExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    if (GlobalExecutionStatePtr->addressSpace.resolveOne(addrExpr, OP)) {
+      fprintf(modelLog,"model_gmtime result appears to have MO already backing it \n");
+      std::cout.flush();
+      
+    } else {
+      fprintf(modelLog,"Creating MO to back tm at 0x%llx with size 0x%x \n", (uint64_t) res, sizeof(struct tm));
+      std::cout.flush();
+      MemoryObject * newMO = addExternalObject(*GlobalExecutionStatePtr, (void *) res, sizeof(struct tm), false);
+      const ObjectState * newOSConst = GlobalExecutionStatePtr->addressSpace.findObject(newMO);
+      ObjectState *newOS = GlobalExecutionStatePtr->addressSpace.getWriteable(newMO,newOSConst);
+      newOS->concreteStore = (uint8_t *) res;
+    }
+    
+    target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+    //fake a ret
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+    target_ctx_gregs[REG_RIP] = retAddr;
+    target_ctx_gregs[REG_RSP] += 8;
+    
+  } else {
+    printf("Found symbolic argument to model_gmtime \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+
+}
+
+//int gettimeofday(struct timeval *tv, struct timezone *tz);
+//http://man7.org/linux/man-pages/man2/gettimeofday.2.html
+//Todo -- properly check contents of args for symbolic content, allow for symbolic returns
+void Executor::model_gettimeofday() {
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+
+  if  (
+       (isa<ConstantExpr>(arg1Expr)) &&
+       (isa<ConstantExpr>(arg2Expr)) ) {
+
+    //Do call
+    int res = gettimeofday( (struct timeval *) target_ctx_gregs[REG_RDI], (struct timezone *) target_ctx_gregs[REG_RSI]);
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+    //fake a ret
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+    target_ctx_gregs[REG_RIP] = retAddr;
+    target_ctx_gregs[REG_RSP] += 8;
+
+  }  else {
+    printf("Found symbolic argument to model_gettimeofday \n");
+    std::exit(EXIT_FAILURE);
+  }
+}
+
+size_t roundUp(size_t input, size_t multiple) {
+
+  if (input < 0 || multiple < 0) {
+    printf("Check your implementation of round_up for negative vals \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+  
+  if (input % multiple == 0)
+    return input;
+  else {
+    size_t divRes = input/multiple;
+    return (divRes +1)* multiple;
+  }
+}
+
+//void *calloc(size_t nmemb, size_t size);
+//https://linux.die.net/man/3/calloc
+
+void Executor::model_calloc() {
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+  
+  if  (
+       (isa<ConstantExpr>(arg1Expr)) &&
+       (isa<ConstantExpr>(arg2Expr)) ) {
+
+    size_t nmemb = target_ctx_gregs[REG_RDI];
+    size_t size  = target_ctx_gregs[REG_RSI];
+    void * res = calloc(nmemb, size);
+
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+    
+    size_t numBytes = size*nmemb;
+
+    if (roundUpHeapAllocations)
+      numBytes = roundUp(numBytes,8);
+    
+    printf("calloc at 0x%llx for 0x%x bytes \n", (uint64_t) res, numBytes);
+    std::cout.flush();
+    fprintf(heapMemLog, "CALLOC buf at 0x%llx - 0x%llx, size 0x%x, interpCtr %lu \n", (uint64_t) res, ((uint64_t) res + numBytes -1), numBytes, interpCtr);
+    //Make a memory object to represent the requested buffer
+    MemoryObject * heapMem = addExternalObject(*GlobalExecutionStatePtr,res, numBytes , false );
+    const ObjectState *heapOS = GlobalExecutionStatePtr->addressSpace.findObject(heapMem);
+    ObjectState * heapOSWrite = GlobalExecutionStatePtr->addressSpace.getWriteable(heapMem,heapOS);  
+    heapOSWrite->concreteStore = (uint8_t *) res;
+
+    //fake a ret
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+    target_ctx_gregs[REG_RIP] = retAddr;
+    target_ctx_gregs[REG_RSP] += 8;
+    
+  } else {
+    printf("Found symbolic argument to model_calloc \n");
+    std::exit(EXIT_FAILURE);
+  }
+    
+}
+
+
+
+//void *realloc(void *ptr, size_t size);
+//https://linux.die.net/man/3/realloc
+//Todo: Set up additional memory objects if realloc adds extra space
+void Executor::model_realloc() {
+ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+ ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+
+ printf("Calling model_realloc \n");
+ 
+ if  (
+      (isa<ConstantExpr>(arg1Expr)) &&
+      (isa<ConstantExpr>(arg2Expr)) ) {
+
+   void * ptr = (void *) target_ctx_gregs[REG_RDI];
+   size_t size = (size_t) target_ctx_gregs[REG_RSI];
+   void * res = realloc(ptr,size);
+
+   printf("Calling realloc on 0x%llx with size 0x%x.  Ret val is 0x%llx \n", (uint64_t) ptr, (uint64_t) size, (uint64_t) res);
+   if (roundUpHeapAllocations)
+     size = roundUp(size, 8);
+   
+   ref<ConstantExpr> resultExpr = ConstantExpr::create( (uint64_t) res, Expr::Int64);
+   target_ctx_gregs_OS->write(REG_RAX * 8, resultExpr);
+
+
+   std::cout.flush();
+   fprintf(heapMemLog, "REALLOC call on 0x%llx for size 0x%x with return value 0x%llx. interpCtr is %lu \n", (uint64_t) ptr, size, (uint64_t) res , interpCtr);
+
+   if (res != ptr) {
+     printf("REALLOC call moved site of allocation \n");
+     std::cout.flush();
+     ObjectPair OP;
+     ref<ConstantExpr> addrExpr = ConstantExpr::create((uint64_t) ptr, Expr::Int64);
+     if (GlobalExecutionStatePtr->addressSpace.resolveOne(addrExpr, OP)) {
+       const MemoryObject * MO = OP.first;
+       //Todo: carefully copy out/ copy in symbolic data if present
+       GlobalExecutionStatePtr->addressSpace.unbindObject(MO);
+
+       MemoryObject * newMO = addExternalObject(*GlobalExecutionStatePtr, (void *) res, size, false);
+       const ObjectState * newOSConst = GlobalExecutionStatePtr->addressSpace.findObject(newMO);
+       ObjectState *newOS = GlobalExecutionStatePtr->addressSpace.getWriteable(newMO,newOSConst);
+       newOS->concreteStore = (uint8_t *) res;
+       printf("added MO for realloc at 0x%llx with size 0x%lx after orig location 0x%llx  \n", (uint64_t) res, size, (uint64_t) ptr);
+
+     } else {
+       printf("ERROR: realloc called on ptr without underlying buffer \n");
+       std::cout.flush();
+       std::exit(EXIT_FAILURE);
+       
+     }
+     
+   } else {
+
+     ObjectPair OP;
+     ref<ConstantExpr> addrExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+     if (GlobalExecutionStatePtr->addressSpace.resolveOne(addrExpr, OP)) {
+       const MemoryObject * MO = OP.first;
+       size_t origObjSize = MO->size;
+       printf("REALLOC call kept buffer in same location \n");
+       std::cout.flush();
+       
+       if (size <= origObjSize) {
+	 //Don't need to do anything
+	 printf("Realloc to smaller or equal size buffer -- no action needed \n");
+       } else {
+	 printf("Realloc to larger buffer \n");
+	 //extend size of MO
+	 //Todo: carefully copy out/ copy in symbolic data if present
+	 GlobalExecutionStatePtr->addressSpace.unbindObject(MO);
+	 
+	 MemoryObject * newMO = addExternalObject(*GlobalExecutionStatePtr, (void *) res, size, false);
+	 const ObjectState * newOSConst = GlobalExecutionStatePtr->addressSpace.findObject(newMO);
+	 ObjectState *newOS = GlobalExecutionStatePtr->addressSpace.getWriteable(newMO,newOSConst);
+	 newOS->concreteStore = (uint8_t *) res;
+	 printf("added MO for realloc at 0x%llx with size 0x%lx after orig size 0x%lx  \n", (uint64_t) res, size, origObjSize);
+       }
+     } else {
+       printf("Error in realloc -- could not find original buffer info for ptr \n");
+       std::cout.flush();
+       std::exit(EXIT_FAILURE);
+     }
+   }
+     
+   //Fake a return
+   uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+   target_ctx_gregs[REG_RIP] = retAddr;
+   target_ctx_gregs[REG_RSP] += 8;
+   
+ } else {
+    printf("Found symbolic argument to model_realloc \n");
+    std::exit(EXIT_FAILURE);
+ }
+}
+
+
 
 //http://man7.org/linux/man-pages/man3/malloc.3.html
 void Executor::model_malloc() {
@@ -161,10 +1203,19 @@ void Executor::model_malloc() {
 
   if (isa<ConstantExpr>(arg1Expr)) {
     size_t sizeArg = (size_t) target_ctx_gregs[REG_RDI];
-    void * buf = malloc(sizeArg);
     printf("Entered model_malloc with requested size %d \n", sizeArg);
-    std::cout.flush();
 
+    if (roundUpHeapAllocations) 
+      sizeArg = roundUp(sizeArg, 8);
+    /*
+    if (sizeArg % 2 == 1) {
+      printf("Found malloc request for odd num of bytes; adding 1 to requested size. \n");
+      sizeArg++;
+      }*/
+    void * buf = malloc(sizeArg);
+    printf("Returned ptr at 0x%llx \n", (uint64_t) buf);
+    std::cout.flush();
+    fprintf(heapMemLog, "MALLOC buf at 0x%llx - 0x%llx, size 0x%x, interpCtr %lu \n", (uint64_t) buf, ((uint64_t) buf + sizeArg -1), sizeArg, interpCtr);
     //Make a memory object to represent the requested buffer
     MemoryObject * heapMem = addExternalObject(*GlobalExecutionStatePtr,buf, sizeArg, false );
     const ObjectState *heapOS = GlobalExecutionStatePtr->addressSpace.findObject(heapMem);
@@ -199,6 +1250,439 @@ void Executor::model_malloc() {
     target_ctx_gregs_OS->print();
     std::exit(EXIT_FAILURE);
   }
+}
+
+//https://linux.die.net/man/3/free
+//Todo -- add check to see if rsp is symbolic, or points to symbolic data (somehow)
+
+void Executor::model_free() {
+
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  if (isa<ConstantExpr>(arg1Expr)) {
+
+    void * freePtr = (void *) target_ctx_gregs[REG_RDI];
+    printf("Calling model_free on addr 0x%llx \n", (uint64_t) freePtr);
+    free(freePtr);
+
+    fprintf(heapMemLog, "FREE buf at 0x%llx, interpCtr is %lu \n", (uint64_t) freePtr, interpCtr);
+
+    ObjectPair OP;
+    ref<ConstantExpr> addrExpr = ConstantExpr::create((uint64_t) freePtr, Expr::Int64);
+    if (GlobalExecutionStatePtr->addressSpace.resolveOne(addrExpr, OP)) {
+      printf("Unbinding object in free \n");
+      std::cout.flush();
+      GlobalExecutionStatePtr->addressSpace.unbindObject(OP.first);
+      
+    } else {
+      printf("ERROR: Found free called without buffer corresponding to ptr \n");
+      std::cout.flush();
+      std::exit(EXIT_FAILURE);
+    }
+    
+    //Fake a return
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+    target_ctx_gregs[REG_RIP] = retAddr;
+    target_ctx_gregs[REG_RSP] += 8;
+    
+  } else {
+    printf("INTERPRETER: CALLING MODEL_FREE WITH SYMBOLIC ARGS.  NOT IMPLMENTED YET \n");
+    target_ctx_gregs_OS->print();
+    std::exit(EXIT_FAILURE);
+  } 
+}
+
+//Todo -- check byte-by-byte through the input args for symbolic data
+//http://man7.org/linux/man-pages/man3/fopen.3.html
+//FILE *fopen(const char *pathname, const char *mode);
+void Executor::model_fopen() {
+
+  printf("Entering model_fopen \n");
+  fprintf(modelLog,"Entering model_fopen");
+  
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+
+  if  (
+       (isa<ConstantExpr>(arg1Expr)) &&
+       (isa<ConstantExpr>(arg2Expr))
+       ){
+
+    FILE * res = fopen( (char *) target_ctx_gregs[REG_RDI], (char *) target_ctx_gregs[REG_RSI]);
+    printf("Calling fopen on file %s \n", (char *) target_ctx_gregs[REG_RDI]);
+    //Return result
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+    
+    //fake a ret
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+    target_ctx_gregs[REG_RIP] = retAddr;
+    target_ctx_gregs[REG_RSP] += 8;
+    
+  } else {
+    printf("ERROR found symbolic input to model_fopen \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+
+}
+
+//Todo -- check byte-by-byte through the input args for symbolic data
+//http://man7.org/linux/man-pages/man3/fopen.3.html
+//FILE *fopen64(const char *pathname, const char *mode);
+void Executor::model_fopen64() {
+
+  printf("Entering model_fopen64 \n");
+
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+
+  if  (
+       (isa<ConstantExpr>(arg1Expr)) &&
+       (isa<ConstantExpr>(arg2Expr))
+       ){
+
+    FILE * res = fopen64( (char *) target_ctx_gregs[REG_RDI], (char *) target_ctx_gregs[REG_RSI]);
+    printf("Calling fopen64 on file %s \n", (char *) target_ctx_gregs[REG_RDI]);
+    //Return result
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+    
+    //fake a ret
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+    target_ctx_gregs[REG_RIP] = retAddr;
+    target_ctx_gregs[REG_RSP] += 8;
+    
+  } else {
+    printf("ERROR found symbolic input to model_fopen64 \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+
+}
+
+
+//http://man7.org/linux/man-pages/man3/fclose.3.html
+//int fclose(FILE *stream);
+//Todo -- examine all bytes of stream for symbolic taint
+void Executor::model_fclose() {
+  printf("Entering model_fclose \n");
+  fprintf(modelLog,"Entering model_fclose at %lu \n", interpCtr);
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  if  (
+       (isa<ConstantExpr>(arg1Expr))
+       ){
+    
+    //We don't need to make any call
+    
+    //Fake a return
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+    target_ctx_gregs[REG_RIP] = retAddr;
+    target_ctx_gregs[REG_RSP] += 8;
+    
+  } else {
+    printf("ERROR in model_fclose -- symbolic args \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+  
+}
+
+
+//http://man7.org/linux/man-pages/man3/fread.3.html
+//size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
+//Todo -- Inspect byte-by-byte for symbolic taint
+void Executor::model_fread() {
+
+  printf("Entering model_fread \n");
+
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
+  ref<Expr> arg4Expr = target_ctx_gregs_OS->read(REG_RCX * 8, Expr::Int64);
+
+  if (  (isa<ConstantExpr>(arg1Expr)) &&
+	(isa<ConstantExpr>(arg2Expr)) &&
+	(isa<ConstantExpr>(arg3Expr)) &&
+	(isa<ConstantExpr>(arg4Expr)) 
+	) {
+  
+    size_t res = fread( (void *) target_ctx_gregs[REG_RDI], (size_t) target_ctx_gregs[REG_RSI], (size_t) target_ctx_gregs[REG_RDX], (FILE *) target_ctx_gregs[REG_RCX]);
+    
+    //Return result
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+    
+    //Fake a return
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+    target_ctx_gregs[REG_RIP] = retAddr;
+    target_ctx_gregs[REG_RSP] += 8;
+
+  } else {
+    printf("ERROR in model_fread -- symbolic args \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+  
+}
+
+
+void Executor::model___isoc99_sscanf() {
+  
+  std::cerr << "WARNING: Return 0 on unmodeled sscanf call \n";
+  
+  int res = 0;
+  ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+  target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+  
+  //Fake a return
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+  target_ctx_gregs[REG_RIP] = retAddr;
+  target_ctx_gregs[REG_RSP] += 8;
+  
+}
+
+
+//http://man7.org/linux/man-pages/man3/gethostbyname.3.html
+//struct hostent *gethostbyname(const char *name);
+//Todo -- check bytes of input for symbolic taint
+void Executor::model_gethostbyname() {
+  printf("Entering model_gethostbyname \n");
+  fprintf(modelLog,"Entering model_gethostbyname at interpCtr %lu \n", interpCtr);
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  if  (
+       (isa<ConstantExpr>(arg1Expr))
+       ){
+    //Do the call
+    fprintf(modelLog, "Calling model_gethostbyname on %s \n", (char *) target_ctx_gregs[REG_RDI]);
+    struct hostent * res = (struct hostent *) gethostbyname ((const char *) target_ctx_gregs[REG_RDI]);
+
+    //If it doesn't exit, back hostent struct with a memory object.
+    ObjectPair OP;
+    ref<ConstantExpr> addrExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    if (GlobalExecutionStatePtr->addressSpace.resolveOne(addrExpr, OP)) {
+      fprintf(modelLog,"hostent result appears to have MO already backing it \n");
+      std::cout.flush();
+      
+    } else {
+      fprintf(modelLog,"Creating MO to back hostent at 0x%llx with size 0x%x \n", (uint64_t) res, sizeof(hostent));
+      std::cout.flush();
+      MemoryObject * newMO = addExternalObject(*GlobalExecutionStatePtr, (void *) res, sizeof(hostent), false);
+      const ObjectState * newOSConst = GlobalExecutionStatePtr->addressSpace.findObject(newMO);
+      ObjectState *newOS = GlobalExecutionStatePtr->addressSpace.getWriteable(newMO,newOSConst);
+      newOS->concreteStore = (uint8_t *) res;
+
+      //Also map in h_addr_list elements for now until we get a better way of mapping in env vars and their associated data
+      //Todo -get rid of this hack 
+      
+      uint64_t  baseAddr = (uint64_t) &(res->h_addr_list[0]);
+      uint64_t  endAddr  = (uint64_t) &(res->h_addr_list[0][3]);
+      size_t size = endAddr - baseAddr + 1;
+      // 0xcfd232a0 with size 5
+      
+      
+      fprintf(modelLog,"Mapping in buf at 0x%lx with size 0x%lx for h_addr_list", baseAddr, size);
+      MemoryObject * listMO = addExternalObject(*GlobalExecutionStatePtr, (void *) baseAddr, size, false);
+      const ObjectState * listOSConst = GlobalExecutionStatePtr->addressSpace.findObject(listMO);
+      ObjectState * listOS = GlobalExecutionStatePtr->addressSpace.getWriteable(listMO, listOSConst);
+      listOS->concreteStore = (uint8_t *) baseAddr;
+      
+    }
+
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+    
+    //Fake a return
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+    target_ctx_gregs[REG_RIP] = retAddr;
+    target_ctx_gregs[REG_RSP] += 8;
+    
+  } else {
+    printf("ERROR in model_gethostbyname -- symbolic args \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+
+}
+
+
+//int setsockopt(int sockfd, int level, int optname,
+//             const void *optval, socklen_t optlen);
+//https://linux.die.net/man/2/setsockopt
+//Todo -- actually model this
+void Executor::model_setsockopt() {
+  printf("Entering model_setsockopt at interpCtr %lu \n", interpCtr);
+  fprintf(modelLog,"Entering model_setsockopt at interpCtr %lu \n", interpCtr);
+  
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
+  ref<Expr> arg4Expr = target_ctx_gregs_OS->read(REG_RCX * 8, Expr::Int64);
+  ref<Expr> arg5Expr = target_ctx_gregs_OS->read(REG_R8 * 8, Expr::Int64);
+
+  if (  (isa<ConstantExpr>(arg1Expr)) &&
+	(isa<ConstantExpr>(arg2Expr)) &&
+	(isa<ConstantExpr>(arg3Expr)) &&
+	(isa<ConstantExpr>(arg4Expr)) &&
+	(isa<ConstantExpr>(arg5Expr))
+	) {
+
+    int res = 0; //Pass success
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+
+    //Fake a return
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+    target_ctx_gregs[REG_RIP] = retAddr;
+    target_ctx_gregs[REG_RSP] += 8;
+  } else {
+    printf("ERROR in model_setsockoptions -- symbolic args \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE); 
+  }
+}
+
+//No args for this one
+void Executor::model___ctype_b_loc() {
+  printf("Entering model__ctype_b_loc at interpCtr %lu \n", interpCtr);
+  fprintf(modelLog,"Entering model__ctype_b_loc at interpCtr %lu \n", interpCtr);
+
+  const unsigned short ** constRes = __ctype_b_loc();
+  unsigned short ** res = const_cast<unsigned short **>(constRes);
+  
+  ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+  target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+  
+  //Fake a return
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+  target_ctx_gregs[REG_RIP] = retAddr;
+  target_ctx_gregs[REG_RSP] += 8;
+
+  
+}
+
+
+//int32_t * * __ctype_tolower_loc(void);
+//No args
+//Todo -- allocate symbolic underlying results later for testing
+void Executor::model___ctype_tolower_loc() {
+  printf("Entering model__ctype_tolower_loc at interpCtr %lu \n", interpCtr);
+  fprintf(modelLog,"Entering model__ctype_tolower_loc at interpCtr %lu \n", interpCtr);
+
+  const int  ** constRes = __ctype_tolower_loc();
+  int ** res = const_cast<int **>(constRes);
+  
+  ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+  target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+  
+  //Fake a return
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+  target_ctx_gregs[REG_RIP] = retAddr;
+  target_ctx_gregs[REG_RSP] += 8;
+  
+
+}
+
+//int fflush(FILE *stream);
+//Todo -- Actually model this or provide a symbolic return status
+void Executor::model_fflush(){
+  printf("Entering model_fflush \n");
+  fprintf(modelLog, "Entering model_fflush at %lu \n", interpCtr);
+  fflush(modelLog);
+  
+  std::cout.flush();
+  //Get the input args per system V linux ABI.
+
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+
+  if  (
+       (isa<ConstantExpr>(arg1Expr))
+       ){
+
+    int res = 0;
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+
+    //fake a ret
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+    target_ctx_gregs[REG_RIP] = retAddr;
+    target_ctx_gregs[REG_RSP] += 8;
+
+  } else {
+    printf("ERROR Found symbolic input to model_fflush \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+
+}
+
+
+//char *fgets(char *s, int size, FILE *stream);
+//https://linux.die.net/man/3/fgets
+void Executor::model_fgets() {
+  printf("Entering model_fgets \n");
+  fprintf(modelLog, "Entering model_fgets at %lu \n", interpCtr);
+  
+  std::cout.flush();
+  //Get the input args per system V linux ABI.
+  
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
+  
+  if (
+      (isa<ConstantExpr>(arg1Expr)) &&
+      (isa<ConstantExpr>(arg2Expr)) &&
+      (isa<ConstantExpr>(arg3Expr)) 
+      ){
+    //Do call
+    char * res = fgets((char *) target_ctx_gregs[REG_RDI], (int) target_ctx_gregs[REG_RSI], (FILE *) target_ctx_gregs[REG_RDX]);
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+
+    //Fake a return
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+    target_ctx_gregs[REG_RIP] = retAddr;
+    target_ctx_gregs[REG_RSP] += 8;
+  } else {
+    printf("ERROR in model_fgets -- symbolic args \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+    
+  }
+}
+
+//Todo -- Inspect byte-by-byte for symbolic taint
+void Executor::model_fwrite() {
+  printf("Entering model_fwrite \n");
+
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
+  ref<Expr> arg4Expr = target_ctx_gregs_OS->read(REG_RCX * 8, Expr::Int64);
+  
+  if (  (isa<ConstantExpr>(arg1Expr)) &&
+	(isa<ConstantExpr>(arg2Expr)) &&
+	(isa<ConstantExpr>(arg3Expr)) &&
+	(isa<ConstantExpr>(arg4Expr))
+	) {
+    
+    size_t res = fwrite( (void *) target_ctx_gregs[REG_RDI], (size_t) target_ctx_gregs[REG_RSI], (size_t) target_ctx_gregs[REG_RDX], (FILE *) target_ctx_gregs[REG_RCX]);
+    
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+
+  //Fake a return
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+  target_ctx_gregs[REG_RIP] = retAddr;
+  target_ctx_gregs[REG_RSP] += 8;
+  } else {
+    printf("ERROR in model_fwrite -- symbolic args \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+    
+  }
+  
+  
 }
 
 //read model --------
@@ -324,7 +1808,13 @@ void Executor::model_readstdin() {
       //pass number info and the latest multipass assignment info should have been entered.     
     }
 
-    uint64_t numSymBytes = tls_predict_stdin_size(filedes, size);
+    
+    printf("link in tls_predict_stdin_size again!\n");
+    std::exit(EXIT_FAILURE);
+    
+    uint64_t numSymBytes =0;
+    
+    //uint64_t numSymBytes = tls_predict_stdin_size(filedes, size);
     
     if (numSymBytes <= size) // redundant based on tls_predict_stdin_size's logic.
       tase_make_symbolic((uint64_t) buffer, numSymBytes, "stdinRead");

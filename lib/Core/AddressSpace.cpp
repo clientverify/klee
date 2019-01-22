@@ -61,6 +61,7 @@ bool AddressSpace::resolveOne(const ref<ConstantExpr> &addr,
   //printf("Calling resolveOne on memory address %lu hex %lx \n", address, address);
   if (const MemoryMap::value_type *res = objects.lookup_previous(&hack)) {
     const MemoryObject *mo = res->first;
+    //printf("Found memory obj with addr 0x%llx, size 0x%x \n", mo->address, mo->size);
     // Check if the provided address is between start and end of the object
     // [mo->address, mo->address + mo->size) or the object is a 0-sized object.
     if ((mo->size==0 && address==mo->address) ||

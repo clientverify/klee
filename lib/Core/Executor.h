@@ -35,19 +35,22 @@ struct KTest;
 //AH: I'd really rather not include the openssl stuff here but I guess we need it
 // for the make_BN_symbolic declaration since it references a bignum struct
 // FIXME: need internal openssl data types
+/*
 #include "/playpen/humphries/cliver/gsec-support/src/openssl/include/openssl/ssl.h"
 #include "/playpen/humphries/cliver/gsec-support/src/openssl/include/openssl/evp.h"
 #include "/playpen/humphries/cliver/gsec-support/src/openssl/include/openssl/ssl3.h"
 #include "/playpen/humphries/cliver/gsec-support/src/openssl/include/openssl/sha.h"
 #include "/playpen/humphries/cliver/gsec-support/src/openssl/include/openssl/ec.h"
 #include "/playpen/humphries/cliver/gsec-support/src/openssl/include/openssl/ossl_typ.h"
+*/
 // modes_lcl.h redfines objects included here
 //#include "../../../openssl/include/openssl/modes.h"
+/*
 #include "/playpen/humphries/cliver/gsec-support/src/openssl/crypto/ec/ec_lcl.h"
 #include "/playpen/humphries/cliver/gsec-support/src/openssl/crypto/modes/modes_lcl.h"
 #include "/playpen/humphries/cliver/gsec-support/src/openssl/crypto/aes/aes.h"
 #include "/playpen/humphries/cliver/gsec-support/src/openssl/crypto/sha/sha.h"
-
+*/
 
 
 namespace llvm {
@@ -344,8 +347,6 @@ private:
   void model_entertran();
   void model_exittran();
   void model_reopentran();
-
-  void model_malloc();
   
   //AH: Internal helper functions--------------------------
   //Tase helper to write an expr directly to an addr.  Width
@@ -358,20 +359,82 @@ private:
   //object's base & offset rather than direct addr.
   ref<Expr> tase_helper_read (uint64_t address, uint8_t byteWidth);
   void tase_make_symbolic (uint64_t addr, uint64_t len, char * name);
+
+  void model_tase_debug();
+  
+  void model_ktest_start();
+  void model_ktest_master_secret();
+  void model_ktest_writesocket();
+  void model_ktest_readsocket();
+  void model_ktest_raw_read_stdin();
+  void model_ktest_connect();
+  void model_ktest_select();
+  void model_ktest_RAND_bytes();
+  void model_ktest_RAND_pseudo_bytes();
   
   //AH: Modeled sys functions--------------------------------
+  //Todo -- get rid of  rand_add and rand_load_file traps
+  void model_RAND_add(); //Temporarily trapping on RAND_add bc of dependcy on doublesd
+  void model_RAND_load_file(); //Temp trapping on rand_load_file bc of dependency on floats
+  void model_htonl();//Temporarily here bc of bswap assembly
+
+  void model_OpenSSLDie();
+  
+  void model_getuid();
+  void model_geteuid();
+  void model_getgid();
+  void model_getegid();
+  void model_getenv();
+  void model_stat();
+  void model_gettimeofday();
+  void model_gethostbyname();
+
+
+  void model_BIO_printf();  //Todo: generalize to make less openssl-dependent
+  void model_BIO_snprintf();
+  void model_vfprintf();
+  void model_sprintf();
+
+  
+  void model___errno_location();
+  void model___ctype_b_loc();
+  void model___ctype_tolower_loc();
+  void model___isoc99_sscanf();
+
+  void model_memcpy();
+  
+  void model_setsockopt();
   void model_socket();
   void model_connect();
+
+  void model_time();
+  void model_gmtime();
+  
+  void model_fileno();
+  void model_fcntl();
+  void model_fopen();
+  void model_fopen64();
+  void model_fclose();
+  void model_fread();
+  void model_fwrite();
+  void model_fgets();
+  void model_fflush();
   void model_read();
   void model_readstdin();
   void model_readsocket();
   void model_write();
+  void model_shutdown();
   void model_random();
   void model_strncat();
   void model_select();
   void model_signal();
+  void model_malloc();
+  void model_calloc();
+  void model_realloc();
+  void model_free();
   //AH: Modeling specific to tls---------------------------
-  
+
+  /*
   void model_tls1_generate_master_secret();
 
   void model_AES_encrypt();
@@ -389,7 +452,7 @@ private:
   
   uint64_t tls_predict_stdin_size (int fd, uint64_t maxLen);
   void make_BN_symbolic(BIGNUM * bn);
-
+  */
   //AH: RNG modeling---------------------------------------
 
   void model_RAND_bytes();

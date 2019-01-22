@@ -103,6 +103,11 @@ using namespace klee;
 #include "tase/tase_constants.h"
 #include <sys/prctl.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
+#include <netdb.h>
+#include <fcntl.h>
+
+extern char edata;
 
 //Multipass
 extern multipassRecord multipassInfo;
@@ -135,6 +140,38 @@ extern "C" void * sb_enter_modeled();
 extern "C" void taseMakeSymbolic(void * addr, int size);
 extern "C" void enter_tase(void (*) ());
 
+// Network capture for Cliver
+extern "C" { int ktest_connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
+int ktest_select(int nfds, fd_set *readfds, fd_set *writefds,
+		 fd_set *exceptfds, struct timeval *timeout);
+ssize_t ktest_writesocket(int fd, const void *buf, size_t count);
+ssize_t ktest_readsocket(int fd, void *buf, size_t count);
+
+// stdin capture for Cliver
+int ktest_raw_read_stdin(void *buf, int siz);
+
+// Random number generator capture for Cliver
+int ktest_RAND_bytes(unsigned char *buf, int num);
+int ktest_RAND_pseudo_bytes(unsigned char *buf, int num);
+
+// Time capture for Cliver (actually unnecessary!)
+time_t ktest_time(time_t *t);
+
+// TLS Master Secret capture for Cliver
+void ktest_master_secret(unsigned char *ms, int len);
+
+void ktest_start(const char *filename, enum kTestMode mode);
+  void ktest_finish();               // write capture to file
+  void OpenSSLDie (const char * file, int line, const char * assertion);
+  
+}
+
+extern FILE * modelLog;
+
+extern char ** environ;
+extern int * __errno_location();
+extern "C" int __isoc99_sscanf ( const char * s, const char * format, ...);
+
 //For add microbenchmark
 //extern uint8_t * addBMResultPtr;
 //extern int numEntries;
@@ -144,6 +181,37 @@ extern "C" void enter_tase(void (*) ());
 //extern "C" void requestFork();
 
 int initialize_semaphore(int semKey);
+
+//Todo : fix these functions and remove traps
+extern "C" {
+  void RAND_add(const void * buf, int num, double entropy);
+  int RAND_load_file(const char *filename, long max_bytes);
+}
+#include "/playpen/humphries/tase/TASE/openssl/include/openssl/lhash.h"
+#include "/playpen/humphries/tase/TASE/openssl/include/openssl/crypto.h"
+#include "/playpen/humphries/tase/TASE/openssl/include/openssl/objects.h"
+#include "/playpen/humphries/tase/TASE/openssl/include/openssl/bio.h"
+#include "/playpen/humphries/tase/TASE/openssl/include/openssl/ssl.h"
+#include "/playpen/humphries/tase/TASE/openssl/crypto/x509/x509_vfy.h"
+#include "/playpen/humphries/tase/TASE/openssl/crypto/err/err.h"
+
+extern "C" {
+  int ssl3_connect(SSL *s);
+  
+}
+
+
+//For lhash debugging in openssl
+extern "C" {
+  int OBJ_NAME_add(const char *name, int type, const char *data);
+  int OBJ_NAME_remove(const char *name, int type);
+  const char *OBJ_NAME_get(const char *name, int type);
+  void expand(_LHASH *lh);
+  void contract(_LHASH *lh);
+  LHASH_NODE ** getrn(_LHASH *lh, const void *data, unsigned long *rhash);
+  int obj_name_LHASH_COMP(const void * a, const void * b);
+}
+extern FILE * LHlog;
 
 //Fruitbasket 
 //TODO Be careful, as BUFFER_SIZE is a macro we're defining twice now.
@@ -159,9 +227,9 @@ ObjectState * basket_OS;
 MemoryObject * basket_MO;
 
 //Optimization variables
-bool killFlagsOnSpringboard = true;
+bool killFlagsOnSpringboard = false;
 bool simplifyExprsOnSpringboard = false;
-bool killFlagsBeforeCmp = true;
+bool killFlagsBeforeCmp = false;
 
 #include <sys/time.h>
 extern struct timeval taseStartTime;
@@ -181,6 +249,7 @@ extern std::stringstream workerIDStream;
 
 extern char __GNU_EH_FRAME_HDR,  _IO_stdin_used; //used for mapping .rodata section
 
+extern int __ctype_tolower;
 
 //AH: End of our additions. -----------------------------------
 
@@ -578,7 +647,7 @@ MemoryObject * Executor::addExternalObject(ExecutionState &state,
                                            size, 0);
   ObjectState *os = bindObjectInState(state, mo, false);
   
-  printf("mo->address is %lu \n", mo->address);
+  //printf("Mapping external buf: mo->address is 0x%lx, size is 0x%x \n", mo->address, size);
   os->concreteStore = (uint8_t *) mo->address;
   //for(unsigned i = 0; i < size; i++)
   // os->write8(i, ((uint8_t*)addr)[i]);
@@ -842,7 +911,7 @@ void Executor::branch(ExecutionState &state,
 
 Executor::StatePair 
 Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {  
-
+  //printf("Entering regular klee fork() \n");
   Solver::Validity res;
   std::map< ExecutionState*, std::vector<SeedInfo> >::iterator it = 
     seedMap.find(&current);
@@ -878,7 +947,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     ++stats::forks;
     //ABH: Here's where we fork in TASE.
     int pid  = tase_fork();
-    printf("TASE Forking at 0x%llx \n", target_ctx_gregs[REG_RIP]);
+    printf("TASE Forking at 0x%lx \n", target_ctx_gregs[REG_RIP]);
     if (pid ==0 ) {
       int i = getpid(); 
       workerIDStream << ".";
@@ -2573,10 +2642,11 @@ void Executor::doDumpStates() {
 }
 
 void Executor::run(ExecutionState  & initialState) {
+  /*
   if (taseDebug) {
     printf("ENTERING EXECUTOR::RUN \n");
     std::cout.flush();
-  }
+    }*/
 
   
   //bindModuleConstants(); AH MOVED
@@ -2593,12 +2663,14 @@ void Executor::run(ExecutionState  & initialState) {
 
   haltExecution = false;
   while ( !haltExecution) {
-    
+
+    /*
     if (taseDebug){
       execInstructionCtr++;
       printf("Calling execute instruction for time %d \n", execInstructionCtr);
       std::cout.flush();
     }
+    */
     KInstruction *ki = state.pc;
     stepInstruction(state);
     executeInstruction(state, ki);
@@ -2609,11 +2681,13 @@ void Executor::run(ExecutionState  & initialState) {
     //updateStates(&state);
     
   }
-  
+
+  /*
   if (taseDebug) {
     printf("Finished main instruction interpretation loop \n ");
     std::cout.flush();
   }
+  */
   
 }
 
@@ -3159,7 +3233,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
   Expr::Width type = (isWrite ? value->getWidth() : 
                      getWidthForLLVMType(target->inst->getType()));
   unsigned bytes = Expr::getMinBytesForWidth(type);
-
+  
   if (SimplifySymIndices) {
     if (!isa<ConstantExpr>(address))
       address = state.constraints.simplifyExpr(address);
@@ -3167,18 +3241,39 @@ void Executor::executeMemoryOperation(ExecutionState &state,
       value = state.constraints.simplifyExpr(value);
   }
 
+  /*
+  // if(taseDebug) {
+  
+    printf("executeMemoryOperation DBG: \n");
+    printf("bytes is %d \n", bytes);
+    printf("isWrite is %d \n", isWrite);
+    if (!isa<ConstantExpr>(address))
+	printf("Non-constant address \n");
+    else if (ConstantExpr *CE = dyn_cast<ConstantExpr>(address)) {
+      printf("Addr is 0x%lx \n", CE->getZExtValue());
+    } else {
+      printf("ERROR: addr should be constant or symbolic \n");
+    } 
+    //}
+    */
+
   // fast path: single in-bounds resolution
   ObjectPair op;
   bool success;
   solver->setTimeout(coreSolverTimeout);
   //printf("Calling resolveOne \n");
   if (!state.addressSpace.resolveOne(state, solver, address, op, success)) {
+    printf("resolveOne failure! \n");
     address = toConstant(state, address, "resolveOne failure");
     success = state.addressSpace.resolveOne(cast<ConstantExpr>(address), op);
   }
   solver->setTimeout(0);
 
+  if (!success)
+    printf("Could not resolve address to MO \n");
+  
   if (success) {
+    //printf("Entering success path \n");
     const MemoryObject *mo = op.first;
 
     if (MaxSymArraySize && mo->size>=MaxSymArraySize) {
@@ -3189,10 +3284,12 @@ void Executor::executeMemoryOperation(ExecutionState &state,
 
     bool inBounds;
     solver->setTimeout(coreSolverTimeout);
+    //printf("Calling solver->mustBeTrue \n");
     bool success = solver->mustBeTrue(state, 
                                       mo->getBoundsCheckOffset(offset, bytes),
                                       inBounds);
     solver->setTimeout(0);
+    //printf(" inBounds is %d \n", inBounds);
     if (!success) {
       state.pc = state.prevPC;
       terminateStateEarly(state, "Query timed out (bounds check).");
@@ -3236,6 +3333,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
   ExecutionState *unbound = &state;
   
   for (ResolutionList::iterator i = rl.begin(), ie = rl.end(); i != ie; ++i) {
+    //printf("In resolutionList \n");
     const MemoryObject *mo = i->first;
     const ObjectState *os = i->second;
     ref<Expr> inBounds = mo->getBoundsCheckPointer(address, bytes);
@@ -3269,8 +3367,30 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     if (incomplete) {
       terminateStateEarly(*unbound, "Query timed out (resolve).");
     } else {
+      /*
+      fprintf(modelLog, "ExecuteMemoryOperation DBG: \n");
+      fprintf(modelLog,"Calling terminateStateOnError at %lu ... \n", interpCtr);      
+      fprintf(modelLog,"isWrite is %d \n", isWrite);
+      fprintf(modelLog, "bytes is %d \n", bytes);
+      */
+      if (!isa<ConstantExpr>(address))
+	fprintf(modelLog,"Non-constant address \n");
+      else if (ConstantExpr *CE = dyn_cast<ConstantExpr>(address)) {
+	fprintf(modelLog,"Addr is 0x%lx \n", CE->getZExtValue());
+      } else {
+	fprintf(modelLog,"ERROR: addr should be constant or symbolic \n");
+      }
+      
+
+      
+      printCtx(target_ctx_gregs);
+      fflush(modelLog);
       terminateStateOnError(*unbound, "memory error: out of bound pointer", Ptr,
                             NULL, getAddressInfo(*unbound, address));
+      printf("Out of bound ptr error; termination \n");
+      std::cout.flush();
+      std::exit(EXIT_FAILURE);
+      
     }
   }
 }
@@ -3281,6 +3401,11 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
                                    const std::string &name) {
   
   //AH Addition: ------------------------
+  
+  if(taseDebug) {
+    printf("Calling executeMakeSymbolic on name %s \n", name.c_str());
+    std::cout.flush();
+  }
   
   bool unnamed = (name == "unnamed") ? true : false;
   std::vector<unsigned char> *bindings = NULL;
@@ -3437,6 +3562,13 @@ extern "C" void target_exit() {
 
 }
 
+extern "C" void tase_debug (char * s1, char * s2) {
+
+  //Void
+  
+
+}
+
 extern "C" void klee_interp () {
   if (taseDebug) {
     printf("---------------ENTERING KLEE_INTERP ---------------------- \n");
@@ -3453,10 +3585,12 @@ extern "C" void klee_interp () {
 // this returns a KFunction with LLVM IR for only one machine instruction at a time. 
 KFunction * findInterpFunction (greg_t * registers, KModule * kmod) {
 
+  /*
   if (taseDebug) {
     printf("INTERPRETER: FOUND NORMAL USER INST \n");
     std::cout.flush();
   }
+  */
   uint64_t nativePC = registers[REG_RIP];
   //printf("Looking up interp info for RIP : decimal %lu, hex  %lx \n", nativePC, nativePC);
   //Arithmetic to find interpretation function.
@@ -3485,691 +3619,695 @@ KFunction * findInterpFunction (greg_t * registers, KModule * kmod) {
 // }
 
 
-void Executor::model_tls1_generate_master_secret () {
+// void Executor::model_tls1_generate_master_secret () {
 
-  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //SSL * s
-  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); //unsigned char * out
-  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64); //unsigned char * p
-  ref<Expr> arg4Expr = target_ctx_gregs_OS->read(REG_RCX * 8, Expr::Int64); //int len
+//   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //SSL * s
+//   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); //unsigned char * out
+//   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64); //unsigned char * p
+//   ref<Expr> arg4Expr = target_ctx_gregs_OS->read(REG_RCX * 8, Expr::Int64); //int len
 
-  if (  (isa<ConstantExpr>(arg1Expr)) &&
-	(isa<ConstantExpr>(arg2Expr)) &&
-	(isa<ConstantExpr>(arg3Expr)) &&
-	(isa<ConstantExpr>(arg4Expr)) ) {
+//   if (  (isa<ConstantExpr>(arg1Expr)) &&
+// 	(isa<ConstantExpr>(arg2Expr)) &&
+// 	(isa<ConstantExpr>(arg3Expr)) &&
+// 	(isa<ConstantExpr>(arg4Expr)) ) {
 
-    //Interestingly, the implementation of tls1_generate_master_secret in ssl/t1_enc.c in OpenSSL
-    //doesn't actually write the master secret to out; it instead writes to s->session->master_key
-    //Todo -- this may be different in BoringSSL; find out if out is actually used there.
+//     //Interestingly, the implementation of tls1_generate_master_secret in ssl/t1_enc.c in OpenSSL
+//     //doesn't actually write the master secret to out; it instead writes to s->session->master_key
+//     //Todo -- this may be different in BoringSSL; find out if out is actually used there.
 
-    SSL * s = (SSL *) target_ctx_gregs[REG_RDI];
-    char * secretFileName = "master_secret.txt";
-    FILE * secretFile = fopen (secretFileName, "r");
-    char secret[48];
-    fgets(secret,48,secretFile);
-    printf("secret is %s \n", secret);
-    fwrite(s->session->master_key, SSL3_MASTER_SECRET_SIZE, 1,secretFile);
-    fclose(secretFile);
+//     SSL * s = (SSL *) target_ctx_gregs[REG_RDI];
+//     char * secretFileName = "master_secret.txt";
+//     FILE * secretFile = fopen (secretFileName, "r");
+//     char secret[48];
+//     fgets(secret,48,secretFile);
+//     printf("secret is %s \n", secret);
+//     fwrite(s->session->master_key, SSL3_MASTER_SECRET_SIZE, 1,secretFile);
+//     fclose(secretFile);
     
-    //return value is size of tls master secret macro
-    ref<ConstantExpr> masterSecretSize = ConstantExpr::create(SSL3_MASTER_SECRET_SIZE,Expr::Int32); //May want to adjust size for different int sizes
-    target_ctx_gregs_OS->write(REG_RAX * 8, masterSecretSize);
-    //bump RIP and interpret next instruction
-    target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_RIP] +5;
-    printf("INTERPRETER: Exiting model_tls1_generate_master_secret \n");
+//     //return value is size of tls master secret macro
+//     ref<ConstantExpr> masterSecretSize = ConstantExpr::create(SSL3_MASTER_SECRET_SIZE,Expr::Int32); //May want to adjust size for different int sizes
+//     target_ctx_gregs_OS->write(REG_RAX * 8, masterSecretSize);
+//     //bump RIP and interpret next instruction
+//     target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_RIP] +5;
+//     printf("INTERPRETER: Exiting model_tls1_generate_master_secret \n");
     
-  } else {
-    printf("ERROR: symbolic arg passed to tls1_generate_master_secret \n");
-    std::exit(EXIT_FAILURE);
-  } 
-}
+//   } else {
+//     printf("ERROR: symbolic arg passed to tls1_generate_master_secret \n");
+//     std::exit(EXIT_FAILURE);
+//   } 
+// }
 
 
-//model for void AES_encrypt(const unsigned char *in, unsigned char *out,
-//const AES_KEY *key);
+// //model for void AES_encrypt(const unsigned char *in, unsigned char *out,
+// //const AES_KEY *key);
 
-void Executor::model_AES_encrypt () {
-
-  static int timesModelAESEncryptIsCalled = 0;
-  timesModelAESEncryptIsCalled++;
+//   void Executor::model_AES_encrypt () {
   
-  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //const unsigned char *in
-  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); //unsigned char * out
-  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64); //const AES_KEY * key
-
-  if (  (isa<ConstantExpr>(arg1Expr)) &&
-	(isa<ConstantExpr>(arg2Expr)) &&
-	(isa<ConstantExpr>(arg3Expr))
-	) {
-
-    const unsigned char * in =  (const unsigned char *)target_ctx_gregs[REG_RDI];
-    unsigned char * out = (unsigned char *) target_ctx_gregs[REG_RSI];
-    const AES_KEY * key = (const AES_KEY *) target_ctx_gregs[REG_RDX];
-    
-    int AESBlockSize = 16; //Number of bytes in AES block
-    bool hasSymbolicDependency = false;
-    
-    //Check to see if any input bytes or the key are symbolic
-    for (int i = 0; i < AESBlockSize; i++) {
-      ref<Expr> inByteExpr = tase_helper_read( ((uint64_t) in) +i, 1);
-      if (!isa<ConstantExpr>(inByteExpr))
-	hasSymbolicDependency = true;
-    }
-
-    //Todo: Chase down any structs that AES_KEY points to if it's not a simple struct.
-    //It's OK; struct holds no pointers.
-    for (uint64_t i = 0; i < sizeof(AES_KEY); i++) {
-      ref<Expr> keyByteExpr = tase_helper_read( ((uint64_t) key) + i, 1);
-      if (!isa<ConstantExpr>(keyByteExpr))
-	hasSymbolicDependency = true;
-    }
-
-    if (hasSymbolicDependency) {
-      //Get the MO, then call executeMakeSymbolic()
-      void * symOutBuffer = malloc(AESBlockSize);
-      MemoryObject * AESEncryptOutMO = memory->allocateFixed( (uint64_t) symOutBuffer,16,NULL);
-      std::string nameString = "aes_Encrypt_output " + std::to_string(timesModelAESEncryptIsCalled);
-      AESEncryptOutMO->name = nameString;
-      executeMakeSymbolic(*GlobalExecutionStatePtr, AESEncryptOutMO, "modelAESEncryptOutputBuffer");
-      const ObjectState * constAESEncryptOutOS = GlobalExecutionStatePtr->addressSpace.findObject(AESEncryptOutMO);
-      ObjectState * AESEncryptOutOS = GlobalExecutionStatePtr->addressSpace.getWriteable(AESEncryptOutMO,constAESEncryptOutOS);
-      for (int i = 0; i < AESBlockSize; i++)
-	tase_helper_write( ((uint64_t) out) +i, AESEncryptOutOS->read(i, Expr::Int8)); 
-    } else {
-      //Otherwise we're good to call natively
-      printf("ERROR: Native AES_Encrypt not implemented yet \n");
-      std::exit(EXIT_FAILURE);
-      //AES_Encrypt(in,out,key);  //Todo -- get native call for AES_Encrypt
-    }
-    //increment pc and get back to execution.
-    target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_RIP] +5;
-    printf("INTERPRETER: Exiting model_AES_encrypt \n");
-    
-  } else {
-    printf("ERROR: symbolic arg passed to model_AES_encrypt \n");
-    std::exit(EXIT_FAILURE);
-  } 
-}
-
-//Model for 
-//void gcm_ghash_4bit(u64 Xi[2],const u128 Htable[16],
-//				const u8 *inp,size_t len)
-//in crypto/modes/gcm128.c
-//Todo: Check to see if we're incorrectly assuming that the Xi and Htable arrays are passed as ptrs in the abi.
-void Executor::model_gcm_ghash_4bit () {
+//   static int timesModelAESEncryptIsCalled = 0;
+//   timesModelAESEncryptIsCalled++;
   
-  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //u64 Xi[2]
-  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); //const u128 Htable[16]
-  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64); // const u8 *inp
-  ref<Expr> arg4Expr = target_ctx_gregs_OS->read(REG_RCX * 8, Expr::Int64); //size_t len
+//   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //const unsigned char *in
+//   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); //unsigned char * out
+//   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64); //const AES_KEY * key
 
-  if (  (isa<ConstantExpr>(arg1Expr)) &&
-	(isa<ConstantExpr>(arg2Expr)) &&
-	(isa<ConstantExpr>(arg3Expr)) &&
-	(isa<ConstantExpr>(arg4Expr)) ) {
+//   if (  (isa<ConstantExpr>(arg1Expr)) &&
+// 	(isa<ConstantExpr>(arg2Expr)) &&
+// 	(isa<ConstantExpr>(arg3Expr))
+// 	) {
 
-    u64 * XiPtr = (u64 *) target_ctx_gregs[REG_RDI];
-    u128 * HtablePtr = (u128 *) target_ctx_gregs[REG_RSI];
-    const u8 * inp = (const u8 *) target_ctx_gregs[REG_RDX];
-    size_t len = (size_t) target_ctx_gregs[REG_RCX];
+//     const unsigned char * in =  (const unsigned char *)target_ctx_gregs[REG_RDI];
+//     unsigned char * out = (unsigned char *) target_ctx_gregs[REG_RSI];
+//     const AES_KEY * key = (const AES_KEY *) target_ctx_gregs[REG_RDX];
     
-    //Todo: Double check the dubious ptr casts and figure out if we
-    //are falsely assuming any structs or arrays are packed
-    bool hasSymbolicInput = false;
-    for (uint64_t i = 0; i < sizeof(u64) *2; i++) {
-      ref<Expr> inputByteExpr = tase_helper_read( ((uint64_t) XiPtr) + i,1);
-      if (!isa<ConstantExpr>(inputByteExpr))
-	hasSymbolicInput = true;
-    }
+//     int AESBlockSize = 16; //Number of bytes in AES block
+//     bool hasSymbolicDependency = false;
+    
+//     //Check to see if any input bytes or the key are symbolic
+//     for (int i = 0; i < AESBlockSize; i++) {
+//       ref<Expr> inByteExpr = tase_helper_read( ((uint64_t) in) +i, 1);
+//       if (!isa<ConstantExpr>(inByteExpr))
+// 	hasSymbolicDependency = true;
+//     }
 
-    // Todo: Double check  if this is OK for different size_t values.
-    for (uint64_t i = 0; i < len; i++) {
-      ref<Expr> inputByteExpr = tase_helper_read( ((uint64_t) inp) + i,1);
-      if (!isa<ConstantExpr>(inputByteExpr))
-	hasSymbolicInput = true;
-    }
+//     //Todo: Chase down any structs that AES_KEY points to if it's not a simple struct.
+//     //It's OK; struct holds no pointers.
+//     for (uint64_t i = 0; i < sizeof(AES_KEY); i++) {
+//       ref<Expr> keyByteExpr = tase_helper_read( ((uint64_t) key) + i, 1);
+//       if (!isa<ConstantExpr>(keyByteExpr))
+// 	hasSymbolicDependency = true;
+//     }
 
-    if (hasSymbolicInput) {
-      tase_make_symbolic ((uint64_t) XiPtr, sizeof(u64) * 2, "GCMGHashOutput");
-    } else {
-      printf("ERROR: No native call for gcm_ghash_4bit yet. \n");
-      std::exit(EXIT_FAILURE);
-      //gcm_ghash_4bit(XiPtr, HtablePtr, inp, len);
-    }
+//     if (hasSymbolicDependency) {
+//       //Get the MO, then call executeMakeSymbolic()
+//       void * symOutBuffer = malloc(AESBlockSize);
+//       MemoryObject * AESEncryptOutMO = memory->allocateFixed( (uint64_t) symOutBuffer,16,NULL);
+//       std::string nameString = "aes_Encrypt_output " + std::to_string(timesModelAESEncryptIsCalled);
+//       AESEncryptOutMO->name = nameString;
+//       executeMakeSymbolic(*GlobalExecutionStatePtr, AESEncryptOutMO, "modelAESEncryptOutputBuffer");
+//       const ObjectState * constAESEncryptOutOS = GlobalExecutionStatePtr->addressSpace.findObject(AESEncryptOutMO);
+//       ObjectState * AESEncryptOutOS = GlobalExecutionStatePtr->addressSpace.getWriteable(AESEncryptOutMO,constAESEncryptOutOS);
+//       for (int i = 0; i < AESBlockSize; i++)
+// 	tase_helper_write( ((uint64_t) out) +i, AESEncryptOutOS->read(i, Expr::Int8)); 
+//     } else {
+//       //Otherwise we're good to call natively
+//       printf("ERROR: Native AES_Encrypt not implemented yet \n");
+//       std::exit(EXIT_FAILURE);
+//       //AES_Encrypt(in,out,key);  //Todo -- get native call for AES_Encrypt
+//     }
+//     //increment pc and get back to execution.
+//     target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_RIP] +5;
+//     printf("INTERPRETER: Exiting model_AES_encrypt \n");
+    
+//   } else {
+//     printf("ERROR: symbolic arg passed to model_AES_encrypt \n");
+//     std::exit(EXIT_FAILURE);
+//     } 
+//   } 
 
-    //increment pc and get back to execution.
-     target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_RIP] +5;
-     printf("INTERPRETER: Exiting model_gcm_ghash_4bit \n"); 
+// //Model for 
+// //void gcm_ghash_4bit(u64 Xi[2],const u128 Htable[16],
+// //				const u8 *inp,size_t len)
+// //in crypto/modes/gcm128.c
+// //Todo: Check to see if we're incorrectly assuming that the Xi and Htable arrays are passed as ptrs in the abi.
+
+// void Executor::model_gcm_ghash_4bit () {
+  
+//   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //u64 Xi[2]
+//   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); //const u128 Htable[16]
+//   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64); // const u8 *inp
+//   ref<Expr> arg4Expr = target_ctx_gregs_OS->read(REG_RCX * 8, Expr::Int64); //size_t len
+
+//   if (  (isa<ConstantExpr>(arg1Expr)) &&
+// 	(isa<ConstantExpr>(arg2Expr)) &&
+// 	(isa<ConstantExpr>(arg3Expr)) &&
+// 	(isa<ConstantExpr>(arg4Expr)) ) {
+
+//     u64 * XiPtr = (u64 *) target_ctx_gregs[REG_RDI];
+//     u128 * HtablePtr = (u128 *) target_ctx_gregs[REG_RSI];
+//     const u8 * inp = (const u8 *) target_ctx_gregs[REG_RDX];
+//     size_t len = (size_t) target_ctx_gregs[REG_RCX];
+    
+//     //Todo: Double check the dubious ptr casts and figure out if we
+//     //are falsely assuming any structs or arrays are packed
+//     bool hasSymbolicInput = false;
+//     for (uint64_t i = 0; i < sizeof(u64) *2; i++) {
+//       ref<Expr> inputByteExpr = tase_helper_read( ((uint64_t) XiPtr) + i,1);
+//       if (!isa<ConstantExpr>(inputByteExpr))
+// 	hasSymbolicInput = true;
+//     }
+
+//     // Todo: Double check  if this is OK for different size_t values.
+//     for (uint64_t i = 0; i < len; i++) {
+//       ref<Expr> inputByteExpr = tase_helper_read( ((uint64_t) inp) + i,1);
+//       if (!isa<ConstantExpr>(inputByteExpr))
+// 	hasSymbolicInput = true;
+//     }
+
+//     if (hasSymbolicInput) {
+//       tase_make_symbolic ((uint64_t) XiPtr, sizeof(u64) * 2, "GCMGHashOutput");
+//     } else {
+//       printf("ERROR: No native call for gcm_ghash_4bit yet. \n");
+//       std::exit(EXIT_FAILURE);
+//       //gcm_ghash_4bit(XiPtr, HtablePtr, inp, len);
+//     }
+
+//     //increment pc and get back to execution.
+//      target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_RIP] +5;
+//      printf("INTERPRETER: Exiting model_gcm_ghash_4bit \n"); 
      
-  } else {
-    printf("ERROR: symbolic arg passed to model_gcm_ghash_4bit \n");
-    std::exit(EXIT_FAILURE);
-  }  
-}
+//   } else {
+//     printf("ERROR: symbolic arg passed to model_gcm_ghash_4bit \n");
+//     std::exit(EXIT_FAILURE);
+//   }  
+//   }
 
-//Model for
-//void gcm_gmult_4bit(u64 Xi[2], const u128 Htable[16])
-// in crypto/modes/gcm128.c
-void Executor::model_gcm_gmult_4bit () {
-  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //u64 Xi[2]
-  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); // const u128 Htable[16]
 
-   if (  (isa<ConstantExpr>(arg1Expr)) &&
-	(isa<ConstantExpr>(arg2Expr))
-	) {
+// //Model for
+// //void gcm_gmult_4bit(u64 Xi[2], const u128 Htable[16])
+// // in crypto/modes/gcm128.c
 
-     u64 * XiPtr = (u64 *) target_ctx_gregs[REG_RDI];
-     u128 * HtablePtr = (u128 *) target_ctx_gregs[REG_RSI];
+// void Executor::model_gcm_gmult_4bit () {
+//   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //u64 Xi[2]
+//   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); // const u128 Htable[16]
+
+//    if (  (isa<ConstantExpr>(arg1Expr)) &&
+// 	(isa<ConstantExpr>(arg2Expr))
+// 	) {
+
+//      u64 * XiPtr = (u64 *) target_ctx_gregs[REG_RDI];
+//      u128 * HtablePtr = (u128 *) target_ctx_gregs[REG_RSI];
      
-     //Todo: Double check the dubious ptr cast and figure out if we
-     //are assuming any structs are packed
-     bool hasSymbolicInput = false;
-     for (uint64_t i = 0; i < sizeof(u64) *2; i++) {
-       ref<Expr> inputByteExpr = tase_helper_read( ((uint64_t) XiPtr) + i,1);
-       if (!isa<ConstantExpr>(inputByteExpr))
-	 hasSymbolicInput = true;
-     }
+//      //Todo: Double check the dubious ptr cast and figure out if we
+//      //are assuming any structs are packed
+//      bool hasSymbolicInput = false;
+//      for (uint64_t i = 0; i < sizeof(u64) *2; i++) {
+//        ref<Expr> inputByteExpr = tase_helper_read( ((uint64_t) XiPtr) + i,1);
+//        if (!isa<ConstantExpr>(inputByteExpr))
+// 	 hasSymbolicInput = true;
+//      }
 
-     if (hasSymbolicInput) {
-       tase_make_symbolic((uint64_t) XiPtr, sizeof(u64) * 2, "GCMGMultOutput");
-     } else {
-       //Todo -- double check that gcm_gmult_4bit is side-effect free
-       printf("ERROR: No native implementation available for gcm_gmult_4bit yet \n");
-       //gcm_gmult_4bit(XiPtr, HtablePtr); 
-     }
-     //increment pc and get back to execution.
-     target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_RIP] +5;
-     printf("INTERPRETER: Exiting model_gcm_gmult_4bit \n"); 
-   } else {
-     printf("ERROR: symbolic arg passed to model_gcm_gmult_4bit \n");
-     std::exit(EXIT_FAILURE);
-   }
-}
+//      if (hasSymbolicInput) {
+//        tase_make_symbolic((uint64_t) XiPtr, sizeof(u64) * 2, "GCMGMultOutput");
+//      } else {
+//        //Todo -- double check that gcm_gmult_4bit is side-effect free
+//        printf("ERROR: No native implementation available for gcm_gmult_4bit yet \n");
+//        //gcm_gmult_4bit(XiPtr, HtablePtr); 
+//      }
+//      //increment pc and get back to execution.
+//      target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_RIP] +5;
+//      printf("INTERPRETER: Exiting model_gcm_gmult_4bit \n"); 
+//    } else {
+//      printf("ERROR: symbolic arg passed to model_gcm_gmult_4bit \n");
+//      std::exit(EXIT_FAILURE);
+//    }
+//    }
 
-//Model for int SHA1_Update(SHA_CTX *c, const void *data, size_t len);
-//defined in crypto/sha/sha.h.
-//
-void Executor::model_SHA1_Update () {
+// //Model for int SHA1_Update(SHA_CTX *c, const void *data, size_t len);
+// //defined in crypto/sha/sha.h.
+// //
+
+// void Executor::model_SHA1_Update () {
  
-  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //SHA_CTX * c
-  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); //const void * data
-  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64); //size_t len
+//   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //SHA_CTX * c
+//   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); //const void * data
+//   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64); //size_t len
 
-  if (  (isa<ConstantExpr>(arg1Expr)) &&
-	(isa<ConstantExpr>(arg2Expr)) &&
-	(isa<ConstantExpr>(arg3Expr))
-	) {
+//   if (  (isa<ConstantExpr>(arg1Expr)) &&
+// 	(isa<ConstantExpr>(arg2Expr)) &&
+// 	(isa<ConstantExpr>(arg3Expr))
+// 	) {
 
-    //Determine if SHA_CTX or data have symbolic values.
-    //If not, run the underlying function.
+//     //Determine if SHA_CTX or data have symbolic values.
+//     //If not, run the underlying function.
 
-    SHA_CTX * c = (SHA_CTX *) target_ctx_gregs[REG_RDI];
-    const void * data = (const void *) target_ctx_gregs[REG_RSI];
-    size_t len = (size_t) target_ctx_gregs[REG_RDX];
+//     SHA_CTX * c = (SHA_CTX *) target_ctx_gregs[REG_RDI];
+//     const void * data = (const void *) target_ctx_gregs[REG_RSI];
+//     size_t len = (size_t) target_ctx_gregs[REG_RDX];
     
-    bool hasSymbolicInput = false;
+//     bool hasSymbolicInput = false;
 
-    for (uint64_t i = 0; i < sizeof(SHA_CTX) ; i++) {
-      ref <Expr> sha1CtxByteExpr = tase_helper_read( ((uint64_t) c) + i, 1);
-      if (!isa<ConstantExpr>(sha1CtxByteExpr))
-	hasSymbolicInput = true;
-    }
-    for (uint64_t i = 0; i < len ; i++) {
-      ref <Expr> dataInputByteExpr = tase_helper_read( ((uint64_t) data) + i, 1);
-      if (!isa<ConstantExpr>(dataInputByteExpr))
-	hasSymbolicInput = true;
-    }
+//     for (uint64_t i = 0; i < sizeof(SHA_CTX) ; i++) {
+//       ref <Expr> sha1CtxByteExpr = tase_helper_read( ((uint64_t) c) + i, 1);
+//       if (!isa<ConstantExpr>(sha1CtxByteExpr))
+// 	hasSymbolicInput = true;
+//     }
+//     for (uint64_t i = 0; i < len ; i++) {
+//       ref <Expr> dataInputByteExpr = tase_helper_read( ((uint64_t) data) + i, 1);
+//       if (!isa<ConstantExpr>(dataInputByteExpr))
+// 	hasSymbolicInput = true;
+//     }
 
-    if (hasSymbolicInput) {
-      tase_make_symbolic((uint64_t) c, 20, "SHA1_Update_Output");
+//     if (hasSymbolicInput) {
+//       tase_make_symbolic((uint64_t) c, 20, "SHA1_Update_Output");
        
-       void * intResultPtr = malloc(sizeof(int));
-       MemoryObject * resultMO = memory->allocateFixed( (uint64_t) intResultPtr, sizeof(int),NULL);
-       resultMO->name = "intResult";
-       executeMakeSymbolic(*GlobalExecutionStatePtr, resultMO, "intResultMO");
-       const ObjectState * constIntResultOS = GlobalExecutionStatePtr->addressSpace.findObject(resultMO);
-       ObjectState * intResultOS = GlobalExecutionStatePtr->addressSpace.getWriteable(resultMO,constIntResultOS);
+//        void * intResultPtr = malloc(sizeof(int));
+//        MemoryObject * resultMO = memory->allocateFixed( (uint64_t) intResultPtr, sizeof(int),NULL);
+//        resultMO->name = "intResult";
+//        executeMakeSymbolic(*GlobalExecutionStatePtr, resultMO, "intResultMO");
+//        const ObjectState * constIntResultOS = GlobalExecutionStatePtr->addressSpace.findObject(resultMO);
+//        ObjectState * intResultOS = GlobalExecutionStatePtr->addressSpace.getWriteable(resultMO,constIntResultOS);
 
-       target_ctx_gregs_OS->write(REG_RAX * 8, intResultOS->read(0, Expr::Int32));
+//        target_ctx_gregs_OS->write(REG_RAX * 8, intResultOS->read(0, Expr::Int32));
        
-    } else { //Call natively
-      printf("ERROR: No native sha1_update implementation available \n");
-      std::exit(EXIT_FAILURE);
-      //Todo: provide SHA1_Update implementation for fast native execution
-      /*
-      int res = SHA1_Update(c, data, len);
-      ref<ConstantExpr> resExpr = ConstantExpr::create(res, Expr::Int32);
-       target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
-      */
-    }
-    //increment pc and get back to execution.
-     target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_RIP] +5;
-     printf("INTERPRETER: Exiting model_SHA1_Update \n"); 
-  } else {
-    printf("ERROR: symbolic arg passed to model_SHA1_Update \n");
-    std::exit(EXIT_FAILURE);
-  }
-}
+//     } else { //Call natively
+//       printf("ERROR: No native sha1_update implementation available \n");
+//       std::exit(EXIT_FAILURE);
+//       //Todo: provide SHA1_Update implementation for fast native execution
+//       /*
+//       int res = SHA1_Update(c, data, len);
+//       ref<ConstantExpr> resExpr = ConstantExpr::create(res, Expr::Int32);
+//        target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+//       */
+//     }
+//     //increment pc and get back to execution.
+//      target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_RIP] +5;
+//      printf("INTERPRETER: Exiting model_SHA1_Update \n"); 
+//   } else {
+//     printf("ERROR: symbolic arg passed to model_SHA1_Update \n");
+//     std::exit(EXIT_FAILURE);
+//   }
+// }
 
-//Model for int SHA1_Final(unsigned char *md, SHA_CTX *c)
-//defined in crypto/sha/sha.h
-void Executor::model_SHA1_Final() {
+// //Model for int SHA1_Final(unsigned char *md, SHA_CTX *c)
+// //defined in crypto/sha/sha.h
+// void Executor::model_SHA1_Final() {
 
-  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //unsigned char *md
-  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); //SHA_CTX *c
+//   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //unsigned char *md
+//   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); //SHA_CTX *c
 
-   if (  (isa<ConstantExpr>(arg1Expr)) &&
-	 (isa<ConstantExpr>(arg2Expr)) ) {
+//    if (  (isa<ConstantExpr>(arg1Expr)) &&
+// 	 (isa<ConstantExpr>(arg2Expr)) ) {
 
-     unsigned char * md = (unsigned char *) target_ctx_gregs[REG_RDI];
-     SHA_CTX * c = (SHA_CTX *) target_ctx_gregs[REG_RSI];
+//      unsigned char * md = (unsigned char *) target_ctx_gregs[REG_RDI];
+//      SHA_CTX * c = (SHA_CTX *) target_ctx_gregs[REG_RSI];
      
-     bool hasSymbolicInput = false;
+//      bool hasSymbolicInput = false;
      
-     for (uint64_t i = 0; i < sizeof(SHA_CTX) ; i++) {
-       ref <Expr> sha1CtxByteExpr = tase_helper_read( ((uint64_t) c) + i, 1);
-       if (!isa<ConstantExpr>(sha1CtxByteExpr))
-	 hasSymbolicInput = true;
-     }
-     if (hasSymbolicInput) {
-       tase_make_symbolic( (uint64_t) md, SHA_DIGEST_LENGTH, "SHA1_Final_Output");
+//      for (uint64_t i = 0; i < sizeof(SHA_CTX) ; i++) {
+//        ref <Expr> sha1CtxByteExpr = tase_helper_read( ((uint64_t) c) + i, 1);
+//        if (!isa<ConstantExpr>(sha1CtxByteExpr))
+// 	 hasSymbolicInput = true;
+//      }
+//      if (hasSymbolicInput) {
+//        tase_make_symbolic( (uint64_t) md, SHA_DIGEST_LENGTH, "SHA1_Final_Output");
 
-       void * intResultPtr = malloc(sizeof(int));
-       MemoryObject * resultMO = memory->allocateFixed( (uint64_t) intResultPtr, sizeof(int),NULL);
-       resultMO->name = "intResult";
-       executeMakeSymbolic(*GlobalExecutionStatePtr, resultMO, "intResultMO");
-       const ObjectState * constIntResultOS = GlobalExecutionStatePtr->addressSpace.findObject(resultMO);
-       ObjectState * intResultOS = GlobalExecutionStatePtr->addressSpace.getWriteable(resultMO,constIntResultOS);
+//        void * intResultPtr = malloc(sizeof(int));
+//        MemoryObject * resultMO = memory->allocateFixed( (uint64_t) intResultPtr, sizeof(int),NULL);
+//        resultMO->name = "intResult";
+//        executeMakeSymbolic(*GlobalExecutionStatePtr, resultMO, "intResultMO");
+//        const ObjectState * constIntResultOS = GlobalExecutionStatePtr->addressSpace.findObject(resultMO);
+//        ObjectState * intResultOS = GlobalExecutionStatePtr->addressSpace.getWriteable(resultMO,constIntResultOS);
        
-       target_ctx_gregs_OS->write(REG_RAX * 8, intResultOS->read(0, Expr::Int32));
-     } else {
-       printf("ERROR: no sha1_final implementation available \n");
-       std::exit(EXIT_FAILURE);
-       //Todo: Provide sha1_final native implementation for concrete execution
-       /*
-       int res = SHA1_Final(md, c);
-       ref<ConstantExpr> resExpr = ConstantExpr::create(res, Expr::Int32);
-       target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
-       */
-     }
-      //increment pc and get back to execution.
-     target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_RIP] +5;
-     printf("INTERPRETER: Exiting model_SHA1_Final \n"); 
+//        target_ctx_gregs_OS->write(REG_RAX * 8, intResultOS->read(0, Expr::Int32));
+//      } else {
+//        printf("ERROR: no sha1_final implementation available \n");
+//        std::exit(EXIT_FAILURE);
+//        //Todo: Provide sha1_final native implementation for concrete execution
+//        /*
+//        int res = SHA1_Final(md, c);
+//        ref<ConstantExpr> resExpr = ConstantExpr::create(res, Expr::Int32);
+//        target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+//        */
+//      }
+//       //increment pc and get back to execution.
+//      target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_RIP] +5;
+//      printf("INTERPRETER: Exiting model_SHA1_Final \n"); 
      
-   } else {
-     printf("ERROR: symbolic arg passed to model_SHA1_Final \n");
-    std::exit(EXIT_FAILURE);
-   }
-}
+//    } else {
+//      printf("ERROR: symbolic arg passed to model_SHA1_Final \n");
+//     std::exit(EXIT_FAILURE);
+//    }
+// }
 
-//Model for int SHA256_Update(SHA256_CTX *c, const void *data, size_t len)
-//defined in crypto/sha/sha.h.
-//
-void Executor::model_SHA256_Update () {
-  static int timesModelSHA256UpdateIsCalled = 0;
-  timesModelSHA256UpdateIsCalled++;
+// //Model for int SHA256_Update(SHA256_CTX *c, const void *data, size_t len)
+// //defined in crypto/sha/sha.h.
+// //
+// void Executor::model_SHA256_Update () {
+//   static int timesModelSHA256UpdateIsCalled = 0;
+//   timesModelSHA256UpdateIsCalled++;
   
-  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //SHA256_CTX * c
-  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); //const void * data
-  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64); //size_t len
+//   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //SHA256_CTX * c
+//   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); //const void * data
+//   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64); //size_t len
 
-  if (  (isa<ConstantExpr>(arg1Expr)) &&
-	(isa<ConstantExpr>(arg2Expr)) &&
-	(isa<ConstantExpr>(arg3Expr))
-	) {
+//   if (  (isa<ConstantExpr>(arg1Expr)) &&
+// 	(isa<ConstantExpr>(arg2Expr)) &&
+// 	(isa<ConstantExpr>(arg3Expr))
+// 	) {
 
-    //Determine if SHA256_CTX or data have symbolic values.
-    //If not, run the underlying function.
+//     //Determine if SHA256_CTX or data have symbolic values.
+//     //If not, run the underlying function.
 
-    SHA256_CTX * c = (SHA256_CTX *) target_ctx_gregs[REG_RDI];
-    const void * data = (const void *) target_ctx_gregs[REG_RSI];
-    size_t len = (size_t) target_ctx_gregs[REG_RDX];
+//     SHA256_CTX * c = (SHA256_CTX *) target_ctx_gregs[REG_RDI];
+//     const void * data = (const void *) target_ctx_gregs[REG_RSI];
+//     size_t len = (size_t) target_ctx_gregs[REG_RDX];
     
-    bool hasSymbolicInput = false;
-    for (uint64_t i = 0; i < sizeof(SHA256_CTX) ; i++) {
-      ref <Expr> sha256CtxByteExpr = tase_helper_read( ((uint64_t) c) + i, 1);
-      if (!isa<ConstantExpr>(sha256CtxByteExpr))
-	hasSymbolicInput = true;
-    }
-    for (uint64_t i = 0; i < len ; i++) {
-      ref <Expr> dataInputByteExpr = tase_helper_read( ((uint64_t) data) + i, 1);
-      if (!isa<ConstantExpr>(dataInputByteExpr))
-	hasSymbolicInput = true;
-    }
+//     bool hasSymbolicInput = false;
+//     for (uint64_t i = 0; i < sizeof(SHA256_CTX) ; i++) {
+//       ref <Expr> sha256CtxByteExpr = tase_helper_read( ((uint64_t) c) + i, 1);
+//       if (!isa<ConstantExpr>(sha256CtxByteExpr))
+// 	hasSymbolicInput = true;
+//     }
+//     for (uint64_t i = 0; i < len ; i++) {
+//       ref <Expr> dataInputByteExpr = tase_helper_read( ((uint64_t) data) + i, 1);
+//       if (!isa<ConstantExpr>(dataInputByteExpr))
+// 	hasSymbolicInput = true;
+//     }
 
-    if (hasSymbolicInput) {
+//     if (hasSymbolicInput) {
 
-      tase_make_symbolic( (uint64_t) c, 32, "SHA256_Update_Output");
+//       tase_make_symbolic( (uint64_t) c, 32, "SHA256_Update_Output");
       
-      void * intResultPtr = malloc(sizeof(int));
-      MemoryObject * resultMO = memory->allocateFixed( (uint64_t) intResultPtr, sizeof(int),NULL);
-      resultMO->name = "intResult";
-      executeMakeSymbolic(*GlobalExecutionStatePtr, resultMO, "intResultMO");
-      const ObjectState * constIntResultOS = GlobalExecutionStatePtr->addressSpace.findObject(resultMO);
-      ObjectState * intResultOS = GlobalExecutionStatePtr->addressSpace.getWriteable(resultMO,constIntResultOS);
-      target_ctx_gregs_OS->write(REG_RAX * 8, intResultOS->read(0, Expr::Int32));
+//       void * intResultPtr = malloc(sizeof(int));
+//       MemoryObject * resultMO = memory->allocateFixed( (uint64_t) intResultPtr, sizeof(int),NULL);
+//       resultMO->name = "intResult";
+//       executeMakeSymbolic(*GlobalExecutionStatePtr, resultMO, "intResultMO");
+//       const ObjectState * constIntResultOS = GlobalExecutionStatePtr->addressSpace.findObject(resultMO);
+//       ObjectState * intResultOS = GlobalExecutionStatePtr->addressSpace.getWriteable(resultMO,constIntResultOS);
+//       target_ctx_gregs_OS->write(REG_RAX * 8, intResultOS->read(0, Expr::Int32));
       
-    } else { //Call natively
-      printf("ERROR: No sha256_update native implementation available \n");
-      std::exit(EXIT_FAILURE);
-      //todo: provide sha256_update native implementation
-      /*
-      int res =SHA256_Update(c, data, len);
-      ref<ConstantExpr> resExpr = ConstantExpr::create(res, Expr::Int32);
-      target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
-      */
-    }
+//     } else { //Call natively
+//       printf("ERROR: No sha256_update native implementation available \n");
+//       std::exit(EXIT_FAILURE);
+//       //todo: provide sha256_update native implementation
+//       /*
+//       int res =SHA256_Update(c, data, len);
+//       ref<ConstantExpr> resExpr = ConstantExpr::create(res, Expr::Int32);
+//       target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+//       */
+//     }
 
-    //increment pc and get back to execution.
-     target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_RIP] +5;
-     printf("INTERPRETER: Exiting model_SHA256_Update \n"); 
+//     //increment pc and get back to execution.
+//      target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_RIP] +5;
+//      printf("INTERPRETER: Exiting model_SHA256_Update \n"); 
     
-  } else {
-    printf("ERROR: symbolic arg passed to model_SHA256_Update \n");
-    std::exit(EXIT_FAILURE);
-  }
-}
+//   } else {
+//     printf("ERROR: symbolic arg passed to model_SHA256_Update \n");
+//     std::exit(EXIT_FAILURE);
+//   }
+// }
 
 
-//Model for int SHA256_Final(unsigned char *md, SHA256_CTX *c)
-//defined in crypto/sha/sha.h
-//Todo: determine if we can just pass a return value of success for all 4 sha models
-void Executor::model_SHA256_Final() {
-  static int timesModelSHA256FinalIsCalled = 0;
-  timesModelSHA256FinalIsCalled++;
+// //Model for int SHA256_Final(unsigned char *md, SHA256_CTX *c)
+// //defined in crypto/sha/sha.h
+// //Todo: determine if we can just pass a return value of success for all 4 sha models
+// void Executor::model_SHA256_Final() {
+//   static int timesModelSHA256FinalIsCalled = 0;
+//   timesModelSHA256FinalIsCalled++;
 
-  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //unsigned char *md
-  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); //SHA256_CTX *c
+//   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //unsigned char *md
+//   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); //SHA256_CTX *c
 
-   if (  (isa<ConstantExpr>(arg1Expr)) &&
-	 (isa<ConstantExpr>(arg2Expr)) ) {
+//    if (  (isa<ConstantExpr>(arg1Expr)) &&
+// 	 (isa<ConstantExpr>(arg2Expr)) ) {
 
-     unsigned char * md = (unsigned char *) target_ctx_gregs[REG_RDI];
-     SHA256_CTX * c = (SHA256_CTX *) target_ctx_gregs[REG_RSI];
+//      unsigned char * md = (unsigned char *) target_ctx_gregs[REG_RDI];
+//      SHA256_CTX * c = (SHA256_CTX *) target_ctx_gregs[REG_RSI];
      
-     bool hasSymbolicInput = false;
+//      bool hasSymbolicInput = false;
      
-     for (int i = 0; i < sizeof(SHA256_CTX) ; i++) {
-       ref <Expr> sha256CtxByteExpr = tase_helper_read( ((uint64_t) c) + i, 1);
-       if (!isa<ConstantExpr>(sha256CtxByteExpr))
-	 hasSymbolicInput = true;
-     }
+//      for (int i = 0; i < sizeof(SHA256_CTX) ; i++) {
+//        ref <Expr> sha256CtxByteExpr = tase_helper_read( ((uint64_t) c) + i, 1);
+//        if (!isa<ConstantExpr>(sha256CtxByteExpr))
+// 	 hasSymbolicInput = true;
+//      }
 
-     if (hasSymbolicInput) {
-       tase_make_symbolic((uint64_t) md, SHA_DIGEST_LENGTH, "SHA256_Final_Output");
+//      if (hasSymbolicInput) {
+//        tase_make_symbolic((uint64_t) md, SHA_DIGEST_LENGTH, "SHA256_Final_Output");
 
-       void * intResultPtr = malloc(sizeof(int));
-       MemoryObject * resultMO = memory->allocateFixed( (uint64_t) intResultPtr, sizeof(int),NULL);
-       resultMO->name = "intResult";
-       executeMakeSymbolic(*GlobalExecutionStatePtr, resultMO, "intResultMO");
-       const ObjectState * constIntResultOS = GlobalExecutionStatePtr->addressSpace.findObject(resultMO);
-       ObjectState * intResultOS = GlobalExecutionStatePtr->addressSpace.getWriteable(resultMO,constIntResultOS);
-       target_ctx_gregs_OS->write(REG_RAX * 8, intResultOS->read(0, Expr::Int32));
+//        void * intResultPtr = malloc(sizeof(int));
+//        MemoryObject * resultMO = memory->allocateFixed( (uint64_t) intResultPtr, sizeof(int),NULL);
+//        resultMO->name = "intResult";
+//        executeMakeSymbolic(*GlobalExecutionStatePtr, resultMO, "intResultMO");
+//        const ObjectState * constIntResultOS = GlobalExecutionStatePtr->addressSpace.findObject(resultMO);
+//        ObjectState * intResultOS = GlobalExecutionStatePtr->addressSpace.getWriteable(resultMO,constIntResultOS);
+//        target_ctx_gregs_OS->write(REG_RAX * 8, intResultOS->read(0, Expr::Int32));
        
-     } else {
-       printf("ERROR: No native sha256_final implementation \n");
-       std::exit(EXIT_FAILURE);
-       //Todo: provide fast native sha256_final implementation
-       /*
-       int res = SHA256_Final(md, c);
-       ref<ConstantExpr> resExpr = ConstantExpr::create(res, Expr::Int32);
-       target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
-       */
-     }
+//      } else {
+//        printf("ERROR: No native sha256_final implementation \n");
+//        std::exit(EXIT_FAILURE);
+//        //Todo: provide fast native sha256_final implementation
+//        /*
+//        int res = SHA256_Final(md, c);
+//        ref<ConstantExpr> resExpr = ConstantExpr::create(res, Expr::Int32);
+//        target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+//        */
+//      }
 
-      //increment pc and get back to execution.
-     target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_RIP] +5;
-     printf("INTERPRETER: Exiting model_SHA256_Final \n"); 
+//       //increment pc and get back to execution.
+//      target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_RIP] +5;
+//      printf("INTERPRETER: Exiting model_SHA256_Final \n"); 
      
-   } else {
-     printf("ERROR: symbolic arg passed to model_SHA256_Final \n");
-    std::exit(EXIT_FAILURE);
-   }
-}
+//    } else {
+//      printf("ERROR: symbolic arg passed to model_SHA256_Final \n");
+//     std::exit(EXIT_FAILURE);
+//    }
+// }
 
 
-//Model for int EC_KEY_generate_key(EC_KEY *key)
-// from crypto/ec/ec.h
+// //Model for int EC_KEY_generate_key(EC_KEY *key)
+// // from crypto/ec/ec.h
 
-//This is a little different because we have to reach into the struct
-//and make its fields symbolic.
-//Point of this function is to produce ephemeral key pair for Elliptic curve diffie hellman
-//key exchange and evenutally premaster secret generation during the handshake.
+// //This is a little different because we have to reach into the struct
+// //and make its fields symbolic.
+// //Point of this function is to produce ephemeral key pair for Elliptic curve diffie hellman
+// //key exchange and evenutally premaster secret generation during the handshake.
 
-//EC_KEY struct has a private key k, which is a number between 1 and the size of the Elliptic curve subgroup
-//generated by base point G.
-//Public key is kG for the base point G.
-//So k is an integer, and kG is a point (three coordinates in jacobian projection or two in affine projection)
-//on the curve produced by "adding" G to itself k times.
-void Executor::model_EC_KEY_generate_key () {
+// //EC_KEY struct has a private key k, which is a number between 1 and the size of the Elliptic curve subgroup
+// //generated by base point G.
+// //Public key is kG for the base point G.
+// //So k is an integer, and kG is a point (three coordinates in jacobian projection or two in affine projection)
+// //on the curve produced by "adding" G to itself k times.
+// void Executor::model_EC_KEY_generate_key () {
 
-  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //EC_KEY * key
+//   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //EC_KEY * key
 
-   if (  (isa<ConstantExpr>(arg1Expr)) ) {
+//    if (  (isa<ConstantExpr>(arg1Expr)) ) {
 
-     bool hasSymbolicInput = false;
+//      bool hasSymbolicInput = false;
      
-     EC_KEY * eckey = (EC_KEY *) target_ctx_gregs[REG_RDI];
-     for (uint64_t i = 0; i < sizeof(EC_KEY) ; i++) {
-       ref<Expr> keyByteExpr = tase_helper_read( ((uint64_t) eckey) +i, Expr::Int8);
-       if (!isa<ConstantExpr>(keyByteExpr)) {
-	 hasSymbolicInput = true;
-       }
-     }
+//      EC_KEY * eckey = (EC_KEY *) target_ctx_gregs[REG_RDI];
+//      for (uint64_t i = 0; i < sizeof(EC_KEY) ; i++) {
+//        ref<Expr> keyByteExpr = tase_helper_read( ((uint64_t) eckey) +i, Expr::Int8);
+//        if (!isa<ConstantExpr>(keyByteExpr)) {
+// 	 hasSymbolicInput = true;
+//        }
+//      }
  
-     if (hasSymbolicInput) {
-       printf("ERROR: Symbolic EC_KEY detected in model_EC_KEY_generate_key \n");
-       std::exit(EXIT_FAILURE);
-     } //At this point, all structs in ec_key must be concrete
+//      if (hasSymbolicInput) {
+//        printf("ERROR: Symbolic EC_KEY detected in model_EC_KEY_generate_key \n");
+//        std::exit(EXIT_FAILURE);
+//      } //At this point, all structs in ec_key must be concrete
      
-     //private key is a "BIGNUM" struct in openssl.
-     BIGNUM * priv_key = eckey->priv_key;
+//      //private key is a "BIGNUM" struct in openssl.
+//      BIGNUM * priv_key = eckey->priv_key;
 
-     //Check to see if priv_key struct is initialized; if not, init it and populate later.
-     printf("ERROR: No bn_new implementation provided \n");
-     std::exit(EXIT_FAILURE);
-     //Todo: Provide BN_new implementation
-     if(priv_key == NULL)
-       priv_key = BN_new();
+//      //Check to see if priv_key struct is initialized; if not, init it and populate later.
+//      printf("ERROR: No bn_new implementation provided \n");
+//      std::exit(EXIT_FAILURE);
+//      //Todo: Provide BN_new implementation
+//      if(priv_key == NULL)
+//        priv_key = BN_new();
 
-     //Check to see if pub_key struct is initialized; if not, init it and populate later.
-     EC_POINT * pub_key = eckey->pub_key;
-     printf("ERROR: No implementaiton available for EC_POINT_new \n");
-     std::exit(EXIT_FAILURE);
-     //Todo: link in ec_point_new implementation/
-     /*
-     if (pub_key == NULL)
-       pub_key = EC_POINT_new(eckey->group);
-     */
-     //BIGNUM struct can be different sizes, so deal with the mess in make_BN_symbolic.
-     make_BN_symbolic(priv_key);
+//      //Check to see if pub_key struct is initialized; if not, init it and populate later.
+//      EC_POINT * pub_key = eckey->pub_key;
+//      printf("ERROR: No implementaiton available for EC_POINT_new \n");
+//      std::exit(EXIT_FAILURE);
+//      //Todo: link in ec_point_new implementation/
+//      /*
+//      if (pub_key == NULL)
+//        pub_key = EC_POINT_new(eckey->group);
+//      */
+//      //BIGNUM struct can be different sizes, so deal with the mess in make_BN_symbolic.
+//      make_BN_symbolic(priv_key);
 
-     //Need to make sure pub key contains concrete pointers to x, y, z bignums that represent a point.
-     bool ecPtHasSymbolicData = false;
-     for (uint64_t i = 0; i < sizeof(EC_POINT) ; i++) {
-       ref<Expr> ecPtByteExpr = tase_helper_read((uint64_t) pub_key + i, Expr::Int8);
-       if (!isa<ConstantExpr>(ecPtByteExpr))
-	 ecPtHasSymbolicData = true;
-     }
-     if ( ecPtHasSymbolicData) {
-       printf("ERROR: Symbolic data detected too early in ec_point while modeling EC_KEY_generate_key \n");
-       std::exit(EXIT_FAILURE);
-     }
+//      //Need to make sure pub key contains concrete pointers to x, y, z bignums that represent a point.
+//      bool ecPtHasSymbolicData = false;
+//      for (uint64_t i = 0; i < sizeof(EC_POINT) ; i++) {
+//        ref<Expr> ecPtByteExpr = tase_helper_read((uint64_t) pub_key + i, Expr::Int8);
+//        if (!isa<ConstantExpr>(ecPtByteExpr))
+// 	 ecPtHasSymbolicData = true;
+//      }
+//      if ( ecPtHasSymbolicData) {
+//        printf("ERROR: Symbolic data detected too early in ec_point while modeling EC_KEY_generate_key \n");
+//        std::exit(EXIT_FAILURE);
+//      }
 
-     make_BN_symbolic(&(pub_key->X));
-     make_BN_symbolic(&(pub_key->Y));
-     make_BN_symbolic(&(pub_key->Z));
+//      make_BN_symbolic(&(pub_key->X));
+//      make_BN_symbolic(&(pub_key->Y));
+//      make_BN_symbolic(&(pub_key->Z));
 
-     //Always model the return as a success.  We can generalize this later if we want.
-     ref<ConstantExpr> zeroResultExpr = ConstantExpr::create(0, Expr::Int32);
-     target_ctx_gregs_OS->write(REG_RAX * 8, zeroResultExpr);
+//      //Always model the return as a success.  We can generalize this later if we want.
+//      ref<ConstantExpr> zeroResultExpr = ConstantExpr::create(0, Expr::Int32);
+//      target_ctx_gregs_OS->write(REG_RAX * 8, zeroResultExpr);
 
-     //Bump RIP and get back to execution
-     target_ctx_gregs[REG_RAX] += 5;
+//      //Bump RIP and get back to execution
+//      target_ctx_gregs[REG_RAX] += 5;
      
-   } else {
-      printf("ERROR: symbolic arg passed to model_EC_KEY_generate_key \n");
-      std::exit(EXIT_FAILURE);
-   }
-}
+//    } else {
+//       printf("ERROR: symbolic arg passed to model_EC_KEY_generate_key \n");
+//       std::exit(EXIT_FAILURE);
+//    }
+// }
 
-//model for 
-//int ecdh_compute_key(void *out, size_t outlen, const EC_POINT *pub_key,
-//EC_KEY *ecdh,
-//void *(*KDF)(const void *in, size_t inlen, void *out, size_t *outlen))
-//from crypto/ecdh/ech_ossl.c
+// //model for 
+// //int ecdh_compute_key(void *out, size_t outlen, const EC_POINT *pub_key,
+// //EC_KEY *ecdh,
+// //void *(*KDF)(const void *in, size_t inlen, void *out, size_t *outlen))
+// //from crypto/ecdh/ech_ossl.c
 
-//Todo: Double check that model for ABI is accurate since 5 args are passed.
+// //Todo: Double check that model for ABI is accurate since 5 args are passed.
 
-//Point of the method is to compute shared premaster secret from private key in eckey and pubkey pub_key.
-//Todo -- determine if we ever need to actually call this with concrete values during verification since
-//we never get access to the client's private key in eckey.
-void Executor::model_ECDH_compute_key() {
-  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
-  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
-  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
-  ref<Expr> arg4Expr = target_ctx_gregs_OS->read(REG_RCX * 8, Expr::Int64);
-  ref<Expr> arg5Expr = target_ctx_gregs_OS->read(REG_R8 * 8, Expr::Int64);
+// //Point of the method is to compute shared premaster secret from private key in eckey and pubkey pub_key.
+// //Todo -- determine if we ever need to actually call this with concrete values during verification since
+// //we never get access to the client's private key in eckey.
+// void Executor::model_ECDH_compute_key() {
+//   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+//   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+//   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
+//   ref<Expr> arg4Expr = target_ctx_gregs_OS->read(REG_RCX * 8, Expr::Int64);
+//   ref<Expr> arg5Expr = target_ctx_gregs_OS->read(REG_R8 * 8, Expr::Int64);
 
-  if (  (isa<ConstantExpr>(arg1Expr)) &&
-	(isa<ConstantExpr>(arg2Expr)) &&
-	(isa<ConstantExpr>(arg3Expr)) &&
-	(isa<ConstantExpr>(arg4Expr)) &&
-	(isa<ConstantExpr>(arg5Expr))
-	) {
+//   if (  (isa<ConstantExpr>(arg1Expr)) &&
+// 	(isa<ConstantExpr>(arg2Expr)) &&
+// 	(isa<ConstantExpr>(arg3Expr)) &&
+// 	(isa<ConstantExpr>(arg4Expr)) &&
+// 	(isa<ConstantExpr>(arg5Expr))
+// 	) {
 
-    void * out = (void *) target_ctx_gregs[REG_RDI];
-    size_t outlen = (size_t) target_ctx_gregs[REG_RSI];
+//     void * out = (void *) target_ctx_gregs[REG_RDI];
+//     size_t outlen = (size_t) target_ctx_gregs[REG_RSI];
     
-    tase_make_symbolic( (uint64_t) out, outlen, "ecdh_compute_key_output");
+//     tase_make_symbolic( (uint64_t) out, outlen, "ecdh_compute_key_output");
 
-    //return value is outlen
-    //Todo -- determine if we really need to make the return value exactly size_t
-    ref<ConstantExpr> returnVal = ConstantExpr::create(outlen, Expr::Int64);
-    target_ctx_gregs_OS->write(REG_RAX * 8, returnVal);
+//     //return value is outlen
+//     //Todo -- determine if we really need to make the return value exactly size_t
+//     ref<ConstantExpr> returnVal = ConstantExpr::create(outlen, Expr::Int64);
+//     target_ctx_gregs_OS->write(REG_RAX * 8, returnVal);
 
-    //bump rip and return to execution
-    target_ctx_gregs[REG_RAX] += 5;
+//     //bump rip and return to execution
+//     target_ctx_gregs[REG_RAX] += 5;
     
-  } else {
-    printf("ERROR: model_ECDH_compute_key called with symbolic input args\n");
-    std::exit(EXIT_FAILURE);
-  }
-}
+//   } else {
+//     printf("ERROR: model_ECDH_compute_key called with symbolic input args\n");
+//     std::exit(EXIT_FAILURE);
+//   }
+// }
 
-//model for size_t EC_POINT_point2oct(const EC_GROUP *group, const EC_POINT *point, point_conversion_form_t form,
-//        unsigned char *buf, size_t len, BN_CTX *ctx)
-//Function defined in crypto/ec/ec_oct.c
+// //model for size_t EC_POINT_point2oct(const EC_GROUP *group, const EC_POINT *point, point_conversion_form_t form,
+// //        unsigned char *buf, size_t len, BN_CTX *ctx)
+// //Function defined in crypto/ec/ec_oct.c
 
-//Todo: Double check this to see if we actually need to peek further into structs to see if they have symbolic
-//taint
-//The purpose of this function is to convert from an EC_POINT representation to an octet string encoding in buf.
-void Executor::model_EC_POINT_point2oct() {
-  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
-  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
-  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
-  ref<Expr> arg4Expr = target_ctx_gregs_OS->read(REG_RCX * 8, Expr::Int64);
-  ref<Expr> arg5Expr = target_ctx_gregs_OS->read(REG_R8 * 8, Expr::Int64);
-  ref<Expr> arg6Expr = target_ctx_gregs_OS->read(REG_R9 * 8, Expr::Int64);
+// //Todo: Double check this to see if we actually need to peek further into structs to see if they have symbolic
+// //taint
+// //The purpose of this function is to convert from an EC_POINT representation to an octet string encoding in buf.
+// void Executor::model_EC_POINT_point2oct() {
+//   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+//   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+//   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
+//   ref<Expr> arg4Expr = target_ctx_gregs_OS->read(REG_RCX * 8, Expr::Int64);
+//   ref<Expr> arg5Expr = target_ctx_gregs_OS->read(REG_R8 * 8, Expr::Int64);
+//   ref<Expr> arg6Expr = target_ctx_gregs_OS->read(REG_R9 * 8, Expr::Int64);
 
-  if (  (isa<ConstantExpr>(arg1Expr)) &&
-	(isa<ConstantExpr>(arg2Expr)) &&
-	(isa<ConstantExpr>(arg3Expr)) &&
-	(isa<ConstantExpr>(arg4Expr)) &&
-	(isa<ConstantExpr>(arg5Expr)) &&
-	(isa<ConstantExpr>(arg6Expr))
-	) {
+//   if (  (isa<ConstantExpr>(arg1Expr)) &&
+// 	(isa<ConstantExpr>(arg2Expr)) &&
+// 	(isa<ConstantExpr>(arg3Expr)) &&
+// 	(isa<ConstantExpr>(arg4Expr)) &&
+// 	(isa<ConstantExpr>(arg5Expr)) &&
+// 	(isa<ConstantExpr>(arg6Expr))
+// 	) {
 
-    const EC_GROUP * group = (const EC_GROUP *) target_ctx_gregs[REG_RDI];
-    const EC_POINT * point = (const EC_POINT *) target_ctx_gregs[REG_RSI];
-    point_conversion_form_t form = (point_conversion_form_t) target_ctx_gregs[REG_RDX];
-    unsigned char * buf = (unsigned char * ) target_ctx_gregs[REG_RCX];
-    size_t len = (size_t) target_ctx_gregs[REG_R8];
-    BN_CTX * ctx = (BN_CTX *) target_ctx_gregs[REG_R9];
+//     const EC_GROUP * group = (const EC_GROUP *) target_ctx_gregs[REG_RDI];
+//     const EC_POINT * point = (const EC_POINT *) target_ctx_gregs[REG_RSI];
+//     point_conversion_form_t form = (point_conversion_form_t) target_ctx_gregs[REG_RDX];
+//     unsigned char * buf = (unsigned char * ) target_ctx_gregs[REG_RCX];
+//     size_t len = (size_t) target_ctx_gregs[REG_R8];
+//     BN_CTX * ctx = (BN_CTX *) target_ctx_gregs[REG_R9];
 
-    bool ecGrpHasSymbolicInput = false;
-    for (uint64_t i = 0 ; i < sizeof(EC_GROUP); i++) {
-      ref<Expr> ecGrpByteExpr = tase_helper_read(((uint64_t) group) + i, Expr::Int8);
-      if (!isa<ConstantExpr>(ecGrpByteExpr))
-	  ecGrpHasSymbolicInput = true;
-    }
-    if (ecGrpHasSymbolicInput) {
-      printf("ERROR: model_EC_POINT_point2oct has symbolic group information \n");
-      std::exit(EXIT_FAILURE);
-    }
-    //Todo -- make sure this executes with transactions, or manually chase pointers to make sure there's no symbolic dependency.
-    //Todo: Link in definition for BN_num_bytes
-    printf("ERROR: Need definition for BN_num_bytes \n");
-    std::exit(EXIT_FAILURE);
-    size_t field_len = 0;
+//     bool ecGrpHasSymbolicInput = false;
+//     for (uint64_t i = 0 ; i < sizeof(EC_GROUP); i++) {
+//       ref<Expr> ecGrpByteExpr = tase_helper_read(((uint64_t) group) + i, Expr::Int8);
+//       if (!isa<ConstantExpr>(ecGrpByteExpr))
+// 	  ecGrpHasSymbolicInput = true;
+//     }
+//     if (ecGrpHasSymbolicInput) {
+//       printf("ERROR: model_EC_POINT_point2oct has symbolic group information \n");
+//       std::exit(EXIT_FAILURE);
+//     }
+//     //Todo -- make sure this executes with transactions, or manually chase pointers to make sure there's no symbolic dependency.
+//     //Todo: Link in definition for BN_num_bytes
+//     printf("ERROR: Need definition for BN_num_bytes \n");
+//     std::exit(EXIT_FAILURE);
+//     size_t field_len = 0;
     
-    /*
-    size_t field_len = BN_num_bytes(&group->field); 
-    */
-    size_t ret = (form == POINT_CONVERSION_COMPRESSED) ? 1 + field_len : 1 + 2*field_len;
+//     /*
+//     size_t field_len = BN_num_bytes(&group->field); 
+//     */
+//     size_t ret = (form == POINT_CONVERSION_COMPRESSED) ? 1 + field_len : 1 + 2*field_len;
 
-    //If EC_POINT point has symbolic components, make the output buffer entirely symbolic
-    bool hasSymbolicPoint = false;
-    for (uint64_t i = 0; i < sizeof(EC_POINT); i++ ) {
-      ref<Expr> ecPtByteExpr = tase_helper_read( ((uint64_t) point) +i, Expr::Int8);
-      if (!isa<ConstantExpr>(ecPtByteExpr))
-	hasSymbolicPoint = true;
-    }
+//     //If EC_POINT point has symbolic components, make the output buffer entirely symbolic
+//     bool hasSymbolicPoint = false;
+//     for (uint64_t i = 0; i < sizeof(EC_POINT); i++ ) {
+//       ref<Expr> ecPtByteExpr = tase_helper_read( ((uint64_t) point) +i, Expr::Int8);
+//       if (!isa<ConstantExpr>(ecPtByteExpr))
+// 	hasSymbolicPoint = true;
+//     }
 
-    if (hasSymbolicPoint) {
-      tase_make_symbolic((uint64_t) buf,ret, "ECpoint2Oct");
-      //Todo: determine if we need to return a different width specific to size_t
-      ref<ConstantExpr> returnValExpr = ConstantExpr::create(ret, Expr::Int64);
-      target_ctx_gregs_OS->write(REG_RAX * 8, returnValExpr);
-    } else {
+//     if (hasSymbolicPoint) {
+//       tase_make_symbolic((uint64_t) buf,ret, "ECpoint2Oct");
+//       //Todo: determine if we need to return a different width specific to size_t
+//       ref<ConstantExpr> returnValExpr = ConstantExpr::create(ret, Expr::Int64);
+//       target_ctx_gregs_OS->write(REG_RAX * 8, returnValExpr);
+//     } else {
 
-      printf("ERROR: No native implementation available for EC_POINT_point2oct \n");
-      std::exit(EXIT_FAILURE);
-      //todo -- fill this out later.
-      /*
-      size_t returnVal = EC_POINT_point2oct(group, point, form, buf, len, ctx);
-      //Todo: determine if we need to return a different width specific to size_t
-      ref<ConstantExpr> returnValExpr = ConstantExpr::create(returnVal, Expr::Int64);
-      target_ctx_gregs_OS->write(REG_RAX * 8, returnValExpr);
-      */
-    }
+//       printf("ERROR: No native implementation available for EC_POINT_point2oct \n");
+//       std::exit(EXIT_FAILURE);
+//       //todo -- fill this out later.
+//       /*
+//       size_t returnVal = EC_POINT_point2oct(group, point, form, buf, len, ctx);
+//       //Todo: determine if we need to return a different width specific to size_t
+//       ref<ConstantExpr> returnValExpr = ConstantExpr::create(returnVal, Expr::Int64);
+//       target_ctx_gregs_OS->write(REG_RAX * 8, returnValExpr);
+//       */
+//     }
 
-    //bump rip and get back to execution
-    target_ctx_gregs[REG_RIP] += 5;
+//     //bump rip and get back to execution
+//     target_ctx_gregs[REG_RIP] += 5;
     
-  } else {
-    printf("ERROR: model_EC_POINT_point2oct called with symbolic input \n");
-    std::exit(EXIT_FAILURE);
-  }
-}
+//   } else {
+//     printf("ERROR: model_EC_POINT_point2oct called with symbolic input \n");
+//     std::exit(EXIT_FAILURE);
+//   }
+// }
 
-//Pretty much syncs right up with cliver's make_BN_symbolic in runtime/openssl.c
-#define SYMBOLIC_BN_DMAX 64
+// //Pretty much syncs right up with cliver's make_BN_symbolic in runtime/openssl.c
+// #define SYMBOLIC_BN_DMAX 64
   
-void Executor::make_BN_symbolic(BIGNUM * bn) {
+// void Executor::make_BN_symbolic(BIGNUM * bn) {
 
-  //Make sure no fields of BIGNUM struct pointed to by bn are symbolic.
-  bool hasSymbolicInput = false;
-  for (int i = 0 ; i < sizeof(BIGNUM); i++ ) {
-    ref<Expr> bnByteExpr = tase_helper_read( ((uint64_t) bn) + i, Expr::Int8);
-    if (!isa<ConstantExpr>(bnByteExpr) )
-      hasSymbolicInput = true;
-  }
+//   //Make sure no fields of BIGNUM struct pointed to by bn are symbolic.
+//   bool hasSymbolicInput = false;
+//   for (int i = 0 ; i < sizeof(BIGNUM); i++ ) {
+//     ref<Expr> bnByteExpr = tase_helper_read( ((uint64_t) bn) + i, Expr::Int8);
+//     if (!isa<ConstantExpr>(bnByteExpr) )
+//       hasSymbolicInput = true;
+//   }
 
-  if (hasSymbolicInput) {
-    printf("ERROR: symbolic input passed to make_BN_symbolic\n");
-    std::exit(EXIT_FAILURE);
-  }
+//   if (hasSymbolicInput) {
+//     printf("ERROR: symbolic input passed to make_BN_symbolic\n");
+//     std::exit(EXIT_FAILURE);
+//   }
   
-  if (bn->dmax > 0 ) {
-    tase_make_symbolic((uint64_t) bn->d, (bn->dmax)*sizeof(bn->d[0]), "BNbuf");
-  } else {
-    bn->dmax = SYMBOLIC_BN_DMAX;
-    tase_make_symbolic((uint64_t) bn->d, (bn->dmax)*sizeof(bn->d[0]), "BNbuf");
-  }
+//   if (bn->dmax > 0 ) {
+//     tase_make_symbolic((uint64_t) bn->d, (bn->dmax)*sizeof(bn->d[0]), "BNbuf");
+//   } else {
+//     bn->dmax = SYMBOLIC_BN_DMAX;
+//     tase_make_symbolic((uint64_t) bn->d, (bn->dmax)*sizeof(bn->d[0]), "BNbuf");
+//   }
 
-  tase_make_symbolic( (uint64_t) &(bn->neg), sizeof(bn->neg), "BNSign"); //Should maybe add a constraint to make 0 or 1?
+//   tase_make_symbolic( (uint64_t) &(bn->neg), sizeof(bn->neg), "BNSign"); //Should maybe add a constraint to make 0 or 1?
   
-}
+// }
 
 //Reworked from cliver's CVExecutor.cpp.
 // Predict size of stdin read based on the size of the next
@@ -4190,53 +4328,54 @@ void Executor::make_BN_symbolic(BIGNUM * bn) {
 //         simply see the connection close.
 //
 // Any other situation terminates the state (stdin read disallowed).
-uint64_t Executor::tls_predict_stdin_size (int fd, uint64_t maxLen) {
 
-  const uint8_t TLS_ALERT = 21;
-  const uint8_t TLS_APPDATA = 23;
+// uint64_t Executor::tls_predict_stdin_size (int fd, uint64_t maxLen) {
 
-  uint64_t stdin_len;
+//   const uint8_t TLS_ALERT = 21;
+//   const uint8_t TLS_APPDATA = 23;
+
+//   uint64_t stdin_len;
     
-  if (fd != 0) {
-    printf("tls_predict_stdin_size() called with unknown fd %lu \n", fd);
-    std::exit(EXIT_FAILURE);
-  }
+//   if (fd != 0) {
+//     printf("tls_predict_stdin_size() called with unknown fd %lu \n", fd);
+//     std::exit(EXIT_FAILURE);
+//   }
 
-  KTestObject * kto = peekNextKTestObject();
-  //Todo: Figure out better way to handle case 3
+//   KTestObject * kto = peekNextKTestObject();
+//   //Todo: Figure out better way to handle case 3
   
-  if (kto == NULL) { //Case 3
+//   if (kto == NULL) { //Case 3
 
-    printf("Warning: no c2s record found in peekNextKTestObject()\n");
-    stdin_len = 0;
+//     printf("Warning: no c2s record found in peekNextKTestObject()\n");
+//     stdin_len = 0;
 
-  } else if (kto->name == "c2s" &&
-	     kto->bytes[0] == TLS_ALERT &&
-	     kto->numBytes == 31) { //Case 2
+//   } else if (kto->name == "c2s" &&
+// 	     kto->bytes[0] == TLS_ALERT &&
+// 	     kto->numBytes == 31) { //Case 2
     
-    stdin_len = 0;
+//     stdin_len = 0;
     
-  } else if (kto->name == "c2s" &&
-	     kto->bytes[0] == TLS_APPDATA &&
-	     kto->numBytes > 29) {//Case 1
+//   } else if (kto->name == "c2s" &&
+// 	     kto->bytes[0] == TLS_APPDATA &&
+// 	     kto->numBytes > 29) {//Case 1
     
-    stdin_len = kto->numBytes - 29;
+//     stdin_len = kto->numBytes - 29;
     
-  } else {
+//   } else {
 
-    printf("Error in tls_predict_stdin_size \n");
-    std::exit(EXIT_FAILURE);
+//     printf("Error in tls_predict_stdin_size \n");
+//     std::exit(EXIT_FAILURE);
     
-  }
+//   }
   
-  if ( stdin_len > maxLen) {
-    printf("ERROR: tls_predict_stdin_size returned value larger than maxLen \n");
-    std::exit(EXIT_FAILURE);
+//   if ( stdin_len > maxLen) {
+//     printf("ERROR: tls_predict_stdin_size returned value larger than maxLen \n");
+//     std::exit(EXIT_FAILURE);
 
-  }else {
-    return stdin_len;
-  }
-}
+//   }else {
+//     return stdin_len;
+//   }
+// }
 
 // Model for
 // int RAND_bytes(unsigned char *buf, int num)
@@ -4491,6 +4630,9 @@ void Executor::model_entertran() {
   //Jump to address in r15
   target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_R15];
 
+  //Save RAX just to be safe
+  target_ctx_gregs[REG_R14] = target_ctx_gregs[REG_RAX];
+  
   if (killFlagsOnSpringboard) {
     target_ctx_gregs_OS->write64(REG_EFL * 8, 0);
   }
@@ -4507,14 +4649,16 @@ void Executor::model_exittran() {
 }
 
 void Executor::model_reopentran() {
-  printf("Calling model_reopentran() \n ");
-  std::cout.flush();
+  //printf("Calling model_reopentran() \n ");
+  //std::cout.flush();
 //Movb 0x1 into springboard_flags -- todo: double check this later
   *((uint8_t *) &springboard_flags) = 1;
   //Set springboard flags to 1 to re open the tran
   //Jump to address in r15
   target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_R15];
  
+  //Hack
+  target_ctx_gregs[REG_R14] = target_ctx_gregs[REG_RAX];
   
   if (killFlagsOnSpringboard) {
     target_ctx_gregs_OS->write64(REG_EFL * 8, 0);
@@ -4543,11 +4687,6 @@ ref<Expr> Executor::tase_helper_read (uint64_t addr, uint8_t byteWidth) {
   //begin gross------------------
   ObjectPair op;
   bool success;
-  printf("Calling resolve one \n");
-  if (solver != NULL)
-    printf("Solver is not null \n");
-  std::cout.flush();
-
   
   if (!(GlobalExecutionStatePtr->addressSpace.resolveOne(*GlobalExecutionStatePtr,solver,addrExpr, op, success))) {
     printf("ERROR in tase_helper_read: Couldn't resolve addr to fixed value \n");
@@ -4659,6 +4798,27 @@ void Executor::model_taseMakeSymbolic() {
 }
 
 
+void Executor::model_tase_debug() {
+
+  char * str1 = (char *) target_ctx_gregs[REG_RDI];
+  char * str2 = (char *) target_ctx_gregs[REG_RSI];
+
+  fprintf(modelLog, "str 1 is %s \n", str1);
+  fprintf(modelLog, "str 2 is %s \n", str2);
+
+  for (int i = 0; i < 6; i++) {
+    fprintf(modelLog," byte %d is %d in buf1 \n", i, (int) str1[i]);
+    fprintf(modelLog," byte %d is %d in buf2 \n", i, (int) str2[i]);
+
+  }
+
+  fflush(modelLog);
+  
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+  target_ctx_gregs[REG_RIP] = retAddr;
+  target_ctx_gregs[REG_RSP] += 8;
+
+}
 
 //Look for a model for the current instruction at target_ctx_gregs[REG_RIP]
 //and call the model.
@@ -4666,7 +4826,6 @@ void Executor::model_inst () {
 
   if (taseDebug) {
     printf("INTERPRETER: FOUND SPECIAL MODELED INST \n");
-    std::cout.flush();
   }
   uint64_t rip = target_ctx_gregs[REG_RIP];
  
@@ -4710,33 +4869,129 @@ void Executor::model_inst () {
       //model_taseMakeSymbolic();
     } else if (dest == (uint64_t) &signal || directDest == (uint64_t) &signal) {
       model_signal();
-    }
-    /*
-    else if (dest == (uint64_t) &strcmp || directDest == (uint64_t) &strcmp) {
-      model_strcmp();
-    }
-    */
-    else if (dest == (uint64_t) &read) {
+    }  else if (dest == (uint64_t) &read) {
       model_read();
-      } else if (dest == (uint64_t) &write) {
+    } else if (dest == (uint64_t) &write) {
       printf("Modeling write \n");
-      std::cout.flush();
       model_write();
 
+    } else if (dest == (uint64_t) &socket) {
+      printf("Modeling socket call \n");
+      model_socket();
     } else if (dest == (uint64_t) & malloc || directDest == (uint64_t) &malloc) {
       printf("Modeling malloc \n");
-      std::cout.flush();
       model_malloc();
       
     } else if ( dest == (uint64_t) &target_exit) {
       printf("Found call to target_exit in interpreter \n");
-      std::cout.flush();
       target_exit();
     } else {
       printf("INTERPRETER: Couldn't find function model \n");
+      std::cout.flush();
       std::exit(EXIT_FAILURE);
     }
     return;
+  }else if (rip == (uint64_t) &free) {
+    printf("Modeling free \n");
+    model_free();
+  }else if (rip == (uint64_t) &realloc) {
+    printf("Modeling realloc \n");
+    model_realloc();
+  } else if (rip == (uint64_t) &__errno_location) {
+    model___errno_location();
+  } else if (rip == (uint64_t) &__ctype_b_loc) {
+    model___ctype_b_loc();
+  } else if (rip == (uint64_t) &__ctype_tolower_loc) {
+    model___ctype_tolower_loc();
+  } else if (rip == (uint64_t) &BIO_printf) {
+    model_BIO_printf();
+  } else if (rip == (uint64_t) &BIO_snprintf) {
+    model_BIO_snprintf(); 
+  } else if (rip == (uint64_t) &vfprintf) {
+    model_vfprintf();
+  } else if (rip == (uint64_t) &sprintf) {
+    model_sprintf();
+  } else if (rip == (uint64_t) &tase_debug) {
+    model_tase_debug();
+  } else if (rip == (uint64_t) &OpenSSLDie) {
+    model_OpenSSLDie();
+  } else if (rip == (uint64_t) &shutdown) {
+    model_shutdown();
+    
+  } else if (rip == (uint64_t) &memcpy) { 
+    model_memcpy(); //Last 6 bytes of a buffer could be read
+    //with an 8 byte read, which klee doesn't like Todo: fix
+    
+  } else if (rip == (uint64_t) &time ) {
+    model_time();
+  } else if (rip == (uint64_t) &gmtime) {
+    model_gmtime();
+  }  else if (rip == (uint64_t) &stat) {
+    model_stat();
+  } else if (rip == (uint64_t) &fileno) {
+    model_fileno();
+  } else if (rip == (uint64_t) &fcntl ) {
+    model_fcntl();
+  } else if (rip == (uint64_t) &fopen) {
+    model_fopen();
+  } else if (rip == (uint64_t) &fclose) {
+    model_fclose();
+  } else if (rip == (uint64_t) &fopen64) {
+    model_fopen64();
+  } else if (rip == (uint64_t) &fread) {
+    model_fread();
+  } else if (rip == (uint64_t) &fwrite) {
+    model_fwrite();
+  } else if (rip == (uint64_t) &fgets) {
+    model_fgets();
+  } else if (rip == (uint64_t) &fflush) {
+    model_fflush();
+  } else if (rip == (uint64_t) &__isoc99_sscanf) {
+    model___isoc99_sscanf();
+  } else if (rip == (uint64_t) &gethostbyname) {
+    model_gethostbyname();
+  } else if (rip == (uint64_t) &ktest_master_secret) {
+    fprintf(modelLog, "Entering ktest_master_secret model \n");
+    fflush(modelLog);
+    model_ktest_master_secret();
+  } else if (rip == (uint64_t)  &ktest_writesocket) {
+    model_ktest_writesocket();
+  } else if (rip == (uint64_t) &ktest_readsocket) {
+    model_ktest_readsocket();
+  } else if (rip == (uint64_t) &ktest_raw_read_stdin) {
+    model_ktest_raw_read_stdin();
+  } else if (rip == (uint64_t) &ktest_connect) {
+    model_ktest_connect();
+  } else if (rip == (uint64_t) &ktest_select) {
+    model_ktest_select();
+  } else if (rip == (uint64_t) &ktest_RAND_bytes) {
+    model_ktest_RAND_bytes();
+  } else if (rip == (uint64_t) &ktest_RAND_pseudo_bytes) {
+    model_ktest_RAND_pseudo_bytes();
+  } else if (rip == (uint64_t) &gettimeofday)  {
+    model_gettimeofday();
+  } else if (rip == (uint64_t) &getuid) {
+    model_getuid();
+  } else if (rip == (uint64_t) &geteuid) {
+    model_geteuid();
+  } else if (rip == (uint64_t) &getgid) {
+    model_getgid();
+  } else if (rip == (uint64_t) &getegid) {
+    model_getegid();
+  }  else if (rip == (uint64_t) &getenv) {
+    model_getenv();
+  } else if (rip == (uint64_t) &socket) {
+    model_socket();
+  } else if (rip == (uint64_t) &setsockopt) {
+    model_setsockopt();
+  } else if (rip == (uint64_t) &RAND_add) {
+    model_RAND_add();
+  } else if (rip == (uint64_t) &RAND_load_file ) {
+    model_RAND_load_file();
+  } /* else if (rip == (uint64_t) &htonl) {
+    model_htonl();
+    } */ else if (rip == (uint64_t) &ktest_start) {
+    model_ktest_start();
   }else if (rip == (uint64_t) &sb_entertran) {
     model_entertran();
   }else if (rip == (uint64_t) &sb_exittran) {
@@ -4753,6 +5008,7 @@ void Executor::model_inst () {
     target_exit();
   }else {
     printf("INTERPRETER: Couldn't find  model \n");
+    std::cout.flush();
     std::exit(EXIT_FAILURE);
   }
   return;
@@ -4855,7 +5111,7 @@ uint64_t getCallDest (uint64_t  rip) {
     return 0;
   }
 
-  printf("base is 0x%llx \n", base);
+  printf("base is 0x%lx \n", base);
   printf("offset is 0x%lx \n", offset);
   printf("deref is %d \n", deref);
   
@@ -4873,19 +5129,123 @@ uint64_t getCallDest (uint64_t  rip) {
   
 }
 
+//Todo -- Fix the bug in strlcpy and remove this trapping mechanism
+size_t internal_strlcpy(char *dst, const char *src, size_t size)
+
+{
+  size_t l = 0;
+
+  for(; size > 1 && *src; size--)
+    {
+      *dst++ = *src++;
+      l++;
+    }
+  if (size)
+    *dst = '\0';
+  return l + strlen(src);
+}
+
+/*
+void Executor::model_strlcpy () {
+
+     ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); 
+     ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); 
+     ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64); 
+
+     if (  (isa<ConstantExpr>(arg1Expr)) &&
+        (isa<ConstantExpr>(arg2Expr)) &&
+        (isa<ConstantExpr>(arg3Expr))
+        ) {
+
+       printf("Intercepting strlcpy call \n");
+       
+       char * dst = (char *) target_ctx_gregs[REG_RDI];
+       char * src = (char *) target_ctx_gregs[REG_RSI];
+       size_t size = (size_t) target_ctx_gregs[REG_RDX];
+
+       size_t res = internal_strlcpy(dst,src,size);
+       target_ctx_gregs[REG_RAX] = res;
+
+       //Fake ret
+       uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+       target_ctx_gregs[REG_RIP] = retAddr;
+       target_ctx_gregs[REG_RSP] += 8;
+
+     } else {
+       printf("ERROR: sym args passed to model_strlcpy \n");
+       std::cout.flush();
+       std::exit(EXIT_FAILURE);
+     }
+     }*/
+
+void Executor::model_OpenSSLDie() {
+
+  printf("OpenSSLDie called -- args are \n");
+  std::cout.flush();
+  printf("%s \n", (char *)target_ctx_gregs[REG_RDI]);
+  printf("%d \n", (int) target_ctx_gregs[REG_RSI]);
+  printf("%s \n", (char *) target_ctx_gregs[REG_RDX]);
+
+  std::cout.flush();
+  std::exit(EXIT_FAILURE);
+  
+
+}
+
+//int RAND_load_file(const char *filename, long max_bytes);
+void Executor::model_RAND_load_file() {
+  printf("Entering model_RAND_load_file \n");
+  std::cout.flush();
+
+  //Perform the call
+  //int res = RAND_load_file((char *) target_ctx_gregs[REG_RDI], (long) target_ctx_gregs[REG_RSI]);
+  int res = 1024;
+  ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+  target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+  
+  //Fake a ret
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+  target_ctx_gregs[REG_RIP] = retAddr;
+  target_ctx_gregs[REG_RSP] += 8;
+  printf("Exiting model_RAND_load_file \n");
+  std::cout.flush();
+
+}
+
+void Executor::model_RAND_add() {
+
+  printf("Entering model_RAND_add \n");
+  std::cout.flush();
+  //RAND_add((void *) target_ctx_gregs[REG_RDI], (int) target_ctx_gregs[REG_RSI], 0);
+
+  //fake a ret
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
+  target_ctx_gregs[REG_RIP] = retAddr;
+  target_ctx_gregs[REG_RSP] += 8;
+
+
+}
+
 
 bool isSpecialInst (uint64_t rip) {
 
-  static const uint64_t modeledFns [] = {(uint64_t)&signal, (uint64_t)&malloc, (uint64_t)&read, (uint64_t)&write, (uint64_t)&connect, (uint64_t)&select, (uint64_t)&socket};
+  //Todo -- get rid of traps for RAND_add and RAND_load_file
+  //Also, remove traps for htonl, memcpy
+  
+  static const uint64_t modeledFns [] = {(uint64_t)&signal, (uint64_t)&malloc, (uint64_t)&read, (uint64_t)&write, (uint64_t)&connect, (uint64_t)&select, (uint64_t)&socket, (uint64_t) &getuid, (uint64_t) &geteuid, (uint64_t) &getgid, (uint64_t) &getegid, (uint64_t) &getenv, (uint64_t) &stat, (uint64_t) &free, (uint64_t) &realloc,  (uint64_t) &RAND_add, (uint64_t) &RAND_load_file, (uint64_t) &kTest_free, (uint64_t) &kTest_fromFile, (uint64_t) &kTest_getCurrentVersion, (uint64_t) &kTest_isKTestFile, (uint64_t) &kTest_numBytes, (uint64_t) &kTest_toFile, (uint64_t) &ktest_RAND_bytes, (uint64_t) &ktest_RAND_pseudo_bytes, (uint64_t) &ktest_connect, (uint64_t) &ktest_finish, (uint64_t) &ktest_master_secret, (uint64_t) &ktest_raw_read_stdin, (uint64_t) &ktest_readsocket, (uint64_t) &ktest_select, (uint64_t) &ktest_start, (uint64_t) &ktest_time, (uint64_t) &time, (uint64_t) &gmtime, (uint64_t) &gettimeofday, (uint64_t) &ktest_writesocket, (uint64_t) &fileno, (uint64_t) &fcntl, (uint64_t) &fopen, (uint64_t) &fopen64, (uint64_t) &fclose,  (uint64_t) &fwrite, (uint64_t) &fflush, (uint64_t) &fread, (uint64_t) &fgets, (uint64_t) &__isoc99_sscanf, (uint64_t) &gethostbyname, (uint64_t) &setsockopt, (uint64_t) &__ctype_tolower_loc, (uint64_t) &__ctype_b_loc, (uint64_t) &__errno_location, /* (uint64_t) &htonl, */ (uint64_t) &BIO_printf, (uint64_t) &BIO_snprintf, (uint64_t) &vfprintf, /* (uint64_t) &memcpy, */ (uint64_t) &sprintf, (uint64_t) &tase_debug,   (uint64_t) &OpenSSLDie, (uint64_t) &shutdown};
 
-  printf("Guess at call dest is 0x%llx \n", getCallDest(rip));
+  //printf("Guess at call dest is 0x%lx \n", getCallDest(rip));
   
   uint8_t callqOpc = 0xe8;
   uint16_t callInd2Opc = 0x15ff;
   uint8_t * oneBytePtr = (uint8_t *) rip;
   uint8_t firstByte = *oneBytePtr;
   uint16_t firstTwoBytes = *( (uint16_t *) oneBytePtr);
-	 
+
+  bool isModeled = std::find(std::begin(modeledFns), std::end(modeledFns), rip) != std::end(modeledFns);
+
+  //printf("isModeled is %d \n", isModeled);
+  
   if (firstByte == callqOpc || firstTwoBytes == callInd2Opc)  {
     
     uint64_t dest;
@@ -4914,16 +5274,16 @@ bool isSpecialInst (uint64_t rip) {
       std::exit(EXIT_FAILURE);
     } 
      
-     bool isModeled = std::find(std::begin(modeledFns), std::end(modeledFns), (uint64_t) dest) != std::end(modeledFns);
-     printf("isModeled is %d \n", isModeled);
+     
+    //printf("isModeled is %d \n", isModeled);
      //Checks are here to see if the dest is a function we model.
-     if (dest == (uint64_t) &sb_enter_modeled || dest == (uint64_t) &target_exit || dest == (uint64_t) &read || dest == (uint64_t) &write || dest == (uint64_t) &malloc || isModeled )  {
+     if (dest == (uint64_t) &sb_enter_modeled || dest == (uint64_t) &target_exit || dest == (uint64_t) &read || dest == (uint64_t) &write || dest == (uint64_t) &malloc )  {
        return true;
      } else {
        return false;
      }
 
-  } else if ((uint64_t)rip == (uint64_t) &sb_entertran || (uint64_t)rip == (uint64_t) &sb_reopen || (uint64_t)rip == (uint64_t) &sb_exittran  || (uint64_t) rip == (uint64_t) &target_exit ) {
+  } else if ((uint64_t)rip == (uint64_t) &sb_entertran || (uint64_t)rip == (uint64_t) &sb_reopen || (uint64_t)rip == (uint64_t) &sb_exittran  || (uint64_t) rip == (uint64_t) &target_exit || isModeled ) {
     return true;
   }  else {
     return false;
@@ -4951,7 +5311,7 @@ void Executor::printDebugInterpHeader() {
   printf("Initial ctx BEFORE interpretation is \n");
   printCtx(target_ctx_gregs);
   printf("\n");
-  std::cout.flush();
+  
 }
 
 void Executor::printDebugInterpFooter() {
@@ -4959,16 +5319,42 @@ void Executor::printDebugInterpFooter() {
   printf("Executor has %d states \n", this->states.size() );
   printf("Finished round %d of interpretation. \n", interpCtr);
   printf("-------------------------------------------\n");
-  std::cout.flush();
+
 }
 
 void Executor::klee_interp_internal () {
   
   while (true) {
+    
     if (taseDebug)
       printDebugInterpHeader();
     
+    
     uint64_t rip = target_ctx_gregs[REG_RIP];
+    
+    if (interpCtr > 1000000000) {
+      printf("Huge interpCtr, exiting with RIP 0x%lx \n", rip);
+      std::cout.flush();
+      std::exit(EXIT_FAILURE);
+    }
+    
+    if (rip == (uint64_t) &ERR_lib_error_string) {
+      const char * libString = ERR_lib_error_string( (unsigned long) target_ctx_gregs[REG_RDI]);
+      fprintf(modelLog, "ERR libString is %s \n", libString);
+      fflush(modelLog);
+    }
+
+    if (rip == (uint64_t) &ERR_func_error_string) {
+      const char * funcString = ERR_func_error_string( (unsigned long) target_ctx_gregs[REG_RDI]);
+      fprintf(modelLog, "ERR libFunc is %s \n", funcString);
+      fflush(modelLog);
+    }
+
+    if (rip == (uint64_t) &ERR_reason_error_string) {
+      const char * reasonString = ERR_reason_error_string( (unsigned long) target_ctx_gregs[REG_RDI]);
+      fprintf(modelLog, "ERR reason err string is %s \n", reasonString);
+      fflush(modelLog);
+    }
     
     deadRegisterFlush();
     
@@ -5014,8 +5400,8 @@ void Executor::klee_interp_internal () {
       std::exit(EXIT_FAILURE);
     }
 
-    if (taseDebug) 
-      printDebugInterpFooter();
+    //if (taseDebug) 
+      // printDebugInterpFooter();
   }
 
   if (taseDebug) {
@@ -5165,24 +5551,51 @@ void Executor::initializeInterpretationStructures (Function *f) {
   //Todo -- find a less hacky way of getting the exact size of the .rodata section
 
   void * rodataBasePtr = (void *) (&_IO_stdin_used);
-  uint64_t rodataSize = (uint64_t) ((uint64_t) (&__GNU_EH_FRAME_HDR) - (uint64_t) (&_IO_stdin_used));
+  uint64_t rodataSize = (uint64_t) ((uint64_t) (&__GNU_EH_FRAME_HDR) - (uint64_t) (&_IO_stdin_used)) ;
+  printf("Estimated rodataSize as 0x%llx \n", rodataSize);
+
+  rodataSize += (0x2949c + 0x2949c); //Hack to map in eh_frame_hdr and eh_frame also
   
-  if (taseDebug) {
-    printf("Attempting to map in .rodata section at base 0x%llx with size 0x%llx up to  0x%llx \n", (uint64_t) rodataBasePtr, rodataSize, (uint64_t) &__GNU_EH_FRAME_HDR);
-    std::cout.flush();
-  }
+  printf("Attempting to map in .rodata section at base 0x%llx with size 0x%llx up to  0x%llx \n", (uint64_t) rodataBasePtr, rodataSize, (uint64_t) &__GNU_EH_FRAME_HDR);
+  std::cout.flush();
     
   MemoryObject * rodataMO = addExternalObject(*GlobalExecutionStatePtr, rodataBasePtr, rodataSize, false);
   const ObjectState * rodataOSConst = GlobalExecutionStatePtr->addressSpace.findObject(rodataMO);
   ObjectState * rodataOS = GlobalExecutionStatePtr->addressSpace.getWriteable(rodataMO,rodataOSConst);
   rodataOS->concreteStore = (uint8_t *) rodataBasePtr;
-  
 
+  //Map in special stdin libc symbol
+  MemoryObject * stdinMO = addExternalObject(*GlobalExecutionStatePtr, (void *) &stdin, 8, false);
+  const ObjectState * stdinOSConst = GlobalExecutionStatePtr->addressSpace.findObject(stdinMO);
+  ObjectState * stdinOS = GlobalExecutionStatePtr->addressSpace.getWriteable(stdinMO,stdinOSConst);
+  stdinOS->concreteStore = (uint8_t *) &stdin;
+  
+  //Map in special stdout libc symbol
+  MemoryObject * stdoutMO = addExternalObject(*GlobalExecutionStatePtr, (void *) &stdout, 8, false);
+  const ObjectState * stdoutOSConst = GlobalExecutionStatePtr->addressSpace.findObject(stdoutMO);
+  ObjectState * stdoutOS = GlobalExecutionStatePtr->addressSpace.getWriteable(stdoutMO,stdoutOSConst);
+  stdoutOS->concreteStore = (uint8_t *) &stdout;
+  
+  //Map in special stderr libc symbol
+  MemoryObject * stderrMO = addExternalObject(*GlobalExecutionStatePtr, (void *) &stderr, 8, false);
+  const ObjectState * stderrOSConst = GlobalExecutionStatePtr->addressSpace.findObject(stderrMO);
+  ObjectState * stderrOS = GlobalExecutionStatePtr->addressSpace.getWriteable(stderrMO,stderrOSConst);
+  stderrOS->concreteStore = (uint8_t *) &stderr;
   
   //Map in initialized and uninitialized non-read only globals into klee from .vars file.
   std::string varsFileLocation = "/playpen/humphries/tase/TASE/test/" + project + ".vars";
   FILE * externalsFile = fopen (varsFileLocation.c_str(), "r+");
 
+  /*
+  uint64_t ctype_tolower_add = (uint64_t) &__ctype_tolower;
+  MemoryObject * ctypeToLowerAddMO = addExternalObject(*GlobalExecutionStatePtr, (void *) ctype_tolower_add, 8, false);
+  const ObjectState * ctypeToLowerAddOSConst = GlobalExecutionStatePtr->addressSpace.findObject(ctypeToLowerAddMO);
+  ObjectState * ctypeToLowerAddOS = GlobalExecutionStatePtr->addressSpace.getWriteable(ctypeToLowerAddMO, ctypeToLowerAddOSConst);
+  ctypeToLowerAddOS->concreteStore = (uint8_t *) ctype_tolower_add;
+  */
+
+  
+  
   if (externalsFile == NULL) {
     printf("Error reading externals file within initializeInterpretationStructures() \n");
     std::exit(EXIT_FAILURE);
@@ -5216,6 +5629,10 @@ void Executor::initializeInterpretationStructures (Function *f) {
     printf ("After parsing,  global addr is 0x%lx, ", addrVal);
     printf (" and sizeVal is 0x%lx \n", sizeVal);
 
+    if ((sizeVal %2) == 1) {
+      sizeVal = sizeVal + 1;
+      printf("rounding up sizeval to even number - %d \n",sizeVal);
+    }
 
     //Todo:  Get rid of the special cases below for target_ctx_gregs and basket.
     //The checks are there now to prevent us from creating two different MO/OS
@@ -5245,6 +5662,63 @@ void Executor::initializeInterpretationStructures (Function *f) {
     
   }
 
+  printf("Mapping in env vars \n");
+  std::cout.flush();
+
+
+  //Todo -- De-hackify this environ variable mapping
+  char ** environPtr = environ;
+  char * envStr = environ[0];
+  size_t len = 0;
+  char * latestEnvStr;
+  
+  while (envStr != NULL) {
+    
+    uint32_t size = strlen(envStr);
+    printf("Found env var at 0x%llx with size 0x%x \n", (uint64_t) envStr, size);
+
+    /*
+    if (size % 2 == 1)
+      size++;
+    if (size != 0) {
+      MemoryObject * envMO = addExternalObject(*GlobalExecutionStatePtr, (void *) envStr, size, false);
+      const ObjectState * envOSConst = GlobalExecutionStatePtr->addressSpace.findObject(envMO);
+      ObjectState *envOS = GlobalExecutionStatePtr->addressSpace.getWriteable(envMO,envOSConst);
+      envOS->concreteStore = (uint8_t *) envStr;
+
+    }
+    */
+    envStr = *(environPtr++);
+    if (envStr != NULL) {
+      len = strlen(envStr);
+      latestEnvStr = envStr;
+    }
+  }
+
+  uint64_t baseEnvAddr =  (uint64_t) environ[0];
+  uint64_t endEnvAddr = (uint64_t) latestEnvStr + len + 1;
+  uint64_t envSize = endEnvAddr - baseEnvAddr;
+
+  if (envSize % 2 == 1)
+    envSize++;
+  
+  printf("Size of envs is 0x%lx \n", envSize);
+  std::cout.flush();
+  MemoryObject * envMO = addExternalObject(*GlobalExecutionStatePtr, (void *) baseEnvAddr, envSize, false);
+  const ObjectState * envOSConst = GlobalExecutionStatePtr->addressSpace.findObject(envMO);
+  ObjectState *envOS = GlobalExecutionStatePtr->addressSpace.getWriteable(envMO,envOSConst);
+  envOS->concreteStore = (uint8_t *) baseEnvAddr;
+
+  //Add mappings for stderr and stdout
+  //Todo -- remove dependency on _edata location
+  printf("Mapping edata at 0x%lx \n", (uint64_t) &edata);
+  MemoryObject * stdMO = addExternalObject(*GlobalExecutionStatePtr, (void *) &edata, 16, false);
+  const ObjectState * stdOSConst = GlobalExecutionStatePtr->addressSpace.findObject(stdMO);
+  ObjectState *stdOS = GlobalExecutionStatePtr->addressSpace.getWriteable(stdMO,stdOSConst);
+  stdOS->concreteStore = (uint8_t *) &edata;
+
+
+  
   //Get rid of the dummy function used for initialization
   GlobalExecutionStatePtr->popFrame();
   processTree = new PTree(GlobalExecutionStatePtr);
