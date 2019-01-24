@@ -34,8 +34,6 @@ using namespace klee;
 
 uint16_t poison_val = 0xDEAD;
 
-uint16_t * get_rep_buf (uint8_t  * val_ptr);
-
 namespace {
   cl::opt<bool>
   UseConstantArrays("use-constant-arrays",
@@ -131,10 +129,9 @@ ObjectState::ObjectState(const MemoryObject *mo, const Array *array)
     readOnly(false) {
   mo->refCount++;
   //AH Changed to memset to 0 before call to makeSymbolic.
-   memset(concreteStore, 0, size);
-
+  memset(concreteStore, 0, size);
+  
   makeSymbolic();
- 
 }
 
 ObjectState::ObjectState(const ObjectState &os) 
@@ -249,20 +246,32 @@ void ObjectState::makeSymbolic() {
          "XXX makeSymbolic of objects with symbolic values is unsupported");
 
   // XXX simplify this, can just delete various arrays I guess
-  printf("Calling makeSymbolic() on object with conc store at 0x%llx \n", (uint64_t) &(this->concreteStore[0]));
-  
   for (unsigned i=0; i<size; i++) {
     markByteSymbolic(i);
     setKnownSymbolic(i, 0);
     markByteFlushed(i);
+  }
+}
 
+void ObjectState::applyPsnOnMakeSymbolic() {
+
+  //Sanity Checks
+  uint64_t addr = this->getObject()->address;
+  unsigned size = this->getObject()->size;
+  if (addr % 2 != 0) {
+    printf("ERROR: Encountered memory object on unaligned address 0x%lx \n", addr);
+    std::exit(EXIT_FAILURE);
+  }
+  if (size %2 != 0) {
+    printf("ERROR: Encountered memory object with odd size %u \n", size);
+    std::exit(EXIT_FAILURE);
   }
 
-  printf("After calling makeSymbolic(), we have the following concrete values \n");
-  for (int i = 0; i < size; i++)
-    printf("Val at %d is 0x%x \n",i, this->concreteStore[i]);
 
-  printf("Exiting makeSymbolic() \n");
+  //Apply the poison
+  uint16_t * psnPtr = (uint16_t *) addr;
+  for (int i = 0; i < size/2;  i++)
+    *(psnPtr + i) = poison_val;
   
 }
 
@@ -285,6 +294,21 @@ Cache Invariants
 isByteKnownSymbolic(i) => !isByteConcrete(i)
 isByteConcrete(i) => !isByteKnownSymbolic(i)
 !isByteFlushed(i) => (isByteConcrete(i) || isByteKnownSymbolic(i))
+
+Extra TASE Invariants:
+1:   !isBytePoison(i) => isByteConcrete(i)  && !isByteKnownSymbolic(i) && !isByteFlushed(i)
+Converse isn't true.  Contrapositive is useful to think about.
+!isByteConcrete(i) || isByteKnowSymbolic(i) || isByteFlushed(i) => isBytePoison(i)
+
+2:   isByteConcrete(i) => !isByteFlushed(i)
+We need this to hold because reads and writes during native
+execution have no ability to update the isByteFlushed(i) indicator.
+
+If this invariant did not hold, writes to bytes that were concrete (isByteConcrete(i))
+and flushed (isByteFlushed(i)) would not correctly set the byte to unflushed (!isByteflushed(i))
+and subsequent flushing operations in the interpreter would incorrectly fail to flush the updated
+byte at index i (ex during flushRangeForRead).
+
  */
 
 void ObjectState::fastRangeCheckOffset(ref<Expr> offset,
@@ -345,117 +369,26 @@ void ObjectState::flushRangeForWrite(unsigned rangeBase,
 }
 
 bool ObjectState::isByteConcrete(unsigned offset) const {
-
-  //printf("Entering isByteConcrete \n");
-  //Check to see if rep buffer has the poison tag
-  //uint64_t base = (uint64_t) &(this->concreteStore[0]);
-  uint64_t base = (uint64_t) (concreteStore);
-  uint8_t * addr = (uint8_t *) ((uint64_t) offset + base);
-  //printf("Check1 offset is %llu, base is %llu \n", offset, base);
-  uint16_t * repBuf = get_rep_buf (addr);
-  //printf("repBuf is %p \n", repBuf);
-  //printf("Check 1.5 \n");
-  bool hasPoisonTag = (*repBuf == poison_val);
-
-  //printf("Offset is %u \n", offset);
-  
-  //printf("Concrete store is located at 0x%llx \n ", &(this->concreteStore[0]));
-  
-  //printf("repBuf val is 0x%x \n", repBuf);
-  
-  //We should be setting the concrete mask in 2s or not at all.
-  unsigned evenOffset;
-  if ( offset %2 ==0)
-    evenOffset = offset;
-  else
-    evenOffset = offset -1;
-  unsigned oddOffset = evenOffset + 1;
-  
-  //printf("Check2 \n");
-  
-  //We only say a byte is symbolic if
-  // 1. neither of the concrete mask bits are set in it's representative buffer (or the concrete mask doesn't exist)
-  // 2. AND the buffer is poison
-
-  //printf("Calling isByteConcrete with evenOffsetMask bit %d, oddOffsetMask bit %d, and hasPoisonTag %d  \n", concreteMask->get(evenOffset), concreteMask->get(oddOffset), hasPoisonTag );
-  
-  //A byte is concrete if it's not symbolic.
-  return (!concreteMask || (concreteMask->get(evenOffset) && concreteMask->get(oddOffset))) || (hasPoisonTag == false) ;
-  
-  //return !concreteMask || concreteMask->get(offset);
+  return !concreteMask || concreteMask->get(offset);
 }
 
 bool ObjectState::isByteFlushed(unsigned offset) const {
   return flushMask && !flushMask->get(offset);
 }
-  //Updated for TASE
-  //Need to make sure buffer hasn't been made concrete during native execution
-  //TODO: Revisit this later to make sure it's consistent with our overall poisoning scheme
+
 bool ObjectState::isByteKnownSymbolic(unsigned offset) const {
-
-  if (!isByteConcrete(offset))
-    return knownSymbolics && knownSymbolics[offset].get();
-  else
-    return false;
-
-  //return knownSymbolics && knownSymbolics[offset].get();
+  return knownSymbolics && knownSymbolics[offset].get();
 }
 
-
-//ABH:  Created this to make gprsAreConcrete() easier to implement.
-  //Check each byte in the gpr object state to see if any bytes are symbolic.
-  //Todo: In the future, add a fast path check here to see if individual bytes
-  //have the poison value.
-bool ObjectState::isObjectEntirelyConcrete() {
-  for (int i = 0; i < this->size ; i++) {
-    if (!isByteConcrete(i))
-      return false;
-  }
-  return true;
-
-}
-
-
-//Updated for TASE
-//We should be marking 2 bytes at a time as concrete.
-//Need to be careful when calling because of this.
 void ObjectState::markByteConcrete(unsigned offset) {
-  if (concreteMask) {
-    unsigned evenOffset;
-    if ( offset %2 ==0)
-      evenOffset = offset;
-    else
-      evenOffset = offset -1;
-    unsigned oddOffset = evenOffset + 1;
-    concreteMask->set(evenOffset);
-    concreteMask->set(oddOffset);
-  }
+  if (concreteMask)
+    concreteMask->set(offset);
 }
 
-//This is a potentially destructive call in TASE.
-//Need to make sure we've already saved any concrete
-//contents of the byte potentially not being made symbolic
-//in the two byte buffer.
 void ObjectState::markByteSymbolic(unsigned offset) {
   if (!concreteMask)
     concreteMask = new BitArray(size, true);
-
-  unsigned evenOffset;
-  if ( offset %2 ==0)
-    evenOffset = offset;
-  else
-    evenOffset = offset -1;
-  unsigned oddOffset = evenOffset + 1;
-  
-  concreteMask->unset(evenOffset);
-  concreteMask->unset(oddOffset);
-
-  //Poison the rep buffer.
-  uint64_t base = (uint64_t) &(this->concreteStore[0]);
-  uint8_t * addr = (uint8_t *) ((uint64_t) offset + base);
-  uint16_t * repBuf = get_rep_buf (addr);
-   *repBuf = poison_val;
-  
+  concreteMask->unset(offset);
 }
 
 void ObjectState::markByteUnflushed(unsigned offset) {
@@ -486,8 +419,6 @@ void ObjectState::setKnownSymbolic(unsigned offset,
 /***/
 
 ref<Expr> ObjectState::read8(unsigned offset) const {
-
-
   if (isByteConcrete(offset)) {
     return ConstantExpr::create(concreteStore[offset], Expr::Int8);
   } else if (isByteKnownSymbolic(offset)) {
@@ -499,19 +430,6 @@ ref<Expr> ObjectState::read8(unsigned offset) const {
                             ConstantExpr::create(offset, Expr::Int32));
   }    
 }
-
-
-//AH: Made this helper function to find the representative 2-byte aligned buffer for a byte.
-uint16_t * get_rep_buf (uint8_t  * val_ptr) {
-  uint64_t raw_address = (uint64_t) val_ptr;
-  if (raw_address % 2 == 0)
-    return (uint16_t *)  val_ptr;
-  else {
-    raw_address = raw_address - 1;
-    return (uint16_t *) raw_address;
-  }
-}
-
 
 ref<Expr> ObjectState::read8(ref<Expr> offset) const {
   assert(!isa<ConstantExpr>(offset) && "constant offset passed to symbolic read8");
@@ -530,97 +448,34 @@ ref<Expr> ObjectState::read8(ref<Expr> offset) const {
   return ReadExpr::create(getUpdates(), ZExtExpr::create(offset, Expr::Int32));
 }
 
-
-//TODO: Eventually need to add logic to the write8
-//that takes care of concrete writes in the interpreter
-//to a poison buffer.  Right now we don't catch that
-//a concrete 2 byte write to a 2 byte symbolic buffer
-//should totally concretize the buffer.  We just basically
-//add a constraint now that the two byte buffer happens
-//to equal a constant value.
-void ObjectState::write8(unsigned offset, uint8_t value, bool twoByteAligned) {
+void ObjectState::write8(unsigned offset, uint8_t value) {
   //assert(read_only == false && "writing to read-only object!");
-
-  
-  
-  //Case 1: Byte's rep buffer is concrete, or it's safe to clobber the value because
-  //it's part of a two byte aligned concrete write operation.
-  if (isByteConcrete(offset) || twoByteAligned) {
-    concreteStore[offset] = value;
-    setKnownSymbolic(offset, 0);
-    markByteConcrete(offset);
-    markByteUnflushed(offset);
-  } else {
-    //Case 2:  We are writing to a buffer that has one or more symbolic bytes
-    //Let's keep the buffer symbolic but add the value as a constant value.
-    ref <Expr> constVal = ConstantExpr::create(value, Expr::Int8);
-    setKnownSymbolic(offset, constVal.get());
-    markByteSymbolic(offset);
-    markByteUnflushed(offset);
-  }
-  
-  /*
+ 
   concreteStore[offset] = value;
   setKnownSymbolic(offset, 0);
 
   markByteConcrete(offset);
   markByteUnflushed(offset);
-  */
 }
 
+void ObjectState::write8AsExpr(unsigned offset, ref<Expr> value) {
+
+  setKnownSymbolic(offset, value.get());
+      
+  markByteSymbolic(offset);
+  markByteUnflushed(offset);
+  
+}
 
 void ObjectState::write8(unsigned offset, ref<Expr> value) {
-  unsigned evenOffset;
-  if ( offset %2 ==0)
-    evenOffset = offset;
-  else
-    evenOffset = offset -1;
-  unsigned oddOffset = evenOffset + 1;
-
-  unsigned otherOffset;
-  if (offset == evenOffset) {
-    otherOffset = oddOffset;
-  } else {
-    otherOffset = evenOffset;
-  }
-
-  uint64_t base = this->object->address;
-  uint8_t * otherAddr = (uint8_t *) ((uint64_t) otherOffset + base);
-
-  //printf("In write 8 \n");
-  
   // can happen when ExtractExpr special cases
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(value)) {
     write8(offset, (uint8_t) CE->getZExtValue(8));
   } else {
-    //printf("Debug1 \n");
-    //TODO Double check for TASE
-    //Remember, "isByteConcrete" is really checking if the buffer containing offset
-    //is poisoned and contains a symbolic value in either or both bytes.
-    if (isByteConcrete(offset)) {
-      //In this case, we need to poison the buffer and
-      //assign the symbolic value at offset without
-      //cloberring the concrete value in offset +1 (or offset -1).
-      //printf("Debug2 \n");
-      ref <Expr> constVal = ConstantExpr::create(*otherAddr, Expr::Int8);
-      setKnownSymbolic(otherOffset, constVal.get());
-      markByteSymbolic(otherOffset);
-      markByteUnflushed(otherOffset);
-      //printf("Debug3 \n");
+    setKnownSymbolic(offset, value.get());
       
-      //After other byte is taken care of, business as usual
-      setKnownSymbolic(offset, value.get());
-
-      //printf("Debug 4 \n");
-      markByteSymbolic(offset);
-      markByteUnflushed(offset);
-    } else {
-      //printf("Debug 5 \n");
-      setKnownSymbolic(offset, value.get());
-      
-      markByteSymbolic(offset);
-      markByteUnflushed(offset);
-    }
+    markByteSymbolic(offset);
+    markByteUnflushed(offset);
   }
 }
 
@@ -640,7 +495,6 @@ void ObjectState::write8(ref<Expr> offset, ref<Expr> value) {
   
   updates.extend(ZExtExpr::create(offset, Expr::Int32), value);
 }
-
 
 /***/
 
@@ -671,12 +525,8 @@ ref<Expr> ObjectState::read(ref<Expr> offset, Expr::Width width) const {
   return Res;
 }
 
-
-
-
 ref<Expr> ObjectState::read(unsigned offset, Expr::Width width) const {
   // Treat bool specially, it is the only non-byte sized write we allow.
-
   if (width == Expr::Bool)
     return ExtractExpr::create(read8(offset), 0, Expr::Bool);
 
@@ -685,13 +535,190 @@ ref<Expr> ObjectState::read(unsigned offset, Expr::Width width) const {
   assert(width == NumBytes * 8 && "Invalid width for read size!");
   ref<Expr> Res(0);
   for (unsigned i = 0; i != NumBytes; ++i) {
-
     unsigned idx = Context::get().isLittleEndian() ? i : (NumBytes - i - 1);
     ref<Expr> Byte = read8(offset + idx);
     Res = i ? ConcatExpr::create(Byte, Res) : Byte;
   }
 
   return Res;
+}
+
+void ObjectState::applyPsnOnRead(ref<Expr> offset) {
+
+  if (ConstantExpr * CE = dyn_cast<ConstantExpr>(offset)) {
+    //Nothing to do -- no state changes to isByteFlushed, isByteConcrete, isKnownSymbolic. 
+  } else {
+    //We have a read at a symbolic offset.
+    //Need to ensure invariant and mark bytes as unflushed.
+
+    //We can mark the bytes as unflushed by "safely" reading/writing the value for
+    //each byte.
+    for (unsigned i = 0; i < size; i++) {
+      ref<Expr> byteVal = read8(i);
+      write8AsExpr(i, byteVal);
+    }
+  }
+}
+
+void ObjectState::applyPsnOnWrite(ref<Expr> offset, ref<Expr> value) {
+
+ // Truncate offset to 32-bits.
+  offset = ZExtExpr::create(offset, Expr::Int32);
+
+  // Check for writes at constant offsets.
+  if (ConstantExpr *CE = dyn_cast<ConstantExpr>(offset)) {
+    unsigned firstOff = CE->getZExtValue(32);
+    Expr::Width valWidth = value->getWidth();
+
+    unsigned endOff;
+    switch (valWidth) {
+    default: assert(0 && "Invalid write size!");
+    case  Expr::Bool:
+    case  Expr::Int8:  endOff = 1;
+    case Expr::Int16: endOff = 2; 
+    case Expr::Int32: endOff = 4;
+    case Expr::Int64: endOff = 8;
+    }
+    endOff = firstOff + endOff -1;
+
+    uint64_t firstAddr = this->getObject()->address + (uint64_t) firstOff;
+    uint64_t endAddr = this->getObject()->address + (uint64_t) endOff;
+
+    bool concVal = false;
+    
+    if(ConstantExpr * CE_Value = dyn_cast<ConstantExpr>(value)) {
+      concVal = true;
+    }
+
+    bool twoByteAligned = false;
+
+    if (firstAddr %2 == 0 && endAddr %2 == 1)
+      twoByteAligned = true;
+
+    //Deal with "middle"
+    if (concVal == false) {
+      if (valWidth == Expr::Int16) {
+	if (twoByteAligned) 
+	  *(uint16_t *) firstAddr = poison_val;			
+      } else if (valWidth == Expr::Int32) {
+	if (twoByteAligned) {
+	  *(uint16_t *) firstAddr = poison_val;
+	  *((uint16_t *) firstAddr +1) = poison_val;
+	} else {
+	  uint64_t tempAddr =  firstAddr +1;
+	  *(uint16_t *) tempAddr = poison_val;
+	}
+      } else if (valWidth == Expr::Int64) {
+      	if (twoByteAligned) {
+	  uint16_t * tempAddr = (uint16_t *) firstAddr;
+	  for (int i = 0; i < 4; i++)
+	    *(tempAddr +i) = poison_val;
+	} else {
+	  uint64_t tmp = (uint64_t) firstAddr +1;
+	  uint16_t * tempAddr = (uint16_t *) tmp; 
+	  for (int i = 0; i < 3; i++)
+	    *(tempAddr +i) = poison_val;
+	}
+      }
+    }
+      
+    //Deal with "ends"
+    
+    if ( firstAddr %2 == 1) {
+      unsigned sibIdx = firstOff -1;
+      if (! (isByteConcrete(firstOff) && !isByteFlushed(firstOff) && isByteConcrete(sibIdx) && !isByteFlushed(sibIdx))) {
+	ref <Expr> byte1Val = read8(sibIdx);
+	ref <Expr> byte2Val = read8(firstOff);
+	write8AsExpr( sibIdx, byte1Val);
+	/*
+	setKnownSymbolic(sibIdx, byte1Val);
+	markByteSymbolic(sibIdx);
+	markByteUnflushed(sibIdx); 
+	*/
+	write8AsExpr( firstOff, byte2Val);
+	/*
+	setKnownSymbolic(firstOff, byte2Val);
+	markByteSymbolic(firstOff);
+	markByteUnflushed(sibIdx);
+	*/
+	*(uint16_t *) (firstAddr -1) = poison_val;
+	
+      } else {
+	//No action needed.  Both bytes are "nice"
+      }	  
+    }
+    if (endAddr %2 == 0) {
+      unsigned sibIdx = endOff +1;
+      if (! ( isByteConcrete(endOff) && !isByteFlushed(endOff) && isByteConcrete(sibIdx) && !isByteFlushed(sibIdx) ) ) {
+	ref <Expr> byte1Val = read8(endOff);
+	ref <Expr> byte2Val = read8(sibIdx);
+
+	write8AsExpr( endOff, byte1Val);
+	/*
+	setKnownSymbolic(endOff, byte1Val);
+	markByteSymbolic(endOff);
+	markByteUnflushed(endOff);
+	*/
+	write8AsExpr(sibIdx, byte2Val);
+	/*
+	setKnownSymbolic(sibIdx, byte2Val);
+	markByteSymbolic(sibIdx);
+	markByteUnflushed(sibIdx);
+	*/
+	*(uint16_t *) endAddr = poison_val;
+	
+      } else {
+	//No action needed.  Both bytes are "nice"
+      }
+    }
+  } else {
+    //Write at symbolic offset
+    //In this case, the whole objectstate will get flushed and all bytes marked symbolic
+    // (See flushRangeForWrite)
+
+    uint16_t * twoByteIterator = (uint16_t *) this->getObject()->address;
+    if (size % 2 != 0 || (this->getObject()->address %2 != 0)) {
+      printf("Memory Object unaligned or with odd number of bytes \n");
+      std::exit(EXIT_FAILURE);
+    }
+    
+    for (int i = 0; i < size/2; i++)
+      *(twoByteIterator + i) = poison_val; 
+  }
+
+}
+
+bool ObjectState::isObjectEntirelyConcrete() {
+
+  //Sanity Checks
+  uint64_t addr = this->getObject()->address;
+  unsigned size = this->getObject()->size;
+  if (addr % 2 != 0) {
+    printf("ERROR: Encountered memory object on unaligned address 0x%lx \n", addr);
+    std::exit(EXIT_FAILURE);
+  }
+  if (size %2 != 0) {
+    printf("ERROR: Encountered memory object with odd size %u \n", size);
+    std::exit(EXIT_FAILURE);
+  }
+  
+  //Fast path
+  uint16_t * objIterator = (uint16_t *) addr;
+  bool foundPsn = false;
+  for (int i = 0; i < size/2 ; i++){
+    if (*(objIterator + i) == poison_val)
+      foundPsn = true;
+  }
+  if (foundPsn == false) 
+    return true;
+
+  //Slow path
+  for (int j = 0; j < this->size ; j++) {
+    if (!isByteConcrete(j))
+      return false;
+  }
+  return true;
+
 }
 
 
@@ -702,6 +729,7 @@ void ObjectState::write(ref<Expr> offset, ref<Expr> value) {
   // Check for writes at constant offsets.
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(offset)) {
     write(CE->getZExtValue(32), value);
+    
     return;
   }
 
@@ -721,7 +749,6 @@ void ObjectState::write(ref<Expr> offset, ref<Expr> value) {
            ExtractExpr::create(value, 8 * i, Expr::Int8));
   }
 }
-
 
 void ObjectState::write(unsigned offset, ref<Expr> value) {
   // Check for writes of constant values.
@@ -746,82 +773,41 @@ void ObjectState::write(unsigned offset, ref<Expr> value) {
     write8(offset, ZExtExpr::create(value, Expr::Int8));
     return;
   }
-   //printf("Writing to concrete store at addr %lu, hex %p  \n", ((void *) &concreteStore[offset]  ), (void *) &concreteStore[offset] );
-  // Otherwise, follow the slow general case.
 
-  
+  // Otherwise, follow the slow general case.
   unsigned NumBytes = w / 8;
   assert(w == NumBytes * 8 && "Invalid write size!");
   for (unsigned i = 0; i != NumBytes; ++i) {
-    //printf("Calling write in memory.cpp \n");
     unsigned idx = Context::get().isLittleEndian() ? i : (NumBytes - i - 1);
     write8(offset + idx, ExtractExpr::create(value, 8 * i, Expr::Int8));
   }
 } 
 
 void ObjectState::write16(unsigned offset, uint16_t value) {
-
-  //
-
-
-  //Optimization to handle concrete writes to 2 byte aligned buffers containing
-  //symbolic taint that may be completely cleanly clobbered with a concrete value.
-  bool twoByteAligned = false;
-  uint64_t baseAddr = this->getObject()->address;
-  if ((((uint64_t) offset + baseAddr) % 2) == 0)
-    twoByteAligned = true;
-
-  //if (twoByteAligned)
-    //printf("Found twoByteAligned write \n");
-    
   unsigned NumBytes = 2;
   for (unsigned i = 0; i != NumBytes; ++i) {
     unsigned idx = Context::get().isLittleEndian() ? i : (NumBytes - i - 1);
-    write8(offset + idx, (uint8_t) (value >> (8 * i)), twoByteAligned);
+    write8(offset + idx, (uint8_t) (value >> (8 * i)));
   }
 }
 
 void ObjectState::write32(unsigned offset, uint32_t value) {
-
-  //Optimization to handle concrete writes to 2 byte aligned buffers containing
-  //symbolic taint that may be completely cleanly clobbered with a concrete value.
-  bool twoByteAligned = false;
-  uint64_t baseAddr = this->getObject()->address;
-  if ((((uint64_t) offset + baseAddr) % 2) == 0)
-    twoByteAligned = true;
-
-  //if (twoByteAligned)
-  //printf("Found twoByteAligned write \n");
-  
   unsigned NumBytes = 4;
   for (unsigned i = 0; i != NumBytes; ++i) {
     unsigned idx = Context::get().isLittleEndian() ? i : (NumBytes - i - 1);
-    write8(offset + idx, (uint8_t) (value >> (8 * i)), twoByteAligned);
+    write8(offset + idx, (uint8_t) (value >> (8 * i)));
   }
 }
 
 void ObjectState::write64(unsigned offset, uint64_t value) {
-
-  //Optimization to handle concrete writes to 2 byte aligned buffers containing
-  //symbolic taint that may be completely cleanly clobbered with a concrete value.
-  bool twoByteAligned = false;
-  uint64_t baseAddr = this->getObject()->address;
-  if ((((uint64_t) offset + baseAddr) % 2) == 0)
-    twoByteAligned = true;
-
-
-  //if (twoByteAligned)
-  //printf("Found twoByteAligned write \n");
-  
-    
   unsigned NumBytes = 8;
   for (unsigned i = 0; i != NumBytes; ++i) {
     unsigned idx = Context::get().isLittleEndian() ? i : (NumBytes - i - 1);
-    write8(offset + idx, (uint8_t) (value >> (8 * i)), twoByteAligned);
+    write8(offset + idx, (uint8_t) (value >> (8 * i)));
   }
 }
 
-void ObjectState::print() {
+void ObjectState::print() const {
   llvm::errs() << "-- ObjectState --\n";
   llvm::errs() << "\tMemoryObject ID: " << object->id << "\n";
   llvm::errs() << "\tRoot Object: " << updates.root << "\n";

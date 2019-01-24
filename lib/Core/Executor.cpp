@@ -2016,13 +2016,11 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   case Instruction::Load: {
     ref<Expr> base = eval(ki, 0, state).value;
     executeMemoryOperation(state, false, base, 0, ki);
-
     break;
   }
   case Instruction::Store: {
     ref<Expr> base = eval(ki, 1, state).value;
     ref<Expr> value = eval(ki, 0, state).value;
-    //base->dump();
     executeMemoryOperation(state, true, base, value, 0);
     break;
   }
@@ -3273,7 +3271,6 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     printf("Could not resolve address to MO \n");
   
   if (success) {
-    //printf("Entering success path \n");
     const MemoryObject *mo = op.first;
 
     if (MaxSymArraySize && mo->size>=MaxSymArraySize) {
@@ -3284,12 +3281,10 @@ void Executor::executeMemoryOperation(ExecutionState &state,
 
     bool inBounds;
     solver->setTimeout(coreSolverTimeout);
-    //printf("Calling solver->mustBeTrue \n");
     bool success = solver->mustBeTrue(state, 
                                       mo->getBoundsCheckOffset(offset, bytes),
                                       inBounds);
     solver->setTimeout(0);
-    //printf(" inBounds is %d \n", inBounds);
     if (!success) {
       state.pc = state.prevPC;
       terminateStateEarly(state, "Query timed out (bounds check).");
@@ -3303,13 +3298,14 @@ void Executor::executeMemoryOperation(ExecutionState &state,
           terminateStateOnError(state, "memory error: object read only",
                                 ReadOnly);
         } else {
-	  //printf("Trying to write to MO representing buffer starting at %lu, hex 0x%p \n ", (uint64_t) mo->address, (void *) mo->address);
           ObjectState *wos = state.addressSpace.getWriteable(mo, os);
           wos->write(offset, value);
+	  wos->applyPsnOnWrite(offset,value);
         }          
       } else {
 	ref<Expr> result = os->read(offset, type);
-	
+	ObjectState *wos = state.addressSpace.getWriteable(mo, os);
+	wos->applyPsnOnRead(offset);
 	if (interpreterOpts.MakeConcreteSymbolic)
 	  result = replaceReadWithSymbolic(state, result);
 	
@@ -3350,9 +3346,12 @@ void Executor::executeMemoryOperation(ExecutionState &state,
         } else {
           ObjectState *wos = bound->addressSpace.getWriteable(mo, os);
           wos->write(mo->getOffsetExpr(address), value);
+	  wos->applyPsnOnWrite(mo->getOffsetExpr(address), value);
         }
       } else {
         ref<Expr> result = os->read(mo->getOffsetExpr(address), type);
+	ObjectState *wos = bound->addressSpace.getWriteable(mo, os);
+	wos->applyPsnOnRead(mo->getOffsetExpr(address));
         bindLocal(target, *bound, result);
       }
     }
@@ -3367,12 +3366,6 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     if (incomplete) {
       terminateStateEarly(*unbound, "Query timed out (resolve).");
     } else {
-      /*
-      fprintf(modelLog, "ExecuteMemoryOperation DBG: \n");
-      fprintf(modelLog,"Calling terminateStateOnError at %lu ... \n", interpCtr);      
-      fprintf(modelLog,"isWrite is %d \n", isWrite);
-      fprintf(modelLog, "bytes is %d \n", bytes);
-      */
       if (!isa<ConstantExpr>(address))
 	fprintf(modelLog,"Non-constant address \n");
       else if (ConstantExpr *CE = dyn_cast<ConstantExpr>(address)) {
@@ -3380,13 +3373,12 @@ void Executor::executeMemoryOperation(ExecutionState &state,
       } else {
 	fprintf(modelLog,"ERROR: addr should be constant or symbolic \n");
       }
-      
 
-      
       printCtx(target_ctx_gregs);
       fflush(modelLog);
       terminateStateOnError(*unbound, "memory error: out of bound pointer", Ptr,
                             NULL, getAddressInfo(*unbound, address));
+
       printf("Out of bound ptr error; termination \n");
       std::cout.flush();
       std::exit(EXIT_FAILURE);
@@ -3563,10 +3555,7 @@ extern "C" void target_exit() {
 }
 
 extern "C" void tase_debug (char * s1, char * s2) {
-
-  //Void
-  
-
+  //Void, just a testing harness
 }
 
 extern "C" void klee_interp () {
@@ -3585,15 +3574,7 @@ extern "C" void klee_interp () {
 // this returns a KFunction with LLVM IR for only one machine instruction at a time. 
 KFunction * findInterpFunction (greg_t * registers, KModule * kmod) {
 
-  /*
-  if (taseDebug) {
-    printf("INTERPRETER: FOUND NORMAL USER INST \n");
-    std::cout.flush();
-  }
-  */
   uint64_t nativePC = registers[REG_RIP];
-  //printf("Looking up interp info for RIP : decimal %lu, hex  %lx \n", nativePC, nativePC);
-  //Arithmetic to find interpretation function.
   std::stringstream converter;
   converter << std::hex << nativePC;  
   std::string hexNativePCString(converter.str());
@@ -4806,6 +4787,8 @@ void Executor::model_tase_debug() {
   fprintf(modelLog, "str 1 is %s \n", str1);
   fprintf(modelLog, "str 2 is %s \n", str2);
 
+  //Totally arbitrary choice of 6 below -- just using this to debug
+  // our parsing of variadic functions with multiple args
   for (int i = 0; i < 6; i++) {
     fprintf(modelLog," byte %d is %d in buf1 \n", i, (int) str1[i]);
     fprintf(modelLog," byte %d is %d in buf2 \n", i, (int) str2[i]);
@@ -4834,7 +4817,6 @@ void Executor::model_inst () {
   uint8_t * oneBytePtr = (uint8_t *) rip;
   uint8_t firstByte = *oneBytePtr;
   uint16_t firstTwoBytes = *( (uint16_t *) oneBytePtr);
-
   
   if (firstByte == callqOpc || firstTwoBytes == callIndOpc)  {
 
@@ -5110,10 +5092,6 @@ uint64_t getCallDest (uint64_t  rip) {
   } else {
     return 0;
   }
-
-  printf("base is 0x%lx \n", base);
-  printf("offset is 0x%lx \n", offset);
-  printf("deref is %d \n", deref);
   
   int64_t s_dest = (int64_t) base + (int64_t) offset;
 
@@ -5188,8 +5166,6 @@ void Executor::model_OpenSSLDie() {
 
   std::cout.flush();
   std::exit(EXIT_FAILURE);
-  
-
 }
 
 //int RAND_load_file(const char *filename, long max_bytes);
@@ -5230,11 +5206,8 @@ void Executor::model_RAND_add() {
 bool isSpecialInst (uint64_t rip) {
 
   //Todo -- get rid of traps for RAND_add and RAND_load_file
-  //Also, remove traps for htonl, memcpy
   
-  static const uint64_t modeledFns [] = {(uint64_t)&signal, (uint64_t)&malloc, (uint64_t)&read, (uint64_t)&write, (uint64_t)&connect, (uint64_t)&select, (uint64_t)&socket, (uint64_t) &getuid, (uint64_t) &geteuid, (uint64_t) &getgid, (uint64_t) &getegid, (uint64_t) &getenv, (uint64_t) &stat, (uint64_t) &free, (uint64_t) &realloc,  (uint64_t) &RAND_add, (uint64_t) &RAND_load_file, (uint64_t) &kTest_free, (uint64_t) &kTest_fromFile, (uint64_t) &kTest_getCurrentVersion, (uint64_t) &kTest_isKTestFile, (uint64_t) &kTest_numBytes, (uint64_t) &kTest_toFile, (uint64_t) &ktest_RAND_bytes, (uint64_t) &ktest_RAND_pseudo_bytes, (uint64_t) &ktest_connect, (uint64_t) &ktest_finish, (uint64_t) &ktest_master_secret, (uint64_t) &ktest_raw_read_stdin, (uint64_t) &ktest_readsocket, (uint64_t) &ktest_select, (uint64_t) &ktest_start, (uint64_t) &ktest_time, (uint64_t) &time, (uint64_t) &gmtime, (uint64_t) &gettimeofday, (uint64_t) &ktest_writesocket, (uint64_t) &fileno, (uint64_t) &fcntl, (uint64_t) &fopen, (uint64_t) &fopen64, (uint64_t) &fclose,  (uint64_t) &fwrite, (uint64_t) &fflush, (uint64_t) &fread, (uint64_t) &fgets, (uint64_t) &__isoc99_sscanf, (uint64_t) &gethostbyname, (uint64_t) &setsockopt, (uint64_t) &__ctype_tolower_loc, (uint64_t) &__ctype_b_loc, (uint64_t) &__errno_location, /* (uint64_t) &htonl, */ (uint64_t) &BIO_printf, (uint64_t) &BIO_snprintf, (uint64_t) &vfprintf, /* (uint64_t) &memcpy, */ (uint64_t) &sprintf, (uint64_t) &tase_debug,   (uint64_t) &OpenSSLDie, (uint64_t) &shutdown};
-
-  //printf("Guess at call dest is 0x%lx \n", getCallDest(rip));
+  static const uint64_t modeledFns [] = {(uint64_t)&signal, (uint64_t)&malloc, (uint64_t)&read, (uint64_t)&write, (uint64_t)&connect, (uint64_t)&select, (uint64_t)&socket, (uint64_t) &getuid, (uint64_t) &geteuid, (uint64_t) &getgid, (uint64_t) &getegid, (uint64_t) &getenv, (uint64_t) &stat, (uint64_t) &free, (uint64_t) &realloc,  (uint64_t) &RAND_add, (uint64_t) &RAND_load_file, (uint64_t) &kTest_free, (uint64_t) &kTest_fromFile, (uint64_t) &kTest_getCurrentVersion, (uint64_t) &kTest_isKTestFile, (uint64_t) &kTest_numBytes, (uint64_t) &kTest_toFile, (uint64_t) &ktest_RAND_bytes, (uint64_t) &ktest_RAND_pseudo_bytes, (uint64_t) &ktest_connect, (uint64_t) &ktest_finish, (uint64_t) &ktest_master_secret, (uint64_t) &ktest_raw_read_stdin, (uint64_t) &ktest_readsocket, (uint64_t) &ktest_select, (uint64_t) &ktest_start, (uint64_t) &ktest_time, (uint64_t) &time, (uint64_t) &gmtime, (uint64_t) &gettimeofday, (uint64_t) &ktest_writesocket, (uint64_t) &fileno, (uint64_t) &fcntl, (uint64_t) &fopen, (uint64_t) &fopen64, (uint64_t) &fclose,  (uint64_t) &fwrite, (uint64_t) &fflush, (uint64_t) &fread, (uint64_t) &fgets, (uint64_t) &__isoc99_sscanf, (uint64_t) &gethostbyname, (uint64_t) &setsockopt, (uint64_t) &__ctype_tolower_loc, (uint64_t) &__ctype_b_loc, (uint64_t) &__errno_location,  (uint64_t) &BIO_printf, (uint64_t) &BIO_snprintf, (uint64_t) &vfprintf,  (uint64_t) &sprintf, (uint64_t) &tase_debug,   (uint64_t) &OpenSSLDie, (uint64_t) &shutdown};
   
   uint8_t callqOpc = 0xe8;
   uint16_t callInd2Opc = 0x15ff;
@@ -5273,7 +5246,6 @@ bool isSpecialInst (uint64_t rip) {
       std::cout.flush();
       std::exit(EXIT_FAILURE);
     } 
-     
      
     //printf("isModeled is %d \n", isModeled);
      //Checks are here to see if the dest is a function we model.

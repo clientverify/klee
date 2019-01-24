@@ -202,15 +202,22 @@ public:
   void write(unsigned offset, ref<Expr> value);
   void write(ref<Expr> offset, ref<Expr> value);
 
-  void write8(unsigned offset, uint8_t value, bool twoByteAligned = false );
+  void write8(unsigned offset, uint8_t value);
   void write16(unsigned offset, uint16_t value);
   void write32(unsigned offset, uint32_t value);
   void write64(unsigned offset, uint64_t value);
 
+  void print() const;
+
+  //Tase Additions
   //ABH added this to make areGPRsConcrete easier to implement
   bool isObjectEntirelyConcrete();
        
-  void print();
+  void applyPsnOnRead(ref<Expr> offset);
+  void applyPsnOnWrite(ref<Expr> offset, ref<Expr> value);
+  void applyPsnOnMakeSymbolic();
+
+  void write8AsExpr( unsigned offset, ref<Expr> value);
   
 private:
   const UpdateList &getUpdates() const;
