@@ -339,6 +339,8 @@ private:
   bool instructionIsModeled();
   void model_taseMakeSymbolic();
   void model_inst();
+  void model_restoreRAXOpc(); //hack for debugging
+  void model_saveRAXOpc(); // hack for debuging
   void deadRegisterFlush();
   void printDebugInterpHeader();
   void printDebugInterpFooter();
@@ -394,7 +396,8 @@ private:
   void model_BIO_snprintf();
   void model_vfprintf();
   void model_sprintf();
-
+  void model_printf();
+  void model_exit();
   
   void model___errno_location();
   void model___ctype_b_loc();
@@ -434,7 +437,7 @@ private:
   void model_free();
   //AH: Modeling specific to tls---------------------------
 
-  /*
+  
   void model_tls1_generate_master_secret();
 
   void model_AES_encrypt();
@@ -451,8 +454,8 @@ private:
   void model_EC_POINT_point2oct(); 
   
   uint64_t tls_predict_stdin_size (int fd, uint64_t maxLen);
-  void make_BN_symbolic(BIGNUM * bn);
-  */
+  //void make_BN_symbolic(BIGNUM * bn); //Commented out until we include bignum headers
+  
   //AH: RNG modeling---------------------------------------
 
   void model_RAND_bytes();

@@ -111,7 +111,6 @@ llvm::Module * interpModule;
 //  stack_size defined in tase.h
 
 bool taseDebug;
-bool dontFork;
 enum runType : int {INTERP_ONLY, MIXED};
 enum runType exec_mode;
 enum testType : int {EXPLORATION, VERIFICATION};
@@ -163,21 +162,13 @@ void transferToTarget() {
 
   if (exec_mode == INTERP_ONLY) {
     memset(&target_ctx, 0, sizeof(target_ctx));
-    printf("DBG1 \n");
-    
+
     target_ctx.target_exit_addr = (uintptr_t)&exit_tase_shim;
     target_ctx.sentinel[0] = CTX_STACK_SENTINEL;
     target_ctx.sentinel[1] = CTX_STACK_SENTINEL;
     target_ctx.poison_reference.qword[0] = POISON_REFERENCE64;
     target_ctx.poison_reference.qword[1] = POISON_REFERENCE64;
     target_ctx.rip = (greg_t)&begin_target_inner;
-    target_ctx.rax = target_ctx.rip;
-    // We pretend like we have pushed a return address as part of call.
-    target_ctx.rsp = (greg_t)(&target_ctx.target_exit_addr);
-    // Just to be careful.  rbp should not be necessary but debuggers like it.
-    target_ctx.rbp = target_ctx.rsp + sizeof(uintptr_t);
-
-    klee_interp();
 
     
   } else {
@@ -326,9 +317,6 @@ namespace {
   cl::opt<bool>
   taseDebugArg("taseDebug", cl::desc("Verbose logging in TASE"), cl::init(false));
 
-  cl::opt<bool>
-  dontForkArg("dontFork", cl::desc("Disable forking in TASE for debugging"), cl::init(false));
-  
   cl::opt<std::string>
   projectArg("project", cl::desc("Name of project in TASE"), cl::init("-"));
   
@@ -1387,7 +1375,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 }
 #endif
 
- void printTASEArgs(runType rt, testType tt, bool fm, bool dbg, std::string projName, bool df) {
+ void printTASEArgs(runType rt, testType tt, bool fm, bool dbg, std::string projName) {
 
    printf("TASE args... \n");
    if (rt == MIXED) 
@@ -1408,8 +1396,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    
    printf("\t taseManager: %d \n", fm);
    printf("\t taseDebug output: %d \n", dbg);
-   printf("\t dontFork  output: %d \n", df);
-   
+
  }
 
  
@@ -1428,11 +1415,10 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    test_type = testTypeArg;
    taseManager = taseManagerArg;
    taseDebug = taseDebugArg;
-   dontFork = dontForkArg;
    project = projectArg;
    
    if (taseDebug)
-     printTASEArgs(exec_mode, test_type, taseManager, taseDebug, project, dontFork);
+     printTASEArgs(exec_mode, test_type, taseManager, taseDebug, project);
    
    //Redirect stdout messages to a file called "Monitor".
    //Later, calls to unix fork in executor create new filenames

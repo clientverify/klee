@@ -64,12 +64,11 @@ using namespace llvm;
 using namespace klee;
 
 //AH: Our additions below. --------------------------------------
-extern int loopCtr;
-
-#include "/playpen/humphries/TASE/TASE/test/tase/include/tase/tase_interp.h"
+#include <ucontext.h>
 #include <iostream>
 #include "klee/CVAssignment.h"
 #include "klee/util/ExprUtil.h"
+#include "tase/tase_constants.h"
 #include "tase/TASEControl.h"
 #include <sys/prctl.h>
 #include <sys/socket.h>
@@ -84,8 +83,8 @@ extern int loopCtr;
 #include <netdb.h>
 #include <fcntl.h>
 
-
-extern greg_t * target_ctx_gregs;
+extern gregset_t target_ctx_gregs;
+extern gregset_t prev_ctx_gregs;
 extern klee::Interpreter * GlobalInterpreter;
 extern MemoryObject * target_ctx_gregs_MO;
 extern ObjectState * target_ctx_gregs_OS;
@@ -262,18 +261,15 @@ void Executor::model_ktest_master_secret(  ) {
 }
 
 void Executor::model_exit() {
-
-  printf("loopCtr is %d \n", loopCtr);
-  printf(" Found call to exit.  TASE should shutdown. \n");
+  printf("Found call to exit.  TASE shutting down. \n");
   std::cout.flush();
   std::exit(EXIT_SUCCESS);
 
 }
 
 void Executor::model_printf() {
-  static int numCalls = 0;
-  numCalls++;
-  printf("Found call to printf for time %d \n",numCalls);
+  
+  printf("Found call to printf \n");
   char * stringArg = (char *) target_ctx_gregs[REG_RDI];
   printf("First arg as string is %s \n", stringArg);
 

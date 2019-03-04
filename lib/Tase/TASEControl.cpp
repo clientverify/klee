@@ -9,6 +9,8 @@
 #include <iostream>
 #include <sys/prctl.h>
 
+extern bool dontFork;
+
 int QR_BYTE_LEN = 4096;
 int QA_BYTE_LEN = 4096;
 int MAX_WORKERS = 4;
@@ -247,6 +249,11 @@ static void remove_self_from_QR () {
 int tase_fork() {
   printf("Entering tase_fork \n");
   std::cout.flush();
+  if (dontFork) {
+    printf("Forking is disabled.  Shutting down \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
   
   if (taseManager) {
     printf("Entering taseManager branch \n");
