@@ -151,7 +151,7 @@ extern FILE * modelLog;
 extern int loopCtr;
 extern int dbgCtrFoo;
 int initialize_semaphore(int semKey);
-extern "C" void taseMakeSymbolic(void * addr, int size);
+//extern "C" void taseMakeSymbolic(void * addr, int size);
 uint64_t saveRAXOpc =    0x000000F822C1E3C4  ; //tmp hack
 uint64_t restoreRAXOpc = 0x000000F816F9E3C4; //tmp hack
 //Multipass
@@ -213,7 +213,7 @@ extern int BASKET_SIZE;
 char basket[BUFFER_SIZE];
 ObjectState * basket_OS;
 MemoryObject * basket_MO;
-#define addBM 
+//#define addBM 
 #ifdef addBM
 extern uint8_t * addBMResultPtr;
 extern int numEntries;
@@ -3876,7 +3876,7 @@ void Executor::model_inst () {
   //clobbered around sb_reopen jump sites
   uint64_t eightBytes = *((uint64_t *) rip );
   uint64_t firstSixBytes = eightBytes & 0x0000FFFFFFFFFFFF;
-  printf ( "firstSixBytes is 0x%lx \n", firstSixBytes);
+  //printf ( "firstSixBytes is 0x%lx \n", firstSixBytes);
   
   if (firstSixBytes == saveRAXOpc) {
     printf("found saveRAX special case \n");
@@ -3905,8 +3905,10 @@ void Executor::model_inst () {
     model___ctype_b_loc();
   } else if (rip == (uint64_t) &__ctype_tolower_loc) {
     model___ctype_tolower_loc();
-  } else if (rip == (uint64_t) &taseMakeSymbolic) {
-    model_taseMakeSymbolic();
+
+    
+    //} else if (rip == (uint64_t) &taseMakeSymbolic) {
+    //model_taseMakeSymbolic();
   }
   /*
     else if (rip == (uint64_t) &BIO_printf) {
@@ -4065,7 +4067,7 @@ void Executor::model_OpenSSLDie() {
 bool isSpecialInst (uint64_t rip) {
 
   //Todo -- get rid of traps for RAND_add and RAND_load_file
-  static const uint64_t modeledFns[] = { (uint64_t) &puts, (uint64_t)&exit, (uint64_t) &printf, (uint64_t) &taseMakeSymbolic};
+  static const uint64_t modeledFns[] = { (uint64_t) &puts, (uint64_t)&exit, (uint64_t) &printf  /*, (uint64_t) &taseMakeSymbolic */ };
   /*
   static const uint64_t modeledFns [] = {(uint64_t)&signal, (uint64_t)&malloc, (uint64_t)&read, (uint64_t)&write, (uint64_t)&connect, (uint64_t)&select, (uint64_t)&socket, (uint64_t) &getuid, (uint64_t) &geteuid, (uint64_t) &getgid, (uint64_t) &getegid, (uint64_t) &getenv, (uint64_t) &stat, (uint64_t) &free, (uint64_t) &realloc,  (uint64_t) &RAND_add, (uint64_t) &RAND_load_file, (uint64_t) &kTest_free, (uint64_t) &kTest_fromFile, (uint64_t) &kTest_getCurrentVersion, (uint64_t) &kTest_isKTestFile, (uint64_t) &kTest_numBytes, (uint64_t) &kTest_toFile, (uint64_t) &ktest_RAND_bytes, (uint64_t) &ktest_RAND_pseudo_bytes, (uint64_t) &ktest_connect, (uint64_t) &ktest_finish, (uint64_t) &ktest_master_secret, (uint64_t) &ktest_raw_read_stdin, (uint64_t) &ktest_readsocket, (uint64_t) &ktest_select, (uint64_t) &ktest_start, (uint64_t) &ktest_time, (uint64_t) &time, (uint64_t) &gmtime, (uint64_t) &gettimeofday, (uint64_t) &ktest_writesocket, (uint64_t) &fileno, (uint64_t) &fcntl, (uint64_t) &fopen, (uint64_t) &fopen64, (uint64_t) &fclose,  (uint64_t) &fwrite, (uint64_t) &fflush, (uint64_t) &fread, (uint64_t) &fgets, (uint64_t) &__isoc99_sscanf, (uint64_t) &gethostbyname, (uint64_t) &setsockopt, (uint64_t) &__ctype_tolower_loc, (uint64_t) &__ctype_b_loc, (uint64_t) &__errno_location,  (uint64_t) &BIO_printf, (uint64_t) &BIO_snprintf, (uint64_t) &vfprintf,  (uint64_t) &sprintf, (uint64_t) &tase_debug,   (uint64_t) &OpenSSLDie, (uint64_t) &shutdown};
   */
@@ -4074,7 +4076,7 @@ bool isSpecialInst (uint64_t rip) {
 
   uint64_t eightBytes = *((uint64_t *) rip );
   uint64_t firstSixBytes = eightBytes & 0x0000FFFFFFFFFFFF;
-  printf ( "firstSixBytes is 0x%lx \n", firstSixBytes);
+  //printf ( "firstSixBytes is 0x%lx \n", firstSixBytes);
   
   if (firstSixBytes == saveRAXOpc || firstSixBytes == restoreRAXOpc)
     return true;
@@ -4113,8 +4115,8 @@ void Executor::klee_interp_internal () {
   while (true) {    
     if (taseDebug)
       printDebugInterpHeader();
-    printf("loopCtr is %d at addr 0x%lx \n", loopCtr, (uint64_t) &loopCtr);
-    printf("dbgCtrFoo is %d at addr 0x%lx \n", dbgCtrFoo, (uint64_t) &dbgCtrFoo);
+    //printf("loopCtr is %d at addr 0x%lx \n", loopCtr, (uint64_t) &loopCtr);
+   
 
     bool killFlagsBeforeCmp = true;
     //Begin hack for clearing flags on cmp -- this is not correct in the general sense (triggers for extra opcodes)

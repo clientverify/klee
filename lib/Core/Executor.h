@@ -135,7 +135,9 @@ public:
     Unhandled
   };
 
-  
+  ArrayCache * getArrayCache() {
+    return &arrayCache;
+  }
   
 private:
   static const char *TerminateReasonNames[];
@@ -351,6 +353,8 @@ private:
   void model_reopentran();
   
   //AH: Internal helper functions--------------------------
+
+
   //Tase helper to write an expr directly to an addr.  Width
   //(1/2/4/8 bytes) is inferred based on type of val.
   //Written because KLEE typically requires mem ops in terms of an

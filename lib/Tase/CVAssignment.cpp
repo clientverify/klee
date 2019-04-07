@@ -4,9 +4,13 @@
 #include "klee/TimerStatIncrementer.h"
 #include "klee/util/ExprPPrinter.h"
 #include "klee/Constraints.h"
+#include "klee/util/ArrayCache.h"
 #include "../Core/ImpliedValue.h"
 #include "klee/Internal/Support/ErrorHandling.h"
 #include "llvm/Support/CommandLine.h"
+#include "../Core/Executor.h"
+#include <iostream>
+
 
 
 CVAssignment::CVAssignment(std::vector<const klee::Array*> &objects,
@@ -89,3 +93,212 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
     }
   }
 }
+
+
+
+
+
+//Take a list of constraints and their values, and a buffer.  Return size of serialization.
+
+// |Header (magic)|| Header (# records) ||Rec1 name size X ||Rec1 val size Y||  Rec1 name   ||  Rec1 data   |
+// |123 (uint8_t) ||<-    uint16_t    ->||<-   uint16_t -> ||<-  uint16_t ->||<- X  bytes ->||<- Y  bytes ->|
+
+//And so on for all records until..
+//| Footer (magic) |
+//| 210 (uint8_t)  |
+
+bool debugSerial = true;
+
+void CVAssignment::serializeAssignments(std::vector<const klee::Array*> &objects,
+			 std::vector< std::vector<unsigned char> > &values, void * buf, int bufSize) {
+
+
+  if (objects.size() > 0xFFFFFFFF) {
+    printf("ERROR: Too many constraints to serialize in TASE \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+
+  uint16_t assignments = (uint16_t) objects.size();
+
+  if (debugSerial) {
+    printf("Attempting to serialize %d assignments \n", assignments);
+    std::cout.flush();
+  }
+
+  uint8_t * itrPtr = (uint8_t *)  buf;
+  //Header (magic)
+  *itrPtr = 123;
+  itrPtr++;
+
+  //Header (assignments)
+  *(uint16_t *) itrPtr = assignments;
+  itrPtr += 2;
+
+  std::vector< std::vector<unsigned char> >::iterator valIt =
+    values.begin();
+  for (std::vector<const klee::Array*>::iterator it = objects.begin(),
+	 ie = objects.end(); it != ie; ++it) {
+    const klee::Array *os = *it;
+    std::vector<unsigned char> &arr = *valIt;
+    std::string nameStr = os->name;
+
+    if (debugSerial) {
+      printf("Attempting to serialize string %s \n", nameStr.c_str());
+      std::cout.flush();
+    }
+
+    
+    
+    //Print Name Size-------------
+    if (nameStr.size() > 0xFFFFFFFF) {
+      printf("Serialization error -- variable name too large \n");
+      std::cout.flush();
+      std::exit(EXIT_FAILURE);
+    }
+    uint16_t nameSize = nameStr.size();
+    if (debugSerial) {
+      printf(" string length is  %d \n", nameSize);
+      std::cout.flush();
+    }
+    
+    *(uint16_t *) itrPtr = nameSize;
+    itrPtr += 2;
+
+    //Print Data size-------------
+    if (arr.size() > 0xFFFFFFFF) {
+      printf("Serialization error -- variable too large \n");
+      std::cout.flush();
+      std::exit(EXIT_FAILURE);
+    }
+    uint16_t dataSize = arr.size();
+    if (debugSerial) {
+      printf("Data size is %d \n", dataSize);
+      std::cout.flush();
+    }
+    
+    *(uint16_t *) itrPtr = dataSize;
+    itrPtr += 2;
+
+    //Print Name------------------
+    memcpy((void *) itrPtr, (void *) &nameStr[0] , nameSize);
+    itrPtr += nameSize;
+
+    //Print Data------------------
+    for (int i = 0; i < dataSize; i++) {
+      if (debugSerial) {
+	printf("Data is %d \n", arr[i]);
+	std::cout.flush();
+      }
+      *itrPtr = arr[i];
+      itrPtr++;
+    }
+    ++valIt;
+  }
+
+  //We had better be pointing at the footer by now
+  *itrPtr = 210;
+  
+  if (((uint64_t) itrPtr - (uint64_t) buf) > bufSize) {
+    printf("Error in serialization: overflowed buffer \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+
+  if (debugSerial) {
+    printf("Finished serializing %d assignments \n", assignments );
+    std::cout.flush();
+  }
+}
+
+void CVAssignment::deserializeAssignments ( void * buf, int bufSize, Executor * exec) {
+
+  if (debugSerial) {
+    printf("Attempting to deserialize multipass assignments from buffer at 0x%lx \n with size %d \n", (uint64_t) buf, bufSize);
+    std::cout.flush();
+  }
+
+  //Check magic
+  uint8_t * itrPtr = (uint8_t *) buf;
+  uint8_t magic = *itrPtr;
+  if (magic != 123) {
+    printf("Error deserializing constraints -- magic tag not found \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+  itrPtr++;
+
+  //Get expected number of records
+  uint16_t numRecords = *(uint16_t *) itrPtr;
+  itrPtr += 2;
+
+  if (debugSerial) {
+    printf("Found %d assignments during deserialization \n", numRecords);
+    std::cout.flush();
+  }
+
+  //Iterate through records
+  std::vector<const klee::Array*> objects;
+  std::vector< std::vector<unsigned char> > values;
+
+  //Invariant: itrPtr points to the beginning of a record at top of loop
+  for (int i = 0; i < numRecords; i++) {
+    
+    uint16_t nameSize = *(uint16_t *) itrPtr;
+    itrPtr += 2;
+
+    //Get Data Size
+    uint16_t dataSize = *(uint16_t *) itrPtr;
+    itrPtr += 2;
+
+    //Get Name
+    char * tmpBuf = (char *) malloc(nameSize + 1);
+    for (int j = 0; j < nameSize; j++)
+      tmpBuf[j] = *(itrPtr + j);
+    tmpBuf[nameSize] = 0; //Null terminate the string
+
+    std::string nameStr(tmpBuf);
+    
+    if (debugSerial) {
+      printf("Attempting to deserialize multipass assignments for var %s \n", nameStr.c_str());
+      std::cout.flush();
+    }
+    
+    const  Array * arr =  exec->getArrayCache()->CreateArray(nameStr , (uint64_t) dataSize);
+    itrPtr = itrPtr + nameSize;
+
+    //Get Data
+    std::vector<unsigned char> data;
+    for (int k = 0; k < dataSize; k++) {
+      unsigned char theByte = (unsigned char) (*(itrPtr + k)); 
+      data.push_back(theByte);
+      if (debugSerial) {
+	printf("Data is %d \n", *(itrPtr + k));
+	std::cout.flush();
+      }
+    }
+    itrPtr = itrPtr + dataSize;
+
+    //Add array and data
+    objects.push_back(arr);
+    values.push_back(data);
+
+  }
+
+  //Magic check
+  if (*itrPtr != 210) {
+    printf("Error in deserialization: couldn't find final magic value \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+
+  //Actually add bindings
+  addBindings(objects, values);
+
+  if (debugSerial) {
+    printf("Exiting deserialization \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+}
+

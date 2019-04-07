@@ -585,13 +585,13 @@ void ObjectState::applyPsnOnWrite(ref<Expr> offset, ref<Expr> value) {
     }
     endOff = firstOff + endOff -1;
 
-    printf("ApplyPsnOnWrite DBG: \n");
-    printf("endOff is %d, firstOff is %d \n", endOff, firstOff);
+    //printf("ApplyPsnOnWrite DBG: \n");
+    //printf("endOff is %d, firstOff is %d \n", endOff, firstOff);
     
     uint64_t firstAddr = this->getObject()->address + (uint64_t) firstOff;
     uint64_t endAddr = this->getObject()->address + (uint64_t) endOff;
 
-    printf("firstAddr is 0x%lx, endAddr is 0x%lx \n", firstAddr, endAddr);
+    // printf("firstAddr is 0x%lx, endAddr is 0x%lx \n", firstAddr, endAddr);
     
     bool concVal = false;
     
@@ -659,7 +659,7 @@ void ObjectState::applyPsnOnWrite(ref<Expr> offset, ref<Expr> value) {
     if (endAddr %2 == 0) {
       unsigned sibIdx = endOff +1;
       if (! ( isByteConcrete(endOff) && !isByteFlushed(endOff) && isByteConcrete(sibIdx) && !isByteFlushed(sibIdx) ) ) {
-	printf("In endAddr special case \n");
+	//printf("In endAddr special case \n");
 
 	ref <Expr> byte1Val = read8(endOff);
 	ref <Expr> byte2Val = read8(sibIdx);
@@ -696,7 +696,7 @@ void ObjectState::applyPsnOnWrite(ref<Expr> offset, ref<Expr> value) {
     for (int i = 0; i < size/2; i++)
       *(twoByteIterator + i) = poison_val; 
   }
-  printf("DBG: Exiting apply psn on write \n");
+  // printf("DBG: Exiting apply psn on write \n");
 
 }
 
