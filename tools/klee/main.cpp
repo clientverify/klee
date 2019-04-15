@@ -78,7 +78,7 @@ struct timeval targetEndTime;
 
 //gregset_t target_ctx_gregs;
 //gregset_t prev_ctx_gregs;
-#include "/playpen/humphries/TASE/TASE/test/tase/include/tase/tase_interp.h"
+#include "/playpen/humphries/zTASE/TASE/test/tase/include/tase/tase_interp.h"
 extern target_ctx_t target_ctx;
 
 greg_t * target_ctx_gregs = target_ctx.gregs;
@@ -88,10 +88,10 @@ int glob_argc;
 char ** glob_argv;
 char ** glob_envp;
 extern KTestObjectVector ktov;
-//extern void begin_target_inner();
+extern "C" void begin_target_inner();
 extern "C" void klee_interp();
 //extern "C" void ENTERTASEINITIAL();
-//extern "C" void enter_tase(void (*) (), int);
+extern "C" void enter_tase(void (*) (), int);
 //extern "C" void target_exit ();
 //extern "C" void tase_inject(int);
 
@@ -105,10 +105,8 @@ char interp_stack[STACK_SIZE + 1];
 char * target_stack_begin_ptr = &target_stack[STACK_SIZE];
 char * interp_stack_begin_ptr = &interp_stack[STACK_SIZE];
 klee::Interpreter * GlobalInterpreter;
-void * StackBase;
 llvm::Module * interpModule;
-//AH: Kind of gross.  We need to allocate X+1 bytes for an X byte stack, and note that it grows DOWNWARD.
-//  stack_size defined in tase.h
+
 
 bool taseDebug;
 bool dontFork;
@@ -117,6 +115,7 @@ enum runType exec_mode;
 enum testType : int {EXPLORATION, VERIFICATION};
 enum testType test_type;
 std::string project;
+bool disableSpringboard;
 
 bool enableMultipass = true; 
 int worker2managerFD [2];
@@ -148,6 +147,10 @@ typedef struct __attribute__((__packed__))  {
 enum workerSelectionMode : int {RANDOM, DEPTH_FIRST};
 enum workerSelectionMode workerSelectionType = RANDOM;
 
+extern "C" void  exit_tase() {
+
+}
+
 void transferToTarget() {
 
   /*
@@ -168,29 +171,40 @@ void transferToTarget() {
     target_ctx.target_exit_addr = (uintptr_t)&exit_tase_shim;
     target_ctx.sentinel[0] = CTX_STACK_SENTINEL;
     target_ctx.sentinel[1] = CTX_STACK_SENTINEL;
-    target_ctx.poison_reference.qword[0] = POISON_REFERENCE64;
-    target_ctx.poison_reference.qword[1] = POISON_REFERENCE64;
-    target_ctx.rip = (greg_t)&begin_target_inner;
+    //target_ctx.poison_reference.qword[0] = POISON_REFERENCE64;
+    //arget_ctx.poison_reference.qword[1] = POISON_REFERENCE64;
+    target_ctx.r15.u64 = (uint64_t) &begin_target_inner;
+    target_ctx.rip.u64 = (uint64_t) &begin_target_inner;
     target_ctx.rax = target_ctx.rip;
     // We pretend like we have pushed a return address as part of call.
-    target_ctx.rsp = (greg_t)(&target_ctx.target_exit_addr);
+    target_ctx.rsp.u64 = (uint64_t)(&target_ctx.target_exit_addr);
     // Just to be careful.  rbp should not be necessary but debuggers like it.
-    target_ctx.rbp = target_ctx.rsp + sizeof(uintptr_t);
+    target_ctx.rbp.u64 = target_ctx.rsp.u64 + sizeof(uintptr_t);
 
+    tase_springboard = (void *) &sb_disabled;
+    
     klee_interp();
 
     
   } else {
     
-    
-    enter_tase(&begin_target_inner, exec_mode == MIXED);
+    //Make sure you change tase_exit to exit_tase
+    int sbArg;
+    if (disableSpringboard == false) {
+      sbArg = 1;
+    } else {
+      sbArg = 0;
+    }
+    printf("sbArg is %d \n", sbArg);
+      
+    enter_tase(&begin_target_inner, sbArg);
     printf("TASE - returned from enter_tase... \n");
     std::cout.flush();
-    while (target_ctx_gregs[REG_RIP] != (uint64_t) &tase_exit) {
+    while (target_ctx_gregs[REG_RIP].u64 != (uint64_t) &tase_exit) {
       klee_interp();
       printf("Returning from klee_interp ... \n");
       std::cout.flush();
-      tase_inject(exec_mode == MIXED);
+      tase_inject(sbArg);
       printf("Returning from tase_inject ... \n");
       std::cout.flush();
     }
@@ -331,6 +345,9 @@ namespace {
   
   cl::opt<std::string>
   projectArg("project", cl::desc("Name of project in TASE"), cl::init("-"));
+
+  cl::opt<bool>
+  disableSpringboardArg("disableSpringboard", cl::desc("Enable or noop the sprinfboard"), cl::init(false));
   
   cl::opt<std::string>
   EntryPoint("entry-point",
@@ -1387,7 +1404,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 }
 #endif
 
- void printTASEArgs(runType rt, testType tt, bool fm, bool dbg, std::string projName, bool df) {
+ void printTASEArgs(runType rt, testType tt, bool fm, bool dbg, std::string projName, bool df, bool disableSB) {
 
    printf("TASE args... \n");
    if (rt == MIXED) 
@@ -1409,6 +1426,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    printf("\t taseManager: %d \n", fm);
    printf("\t taseDebug output: %d \n", dbg);
    printf("\t dontFork  output: %d \n", df);
+   printf("\t disableSB output: %d \n", disableSB);
    
  }
 
@@ -1430,9 +1448,10 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    taseDebug = taseDebugArg;
    dontFork = dontForkArg;
    project = projectArg;
-   
+   disableSpringboard = disableSpringboardArg;
+
    if (taseDebug)
-     printTASEArgs(exec_mode, test_type, taseManager, taseDebug, project, dontFork);
+     printTASEArgs(exec_mode, test_type, taseManager, taseDebug, project, dontFork, disableSpringboard);
    
    //Redirect stdout messages to a file called "Monitor".
    //Later, calls to unix fork in executor create new filenames
@@ -1521,8 +1540,10 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
                                   /*CheckOvershift=*/CheckOvershift);
 
    const Module *finalModule = interpreter->setModule(interpModule, Opts);
-   StackBase = (void *) &target_stack;
+   //StackBase = (void *) &target_stack;
 
+   
+   
    //ABH: Entry fn for our purposes is a dummy main function.
    // It's specified in parseltongue86 as dummyMain and
    // as_Z9dummyMainv in "EntryPoint" because of cpp name mangling.  
@@ -1615,7 +1636,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 
      printf("DEBUG: target_ctx located at 0x%lx \n ", (uint64_t) &target_ctx);
      
-     printf("DEBUG: REG_RIP located at 0x%lx \n",(uint64_t) &(target_ctx_gregs[REG_RIP] ) );
+     printf("DEBUG: REG_RIP located at 0x%lx \n",(uint64_t) &(target_ctx_gregs[REG_RIP].u64 ) );
      
      transferToTarget();
      printf("RETURNING TO MAIN HANDLER \n");

@@ -64,9 +64,9 @@ using namespace llvm;
 using namespace klee;
 
 //AH: Our additions below. --------------------------------------
-extern int loopCtr;
+//extern int loopCtr;
 
-#include "/playpen/humphries/TASE/TASE/test/tase/include/tase/tase_interp.h"
+#include "/playpen/humphries/zTASE/TASE/test/tase/include/tase/tase_interp.h"
 #include <iostream>
 #include "klee/CVAssignment.h"
 #include "klee/util/ExprUtil.h"
@@ -171,33 +171,33 @@ extern int __isoc99_sscanf ( const char * s, const char * format, ...);
 //Todo: don't just skip, even though this is only for printing, change ret size
 
 void Executor::model_sprintf() {
-  printf("Entering model_sprintf at RIP 0x%llx \n", target_ctx_gregs[REG_RIP]);
-  fprintf(modelLog,"Calling model_sprintf on string %s at interpCtr %lu \n", (char *) target_ctx_gregs[REG_RDI], interpCtr);
+  printf("Entering model_sprintf at RIP 0x%llx \n", target_ctx_gregs[REG_RIP].u64);
+  fprintf(modelLog,"Calling model_sprintf on string %s at interpCtr %lu \n", (char *) target_ctx_gregs[REG_RDI].u64, interpCtr);
 
   int res = 1;
   ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
   target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
 
   //fake a ret
-  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-  target_ctx_gregs[REG_RIP] = retAddr;
-  target_ctx_gregs[REG_RSP] += 8;
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+  target_ctx_gregs[REG_RIP].u64 = retAddr;
+  target_ctx_gregs[REG_RSP].u64 += 8;
   
 }
 
 //Todo: don't just skip, even though this is only for printing, change ret size
 void Executor::model_vfprintf(){
 
-  printf("Entering model_vfprintf at RIP 0x%llx \n", target_ctx_gregs[REG_RIP]);
+  printf("Entering model_vfprintf at RIP 0x%llx \n", target_ctx_gregs[REG_RIP].u64);
   
   int res = 1;
   ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
   target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
 
   //fake a ret
-  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-  target_ctx_gregs[REG_RIP] = retAddr;
-  target_ctx_gregs[REG_RSP] += 8;
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+  target_ctx_gregs[REG_RIP].u64 = retAddr;
+  target_ctx_gregs[REG_RSP].u64 += 8;
   
 }
 
@@ -227,9 +227,9 @@ void Executor::model___errno_location() {
   }
   
   //fake a ret
-  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-  target_ctx_gregs[REG_RIP] = retAddr;
-  target_ctx_gregs[REG_RSP] += 8;
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+  target_ctx_gregs[REG_RIP].u64 = retAddr;
+  target_ctx_gregs[REG_RSP].u64 += 8;
   
 }
 
@@ -245,12 +245,12 @@ void Executor::model_ktest_master_secret(  ) {
        (isa<ConstantExpr>(arg2Expr))
        ){
 
-    ktest_master_secret( (unsigned char *) target_ctx_gregs[REG_RDI], (int) target_ctx_gregs[REG_RSI]);
+    ktest_master_secret( (unsigned char *) target_ctx_gregs[REG_RDI].u64, (int) target_ctx_gregs[REG_RSI].u64);
     
     //fake a ret
-    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-    target_ctx_gregs[REG_RIP] = retAddr;
-    target_ctx_gregs[REG_RSP] += 8;
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
 
   } else {
     printf("ERROR Found symbolic input to model_ktest_master_secret \n");
@@ -263,7 +263,7 @@ void Executor::model_ktest_master_secret(  ) {
 
 void Executor::model_exit() {
 
-  printf("loopCtr is %d \n", loopCtr);
+  //printf("loopCtr is %d \n", loopCtr);
   printf(" Found call to exit.  TASE should shutdown. \n");
   std::cout.flush();
   std::exit(EXIT_SUCCESS);
@@ -274,14 +274,14 @@ void Executor::model_printf() {
   static int numCalls = 0;
   numCalls++;
   printf("Found call to printf for time %d \n",numCalls);
-  char * stringArg = (char *) target_ctx_gregs[REG_RDI];
+  char * stringArg = (char *) target_ctx_gregs[REG_RDI].u64;
   printf("First arg as string is %s \n", stringArg);
 
   std::cout.flush();
   //fake a ret
-  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-  target_ctx_gregs[REG_RIP] = retAddr;
-  target_ctx_gregs[REG_RSP] += 8;
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+  target_ctx_gregs[REG_RIP].u64 = retAddr;
+  target_ctx_gregs[REG_RSP].u64 += 8;
 
   
 }
@@ -300,12 +300,12 @@ void Executor::model_ktest_start() {
        (isa<ConstantExpr>(arg2Expr)) 
        ){
   
-    ktest_start( (char *)target_ctx_gregs[REG_RDI], KTEST_PLAYBACK);
+    ktest_start( (char *)target_ctx_gregs[REG_RDI].u64, KTEST_PLAYBACK);
 
     //Fake a ret
-    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-    target_ctx_gregs[REG_RIP] = retAddr;
-    target_ctx_gregs[REG_RSP] += 8;
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
     
     //return
   } else {
@@ -322,7 +322,7 @@ void Executor::model_ktest_writesocket() {
   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
 
   printf("Entering model_ktest_writesocket \n");
-  fprintf(modelLog, "Entering writesocket call at PC 0x%lx, interpCtr %lu", target_ctx_gregs[REG_RIP], interpCtr);
+  fprintf(modelLog, "Entering writesocket call at PC 0x%lx, interpCtr %lu", target_ctx_gregs[REG_RIP].u64, interpCtr);
   
   if  (
        (isa<ConstantExpr>(arg1Expr)) &&
@@ -331,14 +331,14 @@ void Executor::model_ktest_writesocket() {
        ){
 
     //Get result of call
-    ssize_t res = ktest_writesocket((int) target_ctx_gregs[REG_RDI], (void *) target_ctx_gregs[REG_RSI], (size_t) target_ctx_gregs[REG_RDX]);
+    ssize_t res = ktest_writesocket((int) target_ctx_gregs[REG_RDI].u64, (void *) target_ctx_gregs[REG_RSI].u64, (size_t) target_ctx_gregs[REG_RDX].u64);
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
 
     //fake a ret
-    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-    target_ctx_gregs[REG_RIP] = retAddr;
-    target_ctx_gregs[REG_RSP] += 8;
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
     
   } else {
     printf("ERROR in model_ktest_writesocket - symbolic arg \n");
@@ -364,14 +364,14 @@ void Executor::model_ktest_readsocket() {
        ){
 
     //Return result of call
-    ssize_t res = ktest_readsocket((int) target_ctx_gregs[REG_RDI], (void *) target_ctx_gregs[REG_RSI], (size_t) target_ctx_gregs[REG_RDX]);
+    ssize_t res = ktest_readsocket((int) target_ctx_gregs[REG_RDI].u64, (void *) target_ctx_gregs[REG_RSI].u64, (size_t) target_ctx_gregs[REG_RDX].u64);
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
     
     //fake a ret
-    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-    target_ctx_gregs[REG_RIP] = retAddr;
-    target_ctx_gregs[REG_RSP] += 8;
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
     
   } else {
     printf("ERROR in model_ktest_readsocket - symbolic arg \n");
@@ -394,14 +394,14 @@ void Executor::model_ktest_raw_read_stdin() {
        ){
 
     //return result of call
-    int res = ktest_raw_read_stdin((void *) target_ctx_gregs[REG_RDI], (int) target_ctx_gregs[REG_RSI]);
+    int res = ktest_raw_read_stdin((void *) target_ctx_gregs[REG_RDI].u64, (int) target_ctx_gregs[REG_RSI].u64);
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
     
     //Fake a ret
-    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-    target_ctx_gregs[REG_RIP] = retAddr;
-    target_ctx_gregs[REG_RSP] += 8;
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
     
   } else {
     printf("ERROR in ktest_raw_read_stdin -- symbolic args \n");
@@ -423,14 +423,14 @@ void Executor::model_ktest_connect() {
        (isa<ConstantExpr>(arg2Expr)) ) {
 
     //return result
-    int res = ktest_connect((int) target_ctx_gregs[REG_RDI], (struct sockaddr *) target_ctx_gregs[REG_RSI], (socklen_t) target_ctx_gregs[REG_RDX]);
+    int res = ktest_connect((int) target_ctx_gregs[REG_RDI].u64, (struct sockaddr *) target_ctx_gregs[REG_RSI].u64, (socklen_t) target_ctx_gregs[REG_RDX].u64);
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
 
     //Fake a return
-    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-    target_ctx_gregs[REG_RIP] = retAddr;
-    target_ctx_gregs[REG_RSP] += 8;
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
   } else {
     printf("ERROR in model_ktest_connect -- symbolic args \n");
     std::cout.flush();
@@ -456,7 +456,7 @@ void Executor::model_shutdown() {
 	(isa<ConstantExpr>(arg2Expr))
 	) {
 
-    std::cerr << " Entered model_shutdown call on FD %lu \n ", target_ctx_gregs[REG_RDI];
+    std::cerr << " Entered model_shutdown call on FD %lu \n ", target_ctx_gregs[REG_RDI].u64;
     
     if (ktov.size == ktov.playback_index) {
       std::cerr << "All playback messages retrieved \n";
@@ -499,20 +499,20 @@ void Executor::model_ktest_select() {
 	(isa<ConstantExpr>(arg5Expr))
 	) {
 
-    fprintf(modelLog, "Before ktest_select, readfds is 0x%lx, writefds is 0x%lx \n", *( (uint64_t *) target_ctx_gregs[REG_RSI]), *( (uint64_t *) target_ctx_gregs[REG_RDX]));
+    fprintf(modelLog, "Before ktest_select, readfds is 0x%lx, writefds is 0x%lx \n", *( (uint64_t *) target_ctx_gregs[REG_RSI].u64), *( (uint64_t *) target_ctx_gregs[REG_RDX].u64));
     fflush(modelLog);
     
-    int res = ktest_select((int) target_ctx_gregs[REG_RDI], (fd_set *) target_ctx_gregs[REG_RSI], (fd_set *) target_ctx_gregs[REG_RDX], (fd_set *) target_ctx_gregs[REG_RCX], (struct timeval *) target_ctx_gregs[REG_R8]);
+    int res = ktest_select((int) target_ctx_gregs[REG_RDI].u64, (fd_set *) target_ctx_gregs[REG_RSI].u64, (fd_set *) target_ctx_gregs[REG_RDX].u64, (fd_set *) target_ctx_gregs[REG_RCX].u64, (struct timeval *) target_ctx_gregs[REG_R8].u64);
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
 
-    fprintf(modelLog, "After ktest_select, readfds is 0x%lx, writefds is 0x%lx \n", *( (uint64_t *) target_ctx_gregs[REG_RSI]), *( (uint64_t *) target_ctx_gregs[REG_RDX]));
+    fprintf(modelLog, "After ktest_select, readfds is 0x%lx, writefds is 0x%lx \n", *( (uint64_t *) target_ctx_gregs[REG_RSI].u64), *( (uint64_t *) target_ctx_gregs[REG_RDX].u64));
     fflush(modelLog);
     
     //Fake a return
-    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-    target_ctx_gregs[REG_RIP] = retAddr;
-    target_ctx_gregs[REG_RSP] += 8;
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
     
   } else {
     printf("ERROR in model_ktest_select -- symbolic args \n");
@@ -523,16 +523,16 @@ void Executor::model_ktest_select() {
 
 //void *memcpy(void *dest, const void *src, size_t n);
 void Executor::model_memcpy() {
-  fprintf(modelLog,"Entering model memcpy: Moving 0x%lx bytes from 0x%lx to 0x%lx \n",(size_t) target_ctx_gregs[REG_RDX],  (void *) target_ctx_gregs[REG_RSI] ,  (void*) target_ctx_gregs[REG_RDI]  );
+  fprintf(modelLog,"Entering model memcpy: Moving 0x%lx bytes from 0x%lx to 0x%lx \n",(size_t) target_ctx_gregs[REG_RDX].u64,  (void *) target_ctx_gregs[REG_RSI].u64 ,  (void*) target_ctx_gregs[REG_RDI].u64  );
   fflush(modelLog);
-  void * res = memcpy((void*) target_ctx_gregs[REG_RDI], (void *) target_ctx_gregs[REG_RSI], (size_t) target_ctx_gregs[REG_RDX]);
+  void * res = memcpy((void*) target_ctx_gregs[REG_RDI].u64, (void *) target_ctx_gregs[REG_RSI].u64, (size_t) target_ctx_gregs[REG_RDX].u64);
   ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
   target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
   
   //Fake a return
-  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-  target_ctx_gregs[REG_RIP] = retAddr;
-  target_ctx_gregs[REG_RSP] += 8;
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+  target_ctx_gregs[REG_RIP].u64 = retAddr;
+  target_ctx_gregs[REG_RSP].u64 += 8;
 
 }
 
@@ -550,14 +550,14 @@ void Executor::model_ktest_RAND_bytes() {
        (isa<ConstantExpr>(arg2Expr)) ) {
 
     //return val
-    int res = ktest_RAND_bytes((unsigned char *) target_ctx_gregs[REG_RDI], (int) target_ctx_gregs[REG_RSI]);
+    int res = ktest_RAND_bytes((unsigned char *) target_ctx_gregs[REG_RDI].u64, (int) target_ctx_gregs[REG_RSI].u64);
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
     
     //Fake a return
-    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-    target_ctx_gregs[REG_RIP] = retAddr;
-    target_ctx_gregs[REG_RSP] += 8;
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
 
   } else {
     printf("ERROR in model_ktest_RAND_bytes \n");
@@ -580,16 +580,16 @@ void Executor::model_ktest_RAND_pseudo_bytes() {
        (isa<ConstantExpr>(arg2Expr)) ) {
 
     //return result of call
-    int res = ktest_RAND_pseudo_bytes((unsigned char *) target_ctx_gregs[REG_RDI], (int) target_ctx_gregs[REG_RSI]);
+    int res = ktest_RAND_pseudo_bytes((unsigned char *) target_ctx_gregs[REG_RDI].u64, (int) target_ctx_gregs[REG_RSI].u64);
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
   
     
     
     //Fake a return
-    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-    target_ctx_gregs[REG_RIP] = retAddr;
-    target_ctx_gregs[REG_RSP] += 8;
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
 
   } else {
     printf("ERROR in model_test_RAND_pseudo_bytes \n");
@@ -614,7 +614,7 @@ void Executor::model_fileno() {
        ){
     
     //return res of call
-    int res = fileno((FILE *) target_ctx_gregs[REG_RDI]);
+    int res = fileno((FILE *) target_ctx_gregs[REG_RDI].u64);
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
 
@@ -622,9 +622,9 @@ void Executor::model_fileno() {
     fflush(modelLog);
     
     //Fake a return
-    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-    target_ctx_gregs[REG_RIP] = retAddr;
-    target_ctx_gregs[REG_RSP] += 8;
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
     
   } else {
     printf("ERROR in model_test_RAND_pseudo_bytes \n");
@@ -650,7 +650,7 @@ void Executor::model_fcntl() {
        ){
 
 
-    if ( (int) target_ctx_gregs[REG_RSI] == F_SETFL && (int) target_ctx_gregs[REG_RDX] == O_NONBLOCK) {
+    if ( (int) target_ctx_gregs[REG_RSI].u64 == F_SETFL && (int) target_ctx_gregs[REG_RDX].u64 == O_NONBLOCK) {
       fprintf(modelLog,"fcntl call to set fd as nonblocking \n");
       fflush(modelLog);
     } else {
@@ -662,9 +662,9 @@ void Executor::model_fcntl() {
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
     
     //Fake a return
-    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-    target_ctx_gregs[REG_RIP] = retAddr;
-    target_ctx_gregs[REG_RSP] += 8;
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
 
   } else {
     printf("ERROR in model_fcntl -- symbolic args \n");
@@ -691,15 +691,15 @@ void Executor::model_stat() {
        ){
 
     //return res of call
-    int res = stat((char *) target_ctx_gregs[REG_RDI], (struct stat *) target_ctx_gregs[REG_RSI]);
+    int res = stat((char *) target_ctx_gregs[REG_RDI].u64, (struct stat *) target_ctx_gregs[REG_RSI].u64);
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
 
     
     //Fake a ret
-    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-    target_ctx_gregs[REG_RIP] = retAddr;
-    target_ctx_gregs[REG_RSP] += 8;
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
     
   } else {
     printf("ERROR in model_start -- symbolic args \n");
@@ -721,9 +721,9 @@ void Executor::model_getuid() {
   target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
   
   //Fake a ret
-  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-  target_ctx_gregs[REG_RIP] = retAddr;
-  target_ctx_gregs[REG_RSP] += 8;
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+  target_ctx_gregs[REG_RIP].u64 = retAddr;
+  target_ctx_gregs[REG_RSP].u64 += 8;
   
 }
 
@@ -739,9 +739,9 @@ void Executor::model_geteuid() {
   target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
 
   //Fake a ret
-  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-  target_ctx_gregs[REG_RIP] = retAddr;
-  target_ctx_gregs[REG_RSP] += 8;
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+  target_ctx_gregs[REG_RIP].u64 = retAddr;
+  target_ctx_gregs[REG_RSP].u64 += 8;
 
 }
 
@@ -757,9 +757,9 @@ void Executor::model_getgid() {
   target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
 
   //Fake a ret
-  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-  target_ctx_gregs[REG_RIP] = retAddr;
-  target_ctx_gregs[REG_RSP] += 8;
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+  target_ctx_gregs[REG_RIP].u64 = retAddr;
+  target_ctx_gregs[REG_RSP].u64 += 8;
 
 }
 
@@ -775,9 +775,9 @@ void Executor::model_getegid() {
   target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
 
   //Fake a ret
-  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-  target_ctx_gregs[REG_RIP] = retAddr;
-  target_ctx_gregs[REG_RSP] += 8;
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+  target_ctx_gregs[REG_RIP].u64 = retAddr;
+  target_ctx_gregs[REG_RSP].u64 += 8;
 
 }
 
@@ -794,9 +794,9 @@ void Executor::model_getenv() {
        (isa<ConstantExpr>(arg1Expr)) 
        ){
 
-    char * res = getenv((char *) target_ctx_gregs[REG_RDI]);
+    char * res = getenv((char *) target_ctx_gregs[REG_RDI].u64);
 
-    printf("Called getenv on 0x%llx, returned 0x%llx \n", target_ctx_gregs[REG_RDI], (uint64_t) res);
+    printf("Called getenv on 0x%llx, returned 0x%llx \n", target_ctx_gregs[REG_RDI].u64, (uint64_t) res);
     std::cout.flush();
     
     //Create MO to represent the env entry
@@ -828,9 +828,9 @@ void Executor::model_getenv() {
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
     
     //Fake a ret
-    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-    target_ctx_gregs[REG_RIP] = retAddr;
-    target_ctx_gregs[REG_RSP] += 8;
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
     printf("Leaving model_getenv \n");
     std::cout.flush();
   } else {
@@ -866,7 +866,12 @@ void Executor::model_socket() {
     
     ref<ConstantExpr> FDExpr = ConstantExpr::create(res, Expr::Int64);
     target_ctx_gregs_OS->write(REG_RAX * 8, FDExpr);
-    target_ctx_gregs[REG_RIP] += 5;
+
+    //Fake a ret
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
+    
     //openFD++;
   } else {
     printf("Found symbolic argument to model_socket \n");
@@ -880,14 +885,14 @@ void Executor::model_htonl () {
 
   fprintf(modelLog,"Entering model_htonl at in interpCtr %lu \n", interpCtr);
   
-  uint32_t res = htonl((uint32_t) target_ctx_gregs[REG_RDI]);
+  uint32_t res = htonl((uint32_t) target_ctx_gregs[REG_RDI].u64);
   ref<ConstantExpr> FDExpr = ConstantExpr::create(res, Expr::Int64);
   target_ctx_gregs_OS->write(REG_RAX * 8, FDExpr);
 
   //fake a ret
-  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-  target_ctx_gregs[REG_RIP] = retAddr;
-  target_ctx_gregs[REG_RSP] += 8;
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+  target_ctx_gregs[REG_RIP].u64 = retAddr;
+  target_ctx_gregs[REG_RSP].u64 += 8;
 }
 
 
@@ -899,9 +904,9 @@ void Executor::model_BIO_printf() {
   fprintf(modelLog,"Entered bio_printf at interp Ctr %lu \n", interpCtr);
   
   
-  char * errMsg = (char *) target_ctx_gregs[REG_RSI];
+  char * errMsg = (char *) target_ctx_gregs[REG_RSI].u64;
 
-  int arg3 = (int) target_ctx_gregs[REG_RDX];
+  int arg3 = (int) target_ctx_gregs[REG_RDX].u64;
   
   fprintf(modelLog, " %s \n", errMsg);
   
@@ -915,9 +920,9 @@ void Executor::model_BIO_printf() {
   std::cerr << "\n";
   
   //fake a ret
-  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-  target_ctx_gregs[REG_RIP] = retAddr;
-  target_ctx_gregs[REG_RSP] += 8;
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+  target_ctx_gregs[REG_RIP].u64 = retAddr;
+  target_ctx_gregs[REG_RSP].u64 += 8;
 
 }
 
@@ -927,16 +932,16 @@ void Executor::model_BIO_snprintf() {
   fprintf(modelLog,"Entered bio_snprintf at interp Ctr %lu \n", interpCtr);
   
   
-  char * errMsg = (char *) target_ctx_gregs[REG_RDX];
+  char * errMsg = (char *) target_ctx_gregs[REG_RDX].u64;
 
   fprintf(modelLog, " %s \n", errMsg);
-  fprintf(modelLog, "First snprintf arg as int: %lu \n", target_ctx_gregs[REG_RCX]);
+  fprintf(modelLog, "First snprintf arg as int: %lu \n", target_ctx_gregs[REG_RCX].u64);
   fflush(modelLog);
 
   if (strcmp("error:%08lX:%s:%s:%s", errMsg) == 0) {
 
-    fprintf(modelLog, " %s \n", (char *) target_ctx_gregs[REG_R8]);
-    fprintf(modelLog, " %s \n", (char *) target_ctx_gregs[REG_R9]);
+    fprintf(modelLog, " %s \n", (char *) target_ctx_gregs[REG_R8].u64);
+    fprintf(modelLog, " %s \n", (char *) target_ctx_gregs[REG_R9].u64);
 
   }
   
@@ -945,9 +950,9 @@ void Executor::model_BIO_snprintf() {
   
 
   //fake a ret
-  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-  target_ctx_gregs[REG_RIP] = retAddr;
-  target_ctx_gregs[REG_RSP] += 8;
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+  target_ctx_gregs[REG_RIP].u64 = retAddr;
+  target_ctx_gregs[REG_RSP].u64 += 8;
 
 }
 
@@ -963,7 +968,7 @@ void Executor::model_time() {
   
   if  (
        (isa<ConstantExpr>(arg1Expr)) ) {
-    time_t res = time( (time_t *) target_ctx_gregs[REG_RDI]);
+    time_t res = time( (time_t *) target_ctx_gregs[REG_RDI].u64);
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
 
     char * timeString = ctime(&res);
@@ -973,9 +978,9 @@ void Executor::model_time() {
     
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
     //fake a ret
-    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-    target_ctx_gregs[REG_RIP] = retAddr;
-    target_ctx_gregs[REG_RSP] += 8;
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
     
   } else {
     printf("Found symbolic argument to model_time \n");
@@ -999,7 +1004,7 @@ void Executor::model_gmtime() {
   if  (
        (isa<ConstantExpr>(arg1Expr)) ) {
     //Do call
-    struct tm * res = gmtime( (time_t *) target_ctx_gregs[REG_RDI]);
+    struct tm * res = gmtime( (time_t *) target_ctx_gregs[REG_RDI].u64);
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
     char timeBuf[30];
     strftime(timeBuf, 30, "%Y-%m-%d %H:%M:%S", res);
@@ -1026,9 +1031,9 @@ void Executor::model_gmtime() {
     
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
     //fake a ret
-    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-    target_ctx_gregs[REG_RIP] = retAddr;
-    target_ctx_gregs[REG_RSP] += 8;
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
     
   } else {
     printf("Found symbolic argument to model_gmtime \n");
@@ -1050,13 +1055,13 @@ void Executor::model_gettimeofday() {
        (isa<ConstantExpr>(arg2Expr)) ) {
 
     //Do call
-    int res = gettimeofday( (struct timeval *) target_ctx_gregs[REG_RDI], (struct timezone *) target_ctx_gregs[REG_RSI]);
+    int res = gettimeofday( (struct timeval *) target_ctx_gregs[REG_RDI].u64, (struct timezone *) target_ctx_gregs[REG_RSI].u64);
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
     //fake a ret
-    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-    target_ctx_gregs[REG_RIP] = retAddr;
-    target_ctx_gregs[REG_RSP] += 8;
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
 
   }  else {
     printf("Found symbolic argument to model_gettimeofday \n");
@@ -1091,8 +1096,8 @@ void Executor::model_calloc() {
        (isa<ConstantExpr>(arg1Expr)) &&
        (isa<ConstantExpr>(arg2Expr)) ) {
 
-    size_t nmemb = target_ctx_gregs[REG_RDI];
-    size_t size  = target_ctx_gregs[REG_RSI];
+    size_t nmemb = target_ctx_gregs[REG_RDI].u64;
+    size_t size  = target_ctx_gregs[REG_RSI].u64;
     void * res = calloc(nmemb, size);
 
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
@@ -1113,9 +1118,9 @@ void Executor::model_calloc() {
     heapOSWrite->concreteStore = (uint8_t *) res;
 
     //fake a ret
-    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-    target_ctx_gregs[REG_RIP] = retAddr;
-    target_ctx_gregs[REG_RSP] += 8;
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
     
   } else {
     printf("Found symbolic argument to model_calloc \n");
@@ -1123,6 +1128,7 @@ void Executor::model_calloc() {
   }
     
 }
+
 
 
 
@@ -1139,8 +1145,8 @@ ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
       (isa<ConstantExpr>(arg1Expr)) &&
       (isa<ConstantExpr>(arg2Expr)) ) {
 
-   void * ptr = (void *) target_ctx_gregs[REG_RDI];
-   size_t size = (size_t) target_ctx_gregs[REG_RSI];
+   void * ptr = (void *) target_ctx_gregs[REG_RDI].u64;
+   size_t size = (size_t) target_ctx_gregs[REG_RSI].u64;
    void * res = realloc(ptr,size);
 
    printf("Calling realloc on 0x%llx with size 0x%x.  Ret val is 0x%llx \n", (uint64_t) ptr, (uint64_t) size, (uint64_t) res);
@@ -1159,9 +1165,10 @@ ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
      std::cout.flush();
      ObjectPair OP;
      ref<ConstantExpr> addrExpr = ConstantExpr::create((uint64_t) ptr, Expr::Int64);
-     if (GlobalExecutionStatePtr->addressSpace.resolveOne(addrExpr, OP)) {
+     if (GlobalExecutionStatePtr->addressSpace.resolveOne(addrExpr, OP) ) {
        const MemoryObject * MO = OP.first;
        //Todo: carefully copy out/ copy in symbolic data if present
+
        GlobalExecutionStatePtr->addressSpace.unbindObject(MO);
 
        MemoryObject * newMO = addExternalObject(*GlobalExecutionStatePtr, (void *) res, size, false);
@@ -1210,9 +1217,9 @@ ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
    }
      
    //Fake a return
-   uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-   target_ctx_gregs[REG_RIP] = retAddr;
-   target_ctx_gregs[REG_RSP] += 8;
+   uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+   target_ctx_gregs[REG_RIP].u64 = retAddr;
+   target_ctx_gregs[REG_RSP].u64 += 8;
    
  } else {
     printf("Found symbolic argument to model_realloc \n");
@@ -1228,7 +1235,7 @@ void Executor::model_malloc() {
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
 
   if (isa<ConstantExpr>(arg1Expr)) {
-    size_t sizeArg = (size_t) target_ctx_gregs[REG_RDI];
+    size_t sizeArg = (size_t) target_ctx_gregs[REG_RDI].u64;
     printf("Entered model_malloc with requested size %d \n", sizeArg);
 
     if (roundUpHeapAllocations) 
@@ -1252,23 +1259,29 @@ void Executor::model_malloc() {
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) buf, Expr::Int64);
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr); 
 
+    //Fake a return
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
+
+    /*
     //Ugly code to determine size of call inst
-    uint64_t rip = target_ctx_gregs[REG_RIP]; 
+    uint64_t rip = target_ctx_gregs[REG_RIP].u64; 
     uint8_t callqOpc = 0xe8;
     uint16_t callIndOpc = 0x15ff;
     uint8_t * oneBytePtr = (uint8_t *) rip;
     uint8_t firstByte = *oneBytePtr;
     uint16_t firstTwoBytes = *( (uint16_t *) oneBytePtr);
     if (firstByte == callqOpc) {
-      target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_RIP] +5;
+      target_ctx_gregs[REG_RIP].u64 = target_ctx_gregs[REG_RIP].u64 +5;
     } else if (firstTwoBytes == callIndOpc) {
-      target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_RIP] +6;
+      target_ctx_gregs[REG_RIP].u64 = target_ctx_gregs[REG_RIP].u64 +6;
     } else {
       printf("Can't determine call opcode \n");
       std::cout.flush();
       std::exit(EXIT_FAILURE);
     }
-    
+    */
     printf("INTERPRETER: Exiting model_malloc \n"); 
     std::cout.flush();
   } else {
@@ -1286,7 +1299,7 @@ void Executor::model_free() {
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
   if (isa<ConstantExpr>(arg1Expr)) {
 
-    void * freePtr = (void *) target_ctx_gregs[REG_RDI];
+    void * freePtr = (void *) target_ctx_gregs[REG_RDI].u64;
     printf("Calling model_free on addr 0x%llx \n", (uint64_t) freePtr);
     free(freePtr);
 
@@ -1306,9 +1319,9 @@ void Executor::model_free() {
     }
     
     //Fake a return
-    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-    target_ctx_gregs[REG_RIP] = retAddr;
-    target_ctx_gregs[REG_RSP] += 8;
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
     
   } else {
     printf("INTERPRETER: CALLING MODEL_FREE WITH SYMBOLIC ARGS.  NOT IMPLMENTED YET \n");
@@ -1333,16 +1346,16 @@ void Executor::model_fopen() {
        (isa<ConstantExpr>(arg2Expr))
        ){
 
-    FILE * res = fopen( (char *) target_ctx_gregs[REG_RDI], (char *) target_ctx_gregs[REG_RSI]);
-    printf("Calling fopen on file %s \n", (char *) target_ctx_gregs[REG_RDI]);
+    FILE * res = fopen( (char *) target_ctx_gregs[REG_RDI].u64, (char *) target_ctx_gregs[REG_RSI].u64);
+    printf("Calling fopen on file %s \n", (char *) target_ctx_gregs[REG_RDI].u64);
     //Return result
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
     
     //fake a ret
-    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-    target_ctx_gregs[REG_RIP] = retAddr;
-    target_ctx_gregs[REG_RSP] += 8;
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
     
   } else {
     printf("ERROR found symbolic input to model_fopen \n");
@@ -1367,16 +1380,16 @@ void Executor::model_fopen64() {
        (isa<ConstantExpr>(arg2Expr))
        ){
 
-    FILE * res = fopen64( (char *) target_ctx_gregs[REG_RDI], (char *) target_ctx_gregs[REG_RSI]);
-    printf("Calling fopen64 on file %s \n", (char *) target_ctx_gregs[REG_RDI]);
+    FILE * res = fopen64( (char *) target_ctx_gregs[REG_RDI].u64, (char *) target_ctx_gregs[REG_RSI].u64);
+    printf("Calling fopen64 on file %s \n", (char *) target_ctx_gregs[REG_RDI].u64);
     //Return result
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
     
     //fake a ret
-    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-    target_ctx_gregs[REG_RIP] = retAddr;
-    target_ctx_gregs[REG_RSP] += 8;
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
     
   } else {
     printf("ERROR found symbolic input to model_fopen64 \n");
@@ -1401,9 +1414,9 @@ void Executor::model_fclose() {
     //We don't need to make any call
     
     //Fake a return
-    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-    target_ctx_gregs[REG_RIP] = retAddr;
-    target_ctx_gregs[REG_RSP] += 8;
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
     
   } else {
     printf("ERROR in model_fclose -- symbolic args \n");
@@ -1432,16 +1445,16 @@ void Executor::model_fread() {
 	(isa<ConstantExpr>(arg4Expr)) 
 	) {
   
-    size_t res = fread( (void *) target_ctx_gregs[REG_RDI], (size_t) target_ctx_gregs[REG_RSI], (size_t) target_ctx_gregs[REG_RDX], (FILE *) target_ctx_gregs[REG_RCX]);
+    size_t res = fread( (void *) target_ctx_gregs[REG_RDI].u64, (size_t) target_ctx_gregs[REG_RSI].u64, (size_t) target_ctx_gregs[REG_RDX].u64, (FILE *) target_ctx_gregs[REG_RCX].u64);
     
     //Return result
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
     
     //Fake a return
-    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-    target_ctx_gregs[REG_RIP] = retAddr;
-    target_ctx_gregs[REG_RSP] += 8;
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
 
   } else {
     printf("ERROR in model_fread -- symbolic args \n");
@@ -1461,9 +1474,9 @@ void Executor::model___isoc99_sscanf() {
   target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
   
   //Fake a return
-  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-  target_ctx_gregs[REG_RIP] = retAddr;
-  target_ctx_gregs[REG_RSP] += 8;
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+  target_ctx_gregs[REG_RIP].u64 = retAddr;
+  target_ctx_gregs[REG_RSP].u64 += 8;
   
 }
 
@@ -1479,8 +1492,8 @@ void Executor::model_gethostbyname() {
        (isa<ConstantExpr>(arg1Expr))
        ){
     //Do the call
-    fprintf(modelLog, "Calling model_gethostbyname on %s \n", (char *) target_ctx_gregs[REG_RDI]);
-    struct hostent * res = (struct hostent *) gethostbyname ((const char *) target_ctx_gregs[REG_RDI]);
+    fprintf(modelLog, "Calling model_gethostbyname on %s \n", (char *) target_ctx_gregs[REG_RDI].u64);
+    struct hostent * res = (struct hostent *) gethostbyname ((const char *) target_ctx_gregs[REG_RDI].u64);
 
     //If it doesn't exit, back hostent struct with a memory object.
     ObjectPair OP;
@@ -1518,9 +1531,9 @@ void Executor::model_gethostbyname() {
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
     
     //Fake a return
-    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-    target_ctx_gregs[REG_RIP] = retAddr;
-    target_ctx_gregs[REG_RSP] += 8;
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
     
   } else {
     printf("ERROR in model_gethostbyname -- symbolic args \n");
@@ -1557,9 +1570,9 @@ void Executor::model_setsockopt() {
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
 
     //Fake a return
-    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-    target_ctx_gregs[REG_RIP] = retAddr;
-    target_ctx_gregs[REG_RSP] += 8;
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
   } else {
     printf("ERROR in model_setsockoptions -- symbolic args \n");
     std::cout.flush();
@@ -1579,9 +1592,9 @@ void Executor::model___ctype_b_loc() {
   target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
   
   //Fake a return
-  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-  target_ctx_gregs[REG_RIP] = retAddr;
-  target_ctx_gregs[REG_RSP] += 8;
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+  target_ctx_gregs[REG_RIP].u64 = retAddr;
+  target_ctx_gregs[REG_RSP].u64 += 8;
 
   
 }
@@ -1601,9 +1614,9 @@ void Executor::model___ctype_tolower_loc() {
   target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
   
   //Fake a return
-  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-  target_ctx_gregs[REG_RIP] = retAddr;
-  target_ctx_gregs[REG_RSP] += 8;
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+  target_ctx_gregs[REG_RIP].u64 = retAddr;
+  target_ctx_gregs[REG_RSP].u64 += 8;
   
 
 }
@@ -1629,9 +1642,9 @@ void Executor::model_fflush(){
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
 
     //fake a ret
-    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-    target_ctx_gregs[REG_RIP] = retAddr;
-    target_ctx_gregs[REG_RSP] += 8;
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
 
   } else {
     printf("ERROR Found symbolic input to model_fflush \n");
@@ -1661,14 +1674,14 @@ void Executor::model_fgets() {
       (isa<ConstantExpr>(arg3Expr)) 
       ){
     //Do call
-    char * res = fgets((char *) target_ctx_gregs[REG_RDI], (int) target_ctx_gregs[REG_RSI], (FILE *) target_ctx_gregs[REG_RDX]);
+    char * res = fgets((char *) target_ctx_gregs[REG_RDI].u64, (int) target_ctx_gregs[REG_RSI].u64, (FILE *) target_ctx_gregs[REG_RDX].u64);
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
 
     //Fake a return
-    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-    target_ctx_gregs[REG_RIP] = retAddr;
-    target_ctx_gregs[REG_RSP] += 8;
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
   } else {
     printf("ERROR in model_fgets -- symbolic args \n");
     std::cout.flush();
@@ -1692,15 +1705,15 @@ void Executor::model_fwrite() {
 	(isa<ConstantExpr>(arg4Expr))
 	) {
     
-    size_t res = fwrite( (void *) target_ctx_gregs[REG_RDI], (size_t) target_ctx_gregs[REG_RSI], (size_t) target_ctx_gregs[REG_RDX], (FILE *) target_ctx_gregs[REG_RCX]);
+    size_t res = fwrite( (void *) target_ctx_gregs[REG_RDI].u64, (size_t) target_ctx_gregs[REG_RSI].u64, (size_t) target_ctx_gregs[REG_RDX].u64, (FILE *) target_ctx_gregs[REG_RCX].u64);
     
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
 
   //Fake a return
-  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-  target_ctx_gregs[REG_RIP] = retAddr;
-  target_ctx_gregs[REG_RSP] += 8;
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+  target_ctx_gregs[REG_RIP].u64 = retAddr;
+  target_ctx_gregs[REG_RSP].u64 += 8;
   } else {
     printf("ERROR in model_fwrite -- symbolic args \n");
     std::cout.flush();
@@ -1732,9 +1745,9 @@ void Executor::model_read() {
     //Get correct message buffer to verify against based on fd
     //TODO: Find a better way to do this.
 
-    int filedes = (int) target_ctx_gregs[REG_RDI]; //fd
-    //target_ctx_gregs[REG_RSI]; //address of dest buf  NOT USED YET
-    //target_ctx_gregs[REG_RDX]; //max len to read in NOT USED YET
+    int filedes = (int) target_ctx_gregs[REG_RDI].u64; //fd
+    //target_ctx_gregs[REG_RSI].u64; //address of dest buf  NOT USED YET
+    //target_ctx_gregs[REG_RDX].u64; //max len to read in NOT USED YET
     
     if (filedes == STDIN_FD)
       model_readstdin();    
@@ -1765,9 +1778,9 @@ void Executor::model_readsocket() {
       (isa<ConstantExpr>(arg3Expr)) 
       ){
 
-    int filedes = target_ctx_gregs[REG_RDI]; //fd
-    void * buffer = (void *) target_ctx_gregs[REG_RSI]; //address of dest buf 
-    size_t size = target_ctx_gregs[REG_RDX]; //max len to read in
+    int filedes = target_ctx_gregs[REG_RDI].u64; //fd
+    void * buffer = (void *) target_ctx_gregs[REG_RSI].u64; //address of dest buf 
+    size_t size = target_ctx_gregs[REG_RDX].u64; //max len to read in
     
     KTestObject *o = KTOV_next_object(&ktov, "s2c");
     if (o->numBytes > size) {
@@ -1786,7 +1799,7 @@ void Executor::model_readsocket() {
     //Return number of bytes read and bump RIP.
     ref<ConstantExpr> bytesReadExpr = ConstantExpr::create(o->numBytes, Expr::Int64);
     target_ctx_gregs_OS->write(REG_RAX * 8, bytesReadExpr);
-    target_ctx_gregs[REG_RIP] += 5;
+    target_ctx_gregs[REG_RIP].u64 += 5;
     return; 
   } else {
     printf("Found symbolic args to model_readsocket \n");
@@ -1807,9 +1820,9 @@ void Executor::model_readstdin() {
       (isa<ConstantExpr>(arg3Expr)) 
       ){
 
-    int filedes = target_ctx_gregs[REG_RDI]; //fd
-    void * buffer = (void *) target_ctx_gregs[REG_RSI]; //address of dest buf 
-    size_t size = target_ctx_gregs[REG_RDX]; //max len to read in
+    int filedes = target_ctx_gregs[REG_RDI].u64; //fd
+    void * buffer = (void *) target_ctx_gregs[REG_RSI].u64; //address of dest buf 
+    size_t size = target_ctx_gregs[REG_RDX].u64; //max len to read in
     
     if (enableMultipass) {
 
@@ -1852,7 +1865,7 @@ void Executor::model_readstdin() {
     //Return number of bytes read and bump RIP.
     ref<ConstantExpr> bytesReadExpr = ConstantExpr::create(numSymBytes, Expr::Int64);
     target_ctx_gregs_OS->write(REG_RAX * 8, bytesReadExpr);
-    target_ctx_gregs[REG_RIP] += 5;
+    target_ctx_gregs[REG_RIP].u64 += 5;
 
   } else {
     printf("Found symbolic args to model_readstdin \n");
@@ -1866,7 +1879,10 @@ void Executor::model_readstdin() {
 void Executor::model_signal() {
   printf("Entering model_signal \n");
 
-  target_ctx_gregs[REG_RIP] += 5;
+  //Fake a return
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+  target_ctx_gregs[REG_RIP].u64 = retAddr;
+  target_ctx_gregs[REG_RSP].u64 += 8;
 
 }
 
@@ -1887,9 +1903,9 @@ void Executor::model_write() {
       (isa<ConstantExpr>(arg3Expr)) 
       ){
 
-    int filedes = (int)  target_ctx_gregs[REG_RDI]; //fd
-    void * buffer = (void *) target_ctx_gregs[REG_RSI]; //address of dest buf 
-    size_t size = (size_t) target_ctx_gregs[REG_RDX]; //max len to read in
+    int filedes = (int)  target_ctx_gregs[REG_RDI].u64; //fd
+    void * buffer = (void *) target_ctx_gregs[REG_RSI].u64; //address of dest buf 
+    size_t size = (size_t) target_ctx_gregs[REG_RDX].u64; //max len to read in
     
     //Note that we just verify against the actual number of bytes that
     //would be printed, and ignore null terminators in the src buffer.
@@ -1940,7 +1956,7 @@ void Executor::model_write() {
     target_ctx_gregs_OS->write(REG_RAX * 8, bytesWrittenExpr);
 
     
-    target_ctx_gregs[REG_RIP] += 5;
+    target_ctx_gregs[REG_RIP].u64 += 5;
 
     printf("Returning from model_write \n");
 
@@ -1986,11 +2002,11 @@ void Executor::model_select() {
   times_model_select_called++;
   
   //Get the input args per system V linux ABI.
-  int nfds = (int) target_ctx_gregs[REG_RDI]; // int nfds
-  fd_set * readfds = (fd_set *) target_ctx_gregs[REG_RSI]; // fd_set * readfds
-  fd_set * writefds = (fd_set *) target_ctx_gregs[REG_RDX]; // fd_set * writefds
-  //fd_set * exceptfds = (fd_set *) target_ctx_gregs[REG_RCX]; // fd_set * exceptfds NOT USED
-  //struct timeval * timeout = (struct timeval *) target_ctx_gregs[REG_R8];  // struct timeval * timeout  NOT USED
+  int nfds = (int) target_ctx_gregs[REG_RDI].u64; // int nfds
+  fd_set * readfds = (fd_set *) target_ctx_gregs[REG_RSI].u64; // fd_set * readfds
+  fd_set * writefds = (fd_set *) target_ctx_gregs[REG_RDX].u64; // fd_set * writefds
+  //fd_set * exceptfds = (fd_set *) target_ctx_gregs[REG_RCX].u64; // fd_set * exceptfds NOT USED
+  //struct timeval * timeout = (struct timeval *) target_ctx_gregs[REG_R8].u64;  // struct timeval * timeout  NOT USED
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
@@ -2112,7 +2128,7 @@ void Executor::model_select() {
     //For now, just model with a successful return.  But we could make this symbolic.
     target_ctx_gregs_OS->write(REG_RAX * 8, bitsSetExpr);
     //bump RIP and interpret next instruction
-    target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_RIP] +5;
+    target_ctx_gregs[REG_RIP].u64 = target_ctx_gregs[REG_RIP].u64 +5;
     printf("INTERPRETER: Exiting model_select \n");
     
   } else {
@@ -2137,9 +2153,9 @@ void Executor::model_connect () {
        (isa<ConstantExpr>(arg2Expr)) &&
        (isa<ConstantExpr>(arg3Expr)) ) { 
 
-    int socket = (int) target_ctx_gregs[REG_RDI];
-    struct sockaddr * addr = (struct sockaddr *) target_ctx_gregs[REG_RSI];
-    socklen_t length = (socklen_t) target_ctx_gregs[REG_RDX];
+    int socket = (int) target_ctx_gregs[REG_RDI].u64;
+    struct sockaddr * addr = (struct sockaddr *) target_ctx_gregs[REG_RSI].u64;
+    socklen_t length = (socklen_t) target_ctx_gregs[REG_RDX].u64;
 
     //Todo -- Generalize in case sockaddr struct isn't 14 on all platfroms
     //Need additional check to make sure sockaddr struct has no symbolic data
@@ -2165,7 +2181,7 @@ void Executor::model_connect () {
     }
 
     //bump RIP and interpret next instruction
-    target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_RIP] +5;   
+    target_ctx_gregs[REG_RIP].u64 = target_ctx_gregs[REG_RIP].u64 +5;   
     
   } else {
      printf("ERROR: Found symbolic input to model_connect()");

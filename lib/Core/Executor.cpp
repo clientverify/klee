@@ -104,8 +104,22 @@ using namespace klee;
 #include <sys/stat.h>
 #include <netdb.h>
 #include <fcntl.h>
-#include "/playpen/humphries/TASE/TASE/test/tase/include/tase/tase_interp.h"
+#include "/playpen/humphries/zTASE/TASE/test/tase/include/tase/tase_interp.h"
 #include "tase/TASEControl.h"
+//#include <signal.h>
+//Can't include signal.h directly if it has conflicts with our tase_interp.h definitions
+extern "C"  void ( *signal(int signum, void (*handler)(int)) ) (int){
+  return NULL;
+
+
+  }
+
+
+extern "C" {
+  void * calloc_tase (unsigned long num, unsigned long size);
+  void * realloc_tase (void * ptr, unsigned long new_size);
+  void * malloc_tase(unsigned long s);
+  } 
 
 //Symbols we need to map in for TASE
 extern char edata;
@@ -120,7 +134,7 @@ enum runType : int {INTERP_ONLY, MIXED};
 extern std::string project;
 extern enum runType exec_mode;
 extern int worker2managerFD [2];
-extern void * StackBase;
+
 extern char target_stack[STACK_SIZE +1];
 extern Module * interpModule;
 extern char * target_stack_begin_ptr;
@@ -131,7 +145,7 @@ ObjectState * target_ctx_gregs_OS;
 MemoryObject * prev_ctx_gregs_MO;
 ObjectState * prev_ctx_gregs_OS;
 ExecutionState * GlobalExecutionStatePtr;
-extern "C" void * sb_reopen();
+
 extern target_ctx_t target_ctx;
 extern greg_t * target_ctx_gregs;
 void printCtx(greg_t *);
@@ -148,8 +162,8 @@ extern std::stringstream globalLogStream;
 extern std::stringstream workerIDStream;
 extern FILE * LHlog;
 extern FILE * modelLog;
-extern int loopCtr;
-extern int dbgCtrFoo;
+//extern int loopCtr;
+//extern int dbgCtrFoo;
 int initialize_semaphore(int semKey);
 //extern "C" void taseMakeSymbolic(void * addr, int size);
 uint64_t saveRAXOpc =    0x000000F822C1E3C4  ; //tmp hack
@@ -176,16 +190,17 @@ extern "C" { int ktest_connect(int sockfd, const struct sockaddr *addr, socklen_
   void ktest_master_secret(unsigned char *ms, int len);
   void ktest_start(const char *filename, enum kTestMode mode);
   void ktest_finish();               // write capture to file
-  void OpenSSLDie (const char * file, int line, const char * assertion);
+ 
   
 }
 
 //Todo : fix these functions and remove traps
-/*
+
 extern "C" {
   void RAND_add(const void * buf, int num, double entropy);
   int RAND_load_file(const char *filename, long max_bytes);
 }
+
 #include "/playpen/humphries/tase/TASE/openssl/include/openssl/lhash.h"
 #include "/playpen/humphries/tase/TASE/openssl/include/openssl/crypto.h"
 #include "/playpen/humphries/tase/TASE/openssl/include/openssl/objects.h"
@@ -194,11 +209,14 @@ extern "C" {
 #include "/playpen/humphries/tase/TASE/openssl/crypto/x509/x509_vfy.h"
 #include "/playpen/humphries/tase/TASE/openssl/crypto/err/err.h"
 
+
+void OpenSSLDie (const char * file, int line, const char * assertion);
+
 extern "C" {
   int ssl3_connect(SSL *s);
-  
+
 }
-*/
+
 
 //TASE: Project-specific symbols
 //Fruitbasket 
@@ -915,7 +933,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     ++stats::forks;
     //ABH: Here's where we fork in TASE.
     int pid  = tase_fork();
-    printf("TASE Forking at 0x%lx \n", target_ctx_gregs[REG_RIP]);
+    printf("TASE Forking at 0x%lx \n", target_ctx_gregs[REG_RIP].u64);
     if (pid ==0 ) {
       int i = getpid(); 
       workerIDStream << ".";
@@ -3505,10 +3523,13 @@ extern "C" void klee_interp () {
     printf("---------------ENTERING KLEE_INTERP ---------------------- \n");
     std::cout.flush();
   }
-  target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_RAX]; //ABH - You uncommented bc common.c has the logic now
+  target_ctx_gregs[REG_RIP].u64 = target_ctx_gregs[REG_R15].u64;
   
   GlobalInterpreter->klee_interp_internal();
- 
+
+  //sb_interp will already look in r15 for the jump target
+  //target_ctx_gregs[REG_R15].u64 = target_ctx_gregs[REG_RIP].u64;
+  
   return;
 }
 
@@ -3517,7 +3538,7 @@ extern "C" void klee_interp () {
 // this returns a KFunction with LLVM IR for only one machine instruction at a time. 
 KFunction * findInterpFunction (greg_t * registers, KModule * kmod) {
 
-  uint64_t nativePC = registers[REG_RIP];
+  uint64_t nativePC = registers[REG_RIP].u64;
   std::stringstream converter;
   converter << std::hex << nativePC;  
   std::string hexNativePCString(converter.str());
@@ -3574,9 +3595,9 @@ void Executor::model_strncat() {
   static int timesInStrncat =0;
   timesInStrncat++;
   printf("Entered strncat %d times \n", timesInStrncat);
-  uint64_t rawArg1Val = target_ctx_gregs[REG_RDI]; //Ptr to string we append to.
-  uint64_t rawArg2Val = target_ctx_gregs[REG_RSI]; //Ptr to string we're appending to arg1
-  uint64_t rawArg3Val = target_ctx_gregs[REG_RDX]; //Max number of bytes to append
+  uint64_t rawArg1Val = target_ctx_gregs[REG_RDI].u64; //Ptr to string we append to.
+  uint64_t rawArg2Val = target_ctx_gregs[REG_RSI].u64; //Ptr to string we're appending to arg1
+  uint64_t rawArg3Val = target_ctx_gregs[REG_RDX].u64; //Max number of bytes to append
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64); 
@@ -3671,7 +3692,7 @@ void Executor::model_strncat() {
     }
     std::exit(EXIT_SUCCESS);
   } else if (bytes_printed <= message_buf_length && success) {
-    target_ctx_gregs[REG_RIP] += 5;  //Increment RIP and get back to execution
+    target_ctx_gregs[REG_RIP].u64 += 5;  //Increment RIP and get back to execution
   } else {
     printf("ERROR in model strncat() \n"); //Fallthrough case should never be reached
     std::exit(EXIT_FAILURE);
@@ -3679,9 +3700,13 @@ void Executor::model_strncat() {
 
 }
 
+void Executor::model_sb_disabled() {
+  target_ctx_gregs[REG_RIP].u64 = target_ctx_gregs[REG_R15].u64;
+}
+
 void Executor::model_reopentran() {
  
-  target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_RAX];
+  target_ctx_gregs[REG_RIP].u64 = target_ctx_gregs[REG_RAX].u64;
  
 }
 
@@ -3759,10 +3784,28 @@ bool Executor::gprsAreConcrete() {
 }
 
 bool Executor::instructionBeginsTransaction(uint64_t pc) {
-     if ( pc == (uint64_t) &sb_reopen) 
+
+  for (int i = 0; i < tase_num_global_records; i++) {
+    if (pc == tase_global_records[i].head)
+      return true;
+  }
+
+  return false;
+
+
+
+
+
+
+
+  /*
+  
+  if ( pc == (uint64_t) &sb_reopen || pc == (uint64_t) &sb_disabled) 
        return true;
      else
-       return false;
+     return false; */
+
+  
 }
 
 bool Executor::resumeNativeExecution (){
@@ -3771,7 +3814,7 @@ bool Executor::resumeNativeExecution (){
   }
   
   greg_t * registers = target_ctx_gregs;
-  bool instBeginsTrans = instructionBeginsTransaction(registers[REG_RIP]);
+  bool instBeginsTrans = instructionBeginsTransaction(registers[REG_RIP].u64);
   if (instBeginsTrans) {
     bool concGprs = gprsAreConcrete();
     printf("Inst begins transaction \n");
@@ -3796,8 +3839,8 @@ void Executor::model_taseMakeSymbolic() {
    if (  (isa<ConstantExpr>(arg1Expr)) &&
 	 (isa<ConstantExpr>(arg2Expr)) ) {
 
-     uint64_t symAddr = target_ctx_gregs[REG_RDI];
-     uint64_t size = target_ctx_gregs[REG_RSI];
+     uint64_t symAddr = target_ctx_gregs[REG_RDI].u64;
+     uint64_t size = target_ctx_gregs[REG_RSI].u64;
 
      uint16_t valBeforePsn = *( (uint16_t *) symAddr);
      printf("val before psn of first two bytes is 0x%x \n", valBeforePsn);
@@ -3809,9 +3852,9 @@ void Executor::model_taseMakeSymbolic() {
      uint16_t valAfterPsn = *( (uint16_t *) symAddr);
      printf("val after psn of first two bytes is 0x%x \n", valAfterPsn);
      //fake a ret
-     uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-     target_ctx_gregs[REG_RIP] = retAddr;
-     target_ctx_gregs[REG_RSP] += 8;
+     uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+     target_ctx_gregs[REG_RIP].u64 = retAddr;
+     target_ctx_gregs[REG_RSP].u64 += 8;
      
      printf("INTERPRETER: Exiting model_taseMakeSymbolic \n");
      std::cout.flush();
@@ -3822,11 +3865,45 @@ void Executor::model_taseMakeSymbolic() {
    }
 }
 
+//int RAND_load_file(const char *filename, long max_bytes);                                                                   
+void Executor::model_RAND_load_file() {
+  printf("Entering model_RAND_load_file \n");
+  std::cout.flush();
+
+  //Perform the call                                                                                                          
+  //int res = RAND_load_file((char *) target_ctx_gregs[REG_RDI], (long) target_ctx_gregs[REG_RSI]);                           
+  int res = 1024;
+  ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+  target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+
+  //Fake a ret                                                                                                                
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+  target_ctx_gregs[REG_RIP].u64 = retAddr;
+  target_ctx_gregs[REG_RSP].u64 += 8;
+  printf("Exiting model_RAND_load_file \n");
+  std::cout.flush();
+
+}
+
+
+void Executor::model_RAND_add() {
+
+  printf("Entering model_RAND_add \n");
+  std::cout.flush();
+  //RAND_add((void *) target_ctx_gregs[REG_RDI], (int) target_ctx_gregs[REG_RSI], 0);                                         
+
+  //fake a ret                                                                                                                
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+  target_ctx_gregs[REG_RIP].u64 = retAddr;
+  target_ctx_gregs[REG_RSP].u64 += 8;
+
+
+}
 
 void Executor::model_tase_debug() {
 
-  char * str1 = (char *) target_ctx_gregs[REG_RDI];
-  char * str2 = (char *) target_ctx_gregs[REG_RSI];
+  char * str1 = (char *) target_ctx_gregs[REG_RDI].u64;
+  char * str2 = (char *) target_ctx_gregs[REG_RSI].u64;
 
   fprintf(modelLog, "str 1 is %s \n", str1);
   fprintf(modelLog, "str 2 is %s \n", str2);
@@ -3841,62 +3918,66 @@ void Executor::model_tase_debug() {
 
   fflush(modelLog);
   
-  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP]);
-  target_ctx_gregs[REG_RIP] = retAddr;
-  target_ctx_gregs[REG_RSP] += 8;
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+  target_ctx_gregs[REG_RIP].u64 = retAddr;
+  target_ctx_gregs[REG_RSP].u64 += 8;
 
 }
   
 
 void Executor::model_saveRAXOpc() {
 
-  target_ctx.xmmregs[7].qword[0] = target_ctx_gregs[REG_RAX];
-  target_ctx_gregs[REG_RIP] += 6;
+  target_ctx.xmmregs[7].qword[0] = target_ctx_gregs[REG_RAX].u64;
+  target_ctx_gregs[REG_RIP].u64 += 6;
   
 }
 
 void Executor::model_restoreRAXOpc() {
-  target_ctx_gregs[REG_RAX] = target_ctx.xmmregs[7].qword[0];
-  target_ctx_gregs[REG_RIP] += 6;
+  target_ctx_gregs[REG_RAX].u64 = target_ctx.xmmregs[7].qword[0];
+  target_ctx_gregs[REG_RIP].u64 += 6;
 }
 
 
-//Look for a model for the current instruction at target_ctx_gregs[REG_RIP]
+//Look for a model for the current instruction at target_ctx_gregs[REG_RIP].u64
 //and call the model.
 void Executor::model_inst () {
 
   if (taseDebug) {
     printf("INTERPRETER: FOUND SPECIAL MODELED INST \n");
   }
-  uint64_t rip = target_ctx_gregs[REG_RIP];
-
-
+  uint64_t rip = target_ctx_gregs[REG_RIP].u64;
 
   //Temporary hack until I figure out for sure if RAX is getting
   //clobbered around sb_reopen jump sites
   uint64_t eightBytes = *((uint64_t *) rip );
   uint64_t firstSixBytes = eightBytes & 0x0000FFFFFFFFFFFF;
   //printf ( "firstSixBytes is 0x%lx \n", firstSixBytes);
+
+  /*
   
-  if (firstSixBytes == saveRAXOpc) {
+    if (firstSixBytes == saveRAXOpc) {
     printf("found saveRAX special case \n");
     model_saveRAXOpc();
     return;
-  }
-
+    }
+    
   if (firstSixBytes == restoreRAXOpc) {
     printf("Found restoreRAX special case \n");
     model_restoreRAXOpc();
     return;
-}
+    }
+  */
 
-
-
+  
   
   if (rip == (uint64_t) &free) {
     printf("Modeling free \n");
     model_free();
-  } else if (rip == (uint64_t) &realloc) {
+  } else if (rip == (uint64_t) &signal) {
+    model_signal();
+  } else if (rip == (uint64_t) &malloc  || rip == ((uint64_t) &malloc_tase + 14) ) {
+    model_malloc();
+  } else if (rip == (uint64_t) &realloc  || rip == ((uint64_t) &realloc_tase + 14) ) {
     printf("Modeling realloc \n");
     model_realloc();
   } else if (rip == (uint64_t) &__errno_location) {
@@ -3909,25 +3990,20 @@ void Executor::model_inst () {
     
     //} else if (rip == (uint64_t) &taseMakeSymbolic) {
     //model_taseMakeSymbolic();
-  }
-  /*
-    else if (rip == (uint64_t) &BIO_printf) {
+  } else if (rip == (uint64_t) &BIO_printf) {
     model_BIO_printf();
-    } else if (rip == (uint64_t) &BIO_snprintf) {
+  } else if (rip == (uint64_t) &BIO_snprintf) {
     model_BIO_snprintf(); 
-    } else if (rip == (uint64_t) &vfprintf) {
+  } else if (rip == (uint64_t) &vfprintf) {
     model_vfprintf();
-    } else if (rip == (uint64_t) &sprintf) {
+  } else if (rip == (uint64_t) &sprintf) {
     model_sprintf();
-    } else if (rip == (uint64_t) &tase_debug) {
+  } else if (rip == (uint64_t) &tase_debug) {
     model_tase_debug();
-    } else if (rip == (uint64_t) &OpenSSLDie) {
+  } else if (rip == (uint64_t) &OpenSSLDie) {
     model_OpenSSLDie();
-    } 
-  */
-  else if (rip == (uint64_t) &shutdown) {
+  } else if (rip == (uint64_t) &shutdown) {
     model_shutdown();
-    
   } else if (rip == (uint64_t) &memcpy) { 
     model_memcpy(); //Last 6 bytes of a buffer could be read
     //with an 8 byte read, which klee doesn't like Todo: fix    
@@ -4004,21 +4080,27 @@ void Executor::model_inst () {
   } else if (rip == (uint64_t) &printf || rip == (uint64_t) &puts) {
     model_printf();
   }
-  /*
+
     else if (rip == (uint64_t) &RAND_add) {
     model_RAND_add();
     } else if (rip == (uint64_t) &RAND_load_file ) {
     model_RAND_load_file();
-    }  else if (rip == (uint64_t) &ktest_start) {
+    }  
+
+else if (rip == (uint64_t) &ktest_start) {
     model_ktest_start();
-    } else if (rip == (uint64_t) &sb_entertran) {
+    /*
+ } else if (rip == (uint64_t) &sb_entertran) {
     model_entertran();
     }else if (rip == (uint64_t) &sb_exittran) {
     model_exittran();
   */
-  else if (rip == (uint64_t) &sb_reopen) {
+ } else if (rip == (uint64_t) &sb_reopen) {
     model_reopentran();
-  } 
+  }
+  else if (rip == (uint64_t) &sb_disabled) {
+    model_sb_disabled();
+  }
   else if (rip == (uint64_t) &target_exit) {
     printf("Found call to target_exit in interpreter \n");
     if (statsTracker) {
@@ -4056,9 +4138,9 @@ void Executor::model_OpenSSLDie() {
 
   printf("OpenSSLDie called -- args are \n");
   std::cout.flush();
-  printf("%s \n", (char *)target_ctx_gregs[REG_RDI]);
-  printf("%d \n", (int) target_ctx_gregs[REG_RSI]);
-  printf("%s \n", (char *) target_ctx_gregs[REG_RDX]);
+  printf("%s \n", (char *)target_ctx_gregs[REG_RDI].u64);
+  printf("%d \n", (int) target_ctx_gregs[REG_RSI].u64);
+  printf("%s \n", (char *) target_ctx_gregs[REG_RDX].u64);
 
   std::cout.flush();
   std::exit(EXIT_FAILURE);
@@ -4067,21 +4149,24 @@ void Executor::model_OpenSSLDie() {
 bool isSpecialInst (uint64_t rip) {
 
   //Todo -- get rid of traps for RAND_add and RAND_load_file
-  static const uint64_t modeledFns[] = { (uint64_t) &puts, (uint64_t)&exit, (uint64_t) &printf  /*, (uint64_t) &taseMakeSymbolic */ };
-  /*
-  static const uint64_t modeledFns [] = {(uint64_t)&signal, (uint64_t)&malloc, (uint64_t)&read, (uint64_t)&write, (uint64_t)&connect, (uint64_t)&select, (uint64_t)&socket, (uint64_t) &getuid, (uint64_t) &geteuid, (uint64_t) &getgid, (uint64_t) &getegid, (uint64_t) &getenv, (uint64_t) &stat, (uint64_t) &free, (uint64_t) &realloc,  (uint64_t) &RAND_add, (uint64_t) &RAND_load_file, (uint64_t) &kTest_free, (uint64_t) &kTest_fromFile, (uint64_t) &kTest_getCurrentVersion, (uint64_t) &kTest_isKTestFile, (uint64_t) &kTest_numBytes, (uint64_t) &kTest_toFile, (uint64_t) &ktest_RAND_bytes, (uint64_t) &ktest_RAND_pseudo_bytes, (uint64_t) &ktest_connect, (uint64_t) &ktest_finish, (uint64_t) &ktest_master_secret, (uint64_t) &ktest_raw_read_stdin, (uint64_t) &ktest_readsocket, (uint64_t) &ktest_select, (uint64_t) &ktest_start, (uint64_t) &ktest_time, (uint64_t) &time, (uint64_t) &gmtime, (uint64_t) &gettimeofday, (uint64_t) &ktest_writesocket, (uint64_t) &fileno, (uint64_t) &fcntl, (uint64_t) &fopen, (uint64_t) &fopen64, (uint64_t) &fclose,  (uint64_t) &fwrite, (uint64_t) &fflush, (uint64_t) &fread, (uint64_t) &fgets, (uint64_t) &__isoc99_sscanf, (uint64_t) &gethostbyname, (uint64_t) &setsockopt, (uint64_t) &__ctype_tolower_loc, (uint64_t) &__ctype_b_loc, (uint64_t) &__errno_location,  (uint64_t) &BIO_printf, (uint64_t) &BIO_snprintf, (uint64_t) &vfprintf,  (uint64_t) &sprintf, (uint64_t) &tase_debug,   (uint64_t) &OpenSSLDie, (uint64_t) &shutdown};
-  */
+  //  static const uint64_t modeledFns[] = { (uint64_t) &puts, (uint64_t)&exit, (uint64_t) &printf  /*, (uint64_t) &taseMakeSymbolic */ };
+  
+  static const uint64_t modeledFns [] = {(uint64_t)&signal, (uint64_t)&malloc, (uint64_t)&read, (uint64_t)&write, (uint64_t)&connect, (uint64_t)&select, (uint64_t)&socket, (uint64_t) &getuid, (uint64_t) &geteuid, (uint64_t) &getgid, (uint64_t) &getegid, (uint64_t) &getenv, (uint64_t) &stat, (uint64_t) &free, (uint64_t) &realloc,  (uint64_t) &RAND_add, (uint64_t) &RAND_load_file, (uint64_t) &kTest_free, (uint64_t) &kTest_fromFile, (uint64_t) &kTest_getCurrentVersion, (uint64_t) &kTest_isKTestFile, (uint64_t) &kTest_numBytes, (uint64_t) &kTest_toFile, (uint64_t) &ktest_RAND_bytes, (uint64_t) &ktest_RAND_pseudo_bytes, (uint64_t) &ktest_connect, (uint64_t) &ktest_finish, (uint64_t) &ktest_master_secret, (uint64_t) &ktest_raw_read_stdin, (uint64_t) &ktest_readsocket, (uint64_t) &ktest_select, (uint64_t) &ktest_start, (uint64_t) &ktest_time, (uint64_t) &time, (uint64_t) &gmtime, (uint64_t) &gettimeofday, (uint64_t) &ktest_writesocket, (uint64_t) &fileno, (uint64_t) &fcntl, (uint64_t) &fopen, (uint64_t) &fopen64, (uint64_t) &fclose,  (uint64_t) &fwrite, (uint64_t) &fflush, (uint64_t) &fread, (uint64_t) &fgets, (uint64_t) &__isoc99_sscanf, (uint64_t) &gethostbyname, (uint64_t) &setsockopt, (uint64_t) &__ctype_tolower_loc, (uint64_t) &__ctype_b_loc, (uint64_t) &__errno_location,  (uint64_t) &BIO_printf, (uint64_t) &BIO_snprintf, (uint64_t) &vfprintf,  (uint64_t) &sprintf, (uint64_t) &tase_debug,   (uint64_t) &OpenSSLDie, (uint64_t) &shutdown , (uint64_t) &malloc_tase, (uint64_t) &realloc_tase, (uint64_t) &calloc_tase };
+  
   
   bool isModeled = std::find(std::begin(modeledFns), std::end(modeledFns), rip) != std::end(modeledFns);
 
   uint64_t eightBytes = *((uint64_t *) rip );
   uint64_t firstSixBytes = eightBytes & 0x0000FFFFFFFFFFFF;
   //printf ( "firstSixBytes is 0x%lx \n", firstSixBytes);
-  
+
+  /*
   if (firstSixBytes == saveRAXOpc || firstSixBytes == restoreRAXOpc)
     return true;
+
+  */
   
-  if (rip == (uint64_t) &sb_reopen || rip == (uint64_t) &target_exit || isModeled ) {
+  if (rip == (uint64_t) &sb_reopen || rip == (uint64_t) &sb_disabled || rip == (uint64_t) &target_exit || isModeled  || rip == ((uint64_t) &malloc_tase +14) || rip == ((uint64_t) &realloc_tase + 14)  )  {
     return true;
   }  else {
     return false;
@@ -4093,7 +4178,7 @@ void Executor::printDebugInterpHeader() {
   interpCtr++;
   printf("------------------------------------------- \n");
   printf("Entering interpreter for time %d \n \n \n", interpCtr);
-  uint64_t rip = target_ctx_gregs[REG_RIP];
+  uint64_t rip = target_ctx_gregs[REG_RIP].u64;
   printf("RIP is %lu in decimal, 0x%lx in hex.\n", rip, rip);
   printf("Initial ctx BEFORE interpretation is \n");
   printCtx(target_ctx_gregs);
@@ -4110,6 +4195,8 @@ void Executor::printDebugInterpFooter() {
 
 }
 
+
+
 void Executor::klee_interp_internal () {
   
   while (true) {    
@@ -4120,42 +4207,47 @@ void Executor::klee_interp_internal () {
 
     bool killFlagsBeforeCmp = true;
     //Begin hack for clearing flags on cmp -- this is not correct in the general sense (triggers for extra opcodes)
-    uint8_t * bytePtr = (uint8_t *)target_ctx_gregs[REG_RIP];
+    uint8_t * bytePtr = (uint8_t *)target_ctx_gregs[REG_RIP].u64;
     uint8_t opc = *bytePtr;
+    /*
     if (killFlagsBeforeCmp) {
       if (opc == 0x3C || opc == 0x3D || opc == 0x80 || opc == 0x81 || opc == 0x83 || opc == 0x38 || opc == 0x39 || opc == 0x3A || opc == 0x3B || opc == 0x48 || opc == 0x4d) {
 	target_ctx_gregs_OS->write64(REG_EFL * 8, 0);
       }
     }//End flag hack
+    */
     
+    /*
+    uint32_t first = *( (uint32_t *) bytePtr);
+    first = first & 0x00FFFFFF;
     
+    printf("First three opcodes are 0x%lx \n", first);
+
+    bytePtr += 3;
+
+    uint32_t second = *( (uint32_t *) bytePtr);
+    printf("Next four opcodes are 0x%lx \n", second);
+
+    uint64_t potentialAddr = (uint64_t) second;
     
-    uint64_t rip = target_ctx_gregs[REG_RIP];    
+    printf("tase_springboard located at 0x%lx \n", (uint64_t) &tase_springboard);
+
+    
+    if (first == 0x2524ff && potentialAddr == (uint64_t) &tase_springboard) {
+      //break and go back
+      printf("Found jmp to springboard \n");
+      break;
+    }
+    
+    */
+    uint64_t rip = target_ctx_gregs[REG_RIP].u64;    
     if (interpCtr > 1000000000) {
       printf("Huge interpCtr, exiting with RIP 0x%lx \n", rip);
       std::cout.flush();
       std::exit(EXIT_FAILURE);
     }
 
-    /*
-    if (rip == (uint64_t) &ERR_lib_error_string) {
-      const char * libString = ERR_lib_error_string( (unsigned long) target_ctx_gregs[REG_RDI]);
-      fprintf(modelLog, "ERR libString is %s \n", libString);
-      fflush(modelLog);
-    }
-
-    if (rip == (uint64_t) &ERR_func_error_string) {
-      const char * funcString = ERR_func_error_string( (unsigned long) target_ctx_gregs[REG_RDI]);
-      fprintf(modelLog, "ERR libFunc is %s \n", funcString);
-      fflush(modelLog);
-    }
-
-    if (rip == (uint64_t) &ERR_reason_error_string) {
-      const char * reasonString = ERR_reason_error_string( (unsigned long) target_ctx_gregs[REG_RDI]);
-      fprintf(modelLog, "ERR reason err string is %s \n", reasonString);
-      fflush(modelLog);
-    }
-    */
+    
     
     if (resumeNativeExecution()){
       break;
@@ -4278,24 +4370,24 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr) {
 
 void printCtx(greg_t * registers ) {
 
-  printf("R8   : 0x%lx \n", registers[REG_R8]);
-  printf("R9   : 0x%lx \n", registers[REG_R9]);
-  printf("R10  : 0x%lx \n", registers[REG_R10]);
-  printf("R11  : 0x%lx \n", registers[REG_R11]);
-  printf("R12  : 0x%lx \n", registers[REG_R12]);
-  printf("R13  : 0x%lx \n", registers[REG_R13]);
-  printf("R14  : 0x%lx \n", registers[REG_R14]);
-  printf("R15  : 0x%lx \n", registers[REG_R15]);
-  printf("RDI  : 0x%lx \n", registers[REG_RDI]);
-  printf("RSI  : 0x%lx \n", registers[REG_RSI]);
-  printf("RBP  : 0x%lx \n", registers[REG_RBP]);
-  printf("RBX  : 0x%lx \n", registers[REG_RBX]);
-  printf("RDX  : 0x%lx \n", registers[REG_RDX]);
-  printf("RAX  : 0x%lx \n", registers[REG_RAX]);
-  printf("RCX  : 0x%lx \n", registers[REG_RCX]);
-  printf("RSP  : 0x%lx \n", registers[REG_RSP]);
-  printf("RIP  : 0x%lx \n", registers[REG_RIP]);
-  printf("EFL  : 0x%lx \n", registers[REG_EFL]);
+  printf("R8   : 0x%lx \n", registers[REG_R8].u64);
+  printf("R9   : 0x%lx \n", registers[REG_R9].u64);
+  printf("R10  : 0x%lx \n", registers[REG_R10].u64);
+  printf("R11  : 0x%lx \n", registers[REG_R11].u64);
+  printf("R12  : 0x%lx \n", registers[REG_R12].u64);
+  printf("R13  : 0x%lx \n", registers[REG_R13].u64);
+  printf("R14  : 0x%lx \n", registers[REG_R14].u64);
+  printf("R15  : 0x%lx \n", registers[REG_R15].u64);
+  printf("RDI  : 0x%lx \n", registers[REG_RDI].u64);
+  printf("RSI  : 0x%lx \n", registers[REG_RSI].u64);
+  printf("RBP  : 0x%lx \n", registers[REG_RBP].u64);
+  printf("RBX  : 0x%lx \n", registers[REG_RBX].u64);
+  printf("RDX  : 0x%lx \n", registers[REG_RDX].u64);
+  printf("RAX  : 0x%lx \n", registers[REG_RAX].u64);
+  printf("RCX  : 0x%lx \n", registers[REG_RCX].u64);
+  printf("RSP  : 0x%lx \n", registers[REG_RSP].u64);
+  printf("RIP  : 0x%lx \n", registers[REG_RIP].u64);
+  //printf("EFL  : 0x%lx \n", registers[REG_EFL].u64);
 
   return;
 }
@@ -4314,16 +4406,20 @@ void Executor::initializeInterpretationStructures (Function *f) {
   //Set up the KLEE memory object for the stack, and back the concrete store with the actual stack.
   //Need to be careful here.  The buffer we allocate for the stack is char [X] target_stack. It
   // starts at address StackBase and covers up to StackBase + sizeof(target_stack) -1.
+
+  printf("target_ctx.target_stack located at 0x%lx \n", (uint64_t) &target_ctx.target_stack);
   
-  printf("Adding structures to track target stack starting at 0x%p with size %lu \n", StackBase, sizeof(target_stack));
-  printf("target stack base ptr is 0x%p \n", target_stack_begin_ptr);
+  uint64_t stackBase = (uint64_t) &target_ctx.target_stack - STACK_SIZE;
+  uint64_t stackSize = STACK_SIZE;
+  
+  printf("Adding structures to track target stack starting at 0x%p with size %lu \n", stackBase, stackSize);
   printf("interp stack base ptr is 0x%p \n", interp_stack_begin_ptr);
   
-  MemoryObject * stackMem = addExternalObject(*GlobalExecutionStatePtr,StackBase, sizeof(target_stack), false );
+  MemoryObject * stackMem = addExternalObject(*GlobalExecutionStatePtr,(void *) stackBase, stackSize, false );
   const ObjectState *stackOS = GlobalExecutionStatePtr->addressSpace.findObject(stackMem);
   ObjectState * stackOSWrite = GlobalExecutionStatePtr->addressSpace.getWriteable(stackMem,stackOS);  
   printf("Setting concrete store to point to target stack \n");
-  stackOSWrite->concreteStore = (uint8_t *) StackBase;
+  stackOSWrite->concreteStore = (uint8_t *) stackBase;
 
   printf("Adding external object target_ctx_gregs_MO \n");
   target_ctx_gregs_MO = addExternalObject(*GlobalExecutionStatePtr, (void *) target_ctx_gregs, NGREG * REG_SIZE, false );
@@ -4344,6 +4440,8 @@ void Executor::initializeInterpretationStructures (Function *f) {
   const ObjectState * basketOS = GlobalExecutionStatePtr->addressSpace.findObject(basket_MO);
   basket_OS = GlobalExecutionStatePtr->addressSpace.getWriteable(basket_MO,basketOS);
   basket_OS->concreteStore = (uint8_t *) &basket;
+
+  
 
   //Map in read-only globals
   //Todo -- find a less hacky way of getting the exact size of the .rodata section
@@ -4381,7 +4479,7 @@ void Executor::initializeInterpretationStructures (Function *f) {
   stderrOS->concreteStore = (uint8_t *) &stderr;
   
   //Map in initialized and uninitialized non-read only globals into klee from .vars file.
-  std::string varsFileLocation = "/playpen/humphries/TASE/TASE/test/" + project + ".vars";
+  std::string varsFileLocation = "/playpen/humphries/zTASE/TASE/test/" + project + ".vars";
   FILE * externalsFile = fopen (varsFileLocation.c_str(), "r+");
 
   /*

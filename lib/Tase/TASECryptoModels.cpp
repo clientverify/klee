@@ -66,7 +66,7 @@ using namespace klee;
 
 extern int loopCtr;
 
-#include "/playpen/humphries/TASE/TASE/test/tase/include/tase/tase_interp.h"
+#include "/playpen/humphries/zTASE/TASE/test/tase/include/tase/tase_interp.h"
 #include <iostream>
 #include "klee/CVAssignment.h"
 #include "klee/util/ExprUtil.h"
@@ -113,13 +113,13 @@ extern "C" {
   void RAND_add(const void * buf, int num, double entropy);
   int RAND_load_file(const char *filename, long max_bytes);
 }
-#include "/playpen/humphries/TASE/TASE/openssl/include/openssl/lhash.h"
-#include "/playpen/humphries/TASE/TASE/openssl/include/openssl/crypto.h"
-#include "/playpen/humphries/TASE/TASE/openssl/include/openssl/objects.h"
-#include "/playpen/humphries/TASE/TASE/openssl/include/openssl/bio.h"
-#include "/playpen/humphries/TASE/TASE/openssl/include/openssl/ssl.h"
-#include "/playpen/humphries/TASE/TASE/openssl/crypto/x509/x509_vfy.h"
-#include "/playpen/humphries/TASE/TASE/openssl/crypto/err/err.h"
+#include "/playpen/humphries/zTASE/TASE/openssl/include/openssl/lhash.h"
+#include "/playpen/humphries/zTASE/TASE/openssl/include/openssl/crypto.h"
+#include "/playpen/humphries/zTASE/TASE/openssl/include/openssl/objects.h"
+#include "/playpen/humphries/zTASE/TASE/openssl/include/openssl/bio.h"
+#include "/playpen/humphries/zTASE/TASE/openssl/include/openssl/ssl.h"
+#include "/playpen/humphries/zTASE/TASE/openssl/crypto/x509/x509_vfy.h"
+#include "/playpen/humphries/zTASE/TASE/openssl/crypto/err/err.h"
 
 extern "C" {
   int ssl3_connect(SSL *s);

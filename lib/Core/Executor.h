@@ -343,6 +343,7 @@ private:
   void model_inst();
   void model_restoreRAXOpc(); //hack for debugging
   void model_saveRAXOpc(); // hack for debuging
+  void model_sb_disabled();
   void deadRegisterFlush();
   void printDebugInterpHeader();
   void printDebugInterpFooter();

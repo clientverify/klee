@@ -29,9 +29,9 @@
 #include <iostream>
 #define KTEST_DEBUG 1
 
-//extern "C" int RAND_pseudo_bytes (unsigned char *buf, int num);
+extern "C" int RAND_pseudo_bytes (unsigned char *buf, int num);
 
-//extern "C" int RAND_bytes (unsigned char *buf, int num);
+extern "C" int RAND_bytes (unsigned char *buf, int num);
 
 extern FILE * modelLog;
 extern uint64_t interpCtr;
@@ -934,15 +934,10 @@ extern "C" int ktest_RAND_bytes(unsigned char *buf, int num)
   fprintf(modelLog, "Entering ktest_RAND_bytes at interpCtr %lu \n", interpCtr);
   
   if (ktest_mode == KTEST_NONE) {
-    printf("ERROR - Need RAND_bytes implementation \n");
-    std::exit(EXIT_FAILURE);
-    //return RAND_bytes(buf, num);
+    return RAND_bytes(buf, num);
   }
   else if (ktest_mode == KTEST_RECORD) {
-    printf("ERROR - Need RAND_bytes implementation \n");
-    std::exit(EXIT_FAILURE);
-    int ret = 0;
-    //int ret = RAND_bytes(buf, num);
+    int ret = RAND_bytes(buf, num);
     if (KTEST_DEBUG) {
       printf("RAND_bytes returned %d\n", ret);
     }
@@ -979,21 +974,15 @@ extern "C" int ktest_RAND_pseudo_bytes(unsigned char *buf, int num)
   fprintf(modelLog, "Entering ktest_RAND_pseudo_bytes at interpCtr %lu \n", interpCtr);
   
   if (ktest_mode == KTEST_NONE) {
-    printf("ERROR - need RAND_pseudo_bytes implementation \n");
-    std::exit(EXIT_FAILURE);
-    //return RAND_pseudo_bytes(buf, num);
+    return RAND_pseudo_bytes(buf, num);
   }
   else if (ktest_mode == KTEST_RECORD) {
-    printf("ERROR - need RAND_pseudo_bytes implementation \n");
-    std::exit(EXIT_FAILURE);
-    int ret = 0;
-    //int ret = RAND_pseudo_bytes(buf, num);
+    int ret = RAND_pseudo_bytes(buf, num);
     KTOV_append(&ktov, ktest_object_names[PRNG], num, buf);
     if (KTEST_DEBUG) {
       printf("RAND_pseudo_bytes returned %d\n", ret);
     }
     return ret;
-    
   }
   else if (ktest_mode == KTEST_PLAYBACK) {
     KTestObject *o = KTOV_next_object(&ktov, ktest_object_names[PRNG]);

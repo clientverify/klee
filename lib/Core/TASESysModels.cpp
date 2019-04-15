@@ -64,7 +64,6 @@ using namespace llvm;
 using namespace klee;
 
 //AH: Our additions below. --------------------------------------
-#include <ucontext.h>
 #include <iostream>
 #include "klee/CVAssignment.h"
 #include "klee/util/ExprUtil.h"
