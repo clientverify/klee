@@ -3527,8 +3527,10 @@ extern "C" void klee_interp () {
   
   GlobalInterpreter->klee_interp_internal();
 
+
+  
   //sb_interp will already look in r15 for the jump target
-  //target_ctx_gregs[REG_R15].u64 = target_ctx_gregs[REG_RIP].u64;
+  target_ctx_gregs[REG_R15].u64 = target_ctx_gregs[REG_RIP].u64;
   
   return;
 }
