@@ -198,15 +198,21 @@ void transferToTarget() {
     printf("sbArg is %d \n", sbArg);
       
     enter_tase(&begin_target_inner, sbArg);
-    printf("TASE - returned from enter_tase... \n");
-    std::cout.flush();
+    if (taseDebug) {
+      printf("TASE - returned from enter_tase... \n");
+      std::cout.flush();
+    }
     while (target_ctx_gregs[REG_RIP].u64 != (uint64_t) &tase_exit) {
       klee_interp();
-      printf("Returning from klee_interp ... \n");
-      std::cout.flush();
+      if (taseDebug) {
+	printf("Returning from klee_interp ... \n");
+	std::cout.flush();
+      }
       tase_inject(sbArg);
-      printf("Returning from tase_inject ... \n");
-      std::cout.flush();
+      if (taseDebug) {
+	printf("Returning from tase_inject ... \n");
+	std::cout.flush();
+      }
     }
   }
 

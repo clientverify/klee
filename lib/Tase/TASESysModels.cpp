@@ -141,29 +141,32 @@ bool initializeFDTracking () {
 }
 */
 
+
 // Network capture for Cliver
-extern "C" { int ktest_connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
-  int ktest_select(int nfds, fd_set *readfds, fd_set *writefds,
+
+//extern "C"
+int ktest_connect_tase(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
+  int ktest_select_tase(int nfds, fd_set *readfds, fd_set *writefds,
 		   fd_set *exceptfds, struct timeval *timeout);
-  ssize_t ktest_writesocket(int fd, const void *buf, size_t count);
-  ssize_t ktest_readsocket(int fd, void *buf, size_t count);
+  ssize_t ktest_writesocket_tase(int fd, const void *buf, size_t count);
+  ssize_t ktest_readsocket_tase(int fd, void *buf, size_t count);
 
   // stdin capture for Cliver
-  int ktest_raw_read_stdin(void *buf, int siz);
+  int ktest_raw_read_stdin_tase(void *buf, int siz);
 
   // Random number generator capture for Cliver
-  int ktest_RAND_bytes(unsigned char *buf, int num);
-  int ktest_RAND_pseudo_bytes(unsigned char *buf, int num);
+  int ktest_RAND_bytes_tase(unsigned char *buf, int num);
+  int ktest_RAND_pseudo_bytes_tase(unsigned char *buf, int num);
 
   // Time capture for Cliver (actually unnecessary!)
-  time_t ktest_time(time_t *t);
+  time_t ktest_time_tase(time_t *t);
 
   // TLS Master Secret capture for Cliver
-  void ktest_master_secret(unsigned char *ms, int len);
+  void ktest_master_secret_tase(unsigned char *ms, int len);
 
-  void ktest_start(const char *filename, enum kTestMode mode);
-  void ktest_finish();               // write capture to file
-}
+  void ktest_start_tase(const char *filename, enum kTestMode mode);
+  void ktest_finish_tase();               // write capture to file
+
 
 extern int * __errno_location();
 extern int __isoc99_sscanf ( const char * s, const char * format, ...);
@@ -245,7 +248,7 @@ void Executor::model_ktest_master_secret(  ) {
        (isa<ConstantExpr>(arg2Expr))
        ){
 
-    ktest_master_secret( (unsigned char *) target_ctx_gregs[REG_RDI].u64, (int) target_ctx_gregs[REG_RSI].u64);
+    ktest_master_secret_tase( (unsigned char *) target_ctx_gregs[REG_RDI].u64, (int) target_ctx_gregs[REG_RSI].u64);
     
     //fake a ret
     uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
@@ -300,7 +303,7 @@ void Executor::model_ktest_start() {
        (isa<ConstantExpr>(arg2Expr)) 
        ){
   
-    ktest_start( (char *)target_ctx_gregs[REG_RDI].u64, KTEST_PLAYBACK);
+    ktest_start_tase( (char *)target_ctx_gregs[REG_RDI].u64, KTEST_PLAYBACK);
 
     //Fake a ret
     uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
@@ -331,7 +334,7 @@ void Executor::model_ktest_writesocket() {
        ){
 
     //Get result of call
-    ssize_t res = ktest_writesocket((int) target_ctx_gregs[REG_RDI].u64, (void *) target_ctx_gregs[REG_RSI].u64, (size_t) target_ctx_gregs[REG_RDX].u64);
+    ssize_t res = ktest_writesocket_tase((int) target_ctx_gregs[REG_RDI].u64, (void *) target_ctx_gregs[REG_RSI].u64, (size_t) target_ctx_gregs[REG_RDX].u64);
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
 
@@ -364,7 +367,7 @@ void Executor::model_ktest_readsocket() {
        ){
 
     //Return result of call
-    ssize_t res = ktest_readsocket((int) target_ctx_gregs[REG_RDI].u64, (void *) target_ctx_gregs[REG_RSI].u64, (size_t) target_ctx_gregs[REG_RDX].u64);
+    ssize_t res = ktest_readsocket_tase((int) target_ctx_gregs[REG_RDI].u64, (void *) target_ctx_gregs[REG_RSI].u64, (size_t) target_ctx_gregs[REG_RDX].u64);
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
     
@@ -394,7 +397,7 @@ void Executor::model_ktest_raw_read_stdin() {
        ){
 
     //return result of call
-    int res = ktest_raw_read_stdin((void *) target_ctx_gregs[REG_RDI].u64, (int) target_ctx_gregs[REG_RSI].u64);
+    int res = ktest_raw_read_stdin_tase((void *) target_ctx_gregs[REG_RDI].u64, (int) target_ctx_gregs[REG_RSI].u64);
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
     
@@ -423,7 +426,7 @@ void Executor::model_ktest_connect() {
        (isa<ConstantExpr>(arg2Expr)) ) {
 
     //return result
-    int res = ktest_connect((int) target_ctx_gregs[REG_RDI].u64, (struct sockaddr *) target_ctx_gregs[REG_RSI].u64, (socklen_t) target_ctx_gregs[REG_RDX].u64);
+    int res = ktest_connect_tase((int) target_ctx_gregs[REG_RDI].u64, (struct sockaddr *) target_ctx_gregs[REG_RSI].u64, (socklen_t) target_ctx_gregs[REG_RDX].u64);
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
 
@@ -502,7 +505,7 @@ void Executor::model_ktest_select() {
     fprintf(modelLog, "Before ktest_select, readfds is 0x%lx, writefds is 0x%lx \n", *( (uint64_t *) target_ctx_gregs[REG_RSI].u64), *( (uint64_t *) target_ctx_gregs[REG_RDX].u64));
     fflush(modelLog);
     
-    int res = ktest_select((int) target_ctx_gregs[REG_RDI].u64, (fd_set *) target_ctx_gregs[REG_RSI].u64, (fd_set *) target_ctx_gregs[REG_RDX].u64, (fd_set *) target_ctx_gregs[REG_RCX].u64, (struct timeval *) target_ctx_gregs[REG_R8].u64);
+    int res = ktest_select_tase((int) target_ctx_gregs[REG_RDI].u64, (fd_set *) target_ctx_gregs[REG_RSI].u64, (fd_set *) target_ctx_gregs[REG_RDX].u64, (fd_set *) target_ctx_gregs[REG_RCX].u64, (struct timeval *) target_ctx_gregs[REG_R8].u64);
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
 
@@ -550,7 +553,7 @@ void Executor::model_ktest_RAND_bytes() {
        (isa<ConstantExpr>(arg2Expr)) ) {
 
     //return val
-    int res = ktest_RAND_bytes((unsigned char *) target_ctx_gregs[REG_RDI].u64, (int) target_ctx_gregs[REG_RSI].u64);
+    int res = ktest_RAND_bytes_tase((unsigned char *) target_ctx_gregs[REG_RDI].u64, (int) target_ctx_gregs[REG_RSI].u64);
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
     
@@ -580,7 +583,7 @@ void Executor::model_ktest_RAND_pseudo_bytes() {
        (isa<ConstantExpr>(arg2Expr)) ) {
 
     //return result of call
-    int res = ktest_RAND_pseudo_bytes((unsigned char *) target_ctx_gregs[REG_RDI].u64, (int) target_ctx_gregs[REG_RSI].u64);
+    int res = ktest_RAND_pseudo_bytes_tase((unsigned char *) target_ctx_gregs[REG_RDI].u64, (int) target_ctx_gregs[REG_RSI].u64);
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
   

@@ -208,13 +208,17 @@ extern "C" {
 #include "/playpen/humphries/tase/TASE/openssl/include/openssl/ssl.h"
 #include "/playpen/humphries/tase/TASE/openssl/crypto/x509/x509_vfy.h"
 #include "/playpen/humphries/tase/TASE/openssl/crypto/err/err.h"
+#include "/playpen/humphries/tase/TASE/openssl/crypto/aes/aes.h"
+#include "/playpen/humphries/tase/TASE/openssl/crypto/modes/modes_lcl.h"
 
 
 void OpenSSLDie (const char * file, int line, const char * assertion);
 
 extern "C" {
+  
   int ssl3_connect(SSL *s);
-
+  void gcm_gmult_4bit(u64 Xi[2],const u128 Htable[16]);
+  void gcm_ghash_4bit(u64 Xi[2],const u128 Htable[16],const u8 *inp,size_t len);
 }
 
 
@@ -3819,12 +3823,15 @@ bool Executor::resumeNativeExecution (){
   bool instBeginsTrans = instructionBeginsTransaction(registers[REG_RIP].u64);
   if (instBeginsTrans) {
     bool concGprs = gprsAreConcrete();
-    printf("Inst begins transaction \n");
+    if (taseDebug)
+      printf("Inst begins transaction \n");
     if (concGprs) {
-      printf("Registers are concrete \n");
+      if (taseDebug)
+	printf("Registers are concrete \n");
       return true;
     } else {
-      printf("Registers aren't concrete \n");
+      if (taseDebug)
+	printf("Registers aren't concrete \n");
       return false;
     }
   } else {
@@ -4037,23 +4044,23 @@ void Executor::model_inst () {
     model___isoc99_sscanf();
   } else if (rip == (uint64_t) &gethostbyname) {
     model_gethostbyname();
-  } else if (rip == (uint64_t) &ktest_master_secret) {
+  } else if (rip == (uint64_t) &ktest_master_secret +14) {
     fprintf(modelLog, "Entering ktest_master_secret model \n");
     fflush(modelLog);
     model_ktest_master_secret();
-  } else if (rip == (uint64_t)  &ktest_writesocket) {
+  } else if (rip == (uint64_t)  &ktest_writesocket +14) {
     model_ktest_writesocket();
-  } else if (rip == (uint64_t) &ktest_readsocket) {
+  } else if (rip == (uint64_t) &ktest_readsocket +14) {
     model_ktest_readsocket();
-  } else if (rip == (uint64_t) &ktest_raw_read_stdin) {
+  } else if (rip == (uint64_t) &ktest_raw_read_stdin +14) {
     model_ktest_raw_read_stdin();
-  } else if (rip == (uint64_t) &ktest_connect) {
+  } else if (rip == (uint64_t) &ktest_connect +14) {
     model_ktest_connect();
-  } else if (rip == (uint64_t) &ktest_select) {
+  } else if (rip == (uint64_t) &ktest_select +14) {
     model_ktest_select();
-  } else if (rip == (uint64_t) &ktest_RAND_bytes) {
+  } else if (rip == (uint64_t) &ktest_RAND_bytes +14) {
     model_ktest_RAND_bytes();
-  } else if (rip == (uint64_t) &ktest_RAND_pseudo_bytes) {
+  } else if (rip == (uint64_t) &ktest_RAND_pseudo_bytes +14) {
     model_ktest_RAND_pseudo_bytes();
   } else if (rip == (uint64_t) &gettimeofday)  {
     model_gettimeofday();
@@ -4089,7 +4096,7 @@ void Executor::model_inst () {
     model_RAND_load_file();
     }  
 
-else if (rip == (uint64_t) &ktest_start) {
+else if (rip == (uint64_t) &ktest_start +14) {
     model_ktest_start();
     /*
  } else if (rip == (uint64_t) &sb_entertran) {
@@ -4167,6 +4174,48 @@ bool isSpecialInst (uint64_t rip) {
     return true;
 
   */
+
+  //ABH: The plus 14 offset below is a temporary hack.
+  //For modeled or prohibitive functions, we trap
+  //to the interpreter at exactly 14 bytes from the
+  //label of the function.
+  
+  if (rip == (uint64_t) &AES_encrypt             + 14 ||
+      rip == (uint64_t) &ECDH_compute_key        + 14 ||
+      rip == (uint64_t) &EC_POINT_point2oct      + 14 ||
+      rip == (uint64_t) &EC_KEY_generate_key     + 14 ||
+      rip == (uint64_t) &SHA1_Update             + 14 ||
+      rip == (uint64_t) &SHA1_Final              + 14 ||
+      rip == (uint64_t) &SHA256_Update           + 14 ||
+      rip == (uint64_t) &SHA256_Final            + 14 ||
+      rip == (uint64_t) &gcm_gmult_4bit          + 14 ||
+      rip == (uint64_t) &gcm_ghash_4bit          + 14 
+      ) {
+    printf("Found prohibitive function \n");
+    fprintf(modelLog, "Found prohibitive function at 0x%lx \n", rip );
+    fflush(modelLog);
+    std::cout.flush();
+  }
+
+  if (
+      rip == (uint64_t) &ktest_start             + 14 ||
+      rip == (uint64_t) &ktest_writesocket       + 14 ||
+      rip == (uint64_t) &ktest_readsocket        + 14 ||
+      rip == (uint64_t) &ktest_raw_read_stdin    + 14 ||
+      rip == (uint64_t) &ktest_connect           + 14 ||
+      rip == (uint64_t) &ktest_select            + 14 ||
+      rip == (uint64_t) &ktest_RAND_bytes        + 14 ||
+      rip == (uint64_t) &ktest_RAND_pseudo_bytes + 14 ||
+      rip == (uint64_t) &ktest_master_secret     + 14
+      ) {
+
+    printf("Found ktest trap \n");
+    fprintf(modelLog, "Found ktest trap at 0x%lx \n", rip );
+    fflush(modelLog);
+    std::cout.flush();
+    return true;
+  }
+
   
   if (rip == (uint64_t) &sb_reopen || rip == (uint64_t) &sb_disabled || rip == (uint64_t) &target_exit || isModeled  || rip == ((uint64_t) &malloc_tase +14) || rip == ((uint64_t) &realloc_tase + 14)  )  {
     return true;
@@ -4259,14 +4308,16 @@ void Executor::klee_interp_internal () {
     if (isSpecialInst(rip)) {
       model_inst();
     } else {
-      printf("Attempting to find interp function \n");
-      std::cout.flush();
-      
+      if (taseDebug) {
+	printf("Attempting to find interp function \n");
+	std::cout.flush();
+      }
       KFunction * interpFn = findInterpFunction (target_ctx_gregs, kmodule);
 
-      printf("Found interp function \n");
-      std::cout.flush();
-      
+      if (taseDebug) {
+	printf("Found interp function \n");
+	std::cout.flush();
+      }
       //We have to manually push a frame on for the function we'll be
       //interpreting through.  At this point, no other frames should exist
       // on klee's interpretation "stack".
@@ -4312,7 +4363,8 @@ void Executor::klee_interp_internal () {
 
   static int numReturns = 0;
   numReturns++;
-  printf("Returning to native execution for time %d \n", numReturns);
+  if (taseDebug)
+    printf("Returning to native execution for time %d \n", numReturns);
   
   if (taseDebug) {
     printf("Prior to return to native execution, ctx is ... \n");

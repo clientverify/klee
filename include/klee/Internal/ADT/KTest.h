@@ -13,7 +13,7 @@
 #include <time.h>
 
 #ifdef __cplusplus
-extern "C" {
+//extern "C" {
 #endif
 
   // Capture mode
@@ -73,10 +73,10 @@ extern "C" {
 
   void  kTest_free(KTest *);
 
-  void ktest_start(const char *filename, enum kTestMode mode);
-  void ktest_finish();     // write capture to file
+  void ktest_start_tase(const char *filename, enum kTestMode mode);
+  void ktest_finish_tase();     // write capture to file
 #ifdef __cplusplus
-}
+//}
 
  
 #endif

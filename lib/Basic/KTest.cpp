@@ -457,7 +457,7 @@ KTestObject* KTOV_next_object(KTestObjectVector *ov, const char *name)
 }
 
 
-extern "C" int ktest_connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
+ int ktest_connect_tase(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 {
 
   fprintf(modelLog, "Entering ktest_connect at interpCtr %lu with sockfd %d \n", interpCtr, sockfd);
@@ -495,7 +495,7 @@ extern "C" int ktest_connect(int sockfd, const struct sockaddr *addr, socklen_t 
  * to differ between recording and playback).  If this assumption is
  * not true, then playback could break.
  */
-extern "C" int ktest_select(int nfds, fd_set *readfds, fd_set *writefds,
+ int ktest_select_tase(int nfds, fd_set *readfds, fd_set *writefds,
 		 fd_set *exceptfds, struct timeval *timeout)
 {
   fprintf(modelLog, "Entering ktest_select at interpCtr %lu \n", interpCtr);
@@ -737,7 +737,7 @@ extern "C" int ktest_select(int nfds, fd_set *readfds, fd_set *writefds,
   }
 }
 
-extern "C" ssize_t ktest_writesocket(int fd, const void *buf, size_t count)
+ssize_t ktest_writesocket_tase(int fd, const void *buf, size_t count)
 {
 
   fprintf(modelLog, "Entering ktest_writesocket at interpCtr %lu \n", interpCtr);
@@ -823,7 +823,7 @@ extern "C" ssize_t ktest_writesocket(int fd, const void *buf, size_t count)
   }
 }
 
-extern "C" ssize_t ktest_readsocket(int fd, void *buf, size_t count)
+ ssize_t ktest_readsocket_tase(int fd, void *buf, size_t count)
 {
 
   fprintf(modelLog, "Entering ktest_readsocket at interpCtr %lu \n", interpCtr);
@@ -868,7 +868,7 @@ extern "C" ssize_t ktest_readsocket(int fd, void *buf, size_t count)
   }
 }
 
-extern "C" int ktest_raw_read_stdin(void *buf,int siz)
+ int ktest_raw_read_stdin_tase(void *buf,int siz)
 {
 
   fprintf(modelLog, "Entering ktest_raw_read_stdin at interpCtr %lu \n", interpCtr);
@@ -909,7 +909,7 @@ extern "C" int ktest_raw_read_stdin(void *buf,int siz)
   }
 }
 
-extern "C" time_t ktest_time(time_t *t)
+ time_t ktest_time_tase(time_t *t)
 {
   if (ktest_mode == KTEST_NONE) {
     return time(t);
@@ -929,7 +929,7 @@ extern "C" time_t ktest_time(time_t *t)
   }
 }
 
-extern "C" int ktest_RAND_bytes(unsigned char *buf, int num)
+ int ktest_RAND_bytes_tase(unsigned char *buf, int num)
 {
   fprintf(modelLog, "Entering ktest_RAND_bytes at interpCtr %lu \n", interpCtr);
   
@@ -969,7 +969,7 @@ extern "C" int ktest_RAND_bytes(unsigned char *buf, int num)
   }
 }
 
-extern "C" int ktest_RAND_pseudo_bytes(unsigned char *buf, int num)
+int ktest_RAND_pseudo_bytes_tase(unsigned char *buf, int num)
 {
   fprintf(modelLog, "Entering ktest_RAND_pseudo_bytes at interpCtr %lu \n", interpCtr);
   
@@ -1009,7 +1009,7 @@ extern "C" int ktest_RAND_pseudo_bytes(unsigned char *buf, int num)
   }
 }
 
-extern "C" void ktest_master_secret(unsigned char *ms, int len) {
+ void ktest_master_secret_tase(unsigned char *ms, int len) {
   fprintf(modelLog, "Entering ktest_master_secret at interpCtr %lu \n", interpCtr);
   
   if (ktest_mode == KTEST_NONE) {
@@ -1065,7 +1065,7 @@ extern "C" void ktest_master_secret(unsigned char *ms, int len) {
 
 
 
-void ktest_start(const char *filename, enum kTestMode mode) {
+void ktest_start_tase(const char *filename, enum kTestMode mode) {
   fprintf(modelLog, "Entering ktest_start at interpCtr %lu \n", interpCtr);
   fprintf(modelLog, "ktest filename is %s \n", filename);
   
@@ -1110,7 +1110,7 @@ void ktest_start(const char *filename, enum kTestMode mode) {
   }
 }
 
-void ktest_finish() {
+void ktest_finish_tase() {
 
   fprintf(modelLog, "Entering ktest_finish at interpCtr %lu \n", interpCtr);
 
