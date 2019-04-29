@@ -84,7 +84,9 @@ using namespace klee;
 #include <netdb.h>
 #include <fcntl.h>
 
+extern void tase_exit();
 
+extern bool taseManager;
 extern greg_t * target_ctx_gregs;
 extern klee::Interpreter * GlobalInterpreter;
 extern MemoryObject * target_ctx_gregs_MO;
@@ -98,12 +100,23 @@ enum testType : int {EXPLORATION, VERIFICATION};
 extern enum testType test_type;
 
 extern uint64_t interpCtr;
+extern bool taseDebug;
 
 //Multipass
-extern multipassRecord multipassInfo;
+extern void * MPAPtr;
+extern int replayPID;
+//extern multipassRecord multipassInfo;
 extern KTestObjectVector ktov;
 extern bool enableMultipass;
 extern void spinAndAwaitForkRequest();
+
+CVAssignment * prevMPA = NULL;
+extern void multipass_reset_round();
+extern void multipass_start_round(Executor * theExecutor);
+extern void multipass_replay_round(void * assignmentBufferPtr, CVAssignment * mpa, int thePid);
+extern char* ktest_object_names[];
+enum { CLIENT_TO_SERVER=0, SERVER_TO_CLIENT, RNG, PRNG, TIME, STDIN, SELECT,
+       MASTER_SECRET };
 
 bool roundUpHeapAllocations = true; //Round the size Arg of malloc, realloc, and calloc up to a multiple of 8
 //This matters because it controls the size of the MemoryObjects allocated in klee.  Reads executed by
@@ -112,17 +125,6 @@ bool roundUpHeapAllocations = true; //Round the size Arg of malloc, realloc, and
 
 int maxFDs = 10;
 int openFD = 3;
-
-/*
-KTestObject * peekNextKTestObject () {
-  if (ktov.playback_index >= ktov.size){
-    printf("Tried to peek for nonexistent KTestObject \n");
-    std::exit(EXIT_FAILURE);
-  }else {
-    return &(ktov.objects[ktov.playback_index]);
-  }
-}
-*/
 
 /*
 enum FDStat_ty = {Ready, Blocked, Err}; //Oversimplification for now
@@ -143,6 +145,17 @@ bool initializeFDTracking () {
 
 
 // Network capture for Cliver
+
+int ktest_master_secret_calls = 0;
+int ktest_start_calls = 0;
+int ktest_writesocket_calls = 0;
+int ktest_readsocket_calls = 0;
+int ktest_raw_read_stdin_calls = 0;
+int ktest_connect_calls = 0;
+int ktest_select_calls = 0;
+int ktest_RAND_bytes_calls = 0;
+int ktest_RAND_pseudo_bytes_calls = 0;
+
 
 //extern "C"
 int ktest_connect_tase(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
@@ -236,10 +249,11 @@ void Executor::model___errno_location() {
   
 }
 
+
 void Executor::model_ktest_master_secret(  ) {
-
+  ktest_master_secret_calls++;
+  
   printf("Entering model_ktest_master_secret \n");
-
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
 
@@ -266,6 +280,8 @@ void Executor::model_ktest_master_secret(  ) {
 
 void Executor::model_exit() {
 
+  
+  
   //printf("loopCtr is %d \n", loopCtr);
   printf(" Found call to exit.  TASE should shutdown. \n");
   std::cout.flush();
@@ -290,7 +306,9 @@ void Executor::model_printf() {
 }
 
 void Executor::model_ktest_start() {
-
+  
+  ktest_start_calls++;
+  
   printf("Entering model_ktest_start \n");
   fprintf(modelLog,"Entering model_ktest_start at interpCtr %lu \n",interpCtr);
   //fprintf(modelLog,"ktest_start args are 
@@ -319,7 +337,11 @@ void Executor::model_ktest_start() {
     
 }
 
+
+//writesocket(int fd, const void * buf, size_t count)
 void Executor::model_ktest_writesocket() {
+  ktest_writesocket_calls++;
+  
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
@@ -333,11 +355,69 @@ void Executor::model_ktest_writesocket() {
        (isa<ConstantExpr>(arg3Expr))
        ){
 
-    //Get result of call
-    ssize_t res = ktest_writesocket_tase((int) target_ctx_gregs[REG_RDI].u64, (void *) target_ctx_gregs[REG_RSI].u64, (size_t) target_ctx_gregs[REG_RDX].u64);
-    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
-    target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+    int fd = (int) target_ctx_gregs[REG_RDI].u64;
+    void * buf = (void *) target_ctx_gregs[REG_RSI].u64;
+    size_t count = (size_t) target_ctx_gregs[REG_RDX].u64;
+    
 
+    
+    if (enableMultipass) {
+      //Basic structure comes from NetworkManager in klee repo of cliver.
+      
+      //Get log entry for c2s
+      KTestObject *o = KTOV_next_object(&ktov, ktest_object_names[CLIENT_TO_SERVER]);
+      if (o->numBytes != count) {
+	fprintf(modelLog,"VERIFICATION ERROR: mismatch in replay size \n");
+      }
+
+      //Create write condition
+      klee::ref<klee::Expr> write_condition = klee::ConstantExpr::alloc(1, klee::Expr::Bool);
+      for (int i = 0; i < count; i++) {
+	klee::ref<klee::Expr> condition = klee::EqExpr::create(tase_helper_read((uint64_t) buf + i, 1),
+                             klee::ConstantExpr::alloc(o->bytes[i], klee::Expr::Int8));
+	write_condition = klee::AndExpr::create(write_condition, condition);
+      }
+      
+      //Check validity of write condition
+      if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(write_condition)) {
+	if (CE->isFalse())
+	  fprintf(modelLog, "VERIFICATION ERROR: false write condition \n");
+      } else {
+	bool result = true;
+	//compute_false(GlobalExecutionStatePtr, write_condition, result);
+	solver->mustBeFalse(*GlobalExecutionStatePtr, write_condition, result);
+	
+	if (result)
+	  fprintf(modelLog, "VERIFICATION ERROR: write condition determined false \n");
+      }
+	
+      //Solve for multipass assignments
+      CVAssignment currMPA;
+      currMPA.clear();
+      if (!isa<ConstantExpr>(write_condition)) {
+	currMPA.solveForBindings(solver->solver, write_condition,GlobalExecutionStatePtr);
+      }
+      
+      //Determine if we should execute another pass
+      //CVAssignment  * curr_MPA = &(GlobalExecutionStatePtr->multi_pass_assignment);
+      
+      if (currMPA.size() != 0 && prevMPA->bindings != currMPA.bindings) {
+	multipass_replay_round(MPAPtr, &currMPA, replayPID); //Sets up child to run from prev "NEW ROUND" point
+	
+      }
+	
+      //RESET ROUND      
+      multipass_reset_round(); //Sets up new buffer for MPA and destroys multipass child process
+
+      //NEW ROUND
+      multipass_start_round(this);  //Gets semaphore,sets prevMPA, and sets a replay child process up
+      
+      
+    } else {
+      ssize_t res = ktest_writesocket_tase((int) target_ctx_gregs[REG_RDI].u64, (void *) target_ctx_gregs[REG_RSI].u64, (size_t) target_ctx_gregs[REG_RDX].u64);
+      ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+      target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+    }
     //fake a ret
     uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
     target_ctx_gregs[REG_RIP].u64 = retAddr;
@@ -352,6 +432,7 @@ void Executor::model_ktest_writesocket() {
 }
 
 void Executor::model_ktest_readsocket() {
+  ktest_readsocket_calls++;
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
@@ -385,6 +466,7 @@ void Executor::model_ktest_readsocket() {
 }
 
 void Executor::model_ktest_raw_read_stdin() {
+  ktest_raw_read_stdin_calls++;
   printf("Entering model_ktest_raw_read_stdin \n");
   fprintf(modelLog,"Entering model_ktest_raw_read_stdin at interpCtr %lu \n", interpCtr);
   
@@ -396,11 +478,32 @@ void Executor::model_ktest_raw_read_stdin() {
        (isa<ConstantExpr>(arg2Expr))
        ){
 
-    //return result of call
-    int res = ktest_raw_read_stdin_tase((void *) target_ctx_gregs[REG_RDI].u64, (int) target_ctx_gregs[REG_RSI].u64);
-    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
-    target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
-    
+    if (enableMultipass) {
+
+      void * buf = (void *) target_ctx_gregs[REG_RDI].u64;
+      int buffsize = (int) target_ctx_gregs[REG_RSI].u64;
+      
+      
+      KTestObject * kto = peekNextKTestObject();
+      int len = kto->numBytes;
+
+      if (len > buffsize) {
+	fprintf(modelLog, "Buffer too large for ktest_raw_read stdin \n");
+	fflush(modelLog);
+	std::exit(EXIT_FAILURE);
+      }
+      
+      tase_make_symbolic( (uint64_t) buf, len, "stdin");
+      
+      
+    } else {
+      
+      
+      //return result of call
+      int res = ktest_raw_read_stdin_tase((void *) target_ctx_gregs[REG_RDI].u64, (int) target_ctx_gregs[REG_RSI].u64);
+      ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+      target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+    }
     //Fake a ret
     uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
     target_ctx_gregs[REG_RIP].u64 = retAddr;
@@ -415,7 +518,7 @@ void Executor::model_ktest_raw_read_stdin() {
 }
 
 void Executor::model_ktest_connect() {
-
+  ktest_connect_calls++;
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
 
@@ -465,6 +568,8 @@ void Executor::model_shutdown() {
       std::cerr << "All playback messages retrieved \n";
       fprintf(modelLog, "All playback messages retrieved \n");
       fflush(modelLog);
+
+      tase_exit();
       std::exit(EXIT_SUCCESS);
       
     } else {
@@ -484,7 +589,7 @@ void Executor::model_shutdown() {
 }
 
 void Executor::model_ktest_select() {
-
+  ktest_select_calls++;
   printf("Entering model_ktest_select \n");
   fprintf(modelLog,"Entering model_ktest_select at interpCtr %lu ", interpCtr);
   std::cout.flush();
@@ -504,19 +609,25 @@ void Executor::model_ktest_select() {
 
     fprintf(modelLog, "Before ktest_select, readfds is 0x%lx, writefds is 0x%lx \n", *( (uint64_t *) target_ctx_gregs[REG_RSI].u64), *( (uint64_t *) target_ctx_gregs[REG_RDX].u64));
     fflush(modelLog);
-    
-    int res = ktest_select_tase((int) target_ctx_gregs[REG_RDI].u64, (fd_set *) target_ctx_gregs[REG_RSI].u64, (fd_set *) target_ctx_gregs[REG_RDX].u64, (fd_set *) target_ctx_gregs[REG_RCX].u64, (struct timeval *) target_ctx_gregs[REG_R8].u64);
-    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
-    target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
 
-    fprintf(modelLog, "After ktest_select, readfds is 0x%lx, writefds is 0x%lx \n", *( (uint64_t *) target_ctx_gregs[REG_RSI].u64), *( (uint64_t *) target_ctx_gregs[REG_RDX].u64));
-    fflush(modelLog);
+    if (enableMultipass) {
+      
+      model_select();
+
+    } else {
     
-    //Fake a return
-    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
-    target_ctx_gregs[REG_RIP].u64 = retAddr;
-    target_ctx_gregs[REG_RSP].u64 += 8;
+      int res = ktest_select_tase((int) target_ctx_gregs[REG_RDI].u64, (fd_set *) target_ctx_gregs[REG_RSI].u64, (fd_set *) target_ctx_gregs[REG_RDX].u64, (fd_set *) target_ctx_gregs[REG_RCX].u64, (struct timeval *) target_ctx_gregs[REG_R8].u64);
+      ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+      target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+
+      fprintf(modelLog, "After ktest_select, readfds is 0x%lx, writefds is 0x%lx \n", *( (uint64_t *) target_ctx_gregs[REG_RSI].u64), *( (uint64_t *) target_ctx_gregs[REG_RDX].u64));
+      fflush(modelLog);
     
+      //Fake a return
+      uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+      target_ctx_gregs[REG_RIP].u64 = retAddr;
+      target_ctx_gregs[REG_RSP].u64 += 8;
+    }
   } else {
     printf("ERROR in model_ktest_select -- symbolic args \n");
     std::cout.flush();
@@ -540,7 +651,9 @@ void Executor::model_memcpy() {
 }
 
 void Executor::model_ktest_RAND_bytes() {
-
+  ktest_RAND_bytes_calls++;
+  
+  
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
 
@@ -552,10 +665,16 @@ void Executor::model_ktest_RAND_bytes() {
        (isa<ConstantExpr>(arg1Expr)) &&
        (isa<ConstantExpr>(arg2Expr)) ) {
 
-    //return val
-    int res = ktest_RAND_bytes_tase((unsigned char *) target_ctx_gregs[REG_RDI].u64, (int) target_ctx_gregs[REG_RSI].u64);
-    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
-    target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+
+    if (enableMultipass) {
+      tase_make_symbolic((uint64_t) &target_ctx_gregs[REG_RAX].u64, 4, "rng");
+      
+    } else {
+      //return val
+      int res = ktest_RAND_bytes_tase((unsigned char *) target_ctx_gregs[REG_RDI].u64, (int) target_ctx_gregs[REG_RSI].u64);
+      ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+      target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+    }
     
     //Fake a return
     uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
@@ -571,7 +690,7 @@ void Executor::model_ktest_RAND_bytes() {
 }
 
 void Executor::model_ktest_RAND_pseudo_bytes() {
-
+  ktest_RAND_pseudo_bytes_calls++;
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
 
@@ -583,11 +702,18 @@ void Executor::model_ktest_RAND_pseudo_bytes() {
        (isa<ConstantExpr>(arg2Expr)) ) {
 
     //return result of call
-    int res = ktest_RAND_pseudo_bytes_tase((unsigned char *) target_ctx_gregs[REG_RDI].u64, (int) target_ctx_gregs[REG_RSI].u64);
-    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
-    target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
-  
+
+    if (enableMultipass) {
+
+      tase_make_symbolic((uint64_t) &target_ctx_gregs[REG_RAX].u64, 4, "prng");
+
+    } else {
     
+      int res = ktest_RAND_pseudo_bytes_tase((unsigned char *) target_ctx_gregs[REG_RDI].u64, (int) target_ctx_gregs[REG_RSI].u64);
+      ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+      target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+  
+    }
     
     //Fake a return
     uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
@@ -710,6 +836,20 @@ void Executor::model_stat() {
     std::exit(EXIT_FAILURE);
   }
   
+}
+
+void Executor::model_getpid() {
+
+  int pid = getpid();
+  ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) pid, Expr::Int64);
+  target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+  
+  //Fake a ret
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+  target_ctx_gregs[REG_RIP].u64 = retAddr;
+  target_ctx_gregs[REG_RSP].u64 += 8;
+
+
 }
 
 //uid_t getuid(void)
@@ -1239,7 +1379,8 @@ void Executor::model_malloc() {
 
   if (isa<ConstantExpr>(arg1Expr)) {
     size_t sizeArg = (size_t) target_ctx_gregs[REG_RDI].u64;
-    printf("Entered model_malloc with requested size %d \n", sizeArg);
+    if (taseDebug)
+      printf("Entered model_malloc with requested size %d \n", sizeArg);
 
     if (roundUpHeapAllocations) 
       sizeArg = roundUp(sizeArg, 8);
@@ -1249,8 +1390,10 @@ void Executor::model_malloc() {
       sizeArg++;
       }*/
     void * buf = malloc(sizeArg);
-    printf("Returned ptr at 0x%llx \n", (uint64_t) buf);
-    std::cout.flush();
+    if (taseDebug) {
+      printf("Returned ptr at 0x%llx \n", (uint64_t) buf);
+      std::cout.flush();
+    }
     fprintf(heapMemLog, "MALLOC buf at 0x%llx - 0x%llx, size 0x%x, interpCtr %lu \n", (uint64_t) buf, ((uint64_t) buf + sizeArg -1), sizeArg, interpCtr);
     //Make a memory object to represent the requested buffer
     MemoryObject * heapMem = addExternalObject(*GlobalExecutionStatePtr,buf, sizeArg, false );
@@ -1285,8 +1428,10 @@ void Executor::model_malloc() {
       std::exit(EXIT_FAILURE);
     }
     */
-    printf("INTERPRETER: Exiting model_malloc \n"); 
-    std::cout.flush();
+    if (taseDebug) {
+      printf("INTERPRETER: Exiting model_malloc \n"); 
+      std::cout.flush();
+    }
   } else {
     printf("INTERPRETER: CALLING MODEL_MALLOC WITH SYMBOLIC ARGS.  NOT IMPLMENTED \n");
     target_ctx_gregs_OS->print();
@@ -1831,13 +1976,13 @@ void Executor::model_readstdin() {
 
       //BEGIN NEW VERIFICATION STAGE =====>
       //clear old multipass assignment info.
-
+      /*
       multipassInfo.prevMultipassAssignment.clear();
       multipassInfo.currMultipassAssignment.clear();
       multipassInfo.messageNumber++;
       multipassInfo.passCount = 0;
       multipassInfo.roundRootPID = getpid();
-      
+      */
       int pid = tase_fork();
       if (pid == 0) {
 	//Continue on 
@@ -1969,7 +2114,7 @@ void Executor::model_write() {
     
       //Determine if we can infer new bindings based on current round of execution.
       //If not, it's time to move on to next round.
-    
+      /*
       multipassInfo.currMultipassAssignment.clear();
       multipassInfo.currMultipassAssignment.solveForBindings( solver->solver, writeCondition,GlobalExecutionStatePtr);
 
@@ -1984,6 +2129,7 @@ void Executor::model_write() {
 	//increment message count to indicate we've reached a new stage of verification and keep going.
 	//todo -- IMPLEMENT
       }
+      */
     } else {
       printf("Unhandled test type in model_send \n");
       std::cout.flush();
@@ -2131,8 +2277,12 @@ void Executor::model_select() {
     //For now, just model with a successful return.  But we could make this symbolic.
     target_ctx_gregs_OS->write(REG_RAX * 8, bitsSetExpr);
     //bump RIP and interpret next instruction
-    target_ctx_gregs[REG_RIP].u64 = target_ctx_gregs[REG_RIP].u64 +5;
-    printf("INTERPRETER: Exiting model_select \n");
+    //target_ctx_gregs[REG_RIP].u64 = target_ctx_gregs[REG_RIP].u64 +5;
+    //printf("INTERPRETER: Exiting model_select \n");
+    //fake a ret
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
     
   } else {
     printf("ERROR: Found symbolic input to model_select()");

@@ -44,8 +44,11 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
   //ABH: It needs to be the case that the write condition was added to
   //exec state's constraints before solveForBindings was called.
   //Todo:  Make this simpler and less prone to misuse.
-  klee::ConstraintManager cm(ExecStatePtr->constraints);
 
+  //ABH: Should be able to just add in the expr via cm.addConstraint ?
+  //Todo: Double check
+  klee::ConstraintManager cm(ExecStatePtr->constraints);
+  cm.addConstraint(expr);
 
   klee::Query query(cm, klee::ConstantExpr::alloc(0, klee::Expr::Bool));
 
@@ -107,12 +110,20 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
 //| Footer (magic) |
 //| 210 (uint8_t)  |
 
+
 bool debugSerial = true;
 
-void CVAssignment::serializeAssignments(std::vector<const klee::Array*> &objects,
-			 std::vector< std::vector<unsigned char> > &values, void * buf, int bufSize) {
+void CVAssignment::serializeAssignments(void * buf, int bufSize) {
 
 
+  std::vector<const klee::Array *> objects;
+  std::vector<std::vector<unsigned char> > values;
+
+  for (std::map<const Array *, std::vector<unsigned char> >::iterator it = bindings.begin(); it != bindings.end(); it++) {
+    objects.push_back(it->first);
+    values.push_back(it->second);
+  }
+    
   if (objects.size() > 0xFFFFFFFF) {
     printf("ERROR: Too many constraints to serialize in TASE \n");
     std::cout.flush();
@@ -211,7 +222,9 @@ void CVAssignment::serializeAssignments(std::vector<const klee::Array*> &objects
   }
 }
 
-void CVAssignment::deserializeAssignments ( void * buf, int bufSize, Executor * exec) {
+
+
+CVAssignment * deserializeAssignments ( void * buf, int bufSize, Executor * exec) {
 
   if (debugSerial) {
     printf("Attempting to deserialize multipass assignments from buffer at 0x%lx \n with size %d \n", (uint64_t) buf, bufSize);
@@ -293,7 +306,10 @@ void CVAssignment::deserializeAssignments ( void * buf, int bufSize, Executor * 
   }
 
   //Actually add bindings
-  addBindings(objects, values);
+
+  CVAssignment cva =  CVAssignment(objects,values);
+  return &cva;
+
 
   if (debugSerial) {
     printf("Exiting deserialization \n");

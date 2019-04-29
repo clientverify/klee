@@ -8,8 +8,13 @@
 #include <sys/mman.h>
 #include <iostream>
 #include <sys/prctl.h>
+#include "klee/CVAssignment.h"
+#include "/playpen/humphries/zTASE/TASE/klee/lib/Core/Executor.h"
 
 extern bool dontFork;
+//extern deserializeAssignments
+extern CVAssignment * deserializeAssignments ( void * buf, int bufSize, klee::Executor * exec);
+//extern void cliver::CVAssignment::serializeAssignments(void * buf, int bufSize);
 
 int QR_BYTE_LEN = 4096;
 int QA_BYTE_LEN = 4096;
@@ -17,7 +22,12 @@ int MAX_WORKERS = 4;
 
 bool taseManager = false;
 
-int masterPID;
+int passCount = 0; //Pass ctr for current round of verification
+int multipassAssignmentSize = 8096;  //Totally arbitrary. Size of mmap'd multipass assignment buffer.
+void * MPAPtr;  //Ptr to serialized multipass info for current round of verification
+int replayPID = -1;  //Pid of replay snapshot for current process
+
+extern CVAssignment * prevMPA;
 
 void * ms_base;
 int ms_size = 16384;
@@ -148,6 +158,16 @@ void manage_workers () {
   int QA_size_init = *ms_QA_size_ptr;
   int QR_size_init = *ms_QR_size_ptr;
 
+  //Exit case
+  if (QA_size_init == 0 && QR_size_init == 0 && *target_started_ptr == 1) {
+    printf("Manager found empty QA and QR \n");
+    std::cout.flush();
+
+    release_sem_lock();
+    std::exit(EXIT_SUCCESS);
+
+  }
+  
   if (QR_size_init > MAX_WORKERS) {
     printf("ERROR: found more workers than expected in manage_workers \n");
     std::exit(EXIT_FAILURE);
@@ -246,6 +266,21 @@ static void remove_self_from_QR () {
     *ms_QR_size_ptr = QR_size;
 }
 
+void QA_insert_PID(int PID) {
+
+  int QA_size= *ms_QA_size_ptr;
+  QA_size++;
+  if (QA_size * sizeof(int) > QA_BYTE_LEN) {
+    printf("FATAL ERROR: Too many process in QA \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+  *(ms_QA_base + QA_size -1) = PID;
+  *ms_QA_size_ptr = QA_size;
+  
+
+}
+
 int tase_fork() {
   printf("Entering tase_fork \n");
   std::cout.flush();
@@ -272,7 +307,13 @@ int tase_fork() {
 	  break;
       }
       //Q_Available.insert(trueChildPID); 
+
+      QA_insert_PID(trueChildPID);
+      
+      /*
       int QA_size= *ms_QA_size_ptr;
+
+      
       
       QA_size++;
       if (QA_size * sizeof(int) > QA_BYTE_LEN) {
@@ -283,6 +324,8 @@ int tase_fork() {
       *(ms_QA_base + QA_size -1) = trueChildPID;
       *ms_QA_size_ptr = QA_size;
       
+      */
+
     } else  {
      
       raise(SIGSTOP);
@@ -299,6 +342,10 @@ int tase_fork() {
 	  break;
       }
       //Q_Available.insert(falseChildPID);
+
+      QA_insert_PID(falseChildPID);
+
+      /*
        int QA_size= *ms_QA_size_ptr;
        QA_size++;
        if (QA_size * sizeof(int) > QA_BYTE_LEN) {
@@ -308,7 +355,7 @@ int tase_fork() {
        }
        *(ms_QA_base + QA_size -1) = falseChildPID;
        *ms_QA_size_ptr = QA_size;
-      
+       */
     } else {
 
       raise(SIGSTOP);
@@ -374,3 +421,67 @@ void initManagerStructures() {
    *target_started_ptr = 0; //Switches to 1 when we execute target
    
  }
+
+
+void multipass_start_round (klee::Executor * theExecutor) {
+
+  get_sem_lock();
+
+  //Make backup of self
+  int childPID = ::fork();
+  replayPID = childPID;
+  if (childPID != 0) {
+    //Block until child has sigstop'd
+    while (true) {
+      int status;
+      int res = waitpid(childPID, &status, WUNTRACED);
+      if (WIFSTOPPED(status))
+	break;
+    }    
+  } else {
+    passCount++;
+    raise(SIGSTOP);
+    multipass_start_round(theExecutor);
+  }
+  
+  //Pickup assignment info if necessary
+  prevMPA = deserializeAssignments(MPAPtr, multipassAssignmentSize, theExecutor);
+  
+  release_sem_lock();
+}
+
+void multipass_replay_round (void * assignmentBufferPtr, CVAssignment * mpa, int thePid)  {
+  get_sem_lock();
+ 
+  //Move replay child pid into QA
+  QA_insert_PID(thePid);
+  //Move latest assignments into shared mem
+  mpa->serializeAssignments(assignmentBufferPtr, multipassAssignmentSize);
+  
+  
+  //Remove self from QR
+  remove_self_from_QR();
+  
+  //Exit, which implicitly releases the semaphore
+  std::exit(EXIT_SUCCESS);
+
+}
+
+void  multipass_reset_round() {
+
+  passCount = 0;
+  MPAPtr = mmap(NULL, multipassAssignmentSize, PROT_READ|PROT_WRITE, MAP_ANON|MAP_SHARED, -1, 0);
+  memset(MPAPtr, 0, multipassAssignmentSize);
+  
+  //Kill the replay pid if it exists.  Another one will be established next round.
+  if (replayPID != -1) {
+
+    int res = kill(replayPID,SIGKILL);//May need to stick in a loop
+    if (res == -1) {
+      printf("Trying to sigkill %d \n",replayPID);
+      std::cout.flush();
+      perror("ERROR: Worker can't kill redundant clone ");
+      std::exit(EXIT_FAILURE);
+    } 
+  }    
+}

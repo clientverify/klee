@@ -386,7 +386,8 @@ private:
   void model_htonl();//Temporarily here bc of bswap assembly
 
   void model_OpenSSLDie();
-  
+
+  void model_getpid();
   void model_getuid();
   void model_geteuid();
   void model_getgid();

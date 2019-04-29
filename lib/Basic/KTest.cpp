@@ -304,7 +304,7 @@ static void print_fd_set(int nfds, fd_set *fds) {
 
 enum { CLIENT_TO_SERVER=0, SERVER_TO_CLIENT, RNG, PRNG, TIME, STDIN, SELECT,
        MASTER_SECRET };
-static char* ktest_object_names[] = {
+char* ktest_object_names[] = {
   "c2s", "s2c", "rng", "prng", "time", "stdin", "select", "master_secret"
 };
 

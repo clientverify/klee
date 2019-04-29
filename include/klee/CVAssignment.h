@@ -12,8 +12,11 @@
 #ifndef CV_ASSIGNMENT_H
 #define CV_ASSIGNMENT_H
 
+
 #include "klee/util/Assignment.h"
 #include "klee/Solver.h"
+#include "/playpen/humphries/zTASE/TASE/klee/lib/Core/Executor.h"
+#include "klee/ExecutionState.h"
 
 #include <ostream>
 
@@ -33,8 +36,7 @@ class CVAssignment : public klee::Assignment {
   CVAssignment(std::vector<const klee::Array*> &objects, 
                std::vector< std::vector<unsigned char> > &values);
 
-  void serializeAssignments(std::vector<const klee::Array*> &objects,
-					  std::vector< std::vector<unsigned char> > &values, void * buf, int bufSize);
+  void serializeAssignments(void * buf, int bufSize);
 
   void solveForBindings(klee::Solver* solver, 
                         klee::ref<klee::Expr> &expr,
@@ -43,7 +45,7 @@ class CVAssignment : public klee::Assignment {
   void addBindings(std::vector<const klee::Array*> &objects, 
                    std::vector< std::vector<unsigned char> > &values);
 
-  void deserializeAssignments ( void * buf, int bufSize, Executor * exec ) ;
+  CVAssignment * deserializeAssignments ( void * buf, int bufSize, Executor * exec ) ;
   
   const klee::Array* getArray(std::string &name) {
     if (name_bindings.find(name) != name_bindings.end()) {

@@ -110,8 +110,6 @@ using namespace klee;
 //Can't include signal.h directly if it has conflicts with our tase_interp.h definitions
 extern "C"  void ( *signal(int signum, void (*handler)(int)) ) (int){
   return NULL;
-
-
   }
 
 
@@ -172,6 +170,28 @@ uint64_t restoreRAXOpc = 0x000000F816F9E3C4; //tmp hack
 extern multipassRecord multipassInfo;
 extern KTestObjectVector ktov;
 extern bool enableMultipass;
+extern int passCount;
+int multipass_symbolic_vars = 0;
+extern CVAssignment * prevMPA;
+//Addition from cliver                                                                                                                                              
+std::map<std::string, uint64_t> array_name_index_map_;
+std::string get_unique_array_name(const std::string &s) {
+  // Look up unique name for this variable, incremented per variable name                                                                                             
+  return s + "_" + llvm::utostr(array_name_index_map_[s]++);
+}
+
+
+extern  int ktest_master_secret_calls;
+extern  int ktest_start_calls;
+extern  int ktest_writesocket_calls;
+extern  int ktest_readsocket_calls;
+extern  int ktest_raw_read_stdin_calls;
+extern  int ktest_connect_calls;
+extern  int ktest_select_calls ;
+extern  int ktest_RAND_bytes_calls ;
+extern  int ktest_RAND_pseudo_bytes_calls;
+
+
 
 // Network capture for Cliver
 extern "C" { int ktest_connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
@@ -241,6 +261,8 @@ extern uint8_t * addBMResultPtr;
 extern int numEntries;
 #endif
 
+uint64_t total_interp_returns = 0;
+int prohib_returns = 0;
 //AH: End of our additions. -----------------------------------
 
 namespace {
@@ -3366,56 +3388,68 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
     printf("Calling executeMakeSymbolic on name %s \n", name.c_str());
     std::cout.flush();
   }
-  /*
-  
+
+  //CVExecutionState *cvstate = static_cast<CVExecutionState*>(&state);
+
   bool unnamed = (name == "unnamed") ? true : false;
-  std::vector<unsigned char> *bindings = NULL;
 
-  std::string array_name = name;
-  
-  const klee::Array * array = NULL;
+  // Create a new object state for the memory object (instead of a copy).                                                                                             
+  std::string array_name = get_unique_array_name(name);
+
+  //See if we have an assignment
+  const klee::Array *array = NULL;
   if (!unnamed)
-    array = multipassInfo.currMultipassAssignment.getArray(array_name);
-
+    array = prevMPA->getArray(array_name);
+  
   bool multipass = false;
   if (array != NULL) {
+    //CVDEBUG("Multi-pass: Concretization found for " << array_name);
     multipass = true;
   } else {
     if (!unnamed) {
-    } //Todo: handle array creation with a unique name for unnamed arrays.
+      //CVDEBUG("Multi-pass: Concretization not found for " << array_name);
+    }
     array = arrayCache.CreateArray(array_name, mo->size);
   }
-
+  
   bindObjectInState(state, mo, false, array);
-
-  if (multipassInfo.passCount > 0 && multipass) {
-    bindings = multipassInfo.currMultipassAssignment.getBindings(array_name);
-
+  
+  std::vector<unsigned char> *bindings = NULL;
+  if (passCount > 0 && multipass) {
+    bindings = prevMPA->getBindings(array_name);
+    
     if (!bindings || bindings->size() != mo->size) {
-      printf("ERROR: Multi-pass: Terminating state, bindings mismatch");
-      std::exit(EXIT_FAILURE);
+      //CVDEBUG("Multi-pass: Terminating state, bindings mismatch");
+      fprintf(modelLog, "Bindings mismatch in executeMakeSymbolic; terminating \n");
+      //terminateState(state);
     } else {
       const klee::ObjectState *os = state.addressSpace.findObject(mo);
       klee::ObjectState *wos = state.addressSpace.getWriteable(mo, os);
       assert(wos && "Writeable object is NULL!");
       unsigned idx = 0;
-
-      for (std::vector<unsigned char>::iterator it = bindings->begin(), ie = bindings->end(); it != ie; ++it) {
+      for (std::vector<unsigned char>::iterator it = bindings->begin();  it!= bindings->end(); it++) {
 	wos->write8(idx, *it);
 	idx++;
       }
+      /*
+      foreach (unsigned char b, *bindings) {
+        wos->write8(idx, b);
+        idx++;
+	}*/
     }
-
   } else {
+    //CVDEBUG("Created symbolic: " << array->name << " in " << *cvstate);
     state.addSymbolic(mo, array);
+    multipass_symbolic_vars++;
   }
-  
-  */
+
+
   //End AH Addition---------------------
   //(orig code)
   
 
   // Create a new object state for the memory object (instead of a copy).
+  /*
   if (!replayKTest) {
     // Find a unique name for this array.  First try the original name,
     // or if that fails try adding a unique identifier.
@@ -3485,6 +3519,7 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
       }
     }
   }
+  */
 }
 
 void spinAndAwaitForkRequest() {
@@ -3522,20 +3557,158 @@ extern "C" void tase_debug (char * s1, char * s2) {
   //Void, just a testing harness
 }
 
+extern clock_t target_start;
+extern clock_t target_end;
+
+bool measureTime = true;
+double enter_time;
+double exit_time;
+double interpreter_time = 0.0;
+
+double malloc_time = 0.0;
+double prohib_time = 0.0;
+
+int total_ret_codes = 0;
+
+bool isProhibitiveFn (uint64_t rip) {
+  
+  if (rip == (uint64_t) &AES_encrypt             + 14 ||
+	 rip == (uint64_t) &ECDH_compute_key        + 14 ||
+	 rip == (uint64_t) &EC_POINT_point2oct      + 14 ||
+	 rip == (uint64_t) &EC_KEY_generate_key     + 14 ||
+	 rip == (uint64_t) &SHA1_Update             + 14 ||
+	 rip == (uint64_t) &SHA1_Final              + 14 ||
+	 rip == (uint64_t) &SHA256_Update           + 14 ||
+	 rip == (uint64_t) &SHA256_Final            + 14 ||
+	 rip == (uint64_t) &gcm_gmult_4bit          + 14 ||
+	 rip == (uint64_t) &gcm_ghash_4bit          + 14 
+	) 
+    return true;
+  else
+    return false;
+}
+
+int AES_encrypt_calls = 0;
+int ECDH_compute_key_calls = 0;
+int EC_POINT_point2oct_calls = 0;
+int EC_KEY_generate_key_calls = 0;
+int SHA1_Update_calls = 0;
+int SHA1_Final_calls = 0;
+int SHA256_Update_calls = 0;
+int SHA256_Final_calls = 0;
+int gcm_gmult_4bit_calls = 0;
+int gcm_ghash_4bit_calls = 0;
+
+void resetProhibCounters() {
+  AES_encrypt_calls = 0;
+  ECDH_compute_key_calls = 0;
+  EC_POINT_point2oct_calls = 0;
+  EC_KEY_generate_key_calls = 0;
+  SHA1_Update_calls = 0;
+  SHA1_Final_calls = 0;
+  SHA256_Update_calls = 0;
+  SHA256_Final_calls = 0;
+  gcm_gmult_4bit_calls = 0;
+  gcm_ghash_4bit_calls = 0;
+}
+
+void printProhibCounters() {
+  fprintf(modelLog, "AES_encrypt calls: %d \n", AES_encrypt_calls);
+  fprintf(modelLog, "ECDH_compute_key calls: %d \n", ECDH_compute_key_calls);
+  fprintf(modelLog, "EC_POINT_point2oct calls: %d \n", EC_POINT_point2oct_calls);
+  fprintf(modelLog, "EC_KEY_generate_key calls: %d \n", EC_KEY_generate_key_calls);
+  fprintf(modelLog, "SHA1_Update calls: %d \n", SHA1_Update_calls);
+  fprintf(modelLog, "SHA1_Final calls:  %d \n", SHA1_Final_calls);
+  fprintf(modelLog, "SHA256_Update calls: %d \n", SHA256_Update_calls);
+  fprintf(modelLog, "SHA256_Final calls: %d \n", SHA256_Final_calls);
+  fprintf(modelLog, "gcm_gmult_4bit calls: %d \n", gcm_gmult_4bit_calls );
+  fprintf(modelLog, "gcm_ghash_4bit calls: %d \n", gcm_ghash_4bit_calls );
+}
+
+void countProhibCalls(uint64_t rip) {
+  if (rip == (uint64_t) &AES_encrypt             + 14)
+    AES_encrypt_calls++;
+  if (rip == (uint64_t) &ECDH_compute_key        + 14)
+    ECDH_compute_key_calls++;
+  if (rip == (uint64_t) &EC_POINT_point2oct      + 14)
+    EC_POINT_point2oct_calls++;
+  if (rip == (uint64_t) &EC_KEY_generate_key     + 14)
+    EC_KEY_generate_key_calls++;
+  if (rip == (uint64_t) &SHA1_Update             + 14)
+    SHA1_Update_calls++;
+  if (rip == (uint64_t) &SHA1_Final              + 14)
+    SHA1_Final_calls++;
+  if (rip == (uint64_t) &SHA256_Update           + 14)
+    SHA256_Update_calls++;
+  if (rip == (uint64_t) &SHA256_Final            + 14)
+    SHA256_Final_calls++;
+  if (rip == (uint64_t) &gcm_gmult_4bit          + 14)
+    gcm_gmult_4bit_calls++;
+  if (rip == (uint64_t) &gcm_ghash_4bit          + 14)
+    gcm_ghash_4bit_calls++;
+
+}
+
+
+
+
+
 extern "C" void klee_interp () {
+  total_interp_returns++;
+  uint64_t interpCtr_init = interpCtr;
+  bool isMemRequest = false;
+  bool isProhibRequest = false;
+  static int multipassRound = 0;
+  /*
+  if (measureTime) {
+    enter_time = util::getWallTime();
+    uint64_t rip = target_ctx_gregs[REG_RIP].u64;    
+    isProhibRequest = isProhibitiveFn(rip);
+    countProhibCalls(rip);
+
+    if (rip == (uint64_t) &ktest_writesocket + 14) {
+      fprintf(modelLog, "At ktest_writesocket round %d, prohib ctrs are \n", multipassRound);
+      printProhibCounters();
+      multipassRound++;
+    }
+    
+    
+    if (isProhibRequest) {
+      prohib_returns++;
+      if (taseDebug) {
+        fprintf(modelLog, "Attempting to skip prohib function at rip 0x%lx without symbolic inspection; r15 is 0x%lx \n", rip, target_ctx_gregs[REG_R15].u64);
+	fflush(modelLog);
+      }
+      //sb_interp will already look in r15 for the jump target
+      target_ctx_gregs[REG_RIP].u64 = target_ctx_gregs[REG_R15].u64 + 17;
+      return;
+    }
+    if ((rip == (uint64_t) &malloc  || rip == ((uint64_t) &malloc_tase + 14)) || (rip == (uint64_t) &realloc  || rip == ((uint64_t) &realloc_tase + 14)))  {
+      isMemRequest = true;
+    }
+  }
+  */
+  
   if (taseDebug) {
     printf("---------------ENTERING KLEE_INTERP ---------------------- \n");
     std::cout.flush();
   }
   target_ctx_gregs[REG_RIP].u64 = target_ctx_gregs[REG_R15].u64;
-  
+  fprintf(modelLog,"RIP entering klee_interp is 0x%lx \n", target_ctx_gregs[REG_RIP].u64);
   GlobalInterpreter->klee_interp_internal();
-
-
-  
-  //sb_interp will already look in r15 for the jump target
   target_ctx_gregs[REG_R15].u64 = target_ctx_gregs[REG_RIP].u64;
-  
+  /*
+  if (measureTime) {
+    exit_time = util::getWallTime();
+    double diff_time = (exit_time) - (enter_time);
+    interpreter_time += diff_time;
+    if (isMemRequest)  
+	malloc_time += diff_time;
+    if (isProhibRequest) 
+      prohib_time += diff_time;
+    fprintf(modelLog, "Elapsed time is %lf at interpCtr %d with %d instructions \n", exit_time - enter_time, interpCtr, interpCtr - interpCtr_init);
+  }
+  */
   return;
 }
 
@@ -3555,6 +3728,8 @@ KFunction * findInterpFunction (greg_t * registers, KModule * kmod) {
   if (!KInterpFunction) {
     printf("Unable to find interp function for entrypoint PC 0x%lx \n", nativePC);
     std::cout.flush();
+    fflush(modelLog);
+    std::exit(EXIT_FAILURE);
   }
   return KInterpFunction;
 }
@@ -3799,11 +3974,6 @@ bool Executor::instructionBeginsTransaction(uint64_t pc) {
   return false;
 
 
-
-
-
-
-
   /*
   
   if ( pc == (uint64_t) &sb_reopen || pc == (uint64_t) &sb_disabled) 
@@ -3946,6 +4116,7 @@ void Executor::model_restoreRAXOpc() {
   target_ctx_gregs[REG_RIP].u64 += 6;
 }
 
+static int model_malloc_calls = 0;
 
 //Look for a model for the current instruction at target_ctx_gregs[REG_RIP].u64
 //and call the model.
@@ -3984,9 +4155,10 @@ void Executor::model_inst () {
     model_free();
   } else if (rip == (uint64_t) &signal) {
     model_signal();
-  } else if (rip == (uint64_t) &malloc  || rip == ((uint64_t) &malloc_tase + 14) ) {
+  } else if (rip == (uint64_t) &malloc  || rip == ((uint64_t) &malloc_tase + 14) || rip == (uint64_t) &malloc_tase  ) {
+    model_malloc_calls++;
     model_malloc();
-  } else if (rip == (uint64_t) &realloc  || rip == ((uint64_t) &realloc_tase + 14) ) {
+  } else if (rip == (uint64_t) &realloc  || rip == ((uint64_t) &realloc_tase + 14) || rip == (uint64_t) &realloc_tase ) {
     printf("Modeling realloc \n");
     model_realloc();
   } else if (rip == (uint64_t) &__errno_location) {
@@ -4012,6 +4184,40 @@ void Executor::model_inst () {
   } else if (rip == (uint64_t) &OpenSSLDie) {
     model_OpenSSLDie();
   } else if (rip == (uint64_t) &shutdown) {
+    target_end = clock();
+    double total_time = ((double) (target_end - target_start)) /CLOCKS_PER_SEC;
+    
+    fprintf(modelLog, "----END RUN STATS ---- \n");
+    fprintf(modelLog, "Entire time in target took roughly %f seconds \n", total_time);
+    
+    if (measureTime) {
+      fprintf(modelLog, "Spent roughly %f seconds in interpreter \n", interpreter_time);
+      fprintf(modelLog, " - time for malloc interpretation: %lf \n", malloc_time);
+      fprintf(modelLog, " - time interpreting prohib functions: %lf \n", prohib_time);
+    }
+    fprintf(modelLog, "Total X86 instructions interpreted: %d \n", interpCtr);
+    
+    fprintf(modelLog, "Total interpreter returns: %d \n",total_interp_returns);
+    fprintf(modelLog, "  - Prohib function returns: %d \n", prohib_returns);
+    fprintf(modelLog, "Abort_count_total: %d \n", target_ctx.abort_count_total);
+    fprintf(modelLog, "  - modeled %d \n", target_ctx.abort_count_modeled);
+    fprintf(modelLog, "  - poison %d \n", target_ctx.abort_count_poison);
+    fprintf(modelLog, "  - unknown %d \n", target_ctx.abort_count_unknown);
+
+    fprintf(modelLog, "Total calls to model_malloc            %d \n\n", model_malloc_calls);
+    fprintf(modelLog, "Total calls to ktest_start             %d \n",  ktest_start_calls);
+    fprintf(modelLog, "Total calls to ktest_connect           %d \n", ktest_connect_calls);
+    fprintf(modelLog, "Total calls to ktest_RAND_bytes        %d \n", ktest_RAND_bytes_calls);
+    fprintf(modelLog, "Total calls to ktest_RAND_pseudo_bytes %d \n", ktest_RAND_pseudo_bytes_calls);
+    fprintf(modelLog, "Total calls to ktest_raw_read_stdin    %d \n", ktest_raw_read_stdin_calls);
+    fprintf(modelLog, "Total calls to ktest_select            %d \n", ktest_select_calls );
+    fprintf(modelLog, "Total calls to ktest_writesocket       %d \n", ktest_writesocket_calls );
+    fprintf(modelLog, "Total calls to ktest_readsocket        %d \n", ktest_readsocket_calls );
+    
+    
+    fflush(modelLog);
+
+    
     model_shutdown();
   } else if (rip == (uint64_t) &memcpy) { 
     model_memcpy(); //Last 6 bytes of a buffer could be read
@@ -4044,23 +4250,23 @@ void Executor::model_inst () {
     model___isoc99_sscanf();
   } else if (rip == (uint64_t) &gethostbyname) {
     model_gethostbyname();
-  } else if (rip == (uint64_t) &ktest_master_secret +14) {
+  } else if (rip == (uint64_t) &ktest_master_secret +14 || rip == (uint64_t) &ktest_master_secret) {
     fprintf(modelLog, "Entering ktest_master_secret model \n");
     fflush(modelLog);
     model_ktest_master_secret();
-  } else if (rip == (uint64_t)  &ktest_writesocket +14) {
+  } else if (rip == (uint64_t)  &ktest_writesocket +14 || rip == (uint64_t) &ktest_writesocket) {
     model_ktest_writesocket();
-  } else if (rip == (uint64_t) &ktest_readsocket +14) {
+  } else if (rip == (uint64_t) &ktest_readsocket +14 || rip == (uint64_t) &ktest_readsocket) {
     model_ktest_readsocket();
-  } else if (rip == (uint64_t) &ktest_raw_read_stdin +14) {
+  } else if (rip == (uint64_t) &ktest_raw_read_stdin +14 || rip == (uint64_t) &ktest_raw_read_stdin) {
     model_ktest_raw_read_stdin();
-  } else if (rip == (uint64_t) &ktest_connect +14) {
+  } else if (rip == (uint64_t) &ktest_connect +14 || rip == (uint64_t) &ktest_connect) {
     model_ktest_connect();
-  } else if (rip == (uint64_t) &ktest_select +14) {
+  } else if (rip == (uint64_t) &ktest_select +14 || rip == (uint64_t) &ktest_select) {
     model_ktest_select();
-  } else if (rip == (uint64_t) &ktest_RAND_bytes +14) {
+  } else if (rip == (uint64_t) &ktest_RAND_bytes +14 || rip == (uint64_t) &ktest_RAND_bytes) {
     model_ktest_RAND_bytes();
-  } else if (rip == (uint64_t) &ktest_RAND_pseudo_bytes +14) {
+  } else if (rip == (uint64_t) &ktest_RAND_pseudo_bytes +14 || rip == (uint64_t) &ktest_RAND_pseudo_bytes) {
     model_ktest_RAND_pseudo_bytes();
   } else if (rip == (uint64_t) &gettimeofday)  {
     model_gettimeofday();
@@ -4074,6 +4280,8 @@ void Executor::model_inst () {
     model_getegid();
   }  else if (rip == (uint64_t) &getenv) {
     model_getenv();
+  }  else if (rip == (uint64_t) &getpid) {
+    model_getpid();
   } else if (rip == (uint64_t) &socket) {
     model_socket();
   } else if (rip == (uint64_t) &setsockopt) {
@@ -4096,7 +4304,7 @@ void Executor::model_inst () {
     model_RAND_load_file();
     }  
 
-else if (rip == (uint64_t) &ktest_start +14) {
+    else if (rip == (uint64_t) &ktest_start +14 || rip == (uint64_t) &ktest_start) {
     model_ktest_start();
     /*
  } else if (rip == (uint64_t) &sb_entertran) {
@@ -4160,7 +4368,7 @@ bool isSpecialInst (uint64_t rip) {
   //Todo -- get rid of traps for RAND_add and RAND_load_file
   //  static const uint64_t modeledFns[] = { (uint64_t) &puts, (uint64_t)&exit, (uint64_t) &printf  /*, (uint64_t) &taseMakeSymbolic */ };
   
-  static const uint64_t modeledFns [] = {(uint64_t)&signal, (uint64_t)&malloc, (uint64_t)&read, (uint64_t)&write, (uint64_t)&connect, (uint64_t)&select, (uint64_t)&socket, (uint64_t) &getuid, (uint64_t) &geteuid, (uint64_t) &getgid, (uint64_t) &getegid, (uint64_t) &getenv, (uint64_t) &stat, (uint64_t) &free, (uint64_t) &realloc,  (uint64_t) &RAND_add, (uint64_t) &RAND_load_file, (uint64_t) &kTest_free, (uint64_t) &kTest_fromFile, (uint64_t) &kTest_getCurrentVersion, (uint64_t) &kTest_isKTestFile, (uint64_t) &kTest_numBytes, (uint64_t) &kTest_toFile, (uint64_t) &ktest_RAND_bytes, (uint64_t) &ktest_RAND_pseudo_bytes, (uint64_t) &ktest_connect, (uint64_t) &ktest_finish, (uint64_t) &ktest_master_secret, (uint64_t) &ktest_raw_read_stdin, (uint64_t) &ktest_readsocket, (uint64_t) &ktest_select, (uint64_t) &ktest_start, (uint64_t) &ktest_time, (uint64_t) &time, (uint64_t) &gmtime, (uint64_t) &gettimeofday, (uint64_t) &ktest_writesocket, (uint64_t) &fileno, (uint64_t) &fcntl, (uint64_t) &fopen, (uint64_t) &fopen64, (uint64_t) &fclose,  (uint64_t) &fwrite, (uint64_t) &fflush, (uint64_t) &fread, (uint64_t) &fgets, (uint64_t) &__isoc99_sscanf, (uint64_t) &gethostbyname, (uint64_t) &setsockopt, (uint64_t) &__ctype_tolower_loc, (uint64_t) &__ctype_b_loc, (uint64_t) &__errno_location,  (uint64_t) &BIO_printf, (uint64_t) &BIO_snprintf, (uint64_t) &vfprintf,  (uint64_t) &sprintf, (uint64_t) &tase_debug,   (uint64_t) &OpenSSLDie, (uint64_t) &shutdown , (uint64_t) &malloc_tase, (uint64_t) &realloc_tase, (uint64_t) &calloc_tase };
+  static const uint64_t modeledFns [] = {(uint64_t)&signal, (uint64_t)&malloc, (uint64_t)&read, (uint64_t)&write, (uint64_t)&connect, (uint64_t)&select, (uint64_t)&socket, (uint64_t) &getuid, (uint64_t) &geteuid, (uint64_t) &getgid, (uint64_t) &getegid, (uint64_t) &getenv, (uint64_t) &stat, (uint64_t) &free, (uint64_t) &realloc,  (uint64_t) &RAND_add, (uint64_t) &RAND_load_file, (uint64_t) &kTest_free, (uint64_t) &kTest_fromFile, (uint64_t) &kTest_getCurrentVersion, (uint64_t) &kTest_isKTestFile, (uint64_t) &kTest_numBytes, (uint64_t) &kTest_toFile, (uint64_t) &ktest_RAND_bytes, (uint64_t) &ktest_RAND_pseudo_bytes, (uint64_t) &ktest_connect, (uint64_t) &ktest_finish, (uint64_t) &ktest_master_secret, (uint64_t) &ktest_raw_read_stdin, (uint64_t) &ktest_readsocket, (uint64_t) &ktest_select, (uint64_t) &ktest_start, (uint64_t) &ktest_time, (uint64_t) &time, (uint64_t) &gmtime, (uint64_t) &gettimeofday, (uint64_t) &ktest_writesocket, (uint64_t) &fileno, (uint64_t) &fcntl, (uint64_t) &fopen, (uint64_t) &fopen64, (uint64_t) &fclose,  (uint64_t) &fwrite, (uint64_t) &fflush, (uint64_t) &fread, (uint64_t) &fgets, (uint64_t) &__isoc99_sscanf, (uint64_t) &gethostbyname, (uint64_t) &setsockopt, (uint64_t) &__ctype_tolower_loc, (uint64_t) &__ctype_b_loc, (uint64_t) &__errno_location,  (uint64_t) &BIO_printf, (uint64_t) &BIO_snprintf, (uint64_t) &vfprintf,  (uint64_t) &sprintf, (uint64_t) &tase_debug,   (uint64_t) &OpenSSLDie, (uint64_t) &shutdown , (uint64_t) &malloc_tase, (uint64_t) &realloc_tase, (uint64_t) &calloc_tase, (uint64_t) &getpid };
   
   
   bool isModeled = std::find(std::begin(modeledFns), std::end(modeledFns), rip) != std::end(modeledFns);
@@ -4193,7 +4401,7 @@ bool isSpecialInst (uint64_t rip) {
       ) {
     printf("Found prohibitive function \n");
     fprintf(modelLog, "Found prohibitive function at 0x%lx \n", rip );
-    fflush(modelLog);
+    //fflush(modelLog);
     std::cout.flush();
   }
 
@@ -4226,7 +4434,7 @@ bool isSpecialInst (uint64_t rip) {
 
 
 void Executor::printDebugInterpHeader() {
-  interpCtr++;
+
   printf("------------------------------------------- \n");
   printf("Entering interpreter for time %d \n \n \n", interpCtr);
   uint64_t rip = target_ctx_gregs[REG_RIP].u64;
@@ -4250,7 +4458,8 @@ void Executor::printDebugInterpFooter() {
 
 void Executor::klee_interp_internal () {
   
-  while (true) {    
+  while (true) {
+    interpCtr++;
     if (taseDebug)
       printDebugInterpHeader();
     //printf("loopCtr is %d at addr 0x%lx \n", loopCtr, (uint64_t) &loopCtr);

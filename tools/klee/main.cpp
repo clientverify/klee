@@ -75,6 +75,8 @@ struct timeval taseStartTime;
 struct timeval targetStartTime;
 struct timeval targetEndTime;
 
+clock_t target_start;
+clock_t target_end;
 
 //gregset_t target_ctx_gregs;
 //gregset_t prev_ctx_gregs;
@@ -117,7 +119,7 @@ enum testType test_type;
 std::string project;
 bool disableSpringboard;
 
-bool enableMultipass = true; 
+bool enableMultipass = false; 
 int worker2managerFD [2];
 multipassRecord multipassInfo;
 //Todo: Later, generalize for when we have more than 8 cores available.
@@ -127,7 +129,7 @@ int max_workers = 200;
 std::vector<int> unscheduledWorkers;
 
 extern int * target_started_ptr;
-extern int masterPID;
+ int masterPID;
 
 
 int max_depth;
@@ -164,6 +166,8 @@ void transferToTarget() {
   *(uint64_t *) target_ctx_gregs[REG_RSP] = (uint64_t) &target_exit;
   */
 
+  target_start = clock();
+  
   if (exec_mode == INTERP_ONLY) {
     memset(&target_ctx, 0, sizeof(target_ctx));
     printf("DBG1 \n");
@@ -1569,29 +1573,15 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
   
    if (taseManager) {
 
-     printf("ERROR: Need to include a signal implementation and uncomment signal call in taseManager \n");
-
-     
+     //Maybe we don't need the sig_ign registered for sigchld?
+     //printf("ERROR: Need to include a signal implementation and uncomment signal call in taseManager \n"); 
      masterPID = getpid();
 
-     std::exit(EXIT_FAILURE); //ABH added this until we can comment sig back in.
+     //std::exit(EXIT_FAILURE); //ABH added this until we can comment sig back in.
      //signal(SIGCHLD,SIG_IGN);
-     int pipeResult = pipe(worker2managerFD);
-     if (pipeResult != 0) {
-       printf("ERROR: Couldn't create worker2managerFD pipe\n");
-       std::exit(EXIT_FAILURE);
-     }
+    
      
      initManagerStructures();
-     
-     //TO-DO: Remove later.  For test purposes
-     //Really ought to be able to add in longer
-     //strings with multiple fruits now that
-     //the stupid simple "apple" case is working.
-     
-     memset (message_test_buffer, 0, 256);
-     strncpy (message_test_buffer, "appleorangeappleorange", 22);
-     message_buf_length = strlen(message_test_buffer);
      
    }
    
