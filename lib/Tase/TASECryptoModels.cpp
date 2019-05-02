@@ -170,9 +170,8 @@ void Executor::model_tls1_generate_master_secret () {
 
 //model for void AES_encrypt(const unsigned char *in, unsigned char *out,
 //const AES_KEY *key);
-
-  void Executor::model_AES_encrypt () {
-  
+//Updated 04/30/2019
+void Executor::model_AES_encrypt () {
   static int timesModelAESEncryptIsCalled = 0;
   timesModelAESEncryptIsCalled++;
   
@@ -193,53 +192,46 @@ void Executor::model_tls1_generate_master_secret () {
     bool hasSymbolicDependency = false;
     
     //Check to see if any input bytes or the key are symbolic
-    for (int i = 0; i < AESBlockSize; i++) {
-      ref<Expr> inByteExpr = tase_helper_read( ((uint64_t) in) +i, 1);
-      if (!isa<ConstantExpr>(inByteExpr))
-	hasSymbolicDependency = true;
-    }
-
     //Todo: Chase down any structs that AES_KEY points to if it's not a simple struct.
     //It's OK; struct holds no pointers.
-    for (uint64_t i = 0; i < sizeof(AES_KEY); i++) {
-      ref<Expr> keyByteExpr = tase_helper_read( ((uint64_t) key) + i, 1);
-      if (!isa<ConstantExpr>(keyByteExpr))
-	hasSymbolicDependency = true;
-    }
+    if (!isBufferEntirelyConcrete((uint64_t) in, AESBlockSize) || !isBufferEntirelyConcrete ((uint64_t) key, AESBlockSize) )
+      hasSymbolicDependency = true;
 
     if (hasSymbolicDependency) {
-      //Get the MO, then call executeMakeSymbolic()
-      void * symOutBuffer = malloc(AESBlockSize);
-      MemoryObject * AESEncryptOutMO = memory->allocateFixed( (uint64_t) symOutBuffer,16,NULL);
+      fprintf(modelLog, "MULTIPASS DEBUG: Found symbolic input to AES_encrypt \n");
+      fflush(modelLog);
+
       std::string nameString = "aes_Encrypt_output " + std::to_string(timesModelAESEncryptIsCalled);
-      AESEncryptOutMO->name = nameString;
-      executeMakeSymbolic(*GlobalExecutionStatePtr, AESEncryptOutMO, "modelAESEncryptOutputBuffer");
-      const ObjectState * constAESEncryptOutOS = GlobalExecutionStatePtr->addressSpace.findObject(AESEncryptOutMO);
-      ObjectState * AESEncryptOutOS = GlobalExecutionStatePtr->addressSpace.getWriteable(AESEncryptOutMO,constAESEncryptOutOS);
-      for (int i = 0; i < AESBlockSize; i++)
-	tase_helper_write( ((uint64_t) out) +i, AESEncryptOutOS->read(i, Expr::Int8)); 
+      tase_make_symbolic((uint64_t) out, AESBlockSize, nameString);
+
+      //fake a ret
+      uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+      target_ctx_gregs[REG_RIP].u64 = retAddr;
+      target_ctx_gregs[REG_RSP].u64 += 8;
+      
     } else {
       //Otherwise we're good to call natively
-      printf("ERROR: Native AES_Encrypt not implemented yet \n");
-      std::exit(EXIT_FAILURE);
+
+      fprintf(modelLog,"MULTIPASS DEBUG: Did not find symbolic input to AES_encrypt \n");
+      forceNativeRet = true;
+      target_ctx_gregs[REG_RIP].u64 += 17;
+      return;
+
       //AES_Encrypt(in,out,key);  //Todo -- get native call for AES_Encrypt
     }
-    //increment pc and get back to execution.
-    target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_RIP] +5;
-    printf("INTERPRETER: Exiting model_AES_encrypt \n");
     
   } else {
     printf("ERROR: symbolic arg passed to model_AES_encrypt \n");
     std::exit(EXIT_FAILURE);
-    } 
   } 
+} 
+
 
 //Model for 
 //void gcm_ghash_4bit(u64 Xi[2],const u128 Htable[16],
 //				const u8 *inp,size_t len)
 //in crypto/modes/gcm128.c
 //Todo: Check to see if we're incorrectly assuming that the Xi and Htable arrays are passed as ptrs in the abi.
-
 void Executor::model_gcm_ghash_4bit () {
   
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //u64 Xi[2]
@@ -334,10 +326,11 @@ void Executor::model_gcm_gmult_4bit () {
 
 //Model for int SHA1_Update(SHA_CTX *c, const void *data, size_t len);
 //defined in crypto/sha/sha.h.
-//
-
+//Updated 04/30/2019
 void Executor::model_SHA1_Update () {
- 
+  static int timesSHA1UpdateIsCalled = 0;
+  timesSHA1UpdateIsCalled++;
+  
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //SHA_CTX * c
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); //const void * data
   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64); //size_t len
@@ -356,42 +349,33 @@ void Executor::model_SHA1_Update () {
     
     bool hasSymbolicInput = false;
 
-    for (uint64_t i = 0; i < sizeof(SHA_CTX) ; i++) {
-      ref <Expr> sha1CtxByteExpr = tase_helper_read( ((uint64_t) c) + i, 1);
-      if (!isa<ConstantExpr>(sha1CtxByteExpr))
-	hasSymbolicInput = true;
-    }
-    for (uint64_t i = 0; i < len ; i++) {
-      ref <Expr> dataInputByteExpr = tase_helper_read( ((uint64_t) data) + i, 1);
-      if (!isa<ConstantExpr>(dataInputByteExpr))
-	hasSymbolicInput = true;
-    }
+    if (!isBufferEntirelyConcrete((uint64_t) c, sizeof(SHA_CTX)) || !isBufferEntirelyConcrete((uint64_t) data, len))
+      hasSymbolicInput = true;
 
     if (hasSymbolicInput) {
+      std::string nameString = "SHA1_Update_Output" + std::to_string(timesSHA1UpdateIsCalled);
+       fprintf(modelLog,"MULTIPASS DEBUG: Found symbolic input to SHA1_Update \n");
       tase_make_symbolic((uint64_t) c, 20, "SHA1_Update_Output");
-       
-       void * intResultPtr = malloc(sizeof(int));
-       MemoryObject * resultMO = memory->allocateFixed( (uint64_t) intResultPtr, sizeof(int),NULL);
-       resultMO->name = "intResult";
-       executeMakeSymbolic(*GlobalExecutionStatePtr, resultMO, "intResultMO");
-       const ObjectState * constIntResultOS = GlobalExecutionStatePtr->addressSpace.findObject(resultMO);
-       ObjectState * intResultOS = GlobalExecutionStatePtr->addressSpace.getWriteable(resultMO,constIntResultOS);
 
-       target_ctx_gregs_OS->write(REG_RAX * 8, intResultOS->read(0, Expr::Int32));
-       
+
+      //Can optionally return failure here if desired
+      int res = 1; //Force success
+      ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+      target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+
+      //fake a ret
+      uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+      target_ctx_gregs[REG_RIP].u64 = retAddr;
+      target_ctx_gregs[REG_RSP].u64 += 8;
+
+      
     } else { //Call natively
-      printf("ERROR: No native sha1_update implementation available \n");
-      std::exit(EXIT_FAILURE);
-      //Todo: provide SHA1_Update implementation for fast native execution
-      /*
-      int res = SHA1_Update(c, data, len);
-      ref<ConstantExpr> resExpr = ConstantExpr::create(res, Expr::Int32);
-       target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
-      */
+       fprintf(modelLog,"MULTIPASS DEBUG: Did not find symbolic input to SHA1_Update \n");
+       forceNativeRet = true;
+       target_ctx_gregs[REG_RIP].u64 += 17;
+
+      //Todo: provide SHA1_Update implementation for fast native execution     
     }
-    //increment pc and get back to execution.
-     target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_RIP] +5;
-     printf("INTERPRETER: Exiting model_SHA1_Update \n"); 
   } else {
     printf("ERROR: symbolic arg passed to model_SHA1_Update \n");
     std::exit(EXIT_FAILURE);
@@ -451,10 +435,10 @@ void Executor::model_SHA1_Final() {
 
 //Model for int SHA256_Update(SHA256_CTX *c, const void *data, size_t len)
 //defined in crypto/sha/sha.h.
-//
+//Updated 04/30/2019
 void Executor::model_SHA256_Update () {
-  static int timesModelSHA256UpdateIsCalled = 0;
-  timesModelSHA256UpdateIsCalled++;
+  static int timesSHA256UpdateIsCalled = 0;
+  timesSHA256UpdateIsCalled++;
   
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //SHA256_CTX * c
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); //const void * data
@@ -473,44 +457,34 @@ void Executor::model_SHA256_Update () {
     size_t len = (size_t) target_ctx_gregs[REG_RDX];
     
     bool hasSymbolicInput = false;
-    for (uint64_t i = 0; i < sizeof(SHA256_CTX) ; i++) {
-      ref <Expr> sha256CtxByteExpr = tase_helper_read( ((uint64_t) c) + i, 1);
-      if (!isa<ConstantExpr>(sha256CtxByteExpr))
-	hasSymbolicInput = true;
-    }
-    for (uint64_t i = 0; i < len ; i++) {
-      ref <Expr> dataInputByteExpr = tase_helper_read( ((uint64_t) data) + i, 1);
-      if (!isa<ConstantExpr>(dataInputByteExpr))
-	hasSymbolicInput = true;
-    }
+    if (!isBufferEntirelyConcrete((uint64_t *) c, sizeof(SHA256_CTX)) || !isBufferEntirelyConcrete( (uint64_t *) data, len))
+      hasSymbolicInput = true;
+    
 
     if (hasSymbolicInput) {
 
-      tase_make_symbolic( (uint64_t) c, 32, "SHA256_Update_Output");
+      std::string nameString = "SHA256_Update_Output" + std::to_string(timesSHA256UpdateIsCalled);
       
-      void * intResultPtr = malloc(sizeof(int));
-      MemoryObject * resultMO = memory->allocateFixed( (uint64_t) intResultPtr, sizeof(int),NULL);
-      resultMO->name = "intResult";
-      executeMakeSymbolic(*GlobalExecutionStatePtr, resultMO, "intResultMO");
-      const ObjectState * constIntResultOS = GlobalExecutionStatePtr->addressSpace.findObject(resultMO);
-      ObjectState * intResultOS = GlobalExecutionStatePtr->addressSpace.getWriteable(resultMO,constIntResultOS);
-      target_ctx_gregs_OS->write(REG_RAX * 8, intResultOS->read(0, Expr::Int32));
+      tase_make_symbolic( (uint64_t) c, 32, nameString);
+
+      //Can optionally return failure here if desired
+      int res = 1; //Force success
+      ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+      target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+      
+      //fake a ret
+      uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+      target_ctx_gregs[REG_RIP].u64 = retAddr;
+      target_ctx_gregs[REG_RSP].u64 += 8;
       
     } else { //Call natively
-      printf("ERROR: No sha256_update native implementation available \n");
-      std::exit(EXIT_FAILURE);
+      fprintf(modelLog,"MULTIPASS DEBUG: Did not find symbolic input to SHA256_Update \n");
+      forceNativeRet = true;
+      target_ctx_gregs[REG_RIP].u64 += 17;
       //todo: provide sha256_update native implementation
-      /*
-      int res =SHA256_Update(c, data, len);
-      ref<ConstantExpr> resExpr = ConstantExpr::create(res, Expr::Int32);
-      target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
-      */
+      
     }
 
-    //increment pc and get back to execution.
-     target_ctx_gregs[REG_RIP] = target_ctx_gregs[REG_RIP] +5;
-     printf("INTERPRETER: Exiting model_SHA256_Update \n"); 
-    
   } else {
     printf("ERROR: symbolic arg passed to model_SHA256_Update \n");
     std::exit(EXIT_FAILURE);

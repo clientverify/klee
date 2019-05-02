@@ -35,21 +35,33 @@ struct KTest;
 //AH: I'd really rather not include the openssl stuff here but I guess we need it
 // for the make_BN_symbolic declaration since it references a bignum struct
 // FIXME: need internal openssl data types
-/*
+
 #include "/playpen/humphries/cliver/gsec-support/src/openssl/include/openssl/ssl.h"
 #include "/playpen/humphries/cliver/gsec-support/src/openssl/include/openssl/evp.h"
 #include "/playpen/humphries/cliver/gsec-support/src/openssl/include/openssl/ssl3.h"
 #include "/playpen/humphries/cliver/gsec-support/src/openssl/include/openssl/sha.h"
 #include "/playpen/humphries/cliver/gsec-support/src/openssl/include/openssl/ec.h"
 #include "/playpen/humphries/cliver/gsec-support/src/openssl/include/openssl/ossl_typ.h"
-*/
+
 // modes_lcl.h redfines objects included here
 //#include "../../../openssl/include/openssl/modes.h"
-/*
+
 #include "/playpen/humphries/cliver/gsec-support/src/openssl/crypto/ec/ec_lcl.h"
 #include "/playpen/humphries/cliver/gsec-support/src/openssl/crypto/modes/modes_lcl.h"
 #include "/playpen/humphries/cliver/gsec-support/src/openssl/crypto/aes/aes.h"
 #include "/playpen/humphries/cliver/gsec-support/src/openssl/crypto/sha/sha.h"
+
+
+/*
+#include "/playpen/humphries/zTASE/TASE/openssl/include/openssl/lhash.h"
+#include "/playpen/humphries/zTASE/TASE/openssl/include/openssl/crypto.h"
+#include "/playpen/humphries/zTASE/TASE/openssl/include/openssl/objects.h"
+#include "/playpen/humphries/zTASE/TASE/openssl/include/openssl/bio.h"
+#include "/playpen/humphries/zTASE/TASE/openssl/include/openssl/aes.h"
+#include "/playpen/humphries/zTASE/TASE/openssl/include/openssl/ssl.h"
+#include "/playpen/humphries/zTASE/TASE/openssl/crypto/x509/x509_vfy.h"
+#include "/playpen/humphries/zTASE/TASE/openssl/crypto/err/err.h"
+#include "/playpen/humphries/zTASE/TASE/openssl/crypto/modes/modes_lcl.h"
 */
 
 
@@ -336,6 +348,7 @@ private:
   ////////////////////////////////////////////////////////////
   //AH: Tase additions below ---------------------------------
   ////////////////////////////////////////////////////////////
+  bool isBufferEntirelyConcrete(uint64_t addr, int size);
   bool gprsAreConcrete();
   bool instructionBeginsTransaction(uint64_t pc);
   bool instructionIsModeled();
@@ -410,6 +423,7 @@ private:
   void model___ctype_tolower_loc();
   void model___isoc99_sscanf();
 
+  void model_memset();
   void model_memcpy();
   
   void model_setsockopt();
@@ -460,8 +474,12 @@ private:
   void model_EC_POINT_point2oct(); 
   
   uint64_t tls_predict_stdin_size (int fd, uint64_t maxLen);
-  //void make_BN_symbolic(BIGNUM * bn); //Commented out until we include bignum headers
-  
+  BIGNUM * BN_new_tase();
+  EC_POINT * EC_POINT_new_tase(EC_GROUP * group);
+  void make_BN_symbolic(BIGNUM * bn, char * name); 
+  void make_EC_POINT_symbolic(EC_POINT* p);
+  bool is_symbolic_EC_POINT(EC_POINT * p);
+  bool is_symbolic_BIGNUM(BIGNUM * bn);
   //AH: RNG modeling---------------------------------------
 
   void model_RAND_bytes();

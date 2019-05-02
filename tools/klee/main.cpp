@@ -110,6 +110,15 @@ klee::Interpreter * GlobalInterpreter;
 llvm::Module * interpModule;
 
 
+extern char * ktestModePtr;
+extern char * ktestPathPtr;
+extern char ktestMode[20];
+extern char ktestPath[100];
+
+bool KTestReplay;
+bool stopAtMasterSecret = false;
+bool enableMultipass = false;
+bool killFlagsHack = false;
 bool taseDebug;
 bool dontFork;
 enum runType : int {INTERP_ONLY, MIXED};
@@ -118,8 +127,8 @@ enum testType : int {EXPLORATION, VERIFICATION};
 enum testType test_type;
 std::string project;
 bool disableSpringboard;
+bool OpenSSLTest = true;
 
-bool enableMultipass = false; 
 int worker2managerFD [2];
 multipassRecord multipassInfo;
 //Todo: Later, generalize for when we have more than 8 cores available.
@@ -166,6 +175,26 @@ void transferToTarget() {
   *(uint64_t *) target_ctx_gregs[REG_RSP] = (uint64_t) &target_exit;
   */
 
+  
+  if (OpenSSLTest) {
+    char * ktestModeName = "-playback";
+    memset(ktestMode, 0, sizeof (ktestMode));
+    strncpy(ktestMode, ktestModeName, strlen(ktestModeName));
+    fprintf(modelLog,"len of ktestmode arg is %d \n", strlen(ktestModeName));
+
+    const char * ktestPathName;
+    if (!enableMultipass) {
+       ktestPathName ="/playpen/humphries/data/mondayTest/monday.ktest";
+    } else {
+       ktestPathName ="/playpen/humphries/data/mondayTest/monday.net.ktest";
+    }
+      
+    memset(ktestPath, 0, sizeof(ktestPath));
+    strncpy(ktestPath, ktestPathName, strlen(ktestPathName));
+    fprintf(modelLog, "len of ktestPathName arg is %d \n", strlen(ktestPathName));
+
+  }
+  
   target_start = clock();
   
   if (exec_mode == INTERP_ONLY) {
@@ -343,6 +372,15 @@ namespace {
   //enum testType : int {EXPLORATION, VERIFICATION};
   cl::opt<testType>
   testTypeArg("testType", cl::desc("EXPLORATION or VERIFICATION"), cl::init(EXPLORATION));
+
+  cl::opt<bool>
+  enableMultipassArg("enableMultipass", cl::desc("Run verification"), cl::init(false));
+
+  cl::opt<bool>
+  killFlagsHackArg("killFlagsHack", cl::desc("Option to kill flags after each jump to the springboard"), cl::init(false));
+  
+  cl::opt<bool>
+  stopAtMasterSecretArg("stopAtMasterSecret", cl::desc("TASE debugging -- stop at master secret generation \n"), cl::init(false));
   
   cl::opt<bool>
   taseManagerArg("taseManager", cl::desc("Fork off a manager process in TASE.  Expect a fork bomb if false."), cl::init(false));
@@ -1414,7 +1452,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 }
 #endif
 
- void printTASEArgs(runType rt, testType tt, bool fm, bool dbg, std::string projName, bool df, bool disableSB) {
+ void printTASEArgs(runType rt, testType tt, bool fm, bool dbg, std::string projName, bool df, bool disableSB, bool enableMP, bool stop, bool killFlags) {
 
    printf("TASE args... \n");
    if (rt == MIXED) 
@@ -1437,7 +1475,9 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    printf("\t taseDebug output: %d \n", dbg);
    printf("\t dontFork  output: %d \n", df);
    printf("\t disableSB output: %d \n", disableSB);
-   
+   printf("\t enableMultipass output: %d \n", enableMultipass);
+   printf("\t stopAtMasterSecret output : %d \n", stop);
+   printf("\t killFlagsHack      output : %d \n", killFlags);
  }
 
  
@@ -1459,9 +1499,11 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    dontFork = dontForkArg;
    project = projectArg;
    disableSpringboard = disableSpringboardArg;
-
+   enableMultipass = enableMultipassArg;
+   stopAtMasterSecret = stopAtMasterSecretArg;
+   killFlagsHack = killFlagsHackArg;
    if (taseDebug)
-     printTASEArgs(exec_mode, test_type, taseManager, taseDebug, project, dontFork, disableSpringboard);
+     printTASEArgs(exec_mode, test_type, taseManager, taseDebug, project, dontFork, disableSpringboard, enableMultipass, stopAtMasterSecret, killFlagsHack);
    
    //Redirect stdout messages to a file called "Monitor".
    //Later, calls to unix fork in executor create new filenames

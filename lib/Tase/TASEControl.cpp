@@ -21,7 +21,7 @@ int QA_BYTE_LEN = 4096;
 int MAX_WORKERS = 4;
 
 bool taseManager = false;
-
+int roundCount = 0;
 int passCount = 0; //Pass ctr for current round of verification
 int multipassAssignmentSize = 8096;  //Totally arbitrary. Size of mmap'd multipass assignment buffer.
 void * MPAPtr;  //Ptr to serialized multipass info for current round of verification
@@ -470,6 +470,7 @@ void multipass_replay_round (void * assignmentBufferPtr, CVAssignment * mpa, int
 void  multipass_reset_round() {
 
   passCount = 0;
+  roundCount++;
   MPAPtr = mmap(NULL, multipassAssignmentSize, PROT_READ|PROT_WRITE, MAP_ANON|MAP_SHARED, -1, 0);
   memset(MPAPtr, 0, multipassAssignmentSize);
   

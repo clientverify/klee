@@ -106,6 +106,10 @@ extern bool taseDebug;
 extern void * MPAPtr;
 extern int replayPID;
 //extern multipassRecord multipassInfo;
+extern void printKTestCounters();
+extern void printProhibCounters();
+extern int roundCount;
+extern int passCount;
 extern KTestObjectVector ktov;
 extern bool enableMultipass;
 extern void spinAndAwaitForkRequest();
@@ -145,6 +149,7 @@ bool initializeFDTracking () {
 
 
 // Network capture for Cliver
+
 
 int ktest_master_secret_calls = 0;
 int ktest_start_calls = 0;
@@ -305,6 +310,10 @@ void Executor::model_printf() {
   
 }
 
+
+
+
+
 void Executor::model_ktest_start() {
   
   ktest_start_calls++;
@@ -359,11 +368,24 @@ void Executor::model_ktest_writesocket() {
     void * buf = (void *) target_ctx_gregs[REG_RSI].u64;
     size_t count = (size_t) target_ctx_gregs[REG_RDX].u64;
     
+    bool debugMultipass = true;
 
+    if (debugMultipass) {
+	fprintf(modelLog, "MULTIPASS DEBUG: at call to ktest_writesocket round %d pass %d \n", roundCount, passCount);
+	fprintf(modelLog, "Stopping at call to writesocket \n");
+	printProhibCounters();
+	printKTestCounters();
+	//std::exit(EXIT_FAILURE);
+      }
     
     if (enableMultipass) {
-      //Basic structure comes from NetworkManager in klee repo of cliver.
       
+      
+      
+
+
+
+      //Basic structure comes from NetworkManager in klee repo of cliver.
       //Get log entry for c2s
       KTestObject *o = KTOV_next_object(&ktov, ktest_object_names[CLIENT_TO_SERVER]);
       if (o->numBytes != count) {
@@ -622,18 +644,43 @@ void Executor::model_ktest_select() {
 
       fprintf(modelLog, "After ktest_select, readfds is 0x%lx, writefds is 0x%lx \n", *( (uint64_t *) target_ctx_gregs[REG_RSI].u64), *( (uint64_t *) target_ctx_gregs[REG_RDX].u64));
       fflush(modelLog);
-    
+    }
+      
       //Fake a return
       uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
       target_ctx_gregs[REG_RIP].u64 = retAddr;
       target_ctx_gregs[REG_RSP].u64 += 8;
-    }
+    
   } else {
     printf("ERROR in model_ktest_select -- symbolic args \n");
     std::cout.flush();
     std::exit(EXIT_FAILURE);
   }    
 }
+
+//Just for debugging perf
+/*
+ */
+
+// void * memset (void * buf, int val, size_t number)
+void Executor::model_memset() {
+
+  void * buf = (void *) target_ctx_gregs[REG_RDI].u64;
+  int val = (int) target_ctx_gregs[REG_RSI].u64;
+  size_t num = (size_t) target_ctx_gregs[REG_RDX].u64;
+
+  void * res = memset(buf,val,num);
+  ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+  target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+
+  
+  //Fake a return
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+  target_ctx_gregs[REG_RIP].u64 = retAddr;
+  target_ctx_gregs[REG_RSP].u64 += 8;
+
+}
+
 
 //void *memcpy(void *dest, const void *src, size_t n);
 void Executor::model_memcpy() {
@@ -694,7 +741,7 @@ void Executor::model_ktest_RAND_pseudo_bytes() {
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
 
-  printf("Calling model_test_RAND_pseudo_bytes \n");
+  printf("Calling model_ktest_RAND_pseudo_bytes \n");
   fprintf(modelLog,"Calling model_ktest_RAND_PSEUDO_bytes at %lu \n", interpCtr);
   
   if  (
@@ -707,6 +754,11 @@ void Executor::model_ktest_RAND_pseudo_bytes() {
 
       tase_make_symbolic((uint64_t) &target_ctx_gregs[REG_RAX].u64, 4, "prng");
 
+      //Double check this
+      int res = 4;
+      ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+      target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+      
     } else {
     
       int res = ktest_RAND_pseudo_bytes_tase((unsigned char *) target_ctx_gregs[REG_RDI].u64, (int) target_ctx_gregs[REG_RSI].u64);
@@ -1410,24 +1462,6 @@ void Executor::model_malloc() {
     target_ctx_gregs[REG_RIP].u64 = retAddr;
     target_ctx_gregs[REG_RSP].u64 += 8;
 
-    /*
-    //Ugly code to determine size of call inst
-    uint64_t rip = target_ctx_gregs[REG_RIP].u64; 
-    uint8_t callqOpc = 0xe8;
-    uint16_t callIndOpc = 0x15ff;
-    uint8_t * oneBytePtr = (uint8_t *) rip;
-    uint8_t firstByte = *oneBytePtr;
-    uint16_t firstTwoBytes = *( (uint16_t *) oneBytePtr);
-    if (firstByte == callqOpc) {
-      target_ctx_gregs[REG_RIP].u64 = target_ctx_gregs[REG_RIP].u64 +5;
-    } else if (firstTwoBytes == callIndOpc) {
-      target_ctx_gregs[REG_RIP].u64 = target_ctx_gregs[REG_RIP].u64 +6;
-    } else {
-      printf("Can't determine call opcode \n");
-      std::cout.flush();
-      std::exit(EXIT_FAILURE);
-    }
-    */
     if (taseDebug) {
       printf("INTERPRETER: Exiting model_malloc \n"); 
       std::cout.flush();
@@ -2339,5 +2373,783 @@ void Executor::model_connect () {
   } else {
      printf("ERROR: Found symbolic input to model_connect()");
      std::exit(EXIT_FAILURE);
+  }
+}
+
+//-----------------------------CRYPTO SECTION--------------------
+/*
+#include "/playpen/humphries/zTASE/TASE/openssl/include/openssl/lhash.h"
+#include "/playpen/humphries/zTASE/TASE/openssl/include/openssl/crypto.h"
+#include "/playpen/humphries/zTASE/TASE/openssl/include/openssl/objects.h"
+#include "/playpen/humphries/zTASE/TASE/openssl/include/openssl/bio.h"
+#include "/playpen/humphries/zTASE/TASE/openssl/include/openssl/aes.h"
+#include "/playpen/humphries/zTASE/TASE/openssl/include/openssl/ssl.h"
+#include "/playpen/humphries/zTASE/TASE/openssl/crypto/x509/x509_vfy.h"
+#include "/playpen/humphries/zTASE/TASE/openssl/crypto/err/err.h"
+#include "/playpen/humphries/zTASE/TASE/openssl/crypto/modes/modes_lcl.h"
+*/
+
+extern bool forceNativeRet;
+/*
+int AES_encrypt_calls;
+int ECDH_compute_key_calls;
+int EC_POINT_point2oct_calls;
+int EC_KEY_generate_key_calls;
+int SHA1_Update_calls;
+int SHA1_Final_calls;
+int SHA256_Update_calls;
+int SHA256_Final_calls;
+int gcm_gmult_4bit_calls;
+int gcm_ghash_4bit_calls;
+
+*/
+
+
+
+//Model for int SHA1_Update(SHA_CTX *c, const void *data, size_t len);
+//defined in crypto/sha/sha.h.
+//Updated 04/30/2019
+void Executor::model_SHA1_Update () {
+  static int timesSHA1UpdateIsCalled = 0;
+  timesSHA1UpdateIsCalled++;
+  
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //SHA_CTX * c
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); //const void * data
+  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64); //size_t len
+
+  if (  (isa<ConstantExpr>(arg1Expr)) &&
+	(isa<ConstantExpr>(arg2Expr)) &&
+	(isa<ConstantExpr>(arg3Expr))
+	) {
+
+    //Determine if SHA_CTX or data have symbolic values.
+    //If not, run the underlying function.
+
+    SHA_CTX * c = (SHA_CTX *) target_ctx_gregs[REG_RDI].u64;
+    const void * data = (const void *) target_ctx_gregs[REG_RSI].u64;
+    size_t len = (size_t) target_ctx_gregs[REG_RDX].u64;
+    
+    bool hasSymbolicInput = false;
+
+    if (!isBufferEntirelyConcrete((uint64_t) c, sizeof(SHA_CTX)) || !isBufferEntirelyConcrete((uint64_t) data, len))
+      hasSymbolicInput = true;
+
+    if (hasSymbolicInput) {
+      std::string nameString = "SHA1_Update_Output" + std::to_string(timesSHA1UpdateIsCalled);
+      const char * constCopy = nameString.c_str();
+      char name [40];//Arbitrary number
+      strncpy(name, constCopy, 40);
+      
+       fprintf(modelLog,"MULTIPASS DEBUG: Found symbolic input to SHA1_Update \n");
+      tase_make_symbolic((uint64_t) c, 20, name);
+
+
+      //Can optionally return failure here if desired
+      int res = 1; //Force success
+      ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+      target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+
+      //fake a ret
+      uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+      target_ctx_gregs[REG_RIP].u64 = retAddr;
+      target_ctx_gregs[REG_RSP].u64 += 8;
+
+      
+    } else { //Call natively
+       fprintf(modelLog,"MULTIPASS DEBUG: Did not find symbolic input to SHA1_Update \n");
+       forceNativeRet = true;
+       target_ctx_gregs[REG_RIP].u64 += 17;
+
+      //Todo: provide SHA1_Update implementation for fast native execution     
+    }
+  } else {
+    printf("ERROR: symbolic arg passed to model_SHA1_Update \n");
+    std::exit(EXIT_FAILURE);
+  }
+}
+
+
+
+//Model for int SHA1_Final(unsigned char *md, SHA_CTX *c)
+//defined in crypto/sha/sha.h
+void Executor::model_SHA1_Final() {
+  static int timesSHA1FinalIsCalled = 0;
+  timesSHA1FinalIsCalled++;
+  
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //unsigned char *md
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); //SHA_CTX *c
+
+   if (  (isa<ConstantExpr>(arg1Expr)) &&
+	 (isa<ConstantExpr>(arg2Expr)) ) {
+
+     unsigned char * md = (unsigned char *) target_ctx_gregs[REG_RDI].u64;
+     SHA_CTX * c = (SHA_CTX *) target_ctx_gregs[REG_RSI].u64;
+     bool hasSymbolicInput = false;
+
+     if (!isBufferEntirelyConcrete((uint64_t) c, 20) )
+       hasSymbolicInput = true;
+     
+   
+     if (hasSymbolicInput) {
+       std::string nameString = "SHA1_Final_Output" + std::to_string(timesSHA1FinalIsCalled);
+       const char * constCopy = nameString.c_str();
+       char name [40];//Arbitrary number
+       strncpy(name, constCopy, 40);
+      
+       fprintf(modelLog,"MULTIPASS DEBUG: Found symbolic input to SHA1_Final \n");
+
+       
+       tase_make_symbolic( (uint64_t) md, SHA_DIGEST_LENGTH, name);
+
+       //Can optionally return failure here if desired
+       int res = 1; //Force success
+       ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+       target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+       
+       //fake a ret
+       uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+       target_ctx_gregs[REG_RIP].u64 = retAddr;
+       target_ctx_gregs[REG_RSP].u64 += 8;
+       
+     } else {
+       fprintf(modelLog,"MULTIPASS DEBUG: Did not find symbolic input to SHA1_Final \n");
+       forceNativeRet = true;
+       target_ctx_gregs[REG_RIP].u64 += 17;
+
+       //Todo: Provide sha1_final native implementation for concrete execution
+     }    
+   } else {
+     printf("ERROR: symbolic arg passed to model_SHA1_Final \n");
+     std::exit(EXIT_FAILURE);
+   }
+}
+
+
+
+//Model for int SHA256_Update(SHA256_CTX *c, const void *data, size_t len)
+//defined in crypto/sha/sha.h.
+//Updated 04/30/2019
+void Executor::model_SHA256_Update () {
+  static int timesSHA256UpdateIsCalled = 0;
+  timesSHA256UpdateIsCalled++;
+  
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //SHA256_CTX * c
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); //const void * data
+  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64); //size_t len
+
+  if (  (isa<ConstantExpr>(arg1Expr)) &&
+	(isa<ConstantExpr>(arg2Expr)) &&
+	(isa<ConstantExpr>(arg3Expr))
+	) {
+
+    //Determine if SHA256_CTX or data have symbolic values.
+    //If not, run the underlying function.
+
+    SHA256_CTX * c = (SHA256_CTX *) target_ctx_gregs[REG_RDI].u64;
+    const void * data = (const void *) target_ctx_gregs[REG_RSI].u64;
+    size_t len = (size_t) target_ctx_gregs[REG_RDX].u64;
+    
+    bool hasSymbolicInput = false;
+    if (!isBufferEntirelyConcrete((uint64_t ) c, sizeof(SHA256_CTX)) || !isBufferEntirelyConcrete( (uint64_t ) data, len))
+      hasSymbolicInput = true;
+    
+
+    if (hasSymbolicInput) {
+
+      std::string nameString = "SHA256_Update_Output" + std::to_string(timesSHA256UpdateIsCalled);
+      const char * constCopy = nameString.c_str();
+      char name [40];//Arbitrary number
+      strncpy(name, constCopy, 40);
+      
+      tase_make_symbolic( (uint64_t) c, 32, name);
+
+      //Can optionally return failure here if desired
+      int res = 1; //Force success
+      ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+      target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+      
+      //fake a ret
+      uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+      target_ctx_gregs[REG_RIP].u64 = retAddr;
+      target_ctx_gregs[REG_RSP].u64 += 8;
+      
+    } else { //Call natively
+      fprintf(modelLog,"MULTIPASS DEBUG: Did not find symbolic input to SHA256_Update \n");
+      forceNativeRet = true;
+      target_ctx_gregs[REG_RIP].u64 += 17;
+      //todo: provide sha256_update native implementation
+      
+    }
+
+  } else {
+    printf("ERROR: symbolic arg passed to model_SHA256_Update \n");
+    std::exit(EXIT_FAILURE);
+  }
+}
+
+//Model for int SHA256_Final(unsigned char *md, SHA256_CTX *c)
+//defined in crypto/sha/sha.h
+void Executor::model_SHA256_Final() {
+  static int timesSHA256FinalIsCalled = 0;
+  timesSHA256FinalIsCalled++;
+
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //unsigned char *md
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); //SHA256_CTX *c
+
+   if (  (isa<ConstantExpr>(arg1Expr)) &&
+	 (isa<ConstantExpr>(arg2Expr)) ) {
+
+     unsigned char * md = (unsigned char *) target_ctx_gregs[REG_RDI].u64;
+     SHA256_CTX * c = (SHA256_CTX *) target_ctx_gregs[REG_RSI].u64;
+     
+     bool hasSymbolicInput = false;
+
+     if (!isBufferEntirelyConcrete((uint64_t) c, 32) )
+       hasSymbolicInput = true;
+     
+     if (hasSymbolicInput) {
+       std::string nameString = "SHA256_Final_Output" + std::to_string(timesSHA256FinalIsCalled);
+       const char * constCopy = nameString.c_str();
+       char name [40];//Arbitrary number
+       strncpy(name, constCopy, 40);
+      
+       fprintf(modelLog,"MULTIPASS DEBUG: Found symbolic input to SHA256_Final \n");
+       
+       tase_make_symbolic((uint64_t) md, SHA_DIGEST_LENGTH, name);
+
+       //Can optionally return failure here if desired
+       int res = 1; //Force success
+       ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+       target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+       
+       //fake a ret
+       uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+       target_ctx_gregs[REG_RIP].u64 = retAddr;
+       target_ctx_gregs[REG_RSP].u64 += 8;
+ 
+     } else {
+        fprintf(modelLog,"MULTIPASS DEBUG: Did not find symbolic input to SHA256_Final \n");
+	forceNativeRet = true;
+	target_ctx_gregs[REG_RIP].u64 += 17;
+       //Todo: provide fast native sha256_final implementation
+      
+     }
+     
+   } else {
+     printf("ERROR: symbolic arg passed to model_SHA256_Final \n");
+    std::exit(EXIT_FAILURE);
+   }
+}
+
+
+
+//model for void AES_encrypt(const unsigned char *in, unsigned char *out,
+//const AES_KEY *key);
+//Updated 04/30/2019
+void Executor::model_AES_encrypt () {
+  static int timesModelAESEncryptIsCalled = 0;
+  timesModelAESEncryptIsCalled++;
+  
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //const unsigned char *in
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); //unsigned char * out
+  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64); //const AES_KEY * key
+
+  if (  (isa<ConstantExpr>(arg1Expr)) &&
+	(isa<ConstantExpr>(arg2Expr)) &&
+	(isa<ConstantExpr>(arg3Expr))
+	) {
+
+    const unsigned char * in =  (const unsigned char *)target_ctx_gregs[REG_RDI].u64;
+    unsigned char * out = (unsigned char *) target_ctx_gregs[REG_RSI].u64;
+    const AES_KEY * key = (const AES_KEY *) target_ctx_gregs[REG_RDX].u64;
+    
+    int AESBlockSize = 16; //Number of bytes in AES block
+    bool hasSymbolicDependency = false;
+    
+    //Check to see if any input bytes or the key are symbolic
+    //Todo: Chase down any structs that AES_KEY points to if it's not a simple struct.
+    //It's OK; struct holds no pointers.
+    if (!isBufferEntirelyConcrete((uint64_t) in, AESBlockSize) || !isBufferEntirelyConcrete ((uint64_t) key, AESBlockSize) )
+      hasSymbolicDependency = true;
+
+    if (hasSymbolicDependency) {
+      fprintf(modelLog, "MULTIPASS DEBUG: Found symbolic input to AES_encrypt \n");
+      fflush(modelLog);
+
+      std::string nameString = "aes_Encrypt_output " + std::to_string(timesModelAESEncryptIsCalled);
+      const char * constCopy = nameString.c_str();
+      char name [40];//Arbitrary number
+      strncpy(name, constCopy, 40);
+      
+      tase_make_symbolic((uint64_t) out, AESBlockSize, name);
+
+      //fake a ret
+      uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+      target_ctx_gregs[REG_RIP].u64 = retAddr;
+      target_ctx_gregs[REG_RSP].u64 += 8;
+      
+    } else {
+      //Otherwise we're good to call natively
+
+      fprintf(modelLog,"MULTIPASS DEBUG: Did not find symbolic input to AES_encrypt \n");
+      forceNativeRet = true;
+      target_ctx_gregs[REG_RIP].u64 += 17;
+      return;
+
+      //AES_Encrypt(in,out,key);  //Todo -- get native call for AES_Encrypt
+    }
+    
+  } else {
+    printf("ERROR: symbolic arg passed to model_AES_encrypt \n");
+    std::exit(EXIT_FAILURE);
+  } 
+} 
+
+//Model for
+//void gcm_gmult_4bit(u64 Xi[2], const u128 Htable[16])
+// in crypto/modes/gcm128.c
+void Executor::model_gcm_gmult_4bit () {
+  static int modelGCMGMULT4bitCalls = 0;
+  modelGCMGMULT4bitCalls++;
+
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //u64 Xi[2]
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); // const u128 Htable[16]
+  
+  if (  (isa<ConstantExpr>(arg1Expr)) &&
+	(isa<ConstantExpr>(arg2Expr))
+	) {
+    
+    u64 * XiPtr = (u64 *) target_ctx_gregs[REG_RDI].u64;
+    u128 * HtablePtr = (u128 *) target_ctx_gregs[REG_RSI].u64;
+    
+    //Todo: Double check the dubious ptr cast and figure out if we
+    //are assuming any structs are packed
+    bool hasSymbolicInput = false;
+
+    if (!isBufferEntirelyConcrete((uint64_t) XiPtr, 16)) {
+	hasSymbolicInput = true;
+    }
+    
+    if (hasSymbolicInput) {
+       fprintf(modelLog,"MULTIPASS DEBUG: Found symbolic input to gcm_gmult \n");
+      
+      std::string nameString = "GCM_GMULT_output " + std::to_string(modelGCMGMULT4bitCalls);
+      const char * constCopy = nameString.c_str();
+      char name [40];//Arbitrary number
+      strncpy(name, constCopy, 40);
+      
+      tase_make_symbolic((uint64_t) XiPtr, 128, name);
+
+      //fake a ret
+      uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+      target_ctx_gregs[REG_RIP].u64 = retAddr;
+      target_ctx_gregs[REG_RSP].u64 += 8;
+      
+    } else {
+       //Otherwise we're good to call natively
+      fprintf(modelLog,"MULTIPASS DEBUG: Did not find symbolic input to gcm_gmult \n");
+      forceNativeRet = true;
+      target_ctx_gregs[REG_RIP].u64 += 17;
+      return; 
+    }
+  } else {
+    printf("ERROR: symbolic arg passed to model_gcm_gmult_4bit \n");
+    std::exit(EXIT_FAILURE);
+  }
+}
+
+
+//Model for 
+//void gcm_ghash_4bit(u64 Xi[2],const u128 Htable[16],
+//				const u8 *inp,size_t len)
+//in crypto/modes/gcm128.c
+//Todo: Check to see if we're incorrectly assuming that the Xi and Htable arrays are passed as ptrs in the abi.
+void Executor::model_gcm_ghash_4bit () {
+  static int modelGCMGHASH4bitCalls = 0;
+  modelGCMGHASH4bitCalls++;
+  
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //u64 Xi[2]
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); //const u128 Htable[16]
+  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64); // const u8 *inp
+  ref<Expr> arg4Expr = target_ctx_gregs_OS->read(REG_RCX * 8, Expr::Int64); //size_t len
+
+  if (  (isa<ConstantExpr>(arg1Expr)) &&
+	(isa<ConstantExpr>(arg2Expr)) &&
+	(isa<ConstantExpr>(arg3Expr)) &&
+	(isa<ConstantExpr>(arg4Expr)) ) {
+
+    u64 * XiPtr = (u64 *) target_ctx_gregs[REG_RDI].u64;
+    u128 * HtablePtr = (u128 *) target_ctx_gregs[REG_RSI].u64;
+    const u8 * inp = (const u8 *) target_ctx_gregs[REG_RDX].u64;
+    size_t len = (size_t) target_ctx_gregs[REG_RCX].u64;
+    
+    //Todo: Double check the dubious ptr casts and figure out if we
+    //are falsely assuming any structs or arrays are packed
+    bool hasSymbolicInput = false;
+    // Todo: Double check  if this is OK for different size_t values.
+    if (!isBufferEntirelyConcrete((uint64_t) XiPtr, 16) || !isBufferEntirelyConcrete((uint64_t) inp, len) ) 
+      hasSymbolicInput = true;
+    
+    if (hasSymbolicInput) {
+      fprintf(modelLog,"MULTIPASS DEBUG: Found symbolic input to gcm_ghash \n");
+      
+      std::string nameString = "GCM_GHASH_output " + std::to_string(modelGCMGHASH4bitCalls);
+      const char * constCopy = nameString.c_str();
+      char name [40];//Arbitrary number
+      strncpy(name, constCopy, 40);
+      
+      tase_make_symbolic ((uint64_t) XiPtr, sizeof(u64) * 2, name);
+      //fake a ret
+      uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+      target_ctx_gregs[REG_RIP].u64 = retAddr;
+      target_ctx_gregs[REG_RSP].u64 += 8;
+      
+    } else {
+      //Otherwise we're good to call natively
+      fprintf(modelLog,"MULTIPASS DEBUG: Did not find symbolic input to gcm_ghash \n");
+      forceNativeRet = true;
+      target_ctx_gregs[REG_RIP].u64 += 17;
+      return; 
+    }
+     
+  } else {
+    printf("ERROR: symbolic arg passed to model_gcm_ghash_4bit \n");
+    std::exit(EXIT_FAILURE);
+  }  
+}
+
+BIGNUM * Executor::BN_new_tase() {
+  
+  BIGNUM * result = (BIGNUM *) malloc(sizeof(BIGNUM));
+
+  MemoryObject * BNMem = addExternalObject(*GlobalExecutionStatePtr,(void *) result, sizeof(BIGNUM), false );
+  const ObjectState * BNOS = GlobalExecutionStatePtr->addressSpace.findObject(BNMem);
+  ObjectState * BNOSWrite = GlobalExecutionStatePtr->addressSpace.getWriteable(BNMem,BNOS);  
+  BNOSWrite->concreteStore = (uint8_t *) result;
+  
+  result->flags=BN_FLG_MALLOCED;
+  result->top=0;
+  result->neg=0;
+  result->dmax=0;
+  result->d=NULL;
+
+  return result;
+}
+
+EC_POINT * Executor::EC_POINT_new_tase(EC_GROUP * group) {
+
+  EC_POINT * result = (EC_POINT *) malloc(sizeof(EC_POINT));
+
+  MemoryObject * ECPMem = addExternalObject(*GlobalExecutionStatePtr,(void *) result, sizeof(EC_POINT), false );
+  const ObjectState * ECPOS = GlobalExecutionStatePtr->addressSpace.findObject(ECPMem);
+  ObjectState * ECPOSWrite = GlobalExecutionStatePtr->addressSpace.getWriteable(ECPMem,ECPOS);  
+  ECPOSWrite->concreteStore = (uint8_t *) result;
+
+  //Set the group method
+  result->meth = group->meth;
+
+  //Init X
+  BIGNUM * X = &(result->X);
+  X->flags=BN_FLG_MALLOCED;
+  X->top=0;
+  X->neg=0;
+  X->dmax=0;
+  X->d=NULL;
+
+  //Init Y
+  BIGNUM * Y = &(result->Y);
+  Y->flags=BN_FLG_MALLOCED;
+  Y->top=0;
+  Y->neg=0;
+  Y->dmax=0;
+  Y->d=NULL;
+
+  //Init Z
+  BIGNUM * Z = &(result->Z);
+  Z->flags=BN_FLG_MALLOCED;
+  Z->top=0;
+  Z->neg=0;
+  Z->dmax=0;
+  Z->d=NULL;
+
+  //Init  Z_is_one
+  //Todo -- Should we make it symbolic?
+  result->Z_is_one = 0;
+
+  
+  return result;
+  
+}
+
+#define SYMBOLIC_BN_DMAX 64
+void Executor::make_BN_symbolic(BIGNUM * bn, char * symbol_name) {
+  fprintf(modelLog, "Calling make_BN_symbolic at rip 0x%lx on addr 0x%lx \n", target_ctx_gregs[REG_RIP].u64, (uint64_t) bn);
+  fflush(modelLog);
+  if (bn->dmax > 0) {
+    //char *buf = (char *)malloc((bn->dmax)*sizeof(bn->d[0]));
+    //klee_make_symbolic(buf, (bn->dmax)*sizeof(bn->d[0]), "BNbuf");
+    tase_make_symbolic((uint64_t) bn->d,  (bn->dmax)*sizeof(bn->d[0]), "BNbuf");
+    //memcpy(bn->d, buf, bn->dmax);
+    //free(buf);
+  } else {
+    bn->dmax = SYMBOLIC_BN_DMAX;
+    void *buf = malloc((bn->dmax)*sizeof(bn->d[0]));
+    
+    MemoryObject * bufMem = addExternalObject(*GlobalExecutionStatePtr,(void *) buf,(bn->dmax)*sizeof(bn->d[0])  , false );
+    const ObjectState * bufOS = GlobalExecutionStatePtr->addressSpace.findObject(bufMem);
+    ObjectState * bufOSWrite = GlobalExecutionStatePtr->addressSpace.getWriteable(bufMem,bufOS);  
+    bufOSWrite->concreteStore = (uint8_t *) buf;
+    
+    tase_make_symbolic((uint64_t) buf, (bn->dmax)*sizeof(bn->d[0]), "BNbuf");
+    bn->d = (long unsigned int *) buf;
+  }
+  
+  if (symbol_name == NULL) {
+    symbol_name = "BN";
+  }
+  tase_make_symbolic((uint64_t) &(bn->neg), sizeof(int), symbol_name);
+}
+
+void Executor::make_EC_POINT_symbolic(EC_POINT* p) {
+  make_BN_symbolic(&(p->X), "ECpointX");
+  make_BN_symbolic(&(p->Y), "ECpointY");
+  make_BN_symbolic(&(p->Z), "ECpointZ");
+}
+
+
+//Model for int EC_KEY_generate_key(EC_KEY *key)
+// from crypto/ec/ec.h
+
+//This is a little different because we have to reach into the struct
+//and make its fields symbolic.
+//Point of this function is to produce ephemeral key pair for Elliptic curve diffie hellman
+//key exchange and eventually premaster secret generation during the handshake.
+
+//EC_KEY struct has a private key k, which is a number between 1 and the size of the Elliptic curve subgroup
+//generated by base point G.
+//Public key is kG for the base point G.
+//So k is an integer, and kG is a point (three coordinates in jacobian projection or two in affine projection)
+//on the curve produced by "adding" G to itself k times.
+void Executor::model_EC_KEY_generate_key () {
+
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //EC_KEY * key
+
+   if ( (isa<ConstantExpr>(arg1Expr)) ) {
+
+     EC_KEY * eckey = (EC_KEY *) target_ctx_gregs[REG_RDI].u64;
+     bool makeECKeySymbolic = false;
+
+
+     if (makeECKeySymbolic) {
+       fprintf(modelLog,"MULTIPASS DEBUG: Calling EC_KEY_generate_key with symbolic return \n"); 
+       
+       if (eckey->priv_key == NULL)
+	 eckey->priv_key = BN_new_tase();
+
+       if (eckey->pub_key == NULL)
+	 eckey->pub_key = EC_POINT_new_tase(eckey->group);
+       
+       //Make private key (bignum) symbolic
+       make_BN_symbolic(eckey->priv_key, "ECKEYprivate");
+
+       //Make pub key (EC point) symbolic
+       make_EC_POINT_symbolic(eckey->pub_key);
+
+       //Fake a ret;
+       //Can optionally return failure here if desired
+       int res = 1; //Force success
+       ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+       target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+       
+       //fake a ret
+       uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+       target_ctx_gregs[REG_RIP].u64 = retAddr;
+       target_ctx_gregs[REG_RSP].u64 += 8;
+       
+     } else {
+       //Otherwise we're good to call natively
+       fprintf(modelLog,"DEBUG: Calling EC_KEY_generate_key natively \n");
+       forceNativeRet = true;
+       target_ctx_gregs[REG_RIP].u64 += 17;
+       return; 
+     } 
+     
+   } else {
+      printf("ERROR: symbolic arg passed to model_EC_KEY_generate_key \n");
+      std::exit(EXIT_FAILURE);
+   }
+}
+
+//Todo -- Properly make sure we're not assuming any pointers are concrete
+
+bool Executor::is_symbolic_BIGNUM(BIGNUM * bn) {
+  bool rv = false;
+  
+  if (!isBufferEntirelyConcrete((uint64_t) bn, sizeof(BIGNUM)) || !isBufferEntirelyConcrete((uint64_t) bn->d, bn->dmax))
+    rv = true;
+  else
+    rv = false;
+
+  fprintf(modelLog, "is_symbolic_BIGNUM returned %d at rip 0x%lx \n", rv, target_ctx_gregs[REG_RIP].u64);
+  fflush(modelLog);
+}
+
+bool Executor::is_symbolic_EC_POINT(EC_POINT * pt) {
+
+  bool rv = false;
+
+  //Check entire struct first.  This includes pointers to the three BN coordinates
+  if (!isBufferEntirelyConcrete((uint64_t) pt, sizeof(EC_POINT))) {
+      rv = true;
+      fprintf(modelLog, "WARNING: is_symbolic_EC_POINT found symbolic data at rip 0x%lx \n",  target_ctx_gregs[REG_RIP].u64);
+      fflush(modelLog);
+      return rv;
+  }
+
+  if (is_symbolic_BIGNUM(&(pt->X)) || is_symbolic_BIGNUM(&(pt->Y)) || is_symbolic_BIGNUM(&(pt->Z)))
+    rv = true;
+  else
+    rv = false;  
+
+  fprintf(modelLog, "is_symbolic_EC_POINT returned %d at rip 0x%lx \n", rv, target_ctx_gregs[REG_RIP].u64);
+  fflush(modelLog);
+  return rv;
+}
+
+//model for 
+//int ecdh_compute_key(void *out, size_t outlen, const EC_POINT *pub_key,
+//EC_KEY *ecdh,
+//void *(*KDF)(const void *in, size_t inlen, void *out, size_t *outlen))
+//from crypto/ecdh/ech_ossl.c
+
+//Todo: Double check that model for ABI is accurate since 5 args are passed.
+
+//Point of the method is to compute shared premaster secret from private key in eckey and pubkey pub_key.
+//Todo -- determine if we ever need to actually call this with concrete values during verification since
+//we never get access to the client's private key in eckey.
+void Executor::model_ECDH_compute_key() {
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
+  ref<Expr> arg4Expr = target_ctx_gregs_OS->read(REG_RCX * 8, Expr::Int64);
+  ref<Expr> arg5Expr = target_ctx_gregs_OS->read(REG_R8 * 8, Expr::Int64);
+
+  if (  (isa<ConstantExpr>(arg1Expr)) &&
+	(isa<ConstantExpr>(arg2Expr)) &&
+	(isa<ConstantExpr>(arg3Expr)) &&
+	(isa<ConstantExpr>(arg4Expr)) &&
+	(isa<ConstantExpr>(arg5Expr))
+	) {
+
+    void * out = (void *) target_ctx_gregs[REG_RDI].u64;
+    size_t outlen = (size_t) target_ctx_gregs[REG_RSI].u64;
+    EC_POINT * pub_key = (EC_POINT *) target_ctx_gregs[REG_RDX].u64;
+    EC_KEY * eckey = (EC_KEY *) target_ctx_gregs[REG_RCX].u64;
+    
+    bool hasSymbolicInputs = false;
+
+    if (is_symbolic_EC_POINT(pub_key) || is_symbolic_EC_POINT(eckey->pub_key) || is_symbolic_BIGNUM(eckey->priv_key))
+      hasSymbolicInputs = true;
+
+
+    if (hasSymbolicInputs) {
+
+      fprintf(modelLog,"DEBUG: Calling ECDH_compute_key with symbolic input \n");
+      
+      tase_make_symbolic( (uint64_t) out, outlen, "ecdh_compute_key_output");
+
+      //return value is outlen
+      //Todo -- determine if we really need to make the return value exactly size_t
+      ref<ConstantExpr> returnVal = ConstantExpr::create(outlen, Expr::Int64);
+      target_ctx_gregs_OS->write(REG_RAX * 8, returnVal);
+
+      //fake a ret
+      uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+      target_ctx_gregs[REG_RIP].u64 = retAddr;
+      target_ctx_gregs[REG_RSP].u64 += 8;
+      
+    } else {
+      
+      //Otherwise we're good to call natively
+       fprintf(modelLog,"DEBUG: Calling ECDH_compute_key natively \n");
+       forceNativeRet = true;
+       target_ctx_gregs[REG_RIP].u64 += 17;
+       return; 
+    }
+      
+  } else {
+    printf("ERROR: model_ECDH_compute_key called with symbolic input args\n");
+    std::exit(EXIT_FAILURE);
+  }
+}
+
+
+
+//model for size_t EC_POINT_point2oct(const EC_GROUP *group, const EC_POINT *point, point_conversion_form_t form,
+//        unsigned char *buf, size_t len, BN_CTX *ctx)
+//Function defined in crypto/ec/ec_oct.c
+
+//Todo: Double check this to see if we actually need to peek further into structs to see if they have symbolic
+//taint
+//The purpose of this function is to convert from an EC_POINT representation to an octet string encoding in buf.
+//Todo: Check all the other args for symbolic taint, even though in practice it should just be the point
+void Executor::model_EC_POINT_point2oct() {
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
+  ref<Expr> arg4Expr = target_ctx_gregs_OS->read(REG_RCX * 8, Expr::Int64);
+  ref<Expr> arg5Expr = target_ctx_gregs_OS->read(REG_R8 * 8, Expr::Int64);
+  ref<Expr> arg6Expr = target_ctx_gregs_OS->read(REG_R9 * 8, Expr::Int64);
+
+  if (  (isa<ConstantExpr>(arg1Expr)) &&
+	(isa<ConstantExpr>(arg2Expr)) &&
+	(isa<ConstantExpr>(arg3Expr)) &&
+	(isa<ConstantExpr>(arg4Expr)) &&
+	(isa<ConstantExpr>(arg5Expr)) &&
+	(isa<ConstantExpr>(arg6Expr))
+	) {
+
+    EC_GROUP * group = ( EC_GROUP *) target_ctx_gregs[REG_RDI].u64;
+     EC_POINT * point = ( EC_POINT *) target_ctx_gregs[REG_RSI].u64;
+    point_conversion_form_t form = (point_conversion_form_t) target_ctx_gregs[REG_RDX].u64;
+    unsigned char * buf = (unsigned char * ) target_ctx_gregs[REG_RCX].u64;
+    size_t len = (size_t) target_ctx_gregs[REG_R8].u64;
+    BN_CTX * ctx = (BN_CTX *) target_ctx_gregs[REG_R9].u64;
+
+    bool hasSymbolicInput = false;
+    size_t field_len = BN_num_bytes(&group->field);
+    size_t ret = (form == POINT_CONVERSION_COMPRESSED) ? 1 + field_len : 1 + 2*field_len;
+
+    
+    if (is_symbolic_EC_POINT(point))
+      hasSymbolicInput = true;
+    
+    if (hasSymbolicInput) {
+
+       fprintf(modelLog,"DEBUG: Found symbolic input to EC_POINT_point2oct \n");
+      tase_make_symbolic((uint64_t) buf, ret, "ECpoint2oct");
+      ref<ConstantExpr> returnVal = ConstantExpr::create(ret, Expr::Int64);
+      target_ctx_gregs_OS->write(REG_RAX * 8, returnVal);
+      
+
+      //fake a ret
+      uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+      target_ctx_gregs[REG_RIP].u64 = retAddr;
+      target_ctx_gregs[REG_RSP].u64 += 8;
+      
+      
+    } else {
+
+      //Otherwise we're good to call natively
+       fprintf(modelLog,"DEBUG: Calling EC_POINT_point2oct natively \n");
+       forceNativeRet = true;
+       target_ctx_gregs[REG_RIP].u64 += 17;
+       return; 
+     
+    }
+
+  } else {
+    printf("ERROR: model_EC_POINT_point2oct called with symbolic input \n");
+    std::exit(EXIT_FAILURE);
   }
 }

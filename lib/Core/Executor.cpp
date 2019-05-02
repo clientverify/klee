@@ -89,6 +89,7 @@
 
 #include <sys/mman.h>
 
+
 #include <errno.h>
 #include <cxxabi.h>
 
@@ -170,9 +171,11 @@ uint64_t restoreRAXOpc = 0x000000F816F9E3C4; //tmp hack
 extern multipassRecord multipassInfo;
 extern KTestObjectVector ktov;
 extern bool enableMultipass;
+extern bool killFlagsHack;
 extern int passCount;
 int multipass_symbolic_vars = 0;
 extern CVAssignment * prevMPA;
+bool forceNativeRet = false;
 //Addition from cliver                                                                                                                                              
 std::map<std::string, uint64_t> array_name_index_map_;
 std::string get_unique_array_name(const std::string &s) {
@@ -181,6 +184,8 @@ std::string get_unique_array_name(const std::string &s) {
 }
 
 
+
+extern bool stopAtMasterSecret;
 extern  int ktest_master_secret_calls;
 extern  int ktest_start_calls;
 extern  int ktest_writesocket_calls;
@@ -220,7 +225,7 @@ extern "C" {
   void RAND_add(const void * buf, int num, double entropy);
   int RAND_load_file(const char *filename, long max_bytes);
 }
-
+/*
 #include "/playpen/humphries/tase/TASE/openssl/include/openssl/lhash.h"
 #include "/playpen/humphries/tase/TASE/openssl/include/openssl/crypto.h"
 #include "/playpen/humphries/tase/TASE/openssl/include/openssl/objects.h"
@@ -230,7 +235,7 @@ extern "C" {
 #include "/playpen/humphries/tase/TASE/openssl/crypto/err/err.h"
 #include "/playpen/humphries/tase/TASE/openssl/crypto/aes/aes.h"
 #include "/playpen/humphries/tase/TASE/openssl/crypto/modes/modes_lcl.h"
-
+*/
 
 void OpenSSLDie (const char * file, int line, const char * assertion);
 
@@ -3389,17 +3394,26 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
     std::cout.flush();
   }
 
+
   //CVExecutionState *cvstate = static_cast<CVExecutionState*>(&state);
 
   bool unnamed = (name == "unnamed") ? true : false;
 
-  // Create a new object state for the memory object (instead of a copy).                                                                                             
+  // Create a new object state for the memory object (instead of a copy).
+
+  printf("DBG 1 \n");
+  std::cout.flush();
+  
   std::string array_name = get_unique_array_name(name);
 
+   printf("DBG executeMakeSymbolic: Encountered unique name for %s \n", array_name);
+   std::cout.flush();
   //See if we have an assignment
   const klee::Array *array = NULL;
-  if (!unnamed)
+  if (!unnamed && prevMPA != NULL)
     array = prevMPA->getArray(array_name);
+  printf("DBG 1 \n");
+  std::cout.flush();
   
   bool multipass = false;
   if (array != NULL) {
@@ -3411,8 +3425,14 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
     }
     array = arrayCache.CreateArray(array_name, mo->size);
   }
+
+  printf("DBG 2 \n");
+  std::cout.flush();
   
   bindObjectInState(state, mo, false, array);
+
+  printf("DBG 3 \n");
+  std::cout.flush();
   
   std::vector<unsigned char> *bindings = NULL;
   if (passCount > 0 && multipass) {
@@ -3438,6 +3458,8 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
 	}*/
     }
   } else {
+    printf("DBG executeMakeSymbolic: Created symbolic var for %s \n", name);
+    std::cout.flush();
     //CVDEBUG("Created symbolic: " << array->name << " in " << *cvstate);
     state.addSymbolic(mo, array);
     multipass_symbolic_vars++;
@@ -3572,19 +3594,19 @@ int total_ret_codes = 0;
 
 bool isProhibitiveFn (uint64_t rip) {
   
-  if (rip == (uint64_t) &AES_encrypt             + 14 ||
-	 rip == (uint64_t) &ECDH_compute_key        + 14 ||
-	 rip == (uint64_t) &EC_POINT_point2oct      + 14 ||
-	 rip == (uint64_t) &EC_KEY_generate_key     + 14 ||
-	 rip == (uint64_t) &SHA1_Update             + 14 ||
-	 rip == (uint64_t) &SHA1_Final              + 14 ||
-	 rip == (uint64_t) &SHA256_Update           + 14 ||
-	 rip == (uint64_t) &SHA256_Final            + 14 ||
-	 rip == (uint64_t) &gcm_gmult_4bit          + 14 ||
-	 rip == (uint64_t) &gcm_ghash_4bit          + 14 
-	) 
-    return true;
-  else
+  //if (   //rip == (uint64_t) &AES_encrypt             + 14 ||
+      //rip == (uint64_t) &ECDH_compute_key        + 14 ||
+      //rip == (uint64_t) &EC_POINT_point2oct      + 14 
+	 // rip == (uint64_t) &EC_KEY_generate_key     + 14 
+      //rip == (uint64_t) &SHA1_Update             + 14 ||
+      // rip == (uint64_t) &SHA1_Final              + 14 ||
+      // rip == (uint64_t) &SHA256_Update           + 14 ||
+      // rip == (uint64_t) &SHA256_Final            + 14 ||
+      // rip == (uint64_t) &gcm_gmult_4bit          + 14 ||
+      // rip == (uint64_t) &gcm_ghash_4bit          + 14 
+  //	) 
+  // return true;
+  //else
     return false;
 }
 
@@ -3612,6 +3634,20 @@ void resetProhibCounters() {
   gcm_ghash_4bit_calls = 0;
 }
 
+void printKTestCounters() {
+
+  fprintf(modelLog, "Total calls to ktest_start             %d \n",  ktest_start_calls);
+  fprintf(modelLog, "Total calls to ktest_connect           %d \n", ktest_connect_calls);
+  fprintf(modelLog, "Total calls to ktest_master_secret     %d \n", ktest_master_secret_calls);
+  fprintf(modelLog, "Total calls to ktest_RAND_bytes        %d \n", ktest_RAND_bytes_calls);
+  fprintf(modelLog, "Total calls to ktest_RAND_pseudo_bytes %d \n", ktest_RAND_pseudo_bytes_calls);
+  fprintf(modelLog, "Total calls to ktest_raw_read_stdin    %d \n", ktest_raw_read_stdin_calls);
+  fprintf(modelLog, "Total calls to ktest_select            %d \n", ktest_select_calls );
+  fprintf(modelLog, "Total calls to ktest_writesocket       %d \n", ktest_writesocket_calls );
+  fprintf(modelLog, "Total calls to ktest_readsocket        %d \n", ktest_readsocket_calls );
+  fflush(modelLog);
+}
+
 void printProhibCounters() {
   fprintf(modelLog, "AES_encrypt calls: %d \n", AES_encrypt_calls);
   fprintf(modelLog, "ECDH_compute_key calls: %d \n", ECDH_compute_key_calls);
@@ -3623,6 +3659,7 @@ void printProhibCounters() {
   fprintf(modelLog, "SHA256_Final calls: %d \n", SHA256_Final_calls);
   fprintf(modelLog, "gcm_gmult_4bit calls: %d \n", gcm_gmult_4bit_calls );
   fprintf(modelLog, "gcm_ghash_4bit calls: %d \n", gcm_ghash_4bit_calls );
+  fflush(modelLog);
 }
 
 void countProhibCalls(uint64_t rip) {
@@ -3656,23 +3693,26 @@ void countProhibCalls(uint64_t rip) {
 extern "C" void klee_interp () {
   total_interp_returns++;
   uint64_t interpCtr_init = interpCtr;
+  forceNativeRet = false;
   bool isMemRequest = false;
   bool isProhibRequest = false;
   static int multipassRound = 0;
-  /*
+  
   if (measureTime) {
     enter_time = util::getWallTime();
-    uint64_t rip = target_ctx_gregs[REG_RIP].u64;    
-    isProhibRequest = isProhibitiveFn(rip);
-    countProhibCalls(rip);
+  }
+    //uint64_t rip = target_ctx_gregs[REG_RIP].u64;    
+    //isProhibRequest = isProhibitiveFn(rip);
+    //countProhibCalls(rip);
 
+    /*
     if (rip == (uint64_t) &ktest_writesocket + 14) {
       fprintf(modelLog, "At ktest_writesocket round %d, prohib ctrs are \n", multipassRound);
       printProhibCounters();
       multipassRound++;
     }
-    
-    
+    */
+    /*  
     if (isProhibRequest) {
       prohib_returns++;
       if (taseDebug) {
@@ -3683,9 +3723,11 @@ extern "C" void klee_interp () {
       target_ctx_gregs[REG_RIP].u64 = target_ctx_gregs[REG_R15].u64 + 17;
       return;
     }
+    
     if ((rip == (uint64_t) &malloc  || rip == ((uint64_t) &malloc_tase + 14)) || (rip == (uint64_t) &realloc  || rip == ((uint64_t) &realloc_tase + 14)))  {
       isMemRequest = true;
     }
+    
   }
   */
   
@@ -3694,10 +3736,29 @@ extern "C" void klee_interp () {
     std::cout.flush();
   }
   target_ctx_gregs[REG_RIP].u64 = target_ctx_gregs[REG_R15].u64;
+
+  //---------------------------
+  uint64_t rip = target_ctx_gregs[REG_RIP].u64;
+  if ((rip == (uint64_t) &malloc  || rip == ((uint64_t) &malloc_tase + 14)) || (rip == (uint64_t) &realloc  || rip == ((uint64_t) &realloc_tase + 14)))  {
+    isMemRequest = true;
+  }
+  isProhibRequest = isProhibitiveFn(rip);
+  countProhibCalls(rip);
+  if (isProhibRequest) {
+    prohib_returns++;
+    if (taseDebug) {
+      fprintf(modelLog, "Attempting to skip prohib function at rip 0x%lx without symbolic inspection; r15 is 0x%lx \n", rip, target_ctx_gregs[REG_R15].u64);
+      fflush(modelLog);
+    }
+    //sb_interp will already look in r15 for the jump target
+    target_ctx_gregs[REG_RIP].u64 = target_ctx_gregs[REG_R15].u64 + 17;
+    return;
+  }
+  //------------------
   fprintf(modelLog,"RIP entering klee_interp is 0x%lx \n", target_ctx_gregs[REG_RIP].u64);
   GlobalInterpreter->klee_interp_internal();
   target_ctx_gregs[REG_R15].u64 = target_ctx_gregs[REG_RIP].u64;
-  /*
+  
   if (measureTime) {
     exit_time = util::getWallTime();
     double diff_time = (exit_time) - (enter_time);
@@ -3708,7 +3769,9 @@ extern "C" void klee_interp () {
       prohib_time += diff_time;
     fprintf(modelLog, "Elapsed time is %lf at interpCtr %d with %d instructions \n", exit_time - enter_time, interpCtr, interpCtr - interpCtr_init);
   }
-  */
+  
+  
+  
   return;
 }
 
@@ -3891,6 +3954,39 @@ void Executor::model_reopentran() {
  
 }
 
+extern uint16_t poison_val;
+
+//Todo: Double check the edge cases and make non-ugly
+bool Executor::isBufferEntirelyConcrete (uint64_t addr, int size) {
+
+  uint16_t * objIterator;
+  uint64_t addrInt = (uint64_t) addr;
+  if (addrInt % 2 == 1) {
+    printf("WARNING: Working with unaligned buffer at 0x%lx \n", addrInt);
+    objIterator = (uint16_t *) addrInt -1;
+  } else {
+    objIterator = (uint16_t *) addrInt;
+  }
+
+  //Fast path
+  bool foundPsn = false;
+  for (int i = 0; i < size/2 ; i++){
+    if (*(objIterator + i) == poison_val)
+      foundPsn = true;
+  }
+  if (foundPsn == false) 
+    return true;
+
+  //Slow path
+  uint64_t byteItr = (uint64_t) addr;
+  for (int i = 0; i < size; i++) {
+    ref<Expr> byteExpr = tase_helper_read ( byteItr, 1);
+    if (!(isa<ConstantExpr> (byteExpr)))
+      return false;	
+  }
+  return true;
+}
+  
 //Todo:  Make fastpath lookup where we leverage poison checking instead of
 //full lookup.
 //tase_helper_read: This func exists because reads and writes to
@@ -4125,30 +4221,7 @@ void Executor::model_inst () {
   if (taseDebug) {
     printf("INTERPRETER: FOUND SPECIAL MODELED INST \n");
   }
-  uint64_t rip = target_ctx_gregs[REG_RIP].u64;
-
-  //Temporary hack until I figure out for sure if RAX is getting
-  //clobbered around sb_reopen jump sites
-  uint64_t eightBytes = *((uint64_t *) rip );
-  uint64_t firstSixBytes = eightBytes & 0x0000FFFFFFFFFFFF;
-  //printf ( "firstSixBytes is 0x%lx \n", firstSixBytes);
-
-  /*
-  
-    if (firstSixBytes == saveRAXOpc) {
-    printf("found saveRAX special case \n");
-    model_saveRAXOpc();
-    return;
-    }
-    
-  if (firstSixBytes == restoreRAXOpc) {
-    printf("Found restoreRAX special case \n");
-    model_restoreRAXOpc();
-    return;
-    }
-  */
-
-  
+  uint64_t rip = target_ctx_gregs[REG_RIP].u64;  
   
   if (rip == (uint64_t) &free) {
     printf("Modeling free \n");
@@ -4205,23 +4278,14 @@ void Executor::model_inst () {
     fprintf(modelLog, "  - unknown %d \n", target_ctx.abort_count_unknown);
 
     fprintf(modelLog, "Total calls to model_malloc            %d \n\n", model_malloc_calls);
-    fprintf(modelLog, "Total calls to ktest_start             %d \n",  ktest_start_calls);
-    fprintf(modelLog, "Total calls to ktest_connect           %d \n", ktest_connect_calls);
-    fprintf(modelLog, "Total calls to ktest_RAND_bytes        %d \n", ktest_RAND_bytes_calls);
-    fprintf(modelLog, "Total calls to ktest_RAND_pseudo_bytes %d \n", ktest_RAND_pseudo_bytes_calls);
-    fprintf(modelLog, "Total calls to ktest_raw_read_stdin    %d \n", ktest_raw_read_stdin_calls);
-    fprintf(modelLog, "Total calls to ktest_select            %d \n", ktest_select_calls );
-    fprintf(modelLog, "Total calls to ktest_writesocket       %d \n", ktest_writesocket_calls );
-    fprintf(modelLog, "Total calls to ktest_readsocket        %d \n", ktest_readsocket_calls );
-    
-    
-    fflush(modelLog);
-
+    printKTestCounters();
     
     model_shutdown();
   } else if (rip == (uint64_t) &memcpy) { 
     model_memcpy(); //Last 6 bytes of a buffer could be read
     //with an 8 byte read, which klee doesn't like Todo: fix    
+  } else if (rip == (uint64_t) &memset) {
+    model_memset(); //Just for performance testing
   } else if (rip == (uint64_t) &time ) {
     model_time();
   } else if (rip == (uint64_t) &gmtime) {
@@ -4250,13 +4314,45 @@ void Executor::model_inst () {
     model___isoc99_sscanf();
   } else if (rip == (uint64_t) &gethostbyname) {
     model_gethostbyname();
+  } else if (rip == (uint64_t) &EC_POINT_point2oct + 14) {
+    model_EC_POINT_point2oct();
+  } else if (rip == (uint64_t) &ECDH_compute_key + 14) {
+    model_ECDH_compute_key();
+  } else if (rip == (uint64_t) &EC_KEY_generate_key + 14 ) {
+    model_EC_KEY_generate_key();
+  } else if (rip == (uint64_t) &SHA1_Update + 14) {
+    model_SHA1_Update();
+  } else if (rip == (uint64_t) &SHA1_Final + 14) {
+    model_SHA1_Final();
+  } else if (rip == (uint64_t) &SHA256_Update + 14) {
+    model_SHA256_Update();
+  } else if (rip == (uint64_t) &SHA256_Final + 14) {
+    model_SHA256_Final();
+  } else if (rip == (uint64_t) &gcm_gmult_4bit + 14) {
+    model_gcm_gmult_4bit();
+  } else if (rip == (uint64_t) &gcm_ghash_4bit + 14) {
+    model_gcm_ghash_4bit();
+  } else if (rip == (uint64_t) &AES_encrypt + 14) {
+    model_AES_encrypt();
   } else if (rip == (uint64_t) &ktest_master_secret +14 || rip == (uint64_t) &ktest_master_secret) {
+
     fprintf(modelLog, "Entering ktest_master_secret model \n");
     fflush(modelLog);
+    if (stopAtMasterSecret) {
+      printf("Stopping at master secret call \n");
+      std::cout.flush();
+      std::exit(EXIT_FAILURE);
+      
+    }
+      
     model_ktest_master_secret();
   } else if (rip == (uint64_t)  &ktest_writesocket +14 || rip == (uint64_t) &ktest_writesocket) {
+    //fprintf(modelLog, "stopping at first writesocket call \n");
+    //fflush(modelLog);
     model_ktest_writesocket();
+    
   } else if (rip == (uint64_t) &ktest_readsocket +14 || rip == (uint64_t) &ktest_readsocket) {
+
     model_ktest_readsocket();
   } else if (rip == (uint64_t) &ktest_raw_read_stdin +14 || rip == (uint64_t) &ktest_raw_read_stdin) {
     model_ktest_raw_read_stdin();
@@ -4368,20 +4464,10 @@ bool isSpecialInst (uint64_t rip) {
   //Todo -- get rid of traps for RAND_add and RAND_load_file
   //  static const uint64_t modeledFns[] = { (uint64_t) &puts, (uint64_t)&exit, (uint64_t) &printf  /*, (uint64_t) &taseMakeSymbolic */ };
   
-  static const uint64_t modeledFns [] = {(uint64_t)&signal, (uint64_t)&malloc, (uint64_t)&read, (uint64_t)&write, (uint64_t)&connect, (uint64_t)&select, (uint64_t)&socket, (uint64_t) &getuid, (uint64_t) &geteuid, (uint64_t) &getgid, (uint64_t) &getegid, (uint64_t) &getenv, (uint64_t) &stat, (uint64_t) &free, (uint64_t) &realloc,  (uint64_t) &RAND_add, (uint64_t) &RAND_load_file, (uint64_t) &kTest_free, (uint64_t) &kTest_fromFile, (uint64_t) &kTest_getCurrentVersion, (uint64_t) &kTest_isKTestFile, (uint64_t) &kTest_numBytes, (uint64_t) &kTest_toFile, (uint64_t) &ktest_RAND_bytes, (uint64_t) &ktest_RAND_pseudo_bytes, (uint64_t) &ktest_connect, (uint64_t) &ktest_finish, (uint64_t) &ktest_master_secret, (uint64_t) &ktest_raw_read_stdin, (uint64_t) &ktest_readsocket, (uint64_t) &ktest_select, (uint64_t) &ktest_start, (uint64_t) &ktest_time, (uint64_t) &time, (uint64_t) &gmtime, (uint64_t) &gettimeofday, (uint64_t) &ktest_writesocket, (uint64_t) &fileno, (uint64_t) &fcntl, (uint64_t) &fopen, (uint64_t) &fopen64, (uint64_t) &fclose,  (uint64_t) &fwrite, (uint64_t) &fflush, (uint64_t) &fread, (uint64_t) &fgets, (uint64_t) &__isoc99_sscanf, (uint64_t) &gethostbyname, (uint64_t) &setsockopt, (uint64_t) &__ctype_tolower_loc, (uint64_t) &__ctype_b_loc, (uint64_t) &__errno_location,  (uint64_t) &BIO_printf, (uint64_t) &BIO_snprintf, (uint64_t) &vfprintf,  (uint64_t) &sprintf, (uint64_t) &tase_debug,   (uint64_t) &OpenSSLDie, (uint64_t) &shutdown , (uint64_t) &malloc_tase, (uint64_t) &realloc_tase, (uint64_t) &calloc_tase, (uint64_t) &getpid };
+  static const uint64_t modeledFns [] = {(uint64_t)&signal, (uint64_t)&malloc, (uint64_t)&read, (uint64_t)&write, (uint64_t)&connect, (uint64_t)&select, (uint64_t)&socket, (uint64_t) &getuid, (uint64_t) &geteuid, (uint64_t) &getgid, (uint64_t) &getegid, (uint64_t) &getenv, (uint64_t) &stat, (uint64_t) &free, (uint64_t) &realloc,  (uint64_t) &RAND_add, (uint64_t) &RAND_load_file, (uint64_t) &kTest_free, (uint64_t) &kTest_fromFile, (uint64_t) &kTest_getCurrentVersion, (uint64_t) &kTest_isKTestFile, (uint64_t) &kTest_numBytes, (uint64_t) &kTest_toFile, (uint64_t) &ktest_RAND_bytes, (uint64_t) &ktest_RAND_pseudo_bytes, (uint64_t) &ktest_connect, (uint64_t) &ktest_finish, (uint64_t) &ktest_master_secret, (uint64_t) &ktest_raw_read_stdin, (uint64_t) &ktest_readsocket, (uint64_t) &ktest_select, (uint64_t) &ktest_start, (uint64_t) &ktest_time, (uint64_t) &time, (uint64_t) &gmtime, (uint64_t) &gettimeofday, (uint64_t) &ktest_writesocket, (uint64_t) &fileno, (uint64_t) &fcntl, (uint64_t) &fopen, (uint64_t) &fopen64, (uint64_t) &fclose,  (uint64_t) &fwrite, (uint64_t) &fflush, (uint64_t) &fread, (uint64_t) &fgets, (uint64_t) &__isoc99_sscanf, (uint64_t) &gethostbyname, (uint64_t) &setsockopt, (uint64_t) &__ctype_tolower_loc, (uint64_t) &__ctype_b_loc, (uint64_t) &__errno_location,  (uint64_t) &BIO_printf, (uint64_t) &BIO_snprintf, (uint64_t) &vfprintf,  (uint64_t) &sprintf, (uint64_t) &tase_debug,   (uint64_t) &OpenSSLDie, (uint64_t) &shutdown , (uint64_t) &malloc_tase, (uint64_t) &realloc_tase, (uint64_t) &calloc_tase, (uint64_t) &getpid, (uint64_t) &SHA1_Update, (uint64_t) &SHA256_Update, (uint64_t) &AES_encrypt, (uint64_t) &gcm_gmult_4bit, (uint64_t) &gcm_ghash_4bit , (uint64_t) &EC_KEY_generate_key , (uint64_t) &ECDH_compute_key, (uint64_t) &EC_POINT_point2oct /* , (uint64_t) &memcpy, (uint64_t) &memset*/ };
   
   
   bool isModeled = std::find(std::begin(modeledFns), std::end(modeledFns), rip) != std::end(modeledFns);
-
-  uint64_t eightBytes = *((uint64_t *) rip );
-  uint64_t firstSixBytes = eightBytes & 0x0000FFFFFFFFFFFF;
-  //printf ( "firstSixBytes is 0x%lx \n", firstSixBytes);
-
-  /*
-  if (firstSixBytes == saveRAXOpc || firstSixBytes == restoreRAXOpc)
-    return true;
-
-  */
 
   //ABH: The plus 14 offset below is a temporary hack.
   //For modeled or prohibitive functions, we trap
@@ -4414,7 +4500,8 @@ bool isSpecialInst (uint64_t rip) {
       rip == (uint64_t) &ktest_select            + 14 ||
       rip == (uint64_t) &ktest_RAND_bytes        + 14 ||
       rip == (uint64_t) &ktest_RAND_pseudo_bytes + 14 ||
-      rip == (uint64_t) &ktest_master_secret     + 14
+      rip == (uint64_t) &ktest_master_secret     + 14 
+
       ) {
 
     printf("Found ktest trap \n");
@@ -4425,7 +4512,24 @@ bool isSpecialInst (uint64_t rip) {
   }
 
   
-  if (rip == (uint64_t) &sb_reopen || rip == (uint64_t) &sb_disabled || rip == (uint64_t) &target_exit || isModeled  || rip == ((uint64_t) &malloc_tase +14) || rip == ((uint64_t) &realloc_tase + 14)  )  {
+  if (
+      rip == (uint64_t) &sb_reopen ||
+      rip == (uint64_t) &sb_disabled ||
+      rip == (uint64_t) &target_exit ||
+      isModeled                      ||
+      rip == (uint64_t) &malloc_tase         + 14  ||
+      rip == (uint64_t) &realloc_tase        + 14  ||
+      rip == (uint64_t) &SHA1_Update         + 14  ||
+      rip == (uint64_t) &SHA1_Final          + 14  ||
+      rip == (uint64_t) &SHA256_Update       + 14  ||
+      rip == (uint64_t) &SHA256_Final        + 14  ||
+      rip == (uint64_t) &AES_encrypt         + 14  ||
+      rip == (uint64_t) &gcm_gmult_4bit      + 14  ||
+      rip == (uint64_t) &gcm_ghash_4bit      + 14  ||
+      rip == (uint64_t) &EC_KEY_generate_key + 14  ||
+      rip == (uint64_t) &ECDH_compute_key    + 14  ||
+      rip == (uint64_t) &EC_POINT_point2oct  + 14
+      )  {
     return true;
   }  else {
     return false;
@@ -4465,41 +4569,11 @@ void Executor::klee_interp_internal () {
     //printf("loopCtr is %d at addr 0x%lx \n", loopCtr, (uint64_t) &loopCtr);
    
 
-    bool killFlagsBeforeCmp = true;
-    //Begin hack for clearing flags on cmp -- this is not correct in the general sense (triggers for extra opcodes)
-    uint8_t * bytePtr = (uint8_t *)target_ctx_gregs[REG_RIP].u64;
-    uint8_t opc = *bytePtr;
-    /*
-    if (killFlagsBeforeCmp) {
-      if (opc == 0x3C || opc == 0x3D || opc == 0x80 || opc == 0x81 || opc == 0x83 || opc == 0x38 || opc == 0x39 || opc == 0x3A || opc == 0x3B || opc == 0x48 || opc == 0x4d) {
-	target_ctx_gregs_OS->write64(REG_EFL * 8, 0);
-      }
-    }//End flag hack
-    */
     
-    /*
-    uint32_t first = *( (uint32_t *) bytePtr);
-    first = first & 0x00FFFFFF;
-    
-    printf("First three opcodes are 0x%lx \n", first);
-
-    bytePtr += 3;
-
-    uint32_t second = *( (uint32_t *) bytePtr);
-    printf("Next four opcodes are 0x%lx \n", second);
-
-    uint64_t potentialAddr = (uint64_t) second;
-    
-    printf("tase_springboard located at 0x%lx \n", (uint64_t) &tase_springboard);
 
     
-    if (first == 0x2524ff && potentialAddr == (uint64_t) &tase_springboard) {
-      //break and go back
-      printf("Found jmp to springboard \n");
-      break;
-    }
     
-    */
+    
     uint64_t rip = target_ctx_gregs[REG_RIP].u64;    
     if (interpCtr > 1000000000) {
       printf("Huge interpCtr, exiting with RIP 0x%lx \n", rip);
@@ -4507,7 +4581,18 @@ void Executor::klee_interp_internal () {
       std::exit(EXIT_FAILURE);
     }
 
-    
+    bool killFlagsHack = false;
+
+    if ( (rip == (uint64_t) &sb_reopen ||
+	  rip == (uint64_t) &sb_open   ||
+	  rip == (uint64_t) &sb_disabled
+	  )
+	 && killFlagsHack)
+      {
+	uint64_t zero = 0;
+	ref<ConstantExpr> zeroExpr = ConstantExpr::create(zero, Expr::Int64);
+	target_ctx_gregs_OS->write(REG_EFL * 8, zeroExpr);
+      }
     
     if (resumeNativeExecution()){
       break;
@@ -4568,6 +4653,10 @@ void Executor::klee_interp_internal () {
 
     if (taseDebug) 
        printDebugInterpFooter();
+
+    //Kludge to get us back to native execution for prohib fns with concrete input
+    if (forceNativeRet)
+      break;
   }
 
   static int numReturns = 0;
