@@ -955,8 +955,12 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
 
   //Either condition is always true, always false, or we need to fork.
   if (res==Solver::True) {
+    printf("DEBUG:FORK - Solver returned true \n");
+    std::cout.flush();
     return StatePair(&current, 0);
   } else if (res==Solver::False) {
+    printf("Debug:FORK - Solver returned false \n");
+    std::cout.flush();
     return StatePair(0, &current);
   } else {
     TimerStatIncrementer timer(stats::forkTime);
@@ -4569,11 +4573,6 @@ void Executor::klee_interp_internal () {
     //printf("loopCtr is %d at addr 0x%lx \n", loopCtr, (uint64_t) &loopCtr);
    
 
-    
-
-    
-    
-    
     uint64_t rip = target_ctx_gregs[REG_RIP].u64;    
     if (interpCtr > 1000000000) {
       printf("Huge interpCtr, exiting with RIP 0x%lx \n", rip);
@@ -4581,7 +4580,7 @@ void Executor::klee_interp_internal () {
       std::exit(EXIT_FAILURE);
     }
 
-    bool killFlagsHack = false;
+    
 
     if ( (rip == (uint64_t) &sb_reopen ||
 	  rip == (uint64_t) &sb_open   ||
@@ -4589,9 +4588,11 @@ void Executor::klee_interp_internal () {
 	  )
 	 && killFlagsHack)
       {
+	printf("Killing flags \n");
 	uint64_t zero = 0;
 	ref<ConstantExpr> zeroExpr = ConstantExpr::create(zero, Expr::Int64);
-	target_ctx_gregs_OS->write(REG_EFL * 8, zeroExpr);
+	tase_helper_write((uint64_t) &target_ctx_gregs[REG_EFL], zeroExpr);
+	//target_ctx_gregs_OS->write(REG_EFL * 8, zeroExpr);
       }
     
     if (resumeNativeExecution()){
@@ -4628,21 +4629,43 @@ void Executor::klee_interp_internal () {
       run(*GlobalExecutionStatePtr); 
     }
 
+    //Debug -- Print a sample value for flags
+    ref<Expr> RAXExpr = target_ctx_gregs_OS->read(REG_RAX * 8, Expr::Int64);
+    if (!isa<ConstantExpr> (RAXExpr) ) {
+      printf("Non constant RAX found. \n");
+      int res = printAllPossibleValues(RAXExpr);
+      printf("printAllPossibleValues returned %d \n", res);
+    }
+    
+    //Debug -- Print a sample value for flags
+    ref<Expr> EflExpr = target_ctx_gregs_OS->read(REG_EFL * 8, Expr::Int64);
+    if (!isa<ConstantExpr> (EflExpr) ) {
+      printf("Non constant eflags found. \n");
+      int res = printAllPossibleValues(EflExpr);
+      printf("printAllPossibleValues returned %d \n", res);
+    }
+    
     //We always require a completely concrete RIP for execution, so deal with it here
     //if it's a symbolic expression as a result of interpretation.
 
     ref<Expr> RIPExpr = target_ctx_gregs_OS->read(REG_RIP * 8, Expr::Int64);
     if (!(isa<ConstantExpr>(RIPExpr))) {
+      printf("Detected symbolic RIP \n");
+      printAllPossibleValues(RIPExpr);
       
-#ifdef addBM
-      printf("addBMResult array starts at 0x%lx \n", addBMResultPtr);
-      for (int i = 0; i < numEntries; i++)  
-	printf("numEntries\[%d\] is %u at addr 0x%lx \n", i, addBMResultPtr[i], &addBMResultPtr[i]);    
-#endif
+
+      ref <Expr> uniqueRIPExpr  = toUnique(*GlobalExecutionStatePtr,RIPExpr);
+      if (isa<ConstantExpr> (uniqueRIPExpr)) {
+	printf("Only one valid value for RIP \n");
+	tase_helper_write((uint64_t) &target_ctx_gregs[REG_RIP], uniqueRIPExpr);
+	
+      } else {
       
-      printf("Calling forkOnPossibleRIPValues() \n");
+	printf("Calling forkOnPossibleRIPValues() \n");
+	std::cout.flush();
+	forkOnPossibleRIPValues(RIPExpr);
+      }
       std::cout.flush();
-      forkOnPossibleRIPValues(RIPExpr);
     }
     ref<Expr> FinalRIPExpr = target_ctx_gregs_OS->read(REG_RIP * 8, Expr::Int64);
     if (!(isa<ConstantExpr>(FinalRIPExpr))) {
@@ -4650,6 +4673,7 @@ void Executor::klee_interp_internal () {
       std::cout.flush();
       std::exit(EXIT_FAILURE);
     }
+    
 
     if (taseDebug) 
        printDebugInterpFooter();
@@ -4672,6 +4696,56 @@ void Executor::klee_interp_internal () {
   }
   
   return;
+}
+
+
+//For debugging
+int Executor::printAllPossibleValues (ref <Expr> inputExpr) {
+  printf("Calling printAllPossibleValues at rip 0x%lx \n", target_ctx_gregs[REG_RIP].u64);
+  
+  if (isa<ConstantExpr> (inputExpr)) {
+    printf("printAllPossibleValues called on Constant Expr \n ");
+    return 1;
+  }
+  ref <ConstantExpr> trueExpr = ConstantExpr::create(1, Expr::Bool);
+  ref <ConstantExpr> solution;
+  ref<Expr> theExpr = AndExpr::create(inputExpr, trueExpr);
+  bool success = solver->getValue(*GlobalExecutionStatePtr, theExpr, solution);
+  if (!success)
+    printf("ERROR: Couldn't get solution in printAllPossibleValues \n");
+
+  uint64_t value = solution->getZExtValue();
+  printf(" Found solution 0x%lx \n",  value);
+
+  bool res = false;
+  ref<Expr> equalsExpr  = EqExpr::create(solution, inputExpr); 
+  
+  solver->mustBeTrue(*GlobalExecutionStatePtr,equalsExpr , res);
+
+  printf("mustBeTrue on first solution returns %d \n", res);
+
+  if (res == true)
+    return 1;
+  else
+    return 2; //Todo: Fixme
+
+  
+  //Or we could just copy inputExpr 
+  /*
+  for (int i = 0; i < 20 ; i++) {
+    ref <ConstantExpr> solution;
+    bool success = solver->getValue(*GlobalExecutionStatePtr, theExpr, solution);
+    if (!success)
+      printf("ERROR: Couldn't get solution in printAllPossibleValues \n");
+
+    uint64_t value = solution->getZExtValue();
+    printf(" On iteration %d, found solution 0x%lx \n", i, value);
+    ref<Expr> notEqualsSolution = NotExpr::create(EqExpr::create(inputExpr,solution));
+    theExpr = AndExpr::create(theExpr, notEqualsSolution);
+  }
+  */
+  std::cout.flush();
+
 }
 
 //Take an Expr and find all the possible concrete solutions.
@@ -4739,7 +4813,7 @@ void printCtx(greg_t * registers ) {
   printf("RCX  : 0x%lx \n", registers[REG_RCX].u64);
   printf("RSP  : 0x%lx \n", registers[REG_RSP].u64);
   printf("RIP  : 0x%lx \n", registers[REG_RIP].u64);
-  //printf("EFL  : 0x%lx \n", registers[REG_EFL].u64);
+  printf("EFL  : 0x%lx \n", registers[REG_EFL].u64);
 
   return;
 }

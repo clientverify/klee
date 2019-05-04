@@ -630,6 +630,8 @@ void Executor::model_ktest_select() {
 	) {
 
     fprintf(modelLog, "Before ktest_select, readfds is 0x%lx, writefds is 0x%lx \n", *( (uint64_t *) target_ctx_gregs[REG_RSI].u64), *( (uint64_t *) target_ctx_gregs[REG_RDX].u64));
+
+    fprintf(modelLog, "DBG: Pushed RV for model_ktest_select is 0x%lx \n", *((uint64_t *) target_ctx_gregs[REG_RSP].u64 ) );
     fflush(modelLog);
 
     if (enableMultipass) {
@@ -644,13 +646,13 @@ void Executor::model_ktest_select() {
 
       fprintf(modelLog, "After ktest_select, readfds is 0x%lx, writefds is 0x%lx \n", *( (uint64_t *) target_ctx_gregs[REG_RSI].u64), *( (uint64_t *) target_ctx_gregs[REG_RDX].u64));
       fflush(modelLog);
-    }
+    
       
       //Fake a return
       uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
       target_ctx_gregs[REG_RIP].u64 = retAddr;
       target_ctx_gregs[REG_RSP].u64 += 8;
-    
+    }
   } else {
     printf("ERROR in model_ktest_select -- symbolic args \n");
     std::cout.flush();
@@ -712,10 +714,15 @@ void Executor::model_ktest_RAND_bytes() {
        (isa<ConstantExpr>(arg1Expr)) &&
        (isa<ConstantExpr>(arg2Expr)) ) {
 
+    char * buf = (char *) target_ctx_gregs[REG_RDI].u64;
+    int num    = (int) target_ctx_gregs[REG_RSI].u64;
 
     if (enableMultipass) {
-      tase_make_symbolic((uint64_t) &target_ctx_gregs[REG_RAX].u64, 4, "rng");
-      
+      tase_make_symbolic((uint64_t) buf, num, "rng");
+       //Double check this
+      int res = num;
+      ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+      target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
     } else {
       //return val
       int res = ktest_RAND_bytes_tase((unsigned char *) target_ctx_gregs[REG_RDI].u64, (int) target_ctx_gregs[REG_RSI].u64);
@@ -748,14 +755,17 @@ void Executor::model_ktest_RAND_pseudo_bytes() {
        (isa<ConstantExpr>(arg1Expr)) &&
        (isa<ConstantExpr>(arg2Expr)) ) {
 
+    char * buf = (char *) target_ctx_gregs[REG_RDI].u64;
+    int num   = (int) target_ctx_gregs[REG_RSI].u64;
+    
     //return result of call
 
     if (enableMultipass) {
 
-      tase_make_symbolic((uint64_t) &target_ctx_gregs[REG_RAX].u64, 4, "prng");
+      tase_make_symbolic((uint64_t) buf, num, "prng");
 
       //Double check this
-      int res = 4;
+      int res = num;
       ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
       target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
       
@@ -2176,6 +2186,15 @@ void Executor::model_write() {
   } 
 }
 
+
+static void print_fd_set(int nfds, fd_set *fds) {
+  int i;
+  for (i = 0; i < nfds; i++) {
+    printf(" %d", FD_ISSET(i, fds));
+  }
+  printf("\n");
+}
+
 //int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout)
 //https://www.gnu.org/software/libc/manual/html_node/Waiting-for-I_002fO.html
 //We examine fds 0 to ndfs-1.  Don't model the results of exceptfds, at least not yet.
@@ -2215,12 +2234,25 @@ void Executor::model_select() {
     bool make_writefds_symbolic [nfds];
 
     ref<Expr> bitsSetExpr = ConstantExpr::create(0, Expr::Int8);
+
+
+    printf("nfds is %d \n", nfds);
+    printf("\n");
+    printf("IN readfds  = ");
+    print_fd_set(nfds, readfds);
+    printf("IN writefds = ");
+    print_fd_set(nfds, writefds);
+    std::cout.flush();
     
     //Go through each fd.  Really out to be able to handle a symbolic
     //indicator var for a given fds_bits entry, but not worried about that for now.
     for (uint64_t i = 0; i < nfds ; i++) {
-      //if given fd is set in readfds, return sym val 
+      //if given fd is set in readfds, return sym val
+      
+      printf( "Read FD located at 0x%lx\n", (uint64_t) &(readfds->fds_bits[i]) );
+      std::cout.flush();
       ref<Expr> isReadFDSetExpr = tase_helper_read((uint64_t) &(readfds->fds_bits[i]), Expr::Int8);
+      isReadFDSetExpr->dump();
       if (isa<ConstantExpr>(isReadFDSetExpr)) {
 	if (FD_ISSET(i,readfds)) {
 	  make_readfds_symbolic[i] = true;
@@ -2234,6 +2266,8 @@ void Executor::model_select() {
 
       //if given fd is set in writefds,  return sym val
       ref<Expr> isWriteFDSetExpr = tase_helper_read((uint64_t) &(writefds->fds_bits[i]), Expr::Int8);
+      printf("Write fd located at 0x%lx \n", (uint64_t) &(readfds->fds_bits[i]) );
+      std::cout.flush();
       if (isa<ConstantExpr>(isWriteFDSetExpr) ) {
 	if (FD_ISSET(i,writefds)) {
 	  make_writefds_symbolic[i] = true;
@@ -2250,29 +2284,33 @@ void Executor::model_select() {
     for (uint64_t j = 0; j < nfds; j++) {
       if (make_readfds_symbolic[j]) {
 
+	tase_make_symbolic((uint64_t) &(readfds->fds_bits[j]), 1, "ReadFDVal");
+
+	/*
 	void * readFDResultBuf = malloc(4); //Technically this only needs to be a bit or byte
 	//Get the MO, then call executeMakeSymbolic()
 	MemoryObject * readFDResultBuf_MO = memory->allocateFixed( (uint64_t) readFDResultBuf ,4,NULL);
 	std::string nameString = "readFDSymVar " + std::to_string(times_model_select_called) + " " + std::to_string(j);
 	readFDResultBuf_MO->name = nameString;
 	executeMakeSymbolic(*GlobalExecutionStatePtr, readFDResultBuf_MO, nameString);
-	
 	const ObjectState *constreadFDResultBuf_OS = GlobalExecutionStatePtr->addressSpace.findObject(readFDResultBuf_MO);
 	ObjectState * readFDResultBuf_OS = GlobalExecutionStatePtr->addressSpace.getWriteable(readFDResultBuf_MO,constreadFDResultBuf_OS);
-
+	
+	*/
+	ref<Expr> fd_val = tase_helper_read((uint64_t) &(readfds->fds_bits[j]), 1);
 	//Got to be a better way to write this... but we basically constrain the
 	//sym var representing readfds[j] to be 0 or 1.
-	ref <Expr> readFDExpr = readFDResultBuf_OS->read(0,Expr::Int8);
+	//ref <Expr> readFDExpr = readFDResultBuf_OS->read(0,Expr::Int8);
 	ref <ConstantExpr> zero = ConstantExpr::create(0, Expr::Int8);
 	ref <ConstantExpr> one = ConstantExpr::create(1, Expr::Int8);
-	ref<Expr> equalsZeroExpr = EqExpr::create(readFDExpr,zero);
-	ref<Expr> equalsOneExpr = EqExpr::create(readFDExpr, one);
+	ref<Expr> equalsZeroExpr = EqExpr::create(fd_val,zero);
+	ref<Expr> equalsOneExpr = EqExpr::create(fd_val, one);
 	ref<Expr> equalsZeroOrOneExpr = OrExpr::create(equalsZeroExpr, equalsOneExpr);
 	addConstraint(*GlobalExecutionStatePtr, equalsZeroOrOneExpr);
 
-	tase_helper_write((uint64_t) &(readfds->fds_bits[j]), readFDExpr);
+        
 
-	bitsSetExpr = AddExpr::create(bitsSetExpr, readFDExpr);
+	bitsSetExpr = AddExpr::create(bitsSetExpr, fd_val);
 	
       } else {
 	ref <ConstantExpr> zeroVal = ConstantExpr::create(0, Expr::Int8);
@@ -2280,27 +2318,23 @@ void Executor::model_select() {
       }
 
       if (make_writefds_symbolic[j]) {
-	void * writeFDResultBuf = malloc(4); //Technically this only needs to be a bit or byte
-	//Get the MO, then call executeMakeSymbolic()
-	MemoryObject * writeFDResultBuf_MO = memory->allocateFixed( (uint64_t) writeFDResultBuf ,4,NULL);
-	std::string nameString = "writeFDSymVar " + std::to_string(times_model_select_called) + " " + std::to_string(j);
-	writeFDResultBuf_MO->name = nameString;
-	executeMakeSymbolic(*GlobalExecutionStatePtr, writeFDResultBuf_MO, nameString);
-	
-	const ObjectState *constwriteFDResultBuf_OS = GlobalExecutionStatePtr->addressSpace.findObject(writeFDResultBuf_MO);
-	ObjectState * writeFDResultBuf_OS = GlobalExecutionStatePtr->addressSpace.getWriteable(writeFDResultBuf_MO,constwriteFDResultBuf_OS);
+
+
+	tase_make_symbolic((uint64_t) &(writefds->fds_bits[j]), 1, "WriteFDVal");
+
+	ref<Expr> fd_val = tase_helper_read((uint64_t) &(writefds->fds_bits[j]), 1);
 
 	//Got to be a better way to write this... but we basically constrain the
 	//sym var representing writefds[j] to be 0 or 1.
-	ref <Expr> writeFDExpr = writeFDResultBuf_OS->read(0,Expr::Int8);
+        
 	ref <ConstantExpr> zero = ConstantExpr::create(0, Expr::Int8);
 	ref <ConstantExpr> one = ConstantExpr::create(1, Expr::Int8);
-	ref<Expr> equalsZeroExpr = EqExpr::create(writeFDExpr,zero);
-	ref<Expr> equalsOneExpr = EqExpr::create(writeFDExpr, one);
+	ref<Expr> equalsZeroExpr = EqExpr::create(fd_val,zero);
+	ref<Expr> equalsOneExpr = EqExpr::create(fd_val, one);
 	ref<Expr> equalsZeroOrOneExpr = OrExpr::create(equalsZeroExpr, equalsOneExpr);
 	addConstraint(*GlobalExecutionStatePtr, equalsZeroOrOneExpr);
-	tase_helper_write((uint64_t)&(writefds->fds_bits[j]), writeFDExpr);
-	bitsSetExpr = AddExpr::create(bitsSetExpr, writeFDExpr);
+        
+	bitsSetExpr = AddExpr::create(bitsSetExpr, fd_val);
 	
       } else {
 	ref <ConstantExpr> zeroVal = ConstantExpr::create(0, Expr::Int8);
@@ -2308,8 +2342,24 @@ void Executor::model_select() {
       }
     }
 
+    ref <ConstantExpr> zero = ConstantExpr::create(0, Expr::Int8);
+    ref<Expr> successExpr = SgtExpr::create (bitsSetExpr, zero);
+    //addConstraint(*GlobalExecutionStatePtr, successExpr);
+    
     //For now, just model with a successful return.  But we could make this symbolic.
+    printf("Attempting to write to RAX in model_select ... \n");
+    if (isa<ConstantExpr> (bitsSetExpr))
+      printf("RAX (bits set ) appears to be constant in model_select");
+    std::cout.flush();
+
+    tase_make_symbolic((uint64_t) &target_ctx_gregs[REG_RAX], 8, "SelectReturn");
+
+    /*
     target_ctx_gregs_OS->write(REG_RAX * 8, bitsSetExpr);
+    ref<ConstantExpr> offset = ConstantExpr::create(REG_RAX * 8, Expr::Int16);  //Why 16?
+    target_ctx_gregs_OS->applyPsnOnWrite( offset , bitsSetExpr);
+    */
+    std::cout.flush();
     //bump RIP and interpret next instruction
     //target_ctx_gregs[REG_RIP].u64 = target_ctx_gregs[REG_RIP].u64 +5;
     //printf("INTERPRETER: Exiting model_select \n");

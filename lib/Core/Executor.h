@@ -368,7 +368,8 @@ private:
   
   //AH: Internal helper functions--------------------------
 
-
+  int printAllPossibleValues(ref<Expr> input);
+  
   //Tase helper to write an expr directly to an addr.  Width
   //(1/2/4/8 bytes) is inferred based on type of val.
   //Written because KLEE typically requires mem ops in terms of an
