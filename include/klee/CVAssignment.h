@@ -70,6 +70,8 @@ class CVAssignment : public klee::Assignment {
     name_bindings.clear();
   }
 
+  void printAllAssignments(FILE * f);
+  
   size_t size() {
     return name_bindings.size();
   }

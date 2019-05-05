@@ -3816,6 +3816,9 @@ KFunction * findInterpFunction (greg_t * registers, KModule * kmod) {
 //Populate a buffer at addr with len bytes of unconstrained symbolic data.
 //We make the symbolic memory object at a malloc'd address and write the bytes to addr.
 void Executor::tase_make_symbolic(uint64_t addr, uint64_t len, char * name)  {
+  printf("tase_make_symbolic called on buf 0xlx with size 0xlx named %s \n", addr, len, name);
+  std::cout.flush();
+  
   void * buf = malloc(len);
   MemoryObject * bufMO = memory->allocateFixed((uint64_t) buf, len,  NULL);
   std::string nameString = name;
@@ -3984,7 +3987,7 @@ bool Executor::isBufferEntirelyConcrete (uint64_t addr, int size) {
   //Slow path
   uint64_t byteItr = (uint64_t) addr;
   for (int i = 0; i < size; i++) {
-    ref<Expr> byteExpr = tase_helper_read ( byteItr, 1);
+    ref<Expr> byteExpr = tase_helper_read ( byteItr +i , 1);
     if (!(isa<ConstantExpr> (byteExpr)))
       return false;	
   }
@@ -4353,6 +4356,9 @@ void Executor::model_inst () {
   } else if (rip == (uint64_t)  &ktest_writesocket +14 || rip == (uint64_t) &ktest_writesocket) {
     //fprintf(modelLog, "stopping at first writesocket call \n");
     //fflush(modelLog);
+    printf("First writesocket call \n");
+    std::cout.flush();
+    //std::exit(EXIT_SUCCESS);
     model_ktest_writesocket();
     
   } else if (rip == (uint64_t) &ktest_readsocket +14 || rip == (uint64_t) &ktest_readsocket) {
@@ -4636,7 +4642,7 @@ void Executor::klee_interp_internal () {
       int res = printAllPossibleValues(RAXExpr);
       printf("printAllPossibleValues returned %d \n", res);
     }
-    
+    std::cout.flush();
     //Debug -- Print a sample value for flags
     ref<Expr> EflExpr = target_ctx_gregs_OS->read(REG_EFL * 8, Expr::Int64);
     if (!isa<ConstantExpr> (EflExpr) ) {
@@ -4644,7 +4650,7 @@ void Executor::klee_interp_internal () {
       int res = printAllPossibleValues(EflExpr);
       printf("printAllPossibleValues returned %d \n", res);
     }
-    
+    std::cout.flush();
     //We always require a completely concrete RIP for execution, so deal with it here
     //if it's a symbolic expression as a result of interpretation.
 
@@ -4720,14 +4726,14 @@ int Executor::printAllPossibleValues (ref <Expr> inputExpr) {
   bool res = false;
   ref<Expr> equalsExpr  = EqExpr::create(solution, inputExpr); 
   
-  solver->mustBeTrue(*GlobalExecutionStatePtr,equalsExpr , res);
+  //solver->mustBeTrue(*GlobalExecutionStatePtr,equalsExpr , res);
 
-  printf("mustBeTrue on first solution returns %d \n", res);
-
-  if (res == true)
+  //printf("mustBeTrue on first solution returns %d \n", res);
+  
+  //if (res == true)
     return 1;
-  else
-    return 2; //Todo: Fixme
+    //else
+    //return 2; //Todo: Fixme
 
   
   //Or we could just copy inputExpr 
@@ -4744,7 +4750,7 @@ int Executor::printAllPossibleValues (ref <Expr> inputExpr) {
     theExpr = AndExpr::create(theExpr, notEqualsSolution);
   }
   */
-  std::cout.flush();
+  //std::cout.flush();
 
 }
 

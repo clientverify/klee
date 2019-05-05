@@ -347,6 +347,13 @@ void Executor::model_ktest_start() {
 }
 
 
+void printBuf(void * buf, int count) {
+  for (int i = 0; i < count; i++)
+    printf("%x", *((uint8_t *) buf + i));
+  printf("\n\n");
+  std::cout.flush();
+}
+
 //writesocket(int fd, const void * buf, size_t count)
 void Executor::model_ktest_writesocket() {
   ktest_writesocket_calls++;
@@ -372,19 +379,25 @@ void Executor::model_ktest_writesocket() {
 
     if (debugMultipass) {
 	fprintf(modelLog, "MULTIPASS DEBUG: at call to ktest_writesocket round %d pass %d \n", roundCount, passCount);
-	fprintf(modelLog, "Stopping at call to writesocket \n");
+	//fprintf(modelLog, "Stopping at call to writesocket \n");
 	printProhibCounters();
 	printKTestCounters();
 	//std::exit(EXIT_FAILURE);
       }
+
+   
+    
+    bool concWrite = isBufferEntirelyConcrete((uint64_t)buf, count);
+    if (concWrite)
+      printf("Buffer entirely concrete for writesock call \n");
+    else
+      printf("Symbolic data in buffer for writesock call \n");
+
+    std::cout.flush();
     
     if (enableMultipass) {
       
-      
-      
-
-
-
+     
       //Basic structure comes from NetworkManager in klee repo of cliver.
       //Get log entry for c2s
       KTestObject *o = KTOV_next_object(&ktov, ktest_object_names[CLIENT_TO_SERVER]);
@@ -392,6 +405,13 @@ void Executor::model_ktest_writesocket() {
 	fprintf(modelLog,"VERIFICATION ERROR: mismatch in replay size \n");
       }
 
+      printf("Buffer in writesock call : \n");
+      printBuf ((void *) buf, count);
+
+      printf("Buffer in            log : \n");
+      printBuf ((void *) o->bytes, count);
+      
+      
       //Create write condition
       klee::ref<klee::Expr> write_condition = klee::ConstantExpr::alloc(1, klee::Expr::Bool);
       for (int i = 0; i < count; i++) {
@@ -399,6 +419,16 @@ void Executor::model_ktest_writesocket() {
                              klee::ConstantExpr::alloc(o->bytes[i], klee::Expr::Int8));
 	write_condition = klee::AndExpr::create(write_condition, condition);
       }
+
+      //Fast path
+      /*
+      if (concWrite) {
+	int cmp = strncmp((const char *) buf, (const char *) o->bytes, count);
+	if (cmp == 0 && count == o->numBytes)
+	  printf("Concrete match between verifier and log message \n");
+	std::cout.flush();
+	std::exit(EXIT_SUCCESS);
+	}*/
       
       //Check validity of write condition
       if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(write_condition)) {
@@ -419,6 +449,16 @@ void Executor::model_ktest_writesocket() {
       if (!isa<ConstantExpr>(write_condition)) {
 	currMPA.solveForBindings(solver->solver, write_condition,GlobalExecutionStatePtr);
       }
+
+      //print assignments
+      printf("About to print assignments \n");
+      std::cout.flush();
+      
+      currMPA.printAllAssignments(NULL);
+
+      printf("DBG: Exiting early in model_writesocket \n");
+      std::exit(EXIT_SUCCESS);
+      
       
       //Determine if we should execute another pass
       //CVAssignment  * curr_MPA = &(GlobalExecutionStatePtr->multi_pass_assignment);
@@ -2243,6 +2283,53 @@ void Executor::model_select() {
     printf("IN writefds = ");
     print_fd_set(nfds, writefds);
     std::cout.flush();
+
+
+    
+    bool debugSelect = true;
+    if (debugSelect) {
+      printf("Forcing select return for debugging \n");
+      //tase_helper_write((uint64_t) &(writefds->fds_bits[3]), ConstantExpr::create(1, Expr::Int8) );
+      tase_make_symbolic((uint64_t) &(writefds->fds_bits[3]), 1, "WriteFDVal");
+      ref<Expr> write_fd_val = tase_helper_read((uint64_t) &(writefds->fds_bits[3]), 1);
+      ref <ConstantExpr> zero = ConstantExpr::create(0, Expr::Int8);
+      ref <ConstantExpr> one = ConstantExpr::create(1, Expr::Int8);
+      ref<Expr> equalsZeroExpr = EqExpr::create(write_fd_val,zero);
+      ref<Expr> equalsOneExpr = EqExpr::create(write_fd_val, one);
+      ref<Expr> equalsZeroOrOneExpr = OrExpr::create(equalsZeroExpr, equalsOneExpr);
+      addConstraint(*GlobalExecutionStatePtr, equalsZeroOrOneExpr);
+
+
+      tase_helper_write( (uint64_t) &(readfds->fds_bits[3]), ConstantExpr::create(0, Expr::Int8));
+
+
+      tase_make_symbolic ( (uint64_t) &(target_ctx_gregs[REG_RAX]), 8, "SelectReturnVal");
+      ref<Expr> ret_val = tase_helper_read((uint64_t) &(target_ctx_gregs[REG_RAX]), 8);
+      ref<Expr> retEqualsZeroExpr = EqExpr::create(ret_val, zero);
+      ref<Expr> retEqualsOneExpr  = EqExpr::create(ret_val, one);
+      ref<Expr> retEqualsZeroOrOneExpr = OrExpr::create(retEqualsZeroExpr, retEqualsOneExpr);
+      addConstraint(*GlobalExecutionStatePtr, retEqualsZeroOrOneExpr);
+      
+      //tase_helper_write( (uint64_t)  &(target_ctx_gregs[REG_RAX]), ConstantExpr::create(1, Expr::Int64) );
+
+
+
+
+      printf("nfds is %d \n", nfds);
+      printf("\n");
+      printf("OUT readfds  = ");
+      print_fd_set(nfds, readfds);
+      printf("OUT writefds = ");
+      print_fd_set(nfds, writefds);
+      std::cout.flush();
+
+      //fake a ret
+      uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+      target_ctx_gregs[REG_RIP].u64 = retAddr;
+      target_ctx_gregs[REG_RSP].u64 += 8;
+
+      return;
+    }
     
     //Go through each fd.  Really out to be able to handle a symbolic
     //indicator var for a given fds_bits entry, but not worried about that for now.
@@ -2266,7 +2353,7 @@ void Executor::model_select() {
 
       //if given fd is set in writefds,  return sym val
       ref<Expr> isWriteFDSetExpr = tase_helper_read((uint64_t) &(writefds->fds_bits[i]), Expr::Int8);
-      printf("Write fd located at 0x%lx \n", (uint64_t) &(readfds->fds_bits[i]) );
+      printf("Write fd located at 0x%lx \n", (uint64_t) &(writefds->fds_bits[i]) );
       std::cout.flush();
       if (isa<ConstantExpr>(isWriteFDSetExpr) ) {
 	if (FD_ISSET(i,writefds)) {

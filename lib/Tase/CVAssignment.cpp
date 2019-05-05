@@ -98,9 +98,47 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
 }
 
 
+void CVAssignment::printAllAssignments(FILE * fp) {
+  std::vector<const klee::Array *> objects;
+  std::vector<std::vector<unsigned char> > values;
+  
+  if (fp == NULL) {
+    for (std::map<const Array *, std::vector<unsigned char> >::iterator it = bindings.begin(); it != bindings.end(); it++) {
+      objects.push_back(it->first);
+      values.push_back(it->second);
+    }
+    
+    printf("MULTIPASS DEBUG: Printing %d assignments \n", objects.size());
+    
+    std::vector< std::vector<unsigned char> >::iterator valIt =
+      values.begin();
+    for (std::vector<const klee::Array*>::iterator it = objects.begin(),
+	   ie = objects.end(); it != ie; ++it) {
+      const klee::Array *os = *it;
+      std::vector<unsigned char> &arr = *valIt;
+      std::string nameStr = os->name;
+      printf("\n-------------------------\n");
+      printf("Printing assignment for variable %s \n", nameStr.c_str());
+      std::cout.flush();
 
+      uint16_t dataSize = arr.size();
+      printf("%d bytes in assignment \n",dataSize);
+      for (int i = 0; i < dataSize; i++) {
+        
+	printf("%x", arr[i]);
+	std::cout.flush();
+	
+      }
+      printf("\n-------------------------\n");
+      ++valIt;
+      
+    }
 
-
+    std::cout.flush();
+  } else {
+    printf("Assignment printing not yet generalized for output to arbitrary file descriptors \n");
+  }
+}
 //Take a list of constraints and their values, and a buffer.  Return size of serialization.
 
 // |Header (magic)|| Header (# records) ||Rec1 name size X ||Rec1 val size Y||  Rec1 name   ||  Rec1 data   |
