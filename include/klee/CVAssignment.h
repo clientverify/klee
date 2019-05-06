@@ -45,7 +45,7 @@ class CVAssignment : public klee::Assignment {
   void addBindings(std::vector<const klee::Array*> &objects, 
                    std::vector< std::vector<unsigned char> > &values);
 
-  CVAssignment * deserializeAssignments ( void * buf, int bufSize, Executor * exec ) ;
+  void deserializeAssignments ( void * buf, int bufSize, Executor * exec, CVAssignment * cv ) ;
   
   const klee::Array* getArray(std::string &name) {
     if (name_bindings.find(name) != name_bindings.end()) {

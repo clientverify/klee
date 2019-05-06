@@ -99,6 +99,9 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
 
 
 void CVAssignment::printAllAssignments(FILE * fp) {
+  printf("Entering printAllAssignments \n");
+  std::cout.flush();
+
   std::vector<const klee::Array *> objects;
   std::vector<std::vector<unsigned char> > values;
   
@@ -107,8 +110,15 @@ void CVAssignment::printAllAssignments(FILE * fp) {
       objects.push_back(it->first);
       values.push_back(it->second);
     }
-    
+
     printf("MULTIPASS DEBUG: Printing %d assignments \n", objects.size());
+    std::cout.flush();
+
+
+    for (std::map<std::string, const klee::Array*>::iterator it = name_bindings.begin(); it != name_bindings.end(); it++)
+      printf("Found name %s \n", (it->first).c_str());
+    
+    std::cout.flush();
     
     std::vector< std::vector<unsigned char> >::iterator valIt =
       values.begin();
@@ -262,7 +272,7 @@ void CVAssignment::serializeAssignments(void * buf, int bufSize) {
 
 
 
-CVAssignment * deserializeAssignments ( void * buf, int bufSize, Executor * exec) {
+void deserializeAssignments ( void * buf, int bufSize, Executor * exec,  CVAssignment * CV) {
 
   if (debugSerial) {
     printf("Attempting to deserialize multipass assignments from buffer at 0x%lx \n with size %d \n", (uint64_t) buf, bufSize);
@@ -345,14 +355,18 @@ CVAssignment * deserializeAssignments ( void * buf, int bufSize, Executor * exec
 
   //Actually add bindings
 
-  CVAssignment cva =  CVAssignment(objects,values);
-  return &cva;
+  
 
 
   if (debugSerial) {
     printf("Exiting deserialization \n");
     std::cout.flush();
-    std::exit(EXIT_FAILURE);
+    //std::exit(EXIT_FAILURE);
   }
+  CV->addBindings(objects,values);
+  printf("Returning from deserialization \n");
+  std::cout.flush();
+  
+  
 }
 

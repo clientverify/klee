@@ -168,13 +168,16 @@ int initialize_semaphore(int semKey);
 uint64_t saveRAXOpc =    0x000000F822C1E3C4  ; //tmp hack
 uint64_t restoreRAXOpc = 0x000000F816F9E3C4; //tmp hack
 //Multipass
+extern void multipass_reset_round();
+extern void multipass_start_round(Executor * theExecutor);
+extern void multipass_replay_round(void * assignmentBufferPtr, CVAssignment * mpa, int thePid);
 extern multipassRecord multipassInfo;
 extern KTestObjectVector ktov;
 extern bool enableMultipass;
 extern bool killFlagsHack;
 extern int passCount;
 int multipass_symbolic_vars = 0;
-extern CVAssignment * prevMPA;
+extern CVAssignment prevMPA;
 bool forceNativeRet = false;
 //Addition from cliver                                                                                                                                              
 std::map<std::string, uint64_t> array_name_index_map_;
@@ -3392,6 +3395,24 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
                                    const std::string &name) {
   
   //AH Addition: ------------------------
+
+  static int executeMakeSymbolicCalls = 0;
+  
+  executeMakeSymbolicCalls++;
+
+  if (executeMakeSymbolicCalls ==1 ) {
+    //Bootstrap multipass here for the very first round
+    //before we hit a concretized writesocket call
+
+    multipass_reset_round();
+
+    multipass_start_round(this);
+
+
+
+
+  }
+  
   
   if(taseDebug) {
     printf("Calling executeMakeSymbolic on name %s \n", name.c_str());
@@ -3399,32 +3420,42 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
   }
 
 
+  
+  
+
   //CVExecutionState *cvstate = static_cast<CVExecutionState*>(&state);
 
   bool unnamed = (name == "unnamed") ? true : false;
 
   // Create a new object state for the memory object (instead of a copy).
 
-  printf("DBG 1 \n");
+  printf("DBG 1-0 \n");
   std::cout.flush();
   
   std::string array_name = get_unique_array_name(name);
 
-   printf("DBG executeMakeSymbolic: Encountered unique name for %s \n", array_name);
+  printf("DBG executeMakeSymbolic: Encountered unique name for %s \n", array_name.c_str());
    std::cout.flush();
   //See if we have an assignment
   const klee::Array *array = NULL;
-  if (!unnamed && prevMPA != NULL)
-    array = prevMPA->getArray(array_name);
+  if (!unnamed && prevMPA.bindings.size() != 0) {
+    printf("Trying to find array with MP assignment \n");
+    array = prevMPA.getArray(array_name);
+
+  }
   printf("DBG 1 \n");
   std::cout.flush();
   
   bool multipass = false;
   if (array != NULL) {
+    printf("Found concretization \n");
+    std::cout.flush();
     //CVDEBUG("Multi-pass: Concretization found for " << array_name);
     multipass = true;
   } else {
     if (!unnamed) {
+      printf("Didn't find concretization \n");
+      std::cout.flush();
       //CVDEBUG("Multi-pass: Concretization not found for " << array_name);
     }
     array = arrayCache.CreateArray(array_name, mo->size);
@@ -3440,7 +3471,7 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
   
   std::vector<unsigned char> *bindings = NULL;
   if (passCount > 0 && multipass) {
-    bindings = prevMPA->getBindings(array_name);
+    bindings = prevMPA.getBindings(array_name);
     
     if (!bindings || bindings->size() != mo->size) {
       //CVDEBUG("Multi-pass: Terminating state, bindings mismatch");
@@ -4058,7 +4089,7 @@ void Executor::tase_helper_write (uint64_t addr, ref<Expr> val) {
   ref<Expr> offset = op.first->getOffsetExpr(addrExpr);
   //end gross----------------------------
   ObjectState *wos = GlobalExecutionStatePtr->addressSpace.getWriteable(op.first, op.second);
-  val->dump();
+  //val->dump();
   wos->write(offset, val);
   wos->applyPsnOnWrite(offset,val);
 }
@@ -4611,6 +4642,7 @@ void Executor::klee_interp_internal () {
     } else {
       if (taseDebug) {
 	printf("Attempting to find interp function \n");
+	fflush(modelLog);
 	std::cout.flush();
       }
       KFunction * interpFn = findInterpFunction (target_ctx_gregs, kmodule);

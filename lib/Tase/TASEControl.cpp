@@ -11,9 +11,10 @@
 #include "klee/CVAssignment.h"
 #include "/playpen/humphries/zTASE/TASE/klee/lib/Core/Executor.h"
 
+extern std::stringstream workerIDStream;
 extern bool dontFork;
 //extern deserializeAssignments
-extern CVAssignment * deserializeAssignments ( void * buf, int bufSize, klee::Executor * exec);
+extern void deserializeAssignments ( void * buf, int bufSize, klee::Executor * exec, CVAssignment * cv);
 //extern void cliver::CVAssignment::serializeAssignments(void * buf, int bufSize);
 
 int QR_BYTE_LEN = 4096;
@@ -27,7 +28,7 @@ int multipassAssignmentSize = 8096;  //Totally arbitrary. Size of mmap'd multipa
 void * MPAPtr;  //Ptr to serialized multipass info for current round of verification
 int replayPID = -1;  //Pid of replay snapshot for current process
 
-extern CVAssignment * prevMPA;
+CVAssignment  prevMPA;
 
 void * ms_base;
 int ms_size = 16384;
@@ -424,9 +425,10 @@ void initManagerStructures() {
 
 
 void multipass_start_round (klee::Executor * theExecutor) {
-
+  std::cout.flush();
   get_sem_lock();
-
+  printf("Starting round %d pass %d of verification \n", roundCount, passCount);
+  std::cout.flush();
   //Make backup of self
   int childPID = ::fork();
   replayPID = childPID;
@@ -441,12 +443,48 @@ void multipass_start_round (klee::Executor * theExecutor) {
   } else {
     passCount++;
     raise(SIGSTOP);
+    std::cout.flush();
+    int i = getpid();
+    workerIDStream << ".";
+    workerIDStream << i;
+    std::string pidString ;
+    pidString = workerIDStream.str();
+    freopen(pidString.c_str(),"w",stdout);
+    //freopen(pidString.c_str(),"w",stderr);
+    std::cout.flush();
+    fflush(stdout);
+    printf("DEBUG:  Child process replaying round %d for pass %d \n", roundCount, passCount);
+    fflush(stdout);
+    std::cout.flush();
     multipass_start_round(theExecutor);
+    printf("First byte of MPAPtr is 0x%x \n", (*(uint8_t *) MPAPtr));
+    std::cout.flush();
+
+    //Pickup assignment info if necessary
+    if (*(uint8_t *) MPAPtr != 0) {
+      printf("Attempting to deserialize MP Assignments \n");
+      std::cout.flush();
+      prevMPA.clear();
+      deserializeAssignments(MPAPtr, multipassAssignmentSize, theExecutor, &prevMPA);
+      printf("DBG 22 \n");
+      std::cout.flush();
+      prevMPA.printAllAssignments(NULL);
+      printf("DBG 33 \n");
+      std::cout.flush();
+    }
   }
   
-  //Pickup assignment info if necessary
-  prevMPA = deserializeAssignments(MPAPtr, multipassAssignmentSize, theExecutor);
+  //printf("First byte of MPAPtr is 0x%x \n", (*(uint8_t *) MPAPtr));
+  std::cout.flush();
   
+  //Pickup assignment info if necessary
+  /*
+  if (*(uint8_t *) MPAPtr != 0) {
+    printf("Attempting to deserialize MP Assignments \n");
+    std::cout.flush();
+    prevMPA = deserializeAssignments(MPAPtr, multipassAssignmentSize, theExecutor);
+  }
+  */
   release_sem_lock();
 }
 

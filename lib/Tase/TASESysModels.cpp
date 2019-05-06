@@ -114,7 +114,7 @@ extern KTestObjectVector ktov;
 extern bool enableMultipass;
 extern void spinAndAwaitForkRequest();
 
-CVAssignment * prevMPA = NULL;
+extern CVAssignment prevMPA ;
 extern void multipass_reset_round();
 extern void multipass_start_round(Executor * theExecutor);
 extern void multipass_replay_round(void * assignmentBufferPtr, CVAssignment * mpa, int thePid);
@@ -378,7 +378,8 @@ void Executor::model_ktest_writesocket() {
     bool debugMultipass = true;
 
     if (debugMultipass) {
-	fprintf(modelLog, "MULTIPASS DEBUG: at call to ktest_writesocket round %d pass %d \n", roundCount, passCount);
+	fprintf(modelLog, "MULTIPASS DEBUG: Entering call to ktest_writesocket round %d pass %d \n", roundCount, passCount);
+	printf("MULTIPASS DEBUG: Entering ktest_writesocket at round %d pass %d \n", roundCount, passCount);
 	//fprintf(modelLog, "Stopping at call to writesocket \n");
 	printProhibCounters();
 	printKTestCounters();
@@ -404,10 +405,10 @@ void Executor::model_ktest_writesocket() {
       if (o->numBytes != count) {
 	fprintf(modelLog,"VERIFICATION ERROR: mismatch in replay size \n");
       }
-
+      
       printf("Buffer in writesock call : \n");
       printBuf ((void *) buf, count);
-
+      
       printf("Buffer in            log : \n");
       printBuf ((void *) o->bytes, count);
       
@@ -416,16 +417,16 @@ void Executor::model_ktest_writesocket() {
       klee::ref<klee::Expr> write_condition = klee::ConstantExpr::alloc(1, klee::Expr::Bool);
       for (int i = 0; i < count; i++) {
 	klee::ref<klee::Expr> condition = klee::EqExpr::create(tase_helper_read((uint64_t) buf + i, 1),
-                             klee::ConstantExpr::alloc(o->bytes[i], klee::Expr::Int8));
+							       klee::ConstantExpr::alloc(o->bytes[i], klee::Expr::Int8));
 	write_condition = klee::AndExpr::create(write_condition, condition);
       }
-
+      
       //Fast path
       /*
-      if (concWrite) {
+	if (concWrite) {
 	int cmp = strncmp((const char *) buf, (const char *) o->bytes, count);
 	if (cmp == 0 && count == o->numBytes)
-	  printf("Concrete match between verifier and log message \n");
+	printf("Concrete match between verifier and log message \n");
 	std::cout.flush();
 	std::exit(EXIT_SUCCESS);
 	}*/
@@ -442,7 +443,7 @@ void Executor::model_ktest_writesocket() {
 	if (result)
 	  fprintf(modelLog, "VERIFICATION ERROR: write condition determined false \n");
       }
-	
+      
       //Solve for multipass assignments
       CVAssignment currMPA;
       currMPA.clear();
@@ -455,25 +456,44 @@ void Executor::model_ktest_writesocket() {
       std::cout.flush();
       
       currMPA.printAllAssignments(NULL);
-
-      printf("DBG: Exiting early in model_writesocket \n");
-      std::exit(EXIT_SUCCESS);
+      
+      //printf("DBG: Exiting early in model_writesocket \n");
+      //std::exit(EXIT_SUCCESS);
       
       
       //Determine if we should execute another pass
       //CVAssignment  * curr_MPA = &(GlobalExecutionStatePtr->multi_pass_assignment);
       
-      if (currMPA.size() != 0 && prevMPA->bindings != currMPA.bindings) {
-	multipass_replay_round(MPAPtr, &currMPA, replayPID); //Sets up child to run from prev "NEW ROUND" point
-	
+      if (currMPA.size()  != 0 ) {
+	if (prevMPA.bindings.size() != 0) {
+	  if  (prevMPA.bindings != currMPA.bindings ) {
+	    printf("MULTIPASS DEBUG: Replaying round  from round %d pass %d.  Replay pid is %d \n", roundCount, passCount, replayPID);
+	    std::cout.flush();
+	    multipass_replay_round(MPAPtr, &currMPA, replayPID); //Sets up child to run from prev "NEW ROUND" point
+	  } else {
+	    printf("MULTIPASS DEBUG: No new bindings found at end of round % pass %d.  Not replaying. \n", roundCount, passCount);
+	    std::cout.flush();
+	  }
+	} else {
+	  printf("MULTIPASS DEBUG: found assignments and prevMPA is null so replaying with pid %d at end of round %d pass %d \n",replayPID,  roundCount, passCount);
+	  multipass_replay_round(MPAPtr, &currMPA, replayPID); //Sets up child to run from prev "NEW ROUND" point
+	  std::cout.flush();
+	}
+      } else {
+	printf("MULTIPASS DEBUG: No assignments found in currMPA. Not replaying inside writesocket call at round %d pass %d \n", roundCount, passCount);
+	std::cout.flush();
       }
-	
+
+      printf("Hit new call to multipass_reset_round in writesocket for round %d pass %d \n", roundCount, passCount);
+      std::cout.flush();
+      
+      tase_helper_write((uint64_t) &target_ctx_gregs[REG_RAX], ConstantExpr::create(count, Expr::Int64));
       //RESET ROUND      
       multipass_reset_round(); //Sets up new buffer for MPA and destroys multipass child process
-
+      
       //NEW ROUND
       multipass_start_round(this);  //Gets semaphore,sets prevMPA, and sets a replay child process up
-      
+	  
       
     } else {
       ssize_t res = ktest_writesocket_tase((int) target_ctx_gregs[REG_RDI].u64, (void *) target_ctx_gregs[REG_RSI].u64, (size_t) target_ctx_gregs[REG_RDX].u64);
@@ -491,7 +511,7 @@ void Executor::model_ktest_writesocket() {
     std::exit(EXIT_FAILURE);
   }
 
-}
+  }
 
 void Executor::model_ktest_readsocket() {
   ktest_readsocket_calls++;
@@ -2339,7 +2359,7 @@ void Executor::model_select() {
       printf( "Read FD located at 0x%lx\n", (uint64_t) &(readfds->fds_bits[i]) );
       std::cout.flush();
       ref<Expr> isReadFDSetExpr = tase_helper_read((uint64_t) &(readfds->fds_bits[i]), Expr::Int8);
-      isReadFDSetExpr->dump();
+      //isReadFDSetExpr->dump();
       if (isa<ConstantExpr>(isReadFDSetExpr)) {
 	if (FD_ISSET(i,readfds)) {
 	  make_readfds_symbolic[i] = true;
@@ -3074,7 +3094,7 @@ void Executor::model_EC_KEY_generate_key () {
    if ( (isa<ConstantExpr>(arg1Expr)) ) {
 
      EC_KEY * eckey = (EC_KEY *) target_ctx_gregs[REG_RDI].u64;
-     bool makeECKeySymbolic = false;
+     bool makeECKeySymbolic = true;
 
 
      if (makeECKeySymbolic) {
@@ -3096,7 +3116,9 @@ void Executor::model_EC_KEY_generate_key () {
        //Can optionally return failure here if desired
        int res = 1; //Force success
        ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
-       target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+       tase_helper_write((uint64_t) &target_ctx_gregs[REG_RAX], resExpr);
+       
+       //target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
        
        //fake a ret
        uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
@@ -3198,8 +3220,9 @@ void Executor::model_ECDH_compute_key() {
       //return value is outlen
       //Todo -- determine if we really need to make the return value exactly size_t
       ref<ConstantExpr> returnVal = ConstantExpr::create(outlen, Expr::Int64);
-      target_ctx_gregs_OS->write(REG_RAX * 8, returnVal);
-
+      //target_ctx_gregs_OS->write(REG_RAX * 8, returnVal);
+      tase_helper_write((uint64_t) &target_ctx_gregs[REG_RAX], returnVal);
+      
       //fake a ret
       uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
       target_ctx_gregs[REG_RIP].u64 = retAddr;
@@ -3266,7 +3289,8 @@ void Executor::model_EC_POINT_point2oct() {
        fprintf(modelLog,"DEBUG: Found symbolic input to EC_POINT_point2oct \n");
       tase_make_symbolic((uint64_t) buf, ret, "ECpoint2oct");
       ref<ConstantExpr> returnVal = ConstantExpr::create(ret, Expr::Int64);
-      target_ctx_gregs_OS->write(REG_RAX * 8, returnVal);
+      tase_helper_write((uint64_t) &target_ctx_gregs[REG_RAX], returnVal);
+      //target_ctx_gregs_OS->write(REG_RAX * 8, returnVal);
       
 
       //fake a ret
