@@ -118,6 +118,7 @@ extern "C" {
   void * calloc_tase (unsigned long num, unsigned long size);
   void * realloc_tase (void * ptr, unsigned long new_size);
   void * malloc_tase(unsigned long s);
+  void   free_tase(void * ptr);
   } 
 
 //Symbols we need to map in for TASE
@@ -168,6 +169,8 @@ int initialize_semaphore(int semKey);
 uint64_t saveRAXOpc =    0x000000F822C1E3C4  ; //tmp hack
 uint64_t restoreRAXOpc = 0x000000F816F9E3C4; //tmp hack
 //Multipass
+extern bool point2oct_hack;
+
 extern void multipass_reset_round();
 extern void multipass_start_round(Executor * theExecutor);
 extern void multipass_replay_round(void * assignmentBufferPtr, CVAssignment * mpa, int thePid);
@@ -3493,11 +3496,13 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
 	}*/
     }
   } else {
-    printf("DBG executeMakeSymbolic: Created symbolic var for %s \n", name);
+    printf("DBG executeMakeSymbolic: Created symbolic var for %s \n", name.c_str());
     std::cout.flush();
     //CVDEBUG("Created symbolic: " << array->name << " in " << *cvstate);
     state.addSymbolic(mo, array);
     multipass_symbolic_vars++;
+    printf("DBG returning from executeMakeSymbolic \n");
+    std::cout.flush();
   }
 
 
@@ -3847,7 +3852,7 @@ KFunction * findInterpFunction (greg_t * registers, KModule * kmod) {
 //Populate a buffer at addr with len bytes of unconstrained symbolic data.
 //We make the symbolic memory object at a malloc'd address and write the bytes to addr.
 void Executor::tase_make_symbolic(uint64_t addr, uint64_t len, char * name)  {
-  printf("tase_make_symbolic called on buf 0xlx with size 0xlx named %s \n", addr, len, name);
+  printf("tase_make_symbolic called on buf 0x%lx with size 0x%lx named %s \n", addr, len, name);
   std::cout.flush();
   
   void * buf = malloc(len);
@@ -3858,8 +3863,11 @@ void Executor::tase_make_symbolic(uint64_t addr, uint64_t len, char * name)  {
   const ObjectState * constBufOS = GlobalExecutionStatePtr->addressSpace.findObject(bufMO);
   ObjectState * bufOS = GlobalExecutionStatePtr->addressSpace.getWriteable(bufMO, constBufOS);
   
-  for (int i = 0; i < len; i++)
+  for (int i = 0; i < len; i++) {
+    printf("Calling tase_helper_write for time %d \n", i);
+    std::cout.flush();
     tase_helper_write(addr + i, bufOS->read(i, Expr::Int8));
+  }
 }
 
 //strncat model-------
@@ -4261,7 +4269,7 @@ void Executor::model_inst () {
   }
   uint64_t rip = target_ctx_gregs[REG_RIP].u64;  
   
-  if (rip == (uint64_t) &free) {
+  if (rip == (uint64_t) &free || rip == ((uint64_t) &free_tase) || rip == ((uint64_t) &free_tase + 14) ) {
     printf("Modeling free \n");
     model_free();
   } else if (rip == (uint64_t) &signal) {
@@ -4505,7 +4513,7 @@ bool isSpecialInst (uint64_t rip) {
   //Todo -- get rid of traps for RAND_add and RAND_load_file
   //  static const uint64_t modeledFns[] = { (uint64_t) &puts, (uint64_t)&exit, (uint64_t) &printf  /*, (uint64_t) &taseMakeSymbolic */ };
   
-  static const uint64_t modeledFns [] = {(uint64_t)&signal, (uint64_t)&malloc, (uint64_t)&read, (uint64_t)&write, (uint64_t)&connect, (uint64_t)&select, (uint64_t)&socket, (uint64_t) &getuid, (uint64_t) &geteuid, (uint64_t) &getgid, (uint64_t) &getegid, (uint64_t) &getenv, (uint64_t) &stat, (uint64_t) &free, (uint64_t) &realloc,  (uint64_t) &RAND_add, (uint64_t) &RAND_load_file, (uint64_t) &kTest_free, (uint64_t) &kTest_fromFile, (uint64_t) &kTest_getCurrentVersion, (uint64_t) &kTest_isKTestFile, (uint64_t) &kTest_numBytes, (uint64_t) &kTest_toFile, (uint64_t) &ktest_RAND_bytes, (uint64_t) &ktest_RAND_pseudo_bytes, (uint64_t) &ktest_connect, (uint64_t) &ktest_finish, (uint64_t) &ktest_master_secret, (uint64_t) &ktest_raw_read_stdin, (uint64_t) &ktest_readsocket, (uint64_t) &ktest_select, (uint64_t) &ktest_start, (uint64_t) &ktest_time, (uint64_t) &time, (uint64_t) &gmtime, (uint64_t) &gettimeofday, (uint64_t) &ktest_writesocket, (uint64_t) &fileno, (uint64_t) &fcntl, (uint64_t) &fopen, (uint64_t) &fopen64, (uint64_t) &fclose,  (uint64_t) &fwrite, (uint64_t) &fflush, (uint64_t) &fread, (uint64_t) &fgets, (uint64_t) &__isoc99_sscanf, (uint64_t) &gethostbyname, (uint64_t) &setsockopt, (uint64_t) &__ctype_tolower_loc, (uint64_t) &__ctype_b_loc, (uint64_t) &__errno_location,  (uint64_t) &BIO_printf, (uint64_t) &BIO_snprintf, (uint64_t) &vfprintf,  (uint64_t) &sprintf, (uint64_t) &tase_debug,   (uint64_t) &OpenSSLDie, (uint64_t) &shutdown , (uint64_t) &malloc_tase, (uint64_t) &realloc_tase, (uint64_t) &calloc_tase, (uint64_t) &getpid, (uint64_t) &SHA1_Update, (uint64_t) &SHA256_Update, (uint64_t) &AES_encrypt, (uint64_t) &gcm_gmult_4bit, (uint64_t) &gcm_ghash_4bit , (uint64_t) &EC_KEY_generate_key , (uint64_t) &ECDH_compute_key, (uint64_t) &EC_POINT_point2oct /* , (uint64_t) &memcpy, (uint64_t) &memset*/ };
+  static const uint64_t modeledFns [] = {(uint64_t)&signal, (uint64_t)&malloc, (uint64_t)&read, (uint64_t)&write, (uint64_t)&connect, (uint64_t)&select, (uint64_t)&socket, (uint64_t) &getuid, (uint64_t) &geteuid, (uint64_t) &getgid, (uint64_t) &getegid, (uint64_t) &getenv, (uint64_t) &stat, (uint64_t) &free, (uint64_t) &realloc,  (uint64_t) &RAND_add, (uint64_t) &RAND_load_file, (uint64_t) &kTest_free, (uint64_t) &kTest_fromFile, (uint64_t) &kTest_getCurrentVersion, (uint64_t) &kTest_isKTestFile, (uint64_t) &kTest_numBytes, (uint64_t) &kTest_toFile, (uint64_t) &ktest_RAND_bytes, (uint64_t) &ktest_RAND_pseudo_bytes, (uint64_t) &ktest_connect, (uint64_t) &ktest_finish, (uint64_t) &ktest_master_secret, (uint64_t) &ktest_raw_read_stdin, (uint64_t) &ktest_readsocket, (uint64_t) &ktest_select, (uint64_t) &ktest_start, (uint64_t) &ktest_time, (uint64_t) &time, (uint64_t) &gmtime, (uint64_t) &gettimeofday, (uint64_t) &ktest_writesocket, (uint64_t) &fileno, (uint64_t) &fcntl, (uint64_t) &fopen, (uint64_t) &fopen64, (uint64_t) &fclose,  (uint64_t) &fwrite, (uint64_t) &fflush, (uint64_t) &fread, (uint64_t) &fgets, (uint64_t) &__isoc99_sscanf, (uint64_t) &gethostbyname, (uint64_t) &setsockopt, (uint64_t) &__ctype_tolower_loc, (uint64_t) &__ctype_b_loc, (uint64_t) &__errno_location,  (uint64_t) &BIO_printf, (uint64_t) &BIO_snprintf, (uint64_t) &vfprintf,  (uint64_t) &sprintf, (uint64_t) &tase_debug,   (uint64_t) &OpenSSLDie, (uint64_t) &shutdown , (uint64_t) &malloc_tase, (uint64_t) &realloc_tase, (uint64_t) &calloc_tase, (uint64_t) &free_tase, (uint64_t) &getpid, (uint64_t) &SHA1_Update, (uint64_t) &SHA256_Update, (uint64_t) &AES_encrypt, (uint64_t) &gcm_gmult_4bit, (uint64_t) &gcm_ghash_4bit , (uint64_t) &EC_KEY_generate_key , (uint64_t) &ECDH_compute_key, (uint64_t) &EC_POINT_point2oct /* , (uint64_t) &memcpy, (uint64_t) &memset*/ };
   
   
   bool isModeled = std::find(std::begin(modeledFns), std::end(modeledFns), rip) != std::end(modeledFns);
@@ -4560,6 +4568,7 @@ bool isSpecialInst (uint64_t rip) {
       isModeled                      ||
       rip == (uint64_t) &malloc_tase         + 14  ||
       rip == (uint64_t) &realloc_tase        + 14  ||
+      rip == (uint64_t) &free_tase           + 14  ||
       rip == (uint64_t) &SHA1_Update         + 14  ||
       rip == (uint64_t) &SHA1_Final          + 14  ||
       rip == (uint64_t) &SHA256_Update       + 14  ||
@@ -4631,6 +4640,13 @@ void Executor::klee_interp_internal () {
 	tase_helper_write((uint64_t) &target_ctx_gregs[REG_EFL], zeroExpr);
 	//target_ctx_gregs_OS->write(REG_EFL * 8, zeroExpr);
       }
+
+    //HACK for debugging point2oct model
+    if (point2oct_hack && rip == (uint64_t) &EC_POINT_point2oct + 379) {
+      printf("HACK: swapping exec_mode back to MIXED \n");
+      std::cout.flush();
+      exec_mode = MIXED;
+    }
     
     if (resumeNativeExecution()){
       break;

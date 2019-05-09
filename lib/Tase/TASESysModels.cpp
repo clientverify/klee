@@ -83,6 +83,7 @@ using namespace klee;
 #include <sys/time.h>
 #include <netdb.h>
 #include <fcntl.h>
+#include <fstream>
 
 extern void tase_exit();
 
@@ -267,8 +268,32 @@ void Executor::model_ktest_master_secret(  ) {
        (isa<ConstantExpr>(arg2Expr))
        ){
 
-    ktest_master_secret_tase( (unsigned char *) target_ctx_gregs[REG_RDI].u64, (int) target_ctx_gregs[REG_RSI].u64);
+    unsigned char * buf = (unsigned char *) target_ctx_gregs[REG_RDI].u64; 
+    int num = (int) target_ctx_gregs[REG_RSI].u64;
+
+    void * tmp = malloc(num);
     
+    
+    if (enableMultipass) {
+
+      printf("Trying to read in master secret \n");
+      std::ifstream secret("monday_master_secret", std::ifstream::in);
+      secret.read((char *) tmp, num);
+      printf("Reading master secret as: \n");
+      std::cout.flush();
+      for (int i = 0; i < num; i++)
+	printf("%x", *((uint8_t *)(tmp + i)));
+      std::cout.flush();
+      printf("\n");
+      memcpy (buf, tmp, num);
+	       
+      //Todo: - Less janky io here.
+      
+    }else {
+    
+      ktest_master_secret_tase( (unsigned char *) target_ctx_gregs[REG_RDI].u64, (int) target_ctx_gregs[REG_RSI].u64);
+
+    }
     //fake a ret
     uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
     target_ctx_gregs[REG_RIP].u64 = retAddr;
@@ -1517,6 +1542,7 @@ void Executor::model_malloc() {
       std::cout.flush();
     }
     fprintf(heapMemLog, "MALLOC buf at 0x%llx - 0x%llx, size 0x%x, interpCtr %lu \n", (uint64_t) buf, ((uint64_t) buf + sizeArg -1), sizeArg, interpCtr);
+    fflush(heapMemLog);
     //Make a memory object to represent the requested buffer
     MemoryObject * heapMem = addExternalObject(*GlobalExecutionStatePtr,buf, sizeArg, false );
     const ObjectState *heapOS = GlobalExecutionStatePtr->addressSpace.findObject(heapMem);
@@ -1546,28 +1572,34 @@ void Executor::model_malloc() {
 //https://linux.die.net/man/3/free
 //Todo -- add check to see if rsp is symbolic, or points to symbolic data (somehow)
 
+bool skipFree = false;
 void Executor::model_free() {
 
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
   if (isa<ConstantExpr>(arg1Expr)) {
 
-    void * freePtr = (void *) target_ctx_gregs[REG_RDI].u64;
-    printf("Calling model_free on addr 0x%llx \n", (uint64_t) freePtr);
-    free(freePtr);
 
-    fprintf(heapMemLog, "FREE buf at 0x%llx, interpCtr is %lu \n", (uint64_t) freePtr, interpCtr);
+    if (!skipFree) {
+    
+      void * freePtr = (void *) target_ctx_gregs[REG_RDI].u64;
+      printf("Calling model_free on addr 0x%llx \n", (uint64_t) freePtr);
+      free(freePtr);
 
-    ObjectPair OP;
-    ref<ConstantExpr> addrExpr = ConstantExpr::create((uint64_t) freePtr, Expr::Int64);
-    if (GlobalExecutionStatePtr->addressSpace.resolveOne(addrExpr, OP)) {
-      printf("Unbinding object in free \n");
-      std::cout.flush();
-      GlobalExecutionStatePtr->addressSpace.unbindObject(OP.first);
+      fprintf(heapMemLog, "FREE buf at 0x%llx, interpCtr is %lu \n", (uint64_t) freePtr, interpCtr);
+
+      ObjectPair OP;
+      ref<ConstantExpr> addrExpr = ConstantExpr::create((uint64_t) freePtr, Expr::Int64);
+      if (GlobalExecutionStatePtr->addressSpace.resolveOne(addrExpr, OP)) {
+	printf("Unbinding object in free \n");
+	std::cout.flush();
+	GlobalExecutionStatePtr->addressSpace.unbindObject(OP.first);
       
-    } else {
-      printf("ERROR: Found free called without buffer corresponding to ptr \n");
-      std::cout.flush();
-      std::exit(EXIT_FAILURE);
+      } else {
+	printf("ERROR: Found free called without buffer corresponding to ptr \n");
+	std::cout.flush();
+	std::exit(EXIT_FAILURE);
+      }
+
     }
     
     //Fake a return
@@ -3097,7 +3129,7 @@ void Executor::model_EC_KEY_generate_key () {
      bool makeECKeySymbolic = true;
 
 
-     if (makeECKeySymbolic) {
+     if (enableMultipass) {
        fprintf(modelLog,"MULTIPASS DEBUG: Calling EC_KEY_generate_key with symbolic return \n"); 
        
        if (eckey->priv_key == NULL)
@@ -3139,6 +3171,18 @@ void Executor::model_EC_KEY_generate_key () {
    }
 }
 
+
+// struct bignum_st
+//         {
+//         BN_ULONG *d;    /* Pointer to an array of 'BN_BITS2' bit chunks. */
+//         int top;        /* Index of last used d +1. */
+//         /* The next are internal book keeping for bn_expand. */
+//         int dmax;       /* Size of the d array. */
+//         int neg;        /* one if the number is negative */
+//         int flags;
+//         };
+
+
 //Todo -- Properly make sure we're not assuming any pointers are concrete
 
 bool Executor::is_symbolic_BIGNUM(BIGNUM * bn) {
@@ -3151,7 +3195,24 @@ bool Executor::is_symbolic_BIGNUM(BIGNUM * bn) {
 
   fprintf(modelLog, "is_symbolic_BIGNUM returned %d at rip 0x%lx \n", rv, target_ctx_gregs[REG_RIP].u64);
   fflush(modelLog);
+  printf( "is_symbolic_BIGNUM returned %d at rip 0x%lx \n", rv, target_ctx_gregs[REG_RIP].u64);
+  std::cout.flush();
 }
+
+
+// struct ec_point_st {
+//         const EC_METHOD *meth;
+
+//         /* All members except 'meth' are handled by the method functions,                                                                
+//          * even if they appear generic */
+
+//         BIGNUM X;
+//         BIGNUM Y;
+//         BIGNUM Z; /* Jacobian projective coordinates:                                                                                    
+//                    * (X, Y, Z)  represents  (X/Z^2, Y/Z^3)  if  Z != 0 */
+//         int Z_is_one; /* enable optimized point arithmetics for special case */
+// } /* EC_POINT */;
+
 
 bool Executor::is_symbolic_EC_POINT(EC_POINT * pt) {
 
@@ -3164,11 +3225,13 @@ bool Executor::is_symbolic_EC_POINT(EC_POINT * pt) {
       fflush(modelLog);
       return rv;
   }
-
+  
+  /*
   if (is_symbolic_BIGNUM(&(pt->X)) || is_symbolic_BIGNUM(&(pt->Y)) || is_symbolic_BIGNUM(&(pt->Z)))
     rv = true;
   else
     rv = false;  
+  */
 
   fprintf(modelLog, "is_symbolic_EC_POINT returned %d at rip 0x%lx \n", rv, target_ctx_gregs[REG_RIP].u64);
   fflush(modelLog);
@@ -3222,6 +3285,8 @@ void Executor::model_ECDH_compute_key() {
       ref<ConstantExpr> returnVal = ConstantExpr::create(outlen, Expr::Int64);
       //target_ctx_gregs_OS->write(REG_RAX * 8, returnVal);
       tase_helper_write((uint64_t) &target_ctx_gregs[REG_RAX], returnVal);
+
+
       
       //fake a ret
       uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
@@ -3253,6 +3318,40 @@ void Executor::model_ECDH_compute_key() {
 //taint
 //The purpose of this function is to convert from an EC_POINT representation to an octet string encoding in buf.
 //Todo: Check all the other args for symbolic taint, even though in practice it should just be the point
+
+enum runType : int {INTERP_ONLY, MIXED};
+//extern std::string project;
+extern enum runType exec_mode;
+bool point2oct_hack = false;
+
+
+void tase_print_BIGNUM(BIGNUM bn) {
+  printf("Printing BIGNUM \n");
+  for (int i = 0; i < sizeof(BIGNUM); i++) {
+    printf("%x",  *( ((uint8_t*) &(bn)) +i));
+  }
+  printf("\n Finished printing BIGNUM \n");
+}
+void tase_print_EC_POINT(EC_POINT * pt) {
+  printf("TASE printing ec_point \n");
+  std::cout.flush();
+  if (pt == NULL) {
+    printf("ec_point is NULL \n");
+    return;
+  }
+    
+  
+  printf("EC_METHOD is 0x%lx ", (uint64_t) pt->meth);
+  printf("X is \n");
+  tase_print_BIGNUM(pt->X);
+  printf("Y is \n");
+  tase_print_BIGNUM(pt->Y);
+  printf("Z is \n");
+  tase_print_BIGNUM(pt->Z);
+  printf("Z_is_one is 0x%x", (uint32_t) pt->Z_is_one);
+  printf("\n Finished printing ec_point \n");
+  std::cout.flush();
+}
 void Executor::model_EC_POINT_point2oct() {
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
@@ -3280,27 +3379,58 @@ void Executor::model_EC_POINT_point2oct() {
     size_t field_len = BN_num_bytes(&group->field);
     size_t ret = (form == POINT_CONVERSION_COMPRESSED) ? 1 + field_len : 1 + 2*field_len;
 
+    printf("Entering EC_POINT_point2oct \n");
+    std::cout.flush();
+    
+    tase_print_EC_POINT(point);
+    fprintf(modelLog,"Entering EC_POINT_point2oct at interpctr %d \n", interpCtr);
+    fflush(modelLog);
     
     if (is_symbolic_EC_POINT(point))
       hasSymbolicInput = true;
-    
-    if (hasSymbolicInput) {
+    //Todo: See if there's a bug in our models or cliver's where we should be making
+    //EC_POINT_point2oct ignore or examine the X/Y/Z fields bc of behavior for NULL buf
+    if (hasSymbolicInput ) {
 
-       fprintf(modelLog,"DEBUG: Found symbolic input to EC_POINT_point2oct \n");
-      tase_make_symbolic((uint64_t) buf, ret, "ECpoint2oct");
+      /*
+      if (buf == NULL && point2oct_hack) {
+	printf("HACK: Using interpreter hack for point2oct with symbolic inputs and null buf \n");
+	std::cout.flush();
+	//Just interpret until we debug this
+	target_ctx_gregs[REG_RIP].u64 += 17;
+	exec_mode = INTERP_ONLY;
+	return; 
+
+	}*/
+	
+      
+      fprintf(modelLog,"DEBUG: Found symbolic input to EC_POINT_point2oct \n");
+      
+      if (buf != NULL ) {
+      
+	tase_make_symbolic((uint64_t) buf, ret, "ECpoint2oct");
+	printf("Returned from ECpoint2oct tase_make_symbolic call \n");
+	std::cout.flush();
+      } else {
+	printf("Found special case to EC_POINT_point2oct with null buffer input. Returning size \n");
+	std::cout.flush();
+      }
+
+      
       ref<ConstantExpr> returnVal = ConstantExpr::create(ret, Expr::Int64);
       tase_helper_write((uint64_t) &target_ctx_gregs[REG_RAX], returnVal);
-      //target_ctx_gregs_OS->write(REG_RAX * 8, returnVal);
-      
+      printf("DBG 123 \n");
+      std::cout.flush();
 
+      
       //fake a ret
       uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
       target_ctx_gregs[REG_RIP].u64 = retAddr;
       target_ctx_gregs[REG_RSP].u64 += 8;
-      
+      printf("Returning from model_EC_POINT_point2oct \n");
+      std::cout.flush();
       
     } else {
-
       //Otherwise we're good to call natively
        fprintf(modelLog,"DEBUG: Calling EC_POINT_point2oct natively \n");
        forceNativeRet = true;

@@ -1037,6 +1037,13 @@ int ktest_RAND_pseudo_bytes_tase(unsigned char *buf, int num)
       fflush(modelLog);
       exit(2);
     }
+
+    fprintf(modelLog, "master secret is the following in hex \n");
+    fflush(modelLog);
+    for (int i = 0; i < len; i++)
+      fprintf(modelLog, "%x", (o->bytes[i]));
+    fprintf(modelLog, "\n");
+    
     if (o->numBytes > 0 && memcmp(ms, o->bytes, len) != 0) {
       fprintf(stderr, "WARNING: ktest_master_secret playback data mismatch\n");
       fprintf(modelLog, "ERROR: Mismatch in master_secret playback \n");
