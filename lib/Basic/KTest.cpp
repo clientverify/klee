@@ -432,19 +432,27 @@ KTestObject* KTOV_next_object(KTestObjectVector *ov, const char *name)
 {
 
   fprintf(modelLog,"Entered ktov_next_object \n");
-  fflush(modelLog);
   fprintf(modelLog,"playback index is %d \n", ov->playback_index);
   fflush(modelLog);
-  
+  printf("Entered ktov_next_object \n");
+  printf("playback index is %d \n", ov->playback_index);
+  fflush(stdout);
   
   if (ov->playback_index >= ov->size) {
+    printf("ERROR: ktest playback -- no more recorded events \n");
+    fflush(stdout);
     fprintf(stderr, "ERROR: ktest playback %s - no more recorded events", name);
     exit(2);
   }
   fprintf(modelLog, "ktov NO DBG 1 \n");
   fflush(modelLog);
+  printf("ktov NO DBG 1 \n");
+  fflush(stdout);
   KTestObject *o = &ov->objects[ov->playback_index];
   if (strcmp(o->name, name) != 0) {
+    printf("ERROR: ktest playback needed '%s', but recording had '%s'\n",
+	   name, o->name);
+    fflush(stdout);
     fprintf(stderr,
 	    "ERROR: ktest playback needed '%s', but recording had '%s'\n",
 	    name, o->name);
@@ -452,7 +460,12 @@ KTestObject* KTOV_next_object(KTestObjectVector *ov, const char *name)
   }
   fprintf(modelLog, "ktov NO DBG 2 \n");
   fflush(modelLog);
+  printf("ktov NO DBG 2 \n");
+  fflush(stdout);
   ov->playback_index++;
+
+  printf("Returning from ktov_next_object \n");
+  fflush(stdout);
   return o;
 }
 
@@ -827,7 +840,7 @@ ssize_t ktest_writesocket_tase(int fd, const void *buf, size_t count)
 {
 
   fprintf(modelLog, "Entering ktest_readsocket at interpCtr %lu \n", interpCtr);
-  
+  printf("Entering ktest_readsocket \n");
   if (ktest_mode == KTEST_NONE) { // passthrough
     return readsocket(fd, buf, count);
   }
@@ -842,9 +855,15 @@ ssize_t ktest_writesocket_tase(int fd, const void *buf, size_t count)
     return num_bytes;
   }
   else if (ktest_mode == KTEST_PLAYBACK) {
+    printf("Entered ktest_playback branch \n");
+    fflush(stdout);
     KTestObject *o = KTOV_next_object(&ktov,
 				      ktest_object_names[SERVER_TO_CLIENT]);
+    printf("Called KTOV_next_object \n");
+    fflush(stdout);
     if (o->numBytes > count) {
+      printf("Error in ktest_readsocket size \n");
+      fflush(stdout);
       fprintf(stderr,
 	            "ktest_readsocket playback error: %zu byte destination buffer, "
 	      "%d bytes recorded", count, o->numBytes);
@@ -860,6 +879,7 @@ ssize_t ktest_writesocket_tase(int fd, const void *buf, size_t count)
       }
       printf("\n");
     }
+    fflush(stdout);
     return o->numBytes;
   }
   else {

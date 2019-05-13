@@ -47,13 +47,62 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
 
   //ABH: Should be able to just add in the expr via cm.addConstraint ?
   //Todo: Double check
-  klee::ConstraintManager cm(ExecStatePtr->constraints);
+  klee::ConstraintManager cm;
+  //(ExecStatePtr->constraints);
   cm.addConstraint(expr);
 
   klee::Query query(cm, klee::ConstantExpr::alloc(0, klee::Expr::Bool));
+  
+  std::string s;
+  llvm::raw_string_ostream info(s);
+  info << "CVAssignment query:\n\n";
+  klee::ExprPPrinter::printQuery(info, cm,
+				 klee::ConstantExpr::alloc(0, klee::Expr::Bool));
+  fprintf(stderr, "Dumping CVAssignment info: \n");
+  fprintf(stderr, "----------------------------------------- \n\n\n\n\n");
+  fprintf(stderr, " %s ", info.str().c_str());
+  
+  fprintf(stderr, "\n\n----------------------------------------- \n\n");
+  
+  bool res = solver->getInitialValues(query, arrays, initial_values);
 
-  solver->getInitialValues(query, arrays, initial_values);
+  if (!res) {
+    printf("IMPORTANT: solver->getInitialValues failed in solveForBindings \n");
+  }
 
+  //////////////////////////////////////////////////////////////////
+  //DEBUG
+  
+  fprintf(stderr,"DEBUG: Printing assignments in CVAssignment immediately after getInitValues \n");
+  
+  std::vector< std::vector<unsigned char> >::iterator valIt =
+    initial_values.begin();
+  for (std::vector<const klee::Array*>::iterator it = arrays.begin(),
+	 ie = arrays.end(); it != ie; ++it) {
+    const klee::Array *os = *it;
+    std::vector<unsigned char> &arr = *valIt;
+    std::string nameStr = os->name;
+    fprintf(stderr,"\n-------------------------\n");
+    fprintf(stderr,"Printing assignment for variable %s \n", nameStr.c_str());
+    std::cout.flush();
+    
+    uint16_t dataSize = arr.size();
+    fprintf(stderr,"%d bytes in assignment \n",dataSize);
+    for (int i = 0; i < dataSize; i++) {
+      
+      fprintf(stderr,"%02x", arr[i]);
+      fflush(stderr);
+      
+    }
+    fprintf(stderr,"\n-------------------------\n");
+    ++valIt;
+    
+  }
+
+  
+
+  ////////////////////////////////////////////////////////////////////////
+  
   klee::ref<klee::Expr> value_disjunction
     = klee::ConstantExpr::alloc(0, klee::Expr::Bool);
 
@@ -135,7 +184,7 @@ void CVAssignment::printAllAssignments(FILE * fp) {
       printf("%d bytes in assignment \n",dataSize);
       for (int i = 0; i < dataSize; i++) {
         
-	printf("%x", arr[i]);
+	printf("%02x", arr[i]);
 	std::cout.flush();
 	
       }

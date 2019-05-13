@@ -8,14 +8,14 @@
 #include <sys/mman.h>
 #include <iostream>
 #include <sys/prctl.h>
+#include <time.h>
 #include "klee/CVAssignment.h"
 #include "/playpen/humphries/zTASE/TASE/klee/lib/Core/Executor.h"
 
 extern std::stringstream workerIDStream;
 extern bool dontFork;
-//extern deserializeAssignments
 extern void deserializeAssignments ( void * buf, int bufSize, klee::Executor * exec, CVAssignment * cv);
-//extern void cliver::CVAssignment::serializeAssignments(void * buf, int bufSize);
+
 
 int QR_BYTE_LEN = 4096;
 int QA_BYTE_LEN = 4096;
@@ -24,9 +24,10 @@ int MAX_WORKERS = 16;
 bool taseManager = false;
 int roundCount = 0;
 int passCount = 0; //Pass ctr for current round of verification
-int multipassAssignmentSize = 8096;  //Totally arbitrary. Size of mmap'd multipass assignment buffer.
+int multipassAssignmentSize = 16092;  //Totally arbitrary. Size of mmap'd multipass assignment buffer.
 void * MPAPtr;  //Ptr to serialized multipass info for current round of verification
-int replayPID = -1;  //Pid of replay snapshot for current process
+int * replayPIDPtr; //Ptr to the pid storing the replay PID for the current round of verification
+int * replayLock ; //Lock to request replay.  1 is available, 0 unavailable.
 
 CVAssignment  prevMPA;
 
@@ -49,7 +50,7 @@ struct sembuf sem_unlock = {0, 1, 0 | SEM_UNDO};// SEM_UNDO added to release
 void get_sem_lock () {
   int res =  semop(semID, &sem_lock, 1);
   if (res == 0) {
-    printf("Obtained sem lock \n");
+    //printf("Obtained sem lock \n");
     std::cout.flush();
     return;
   }
@@ -115,6 +116,25 @@ static void printQA() {
   printQ(ms_QA_size_ptr, ms_QA_base);
 }
 
+bool PidInQR(int pid) {
+  int QR_size = *ms_QR_size_ptr;
+
+  for (int i = 0; i < QR_size; i++) {
+    if ( *(ms_QR_base + i) == pid)
+      return true;
+  }
+  return false;  
+}
+
+bool PidInQA(int pid) {
+  int QA_size= *ms_QA_size_ptr;
+  for (int i = 0; i < QA_size ; i++) {
+    if ( *(ms_QA_base +i)  == pid)
+      return true;
+  }
+  return false;
+}
+
 /* MUST be called ONLY when lock is obtained */
 static void remove_dead_workers (int * QR_size_ptr, int * QR_base_ptr) {
   printf("Entering remove_dead_workers \n");
@@ -129,7 +149,7 @@ static void remove_dead_workers (int * QR_size_ptr, int * QR_base_ptr) {
     QR_index--;
     int * curr_entry_ptr = QR_base_ptr + QR_index;
     int pid = *curr_entry_ptr;
-    int status, res;
+    int res;
 
     printf("Checking pid %d \n", pid);
     
@@ -174,9 +194,9 @@ void manage_workers () {
     std::exit(EXIT_FAILURE);
   }
   
-  printf("Entering manage_workers --\n");
-  printQR();
-  printQA();
+  //printf("Entering manage_workers --\n");
+  //printQR();
+  //printQA();
   
   //remove_dead_workers(ms_QR_size_ptr,ms_QR_base); For now, depend on tase_exit
   
@@ -188,6 +208,8 @@ void manage_workers () {
       //grab another process and run it
       int newWorkerPID = *(ms_QA_base + QA_size_init  -1);
       *ms_QA_size_ptr = QA_size_init -1;
+      printf("control debug: Manager moving pid %d from QA into QR \n", newWorkerPID);
+      std::cout.flush();
       
       int res = kill(newWorkerPID,SIGCONT);//May need to stick in a loop
       if (res == -1) {
@@ -216,7 +238,7 @@ void manage_workers () {
   }
 
   if (*target_started_ptr == 1) {
-    printf("Manager sees %d in QR, %d in QA \n", *ms_QR_size_ptr, *ms_QA_size_ptr);
+    //printf("Manager sees %d in QR, %d in QA \n", *ms_QR_size_ptr, *ms_QA_size_ptr);
     std::cout.flush();
     if (*ms_QR_size_ptr == 0 && *ms_QA_size_ptr == 0) {
       printf("Manager sees empty queues \n");
@@ -225,9 +247,9 @@ void manage_workers () {
     }
   }
     
-  printf("Leaving manage_workers -- \n");
-  printQR();
-  printQA();
+  //printf("Leaving manage_workers -- \n");
+  //printQR();
+  //printQA();
   
   release_sem_lock();
 }
@@ -282,6 +304,21 @@ void QA_insert_PID(int PID) {
 
 }
 
+//Todo -- Any more cleanup needed?
+void worker_exit() {
+  if (taseManager != true) {
+    printf("WARNING: worker_exit called without taseManager \n");
+    std::cout.flush();
+  } else {
+    
+    get_sem_lock();
+    
+        
+    remove_self_from_QR();
+    std::exit(EXIT_SUCCESS);//Releases semaphore
+  }
+}
+
 int tase_fork() {
   printf("Entering tase_fork \n");
   std::cout.flush();
@@ -307,25 +344,7 @@ int tase_fork() {
 	if (WIFSTOPPED(status))
 	  break;
       }
-      //Q_Available.insert(trueChildPID); 
-
       QA_insert_PID(trueChildPID);
-      
-      /*
-      int QA_size= *ms_QA_size_ptr;
-
-      
-      
-      QA_size++;
-      if (QA_size * sizeof(int) > QA_BYTE_LEN) {
-	printf("FATAL ERROR: Too many process in QA \n");
-	std::cout.flush();
-	std::exit(EXIT_FAILURE);
-      }
-      *(ms_QA_base + QA_size -1) = trueChildPID;
-      *ms_QA_size_ptr = QA_size;
-      
-      */
 
     } else  {
      
@@ -339,24 +358,14 @@ int tase_fork() {
       while (true) {
 	int status;
 	int res = waitpid(falseChildPID, &status, WUNTRACED);
+	if (res == -1)
+	  perror("Waitpid error in tase_fork()");
 	if (WIFSTOPPED(status))
 	  break;
       }
-      //Q_Available.insert(falseChildPID);
 
       QA_insert_PID(falseChildPID);
 
-      /*
-       int QA_size= *ms_QA_size_ptr;
-       QA_size++;
-       if (QA_size * sizeof(int) > QA_BYTE_LEN) {
-	 printf("FATAL ERROR: Too many process in QA \n");
-	 std::cout.flush();
-	 std::exit(EXIT_FAILURE);
-       }
-       *(ms_QA_base + QA_size -1) = falseChildPID;
-       *ms_QA_size_ptr = QA_size;
-       */
     } else {
 
       raise(SIGSTOP);
@@ -423,18 +432,119 @@ void initManagerStructures() {
    
  }
 
+//Fill a buffer with string for the time
+void TASE_get_time_string (char * buf) {
+  time_t theTime;
+  time(&theTime);
 
-void multipass_start_round (klee::Executor * theExecutor) {
+  struct tm * tstruct= localtime(&theTime);
+  strftime(buf, 80, "%T",tstruct);
+  
+
+}
+
+void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
+  printf("Hit top of multipass_start_round \n");
   std::cout.flush();
+
   get_sem_lock();
-  printf("Starting round %d pass %d of verification \n", roundCount, passCount);
+  printf("IMPORTANT: Starting round %d pass %d of verification \n", roundCount, passCount);
   std::cout.flush();
   //Make backup of self
   int childPID = ::fork();
-  replayPID = childPID;
+  
   if (childPID != 0) {
+    *replayPIDPtr = childPID;
     //Block until child has sigstop'd
     while (true) {
+      
+      int status;
+      int res = waitpid(childPID, &status, WUNTRACED);
+      if (res == -1)
+	  perror("Waitpid error in multipass_start_round()");
+      if (WIFSTOPPED(status))
+	break;
+    }    
+
+    if (isReplay) {
+
+      //Pickup assignment info if necessary
+      if (*(uint8_t *) MPAPtr != 0) {
+	printf("Attempting to deserialize MP Assignments \n");
+	std::cout.flush();
+	if (*replayLock != 0)
+	  printf("IMPORTANT: Error: control debug - replay lock has value %d in multipass_start_round \n", *replayLock);
+	std::cout.flush();
+	prevMPA.clear();
+	deserializeAssignments(MPAPtr, multipassAssignmentSize, theExecutor, &prevMPA);
+	memset(MPAPtr, 0, multipassAssignmentSize); //Wipe out the multipass assignment to be safe
+	printf("Printing assignments AFTER deserialization \n");
+	prevMPA.printAllAssignments(NULL);
+	*replayLock = 1;
+	
+      } else {
+	char buf2 [80];
+	TASE_get_time_string(buf2);
+	printf( "IMPORTANT: ERROR: control debug: deserializing from empty buf 0x%lx at time %s for replay pid %d  \n", (uint64_t) MPAPtr, buf2, getpid());
+	std::cout.flush();
+      }
+ 
+    }
+
+    std::cout.flush();
+    release_sem_lock();
+  } else {
+
+    passCount++;
+    raise(SIGSTOP);
+
+    int i = getpid();
+    workerIDStream << ".";
+    workerIDStream << i;
+    std::string pidString ;
+    pidString = workerIDStream.str();
+    freopen(pidString.c_str(),"w",stdout);
+    
+    while (true) {
+      
+      get_sem_lock(); 
+      if (PidInQR(i) && *replayLock == 0) {
+	break;
+      } else {
+	release_sem_lock();
+      }
+    }
+    
+    char buf [80];
+    TASE_get_time_string(buf);
+    
+    printf("IMPORTANT: control debug:  replaying round %d for pass %d at time %s with replay pid %d \n", roundCount, passCount, buf, getpid());
+    if(!PidInQR(i)) 
+      printf("IMPORTANT: Error: control debug: Process %d executing without pid in QR at time %s \n", i, buf);
+    std::cout.flush();
+    release_sem_lock();
+    
+    multipass_start_round(theExecutor, true);
+    printf("Returned from multipass_start_round \n");
+    std::cout.flush();
+  }    
+}
+/*
+void multipass_start_round (klee::Executor * theExecutor) {
+  printf("Hit top of multipass_start_round \n");
+  std::cout.flush();
+  
+  get_sem_lock();
+  printf("IMPORTANT: Starting round %d pass %d of verification \n", roundCount, passCount);
+  std::cout.flush();
+  //Make backup of self
+  int childPID = ::fork();
+ 
+  if (childPID != 0) {
+    *replayPIDPtr = childPID;
+    //Block until child has sigstop'd
+    while (true) {
+
       int status;
       int res = waitpid(childPID, &status, WUNTRACED);
       if (WIFSTOPPED(status))
@@ -443,66 +553,125 @@ void multipass_start_round (klee::Executor * theExecutor) {
   } else {
     passCount++;
     raise(SIGSTOP);
-    std::cout.flush();
+
+
     int i = getpid();
     workerIDStream << ".";
     workerIDStream << i;
     std::string pidString ;
     pidString = workerIDStream.str();
     freopen(pidString.c_str(),"w",stdout);
-    //freopen(pidString.c_str(),"w",stderr);
+    
+    while (true) {
+      
+      get_sem_lock(); 
+      if (PidInQR(i) && *replayLock == 0) {
+	break;
+      } else {
+	release_sem_lock();
+      }
+    }
+    
+
+    time_t theTime;
+    time(&theTime);
+    char buf [80];
+    struct tm * tstruct = localtime(&theTime);
+    strftime(buf, 80, "%T", tstruct);
+    
+    printf("IMPORTANT: control debug:  replaying round %d for pass %d at time %s with replay pid %d \n", roundCount, passCount, buf, getpid());
+    if(!PidInQR(i)) 
+      printf("IMPORTANT: Error: control debug: Process %d executing without pid in QR at time %s \n", i, buf);
     std::cout.flush();
-    fflush(stdout);
-    printf("DEBUG:  Child process replaying round %d for pass %d \n", roundCount, passCount);
-    fflush(stdout);
-    std::cout.flush();
+    
     multipass_start_round(theExecutor);
-    printf("First byte of MPAPtr is 0x%x \n", (*(uint8_t *) MPAPtr));
+    printf("Returned from multipass_start_round \n");
     std::cout.flush();
 
+
+
+
+    
+
+
+
+
+    
     //Pickup assignment info if necessary
     if (*(uint8_t *) MPAPtr != 0) {
       printf("Attempting to deserialize MP Assignments \n");
       std::cout.flush();
+      if (*replayLock != 0)
+	printf("IMPORTANT: Error: control debug - replay lock has value %d in multipass_start_round \n", *replayLock);
+      std::cout.flush();
       prevMPA.clear();
       deserializeAssignments(MPAPtr, multipassAssignmentSize, theExecutor, &prevMPA);
-      printf("DBG 22 \n");
-      std::cout.flush();
+      memset(MPAPtr, 0, multipassAssignmentSize); //Wipe out the multipass assignment to be safe
+      printf("Printing assignments AFTER deserialization \n");
       prevMPA.printAllAssignments(NULL);
-      printf("DBG 33 \n");
+      *replayLock = 1;
+
+    } else {
+      time_t theTime2;
+      time(&theTime2);
+      char buf2 [80];
+      struct tm * tstruct2= localtime(&theTime2);
+      strftime(buf2, 80, "%T",tstruct2);
+      printf( "IMPORTANT: ERROR: control debug: deserializing from empty buf 0x%lx at time %s for replay pid %d  \n", (uint64_t) MPAPtr, buf2, getpid());
       std::cout.flush();
     }
   }
   
-  //printf("First byte of MPAPtr is 0x%x \n", (*(uint8_t *) MPAPtr));
-  std::cout.flush();
-  
-  //Pickup assignment info if necessary
-  /*
-  if (*(uint8_t *) MPAPtr != 0) {
-    printf("Attempting to deserialize MP Assignments \n");
-    std::cout.flush();
-    prevMPA = deserializeAssignments(MPAPtr, multipassAssignmentSize, theExecutor);
-  }
-  */
+  std::cout.flush();  
   release_sem_lock();
 }
+*/
 
-void multipass_replay_round (void * assignmentBufferPtr, CVAssignment * mpa, int thePid)  {
-  get_sem_lock();
+
+void multipass_replay_round (void * assignmentBufferPtr, CVAssignment * mpa, int * pidPtr)  {
+
+  while(true) {//Is this actually needed?  get_sem_lock() should block until semaphore is available
  
-  //Move replay child pid into QA
-  QA_insert_PID(thePid);
-  //Move latest assignments into shared mem
-  mpa->serializeAssignments(assignmentBufferPtr, multipassAssignmentSize);
-  
-  
-  //Remove self from QR
-  remove_self_from_QR();
-  
-  //Exit, which implicitly releases the semaphore
-  std::exit(EXIT_SUCCESS);
+    get_sem_lock();
+    if (*replayLock != 1  || PidInQA(*pidPtr) || PidInQR(*pidPtr) ||  *((uint8_t *) assignmentBufferPtr) != 0)  {
+      release_sem_lock();  //Spin and try again after pending replay fully executes
 
+    } else {
+      if (*replayLock != 1) {
+	printf("IMPORTANT: control debug: Error - replayLock has unexpected value %d \n", *replayLock);
+      } else {
+	*replayLock = 0;
+	if (PidInQA(*pidPtr))
+	  printf("ERROR: control debug: replay pid is somehow already in QA \n");
+	time_t theTime;
+	time(&theTime);
+	char buf [80];
+	struct tm * tstruct= localtime(&theTime);
+	strftime(buf, 80, "%T",tstruct);
+	printf("mp_replay_round: control debug: replayLock obtained. Inserting replayPid %d into QA  at time %s \n", *pidPtr, buf);
+	std::cout.flush();
+	
+      }
+      std::cout.flush();
+      QA_insert_PID(*pidPtr); //Move replay child pid into QA
+      if ( *((uint8_t *) assignmentBufferPtr) != 0) { //Move latest assignments into shared mem
+	printf("ERROR: control debug: see data in assignment buffer when trying to serialize new constraints at time % \n");
+	std::cout.flush();
+      }
+      printf("Printing assignments BEFORE serialization \n");
+      mpa->printAllAssignments(NULL);
+      time_t theTime2;
+      time(&theTime2);
+      char buf2 [80];
+      struct tm * tstruct2= localtime(&theTime2);
+      strftime(buf2, 80, "%T",tstruct2);
+      printf(" control debug: Serializing to buf 0x%lx at time %s for replay pid %d in round %d \n", (uint64_t) assignmentBufferPtr, buf2, *pidPtr, roundCount);
+      mpa->serializeAssignments(assignmentBufferPtr, multipassAssignmentSize);
+      std::cout.flush();
+      remove_self_from_QR();
+      std::exit(EXIT_SUCCESS);//Exit implicitly releases the semaphore
+    }
+  }
 }
 
 void  multipass_reset_round() {
@@ -510,17 +679,11 @@ void  multipass_reset_round() {
   passCount = 0;
   roundCount++;
   MPAPtr = mmap(NULL, multipassAssignmentSize, PROT_READ|PROT_WRITE, MAP_ANON|MAP_SHARED, -1, 0);
+  printf("control debug: MPAPtr is located at 0x%lx for round %d \n", (uint64_t) MPAPtr, roundCount);
+  std::cout.flush();
   memset(MPAPtr, 0, multipassAssignmentSize);
-  
-  //Kill the replay pid if it exists.  Another one will be established next round.
-  if (replayPID != -1) {
-
-    int res = kill(replayPID,SIGKILL);//May need to stick in a loop
-    if (res == -1) {
-      printf("Trying to sigkill %d \n",replayPID);
-      std::cout.flush();
-      perror("ERROR: Worker can't kill redundant clone ");
-      std::exit(EXIT_FAILURE);
-    } 
-  }    
+  replayPIDPtr = (int *) mmap(NULL, sizeof(int), PROT_READ|PROT_WRITE, MAP_ANON|MAP_SHARED, -1, 0);
+  *replayPIDPtr = 0;
+  replayLock = (int *) mmap(NULL, sizeof(int), PROT_READ|PROT_WRITE, MAP_ANON|MAP_SHARED, -1, 0);
+  *replayLock = 1;
 }

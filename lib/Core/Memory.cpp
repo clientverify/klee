@@ -261,10 +261,12 @@ void ObjectState::applyPsnOnMakeSymbolic() {
   unsigned size = this->getObject()->size;
   if (addr % 2 != 0) {
     printf("ERROR: Encountered memory object on unaligned address 0x%lx \n", addr);
+    std::cout.flush();
     std::exit(EXIT_FAILURE);
   }
   if (size %2 != 0) {
     printf("ERROR: Encountered memory object with odd size %u \n", size);
+    std::cout.flush();
     std::exit(EXIT_FAILURE);
   }
 
@@ -576,7 +578,7 @@ void ObjectState::applyPsnOnWrite(ref<Expr> offset, ref<Expr> value) {
     default: assert(0 && "Invalid write size!");
     case  Expr::Bool:
     case  Expr::Int8:
-      printf("In Bool/Int8 case of ApplyPsnOnWrite \n");
+      //printf("In Bool/Int8 case of ApplyPsnOnWrite \n");
       endOff = 1;
       break;
     case Expr::Int16: endOff = 2;
@@ -586,18 +588,20 @@ void ObjectState::applyPsnOnWrite(ref<Expr> offset, ref<Expr> value) {
     case Expr::Int64: endOff = 8;
       break;
     }
+    /*
     printf("Initially unsigned endOff is %d \n", endOff);
     printf("Unsigned firstOff is %d \n", firstOff);
     printf("Now perform arithmetic \n");
+    */
     endOff = firstOff + endOff -1;
 
-    printf("ApplyPsnOnWrite DBG: \n");
-    printf("endOff is %d, firstOff is %d \n", endOff, firstOff);
+    //printf("ApplyPsnOnWrite DBG: \n");
+    //printf("endOff is %d, firstOff is %d \n", endOff, firstOff);
     
     uint64_t firstAddr = this->getObject()->address + (uint64_t) firstOff;
     uint64_t endAddr = this->getObject()->address + (uint64_t) endOff;
 
-     printf("firstAddr is 0x%lx, endAddr is 0x%lx \n", firstAddr, endAddr);
+    //printf("firstAddr is 0x%lx, endAddr is 0x%lx \n", firstAddr, endAddr);
     
     bool concVal = false;
     
@@ -647,7 +651,7 @@ void ObjectState::applyPsnOnWrite(ref<Expr> offset, ref<Expr> value) {
     if ( firstAddr %2 == 1) {
       unsigned sibIdx = firstOff -1;
       if (! (isByteConcrete(firstOff) && !isByteFlushed(firstOff) && isByteConcrete(sibIdx) && !isByteFlushed(sibIdx))) {
-	printf("In firstAddr special case \n");
+	//printf("In firstAddr special case \n");
 
 	ref <Expr> byte1Val = read8(sibIdx);
 	ref <Expr> byte2Val = read8(firstOff);
@@ -669,12 +673,14 @@ void ObjectState::applyPsnOnWrite(ref<Expr> offset, ref<Expr> value) {
 	//No action needed.  Both bytes are "nice"
       }	  
     }
+    /*
     printf("isByteConcrete(endOff) is %d \n", isByteConcrete(endOff));
     printf("isByteFlushed(endOff)  is %d \n", isByteFlushed(endOff));
+    */
     if (endAddr %2 == 0) {
       unsigned sibIdx = endOff +1;
       if (! ( isByteConcrete(endOff) && !isByteFlushed(endOff) && isByteConcrete(sibIdx) && !isByteFlushed(sibIdx) ) ) {
-	printf("In endAddr special case \n");
+	//printf("In endAddr special case \n");
 
 	ref <Expr> byte1Val = read8(endOff);
 	ref <Expr> byte2Val = read8(sibIdx);
@@ -705,6 +711,7 @@ void ObjectState::applyPsnOnWrite(ref<Expr> offset, ref<Expr> value) {
     uint16_t * twoByteIterator = (uint16_t *) this->getObject()->address;
     if (size % 2 != 0 || (this->getObject()->address %2 != 0)) {
       printf("Memory Object unaligned or with odd number of bytes \n");
+      std::cout.flush();
       std::exit(EXIT_FAILURE);
     }
     
@@ -722,10 +729,12 @@ bool ObjectState::isObjectEntirelyConcrete() {
   unsigned size = this->getObject()->size;
   if (addr % 2 != 0) {
     printf("ERROR: Encountered memory object on unaligned address 0x%lx \n", addr);
+    std::cout.flush();
     std::exit(EXIT_FAILURE);
   }
   if (size %2 != 0) {
     printf("ERROR: Encountered memory object with odd size %u \n", size);
+    std::cout.flush();
     std::exit(EXIT_FAILURE);
   }
   

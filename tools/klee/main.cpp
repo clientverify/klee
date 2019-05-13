@@ -115,6 +115,7 @@ extern char * ktestPathPtr;
 extern char ktestMode[20];
 extern char ktestPath[100];
 
+bool skipFree = false;
 bool KTestReplay;
 bool stopAtMasterSecret = false;
 bool enableMultipass = false;
@@ -376,6 +377,9 @@ namespace {
   cl::opt<bool>
   enableMultipassArg("enableMultipass", cl::desc("Run verification"), cl::init(false));
 
+  cl::opt<bool>
+  skipFreeArg("skipFree", cl::desc("Debugging option to skip frees"), cl::init(false));
+  
   cl::opt<bool>
   killFlagsHackArg("killFlagsHack", cl::desc("Option to kill flags after each jump to the springboard"), cl::init(false));
   
@@ -1452,7 +1456,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 }
 #endif
 
- void printTASEArgs(runType rt, testType tt, bool fm, bool dbg, std::string projName, bool df, bool disableSB, bool enableMP, bool stop, bool killFlags) {
+ void printTASEArgs(runType rt, testType tt, bool fm, bool dbg, std::string projName, bool df, bool disableSB, bool enableMP, bool stop, bool killFlags, bool dontFree) {
 
    printf("TASE args... \n");
    if (rt == MIXED) 
@@ -1478,6 +1482,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    printf("\t enableMultipass output: %d \n", enableMultipass);
    printf("\t stopAtMasterSecret output : %d \n", stop);
    printf("\t killFlagsHack      output : %d \n", killFlags);
+   printf("\t skipFree           output : %d \n", dontFree);
  }
 
  
@@ -1502,8 +1507,9 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    enableMultipass = enableMultipassArg;
    stopAtMasterSecret = stopAtMasterSecretArg;
    killFlagsHack = killFlagsHackArg;
+   skipFree = skipFreeArg;
    if (taseDebug)
-     printTASEArgs(exec_mode, test_type, taseManager, taseDebug, project, dontFork, disableSpringboard, enableMultipass, stopAtMasterSecret, killFlagsHack);
+     printTASEArgs(exec_mode, test_type, taseManager, taseDebug, project, dontFork, disableSpringboard, enableMultipass, stopAtMasterSecret, killFlagsHack, skipFree);
    
    //Redirect stdout messages to a file called "Monitor".
    //Later, calls to unix fork in executor create new filenames

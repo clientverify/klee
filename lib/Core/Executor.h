@@ -379,7 +379,7 @@ private:
   //Written because KLEE typically requires mem ops in terms of an
   //object's base & offset rather than direct addr.
   ref<Expr> tase_helper_read (uint64_t address, uint8_t byteWidth);
-  void tase_make_symbolic (uint64_t addr, uint64_t len, char * name);
+  void tase_make_symbolic (uint64_t addr, uint64_t len,const  char * name);
 
   void model_tase_debug();
   
@@ -477,7 +477,7 @@ private:
   uint64_t tls_predict_stdin_size (int fd, uint64_t maxLen);
   BIGNUM * BN_new_tase();
   EC_POINT * EC_POINT_new_tase(EC_GROUP * group);
-  void make_BN_symbolic(BIGNUM * bn, char * name); 
+  void make_BN_symbolic(BIGNUM * bn,const char * name); 
   void make_EC_POINT_symbolic(EC_POINT* p);
   bool is_symbolic_EC_POINT(EC_POINT * p);
   bool is_symbolic_BIGNUM(BIGNUM * bn);

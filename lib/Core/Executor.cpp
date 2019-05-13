@@ -119,6 +119,7 @@ extern "C" {
   void * realloc_tase (void * ptr, unsigned long new_size);
   void * malloc_tase(unsigned long s);
   void   free_tase(void * ptr);
+  void * memcpy_tase(char * dst, const char * src, unsigned long size);
   } 
 
 //Symbols we need to map in for TASE
@@ -170,9 +171,11 @@ uint64_t saveRAXOpc =    0x000000F822C1E3C4  ; //tmp hack
 uint64_t restoreRAXOpc = 0x000000F816F9E3C4; //tmp hack
 //Multipass
 extern bool point2oct_hack;
-
+extern void get_sem_lock();
+extern void release_sem_lock();
+extern void worker_exit();
 extern void multipass_reset_round();
-extern void multipass_start_round(Executor * theExecutor);
+extern void multipass_start_round(Executor * theExecutor, bool isReplay);
 extern void multipass_replay_round(void * assignmentBufferPtr, CVAssignment * mpa, int thePid);
 extern multipassRecord multipassInfo;
 extern KTestObjectVector ktov;
@@ -981,8 +984,12 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
       workerIDStream << i;
       std::string pidString ;
       pidString = workerIDStream.str();
-      freopen(pidString.c_str(),"w",stdout);
-      freopen(pidString.c_str(),"w",stderr);
+      FILE * res1 = freopen(pidString.c_str(),"w",stdout);
+      FILE * res2 = freopen(pidString.c_str(),"w",stderr);
+      if (res1 == NULL || res2 == NULL) {
+	printf("ERROR: Could not open new file for logging child output \n");
+	fflush(stdout);
+      }
       printf("DEBUG:  Child process created\n");
       addConstraint(*GlobalExecutionStatePtr, Expr::createIsZero(condition));
     } else {
@@ -991,8 +998,12 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
       workerIDStream << i;
       std::string pidString ;
       pidString = workerIDStream.str();
-      freopen(pidString.c_str(),"w",stdout);
-      freopen(pidString.c_str(),"w",stderr);
+      FILE * res1 = freopen(pidString.c_str(),"w",stdout);
+      FILE * res2 = freopen(pidString.c_str(),"w",stderr);
+      if (res1 == NULL || res2 == NULL) {
+	printf("ERROR: Could not open new file for logging child output \n");
+	fflush(stdout);
+      }
       printf("DEBUG: Parent process continues \n");
       addConstraint(*GlobalExecutionStatePtr, condition);
     }
@@ -3409,7 +3420,7 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
 
     multipass_reset_round();
 
-    multipass_start_round(this);
+    multipass_start_round(this, false);
 
 
 
@@ -3851,8 +3862,10 @@ KFunction * findInterpFunction (greg_t * registers, KModule * kmod) {
 
 //Populate a buffer at addr with len bytes of unconstrained symbolic data.
 //We make the symbolic memory object at a malloc'd address and write the bytes to addr.
-void Executor::tase_make_symbolic(uint64_t addr, uint64_t len, char * name)  {
+void Executor::tase_make_symbolic(uint64_t addr, uint64_t len, const char * name)  {
   printf("tase_make_symbolic called on buf 0x%lx with size 0x%lx named %s \n", addr, len, name);
+  if (addr %2 != 0)
+    printf("WARNING: tase_make_symbolic called on unaligned object \n");
   std::cout.flush();
   
   void * buf = malloc(len);
@@ -4004,12 +4017,12 @@ extern uint16_t poison_val;
 
 //Todo: Double check the edge cases and make non-ugly
 bool Executor::isBufferEntirelyConcrete (uint64_t addr, int size) {
-
+  /*
   uint16_t * objIterator;
   uint64_t addrInt = (uint64_t) addr;
   if (addrInt % 2 == 1) {
     printf("WARNING: Working with unaligned buffer at 0x%lx \n", addrInt);
-    objIterator = (uint16_t *) addrInt -1;
+    objIterator = (uint16_t *) addrInt -1;  //Todo -- is this a bug?
   } else {
     objIterator = (uint16_t *) addrInt;
   }
@@ -4022,7 +4035,10 @@ bool Executor::isBufferEntirelyConcrete (uint64_t addr, int size) {
   }
   if (foundPsn == false) 
     return true;
+  */
 
+  //Debug the issue with the fast path check.  Until then, easy does it...
+  
   //Slow path
   uint64_t byteItr = (uint64_t) addr;
   for (int i = 0; i < size; i++) {
@@ -4114,16 +4130,6 @@ bool Executor::instructionBeginsTransaction(uint64_t pc) {
   }
 
   return false;
-
-
-  /*
-  
-  if ( pc == (uint64_t) &sb_reopen || pc == (uint64_t) &sb_disabled) 
-       return true;
-     else
-     return false; */
-
-  
 }
 
 bool Executor::resumeNativeExecution (){
@@ -4327,9 +4333,9 @@ void Executor::model_inst () {
     printKTestCounters();
     
     model_shutdown();
-  } else if (rip == (uint64_t) &memcpy) { 
-    model_memcpy(); //Last 6 bytes of a buffer could be read
-    //with an 8 byte read, which klee doesn't like Todo: fix    
+  } else if (rip == (uint64_t) &memcpy || rip == (uint64_t) &memcpy_tase + 14) { 
+    model_memcpy(); //Just for debugging
+    
   } else if (rip == (uint64_t) &memset) {
     model_memset(); //Just for performance testing
   } else if (rip == (uint64_t) &time ) {
@@ -4513,7 +4519,7 @@ bool isSpecialInst (uint64_t rip) {
   //Todo -- get rid of traps for RAND_add and RAND_load_file
   //  static const uint64_t modeledFns[] = { (uint64_t) &puts, (uint64_t)&exit, (uint64_t) &printf  /*, (uint64_t) &taseMakeSymbolic */ };
   
-  static const uint64_t modeledFns [] = {(uint64_t)&signal, (uint64_t)&malloc, (uint64_t)&read, (uint64_t)&write, (uint64_t)&connect, (uint64_t)&select, (uint64_t)&socket, (uint64_t) &getuid, (uint64_t) &geteuid, (uint64_t) &getgid, (uint64_t) &getegid, (uint64_t) &getenv, (uint64_t) &stat, (uint64_t) &free, (uint64_t) &realloc,  (uint64_t) &RAND_add, (uint64_t) &RAND_load_file, (uint64_t) &kTest_free, (uint64_t) &kTest_fromFile, (uint64_t) &kTest_getCurrentVersion, (uint64_t) &kTest_isKTestFile, (uint64_t) &kTest_numBytes, (uint64_t) &kTest_toFile, (uint64_t) &ktest_RAND_bytes, (uint64_t) &ktest_RAND_pseudo_bytes, (uint64_t) &ktest_connect, (uint64_t) &ktest_finish, (uint64_t) &ktest_master_secret, (uint64_t) &ktest_raw_read_stdin, (uint64_t) &ktest_readsocket, (uint64_t) &ktest_select, (uint64_t) &ktest_start, (uint64_t) &ktest_time, (uint64_t) &time, (uint64_t) &gmtime, (uint64_t) &gettimeofday, (uint64_t) &ktest_writesocket, (uint64_t) &fileno, (uint64_t) &fcntl, (uint64_t) &fopen, (uint64_t) &fopen64, (uint64_t) &fclose,  (uint64_t) &fwrite, (uint64_t) &fflush, (uint64_t) &fread, (uint64_t) &fgets, (uint64_t) &__isoc99_sscanf, (uint64_t) &gethostbyname, (uint64_t) &setsockopt, (uint64_t) &__ctype_tolower_loc, (uint64_t) &__ctype_b_loc, (uint64_t) &__errno_location,  (uint64_t) &BIO_printf, (uint64_t) &BIO_snprintf, (uint64_t) &vfprintf,  (uint64_t) &sprintf, (uint64_t) &tase_debug,   (uint64_t) &OpenSSLDie, (uint64_t) &shutdown , (uint64_t) &malloc_tase, (uint64_t) &realloc_tase, (uint64_t) &calloc_tase, (uint64_t) &free_tase, (uint64_t) &getpid, (uint64_t) &SHA1_Update, (uint64_t) &SHA256_Update, (uint64_t) &AES_encrypt, (uint64_t) &gcm_gmult_4bit, (uint64_t) &gcm_ghash_4bit , (uint64_t) &EC_KEY_generate_key , (uint64_t) &ECDH_compute_key, (uint64_t) &EC_POINT_point2oct /* , (uint64_t) &memcpy, (uint64_t) &memset*/ };
+  static const uint64_t modeledFns [] = {(uint64_t)&signal, (uint64_t)&malloc, (uint64_t)&read, (uint64_t)&write, (uint64_t)&connect, (uint64_t)&select, (uint64_t)&socket, (uint64_t) &getuid, (uint64_t) &geteuid, (uint64_t) &getgid, (uint64_t) &getegid, (uint64_t) &getenv, (uint64_t) &stat, (uint64_t) &free, (uint64_t) &realloc,  (uint64_t) &RAND_add, (uint64_t) &RAND_load_file, (uint64_t) &kTest_free, (uint64_t) &kTest_fromFile, (uint64_t) &kTest_getCurrentVersion, (uint64_t) &kTest_isKTestFile, (uint64_t) &kTest_numBytes, (uint64_t) &kTest_toFile, (uint64_t) &ktest_RAND_bytes, (uint64_t) &ktest_RAND_pseudo_bytes, (uint64_t) &ktest_connect, (uint64_t) &ktest_finish, (uint64_t) &ktest_master_secret, (uint64_t) &ktest_raw_read_stdin, (uint64_t) &ktest_readsocket, (uint64_t) &ktest_select, (uint64_t) &ktest_start, (uint64_t) &ktest_time, (uint64_t) &time, (uint64_t) &gmtime, (uint64_t) &gettimeofday, (uint64_t) &ktest_writesocket, (uint64_t) &fileno, (uint64_t) &fcntl, (uint64_t) &fopen, (uint64_t) &fopen64, (uint64_t) &fclose,  (uint64_t) &fwrite, (uint64_t) &fflush, (uint64_t) &fread, (uint64_t) &fgets, (uint64_t) &__isoc99_sscanf, (uint64_t) &gethostbyname, (uint64_t) &setsockopt, (uint64_t) &__ctype_tolower_loc, (uint64_t) &__ctype_b_loc, (uint64_t) &__errno_location,  (uint64_t) &BIO_printf, (uint64_t) &BIO_snprintf, (uint64_t) &vfprintf,  (uint64_t) &sprintf, (uint64_t) &tase_debug,   (uint64_t) &OpenSSLDie, (uint64_t) &shutdown , (uint64_t) &malloc_tase, (uint64_t) &realloc_tase, (uint64_t) &calloc_tase, (uint64_t) &free_tase, (uint64_t) &getpid /* (uint64_t) &SHA1_Update, (uint64_t) &SHA256_Update, (uint64_t) &AES_encrypt, (uint64_t) &gcm_gmult_4bit, (uint64_t) &gcm_ghash_4bit , (uint64_t) &EC_KEY_generate_key , (uint64_t) &ECDH_compute_key, (uint64_t) &EC_POINT_point2oct */ /* , (uint64_t) &memcpy, (uint64_t) &memset*/ };
   
   
   bool isModeled = std::find(std::begin(modeledFns), std::end(modeledFns), rip) != std::end(modeledFns);
@@ -4566,6 +4572,7 @@ bool isSpecialInst (uint64_t rip) {
       rip == (uint64_t) &sb_disabled ||
       rip == (uint64_t) &target_exit ||
       isModeled                      ||
+      rip == (uint64_t) &memcpy_tase         + 14  || 
       rip == (uint64_t) &malloc_tase         + 14  ||
       rip == (uint64_t) &realloc_tase        + 14  ||
       rip == (uint64_t) &free_tase           + 14  ||
@@ -4683,13 +4690,6 @@ void Executor::klee_interp_internal () {
       run(*GlobalExecutionStatePtr); 
     }
 
-    //Debug -- Print a sample value for flags
-    ref<Expr> RAXExpr = target_ctx_gregs_OS->read(REG_RAX * 8, Expr::Int64);
-    if (!isa<ConstantExpr> (RAXExpr) ) {
-      printf("Non constant RAX found. \n");
-      int res = printAllPossibleValues(RAXExpr);
-      printf("printAllPossibleValues returned %d \n", res);
-    }
     std::cout.flush();
     //Debug -- Print a sample value for flags
     ref<Expr> EflExpr = target_ctx_gregs_OS->read(REG_EFL * 8, Expr::Int64);
@@ -4715,7 +4715,7 @@ void Executor::klee_interp_internal () {
 	
       } else {
       
-	printf("Calling forkOnPossibleRIPValues() \n");
+	printf("IMPORTANT: Calling forkOnPossibleRIPValues() \n");
 	std::cout.flush();
 	forkOnPossibleRIPValues(RIPExpr);
       }
@@ -4733,7 +4733,8 @@ void Executor::klee_interp_internal () {
        printDebugInterpFooter();
 
     //Kludge to get us back to native execution for prohib fns with concrete input
-    if (forceNativeRet)
+    //Todo -- add check to gprsAreConcrete()
+    if (forceNativeRet && gprsAreConcrete())
       break;
   }
 
@@ -4818,29 +4819,43 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr) {
     printf("Looking at solution number %d in forkOnPossibleRIPValues() \n", numSolutions);
     if (numSolutions > maxSolutions) {
       printf("Found too many symbolic values for RIP \n ");
+      std::cout.flush();
+      worker_exit();
       std::exit(EXIT_FAILURE);
     }
-      
+
+    //Todo -- see if we don't have to wait on these solver calls
+    //get_sem_lock();
+    
     bool success = solver->getValue(*GlobalExecutionStatePtr, inputExpr, solution);
+    //release_sem_lock();
     if (!success) {
       printf("ERROR: couldn't get initial value in forkOnPossibleRIPValues \n");
       std::cout.flush();
       std::exit(EXIT_FAILURE);
-    } 
+    }
 
+    
+    
+    std::cout.flush();
     int pid = tase_fork();
     int i = getpid();
     workerIDStream << ".";
     workerIDStream << i;
     std::string pidString ;
     pidString = workerIDStream.str();
-    freopen(pidString.c_str(),"w",stdout);
-    freopen(pidString.c_str(),"w",stderr);
+    FILE * res1 = freopen(pidString.c_str(),"w",stdout);
+    FILE * res2 = freopen(pidString.c_str(),"w",stderr);
+    if (res1 == NULL || res2 == NULL) {
+      printf("ERROR opening new file for child process logging \n");
+      fflush(stdout);
+    }
 
     if (pid == 0) { //Rule out latest solution and see if more exist
       ref<Expr> notEqualsSolution = NotExpr::create(EqExpr::create(inputExpr,solution));
       addConstraint(*GlobalExecutionStatePtr, notEqualsSolution);
-    } else { // Take the concrete value of solution and explore that path.  
+    } else { // Take the concrete value of solution and explore that path.
+      printf("IMPORTANT: Found dest RIP 0x%lx in forkOnRip from RIP 0x%lx with pid %d \n", (uint64_t) solution->getZExtValue(), target_ctx_gregs[REG_RIP].u64, getpid());
       addConstraint(*GlobalExecutionStatePtr, EqExpr::create(inputExpr, solution));
       target_ctx_gregs_OS->write(REG_RIP*8, solution);
       break;
@@ -4907,7 +4922,7 @@ void Executor::initializeInterpretationStructures (Function *f) {
   printf("target_ctx_gregs is located at address %lu, hex 0x%p \n", (uint64_t) (target_ctx_gregs), (void *) target_ctx_gregs);
   printf("target_ctx_gregs_MO represents address %lu, hex 0x%p \n", (uint64_t) target_ctx_gregs_MO->address, (void *) target_ctx_gregs);
 
-  printf("Size of gregs is %lu \n", NGREG * REG_SIZE);
+  printf("Size of gregs is %d \n", NGREG * REG_SIZE);
   
   printf("Setting concrete store in target_ctx_gregs_OS to target_ctx_gregs \n");
   const ObjectState *targetCtxOS = GlobalExecutionStatePtr->addressSpace.findObject(target_ctx_gregs_MO);
@@ -4928,11 +4943,11 @@ void Executor::initializeInterpretationStructures (Function *f) {
 
   void * rodataBasePtr = (void *) (&_IO_stdin_used);
   uint64_t rodataSize = (uint64_t) ((uint64_t) (&__GNU_EH_FRAME_HDR) - (uint64_t) (&_IO_stdin_used)) ;
-  printf("Estimated rodataSize as 0x%llx \n", rodataSize);
+  printf("Estimated rodataSize as 0x%lx \n", rodataSize);
 
   rodataSize += (0x2949c + 0x2949c); //Hack to map in eh_frame_hdr and eh_frame also
   
-  printf("Attempting to map in .rodata section at base 0x%llx with size 0x%llx up to  0x%llx \n", (uint64_t) rodataBasePtr, rodataSize, (uint64_t) &__GNU_EH_FRAME_HDR);
+  printf("Attempting to map in .rodata section at base 0x%lx with size 0x%lx up to  0x%lx \n", (uint64_t) rodataBasePtr, rodataSize, (uint64_t) &__GNU_EH_FRAME_HDR);
   std::cout.flush();
     
   MemoryObject * rodataMO = addExternalObject(*GlobalExecutionStatePtr, rodataBasePtr, rodataSize, false);
@@ -5007,7 +5022,7 @@ void Executor::initializeInterpretationStructures (Function *f) {
 
     if ((sizeVal %2) == 1) {
       sizeVal = sizeVal + 1;
-      printf("rounding up sizeval to even number - %d \n",sizeVal);
+      printf("rounding up sizeval to even number - %lu \n",sizeVal);
     }
 
     //Todo:  Get rid of the special cases below for target_ctx_gregs and basket.
@@ -5051,7 +5066,7 @@ void Executor::initializeInterpretationStructures (Function *f) {
   while (envStr != NULL) {
     
     uint32_t size = strlen(envStr);
-    printf("Found env var at 0x%llx with size 0x%x \n", (uint64_t) envStr, size);
+    printf("Found env var at 0x%lx with size 0x%lx \n", (uint64_t) envStr, size);
 
     /*
     if (size % 2 == 1)
