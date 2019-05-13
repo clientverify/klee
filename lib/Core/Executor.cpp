@@ -170,6 +170,8 @@ int initialize_semaphore(int semKey);
 uint64_t saveRAXOpc =    0x000000F822C1E3C4  ; //tmp hack
 uint64_t restoreRAXOpc = 0x000000F816F9E3C4; //tmp hack
 //Multipass
+extern int c_special_cmds; //Int used by cliver to disable special commands to s_client.  Made global for debugging
+
 extern bool point2oct_hack;
 extern void get_sem_lock();
 extern void release_sem_lock();
@@ -4734,7 +4736,7 @@ void Executor::klee_interp_internal () {
 
     //Kludge to get us back to native execution for prohib fns with concrete input
     //Todo -- add check to gprsAreConcrete()
-    if (forceNativeRet && gprsAreConcrete())
+    if (forceNativeRet && gprsAreConcrete() && !(exec_mode == INTERP_ONLY))
       break;
   }
 

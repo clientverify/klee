@@ -29,6 +29,8 @@
 #include <iostream>
 #define KTEST_DEBUG 1
 
+extern void worker_exit();
+
 extern "C" int RAND_pseudo_bytes (unsigned char *buf, int num);
 
 extern "C" int RAND_bytes (unsigned char *buf, int num);
@@ -442,6 +444,9 @@ KTestObject* KTOV_next_object(KTestObjectVector *ov, const char *name)
     printf("ERROR: ktest playback -- no more recorded events \n");
     fflush(stdout);
     fprintf(stderr, "ERROR: ktest playback %s - no more recorded events", name);
+    printf("IMPORTANT:control debug: Worker %d exiting due to no more log entries \n",getpid());
+    
+    fflush(stdout);
     exit(2);
   }
   fprintf(modelLog, "ktov NO DBG 1 \n");
@@ -456,6 +461,10 @@ KTestObject* KTOV_next_object(KTestObjectVector *ov, const char *name)
     fprintf(stderr,
 	    "ERROR: ktest playback needed '%s', but recording had '%s'\n",
 	    name, o->name);
+    printf("IMPORTANT:control debug: Worker %d exiting due to mismatch in log object \n",getpid());
+    
+    fflush(stdout);
+    worker_exit();
     exit(2);
   }
   fprintf(modelLog, "ktov NO DBG 2 \n");

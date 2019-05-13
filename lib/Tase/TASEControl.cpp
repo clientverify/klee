@@ -19,7 +19,7 @@ extern void deserializeAssignments ( void * buf, int bufSize, klee::Executor * e
 
 int QR_BYTE_LEN = 4096;
 int QA_BYTE_LEN = 4096;
-int MAX_WORKERS = 16;
+int MAX_WORKERS = 32;
 
 bool taseManager = false;
 int roundCount = 0;

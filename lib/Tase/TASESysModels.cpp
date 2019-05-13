@@ -104,6 +104,10 @@ extern uint64_t interpCtr;
 extern bool taseDebug;
 
 //Multipass
+enum runType : int {INTERP_ONLY, MIXED};
+//extern std::string project;
+extern enum runType exec_mode;
+extern int c_special_cmds; //Int used by cliver to disable special commands to s_client.  Made global for debugging
 extern void get_sem_lock();
 extern void release_sem_lock();
 extern std::stringstream workerIDStream;
@@ -285,15 +289,12 @@ void Executor::model_ktest_master_secret(  ) {
     unsigned char * buf = (unsigned char *) target_ctx_gregs[REG_RDI].u64; 
     int num = (int) target_ctx_gregs[REG_RSI].u64;
 
-    void * tmp = malloc(num);
+    //void * tmp = malloc(num);
     
     
     if (enableMultipass) {
 
       printf("Trying to read in master secret \n");
-      
-      
-      //printf("Debug: Manually loading master secret \n");
       //char * secretString = "be02e96158f1de85a876435753db64188ea55a8163ef1df43298ded43de2e53a691024666c9d958105561054a34127e8";
 
       std::ifstream datfile;
@@ -345,8 +346,6 @@ void Executor::model_ktest_master_secret(  ) {
     std::cout.flush();
     std::exit(EXIT_FAILURE);
   }
-
-
 }
 
 void Executor::model_exit() {
@@ -424,6 +423,8 @@ void Executor::model_ktest_writesocket() {
   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
 
   printf("Entering model_ktest_writesocket \n");
+  
+  printf("Value of c_special_cmds is %d \n", c_special_cmds);
   fprintf(modelLog, "Entering writesocket call at PC 0x%lx, interpCtr %lu", target_ctx_gregs[REG_RIP].u64, interpCtr);
   
   if  (
@@ -477,18 +478,24 @@ void Executor::model_ktest_writesocket() {
       //Basic structure comes from NetworkManager in klee repo of cliver.
       //Get log entry for c2s
       KTestObject *o = KTOV_next_object(&ktov, ktest_object_names[CLIENT_TO_SERVER]);
-      if (o->numBytes != count) {
-	fprintf(modelLog,"IMPORTANT: VERIFICATION ERROR: mismatch in replay size \n");
-	printf("IMPORTANT: VERIFICATION ERROR - write buffer size mismatch: Worker exiting from terminal path in round %d pass %d \n", roundCount, passCount);
-	std::cout.flush();
-	worker_exit();
-      }
-      
+
+
       printf("Buffer in writesock call : \n");
       printBuf ((void *) buf, count);
       
       printf("Buffer in            log : \n");
-      printBuf ((void *) o->bytes, count);
+      printBuf ((void *) o->bytes, o->numBytes);
+
+
+
+      if (o->numBytes > count) {
+	fprintf(modelLog,"IMPORTANT: VERIFICATION ERROR: mismatch in replay size.  %d bytes in log, %d bytes in verifier \n",  o->numBytes, count);
+	printf("IMPORTANT: VERIFICATION ERROR - write buffer size mismatch %d vs %d : Worker exiting from terminal path in round %d pass %d. \n",o->numBytes, count,  roundCount, passCount);
+	std::cout.flush();
+	worker_exit();
+      }
+      
+      
       
       
       //Create write condition
@@ -499,7 +506,7 @@ void Executor::model_ktest_writesocket() {
       std::cout.flush();
       fflush(stderr);
       */
-      for (int i = 0; i < count; i++) {
+      for (int i = 0; i < o->numBytes; i++) {
 	klee::ref<klee::Expr> val = tase_helper_read((uint64_t) buf + i, 1);
 	/*
 	if (!isa<ConstantExpr>(val) ) {
@@ -626,7 +633,7 @@ void Executor::model_ktest_writesocket() {
 
       printf("Hit new call to multipass_reset_round in writesocket for round %d pass %d \n", roundCount, passCount);
       std::cout.flush();
-      tase_helper_write((uint64_t) &target_ctx_gregs[REG_RAX], ConstantExpr::create(count, Expr::Int64));
+      tase_helper_write((uint64_t) &target_ctx_gregs[REG_RAX], ConstantExpr::create(o->numBytes, Expr::Int64));
       
       //RESET ROUND
       //-------------------------------------------
@@ -694,11 +701,93 @@ void Executor::model_ktest_readsocket() {
   }
 }
 
+
+
+
+// Reworked from cliver's CVExecutor.cpp.
+// Predict size of stdin read based on the size of the next
+// client-to-server TLS record, assuming the negotiated symmetric
+// ciphersuite is AES128-GCM.
+
+// Case 1: (OpenSSL and BoringSSL) The next c2s TLS application data
+//         record [byte#1 = 23] is 29 bytes longer than stdin.
+
+// Case 2: (OpenSSL only) The stdin read is 0, i.e., Control-D on a
+//         blank line, thereby closing the connection.  In this case,
+//         the subsequent c2s TLS alert record [byte#1 = 21] has
+//         length 31.
+
+// Case 3: (BoringSSL only) The stdin read is 0, i.e., Control-D on a
+//         blank line, thereby closing the connection.  There is no
+//         subsequent c2s TLS alert record in this case; instead we
+//         simply see the connection close.
+
+// Any other situation terminates the state (stdin read disallowed).
+
+uint64_t Executor::tls_predict_stdin_size (int fd, uint64_t maxLen) {
+
+  const uint8_t TLS_ALERT = 21;
+  const uint8_t TLS_APPDATA = 23;
+
+  uint64_t stdin_len;
+    
+  if (fd != 0) {
+    printf("tls_predict_stdin_size() called with unknown fd %d \n", fd);
+    std::exit(EXIT_FAILURE);
+  }
+
+  KTestObject * kto = peekNextKTestObject();
+  //Todo: Figure out better way to handle case 3
+
+
+  printf("predict_stdin_debug: kto->name is %s, kto->bytes[0] is 0x%02x, kto->numBytes is %d, name comp with c2s is %d \n", kto->name, kto->bytes[0], kto->numBytes, strncmp(kto->name, "c2s", 3));
+  fflush(stdout);
+  
+  if (kto == NULL) { //Case 3
+
+    printf("Warning: no c2s record found in peekNextKTestObject()\n");
+    stdin_len = 0;
+
+  } else if (strncmp(kto->name, "c2s", 3) == 0 &&
+	     (uint8_t) kto->bytes[0] == TLS_ALERT &&
+	     kto->numBytes == 31) { //Case 2
+    
+    stdin_len = 0;
+    
+  } else if (strncmp(kto->name,"c2s", 3) == 0 &&
+	     (uint8_t) kto->bytes[0] == TLS_APPDATA &&
+	     kto->numBytes > 29) {//Case 1
+    
+    stdin_len = kto->numBytes - 29;
+    
+  } else {
+
+    printf("Error in tls_predict_stdin_size \n");
+    fflush(stdout);
+    worker_exit();
+    std::exit(EXIT_FAILURE);
+    
+  }
+  if ( stdin_len > maxLen) {
+    printf("ERROR: tls_predict_stdin_size returned value larger than maxLen \n");
+    fflush(stdout);
+    worker_exit();
+    std::exit(EXIT_FAILURE);
+
+  }else {
+    return stdin_len;
+  }
+}
+
+
 void Executor::model_ktest_raw_read_stdin() {
   ktest_raw_read_stdin_calls++;
   printf("Entering model_ktest_raw_read_stdin for time %d \n", ktest_raw_read_stdin_calls);
   fflush(stdout);
   fprintf(modelLog,"Entering model_ktest_raw_read_stdin at interpCtr %lu \n", interpCtr);
+  printf("Debug: Forcing interpretation at read_stdin call \n");
+  exec_mode = INTERP_ONLY;
+
   
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
@@ -710,6 +799,14 @@ void Executor::model_ktest_raw_read_stdin() {
 
     if (enableMultipass) {
 
+      int max = (int) target_ctx_gregs[REG_RSI].u64;
+      void * buf = (void *) target_ctx_gregs[REG_RDI].u64;
+      printf("stdin debug: max (2nd arg) as int is %d \n", max);
+      uint64_t len = tls_predict_stdin_size(0,max); 
+      printf("stdin debug: predicted stdin len of %lu for stdin read %d \n", len, ktest_raw_read_stdin_calls);
+      fflush(stdout);
+       
+      /*
       void * buf = (void *) target_ctx_gregs[REG_RDI].u64;
       int buffsize = (int) target_ctx_gregs[REG_RSI].u64;   
       KTestObject * kto = peekNextKTestObject();
@@ -723,9 +820,11 @@ void Executor::model_ktest_raw_read_stdin() {
 	fflush(modelLog);
 	std::exit(EXIT_FAILURE);
       }
+      */
+      
+      
 
-
-      int res = len;
+      uint64_t res = len;
       ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
       tase_helper_write((uint64_t) &target_ctx_gregs[REG_RAX].u64, resExpr);
       tase_make_symbolic( (uint64_t) buf, len, "stdin");
@@ -899,9 +998,9 @@ void Executor::model_memset() {
 //Just for debugging
 //void *memcpy(void *dest, const void *src, size_t n);
 void Executor::model_memcpy() {
-  fprintf(modelLog,"Entering model_memcpy: Moving 0x%lx bytes from 0x%lx to 0x%lx \n",(size_t) target_ctx_gregs[REG_RDX].u64,  (void *) target_ctx_gregs[REG_RSI].u64 ,  (void*) target_ctx_gregs[REG_RDI].u64  );
+  fprintf(modelLog,"Entering model_memcpy: Moving 0x%lx bytes from 0x%lx to 0x%lx \n",(size_t) target_ctx_gregs[REG_RDX].u64,  target_ctx_gregs[REG_RSI].u64 ,  (void*) target_ctx_gregs[REG_RDI].u64  );
   fflush(modelLog);
-  printf("Entering model_memcpy: Moving 0x%lx bytes from 0x%lx to 0x%lx \n",(size_t) target_ctx_gregs[REG_RDX].u64,  (void *) target_ctx_gregs[REG_RSI].u64 ,  (void*) target_ctx_gregs[REG_RDI].u64  );
+  printf("Entering model_memcpy: Moving 0x%lx bytes from 0x%lx to 0x%lx \n",(size_t) target_ctx_gregs[REG_RDX].u64,   target_ctx_gregs[REG_RSI].u64 ,  target_ctx_gregs[REG_RDI].u64  );
   std::cout.flush();
 
   
@@ -1040,7 +1139,7 @@ void Executor::model_fileno() {
   
   printf("Entering model_fileno \n");
   std::cout.flush();
-  fprintf(modelLog,"Entering fileno model at %d \n",interpCtr);
+  fprintf(modelLog,"Entering fileno model at %lu \n",interpCtr);
   fflush(modelLog);
   
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
@@ -1352,22 +1451,25 @@ void Executor::model_BIO_printf() {
 
   fprintf(modelLog,"Entered bio_printf at interp Ctr %lu \n", interpCtr);
   
-  
   char * errMsg = (char *) target_ctx_gregs[REG_RSI].u64;
 
+  printf("Entered bio_printf with message %s \n", errMsg);
+  fflush(stdout);
+  
   int arg3 = (int) target_ctx_gregs[REG_RDX].u64;
   
   fprintf(modelLog, " %s \n", errMsg);
-  
+  printf("%s \n");
+  fflush(stdout);
   fflush(modelLog);
-  
+  /*
   std::cerr << errMsg;
   std::cerr << " | First arg as int: ";
   std::cerr << arg3;
   std::cerr << " | interpCtr: ";
   std::cerr << interpCtr;
   std::cerr << "\n";
-  
+  */
   //fake a ret
   uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
   target_ctx_gregs[REG_RIP].u64 = retAddr;
@@ -1379,7 +1481,7 @@ void Executor::model_BIO_printf() {
 void Executor::model_BIO_snprintf() {
 
   fprintf(modelLog,"Entered bio_snprintf at interp Ctr %lu \n", interpCtr);
-  
+  printf("Entered bio_snprintf \n");
   
   char * errMsg = (char *) target_ctx_gregs[REG_RDX].u64;
 
@@ -1422,7 +1524,7 @@ void Executor::model_time() {
 
     char * timeString = ctime(&res);
     fprintf(modelLog,"timeString is %s \n", timeString);
-    fprintf(modelLog,"Size of timeVal is %d \n", sizeof(time_t));
+    fprintf(modelLog,"Size of timeVal is %lu \n", sizeof(time_t));
     fflush(modelLog);
     
     target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
@@ -1470,7 +1572,7 @@ void Executor::model_gmtime() {
       std::cout.flush();
       
     } else {
-      fprintf(modelLog,"Creating MO to back tm at 0x%lx with size 0x%x \n", (uint64_t) res, sizeof(struct tm));
+      fprintf(modelLog,"Creating MO to back tm at 0x%lx with size 0x%lx \n", (uint64_t) res, sizeof(struct tm));
       std::cout.flush();
       MemoryObject * newMO = addExternalObject(*GlobalExecutionStatePtr, (void *) res, sizeof(struct tm), false);
       const ObjectState * newOSConst = GlobalExecutionStatePtr->addressSpace.findObject(newMO);
@@ -2447,6 +2549,13 @@ static void print_fd_set(int nfds, fd_set *fds) {
   printf("\n");
 }
 
+
+
+#ifdef FD_ZERO
+#undef FD_ZERO
+#endif
+#define FD_ZERO(p)        memset((char *)(p), 0, sizeof(*(p)))
+
 //int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout)
 //https://www.gnu.org/software/libc/manual/html_node/Waiting-for-I_002fO.html
 //We examine fds 0 to ndfs-1.  Don't model the results of exceptfds, at least not yet.
@@ -2500,6 +2609,55 @@ void Executor::model_select() {
     
     bool debugSelect = true;
     if (debugSelect) {
+
+      if (times_model_select_called == 2) {
+	printf("DEBUG: special casing select call 2 \n");
+	
+	
+	FD_ZERO(readfds);
+	FD_SET(0,readfds);
+	
+	printf("nfds is %d \n", nfds);
+	printf("\n");
+	printf("OUT readfds  = ");
+	print_fd_set(nfds, readfds);
+	printf("OUT writefds = ");
+	print_fd_set(nfds, writefds);
+	std::cout.flush();
+	tase_helper_write((uint64_t) &(target_ctx_gregs[REG_RAX].u64), ConstantExpr::create(1, Expr::Int64));
+
+	//fake a ret
+
+	uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+	target_ctx_gregs[REG_RIP].u64 = retAddr;
+	target_ctx_gregs[REG_RSP].u64 += 8;
+	return;
+      }
+
+       if (times_model_select_called == 3) {
+	printf("DEBUG: special casing select call 3 \n");
+	
+	
+	FD_ZERO(readfds);
+	
+	printf("nfds is %d \n", nfds);
+	printf("\n");
+	printf("OUT readfds  = ");
+	print_fd_set(nfds, readfds);
+	printf("OUT writefds = ");
+	print_fd_set(nfds, writefds);
+	std::cout.flush();
+	tase_helper_write((uint64_t) &(target_ctx_gregs[REG_RAX].u64), ConstantExpr::create(1, Expr::Int64));
+
+	//fake a ret
+
+	uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+	target_ctx_gregs[REG_RIP].u64 = retAddr;
+	target_ctx_gregs[REG_RSP].u64 += 8;
+	return;
+      }
+      
+      
       printf("Forcing select return for debugging \n");
       //tase_helper_write((uint64_t) &(writefds->fds_bits[3]), ConstantExpr::create(1, Expr::Int8) );
       tase_make_symbolic((uint64_t) &(writefds->fds_bits[3]), 1, "WriteFDVal");
@@ -2510,7 +2668,6 @@ void Executor::model_select() {
       ref<Expr> equalsOneExpr = EqExpr::create(write_fd_val, one);
       ref<Expr> equalsZeroOrOneExpr = OrExpr::create(equalsZeroExpr, equalsOneExpr);
       addConstraint(*GlobalExecutionStatePtr, equalsZeroOrOneExpr);
-
 
       tase_helper_write( (uint64_t) &(readfds->fds_bits[3]), ConstantExpr::create(0, Expr::Int8));
 
@@ -2585,17 +2742,7 @@ void Executor::model_select() {
 
 	tase_make_symbolic((uint64_t) &(readfds->fds_bits[j]), 1, "ReadFDVal");
 
-	/*
-	void * readFDResultBuf = malloc(4); //Technically this only needs to be a bit or byte
-	//Get the MO, then call executeMakeSymbolic()
-	MemoryObject * readFDResultBuf_MO = memory->allocateFixed( (uint64_t) readFDResultBuf ,4,NULL);
-	std::string nameString = "readFDSymVar " + std::to_string(times_model_select_called) + " " + std::to_string(j);
-	readFDResultBuf_MO->name = nameString;
-	executeMakeSymbolic(*GlobalExecutionStatePtr, readFDResultBuf_MO, nameString);
-	const ObjectState *constreadFDResultBuf_OS = GlobalExecutionStatePtr->addressSpace.findObject(readFDResultBuf_MO);
-	ObjectState * readFDResultBuf_OS = GlobalExecutionStatePtr->addressSpace.getWriteable(readFDResultBuf_MO,constreadFDResultBuf_OS);
-	
-	*/
+        
 	ref<Expr> fd_val = tase_helper_read((uint64_t) &(readfds->fds_bits[j]), 1);
 	//Got to be a better way to write this... but we basically constrain the
 	//sym var representing readfds[j] to be 0 or 1.
@@ -3512,9 +3659,7 @@ void Executor::model_ECDH_compute_key() {
 
 
 
-enum runType : int {INTERP_ONLY, MIXED};
-//extern std::string project;
-extern enum runType exec_mode;
+
 bool point2oct_hack = false;
 
 
