@@ -672,7 +672,7 @@ public:
   
   virtual void klee_interp_internal ();
   virtual bool resumeNativeExecution ();
-  virtual void forkOnPossibleRIPValues(ref <Expr> RIPExpr);
+  virtual void forkOnPossibleRIPValues(ref <Expr> RIPExpr, uint64_t initRIP);
   virtual void initializeInterpretationStructures (llvm::Function *f);
 
   virtual void runFunctionAsMain(llvm::Function *f,

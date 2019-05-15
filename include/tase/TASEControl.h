@@ -6,14 +6,12 @@ void release_sem_lock();
 int initialize_semaphore(int semkey);
 void initManagerStructures();
 void manage_workers();
-int tase_fork();
+int tase_fork(int parentPID, uint64_t initRIP);
 void tase_exit();
 
 extern bool taseManager;
-
 extern void * ms_base;
 extern int ms_size;
-
 extern int * ms_QR_base;
 extern int * ms_QR_size_ptr;
 extern int * ms_QA_base;

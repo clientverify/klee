@@ -978,7 +978,9 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     ExecutionState *falseState, *trueState = &current;
     ++stats::forks;
     //ABH: Here's where we fork in TASE.
-    int pid  = tase_fork();
+    int parentPID = getpid();
+    uint64_t rip = target_ctx_gregs[REG_RIP].u64;
+    int pid  = tase_fork(parentPID,rip);
     printf("TASE Forking at 0x%lx \n", target_ctx_gregs[REG_RIP].u64);
     if (pid ==0 ) {
       int i = getpid(); 
@@ -3597,27 +3599,6 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
   */
 }
 
-void spinAndAwaitForkRequest() {
-  while (true) {
-    //Todo: Implement fork request mechanism, probably via named pipes
-    //forkRequest FR = getForkRequest(fd);
-    //if (FR) {
-    if (false) {
-      int pid = tase_fork();
-      if (pid ==0) {
-	//multipassInfo.roundRootPID = FR.roundRootPID;
-	//multipassInfo.prevMultipassAssignment = FR.currMultipassAssignment;
-	//multipassInfo.currMultipassAssignment = FR.currMultipassAssignment;
-	//multipassInfo.messageNumber = FR.messageNumber;
-	//multipassInfo.passCount = FR.passCount;
-	return;
-      } else {
-	//just continue handling fork requests.
-      }
-    }
-  }
-}
-
 extern "C" void target_exit() {
   printf("Target exited \n");
   printf("Executed %lu total interp instructions \n", instCtr);
@@ -4625,17 +4606,17 @@ void Executor::klee_interp_internal () {
     interpCtr++;
     if (taseDebug)
       printDebugInterpHeader();
-    //printf("loopCtr is %d at addr 0x%lx \n", loopCtr, (uint64_t) &loopCtr);
-   
 
-    uint64_t rip = target_ctx_gregs[REG_RIP].u64;    
+    uint64_t rip = target_ctx_gregs[REG_RIP].u64;
+    uint64_t rip_init = target_ctx_gregs[REG_RIP].u64;
     if (interpCtr > 1000000000) {
       printf("Huge interpCtr, exiting with RIP 0x%lx \n", rip);
       std::cout.flush();
       std::exit(EXIT_FAILURE);
     }
 
-    
+    //printf("DBG: Forcing interp mode \n");
+    //exec_mode = INTERP_ONLY;
 
     if ( (rip == (uint64_t) &sb_reopen ||
 	  rip == (uint64_t) &sb_open   ||
@@ -4650,12 +4631,6 @@ void Executor::klee_interp_internal () {
 	//target_ctx_gregs_OS->write(REG_EFL * 8, zeroExpr);
       }
 
-    //HACK for debugging point2oct model
-    if (point2oct_hack && rip == (uint64_t) &EC_POINT_point2oct + 379) {
-      printf("HACK: swapping exec_mode back to MIXED \n");
-      std::cout.flush();
-      exec_mode = MIXED;
-    }
     
     if (resumeNativeExecution()){
       break;
@@ -4719,7 +4694,7 @@ void Executor::klee_interp_internal () {
       
 	printf("IMPORTANT: Calling forkOnPossibleRIPValues() \n");
 	std::cout.flush();
-	forkOnPossibleRIPValues(RIPExpr);
+	forkOnPossibleRIPValues(RIPExpr, rip_init);
       }
       std::cout.flush();
     }
@@ -4809,7 +4784,7 @@ int Executor::printAllPossibleValues (ref <Expr> inputExpr) {
 //Hopefully there's a better builtin function in klee that we can
 //use, but if not this should do the trick.  Intended to be used
 //to help us get all possible concrete values of RIP (has dependency on RIP).
-void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr) {
+void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) {
 
   int maxSolutions = 2; //Completely arbitrary.  Should not be more than 2 for our use cases in TASE
   //or we're in trouble anyway.
@@ -4820,7 +4795,7 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr) {
     numSolutions++;
     printf("Looking at solution number %d in forkOnPossibleRIPValues() \n", numSolutions);
     if (numSolutions > maxSolutions) {
-      printf("Found too many symbolic values for RIP \n ");
+      printf("IMPORTANT: control debug: Found too many symbolic values for next instruction after 0x%lx \n ", initRIP);
       std::cout.flush();
       worker_exit();
       std::exit(EXIT_FAILURE);
@@ -4837,10 +4812,9 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr) {
       std::exit(EXIT_FAILURE);
     }
 
-    
-    
+    int initPID = getpid();
     std::cout.flush();
-    int pid = tase_fork();
+    int pid = tase_fork(initPID, initRIP);
     int i = getpid();
     workerIDStream << ".";
     workerIDStream << i;
@@ -4857,7 +4831,7 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr) {
       ref<Expr> notEqualsSolution = NotExpr::create(EqExpr::create(inputExpr,solution));
       addConstraint(*GlobalExecutionStatePtr, notEqualsSolution);
     } else { // Take the concrete value of solution and explore that path.
-      printf("IMPORTANT: Found dest RIP 0x%lx in forkOnRip from RIP 0x%lx with pid %d \n", (uint64_t) solution->getZExtValue(), target_ctx_gregs[REG_RIP].u64, getpid());
+      printf("IMPORTANT: control debug: Found dest RIP 0x%lx in forkOnRip from RIP 0x%lx with pid %d \n", (uint64_t) solution->getZExtValue(), initRIP, getpid());
       addConstraint(*GlobalExecutionStatePtr, EqExpr::create(inputExpr, solution));
       target_ctx_gregs_OS->write(REG_RIP*8, solution);
       break;
@@ -4991,6 +4965,7 @@ void Executor::initializeInterpretationStructures (Function *f) {
   
   if (externalsFile == NULL) {
     printf("Error reading externals file within initializeInterpretationStructures() \n");
+    worker_exit();
     std::exit(EXIT_FAILURE);
   }
 

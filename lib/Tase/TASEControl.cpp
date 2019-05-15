@@ -315,12 +315,13 @@ void worker_exit() {
     
         
     remove_self_from_QR();
+    fflush(stdout);
     std::exit(EXIT_SUCCESS);//Releases semaphore
   }
 }
 
-int tase_fork() {
-  printf("Entering tase_fork \n");
+int tase_fork(int parentPID, uint64_t rip) {
+  printf("PID %d entering tase_fork at rip 0x%lx \n", parentPID, rip);
   std::cout.flush();
   if (dontFork) {
     printf("Forking is disabled.  Shutting down \n");
@@ -329,14 +330,13 @@ int tase_fork() {
   }
   
   if (taseManager) {
-    printf("Entering taseManager branch \n");
-    std::cout.flush();
     
     get_sem_lock();
     printf("TASE FORKING! \n");
     int trueChildPID = ::fork();
     if (trueChildPID != 0) {
-      
+      printf("Parent PID %d forked off child %d at rip 0x%lx for TRUE branch \n", parentPID, trueChildPID, rip);
+      fflush(stdout);
       //Block until child has sigstop'd.
       while (true) {
 	int status;
@@ -354,6 +354,8 @@ int tase_fork() {
 
     int falseChildPID = ::fork();
     if (falseChildPID != 0) {
+      printf("Parent PID %d forked off child %d at rip 0x%lx for FALSE branch \n", parentPID, falseChildPID, rip );
+      fflush(stdout);
       //Block until child has sigstop'd
       while (true) {
 	int status;
@@ -376,7 +378,7 @@ int tase_fork() {
 
     printQR();
     remove_self_from_QR();
-    
+    printf("control debug: Parent PID %d exiting tase_fork after producing child PIDs %d (true) and %d (false) from rip 0x%lx \n", parentPID, trueChildPID, falseChildPID, rip);
     printf("Exiting tase_fork \n");
     std::cout.flush();
     //Exit, and release semaphore

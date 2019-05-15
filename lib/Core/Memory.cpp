@@ -723,7 +723,7 @@ void ObjectState::applyPsnOnWrite(ref<Expr> offset, ref<Expr> value) {
 }
 
 bool ObjectState::isObjectEntirelyConcrete() {
-
+  /*
   //Sanity Checks
   uint64_t addr = this->getObject()->address;
   unsigned size = this->getObject()->size;
@@ -748,6 +748,9 @@ bool ObjectState::isObjectEntirelyConcrete() {
   if (foundPsn == false) 
     return true;
 
+  */
+  printf("Called isObjectEntirelyConcrete on obj of size 0x%lx \n", this->size);
+  
   //Slow path
   for (int j = 0; j < this->size ; j++) {
     if (!isByteConcrete(j))

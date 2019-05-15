@@ -1063,12 +1063,17 @@ void Executor::model_ktest_RAND_bytes() {
     if (enableMultipass) {
       tase_make_symbolic((uint64_t) buf, num, "rng");
        //Double check this
+
+      printf("After call to tase_make_symbolic for rng, raw bytes are : \n");
+      printBuf(buf, num);
       int res = num;
       ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
       target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
     } else {
       //return val
       int res = ktest_RAND_bytes_tase((unsigned char *) target_ctx_gregs[REG_RDI].u64, (int) target_ctx_gregs[REG_RSI].u64);
+      
+      
       ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
       target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
     }
@@ -1107,6 +1112,9 @@ void Executor::model_ktest_RAND_pseudo_bytes() {
 
       tase_make_symbolic((uint64_t) buf, num, "prng");
 
+      printf("After call to tase_make_symbolic on prng, raw output in output buffer is : \n");
+      printBuf((void *) buf, num);
+      
       //Double check this
       int res = num;
       ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
@@ -2381,13 +2389,14 @@ void Executor::model_readstdin() {
       multipassInfo.passCount = 0;
       multipassInfo.roundRootPID = getpid();
       */
+      /*
       int pid = tase_fork();
       if (pid == 0) {
 	//Continue on 
       }else {
 	spinAndAwaitForkRequest();  //Should only hit this code once.
       }
-
+      */
       //BEGIN NEW VERIFICATION PASS =====>
       //Entry point is here from spinAndAwaitForkRequest().  At this point,
       //pass number info and the latest multipass assignment info should have been entered.     
@@ -2548,9 +2557,14 @@ static void print_fd_set(int nfds, fd_set *fds) {
   }
   printf("\n");
 }
+/*
+ref<Expr> Executor::make_bit_symbolic(uint8_t i) {
+  
+  ref<Expr> res = ConstantExpr::create
 
 
-
+}
+*/
 #ifdef FD_ZERO
 #undef FD_ZERO
 #endif
@@ -2595,7 +2609,42 @@ void Executor::model_select() {
     bool make_writefds_symbolic [nfds];
 
     ref<Expr> bitsSetExpr = ConstantExpr::create(0, Expr::Int8);
+    /*
+    if(0) {
+      ref<Expr> orig_readfdExpr = tase_helper_read(&(readfds->fds_bits[0] ), 1) ;
+      ref<Expr> orig_writefdExpr = tase_helper_read(&(writefds->fds_bits[0] ), 1);
 
+      
+      tase_make_symbolic((uint64_t) &(readfds->fds_bits[0]), 1, "select readfds");
+      ref<Expr> readfdExpr = tase_helper_read(&(readfds->fds_bits[0] ), 1) ;
+      ref<EqExpr> Eq0_r = EqExpr::create(readfdExpr, ConstantExpr::create(0, Expr::Int8));
+      ref<EqExpr> Eq1_r = EqExpr::create(readfdExpr, ConstantExpr::create(1, Expr::Int8));
+      ref<EqExpr> Eq8_r = EqExpr::create(readfdExpr, ConstantExpr::create(8, Expr::Int8));
+      ref<EqExpr> Eq9_r = EqExpr::create(readfdExpr, ConstantExpr::create(9, Expr::Int8));
+
+      klee::ref<klee::Expr> rfdc = klee::ConstantExpr::alloc(1, klee::Expr::Bool);
+
+      if (!isa<ConstantExpr>(orig_readfdExpr)) {
+	//addConstraint Eq0_r || Eq1_r || Eq8_r etc
+      } else {
+	// 4 cases
+      }
+      
+      tase_make_symbolic((uint64_t) &(writefds->fds_bits[0]),1, "select writefds ");
+      ref<Expr> writefdExpr = tase_helper_read(&(writefds->fds_bits[0] ), 1);
+      ref<EqExpr> Eq0_w = EqExpr::create(writefdExpr, ConstantExpr::create(0, Expr::Int8));
+      ref<EqExpr> Eq1_w = EqExpr::create(writefdExpr, ConstantExpr::create(1, Expr::Int8));
+      ref<EqExpr> Eq8_w = EqExpr::create(writefdExpr, ConstantExpr::create(8, Expr::Int8));
+      ref<EqExpr> Eq9_w = EqExpr::create(writefdExpr, ConstantExpr::create(9, Expr::Int8));
+
+      if (!isa<ConstantExpr>(orig_writefdExpr)) {
+	//addConstraint Eq0_r || Eq1_r || Eq8_r etc
+      } else {
+	// 4 cases
+      }
+      
+    }
+    */
 
     printf("nfds is %d \n", nfds);
     printf("\n");
@@ -2612,8 +2661,6 @@ void Executor::model_select() {
 
       if (times_model_select_called == 2) {
 	printf("DEBUG: special casing select call 2 \n");
-	
-	
 	FD_ZERO(readfds);
 	FD_SET(0,readfds);
 	
