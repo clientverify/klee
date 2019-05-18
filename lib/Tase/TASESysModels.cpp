@@ -422,7 +422,7 @@ void Executor::model_ktest_writesocket() {
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
 
-  printf("Entering model_ktest_writesocket \n");
+  printf("Entering model_ktest_writesocket for time %d \n", ktest_writesocket_calls);
   
   printf("Value of c_special_cmds is %d \n", c_special_cmds);
   fprintf(modelLog, "Entering writesocket call at PC 0x%lx, interpCtr %lu", target_ctx_gregs[REG_RIP].u64, interpCtr);
@@ -972,28 +972,114 @@ void Executor::model_ktest_select() {
   }    
 }
 
-//Just for debugging perf
-/*
- */
+//int RAND_poll() from openssl
+void Executor::model_RAND_poll(){
 
-// void * memset (void * buf, int val, size_t number)
-void Executor::model_memset() {
-
-  void * buf = (void *) target_ctx_gregs[REG_RDI].u64;
-  int val = (int) target_ctx_gregs[REG_RSI].u64;
-  size_t num = (size_t) target_ctx_gregs[REG_RDX].u64;
-
-  void * res = memset(buf,val,num);
-  ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
-  target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
-
-  
+  printf("Entering model_RAND_poll at interpCtr %lu \n", interpCtr);
+  fprintf(modelLog, "Entering model_RAND_poll at interpCtr %lu \n", interpCtr);
+  fflush(modelLog);
+  fflush(stdout);
+  ref<ConstantExpr> resExpr = ConstantExpr::create(1, Expr::Int64);
+  tase_helper_write( (uint64_t) &(target_ctx_gregs[REG_RAX].u64), resExpr);
+      
   //Fake a return
   uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
   target_ctx_gregs[REG_RIP].u64 = retAddr;
   target_ctx_gregs[REG_RSP].u64 += 8;
 
 }
+
+
+//Just for debugging perf
+/*
+ */
+
+//void * memmove (void * dst, void * src, size_t number)
+void Executor::model_memmove() {
+  static int model_memmove_calls = 0;
+  model_memmove_calls++;
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
+
+  if (  (isa<ConstantExpr>(arg1Expr)) &&
+	(isa<ConstantExpr>(arg2Expr)) &&
+	(isa<ConstantExpr>(arg3Expr)) )
+    {
+
+      uint8_t * dest = (uint8_t *) target_ctx_gregs[REG_RDI].u64;
+      uint8_t * src = (uint8_t *) target_ctx_gregs[REG_RSI].u64;
+      size_t num = (size_t) target_ctx_gregs[REG_RDX].u64;
+      printf("Entered model_memmove at interpCtr %lu for dest 0x%lx and src 0x%lx \n", interpCtr, (uint64_t) dest, (uint64_t) src);
+      fprintf(modelLog, "Entered model_memmove at interpCtr %lu for dest 0x%lx and src 0x%lx \n", interpCtr, (uint64_t) dest, (uint64_t) src);
+      fflush(stdout);
+      fflush(modelLog);
+      
+      
+      ref<Expr> tmp [num];
+      for (size_t i = 0; i < num; i++) {
+	tmp[i] = tase_helper_read((uint64_t) (src + i), 1);
+      }
+      for (size_t i = 0; i < num; i++) {
+	tase_helper_write( (uint64_t) (dest + i), tmp[i]);
+      }
+
+      ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) dest, Expr::Int64);
+      tase_helper_write( (uint64_t) &(target_ctx_gregs[REG_RAX].u64), resExpr);
+      
+      uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+      target_ctx_gregs[REG_RIP].u64 = retAddr;
+      target_ctx_gregs[REG_RSP].u64 += 8;
+      
+      
+    } else  {
+    printf("ERROR: Symbolic input provided to memmove \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+
+}
+
+// void * memset (void * buf, int val, size_t number)
+void Executor::model_memset() {
+  static int model_memset_calls = 0;
+  model_memset_calls++;
+  printf("Entering model_memset for time %d \n", model_memset_calls);
+  
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
+  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
+  
+  if (  (isa<ConstantExpr>(arg1Expr)) &&
+	(isa<ConstantExpr>(arg2Expr)) &&
+	(isa<ConstantExpr>(arg3Expr)) )
+    {
+      void * buf = (void *) target_ctx_gregs[REG_RDI].u64;
+      uint8_t val = (uint8_t) target_ctx_gregs[REG_RSI].u64;
+      size_t num = (size_t) target_ctx_gregs[REG_RDX].u64;
+      ref<ConstantExpr> valExpr = ConstantExpr::create(val, Expr::Int8);
+      uint8_t * bufPtr = (uint8_t *) buf;
+      
+      for (int i = 0; i < num ; i++) 
+	tase_helper_write((uint64_t) (bufPtr + i), valExpr);
+      
+      //void * res = memset(buf,val,num);
+      ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) buf, Expr::Int64);
+      tase_helper_write( (uint64_t) &(target_ctx_gregs[REG_RAX].u64), resExpr);
+      
+      //Fake a return
+      uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+      target_ctx_gregs[REG_RIP].u64 = retAddr;
+      target_ctx_gregs[REG_RSP].u64 += 8;
+    } else  {
+    printf("ERROR: Symbolic ptr provided to memset \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+}
+
+
+
 
 //Just for debugging
 //void *memcpy(void *dest, const void *src, size_t n);
@@ -1011,10 +1097,15 @@ void Executor::model_memcpy() {
   void * res;
   if (isBufferEntirelyConcrete((uint64_t) src, num) && isBufferEntirelyConcrete((uint64_t) dst, num)) 
     printf("Found entirely concrete buffer to buffer copy \n ");
-  else
+  else {
     printf("Found some symbolic taint in mempcy buffers \n");
-
-  
+    if (!isBufferEntirelyConcrete((uint64_t) src, num) )
+      printf("Src has symbolic taint \n");
+    if (!isBufferEntirelyConcrete((uint64_t) dst, num) )
+      printf("Dst has symbolic taint \n");
+    
+  }
+    
   printf("Memcpy dbg -- printing source buffer as raw bytes \n");
   printBuf(src, num);
 
@@ -1033,7 +1124,8 @@ void Executor::model_memcpy() {
   
     
   ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
-  target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+  tase_helper_write((uint64_t) &(target_ctx_gregs[REG_RAX].u64), resExpr);
+  
   
   //Fake a return
   uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
@@ -1049,9 +1141,8 @@ void Executor::model_ktest_RAND_bytes() {
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
 
-  printf("Calling model_ktest_RAND_bytes \n");
-  fprintf(modelLog,"Calling model_ktest_RAND_bytes at %lu \n", interpCtr);
-  
+  printf("Calling model_ktest_RAND_bytes for time %d \n", ktest_RAND_bytes_calls);
+  fprintf(modelLog,"Calling model_ktest_RAND_bytes for time %d at interpCtr %lu \n", ktest_RAND_bytes_calls, interpCtr);
   
   if  (
        (isa<ConstantExpr>(arg1Expr)) &&
@@ -1096,8 +1187,8 @@ void Executor::model_ktest_RAND_pseudo_bytes() {
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
 
-  printf("Calling model_ktest_RAND_pseudo_bytes \n");
-  fprintf(modelLog,"Calling model_ktest_RAND_PSEUDO_bytes at %lu \n", interpCtr);
+  printf("Calling model_ktest_RAND_pseudo_bytes for time %d \n", ktest_RAND_pseudo_bytes_calls);
+  fprintf(modelLog,"Calling model_ktest_RAND_PSEUDO_bytes for time %d at interp ctr %lu \n", ktest_RAND_pseudo_bytes_calls, interpCtr);
   
   if  (
        (isa<ConstantExpr>(arg1Expr)) &&
@@ -1790,13 +1881,14 @@ ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
 
 //http://man7.org/linux/man-pages/man3/malloc.3.html
 void Executor::model_malloc() {
-  
+  static int times_model_malloc_called = 0;
+  times_model_malloc_called++;
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
 
   if (isa<ConstantExpr>(arg1Expr)) {
     size_t sizeArg = (size_t) target_ctx_gregs[REG_RDI].u64;
     if (taseDebug)
-      printf("Entered model_malloc with requested size %d \n", sizeArg);
+      printf("Entered model_malloc for time %d with requested size %d \n",times_model_malloc_called, sizeArg);
 
     if (roundUpHeapAllocations) 
       sizeArg = roundUp(sizeArg, 8);
@@ -2577,6 +2669,8 @@ ref<Expr> Executor::make_bit_symbolic(uint8_t i) {
 void Executor::model_select() {
   static int times_model_select_called = 0;
   times_model_select_called++;
+
+  printf("Entering model_select for time %d \n", times_model_select_called);
   
   //Get the input args per system V linux ABI.
   int nfds = (int) target_ctx_gregs[REG_RDI].u64; // int nfds
@@ -2605,6 +2699,20 @@ void Executor::model_select() {
       std::exit(EXIT_FAILURE);
       }*/
 
+    /*
+      void * tmp1 = malloc(1);
+      tase_make_symbolic ((uint64_t) tmp1, 1, "select readfds mask");
+      ref<Expr> rfdsMaskVar = tase_helper_read((uint64_t) tmp1, 1);
+      ref<ConstantExpr> nine = ConstantExpr::create(9, Expr::Int8);
+      ref<Expr> rfdsMaskExpr = AndExpr::create(rfdsMaskVar, nine);
+      ref<Expr> rfdsMaskExpr = AndExpr::create(rfdsMaskVar,
+      tase_helper_write((uint64_t) &(writefds->fds_bits[0]), rfdsMaskRes);
+
+      
+
+     */
+    
+
     bool make_readfds_symbolic [nfds];
     bool make_writefds_symbolic [nfds];
 
@@ -2615,7 +2723,11 @@ void Executor::model_select() {
       ref<Expr> orig_writefdExpr = tase_helper_read(&(writefds->fds_bits[0] ), 1);
 
       
+
+
       tase_make_symbolic((uint64_t) &(readfds->fds_bits[0]), 1, "select readfds");
+
+
       ref<Expr> readfdExpr = tase_helper_read(&(readfds->fds_bits[0] ), 1) ;
       ref<EqExpr> Eq0_r = EqExpr::create(readfdExpr, ConstantExpr::create(0, Expr::Int8));
       ref<EqExpr> Eq1_r = EqExpr::create(readfdExpr, ConstantExpr::create(1, Expr::Int8));
@@ -2948,6 +3060,61 @@ int gcm_ghash_4bit_calls;
 */
 
 
+// int tls1_generate_master_secret( SSL *s, unsigned char *out,
+//             unsigned char *p, int len)
+void Executor::model_tls1_generate_master_secret() {
+ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); // SSL *s
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); // unsigned char * out
+  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64); // unsigned char * p
+  ref<Expr> arg4Expr = target_ctx_gregs_OS->read(REG_RCX * 8, Expr::Int64); // int len
+
+  if (  (isa<ConstantExpr>(arg1Expr)) &&
+	(isa<ConstantExpr>(arg2Expr)) &&
+	(isa<ConstantExpr>(arg3Expr)) &&
+	(isa<ConstantExpr>(arg4Expr)) ) {
+
+    fprintf(modelLog, "Entering model_tls1_generate_master_secret at interpctr %d \n", interpCtr);
+    printf("Entering model_tls1_generate_master_secret \n");
+    fflush(modelLog);
+    fflush(stdout);
+
+    void * buf = (void *) target_ctx_gregs[REG_RSI].u64;
+    
+    std::ifstream datfile;
+    datfile.open("master_secret.dat");
+    uint8_t endRes [48];
+    std::string currLine;
+    for (int i = 0; i < 48; i++) {
+      std::getline(datfile, currLine);
+      //printf("I see data at line %d as string %s \n",i,currLine.c_str());
+      std::istringstream is(currLine);
+      int tmp = 0;
+      is >> tmp;
+      //printf("I read the int input as %d \n",tmp);
+      endRes[i] = (uint8_t) tmp;
+
+    }
+    
+    printf("Printing results of attempt to load master secret... \n");
+    for (int i = 0; i < 48; i++)
+      printf("%02x",endRes[i]);
+    memcpy (buf, endRes, 48); //Todo - use tase_helper read/write	       
+    //Todo: - Less janky io here.
+
+
+    ref<ConstantExpr> res = ConstantExpr::create(SSL3_MASTER_SECRET_SIZE, Expr::Int64);
+    tase_helper_write((uint64_t) &(target_ctx_gregs[REG_RAX].u64), res);
+    
+    //fake a ret
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
+    
+  } else {
+    printf("ERROR: symbolic arg passed to tls1_generate_master_secret \n");
+    std::exit(EXIT_FAILURE);
+  }
+}
 
 //Model for int SHA1_Update(SHA_CTX *c, const void *data, size_t len);
 //defined in crypto/sha/sha.h.
@@ -3282,7 +3449,8 @@ void Executor::model_gcm_gmult_4bit () {
     u128 * HtablePtr = (u128 *) target_ctx_gregs[REG_RSI].u64;
 
     printf("Entering model_gcm_gmult_4bit for time %d and dumping raw input as bytes \n", modelGCMGMULT4bitCalls);
-
+    
+    
     printf("Xi inputs are \n");
     printBuf((void *) XiPtr, 16);
     printf("Htable inputs are \n");
@@ -3513,15 +3681,17 @@ void Executor::make_EC_POINT_symbolic(EC_POINT* p) {
 //So k is an integer, and kG is a point (three coordinates in jacobian projection or two in affine projection)
 //on the curve produced by "adding" G to itself k times.
 void Executor::model_EC_KEY_generate_key () {
-
+  static int model_EC_KEY_generate_key_calls = 0;
+  model_EC_KEY_generate_key_calls++;
+  
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //EC_KEY * key
 
    if ( (isa<ConstantExpr>(arg1Expr)) ) {
 
      EC_KEY * eckey = (EC_KEY *) target_ctx_gregs[REG_RDI].u64;
      bool makeECKeySymbolic = true;
-
-
+     
+     printf("Entering model_EC_KEY_generate_key for time %d \n", model_EC_KEY_generate_key_calls );
      if (enableMultipass) {
        fprintf(modelLog,"MULTIPASS DEBUG: Calling EC_KEY_generate_key with symbolic return \n"); 
        
@@ -3644,6 +3814,9 @@ bool Executor::is_symbolic_EC_POINT(EC_POINT * pt) {
 //Todo -- determine if we ever need to actually call this with concrete values during verification since
 //we never get access to the client's private key in eckey.
 void Executor::model_ECDH_compute_key() {
+  static int model_ECDH_compute_key_calls = 0;
+  model_ECDH_compute_key_calls++;
+  
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
@@ -3664,13 +3837,16 @@ void Executor::model_ECDH_compute_key() {
     
     bool hasSymbolicInputs = false;
 
+    printf("Entering model_ECDH_compute_key for time %d \n", model_ECDH_compute_key_calls);
+    
     if (is_symbolic_EC_POINT(pub_key) || is_symbolic_EC_POINT(eckey->pub_key) || is_symbolic_BIGNUM(eckey->priv_key))
       hasSymbolicInputs = true;
 
 
     if (hasSymbolicInputs) {
 
-      fprintf(modelLog,"DEBUG: Calling ECDH_compute_key with symbolic input \n");
+      fprintf(modelLog,"DEBUG: Calling ECDH_compute_key for time %d with symbolic input \n", model_ECDH_compute_key_calls);
+      printf("DEBUG: Calling ECDH_compute_key for time %d with symbolic input \n", model_ECDH_compute_key_calls);
       
       tase_make_symbolic( (uint64_t) out, outlen, "ecdh_compute_key_output");
 
@@ -3690,10 +3866,11 @@ void Executor::model_ECDH_compute_key() {
     } else {
       
       //Otherwise we're good to call natively
-       fprintf(modelLog,"DEBUG: Calling ECDH_compute_key natively \n");
-       forceNativeRet = true;
-       target_ctx_gregs[REG_RIP].u64 += 17;
-       return; 
+      fprintf(modelLog,"DEBUG: Calling ECDH_compute_key for time %d natively \n", model_ECDH_compute_key_calls);
+      printf("DEBUG: Calling ECDH_compute_key for time %d natively \n", model_ECDH_compute_key_calls);
+      forceNativeRet = true;
+      target_ctx_gregs[REG_RIP].u64 += 17;
+      return; 
     }
       
   } else {
@@ -3749,6 +3926,9 @@ void tase_print_EC_POINT(EC_POINT * pt) {
 //Todo: Check all the other args for symbolic taint, even though in practice it should just be the point
 
 void Executor::model_EC_POINT_point2oct() {
+  static int model_EC_POINT_point2oct_calls = 0;
+  model_EC_POINT_point2oct_calls++;
+  
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
@@ -3775,8 +3955,7 @@ void Executor::model_EC_POINT_point2oct() {
     size_t field_len = BN_num_bytes(&group->field);
     size_t ret = (form == POINT_CONVERSION_COMPRESSED) ? 1 + field_len : 1 + 2*field_len;
 
-    printf("Entering EC_POINT_point2oct \n");
-    std::cout.flush();
+    
     
     tase_print_EC_POINT(point);
     fprintf(modelLog,"Entering EC_POINT_point2oct at interpctr %lu \n", interpCtr);
@@ -3788,16 +3967,9 @@ void Executor::model_EC_POINT_point2oct() {
     //EC_POINT_point2oct ignore or examine the X/Y/Z fields bc of behavior for NULL buf
     if (hasSymbolicInput ) {
 
-      /*
-      if (buf == NULL && point2oct_hack) {
-	printf("HACK: Using interpreter hack for point2oct with symbolic inputs and null buf \n");
-	std::cout.flush();
-	//Just interpret until we debug this
-	target_ctx_gregs[REG_RIP].u64 += 17;
-	exec_mode = INTERP_ONLY;
-	return; 
-
-	}*/
+      printf("Entering EC_POINT_point2oct for time %d with symbolic input \n", model_EC_POINT_point2oct_calls);
+      std::cout.flush();
+      
       fprintf(modelLog,"DEBUG: Found symbolic input to EC_POINT_point2oct \n");
       
       if (buf != NULL ) {
@@ -3826,6 +3998,8 @@ void Executor::model_EC_POINT_point2oct() {
     } else {
       //Otherwise we're good to call natively
        fprintf(modelLog,"DEBUG: Calling EC_POINT_point2oct natively \n");
+       printf("Entering EC_POINT_point2oct for time %d and calling natively \n", model_EC_POINT_point2oct_calls);
+       std::cout.flush();
        forceNativeRet = true;
        target_ctx_gregs[REG_RIP].u64 += 17;
        return; 

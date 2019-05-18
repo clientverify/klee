@@ -424,6 +424,8 @@ private:
   void model___ctype_tolower_loc();
   void model___isoc99_sscanf();
 
+  //For debugging
+  void model_memmove(); 
   void model_memset();
   void model_memcpy();
   
@@ -460,7 +462,8 @@ private:
 
   
   void model_tls1_generate_master_secret();
-
+  
+  
   void model_AES_encrypt();
   void model_gcm_ghash_4bit();
   void model_gcm_gmult_4bit();
@@ -473,7 +476,7 @@ private:
   void model_EC_KEY_generate_key();
   void model_ECDH_compute_key();
   void model_EC_POINT_point2oct(); 
-  
+
   uint64_t tls_predict_stdin_size (int fd, uint64_t maxLen);
   BIGNUM * BN_new_tase();
   EC_POINT * EC_POINT_new_tase(EC_GROUP * group);

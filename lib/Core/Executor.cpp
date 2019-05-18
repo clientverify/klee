@@ -120,6 +120,8 @@ extern "C" {
   void * malloc_tase(unsigned long s);
   void   free_tase(void * ptr);
   void * memcpy_tase(char * dst, const char * src, unsigned long size);
+  void * memset_tase(char * dst, int val, unsigned long size);
+  void * memmove_tase(char * dst, const char * src, unsigned long size);
   } 
 
 //Symbols we need to map in for TASE
@@ -251,7 +253,8 @@ extern "C" {
 void OpenSSLDie (const char * file, int line, const char * assertion);
 
 extern "C" {
-  
+  int RAND_poll();
+  int tls1_generate_master_secret(SSL *s, unsigned char *out, unsigned char *p, int len);
   int ssl3_connect(SSL *s);
   void gcm_gmult_4bit(u64 Xi[2],const u128 Htable[16]);
   void gcm_ghash_4bit(u64 Xi[2],const u128 Htable[16],const u8 *inp,size_t len);
@@ -4316,10 +4319,13 @@ void Executor::model_inst () {
     printKTestCounters();
     
     model_shutdown();
+    
+  }  else if (rip == (uint64_t) &memmove_tase || rip == (uint64_t) &memmove_tase + 14 ) {
+    model_memmove(); //Just for debugging
   } else if (rip == (uint64_t) &memcpy || rip == (uint64_t) &memcpy_tase + 14) { 
     model_memcpy(); //Just for debugging
     
-  } else if (rip == (uint64_t) &memset) {
+  } else if (rip == (uint64_t) &memset || rip == (uint64_t) &memset_tase + 14 ) {
     model_memset(); //Just for performance testing
   } else if (rip == (uint64_t) &time ) {
     model_time();
@@ -4349,7 +4355,9 @@ void Executor::model_inst () {
     model___isoc99_sscanf();
   } else if (rip == (uint64_t) &gethostbyname) {
     model_gethostbyname();
-  } else if (rip == (uint64_t) &EC_POINT_point2oct + 14) {
+  } else if ( rip == (uint64_t) &tls1_generate_master_secret || rip == (uint64_t) &tls1_generate_master_secret + 14 )
+    model_tls1_generate_master_secret();
+  else if (rip == (uint64_t) &EC_POINT_point2oct + 14) {
     model_EC_POINT_point2oct();
   } else if (rip == (uint64_t) &ECDH_compute_key + 14) {
     model_ECDH_compute_key();
@@ -4436,9 +4444,9 @@ void Executor::model_inst () {
     model_RAND_add();
     } else if (rip == (uint64_t) &RAND_load_file ) {
     model_RAND_load_file();
-    }  
-
-    else if (rip == (uint64_t) &ktest_start +14 || rip == (uint64_t) &ktest_start) {
+    } else if (rip == (uint64_t) &RAND_poll || rip == (uint64_t) &RAND_poll + 14 ) {  
+      model_RAND_poll();
+    } else if (rip == (uint64_t) &ktest_start +14 || rip == (uint64_t) &ktest_start) {
     model_ktest_start();
     /*
  } else if (rip == (uint64_t) &sb_entertran) {
@@ -4502,7 +4510,7 @@ bool isSpecialInst (uint64_t rip) {
   //Todo -- get rid of traps for RAND_add and RAND_load_file
   //  static const uint64_t modeledFns[] = { (uint64_t) &puts, (uint64_t)&exit, (uint64_t) &printf  /*, (uint64_t) &taseMakeSymbolic */ };
   
-  static const uint64_t modeledFns [] = {(uint64_t)&signal, (uint64_t)&malloc, (uint64_t)&read, (uint64_t)&write, (uint64_t)&connect, (uint64_t)&select, (uint64_t)&socket, (uint64_t) &getuid, (uint64_t) &geteuid, (uint64_t) &getgid, (uint64_t) &getegid, (uint64_t) &getenv, (uint64_t) &stat, (uint64_t) &free, (uint64_t) &realloc,  (uint64_t) &RAND_add, (uint64_t) &RAND_load_file, (uint64_t) &kTest_free, (uint64_t) &kTest_fromFile, (uint64_t) &kTest_getCurrentVersion, (uint64_t) &kTest_isKTestFile, (uint64_t) &kTest_numBytes, (uint64_t) &kTest_toFile, (uint64_t) &ktest_RAND_bytes, (uint64_t) &ktest_RAND_pseudo_bytes, (uint64_t) &ktest_connect, (uint64_t) &ktest_finish, (uint64_t) &ktest_master_secret, (uint64_t) &ktest_raw_read_stdin, (uint64_t) &ktest_readsocket, (uint64_t) &ktest_select, (uint64_t) &ktest_start, (uint64_t) &ktest_time, (uint64_t) &time, (uint64_t) &gmtime, (uint64_t) &gettimeofday, (uint64_t) &ktest_writesocket, (uint64_t) &fileno, (uint64_t) &fcntl, (uint64_t) &fopen, (uint64_t) &fopen64, (uint64_t) &fclose,  (uint64_t) &fwrite, (uint64_t) &fflush, (uint64_t) &fread, (uint64_t) &fgets, (uint64_t) &__isoc99_sscanf, (uint64_t) &gethostbyname, (uint64_t) &setsockopt, (uint64_t) &__ctype_tolower_loc, (uint64_t) &__ctype_b_loc, (uint64_t) &__errno_location,  (uint64_t) &BIO_printf, (uint64_t) &BIO_snprintf, (uint64_t) &vfprintf,  (uint64_t) &sprintf, (uint64_t) &tase_debug,   (uint64_t) &OpenSSLDie, (uint64_t) &shutdown , (uint64_t) &malloc_tase, (uint64_t) &realloc_tase, (uint64_t) &calloc_tase, (uint64_t) &free_tase, (uint64_t) &getpid /* (uint64_t) &SHA1_Update, (uint64_t) &SHA256_Update, (uint64_t) &AES_encrypt, (uint64_t) &gcm_gmult_4bit, (uint64_t) &gcm_ghash_4bit , (uint64_t) &EC_KEY_generate_key , (uint64_t) &ECDH_compute_key, (uint64_t) &EC_POINT_point2oct */ /* , (uint64_t) &memcpy, (uint64_t) &memset*/ };
+  static const uint64_t modeledFns [] = {(uint64_t)&signal, (uint64_t)&malloc, (uint64_t)&read, (uint64_t)&write, (uint64_t)&connect, (uint64_t)&select, (uint64_t)&socket, (uint64_t) &getuid, (uint64_t) &geteuid, (uint64_t) &getgid, (uint64_t) &getegid, (uint64_t) &getenv, (uint64_t) &stat, (uint64_t) &free, (uint64_t) &realloc,  (uint64_t) &RAND_add, (uint64_t) &RAND_load_file, (uint64_t) &kTest_free, (uint64_t) &kTest_fromFile, (uint64_t) &kTest_getCurrentVersion, (uint64_t) &kTest_isKTestFile, (uint64_t) &kTest_numBytes, (uint64_t) &kTest_toFile, (uint64_t) &ktest_RAND_bytes, (uint64_t) &ktest_RAND_pseudo_bytes, (uint64_t) &ktest_connect, (uint64_t) &ktest_finish, (uint64_t) &ktest_master_secret, (uint64_t) &ktest_raw_read_stdin, (uint64_t) &ktest_readsocket, (uint64_t) &ktest_select, (uint64_t) &ktest_start, (uint64_t) &ktest_time, (uint64_t) &time, (uint64_t) &gmtime, (uint64_t) &gettimeofday, (uint64_t) &ktest_writesocket, (uint64_t) &fileno, (uint64_t) &fcntl, (uint64_t) &fopen, (uint64_t) &fopen64, (uint64_t) &fclose,  (uint64_t) &fwrite, (uint64_t) &fflush, (uint64_t) &fread, (uint64_t) &fgets, (uint64_t) &__isoc99_sscanf, (uint64_t) &gethostbyname, (uint64_t) &setsockopt, (uint64_t) &__ctype_tolower_loc, (uint64_t) &__ctype_b_loc, (uint64_t) &__errno_location,  (uint64_t) &BIO_printf, (uint64_t) &BIO_snprintf, (uint64_t) &vfprintf,  (uint64_t) &sprintf, (uint64_t) &tase_debug,   (uint64_t) &OpenSSLDie, (uint64_t) &shutdown , (uint64_t) &malloc_tase, (uint64_t) &realloc_tase, (uint64_t) &calloc_tase, (uint64_t) &free_tase, (uint64_t) &getpid /* (uint64_t) &SHA1_Update, (uint64_t) &SHA256_Update, (uint64_t) &AES_encrypt, (uint64_t) &gcm_gmult_4bit, (uint64_t) &gcm_ghash_4bit , (uint64_t) &EC_KEY_generate_key , (uint64_t) &ECDH_compute_key, (uint64_t) &EC_POINT_point2oct */ /* , (uint64_t) &memcpy */, (uint64_t) &memset, (uint64_t) &tls1_generate_master_secret , (uint64_t) &RAND_poll};
   
   
   bool isModeled = std::find(std::begin(modeledFns), std::end(modeledFns), rip) != std::end(modeledFns);
@@ -4512,16 +4520,17 @@ bool isSpecialInst (uint64_t rip) {
   //to the interpreter at exactly 14 bytes from the
   //label of the function.
   
-  if (rip == (uint64_t) &AES_encrypt             + 14 ||
-      rip == (uint64_t) &ECDH_compute_key        + 14 ||
-      rip == (uint64_t) &EC_POINT_point2oct      + 14 ||
-      rip == (uint64_t) &EC_KEY_generate_key     + 14 ||
-      rip == (uint64_t) &SHA1_Update             + 14 ||
-      rip == (uint64_t) &SHA1_Final              + 14 ||
-      rip == (uint64_t) &SHA256_Update           + 14 ||
-      rip == (uint64_t) &SHA256_Final            + 14 ||
-      rip == (uint64_t) &gcm_gmult_4bit          + 14 ||
-      rip == (uint64_t) &gcm_ghash_4bit          + 14 
+  if (rip == (uint64_t) &AES_encrypt                 + 14 ||
+      rip == (uint64_t) &ECDH_compute_key            + 14 ||
+      rip == (uint64_t) &EC_POINT_point2oct          + 14 ||
+      rip == (uint64_t) &EC_KEY_generate_key         + 14 ||
+      rip == (uint64_t) &SHA1_Update                 + 14 ||
+      rip == (uint64_t) &SHA1_Final                  + 14 ||
+      rip == (uint64_t) &SHA256_Update               + 14 ||
+      rip == (uint64_t) &SHA256_Final                + 14 ||
+      rip == (uint64_t) &gcm_gmult_4bit              + 14 ||
+      rip == (uint64_t) &gcm_ghash_4bit              + 14 ||
+      rip == (uint64_t) &tls1_generate_master_secret + 14
       ) {
     printf("Found prohibitive function \n");
     fprintf(modelLog, "Found prohibitive function at 0x%lx \n", rip );
@@ -4539,7 +4548,7 @@ bool isSpecialInst (uint64_t rip) {
       rip == (uint64_t) &ktest_RAND_bytes        + 14 ||
       rip == (uint64_t) &ktest_RAND_pseudo_bytes + 14 ||
       rip == (uint64_t) &ktest_master_secret     + 14 
-
+      
       ) {
 
     printf("Found ktest trap \n");
@@ -4555,20 +4564,24 @@ bool isSpecialInst (uint64_t rip) {
       rip == (uint64_t) &sb_disabled ||
       rip == (uint64_t) &target_exit ||
       isModeled                      ||
-      rip == (uint64_t) &memcpy_tase         + 14  || 
-      rip == (uint64_t) &malloc_tase         + 14  ||
-      rip == (uint64_t) &realloc_tase        + 14  ||
-      rip == (uint64_t) &free_tase           + 14  ||
-      rip == (uint64_t) &SHA1_Update         + 14  ||
-      rip == (uint64_t) &SHA1_Final          + 14  ||
-      rip == (uint64_t) &SHA256_Update       + 14  ||
-      rip == (uint64_t) &SHA256_Final        + 14  ||
-      rip == (uint64_t) &AES_encrypt         + 14  ||
-      rip == (uint64_t) &gcm_gmult_4bit      + 14  ||
-      rip == (uint64_t) &gcm_ghash_4bit      + 14  ||
-      rip == (uint64_t) &EC_KEY_generate_key + 14  ||
-      rip == (uint64_t) &ECDH_compute_key    + 14  ||
-      rip == (uint64_t) &EC_POINT_point2oct  + 14
+      rip == (uint64_t) &memcpy_tase                 + 14  ||
+      rip == (uint64_t) &memset_tase                 + 14  ||
+      rip == (uint64_t) &malloc_tase                 + 14  ||
+      rip == (uint64_t) &memmove_tase                + 14  ||
+      rip == (uint64_t) &realloc_tase                + 14  ||
+      rip == (uint64_t) &free_tase                   + 14  ||
+      rip == (uint64_t) &SHA1_Update                 + 14  ||
+      rip == (uint64_t) &SHA1_Final                  + 14  ||
+      rip == (uint64_t) &SHA256_Update               + 14  ||
+      rip == (uint64_t) &SHA256_Final                + 14  ||
+      rip == (uint64_t) &AES_encrypt                 + 14  ||
+      rip == (uint64_t) &gcm_gmult_4bit              + 14  ||
+      rip == (uint64_t) &gcm_ghash_4bit              + 14  ||
+      rip == (uint64_t) &EC_KEY_generate_key         + 14  ||
+      rip == (uint64_t) &ECDH_compute_key            + 14  ||
+      rip == (uint64_t) &EC_POINT_point2oct          + 14  ||
+      rip == (uint64_t) &tls1_generate_master_secret + 14  ||
+      rip == (uint64_t) &RAND_poll                   + 14
       )  {
     return true;
   }  else {
@@ -4636,6 +4649,8 @@ void Executor::klee_interp_internal () {
       break;
     }
 
+    printf("Value pointed to by RSP is 0x%lx \n", *((uint64_t *)(target_ctx_gregs[REG_RSP].u64)));
+    std::cout.flush();
     
     if (isSpecialInst(rip)) {
       model_inst();
@@ -4668,26 +4683,29 @@ void Executor::klee_interp_internal () {
     }
 
     std::cout.flush();
-    //Debug -- Print a sample value for flags
+
     ref<Expr> EflExpr = target_ctx_gregs_OS->read(REG_EFL * 8, Expr::Int64);
     if (!isa<ConstantExpr> (EflExpr) ) {
       printf("Non constant eflags found. \n");
-      int res = printAllPossibleValues(EflExpr);
-      printf("printAllPossibleValues returned %d \n", res);
+      //int res = printAllPossibleValues(EflExpr);
+      //printf("printAllPossibleValues returned %d \n", res);
     }
     std::cout.flush();
     //We always require a completely concrete RIP for execution, so deal with it here
     //if it's a symbolic expression as a result of interpretation.
 
-    ref<Expr> RIPExpr = target_ctx_gregs_OS->read(REG_RIP * 8, Expr::Int64);
+    ref<Expr> RIPExpr = tase_helper_read((uint64_t) &(target_ctx_gregs[REG_RIP].u64), 8);
     if (!(isa<ConstantExpr>(RIPExpr))) {
       printf("Detected symbolic RIP \n");
-      printAllPossibleValues(RIPExpr);
+      std::cout.flush();
+      //printAllPossibleValues(RIPExpr);
       
-
+      printf("Attempting to call toUnique on symbolic RIP \n");
+      std::cout.flush();
       ref <Expr> uniqueRIPExpr  = toUnique(*GlobalExecutionStatePtr,RIPExpr);
       if (isa<ConstantExpr> (uniqueRIPExpr)) {
 	printf("Only one valid value for RIP \n");
+	fflush(stdout);
 	tase_helper_write((uint64_t) &target_ctx_gregs[REG_RIP], uniqueRIPExpr);
 	
       } else {
@@ -4698,6 +4716,7 @@ void Executor::klee_interp_internal () {
       }
       std::cout.flush();
     }
+    
     ref<Expr> FinalRIPExpr = target_ctx_gregs_OS->read(REG_RIP * 8, Expr::Int64);
     if (!(isa<ConstantExpr>(FinalRIPExpr))) {
       printf("ERROR: Failed to concretize RIP \n");
