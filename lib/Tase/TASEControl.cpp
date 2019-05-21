@@ -29,6 +29,8 @@ void * MPAPtr;  //Ptr to serialized multipass info for current round of verifica
 int * replayPIDPtr; //Ptr to the pid storing the replay PID for the current round of verification
 int * replayLock ; //Lock to request replay.  1 is available, 0 unavailable.
 
+int * latestRoundPtr; //Pointer to furthest round found so far in verification
+
 CVAssignment  prevMPA;
 
 void * ms_base;
@@ -333,6 +335,15 @@ int tase_fork(int parentPID, uint64_t rip) {
     
     get_sem_lock();
     printf("TASE FORKING! \n");
+
+    if (roundCount < *latestRoundPtr)  {
+      remove_self_from_QR();
+      printf("Worker %d is in round %d when latest round is %d. Worker exiting. \n", getpid(), roundCount, *latestRoundPtr );
+      fflush(stdout);
+      std::exit(EXIT_SUCCESS);
+    }
+
+    
     int trueChildPID = ::fork();
     if (trueChildPID != 0) {
       printf("Parent PID %d forked off child %d at rip 0x%lx for TRUE branch \n", parentPID, trueChildPID, rip);
@@ -431,7 +442,9 @@ void initManagerStructures() {
      
    target_started_ptr = ((int *) ms_base) + 3072;
    *target_started_ptr = 0; //Switches to 1 when we execute target
-   
+
+   latestRoundPtr = ((int *) ms_base) + 100;
+   *latestRoundPtr = 0;
  }
 
 //Fill a buffer with string for the time
@@ -450,6 +463,19 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
   std::cout.flush();
 
   get_sem_lock();
+
+  if (roundCount < *latestRoundPtr)  {
+    remove_self_from_QR();
+    printf("Worker %d is in round %d when latest round is %d. Worker exiting. \n", getpid(), roundCount, *latestRoundPtr );
+    fflush(stdout);
+    std::exit(EXIT_SUCCESS);
+  } else {
+    printf("Worker sees latest round as %d; updating to %d \n", *latestRoundPtr, roundCount);
+    *latestRoundPtr = roundCount;
+    
+  }
+    
+  
   printf("IMPORTANT: Starting round %d pass %d of verification \n", roundCount, passCount);
   std::cout.flush();
   //Make backup of self
@@ -635,10 +661,19 @@ void multipass_replay_round (void * assignmentBufferPtr, CVAssignment * mpa, int
   while(true) {//Is this actually needed?  get_sem_lock() should block until semaphore is available
  
     get_sem_lock();
+    if (roundCount < *latestRoundPtr)  {
+      remove_self_from_QR();
+      printf("Worker %d is in round %d when latest round is %d. Worker exiting. \n", getpid(), roundCount, *latestRoundPtr );
+      fflush(stdout);
+      std::exit(EXIT_SUCCESS);
+    }
+    
     if (*replayLock != 1  || PidInQA(*pidPtr) || PidInQR(*pidPtr) ||  *((uint8_t *) assignmentBufferPtr) != 0)  {
       release_sem_lock();  //Spin and try again after pending replay fully executes
 
     } else {
+      
+      
       if (*replayLock != 1) {
 	printf("IMPORTANT: control debug: Error - replayLock has unexpected value %d \n", *replayLock);
       } else {

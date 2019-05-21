@@ -52,7 +52,9 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
   cm.addConstraint(expr);
 
   klee::Query query(cm, klee::ConstantExpr::alloc(0, klee::Expr::Bool));
-  
+
+
+  /*
   std::string s;
   llvm::raw_string_ostream info(s);
   info << "CVAssignment query:\n\n";
@@ -63,6 +65,8 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
   fprintf(stderr, " %s ", info.str().c_str());
   
   fprintf(stderr, "\n\n----------------------------------------- \n\n");
+  */
+  
   
   bool res = solver->getInitialValues(query, arrays, initial_values);
 
@@ -73,8 +77,8 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
   //////////////////////////////////////////////////////////////////
   //DEBUG
   
-  fprintf(stderr,"DEBUG: Printing assignments in CVAssignment immediately after getInitValues \n");
-  
+  //fprintf(stderr,"DEBUG: Printing assignments in CVAssignment immediately after getInitValues \n");
+  /*
   std::vector< std::vector<unsigned char> >::iterator valIt =
     initial_values.begin();
   for (std::vector<const klee::Array*>::iterator it = arrays.begin(),
@@ -98,7 +102,7 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
     ++valIt;
     
   }
-
+  */
   
 
   ////////////////////////////////////////////////////////////////////////
@@ -160,7 +164,7 @@ void CVAssignment::printAllAssignments(FILE * fp) {
       values.push_back(it->second);
     }
 
-    printf("MULTIPASS DEBUG: Printing %d assignments \n", objects.size());
+    printf("MULTIPASS DEBUG: Printing %lu assignments \n", objects.size());
     std::cout.flush();
 
 

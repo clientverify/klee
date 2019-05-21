@@ -173,7 +173,7 @@ uint64_t saveRAXOpc =    0x000000F822C1E3C4  ; //tmp hack
 uint64_t restoreRAXOpc = 0x000000F816F9E3C4; //tmp hack
 //Multipass
 extern int c_special_cmds; //Int used by cliver to disable special commands to s_client.  Made global for debugging
-
+extern bool UseForkedCoreSolver;
 extern bool point2oct_hack;
 extern void get_sem_lock();
 extern void release_sem_lock();
@@ -4827,13 +4827,15 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) 
     //release_sem_lock();
     if (!success) {
       printf("ERROR: couldn't get initial value in forkOnPossibleRIPValues \n");
+      
       std::cout.flush();
+      worker_exit();
       std::exit(EXIT_FAILURE);
     }
 
     int initPID = getpid();
     std::cout.flush();
-    int pid = tase_fork(initPID, initRIP);
+    int isTrueChild = tase_fork(initPID, initRIP); //Returns 0 for false branch, 1 for true.  Not intuitive
     int i = getpid();
     workerIDStream << ".";
     workerIDStream << i;
@@ -4846,11 +4848,27 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) 
       fflush(stdout);
     }
 
-    if (pid == 0) { //Rule out latest solution and see if more exist
+    //Force two destinations for debugging
+    //ABH: Todo -- roll this back and support > 2 symbolic dests for things like indirect jumps
+    if (isTrueChild == 0) { //Rule out latest solution and see if more exist
       ref<Expr> notEqualsSolution = NotExpr::create(EqExpr::create(inputExpr,solution));
       addConstraint(*GlobalExecutionStatePtr, notEqualsSolution);
+      success = solver->getValue(*GlobalExecutionStatePtr, inputExpr, solution);
+
+      if (!success) {
+	printf("ERROR: couldn't get RIP value in forkOnPossibleRIPValues for false child \n");
+	std::cout.flush();
+	worker_exit();
+	std::exit(EXIT_FAILURE);
+      }
+      printf("IMPORTANT: control debug: Found dest RIP 0x%lx on false branch in forkOnRip from RIP 0x%lx with pid %d \n", (uint64_t) solution->getZExtValue(), initRIP, getpid());
+      addConstraint(*GlobalExecutionStatePtr, EqExpr::create(inputExpr, solution));
+      target_ctx_gregs_OS->write(REG_RIP*8, solution);
+      break;
+      
+
     } else { // Take the concrete value of solution and explore that path.
-      printf("IMPORTANT: control debug: Found dest RIP 0x%lx in forkOnRip from RIP 0x%lx with pid %d \n", (uint64_t) solution->getZExtValue(), initRIP, getpid());
+      printf("IMPORTANT: control debug: Found dest RIP 0x%lx on true branch in forkOnRip from RIP 0x%lx with pid %d \n", (uint64_t) solution->getZExtValue(), initRIP, getpid());
       addConstraint(*GlobalExecutionStatePtr, EqExpr::create(inputExpr, solution));
       target_ctx_gregs_OS->write(REG_RIP*8, solution);
       break;
@@ -4886,6 +4904,9 @@ void Executor::initializeInterpretationStructures (Function *f) {
 
   printf("INITIALIZING INTERPRETATION STRUCTURES \n");
 
+  printf("UseForkedCoreSolver is %d \n", UseForkedCoreSolver);
+  UseForkedCoreSolver = false;
+  
   printf("Creating new execution state \n");
   GlobalExecutionStatePtr = new ExecutionState(kmodule->functionMap[f]);
 

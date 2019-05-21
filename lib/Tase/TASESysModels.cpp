@@ -87,6 +87,8 @@ using namespace klee;
 
 extern void tase_exit();
 
+extern bool UseForkedCoreSolver;
+
 extern bool taseManager;
 extern greg_t * target_ctx_gregs;
 extern klee::Interpreter * GlobalInterpreter;
@@ -442,6 +444,7 @@ void Executor::model_ktest_writesocket() {
     if (debugMultipass) {
 	fprintf(modelLog, "MULTIPASS DEBUG: Entering call to ktest_writesocket round %d pass %d \n", roundCount, passCount);
 	printf("MULTIPASS DEBUG: Entering ktest_writesocket at round %d pass %d \n", roundCount, passCount);
+	printf("UseForkedCoreSolver is %d \n", UseForkedCoreSolver);
 	std::cout.flush();
 	fflush(modelLog);
 	printProhibCounters();
@@ -478,8 +481,6 @@ void Executor::model_ktest_writesocket() {
       //Basic structure comes from NetworkManager in klee repo of cliver.
       //Get log entry for c2s
       KTestObject *o = KTOV_next_object(&ktov, ktest_object_names[CLIENT_TO_SERVER]);
-
-
       printf("Buffer in writesock call : \n");
       printBuf ((void *) buf, count);
       
@@ -500,12 +501,6 @@ void Executor::model_ktest_writesocket() {
       
       //Create write condition
       klee::ref<klee::Expr> write_condition = klee::ConstantExpr::alloc(1, klee::Expr::Bool);
-      /*
-      printf("Checking wc buf of size %d in round %d pass %d \n",count, roundCount, passCount);
-      printf("Printing each byte of output buf as expr: \n");
-      std::cout.flush();
-      fflush(stderr);
-      */
       for (int i = 0; i < o->numBytes; i++) {
 	klee::ref<klee::Expr> val = tase_helper_read((uint64_t) buf + i, 1);
 	/*
@@ -553,7 +548,7 @@ void Executor::model_ktest_writesocket() {
       addConstraint(*GlobalExecutionStatePtr, write_condition);
       //Check validity of write condition
 
-      get_sem_lock(); //Just for debugging 
+      //get_sem_lock(); //Just for debugging 
 
       
       if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(write_condition)) {
@@ -566,7 +561,10 @@ void Executor::model_ktest_writesocket() {
       } else {
 	bool result;
 	//compute_false(GlobalExecutionStatePtr, write_condition, result);
+	get_sem_lock();
+	  
 	solver->mustBeFalse(*GlobalExecutionStatePtr, write_condition, result);
+	release_sem_lock();
 	
 	if (result) {
 	  fprintf(modelLog, "IMPORTANT: VERIFICATION ERROR: write condition determined false \n");
@@ -585,13 +583,15 @@ void Executor::model_ktest_writesocket() {
       CVAssignment currMPA;
       currMPA.clear();
 
-     
+
       
       if (!isa<ConstantExpr>(write_condition)) {
+	get_sem_lock();
 	currMPA.solveForBindings(solver->solver, write_condition,GlobalExecutionStatePtr);
+	release_sem_lock();
       }
 
-      release_sem_lock();
+      //release_sem_lock();
       
       //print assignments
       printf("About to print assignments \n");
@@ -733,6 +733,7 @@ uint64_t Executor::tls_predict_stdin_size (int fd, uint64_t maxLen) {
     
   if (fd != 0) {
     printf("tls_predict_stdin_size() called with unknown fd %d \n", fd);
+    worker_exit();
     std::exit(EXIT_FAILURE);
   }
 
@@ -785,8 +786,8 @@ void Executor::model_ktest_raw_read_stdin() {
   printf("Entering model_ktest_raw_read_stdin for time %d \n", ktest_raw_read_stdin_calls);
   fflush(stdout);
   fprintf(modelLog,"Entering model_ktest_raw_read_stdin at interpCtr %lu \n", interpCtr);
-  printf("Debug: Forcing interpretation at read_stdin call \n");
-  exec_mode = INTERP_ONLY;
+  //printf("Debug: Forcing interpretation at read_stdin call \n");
+  //exec_mode = INTERP_ONLY;
 
   
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
@@ -899,10 +900,13 @@ void Executor::model_shutdown() {
     std::cerr << " Entered model_shutdown call on FD %lu \n ", target_ctx_gregs[REG_RDI].u64;
     
     if (ktov.size == ktov.playback_index) {
+      printf("SUCCESS: All messages verified \n");
+      fflush(stdout);
       std::cerr << "All playback messages retrieved \n";
       fprintf(modelLog, "All playback messages retrieved \n");
       fflush(modelLog);
-
+      worker_exit();
+      
       tase_exit();
       std::exit(EXIT_SUCCESS);
       
@@ -910,6 +914,9 @@ void Executor::model_shutdown() {
       std::cerr << "ERROR: playback message index wrong at shutdown \n";
       fprintf(modelLog, "ERROR: playback message index wrong at shutdown \n");
       fflush(modelLog);
+      printf("ERROR: playback message index wrong at shutdown \n");
+      fflush(stdout);
+      worker_exit();
       std::exit(EXIT_FAILURE);
     }
     
@@ -1084,7 +1091,7 @@ void Executor::model_memset() {
 //Just for debugging
 //void *memcpy(void *dest, const void *src, size_t n);
 void Executor::model_memcpy() {
-  fprintf(modelLog,"Entering model_memcpy: Moving 0x%lx bytes from 0x%lx to 0x%lx \n",(size_t) target_ctx_gregs[REG_RDX].u64,  target_ctx_gregs[REG_RSI].u64 ,  (void*) target_ctx_gregs[REG_RDI].u64  );
+  fprintf(modelLog,"Entering model_memcpy: Moving 0x%lx bytes from 0x%lx to 0x%lx \n",(size_t) target_ctx_gregs[REG_RDX].u64,  target_ctx_gregs[REG_RSI].u64 ,  (uint64_t) target_ctx_gregs[REG_RDI].u64  );
   fflush(modelLog);
   printf("Entering model_memcpy: Moving 0x%lx bytes from 0x%lx to 0x%lx \n",(size_t) target_ctx_gregs[REG_RDX].u64,   target_ctx_gregs[REG_RSI].u64 ,  target_ctx_gregs[REG_RDI].u64  );
   std::cout.flush();
@@ -1558,7 +1565,7 @@ void Executor::model_BIO_printf() {
   int arg3 = (int) target_ctx_gregs[REG_RDX].u64;
   
   fprintf(modelLog, " %s \n", errMsg);
-  printf("%s \n");
+
   fflush(stdout);
   fflush(modelLog);
   /*
@@ -2570,6 +2577,8 @@ void Executor::model_write() {
     // Since this is a write, compare for equality.
     if (o->numBytes > 0 && memcmp((void *) buffer, o->bytes, o->numBytes) != 0) {
       printf("WARNING: ktest_writesocket playback - data mismatch\n");
+      fflush(stdout);
+      worker_exit();
       std::exit(EXIT_FAILURE);
     }
     
@@ -2691,73 +2700,7 @@ void Executor::model_select() {
 	(isa<ConstantExpr>(arg5Expr))
 	) {
 
-    //Safety check for some low-level operations done later.
-    //Probably can move this out later when we're getting perf numbers.
-    /*
-    if (sizeof(fds_bits) != 1) {
-      printf("ERROR: Size of fds_bits is not a byte \n");
-      std::exit(EXIT_FAILURE);
-      }*/
-
-    /*
-      void * tmp1 = malloc(1);
-      tase_make_symbolic ((uint64_t) tmp1, 1, "select readfds mask");
-      ref<Expr> rfdsMaskVar = tase_helper_read((uint64_t) tmp1, 1);
-      ref<ConstantExpr> nine = ConstantExpr::create(9, Expr::Int8);
-      ref<Expr> rfdsMaskExpr = AndExpr::create(rfdsMaskVar, nine);
-      ref<Expr> rfdsMaskExpr = AndExpr::create(rfdsMaskVar,
-      tase_helper_write((uint64_t) &(writefds->fds_bits[0]), rfdsMaskRes);
-
-      
-
-     */
     
-
-    bool make_readfds_symbolic [nfds];
-    bool make_writefds_symbolic [nfds];
-
-    ref<Expr> bitsSetExpr = ConstantExpr::create(0, Expr::Int8);
-    /*
-    if(0) {
-      ref<Expr> orig_readfdExpr = tase_helper_read(&(readfds->fds_bits[0] ), 1) ;
-      ref<Expr> orig_writefdExpr = tase_helper_read(&(writefds->fds_bits[0] ), 1);
-
-      
-
-
-      tase_make_symbolic((uint64_t) &(readfds->fds_bits[0]), 1, "select readfds");
-
-
-      ref<Expr> readfdExpr = tase_helper_read(&(readfds->fds_bits[0] ), 1) ;
-      ref<EqExpr> Eq0_r = EqExpr::create(readfdExpr, ConstantExpr::create(0, Expr::Int8));
-      ref<EqExpr> Eq1_r = EqExpr::create(readfdExpr, ConstantExpr::create(1, Expr::Int8));
-      ref<EqExpr> Eq8_r = EqExpr::create(readfdExpr, ConstantExpr::create(8, Expr::Int8));
-      ref<EqExpr> Eq9_r = EqExpr::create(readfdExpr, ConstantExpr::create(9, Expr::Int8));
-
-      klee::ref<klee::Expr> rfdc = klee::ConstantExpr::alloc(1, klee::Expr::Bool);
-
-      if (!isa<ConstantExpr>(orig_readfdExpr)) {
-	//addConstraint Eq0_r || Eq1_r || Eq8_r etc
-      } else {
-	// 4 cases
-      }
-      
-      tase_make_symbolic((uint64_t) &(writefds->fds_bits[0]),1, "select writefds ");
-      ref<Expr> writefdExpr = tase_helper_read(&(writefds->fds_bits[0] ), 1);
-      ref<EqExpr> Eq0_w = EqExpr::create(writefdExpr, ConstantExpr::create(0, Expr::Int8));
-      ref<EqExpr> Eq1_w = EqExpr::create(writefdExpr, ConstantExpr::create(1, Expr::Int8));
-      ref<EqExpr> Eq8_w = EqExpr::create(writefdExpr, ConstantExpr::create(8, Expr::Int8));
-      ref<EqExpr> Eq9_w = EqExpr::create(writefdExpr, ConstantExpr::create(9, Expr::Int8));
-
-      if (!isa<ConstantExpr>(orig_writefdExpr)) {
-	//addConstraint Eq0_r || Eq1_r || Eq8_r etc
-      } else {
-	// 4 cases
-      }
-      
-    }
-    */
-
     printf("nfds is %d \n", nfds);
     printf("\n");
     printf("IN readfds  = ");
@@ -2765,12 +2708,118 @@ void Executor::model_select() {
     printf("IN writefds = ");
     print_fd_set(nfds, writefds);
     std::cout.flush();
-
+    
+    ref<Expr> orig_readfdExpr = tase_helper_read((uint64_t) &(readfds->fds_bits[0] ), 1) ;
+    ref<Expr> orig_writefdExpr = tase_helper_read((uint64_t) &(writefds->fds_bits[0] ), 1);
 
     
-    bool debugSelect = true;
+    //READ
+    if (times_model_select_called != 1) {
+    void * tmp1 = malloc(2);
+    MemoryObject * tmpObjRead = addExternalObject( *GlobalExecutionStatePtr, (void *) tmp1, 2, false);
+    const ObjectState * tmpObjReadOS = GlobalExecutionStatePtr->addressSpace.findObject(tmpObjRead);
+    ObjectState * tmpObjReadOSWrite = GlobalExecutionStatePtr->addressSpace.getWriteable(tmpObjRead,tmpObjReadOS);  
+    tmpObjReadOSWrite->concreteStore = (uint8_t *) tmp1;
+  
+    tase_make_symbolic ((uint64_t) tmp1, 2, "select readfds mask");
+    ref<Expr> rfdsMaskVar = tase_helper_read((uint64_t) tmp1, 1);
+    ref<Expr> rfdsMaskExpr = AndExpr::create(rfdsMaskVar, orig_readfdExpr);
+    tase_helper_write((uint64_t) &(readfds->fds_bits[0]), rfdsMaskExpr);
+    } else {
+      tase_helper_write((uint64_t) &(readfds->fds_bits[0]), ConstantExpr::create(0, Expr::Int8));
+    }
+
+
+    //WRITE
+    void * tmp2 = malloc(2);
+    MemoryObject * tmpObjWrite = addExternalObject(*GlobalExecutionStatePtr, (void *) tmp2, 2, false);
+    const ObjectState * tmpObjWriteOS = GlobalExecutionStatePtr->addressSpace.findObject(tmpObjWrite);
+    ObjectState * tmpObjWriteOSWritable = GlobalExecutionStatePtr->addressSpace.getWriteable(tmpObjWrite,tmpObjWriteOS);
+    tmpObjWriteOSWritable->concreteStore = (uint8_t *) tmp2;
+    
+    tase_make_symbolic((uint64_t) tmp2 , 2, "select writefds mask");
+    ref<Expr> wfdsMaskVar = tase_helper_read((uint64_t) tmp2, 1);
+    ref<Expr> wfdsMaskExpr = AndExpr::create(wfdsMaskVar, orig_writefdExpr);
+    tase_helper_write((uint64_t) &(writefds->fds_bits[0]), wfdsMaskExpr);  
+
+    //ref<EqExpr> wfdsEqExpr = EqExpr::create(wfdsMaskExpr, 0);
+    //ref<NotExpr> wfdsNotExpr = NotExpr::create(wfdsEqExpr);
+    //addConstraint(*GlobalExecutionStatePtr, wfdsNotExpr );
+    
+    //RETURN VAL
+    
+
+    /*
+
+
+    void * resTemp = malloc(8);
+    MemoryObject * resMO = addExternalObject( *GlobalExecutionStatePtr, (void *) resTemp, 8, false);
+    const ObjectState * resOS = GlobalExecutionStatePtr->addressSpace.findObject(resMO);
+    ObjectState * resOSWritable = GlobalExecutionStatePtr->addressSpace.getWriteable(resMO,resOS);
+    resOSWritable->concreteStore = (uint8_t *) resTemp;
+    
+    
+    tase_make_symbolic((uint64_t) resTemp, 8, "select return val");
+    ref<Expr> resExpr = tase_helper_read((uint64_t) (resTemp), 8);
+    tase_helper_write((uint64_t) &target_ctx_gregs[REG_RAX].u64, resExpr);
+    ref <ConstantExpr> zero = ConstantExpr::create(0, Expr::Int64);
+    ref<Expr> successExpr = SgtExpr::create (resExpr, zero);
+    */
+    
+    tase_helper_write((uint64_t) &target_ctx_gregs[REG_RAX].u64, ConstantExpr::create(1, Expr::Int64)); 
+    
+    
+    //addConstraint(*GlobalExecutionStatePtr, successExpr);
+
+    printf("nfds is %d \n", nfds);
+    printf("\n");
+    printf("OUT readfds  = ");
+    print_fd_set(nfds, readfds);
+    printf("OUT writefds = ");
+    print_fd_set(nfds, writefds);
+    std::cout.flush();
+    
+    //fake a ret
+    uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+    target_ctx_gregs[REG_RIP].u64 = retAddr;
+    target_ctx_gregs[REG_RSP].u64 += 8;
+    return;
+    
+    
+   
+    
+
+    
+    bool debugSelect = false;
     if (debugSelect) {
 
+
+      printf("nfds is %d \n", nfds);
+      printf("\n");
+      printf("IN readfds  = ");
+      print_fd_set(nfds, readfds);
+      printf("IN writefds = ");
+      print_fd_set(nfds, writefds);
+      std::cout.flush();
+
+      if (times_model_select_called == 1) {
+	printf("DEBUG: special casing select call 1 \n");
+	FD_ZERO(readfds);
+	FD_SET(0,writefds);
+	
+	printf("nfds is %d \n", nfds);
+	printf("\n");
+	printf("OUT readfds  = ");
+	print_fd_set(nfds, readfds);
+	printf("OUT writefds = ");
+	print_fd_set(nfds, writefds);
+	std::cout.flush();
+	tase_helper_write((uint64_t) &(target_ctx_gregs[REG_RAX].u64), ConstantExpr::create(1, Expr::Int64));
+
+      }
+
+
+      
       if (times_model_select_called == 2) {
 	printf("DEBUG: special casing select call 2 \n");
 	FD_ZERO(readfds);
@@ -2785,20 +2834,12 @@ void Executor::model_select() {
 	std::cout.flush();
 	tase_helper_write((uint64_t) &(target_ctx_gregs[REG_RAX].u64), ConstantExpr::create(1, Expr::Int64));
 
-	//fake a ret
-
-	uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
-	target_ctx_gregs[REG_RIP].u64 = retAddr;
-	target_ctx_gregs[REG_RSP].u64 += 8;
-	return;
       }
 
        if (times_model_select_called == 3) {
-	printf("DEBUG: special casing select call 3 \n");
-	
+	printf("DEBUG: special casing select call 3 \n");	
 	
 	FD_ZERO(readfds);
-	
 	printf("nfds is %d \n", nfds);
 	printf("\n");
 	printf("OUT readfds  = ");
@@ -2807,16 +2848,64 @@ void Executor::model_select() {
 	print_fd_set(nfds, writefds);
 	std::cout.flush();
 	tase_helper_write((uint64_t) &(target_ctx_gregs[REG_RAX].u64), ConstantExpr::create(1, Expr::Int64));
+       }
 
-	//fake a ret
+       if (times_model_select_called == 4) {
+	 printf("DEBUG: special casing select call 4 \n");
+	 
+	 FD_ZERO(readfds);
+	 FD_SET(0,readfds);
+	 printf("nfds is %d \n", nfds);
+	 printf("\n");
+	 printf("OUT readfds  = ");
+	 print_fd_set(nfds, readfds);
+	 printf("OUT writefds = ");
+	 print_fd_set(nfds, writefds);
+	 std::cout.flush();
+	 tase_helper_write((uint64_t) &(target_ctx_gregs[REG_RAX].u64), ConstantExpr::create(1, Expr::Int64));
 
+       }
+
+       if (times_model_select_called == 5 ) {
+	 printf("DEBUG: special casing select call 5 \n");
+	 FD_ZERO(readfds);
+
+	 printf("nfds is %d \n", nfds);
+	 printf("\n");
+	 printf("OUT readfds  = ");
+	 print_fd_set(nfds, readfds);
+	 printf("OUT writefds = ");
+	 print_fd_set(nfds, writefds);
+	 std::cout.flush();
+	 tase_helper_write((uint64_t) &(target_ctx_gregs[REG_RAX].u64), ConstantExpr::create(1, Expr::Int64));
+
+       }
+
+        if (times_model_select_called == 6 ) {
+	 printf("DEBUG: special casing select call 6 \n");
+	 FD_ZERO(readfds);
+	 FD_SET(0,readfds);
+	 printf("nfds is %d \n", nfds);
+	 printf("\n");
+	 printf("OUT readfds  = ");
+	 print_fd_set(nfds, readfds);
+	 printf("OUT writefds = ");
+	 print_fd_set(nfds, writefds);
+	 std::cout.flush();
+	 tase_helper_write((uint64_t) &(target_ctx_gregs[REG_RAX].u64), ConstantExpr::create(1, Expr::Int64));
+
+       }
+       
+       
+      	//fake a ret
 	uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
 	target_ctx_gregs[REG_RIP].u64 = retAddr;
 	target_ctx_gregs[REG_RSP].u64 += 8;
 	return;
-      }
-      
-      
+
+	}
+	/*
+	
       printf("Forcing select return for debugging \n");
       //tase_helper_write((uint64_t) &(writefds->fds_bits[3]), ConstantExpr::create(1, Expr::Int8) );
       tase_make_symbolic((uint64_t) &(writefds->fds_bits[3]), 1, "WriteFDVal");
@@ -2839,10 +2928,6 @@ void Executor::model_select() {
       addConstraint(*GlobalExecutionStatePtr, retEqualsZeroOrOneExpr);
       
       //tase_helper_write( (uint64_t)  &(target_ctx_gregs[REG_RAX]), ConstantExpr::create(1, Expr::Int64) );
-
-
-
-
       printf("nfds is %d \n", nfds);
       printf("\n");
       printf("OUT readfds  = ");
@@ -2900,7 +2985,6 @@ void Executor::model_select() {
       if (make_readfds_symbolic[j]) {
 
 	tase_make_symbolic((uint64_t) &(readfds->fds_bits[j]), 1, "ReadFDVal");
-
         
 	ref<Expr> fd_val = tase_helper_read((uint64_t) &(readfds->fds_bits[j]), 1);
 	//Got to be a better way to write this... but we basically constrain the
@@ -2912,8 +2996,6 @@ void Executor::model_select() {
 	ref<Expr> equalsOneExpr = EqExpr::create(fd_val, one);
 	ref<Expr> equalsZeroOrOneExpr = OrExpr::create(equalsZeroExpr, equalsOneExpr);
 	addConstraint(*GlobalExecutionStatePtr, equalsZeroOrOneExpr);
-
-        
 
 	bitsSetExpr = AddExpr::create(bitsSetExpr, fd_val);
 	
@@ -2946,7 +3028,7 @@ void Executor::model_select() {
 	tase_helper_write((uint64_t) &(writefds->fds_bits[j]), zeroVal);
       }
     }
-
+    
     ref <ConstantExpr> zero = ConstantExpr::create(0, Expr::Int8);
     ref<Expr> successExpr = SgtExpr::create (bitsSetExpr, zero);
     //addConstraint(*GlobalExecutionStatePtr, successExpr);
@@ -2959,11 +3041,11 @@ void Executor::model_select() {
 
     tase_make_symbolic((uint64_t) &target_ctx_gregs[REG_RAX], 8, "SelectReturn");
 
-    /*
-    target_ctx_gregs_OS->write(REG_RAX * 8, bitsSetExpr);
-    ref<ConstantExpr> offset = ConstantExpr::create(REG_RAX * 8, Expr::Int16);  //Why 16?
-    target_ctx_gregs_OS->applyPsnOnWrite( offset , bitsSetExpr);
-    */
+    
+    //target_ctx_gregs_OS->write(REG_RAX * 8, bitsSetExpr);
+    //ref<ConstantExpr> offset = ConstantExpr::create(REG_RAX * 8, Expr::Int16);  //Why 16?
+    //target_ctx_gregs_OS->applyPsnOnWrite( offset , bitsSetExpr);
+    
     std::cout.flush();
     //bump RIP and interpret next instruction
     //target_ctx_gregs[REG_RIP].u64 = target_ctx_gregs[REG_RIP].u64 +5;
@@ -2972,6 +3054,8 @@ void Executor::model_select() {
     uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
     target_ctx_gregs[REG_RIP].u64 = retAddr;
     target_ctx_gregs[REG_RSP].u64 += 8;
+
+    */
     
   } else {
     printf("ERROR: Found symbolic input to model_select()");
@@ -3073,7 +3157,7 @@ ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); // SSL
 	(isa<ConstantExpr>(arg3Expr)) &&
 	(isa<ConstantExpr>(arg4Expr)) ) {
 
-    fprintf(modelLog, "Entering model_tls1_generate_master_secret at interpctr %d \n", interpCtr);
+    fprintf(modelLog, "Entering model_tls1_generate_master_secret at interpctr %lu \n", interpCtr);
     printf("Entering model_tls1_generate_master_secret \n");
     fflush(modelLog);
     fflush(stdout);
@@ -3689,7 +3773,6 @@ void Executor::model_EC_KEY_generate_key () {
    if ( (isa<ConstantExpr>(arg1Expr)) ) {
 
      EC_KEY * eckey = (EC_KEY *) target_ctx_gregs[REG_RDI].u64;
-     bool makeECKeySymbolic = true;
      
      printf("Entering model_EC_KEY_generate_key for time %d \n", model_EC_KEY_generate_key_calls );
      if (enableMultipass) {
@@ -3981,7 +4064,6 @@ void Executor::model_EC_POINT_point2oct() {
 	std::cout.flush();
       }
 
-      
       ref<ConstantExpr> returnVal = ConstantExpr::create(ret, Expr::Int64);
       tase_helper_write((uint64_t) &target_ctx_gregs[REG_RAX], returnVal);
       printf("DBG 123 \n");

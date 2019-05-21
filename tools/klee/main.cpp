@@ -115,6 +115,8 @@ extern char * ktestPathPtr;
 extern char ktestMode[20];
 extern char ktestPath[100];
 
+
+
 bool skipFree = false;
 bool KTestReplay;
 bool stopAtMasterSecret = false;
@@ -176,7 +178,11 @@ void transferToTarget() {
   *(uint64_t *) target_ctx_gregs[REG_RSP] = (uint64_t) &target_exit;
   */
 
-  
+  UseForkedCoreSolver = false;
+  printf("During transferToTarget, UseForkedCoreSolver is %d \n", UseForkedCoreSolver);
+  fflush(stdout);
+  fprintf(modelLog," During transferToTarget, UseForkedCoreSolver is %d \n", UseForkedCoreSolver);
+  fflush(modelLog);
   if (OpenSSLTest) {
     char * ktestModeName = "-playback";
     memset(ktestMode, 0, sizeof (ktestMode));
