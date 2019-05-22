@@ -578,7 +578,7 @@ void ObjectState::applyPsnOnWrite(ref<Expr> offset, ref<Expr> value) {
     default: assert(0 && "Invalid write size!");
     case  Expr::Bool:
     case  Expr::Int8:
-      //printf("In Bool/Int8 case of ApplyPsnOnWrite \n");
+
       endOff = 1;
       break;
     case Expr::Int16: endOff = 2;
@@ -749,7 +749,7 @@ bool ObjectState::isObjectEntirelyConcrete() {
     return true;
 
   */
-  printf("Called isObjectEntirelyConcrete on obj of size 0x%lx \n", this->size);
+  //printf("Called isObjectEntirelyConcrete on obj of size 0x%lx \n", this->size);
   
   //Slow path
   for (int j = 0; j < this->size ; j++) {

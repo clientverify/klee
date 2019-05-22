@@ -473,6 +473,9 @@ private:
   void model_SHA256_Update();
   void model_SHA256_Final();
 
+  void model_sha1_block_data_order();
+  void model_sha256_block_data_order();
+  
   void model_EC_KEY_generate_key();
   void model_ECDH_compute_key();
   void model_EC_POINT_point2oct(); 

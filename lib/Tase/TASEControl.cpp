@@ -12,10 +12,16 @@
 #include "klee/CVAssignment.h"
 #include "/playpen/humphries/zTASE/TASE/klee/lib/Core/Executor.h"
 
+#include "klee/Internal/System/Time.h"
+
+
+using namespace llvm;
+using namespace klee;
+
 extern std::stringstream workerIDStream;
 extern bool dontFork;
 extern void deserializeAssignments ( void * buf, int bufSize, klee::Executor * exec, CVAssignment * cv);
-
+extern double target_start_time;
 
 int QR_BYTE_LEN = 4096;
 int QA_BYTE_LEN = 4096;
@@ -311,6 +317,7 @@ void worker_exit() {
   if (taseManager != true) {
     printf("WARNING: worker_exit called without taseManager \n");
     std::cout.flush();
+    std::exit(EXIT_SUCCESS);
   } else {
     
     get_sem_lock();
@@ -545,8 +552,12 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
     
     char buf [80];
     TASE_get_time_string(buf);
+
+    double curr_time = util::getWallTime();
+    double elapsed_time = curr_time - target_start_time;
     
-    printf("IMPORTANT: control debug:  replaying round %d for pass %d at time %s with replay pid %d \n", roundCount, passCount, buf, getpid());
+    
+    printf("IMPORTANT: control debug:  replaying round %d for pass %d at time %s with replay pid %d.  %lf seconds since analysis started \n", roundCount, passCount, buf, getpid(), elapsed_time );
     if(!PidInQR(i)) 
       printf("IMPORTANT: Error: control debug: Process %d executing without pid in QR at time %s \n", i, buf);
     std::cout.flush();
@@ -685,7 +696,11 @@ void multipass_replay_round (void * assignmentBufferPtr, CVAssignment * mpa, int
 	char buf [80];
 	struct tm * tstruct= localtime(&theTime);
 	strftime(buf, 80, "%T",tstruct);
-	printf("mp_replay_round: control debug: replayLock obtained. Inserting replayPid %d into QA  at time %s \n", *pidPtr, buf);
+
+	double curr_time = util::getWallTime();
+	double elapsed_time = curr_time - target_start_time;
+	
+	printf("mp_replay_round: control debug: replayLock obtained. Inserting replayPid %d into QA  at time %s.  %lf seconds elapsed since target analysis started \n", *pidPtr, buf, curr_time);
 	std::cout.flush();
 	
       }

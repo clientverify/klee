@@ -119,9 +119,9 @@ extern "C" {
   void * realloc_tase (void * ptr, unsigned long new_size);
   void * malloc_tase(unsigned long s);
   void   free_tase(void * ptr);
-  void * memcpy_tase(char * dst, const char * src, unsigned long size);
-  void * memset_tase(char * dst, int val, unsigned long size);
-  void * memmove_tase(char * dst, const char * src, unsigned long size);
+  //void * memcpy_tase(char * dst, const char * src, unsigned long size);
+  //void * memset_tase(char * dst, int val, unsigned long size);
+  //void * memmove_tase(char * dst, const char * src, unsigned long size);
   } 
 
 //Symbols we need to map in for TASE
@@ -235,6 +235,8 @@ extern "C" { int ktest_connect(int sockfd, const struct sockaddr *addr, socklen_
 //Todo : fix these functions and remove traps
 
 extern "C" {
+  void sha1_block_data_order (SHA_CTX *c, const void *p,size_t num);
+  void sha256_block_data_order (SHA256_CTX *ctx, const void *in, size_t num);
   void RAND_add(const void * buf, int num, double entropy);
   int RAND_load_file(const char *filename, long max_bytes);
 }
@@ -3616,13 +3618,17 @@ extern "C" void tase_debug (char * s1, char * s2) {
   //Void, just a testing harness
 }
 
-extern clock_t target_start;
-extern clock_t target_end;
+extern double target_start_time;
+extern double target_end_time;
 
-bool measureTime = true;
-double enter_time;
-double exit_time;
+bool measureTime = false;
+double interp_enter_time;
+double interp_exit_time;
 double interpreter_time = 0.0;
+double solver_time = 0.0;
+double solver_start_time;
+double solver_end_time;
+double solver_diff_time;
 
 double malloc_time = 0.0;
 double prohib_time = 0.0;
@@ -3736,7 +3742,7 @@ extern "C" void klee_interp () {
   static int multipassRound = 0;
   
   if (measureTime) {
-    enter_time = util::getWallTime();
+    interp_enter_time = util::getWallTime();
   }
     //uint64_t rip = target_ctx_gregs[REG_RIP].u64;    
     //isProhibRequest = isProhibitiveFn(rip);
@@ -3779,32 +3785,38 @@ extern "C" void klee_interp () {
   if ((rip == (uint64_t) &malloc  || rip == ((uint64_t) &malloc_tase + 14)) || (rip == (uint64_t) &realloc  || rip == ((uint64_t) &realloc_tase + 14)))  {
     isMemRequest = true;
   }
-  isProhibRequest = isProhibitiveFn(rip);
-  countProhibCalls(rip);
-  if (isProhibRequest) {
-    prohib_returns++;
-    if (taseDebug) {
-      fprintf(modelLog, "Attempting to skip prohib function at rip 0x%lx without symbolic inspection; r15 is 0x%lx \n", rip, target_ctx_gregs[REG_R15].u64);
-      fflush(modelLog);
-    }
-    //sb_interp will already look in r15 for the jump target
-    target_ctx_gregs[REG_RIP].u64 = target_ctx_gregs[REG_R15].u64 + 17;
-    return;
-  }
+  //printf("Entering klee_interp at rip 0x%lx \n", rip );
+
   //------------------
-  fprintf(modelLog,"RIP entering klee_interp is 0x%lx \n", target_ctx_gregs[REG_RIP].u64);
+  //fprintf(modelLog,"RIP entering klee_interp is 0x%lx \n", target_ctx_gregs[REG_RIP].u64);
   GlobalInterpreter->klee_interp_internal();
   target_ctx_gregs[REG_R15].u64 = target_ctx_gregs[REG_RIP].u64;
+  rip = target_ctx_gregs[REG_RIP].u64;
   
   if (measureTime) {
-    exit_time = util::getWallTime();
-    double diff_time = (exit_time) - (enter_time);
+    interp_exit_time = util::getWallTime();
+    double diff_time = (interp_exit_time) - (interp_enter_time);
     interpreter_time += diff_time;
     if (isMemRequest)  
 	malloc_time += diff_time;
     if (isProhibRequest) 
       prohib_time += diff_time;
-    fprintf(modelLog, "Elapsed time is %lf at interpCtr %d with %d instructions \n", exit_time - enter_time, interpCtr, interpCtr - interpCtr_init);
+
+    printf("Elapsed time is %lf at interpCtr %d rip 0x%lx with %d instructions \n", diff_time, interpCtr, rip, interpCtr - interpCtr_init);
+    
+    //fprintf(modelLog, "Elapsed time is %lf at interpCtr %d with %d instructions \n", diff_time, interpCtr, interpCtr - interpCtr_init);
+    printf("Total time in interpreter is %lf so far \n", interpreter_time);
+
+    printf("Total interpreter returns: %d \n",total_interp_returns);
+    //
+    printf("Abort_count_total: %d \n", target_ctx.abort_count_total);
+    printf("  - modeled %d \n", target_ctx.abort_count_modeled);
+    printf("  - poison %d \n", target_ctx.abort_count_poison);
+    printf("  - unknown %d \n", target_ctx.abort_count_unknown);
+    
+    fflush(stdout);
+
+    
   }
   
   
@@ -4295,8 +4307,8 @@ void Executor::model_inst () {
   } else if (rip == (uint64_t) &OpenSSLDie) {
     model_OpenSSLDie();
   } else if (rip == (uint64_t) &shutdown) {
-    target_end = clock();
-    double total_time = ((double) (target_end - target_start)) /CLOCKS_PER_SEC;
+    target_end_time = util::getWallTime();
+    double total_time =  target_end_time - target_start_time;
     
     fprintf(modelLog, "----END RUN STATS ---- \n");
     fprintf(modelLog, "Entire time in target took roughly %f seconds \n", total_time);
@@ -4309,7 +4321,7 @@ void Executor::model_inst () {
     fprintf(modelLog, "Total X86 instructions interpreted: %d \n", interpCtr);
     
     fprintf(modelLog, "Total interpreter returns: %d \n",total_interp_returns);
-    fprintf(modelLog, "  - Prohib function returns: %d \n", prohib_returns);
+    //
     fprintf(modelLog, "Abort_count_total: %d \n", target_ctx.abort_count_total);
     fprintf(modelLog, "  - modeled %d \n", target_ctx.abort_count_modeled);
     fprintf(modelLog, "  - poison %d \n", target_ctx.abort_count_poison);
@@ -4320,14 +4332,18 @@ void Executor::model_inst () {
     
     model_shutdown();
     
-  }  else if (rip == (uint64_t) &memmove_tase || rip == (uint64_t) &memmove_tase + 14 ) {
+  }
+  /*
+  else if (rip == (uint64_t) &memmove_tase || rip == (uint64_t) &memmove_tase + 14 ) {
     model_memmove(); //Just for debugging
   } else if (rip == (uint64_t) &memcpy || rip == (uint64_t) &memcpy_tase + 14) { 
     model_memcpy(); //Just for debugging
     
   } else if (rip == (uint64_t) &memset || rip == (uint64_t) &memset_tase + 14 ) {
     model_memset(); //Just for performance testing
-  } else if (rip == (uint64_t) &time ) {
+  }
+  */
+  else if (rip == (uint64_t) &time ) {
     model_time();
   } else if (rip == (uint64_t) &gmtime) {
     model_gmtime();
@@ -4371,6 +4387,10 @@ void Executor::model_inst () {
     model_SHA256_Update();
   } else if (rip == (uint64_t) &SHA256_Final + 14) {
     model_SHA256_Final();
+  } else if (rip == (uint64_t) &sha1_block_data_order + 14) {
+    model_sha1_block_data_order();
+  } else if (rip == (uint64_t) &sha256_block_data_order + 14) {
+    model_sha256_block_data_order();
   } else if (rip == (uint64_t) &gcm_gmult_4bit + 14) {
     model_gcm_gmult_4bit();
   } else if (rip == (uint64_t) &gcm_ghash_4bit + 14) {
@@ -4510,7 +4530,7 @@ bool isSpecialInst (uint64_t rip) {
   //Todo -- get rid of traps for RAND_add and RAND_load_file
   //  static const uint64_t modeledFns[] = { (uint64_t) &puts, (uint64_t)&exit, (uint64_t) &printf  /*, (uint64_t) &taseMakeSymbolic */ };
   
-  static const uint64_t modeledFns [] = {(uint64_t)&signal, (uint64_t)&malloc, (uint64_t)&read, (uint64_t)&write, (uint64_t)&connect, (uint64_t)&select, (uint64_t)&socket, (uint64_t) &getuid, (uint64_t) &geteuid, (uint64_t) &getgid, (uint64_t) &getegid, (uint64_t) &getenv, (uint64_t) &stat, (uint64_t) &free, (uint64_t) &realloc,  (uint64_t) &RAND_add, (uint64_t) &RAND_load_file, (uint64_t) &kTest_free, (uint64_t) &kTest_fromFile, (uint64_t) &kTest_getCurrentVersion, (uint64_t) &kTest_isKTestFile, (uint64_t) &kTest_numBytes, (uint64_t) &kTest_toFile, (uint64_t) &ktest_RAND_bytes, (uint64_t) &ktest_RAND_pseudo_bytes, (uint64_t) &ktest_connect, (uint64_t) &ktest_finish, (uint64_t) &ktest_master_secret, (uint64_t) &ktest_raw_read_stdin, (uint64_t) &ktest_readsocket, (uint64_t) &ktest_select, (uint64_t) &ktest_start, (uint64_t) &ktest_time, (uint64_t) &time, (uint64_t) &gmtime, (uint64_t) &gettimeofday, (uint64_t) &ktest_writesocket, (uint64_t) &fileno, (uint64_t) &fcntl, (uint64_t) &fopen, (uint64_t) &fopen64, (uint64_t) &fclose,  (uint64_t) &fwrite, (uint64_t) &fflush, (uint64_t) &fread, (uint64_t) &fgets, (uint64_t) &__isoc99_sscanf, (uint64_t) &gethostbyname, (uint64_t) &setsockopt, (uint64_t) &__ctype_tolower_loc, (uint64_t) &__ctype_b_loc, (uint64_t) &__errno_location,  (uint64_t) &BIO_printf, (uint64_t) &BIO_snprintf, (uint64_t) &vfprintf,  (uint64_t) &sprintf, (uint64_t) &tase_debug,   (uint64_t) &OpenSSLDie, (uint64_t) &shutdown , (uint64_t) &malloc_tase, (uint64_t) &realloc_tase, (uint64_t) &calloc_tase, (uint64_t) &free_tase, (uint64_t) &getpid /* (uint64_t) &SHA1_Update, (uint64_t) &SHA256_Update, (uint64_t) &AES_encrypt, (uint64_t) &gcm_gmult_4bit, (uint64_t) &gcm_ghash_4bit , (uint64_t) &EC_KEY_generate_key , (uint64_t) &ECDH_compute_key, (uint64_t) &EC_POINT_point2oct */ /* , (uint64_t) &memcpy */, (uint64_t) &memset, (uint64_t) &tls1_generate_master_secret , (uint64_t) &RAND_poll};
+  static const uint64_t modeledFns [] = {(uint64_t)&signal, (uint64_t)&malloc, (uint64_t)&read, (uint64_t)&write, (uint64_t)&connect, (uint64_t)&select, (uint64_t)&socket, (uint64_t) &getuid, (uint64_t) &geteuid, (uint64_t) &getgid, (uint64_t) &getegid, (uint64_t) &getenv, (uint64_t) &stat, (uint64_t) &free, (uint64_t) &realloc,  (uint64_t) &RAND_add, (uint64_t) &RAND_load_file, (uint64_t) &kTest_free, (uint64_t) &kTest_fromFile, (uint64_t) &kTest_getCurrentVersion, (uint64_t) &kTest_isKTestFile, (uint64_t) &kTest_numBytes, (uint64_t) &kTest_toFile, (uint64_t) &ktest_RAND_bytes, (uint64_t) &ktest_RAND_pseudo_bytes, (uint64_t) &ktest_connect, (uint64_t) &ktest_finish, (uint64_t) &ktest_master_secret, (uint64_t) &ktest_raw_read_stdin, (uint64_t) &ktest_readsocket, (uint64_t) &ktest_select, (uint64_t) &ktest_start, (uint64_t) &ktest_time, (uint64_t) &time, (uint64_t) &gmtime, (uint64_t) &gettimeofday, (uint64_t) &ktest_writesocket, (uint64_t) &fileno, (uint64_t) &fcntl, (uint64_t) &fopen, (uint64_t) &fopen64, (uint64_t) &fclose,  (uint64_t) &fwrite, (uint64_t) &fflush, (uint64_t) &fread, (uint64_t) &fgets, (uint64_t) &__isoc99_sscanf, (uint64_t) &gethostbyname, (uint64_t) &setsockopt, (uint64_t) &__ctype_tolower_loc, (uint64_t) &__ctype_b_loc, (uint64_t) &__errno_location,  (uint64_t) &BIO_printf, (uint64_t) &BIO_snprintf, (uint64_t) &vfprintf,  (uint64_t) &sprintf, (uint64_t) &tase_debug,   (uint64_t) &OpenSSLDie, (uint64_t) &shutdown , (uint64_t) &malloc_tase, (uint64_t) &realloc_tase, (uint64_t) &calloc_tase, (uint64_t) &free_tase, (uint64_t) &getpid, /* (uint64_t) &SHA1_Update, (uint64_t) &SHA256_Update, (uint64_t) &AES_encrypt, (uint64_t) &gcm_gmult_4bit, (uint64_t) &gcm_ghash_4bit , (uint64_t) &EC_KEY_generate_key , (uint64_t) &ECDH_compute_key, (uint64_t) &EC_POINT_point2oct */ /* , (uint64_t) &memcpy */  /*(uint64_t) &memset,*/ (uint64_t) &tls1_generate_master_secret , (uint64_t) &RAND_poll};
   
   
   bool isModeled = std::find(std::begin(modeledFns), std::end(modeledFns), rip) != std::end(modeledFns);
@@ -4564,16 +4584,18 @@ bool isSpecialInst (uint64_t rip) {
       rip == (uint64_t) &sb_disabled ||
       rip == (uint64_t) &target_exit ||
       isModeled                      ||
-      rip == (uint64_t) &memcpy_tase                 + 14  ||
-      rip == (uint64_t) &memset_tase                 + 14  ||
+      //rip == (uint64_t) &memcpy_tase                 + 14  ||
+      //rip == (uint64_t) &memset_tase                 + 14  ||
       rip == (uint64_t) &malloc_tase                 + 14  ||
-      rip == (uint64_t) &memmove_tase                + 14  ||
+      //rip == (uint64_t) &memmove_tase                + 14  ||
       rip == (uint64_t) &realloc_tase                + 14  ||
       rip == (uint64_t) &free_tase                   + 14  ||
       rip == (uint64_t) &SHA1_Update                 + 14  ||
       rip == (uint64_t) &SHA1_Final                  + 14  ||
       rip == (uint64_t) &SHA256_Update               + 14  ||
       rip == (uint64_t) &SHA256_Final                + 14  ||
+      rip == (uint64_t) &sha1_block_data_order       + 14  ||
+      rip == (uint64_t) &sha256_block_data_order     + 14  ||
       rip == (uint64_t) &AES_encrypt                 + 14  ||
       rip == (uint64_t) &gcm_gmult_4bit              + 14  ||
       rip == (uint64_t) &gcm_ghash_4bit              + 14  ||
@@ -4637,7 +4659,8 @@ void Executor::klee_interp_internal () {
 	  )
 	 && killFlagsHack)
       {
-	printf("Killing flags \n");
+	if (taseDebug) 
+	  printf("Killing flags \n");
 	uint64_t zero = 0;
 	ref<ConstantExpr> zeroExpr = ConstantExpr::create(zero, Expr::Int64);
 	tase_helper_write((uint64_t) &target_ctx_gregs[REG_EFL], zeroExpr);
@@ -4649,8 +4672,7 @@ void Executor::klee_interp_internal () {
       break;
     }
 
-    printf("Value pointed to by RSP is 0x%lx \n", *((uint64_t *)(target_ctx_gregs[REG_RSP].u64)));
-    std::cout.flush();
+
     
     if (isSpecialInst(rip)) {
       model_inst();
@@ -4681,10 +4703,11 @@ void Executor::klee_interp_internal () {
 
       run(*GlobalExecutionStatePtr); 
     }
-
+    /*
     std::cout.flush();
 
     ref<Expr> EflExpr = target_ctx_gregs_OS->read(REG_EFL * 8, Expr::Int64);
+    
     if (!isa<ConstantExpr> (EflExpr) ) {
       printf("Non constant eflags found. \n");
       //int res = printAllPossibleValues(EflExpr);
@@ -4693,7 +4716,7 @@ void Executor::klee_interp_internal () {
     std::cout.flush();
     //We always require a completely concrete RIP for execution, so deal with it here
     //if it's a symbolic expression as a result of interpretation.
-
+    */
     ref<Expr> RIPExpr = tase_helper_read((uint64_t) &(target_ctx_gregs[REG_RIP].u64), 8);
     if (!(isa<ConstantExpr>(RIPExpr))) {
       printf("Detected symbolic RIP \n");
@@ -4702,7 +4725,16 @@ void Executor::klee_interp_internal () {
       
       printf("Attempting to call toUnique on symbolic RIP \n");
       std::cout.flush();
+      
+      solver_start_time = util::getWallTime();
       ref <Expr> uniqueRIPExpr  = toUnique(*GlobalExecutionStatePtr,RIPExpr);
+      solver_end_time = util::getWallTime();
+      solver_diff_time = solver_end_time - solver_start_time;	
+      printf("Elapsed solver time (multipass) is %lf at interpCtr %lu \n", solver_diff_time, interpCtr);
+      solver_time += solver_diff_time;
+      printf("Total solver time is %lf at interpCtr %lu \n", solver_time, interpCtr);
+
+
       if (isa<ConstantExpr> (uniqueRIPExpr)) {
 	printf("Only one valid value for RIP \n");
 	fflush(stdout);
@@ -4819,15 +4851,19 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) 
       worker_exit();
       std::exit(EXIT_FAILURE);
     }
-
-    //Todo -- see if we don't have to wait on these solver calls
-    //get_sem_lock();
     
+    solver_start_time = util::getWallTime();
     bool success = solver->getValue(*GlobalExecutionStatePtr, inputExpr, solution);
-    //release_sem_lock();
+    solver_end_time = util::getWallTime();
+    
+    solver_diff_time = solver_end_time - solver_start_time;
+    
+    printf("Elapsed solver time (path constraint) is %lf at interpCtr %lu \n", solver_diff_time, interpCtr);
+    solver_time += solver_diff_time;
+    printf("Total solver time is %lf at interpCtr %lu \n", solver_time, interpCtr);
+    
     if (!success) {
-      printf("ERROR: couldn't get initial value in forkOnPossibleRIPValues \n");
-      
+      printf("ERROR: couldn't get initial value in forkOnPossibleRIPValues \n");  
       std::cout.flush();
       worker_exit();
       std::exit(EXIT_FAILURE);
@@ -4853,8 +4889,21 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) 
     if (isTrueChild == 0) { //Rule out latest solution and see if more exist
       ref<Expr> notEqualsSolution = NotExpr::create(EqExpr::create(inputExpr,solution));
       addConstraint(*GlobalExecutionStatePtr, notEqualsSolution);
-      success = solver->getValue(*GlobalExecutionStatePtr, inputExpr, solution);
 
+
+      solver_start_time = util::getWallTime();
+      success = solver->getValue(*GlobalExecutionStatePtr, inputExpr, solution);
+      solver_end_time = util::getWallTime();
+    
+      solver_diff_time = solver_end_time - solver_start_time;
+      
+      printf("Elapsed solver time (path constraint) is %lf at interpCtr %lu \n", solver_diff_time, interpCtr);
+      solver_time += solver_diff_time;
+      printf("Total solver time is %lf at interpCtr %lu \n", solver_time, interpCtr);
+
+
+
+      
       if (!success) {
 	printf("ERROR: couldn't get RIP value in forkOnPossibleRIPValues for false child \n");
 	std::cout.flush();

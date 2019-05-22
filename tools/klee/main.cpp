@@ -75,8 +75,8 @@ struct timeval taseStartTime;
 struct timeval targetStartTime;
 struct timeval targetEndTime;
 
-clock_t target_start;
-clock_t target_end;
+double target_start_time;
+double target_end_time;
 
 //gregset_t target_ctx_gregs;
 //gregset_t prev_ctx_gregs;
@@ -122,6 +122,7 @@ bool KTestReplay;
 bool stopAtMasterSecret = false;
 bool enableMultipass = false;
 bool killFlagsHack = false;
+bool lockOnSolverCalls = false;
 bool taseDebug;
 bool dontFork;
 enum runType : int {INTERP_ONLY, MIXED};
@@ -202,7 +203,7 @@ void transferToTarget() {
 
   }
   
-  target_start = clock();
+  target_start_time = util::getWallTime();
   
   if (exec_mode == INTERP_ONLY) {
     memset(&target_ctx, 0, sizeof(target_ctx));
@@ -388,6 +389,8 @@ namespace {
   
   cl::opt<bool>
   killFlagsHackArg("killFlagsHack", cl::desc("Option to kill flags after each jump to the springboard"), cl::init(false));
+
+  cl::opt<bool> lockOnSolverCallArg("lockOnSolverCalls", cl::desc("TASE debugging -- obtain semaphore around solver calls \n"), cl::init(false));
   
   cl::opt<bool>
   stopAtMasterSecretArg("stopAtMasterSecret", cl::desc("TASE debugging -- stop at master secret generation \n"), cl::init(false));
@@ -1462,7 +1465,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 }
 #endif
 
- void printTASEArgs(runType rt, testType tt, bool fm, bool dbg, std::string projName, bool df, bool disableSB, bool enableMP, bool stop, bool killFlags, bool dontFree) {
+ void printTASEArgs(runType rt, testType tt, bool fm, bool dbg, std::string projName, bool df, bool disableSB, bool enableMP, bool stop, bool killFlags, bool dontFree, bool lckOnSolverCall) {
 
    printf("TASE args... \n");
    if (rt == MIXED) 
@@ -1489,6 +1492,8 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    printf("\t stopAtMasterSecret output : %d \n", stop);
    printf("\t killFlagsHack      output : %d \n", killFlags);
    printf("\t skipFree           output : %d \n", dontFree);
+   printf("\t lockOnSolverCalls   output : %d \n", lckOnSolverCall);
+   
  }
 
  
@@ -1514,8 +1519,9 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    stopAtMasterSecret = stopAtMasterSecretArg;
    killFlagsHack = killFlagsHackArg;
    skipFree = skipFreeArg;
+   lockOnSolverCalls = lockOnSolverCallArg;
    if (taseDebug)
-     printTASEArgs(exec_mode, test_type, taseManager, taseDebug, project, dontFork, disableSpringboard, enableMultipass, stopAtMasterSecret, killFlagsHack, skipFree);
+     printTASEArgs(exec_mode, test_type, taseManager, taseDebug, project, dontFork, disableSpringboard, enableMultipass, stopAtMasterSecret, killFlagsHack, skipFree, lockOnSolverCalls);
    
    //Redirect stdout messages to a file called "Monitor".
    //Later, calls to unix fork in executor create new filenames

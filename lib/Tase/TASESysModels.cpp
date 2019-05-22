@@ -106,9 +106,16 @@ extern uint64_t interpCtr;
 extern bool taseDebug;
 
 //Multipass
+extern double solver_start_time;
+extern double solver_end_time;
+extern double solver_diff_time;
+extern double target_start_time;
+extern double solver_time;
+extern double interpreter_time;
 enum runType : int {INTERP_ONLY, MIXED};
 //extern std::string project;
 extern enum runType exec_mode;
+extern bool lockOnSolverCalls; //ABH: Made for debugging.  Take semaphore when calling solver in case it's forked.
 extern int c_special_cmds; //Int used by cliver to disable special commands to s_client.  Made global for debugging
 extern void get_sem_lock();
 extern void release_sem_lock();
@@ -487,18 +494,13 @@ void Executor::model_ktest_writesocket() {
       printf("Buffer in            log : \n");
       printBuf ((void *) o->bytes, o->numBytes);
 
-
-
       if (o->numBytes > count) {
 	fprintf(modelLog,"IMPORTANT: VERIFICATION ERROR: mismatch in replay size.  %d bytes in log, %d bytes in verifier \n",  o->numBytes, count);
 	printf("IMPORTANT: VERIFICATION ERROR - write buffer size mismatch %d vs %d : Worker exiting from terminal path in round %d pass %d. \n",o->numBytes, count,  roundCount, passCount);
 	std::cout.flush();
 	worker_exit();
       }
-      
-      
-      
-      
+
       //Create write condition
       klee::ref<klee::Expr> write_condition = klee::ConstantExpr::alloc(1, klee::Expr::Bool);
       for (int i = 0; i < o->numBytes; i++) {
@@ -560,11 +562,23 @@ void Executor::model_ktest_writesocket() {
 	}
       } else {
 	bool result;
-	//compute_false(GlobalExecutionStatePtr, write_condition, result);
-	get_sem_lock();
-	  
+
+	solver_start_time = util::getWallTime();
+	if (lockOnSolverCalls)
+	  get_sem_lock();
+	
 	solver->mustBeFalse(*GlobalExecutionStatePtr, write_condition, result);
-	release_sem_lock();
+	
+	if (lockOnSolverCalls)
+	  release_sem_lock();
+	solver_end_time = util::getWallTime();
+	solver_diff_time = solver_end_time - solver_start_time;	
+	printf("Elapsed solver time (multipass) is %lf at interpCtr %lu \n", solver_diff_time, interpCtr);
+	solver_time += solver_diff_time;
+	printf("Total solver time is %lf at interpCtr %lu \n", solver_time, interpCtr);
+
+
+	
 	
 	if (result) {
 	  fprintf(modelLog, "IMPORTANT: VERIFICATION ERROR: write condition determined false \n");
@@ -586,12 +600,25 @@ void Executor::model_ktest_writesocket() {
 
       
       if (!isa<ConstantExpr>(write_condition)) {
-	get_sem_lock();
+	solver_start_time = util::getWallTime();
+	if (lockOnSolverCalls)
+	  get_sem_lock();
 	currMPA.solveForBindings(solver->solver, write_condition,GlobalExecutionStatePtr);
-	release_sem_lock();
+	if (lockOnSolverCalls)
+	  release_sem_lock();
+	solver_end_time = util::getWallTime();
+	
+	solver_diff_time = solver_end_time - solver_start_time;
+	
+	printf("Elapsed solver time (solver) is %lf at interpCtr %lu \n", solver_diff_time, interpCtr);
+	solver_time += solver_diff_time;
+	printf("Total solver time is %lf at interpCtr %lu \n", solver_time, interpCtr);
+	
+
+	
       }
 
-      //release_sem_lock();
+
       
       //print assignments
       printf("About to print assignments \n");
@@ -610,6 +637,14 @@ void Executor::model_ktest_writesocket() {
       //2.  After acquiring semaphore when NOT(isInQA(*replayPidPtr)),
       //     atomically (serialize current MPA assignment in MPAPtr, and move *replayPidPtr into QA)
       //3.  Remove self from QR and exit, releasing semaphore.
+
+      double curr_time = util::getWallTime();
+      
+      printf("Near end of ktest_writesocket round %d pass %d, times are as follows: \n", roundCount, passCount);
+      printf("Total time since analysis began: %lf \n", curr_time - target_start_time  );
+      printf("Total time in solver calls : %lf \n", solver_time);
+      printf("Total time in interpreter  : %lf \n", interpreter_time);
+     
       
       if (currMPA.size()  != 0 ) {
 	if (prevMPA.bindings.size() != 0) {
@@ -645,7 +680,14 @@ void Executor::model_ktest_writesocket() {
       //-------------------------------------------
       //1. Atomically create a new SIGSTOP'd replay process and deserialize the constraints
       multipass_start_round(this, false);  //Gets semaphore,sets prevMPA, and sets a replay child process up
-	  
+
+      curr_time = util::getWallTime();
+      
+      printf("At start of ktest_writesocket round %d pass %d, time since beginning is %lf \n", roundCount, passCount, curr_time - target_start_time);
+      printf("Total time since analysis began: %lf \n", curr_time - target_start_time  );
+      printf("Total time in solver calls : %lf \n", solver_time);
+      printf("Total time in interpreter  : %lf \n", interpreter_time);
+      
       
     } else {
       ssize_t res = ktest_writesocket_tase((int) target_ctx_gregs[REG_RDI].u64, (void *) target_ctx_gregs[REG_RSI].u64, (size_t) target_ctx_gregs[REG_RDX].u64);
@@ -3198,6 +3240,25 @@ ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); // SSL
     printf("ERROR: symbolic arg passed to tls1_generate_master_secret \n");
     std::exit(EXIT_FAILURE);
   }
+}
+
+//Just here for debugging perf
+void Executor::model_sha256_block_data_order() {
+  printf("Entering model_SHA256_block_data_order \n");
+  fflush(stdout);
+  forceNativeRet = true;
+  target_ctx_gregs[REG_RIP].u64 += 17;
+
+}
+
+//Just here for debugging perf
+void Executor::model_sha1_block_data_order() {
+  printf("Entering model_SHA1_block_data_order \n");
+  fflush(stdout);
+  forceNativeRet = true;
+  target_ctx_gregs[REG_RIP].u64 += 17;
+
+
 }
 
 //Model for int SHA1_Update(SHA_CTX *c, const void *data, size_t len);
