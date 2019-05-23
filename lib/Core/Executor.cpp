@@ -3399,8 +3399,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
 	fprintf(modelLog,"ERROR: addr should be constant or symbolic \n");
       }
 
-      printCtx(target_ctx_gregs);
-      fflush(modelLog);
+
       terminateStateOnError(*unbound, "memory error: out of bound pointer", Ptr,
                             NULL, getAddressInfo(*unbound, address));
 
@@ -3416,11 +3415,8 @@ void Executor::executeMemoryOperation(ExecutionState &state,
 void Executor::executeMakeSymbolic(ExecutionState &state, 
                                    const MemoryObject *mo,
                                    const std::string &name) {
-  
-  //AH Addition: ------------------------
 
-  static int executeMakeSymbolicCalls = 0;
-  
+  static int executeMakeSymbolicCalls = 0;  
   executeMakeSymbolicCalls++;
 
   if (executeMakeSymbolicCalls ==1 ) {
@@ -3428,31 +3424,16 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
     //before we hit a concretized writesocket call
 
     multipass_reset_round();
-
     multipass_start_round(this, false);
-
-
-
-
   }
-  
-  
+
   if(taseDebug) {
     printf("Calling executeMakeSymbolic on name %s \n", name.c_str());
     std::cout.flush();
   }
 
-
-  
-  
-
-  //CVExecutionState *cvstate = static_cast<CVExecutionState*>(&state);
-
   bool unnamed = (name == "unnamed") ? true : false;
-
   // Create a new object state for the memory object (instead of a copy).
-
-  printf("DBG 1-0 \n");
   std::cout.flush();
   
   std::string array_name = get_unique_array_name(name);
@@ -3466,8 +3447,6 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
     array = prevMPA.getArray(array_name);
 
   }
-  printf("DBG 1 \n");
-  std::cout.flush();
   
   bool multipass = false;
   if (array != NULL) {
@@ -3483,23 +3462,17 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
     }
     array = arrayCache.CreateArray(array_name, mo->size);
   }
-
-  printf("DBG 2 \n");
-  std::cout.flush();
   
   bindObjectInState(state, mo, false, array);
 
-  printf("DBG 3 \n");
-  std::cout.flush();
-  
   std::vector<unsigned char> *bindings = NULL;
   if (passCount > 0 && multipass) {
     bindings = prevMPA.getBindings(array_name);
     
     if (!bindings || bindings->size() != mo->size) {
-      //CVDEBUG("Multi-pass: Terminating state, bindings mismatch");
+
       fprintf(modelLog, "Bindings mismatch in executeMakeSymbolic; terminating \n");
-      //terminateState(state);
+      worker_exit();
     } else {
       const klee::ObjectState *os = state.addressSpace.findObject(mo);
       klee::ObjectState *wos = state.addressSpace.getWriteable(mo, os);
@@ -3509,99 +3482,15 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
 	wos->write8(idx, *it);
 	idx++;
       }
-      /*
-      foreach (unsigned char b, *bindings) {
-        wos->write8(idx, b);
-        idx++;
-	}*/
     }
   } else {
     printf("DBG executeMakeSymbolic: Created symbolic var for %s \n", name.c_str());
     std::cout.flush();
-    //CVDEBUG("Created symbolic: " << array->name << " in " << *cvstate);
     state.addSymbolic(mo, array);
     multipass_symbolic_vars++;
-    printf("DBG returning from executeMakeSymbolic \n");
     std::cout.flush();
   }
 
-
-  //End AH Addition---------------------
-  //(orig code)
-  
-
-  // Create a new object state for the memory object (instead of a copy).
-  /*
-  if (!replayKTest) {
-    // Find a unique name for this array.  First try the original name,
-    // or if that fails try adding a unique identifier.
-    unsigned id = 0;
-    std::string uniqueName = name;
-    while (!state.arrayNames.insert(uniqueName).second) {
-      uniqueName = name + "_" + llvm::utostr(++id);
-    }
-    const Array *array = arrayCache.CreateArray(uniqueName, mo->size);
-    bindObjectInState(state, mo, false, array);
-    state.addSymbolic(mo, array);
-    
-    std::map< ExecutionState*, std::vector<SeedInfo> >::iterator it = 
-      seedMap.find(&state);
-    if (it!=seedMap.end()) { // In seed mode we need to add this as a
-                             // binding.
-      for (std::vector<SeedInfo>::iterator siit = it->second.begin(), 
-             siie = it->second.end(); siit != siie; ++siit) {
-        SeedInfo &si = *siit;
-        KTestObject *obj = si.getNextInput(mo, NamedSeedMatching);
-
-        if (!obj) {
-          if (ZeroSeedExtension) {
-            std::vector<unsigned char> &values = si.assignment.bindings[array];
-            values = std::vector<unsigned char>(mo->size, '\0');
-          } else if (!AllowSeedExtension) {
-            terminateStateOnError(state, "ran out of inputs during seeding",
-                                  User);
-            break;
-          }
-        } else {
-          if (obj->numBytes != mo->size &&
-              ((!(AllowSeedExtension || ZeroSeedExtension)
-                && obj->numBytes < mo->size) ||
-               (!AllowSeedTruncation && obj->numBytes > mo->size))) {
-	    std::stringstream msg;
-	    msg << "replace size mismatch: "
-		<< mo->name << "[" << mo->size << "]"
-		<< " vs " << obj->name << "[" << obj->numBytes << "]"
-		<< " in test\n";
-
-            terminateStateOnError(state, msg.str(), User);
-            break;
-          } else {
-            std::vector<unsigned char> &values = si.assignment.bindings[array];
-            values.insert(values.begin(), obj->bytes, 
-                          obj->bytes + std::min(obj->numBytes, mo->size));
-            if (ZeroSeedExtension) {
-              for (unsigned i=obj->numBytes; i<mo->size; ++i)
-                values.push_back('\0');
-            }
-          }
-        }
-      }
-    }
-  } else {
-    ObjectState *os = bindObjectInState(state, mo, false);
-    if (replayPosition >= replayKTest->numObjects) {
-      terminateStateOnError(state, "replay count mismatch", User);
-    } else {
-      KTestObject *obj = &replayKTest->objects[replayPosition++];
-      if (obj->numBytes != mo->size) {
-        terminateStateOnError(state, "replay size mismatch", User);
-      } else {
-        for (unsigned i=0; i<mo->size; i++)
-          os->write8(i, obj->bytes[i]);
-      }
-    }
-  }
-  */
 }
 
 extern "C" void target_exit() {
@@ -3621,7 +3510,7 @@ extern "C" void tase_debug (char * s1, char * s2) {
 extern double target_start_time;
 extern double target_end_time;
 
-bool measureTime = false;
+extern bool measureTime;
 double interp_enter_time;
 double interp_exit_time;
 double interpreter_time = 0.0;
@@ -3634,24 +3523,6 @@ double malloc_time = 0.0;
 double prohib_time = 0.0;
 
 int total_ret_codes = 0;
-
-bool isProhibitiveFn (uint64_t rip) {
-  
-  //if (   //rip == (uint64_t) &AES_encrypt             + 14 ||
-      //rip == (uint64_t) &ECDH_compute_key        + 14 ||
-      //rip == (uint64_t) &EC_POINT_point2oct      + 14 
-	 // rip == (uint64_t) &EC_KEY_generate_key     + 14 
-      //rip == (uint64_t) &SHA1_Update             + 14 ||
-      // rip == (uint64_t) &SHA1_Final              + 14 ||
-      // rip == (uint64_t) &SHA256_Update           + 14 ||
-      // rip == (uint64_t) &SHA256_Final            + 14 ||
-      // rip == (uint64_t) &gcm_gmult_4bit          + 14 ||
-      // rip == (uint64_t) &gcm_ghash_4bit          + 14 
-  //	) 
-  // return true;
-  //else
-    return false;
-}
 
 int AES_encrypt_calls = 0;
 int ECDH_compute_key_calls = 0;
@@ -3731,7 +3602,14 @@ void countProhibCalls(uint64_t rip) {
 
 
 
+//Counters for return code status
+ int BB_UR = 0; //Unknown return codes
+ int BB_MOD = 0; //Modeled return
+ int BB_PSN = 0; //PSN return
+ int BB_OTHER = 0;//Other return
 
+double psnTime = 0.0;
+double modelTime = 0.0;
 
 extern "C" void klee_interp () {
   total_interp_returns++;
@@ -3740,39 +3618,13 @@ extern "C" void klee_interp () {
   bool isMemRequest = false;
   bool isProhibRequest = false;
   static int multipassRound = 0;
+
+  bool isPsnTrap = false;
+  bool isModelTrap = false;
   
   if (measureTime) {
     interp_enter_time = util::getWallTime();
   }
-    //uint64_t rip = target_ctx_gregs[REG_RIP].u64;    
-    //isProhibRequest = isProhibitiveFn(rip);
-    //countProhibCalls(rip);
-
-    /*
-    if (rip == (uint64_t) &ktest_writesocket + 14) {
-      fprintf(modelLog, "At ktest_writesocket round %d, prohib ctrs are \n", multipassRound);
-      printProhibCounters();
-      multipassRound++;
-    }
-    */
-    /*  
-    if (isProhibRequest) {
-      prohib_returns++;
-      if (taseDebug) {
-        fprintf(modelLog, "Attempting to skip prohib function at rip 0x%lx without symbolic inspection; r15 is 0x%lx \n", rip, target_ctx_gregs[REG_R15].u64);
-	fflush(modelLog);
-      }
-      //sb_interp will already look in r15 for the jump target
-      target_ctx_gregs[REG_RIP].u64 = target_ctx_gregs[REG_R15].u64 + 17;
-      return;
-    }
-    
-    if ((rip == (uint64_t) &malloc  || rip == ((uint64_t) &malloc_tase + 14)) || (rip == (uint64_t) &realloc  || rip == ((uint64_t) &realloc_tase + 14)))  {
-      isMemRequest = true;
-    }
-    
-  }
-  */
   
   if (taseDebug) {
     printf("---------------ENTERING KLEE_INTERP ---------------------- \n");
@@ -3780,15 +3632,55 @@ extern "C" void klee_interp () {
   }
   target_ctx_gregs[REG_RIP].u64 = target_ctx_gregs[REG_R15].u64;
 
+  
+  //Start bounceback section----------------------
+  bool attemptBounceback = false;
+  bool retry = false;
+  static uint64_t retryCtr = 0;
+  retryCtr++;
+  if (attemptBounceback) {
+    uint32_t abort_status = target_ctx.abort_status;
+    if ((abort_status & 0xff) == 0) {
+      //Unknown return code
+      printf("Bounceback unknown return code \n");
+      BB_UR++;
+      //retry = true;
+    } else if (abort_status & (1 << TSX_XABORT)) {
+      if (abort_status & TSX_XABORT_MASK) {
+        //modeled
+	printf("Bounceback modeled case \n");
+	retry = false;
+	isModelTrap = true;
+      } else {
+	//poison
+	printf("Bounceback psn case \n");
+	isPsnTrap = true;
+	retry = false;
+      }
+    } else {
+      printf("Bounceback fall-through case \n");
+      retry = true;
+    }
+    
+    if (retry && retryCtr %6 != 0) {
+      printf("Attempting to bounceback to native execution at RIP 0x%lx \n", target_ctx_gregs[REG_RIP].u64);
+      fflush(stdout);
+      return;
+    } else {
+      printf("Not attempting to bounceback to native execution at RIP 0x%lx \n", target_ctx_gregs[REG_RIP].u64);
+      fflush(stdout);
+    }
+  }//End bounceback ------------------------------------
+
+
+  
   //---------------------------
+  //Check to see if instrution is a mem request for performance debugging
   uint64_t rip = target_ctx_gregs[REG_RIP].u64;
   if ((rip == (uint64_t) &malloc  || rip == ((uint64_t) &malloc_tase + 14)) || (rip == (uint64_t) &realloc  || rip == ((uint64_t) &realloc_tase + 14)))  {
     isMemRequest = true;
   }
-  //printf("Entering klee_interp at rip 0x%lx \n", rip );
 
-  //------------------
-  //fprintf(modelLog,"RIP entering klee_interp is 0x%lx \n", target_ctx_gregs[REG_RIP].u64);
   GlobalInterpreter->klee_interp_internal();
   target_ctx_gregs[REG_R15].u64 = target_ctx_gregs[REG_RIP].u64;
   rip = target_ctx_gregs[REG_RIP].u64;
@@ -3802,21 +3694,22 @@ extern "C" void klee_interp () {
     if (isProhibRequest) 
       prohib_time += diff_time;
 
+    if (isPsnTrap)
+      psnTime += diff_time;
+    if(isModelTrap)
+      modelTime += diff_time;
+      
     printf("Elapsed time is %lf at interpCtr %d rip 0x%lx with %d instructions \n", diff_time, interpCtr, rip, interpCtr - interpCtr_init);
-    
-    //fprintf(modelLog, "Elapsed time is %lf at interpCtr %d with %d instructions \n", diff_time, interpCtr, interpCtr - interpCtr_init);
     printf("Total time in interpreter is %lf so far \n", interpreter_time);
-
-    printf("Total interpreter returns: %d \n",total_interp_returns);
-    //
-    printf("Abort_count_total: %d \n", target_ctx.abort_count_total);
-    printf("  - modeled %d \n", target_ctx.abort_count_modeled);
-    printf("  - poison %d \n", target_ctx.abort_count_poison);
+    printf("   - modeled time:       %lf \n", modelTime);
+    printf("   - poison interp time: %lf \n", psnTime);
+    printf( "Total interpreter returns: %d \n",total_interp_returns);
+    printf( "Abort_count_total: %d \n", target_ctx.abort_count_total);
+    printf( "  - modeled %d \n", target_ctx.abort_count_modeled);
+    printf( "  - poison %d \n", target_ctx.abort_count_poison);
     printf("  - unknown %d \n", target_ctx.abort_count_unknown);
-    
-    fflush(stdout);
-
-    
+    printf("------------------------------\n");
+    fflush(stdout);    
   }
   
   
@@ -3875,8 +3768,6 @@ void Executor::tase_make_symbolic(uint64_t addr, uint64_t len, const char * name
   ObjectState * bufOS = GlobalExecutionStatePtr->addressSpace.getWriteable(bufMO, constBufOS);
   
   for (int i = 0; i < len; i++) {
-    printf("Calling tase_helper_write for time %d \n", i);
-    std::cout.flush();
     tase_helper_write(addr + i, bufOS->read(i, Expr::Int8));
   }
 }
@@ -4229,10 +4120,8 @@ void Executor::model_tase_debug() {
 
   char * str1 = (char *) target_ctx_gregs[REG_RDI].u64;
   char * str2 = (char *) target_ctx_gregs[REG_RSI].u64;
-
   fprintf(modelLog, "str 1 is %s \n", str1);
   fprintf(modelLog, "str 2 is %s \n", str2);
-
   //Totally arbitrary choice of 6 below -- just using this to debug
   // our parsing of variadic functions with multiple args
   for (int i = 0; i < 6; i++) {
@@ -4251,10 +4140,8 @@ void Executor::model_tase_debug() {
   
 
 void Executor::model_saveRAXOpc() {
-
   target_ctx.xmmregs[7].qword[0] = target_ctx_gregs[REG_RAX].u64;
   target_ctx_gregs[REG_RIP].u64 += 6;
-  
 }
 
 void Executor::model_restoreRAXOpc() {
@@ -4272,9 +4159,8 @@ void Executor::model_inst () {
     printf("INTERPRETER: FOUND SPECIAL MODELED INST \n");
   }
   uint64_t rip = target_ctx_gregs[REG_RIP].u64;  
-  
+
   if (rip == (uint64_t) &free || rip == ((uint64_t) &free_tase) || rip == ((uint64_t) &free_tase + 14) ) {
-    printf("Modeling free \n");
     model_free();
   } else if (rip == (uint64_t) &signal) {
     model_signal();
@@ -4282,7 +4168,6 @@ void Executor::model_inst () {
     model_malloc_calls++;
     model_malloc();
   } else if (rip == (uint64_t) &realloc  || rip == ((uint64_t) &realloc_tase + 14) || rip == (uint64_t) &realloc_tase ) {
-    printf("Modeling realloc \n");
     model_realloc();
   } else if (rip == (uint64_t) &__errno_location) {
     model___errno_location();
@@ -4290,10 +4175,6 @@ void Executor::model_inst () {
     model___ctype_b_loc();
   } else if (rip == (uint64_t) &__ctype_tolower_loc) {
     model___ctype_tolower_loc();
-
-    
-    //} else if (rip == (uint64_t) &taseMakeSymbolic) {
-    //model_taseMakeSymbolic();
   } else if (rip == (uint64_t) &BIO_printf) {
     model_BIO_printf();
   } else if (rip == (uint64_t) &BIO_snprintf) {
@@ -4308,18 +4189,15 @@ void Executor::model_inst () {
     model_OpenSSLDie();
   } else if (rip == (uint64_t) &shutdown) {
     target_end_time = util::getWallTime();
-    double total_time =  target_end_time - target_start_time;
-    
+    double total_time =  target_end_time - target_start_time;  
     fprintf(modelLog, "----END RUN STATS ---- \n");
     fprintf(modelLog, "Entire time in target took roughly %f seconds \n", total_time);
-    
     if (measureTime) {
       fprintf(modelLog, "Spent roughly %f seconds in interpreter \n", interpreter_time);
       fprintf(modelLog, " - time for malloc interpretation: %lf \n", malloc_time);
       fprintf(modelLog, " - time interpreting prohib functions: %lf \n", prohib_time);
     }
     fprintf(modelLog, "Total X86 instructions interpreted: %d \n", interpCtr);
-    
     fprintf(modelLog, "Total interpreter returns: %d \n",total_interp_returns);
     //
     fprintf(modelLog, "Abort_count_total: %d \n", target_ctx.abort_count_total);
@@ -4347,7 +4225,7 @@ void Executor::model_inst () {
     model_time();
   } else if (rip == (uint64_t) &gmtime) {
     model_gmtime();
-  }  else if (rip == (uint64_t) &stat) {
+  } else if (rip == (uint64_t) &stat) {
     model_stat();
   } else if (rip == (uint64_t) &fileno) {
     model_fileno();
@@ -4371,9 +4249,9 @@ void Executor::model_inst () {
     model___isoc99_sscanf();
   } else if (rip == (uint64_t) &gethostbyname) {
     model_gethostbyname();
-  } else if ( rip == (uint64_t) &tls1_generate_master_secret || rip == (uint64_t) &tls1_generate_master_secret + 14 )
+  } else if ( rip == (uint64_t) &tls1_generate_master_secret || rip == (uint64_t) &tls1_generate_master_secret + 14 ) {
     model_tls1_generate_master_secret();
-  else if (rip == (uint64_t) &EC_POINT_point2oct + 14) {
+  } else if (rip == (uint64_t) &EC_POINT_point2oct + 14) {
     model_EC_POINT_point2oct();
   } else if (rip == (uint64_t) &ECDH_compute_key + 14) {
     model_ECDH_compute_key();
@@ -4405,20 +4283,11 @@ void Executor::model_inst () {
       printf("Stopping at master secret call \n");
       std::cout.flush();
       std::exit(EXIT_FAILURE);
-      
-    }
-      
+    } 
     model_ktest_master_secret();
   } else if (rip == (uint64_t)  &ktest_writesocket +14 || rip == (uint64_t) &ktest_writesocket) {
-    //fprintf(modelLog, "stopping at first writesocket call \n");
-    //fflush(modelLog);
-    printf("First writesocket call \n");
-    std::cout.flush();
-    //std::exit(EXIT_SUCCESS);
     model_ktest_writesocket();
-    
   } else if (rip == (uint64_t) &ktest_readsocket +14 || rip == (uint64_t) &ktest_readsocket) {
-
     model_ktest_readsocket();
   } else if (rip == (uint64_t) &ktest_raw_read_stdin +14 || rip == (uint64_t) &ktest_raw_read_stdin) {
     model_ktest_raw_read_stdin();
@@ -4449,32 +4318,24 @@ void Executor::model_inst () {
   } else if (rip == (uint64_t) &setsockopt) {
     model_setsockopt();
   } else if (rip == (uint64_t) &exit) {
-    #ifdef addBM
+#ifdef addBM
     printf("addBMResult array starts at 0x%lx \n", addBMResultPtr);
     for (int i = 0; i < numEntries; i++)  
       printf("numEntries\[%d\] is %u at addr 0x%lx \n", i, addBMResultPtr[i], &addBMResultPtr[i]);    
-    #endif
+#endif
     std::cout.flush();
     model_exit();
   } else if (rip == (uint64_t) &printf || rip == (uint64_t) &puts) {
     model_printf();
-  }
-
-    else if (rip == (uint64_t) &RAND_add) {
+  } else if (rip == (uint64_t) &RAND_add) {
     model_RAND_add();
-    } else if (rip == (uint64_t) &RAND_load_file ) {
+  } else if (rip == (uint64_t) &RAND_load_file ) {
     model_RAND_load_file();
-    } else if (rip == (uint64_t) &RAND_poll || rip == (uint64_t) &RAND_poll + 14 ) {  
-      model_RAND_poll();
-    } else if (rip == (uint64_t) &ktest_start +14 || rip == (uint64_t) &ktest_start) {
+  } else if (rip == (uint64_t) &RAND_poll || rip == (uint64_t) &RAND_poll + 14 ) {  
+    model_RAND_poll();
+  } else if (rip == (uint64_t) &ktest_start +14 || rip == (uint64_t) &ktest_start) {
     model_ktest_start();
-    /*
- } else if (rip == (uint64_t) &sb_entertran) {
-    model_entertran();
-    }else if (rip == (uint64_t) &sb_exittran) {
-    model_exittran();
-  */
- } else if (rip == (uint64_t) &sb_reopen) {
+  } else if (rip == (uint64_t) &sb_reopen) {
     model_reopentran();
   }
   else if (rip == (uint64_t) &sb_disabled) {
@@ -4488,7 +4349,7 @@ void Executor::model_inst () {
     }
     std::cout.flush();
     target_exit();
-  }else {
+  } else {
     printf("INTERPRETER: Couldn't find  model \n");
     std::cout.flush();
     std::exit(EXIT_FAILURE);
@@ -4694,7 +4555,7 @@ void Executor::klee_interp_internal () {
       GlobalExecutionStatePtr->pushFrame(0,interpFn);
       GlobalExecutionStatePtr->pc = interpFn->instructions ;
       GlobalExecutionStatePtr->prevPC = GlobalExecutionStatePtr->pc;
-    
+
       std::vector<ref<Expr> > arguments;
       uint64_t regAddr = (uint64_t) target_ctx_gregs;
       ref<ConstantExpr> regExpr = ConstantExpr::create(regAddr, Context::get().getPointerWidth());
@@ -4703,20 +4564,7 @@ void Executor::klee_interp_internal () {
 
       run(*GlobalExecutionStatePtr); 
     }
-    /*
-    std::cout.flush();
-
-    ref<Expr> EflExpr = target_ctx_gregs_OS->read(REG_EFL * 8, Expr::Int64);
     
-    if (!isa<ConstantExpr> (EflExpr) ) {
-      printf("Non constant eflags found. \n");
-      //int res = printAllPossibleValues(EflExpr);
-      //printf("printAllPossibleValues returned %d \n", res);
-    }
-    std::cout.flush();
-    //We always require a completely concrete RIP for execution, so deal with it here
-    //if it's a symbolic expression as a result of interpretation.
-    */
     ref<Expr> RIPExpr = tase_helper_read((uint64_t) &(target_ctx_gregs[REG_RIP].u64), 8);
     if (!(isa<ConstantExpr>(RIPExpr))) {
       printf("Detected symbolic RIP \n");
@@ -4783,6 +4631,7 @@ void Executor::klee_interp_internal () {
 
 
 //For debugging
+//This is broken.  Fix it sometime.
 int Executor::printAllPossibleValues (ref <Expr> inputExpr) {
   printf("Calling printAllPossibleValues at rip 0x%lx \n", target_ctx_gregs[REG_RIP].u64);
   
@@ -4845,6 +4694,11 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) 
     ref<ConstantExpr> solution;
     numSolutions++;
     printf("Looking at solution number %d in forkOnPossibleRIPValues() \n", numSolutions);
+    printf("Total interpreter returns: %d \n",total_interp_returns);
+    printf("Abort_count_total: %d \n", target_ctx.abort_count_total);
+    printf("  - modeled %d \n", target_ctx.abort_count_modeled);
+    printf("  - poison %d \n", target_ctx.abort_count_poison);
+    printf("  - unknown %d \n", target_ctx.abort_count_unknown);
     if (numSolutions > maxSolutions) {
       printf("IMPORTANT: control debug: Found too many symbolic values for next instruction after 0x%lx \n ", initRIP);
       std::cout.flush();

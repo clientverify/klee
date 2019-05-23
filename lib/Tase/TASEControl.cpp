@@ -10,6 +10,7 @@
 #include <sys/prctl.h>
 #include <time.h>
 #include "klee/CVAssignment.h"
+//#include "/playpen/humphries/zTASE/TASE/test/tase/include/tase/tase_interp.h"
 #include "/playpen/humphries/zTASE/TASE/klee/lib/Core/Executor.h"
 
 #include "klee/Internal/System/Time.h"
@@ -21,7 +22,12 @@ using namespace klee;
 extern std::stringstream workerIDStream;
 extern bool dontFork;
 extern void deserializeAssignments ( void * buf, int bufSize, klee::Executor * exec, CVAssignment * cv);
+
+
+//Perf debugging
 extern double target_start_time;
+extern uint64_t total_interp_returns;
+
 
 int QR_BYTE_LEN = 4096;
 int QA_BYTE_LEN = 4096;
@@ -36,6 +42,7 @@ int * replayPIDPtr; //Ptr to the pid storing the replay PID for the current roun
 int * replayLock ; //Lock to request replay.  1 is available, 0 unavailable.
 
 int * latestRoundPtr; //Pointer to furthest round found so far in verification
+int managerRoundCtr = 1;
 
 CVAssignment  prevMPA;
 
@@ -183,6 +190,12 @@ static void remove_dead_workers (int * QR_size_ptr, int * QR_base_ptr) {
 
 void manage_workers () {
   get_sem_lock();
+
+  if (managerRoundCtr < *latestRoundPtr) {
+    managerRoundCtr = *latestRoundPtr;
+    double curr_time = util::getWallTime();
+    fprintf(stderr,"Manager sees new round %d starting at time %lf \n", managerRoundCtr, curr_time - target_start_time);    
+  }
   
   int QA_size_init = *ms_QA_size_ptr;
   int QR_size_init = *ms_QR_size_ptr;
@@ -216,6 +229,7 @@ void manage_workers () {
       //grab another process and run it
       int newWorkerPID = *(ms_QA_base + QA_size_init  -1);
       *ms_QA_size_ptr = QA_size_init -1;
+      fprintf(stderr, "Manager moving pid %d from QA into QR \n", newWorkerPID);
       printf("control debug: Manager moving pid %d from QA into QR \n", newWorkerPID);
       std::cout.flush();
       
@@ -232,8 +246,9 @@ void manage_workers () {
       while (true) {
 	int status;
 	res = waitpid(newWorkerPID,&status, WUNTRACED | WCONTINUED );
-	if (res == -1)
-	  perror("ERROR: manager can't waitpid");
+	//Todo -- comment check back in
+	//if (res == -1)
+	//perror("ERROR: manager can't waitpid");
 	if (WIFCONTINUED(status) || WIFEXITED(status))
 	  break;
       }
@@ -277,7 +292,7 @@ static void remove_self_from_QR () {
       }
     }
     if (i >= QR_BYTE_LEN){
-      printf("ERROR: tase_fork couldn't find self \n");
+      printf("ERROR: couldn't find self in remove_self_from_QR \n");
       std::exit(EXIT_FAILURE);
     }
 
@@ -330,7 +345,10 @@ void worker_exit() {
 }
 
 int tase_fork(int parentPID, uint64_t rip) {
-  printf("PID %d entering tase_fork at rip 0x%lx \n", parentPID, rip);
+  double curr_time = util::getWallTime();
+  printf("PID %d entering tase_fork at rip 0x%lx %lf seconds after analysis started \n", parentPID, rip, curr_time - target_start_time);
+  
+  
   std::cout.flush();
   if (dontFork) {
     printf("Forking is disabled.  Shutting down \n");

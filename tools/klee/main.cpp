@@ -124,6 +124,7 @@ bool enableMultipass = false;
 bool killFlagsHack = false;
 bool lockOnSolverCalls = false;
 bool taseDebug;
+bool measureTime;
 bool dontFork;
 enum runType : int {INTERP_ONLY, MIXED};
 enum runType exec_mode;
@@ -403,6 +404,10 @@ namespace {
 
   cl::opt<bool>
   dontForkArg("dontFork", cl::desc("Disable forking in TASE for debugging"), cl::init(false));
+  
+  cl::opt<bool>
+  measureTimeArg("measureTime", cl::desc("Time interpretation rounds in TASE for debugging"), cl::init(true));
+
   
   cl::opt<std::string>
   projectArg("project", cl::desc("Name of project in TASE"), cl::init("-"));
@@ -1465,7 +1470,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 }
 #endif
 
- void printTASEArgs(runType rt, testType tt, bool fm, bool dbg, std::string projName, bool df, bool disableSB, bool enableMP, bool stop, bool killFlags, bool dontFree, bool lckOnSolverCall) {
+ void printTASEArgs(runType rt, testType tt, bool fm, bool dbg, std::string projName, bool df, bool disableSB, bool enableMP, bool stop, bool killFlags, bool dontFree, bool lckOnSolverCall, bool measureTimeVal) {
 
    printf("TASE args... \n");
    if (rt == MIXED) 
@@ -1493,7 +1498,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    printf("\t killFlagsHack      output : %d \n", killFlags);
    printf("\t skipFree           output : %d \n", dontFree);
    printf("\t lockOnSolverCalls   output : %d \n", lckOnSolverCall);
-   
+   printf("\t measureTime         output : %d \n", measureTimeVal);
  }
 
  
@@ -1520,8 +1525,9 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    killFlagsHack = killFlagsHackArg;
    skipFree = skipFreeArg;
    lockOnSolverCalls = lockOnSolverCallArg;
+   measureTime = measureTimeArg;
    if (taseDebug)
-     printTASEArgs(exec_mode, test_type, taseManager, taseDebug, project, dontFork, disableSpringboard, enableMultipass, stopAtMasterSecret, killFlagsHack, skipFree, lockOnSolverCalls);
+     printTASEArgs(exec_mode, test_type, taseManager, taseDebug, project, dontFork, disableSpringboard, enableMultipass, stopAtMasterSecret, killFlagsHack, skipFree, lockOnSolverCalls, measureTime);
    
    //Redirect stdout messages to a file called "Monitor".
    //Later, calls to unix fork in executor create new filenames

@@ -88,7 +88,7 @@ using namespace klee;
 extern void tase_exit();
 
 extern bool UseForkedCoreSolver;
-
+extern uint64_t total_interp_returns;
 extern bool taseManager;
 extern greg_t * target_ctx_gregs;
 extern klee::Interpreter * GlobalInterpreter;
@@ -297,36 +297,20 @@ void Executor::model_ktest_master_secret(  ) {
     
     unsigned char * buf = (unsigned char *) target_ctx_gregs[REG_RDI].u64; 
     int num = (int) target_ctx_gregs[REG_RSI].u64;
-
-    //void * tmp = malloc(num);
-    
     
     if (enableMultipass) {
 
-      printf("Trying to read in master secret \n");
-      //char * secretString = "be02e96158f1de85a876435753db64188ea55a8163ef1df43298ded43de2e53a691024666c9d958105561054a34127e8";
-
-      std::ifstream datfile;
-      datfile.open("master_secret.dat");
+      FILE * theFile = fopen("monday.secret", "rb");
+      unsigned char tmp [48];
       
-      
-      uint8_t endRes [48];
-      std::string currLine;
+      fread(tmp, 1 , 48, theFile);
+      printf("Printing    results of attempt to load master secret as binary... \n");
       for (int i = 0; i < 48; i++) {
-	std::getline(datfile, currLine);
-	//printf("I see data at line %d as string %s \n",i,currLine.c_str());
-	std::istringstream is(currLine);
-	int tmp = 0;
-	is >> tmp;
-	//printf("I read the int input as %d \n",tmp);
-	endRes[i] = (uint8_t) tmp;
-
+	printf(" %2.2x", tmp[i]);
       }
-      printf("Printing results of attempt to load master secret... \n");
-      for (int i = 0; i < 48; i++)
-	printf("%02x",endRes[i]);
-	   
-      memcpy (buf, endRes, num); //Todo - use tase_helper read/write
+      printf("\n");
+      
+      memcpy (buf, tmp, num); //Todo - use tase_helper read/write
 	       
       //Todo: - Less janky io here.
       
@@ -435,6 +419,12 @@ void Executor::model_ktest_writesocket() {
   
   printf("Value of c_special_cmds is %d \n", c_special_cmds);
   fprintf(modelLog, "Entering writesocket call at PC 0x%lx, interpCtr %lu", target_ctx_gregs[REG_RIP].u64, interpCtr);
+
+  printf("Total interpreter returns: %d \n",total_interp_returns);
+  printf("Abort_count_total: %d \n", target_ctx.abort_count_total);
+  printf("  - modeled %d \n", target_ctx.abort_count_modeled);
+  printf("  - poison %d \n", target_ctx.abort_count_poison);
+  printf("  - unknown %d \n", target_ctx.abort_count_unknown);
   
   if  (
        (isa<ConstantExpr>(arg1Expr)) &&
@@ -450,7 +440,9 @@ void Executor::model_ktest_writesocket() {
 
     if (debugMultipass) {
 	fprintf(modelLog, "MULTIPASS DEBUG: Entering call to ktest_writesocket round %d pass %d \n", roundCount, passCount);
-	printf("MULTIPASS DEBUG: Entering ktest_writesocket at round %d pass %d \n", roundCount, passCount);
+	double theTime = util::getWallTime();
+	
+	printf("MULTIPASS DEBUG: Entering ktest_writesocket at round %d pass %d %lf seconds into analysis \n", roundCount, passCount, theTime - target_start_time);
 	printf("UseForkedCoreSolver is %d \n", UseForkedCoreSolver);
 	std::cout.flush();
 	fflush(modelLog);
@@ -568,7 +560,7 @@ void Executor::model_ktest_writesocket() {
 	  get_sem_lock();
 	
 	solver->mustBeFalse(*GlobalExecutionStatePtr, write_condition, result);
-	
+	printf("lockOnSolverCalls is %d \n", lockOnSolverCalls);
 	if (lockOnSolverCalls)
 	  release_sem_lock();
 	solver_end_time = util::getWallTime();
@@ -3206,27 +3198,17 @@ ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); // SSL
 
     void * buf = (void *) target_ctx_gregs[REG_RSI].u64;
     
-    std::ifstream datfile;
-    datfile.open("master_secret.dat");
-    uint8_t endRes [48];
-    std::string currLine;
-    for (int i = 0; i < 48; i++) {
-      std::getline(datfile, currLine);
-      //printf("I see data at line %d as string %s \n",i,currLine.c_str());
-      std::istringstream is(currLine);
-      int tmp = 0;
-      is >> tmp;
-      //printf("I read the int input as %d \n",tmp);
-      endRes[i] = (uint8_t) tmp;
-
-    }
+    FILE * theFile = fopen("monday.secret", "rb");
+    unsigned char tmp [48];
     
-    printf("Printing results of attempt to load master secret... \n");
-    for (int i = 0; i < 48; i++)
-      printf("%02x",endRes[i]);
-    memcpy (buf, endRes, 48); //Todo - use tase_helper read/write	       
-    //Todo: - Less janky io here.
-
+    fread(tmp, 1 , 48, theFile);
+    printf("Printing    results of attempt to load master secret as binary... \n");
+    for (int i = 0; i < 48; i++) {
+      printf(" %2.2x", tmp[i]);
+    }
+    printf("\n");
+    
+    memcpy (buf, tmp, 48); //Todo - use tase_helper read/write
 
     ref<ConstantExpr> res = ConstantExpr::create(SSL3_MASTER_SECRET_SIZE, Expr::Int64);
     tase_helper_write((uint64_t) &(target_ctx_gregs[REG_RAX].u64), res);
