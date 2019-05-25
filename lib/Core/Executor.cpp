@@ -3247,7 +3247,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
       value = state.constraints.simplifyExpr(value);
   }
 
-  
+  /*
    if(taseDebug) {
     printf("executeMemoryOperation DBG: \n");
     printf("bytes is %d \n", bytes);
@@ -3260,7 +3260,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
       printf("ERROR: addr should be constant or symbolic \n");
     } 
    }
-    
+  */
 
   // fast path: single in-bounds resolution
   ObjectPair op;
@@ -3491,6 +3491,12 @@ extern double target_start_time;
 extern double target_end_time;
 
 extern bool measureTime;
+
+double interp_setup_time = 0.0; 
+double interp_find_fn_time = 0.0; //Should also account for interp_setup_time
+double interp_IBT_lookup_time = 0.0;//Time determining if inst begins transactions (IBT).  Also in setup time.
+double interp_run_time = 0.0;
+
 double interp_enter_time;
 double interp_exit_time;
 double interpreter_time = 0.0;
@@ -3654,6 +3660,7 @@ void measure_interp_time(bool isPsnTrap, bool isMemRequest, bool isModelTrap, ui
     printf("Total time in interpreter is %lf so far \n", interpreter_time);
     printf("   - modeled time:       %lf \n", modelTime);
     printf("   - poison interp time: %lf \n", psnTime);
+    printf("During interpetation %lf seconds total performing setup and %lf seconds total calling run.  %lf seconds on findFunction and %lf seconds on IBT \n", interp_setup_time, interp_run_time, interp_find_fn_time, interp_IBT_lookup_time);
     printf( "Total interpreter returns: %lu \n",total_interp_returns);
     printf( "Abort_count_total: %d \n", target_ctx.abort_count_total);
     printf( "  - modeled %d \n", target_ctx.abort_count_modeled);
@@ -3876,13 +3883,24 @@ bool Executor::gprsAreConcrete() {
 }
 
 bool Executor::instructionBeginsTransaction(uint64_t pc) {
-
+  double entryTime = 0.0;
+  bool result = false;
+  
+  if (measureTime)
+    entryTime = util::getWallTime();
   for (uint32_t i = 0; i < tase_num_global_records; i++) {
-    if (pc == tase_global_records[i].head)
-      return true;
+    if (pc == tase_global_records[i].head) {
+      result = true;
+      break;
+    }
   }
-
-  return false;
+  
+  if (measureTime){
+    double diffTime = util::getWallTime() - entryTime;
+    interp_IBT_lookup_time += diffTime;
+    printf("Lookup time for instruction begins tran (IBT) is %lf \n", diffTime);
+  }
+  return result;
 }
 
 bool Executor::resumeNativeExecution (){
@@ -4314,12 +4332,15 @@ void Executor::printDebugInterpFooter() {
 
 
 void Executor::klee_interp_internal () {
+  double interpSetupStartTime = 0.0, interpRunStartTime = 0.0;
   
   while (true) {
     interpCtr++;
     if (taseDebug)
       printDebugInterpHeader();
-
+    if (measureTime)
+      interpSetupStartTime = util::getWallTime();
+    
     uint64_t rip = target_ctx_gregs[REG_RIP].u64;
     uint64_t rip_init = rip;
     if ( (rip == (uint64_t) &sb_reopen ||
@@ -4339,38 +4360,59 @@ void Executor::klee_interp_internal () {
       break;
     }
 
-   
     if (isSpecialInst(rip)) {
       model_inst();
     } else {
-      
-      KFunction * interpFn = findInterpFunction (target_ctx_gregs, kmodule);
 
+      double findInterpFnStartTime = 0.0;
+      if (measureTime)
+	findInterpFnStartTime = util::getWallTime();
+      KFunction * interpFn = findInterpFunction (target_ctx_gregs, kmodule);
+      if (measureTime) {
+	double findInterpFnElapsedTime = (util::getWallTime() - findInterpFnStartTime);
+	printf(" %lf seconds elapsed finding interp fn at interpCtr %lu \n", findInterpFnElapsedTime, interpCtr);
+	interp_find_fn_time += findInterpFnElapsedTime;
+      }
+      
       //We have to manually push a frame on for the function we'll be
       //interpreting through.  At this point, no other frames should exist
       // on klee's interpretation "stack".
+
+
       GlobalExecutionStatePtr->pushFrame(0,interpFn);
       GlobalExecutionStatePtr->pc = interpFn->instructions ;
       GlobalExecutionStatePtr->prevPC = GlobalExecutionStatePtr->pc;
-
       std::vector<ref<Expr> > arguments;
       uint64_t regAddr = (uint64_t) target_ctx_gregs;
       ref<ConstantExpr> regExpr = ConstantExpr::create(regAddr, Context::get().getPointerWidth());
       arguments.push_back(regExpr);
       bindArgument(interpFn, 0, *GlobalExecutionStatePtr, arguments[0]);
+      
+      if (measureTime) {
+	double setupDiff = util::getWallTime() - interpSetupStartTime;
+	interp_setup_time += setupDiff;
+	printf("%lf seconds during interp setup for interpCtr %lu \n", setupDiff, interpCtr);
+      }
 
-      run(*GlobalExecutionStatePtr); 
+      if (measureTime) 
+	interpRunStartTime = util::getWallTime();
+      
+      run(*GlobalExecutionStatePtr);
+
+      if (measureTime) {
+	double runDiff = util::getWallTime() - interpRunStartTime;
+	interp_run_time += runDiff;
+	printf("%lf seconds during interp run for interpCtr %lu \n", runDiff, interpCtr);
+      }
+      
     }
     
     ref<Expr> RIPExpr = tase_helper_read((uint64_t) &(target_ctx_gregs[REG_RIP].u64), 8);
     if (!(isa<ConstantExpr>(RIPExpr))) {
       printf("Detected symbolic RIP \n");
       std::cout.flush();
-      //printAllPossibleValues(RIPExpr);
       
       printf("Attempting to call toUnique on symbolic RIP \n");
-      std::cout.flush();
-      
       solver_start_time = util::getWallTime();
       ref <Expr> uniqueRIPExpr  = toUnique(*GlobalExecutionStatePtr,RIPExpr);
       solver_end_time = util::getWallTime();
@@ -4379,14 +4421,12 @@ void Executor::klee_interp_internal () {
       solver_time += solver_diff_time;
       printf("Total solver time is %lf at interpCtr %lu \n", solver_time, interpCtr);
 
-
       if (isa<ConstantExpr> (uniqueRIPExpr)) {
 	printf("Only one valid value for RIP \n");
 	fflush(stdout);
 	tase_helper_write((uint64_t) &target_ctx_gregs[REG_RIP], uniqueRIPExpr);
 	
-      } else {
-      
+      } else {      
 	printf("IMPORTANT: Calling forkOnPossibleRIPValues() \n");
 	std::cout.flush();
 	forkOnPossibleRIPValues(RIPExpr, rip_init);
@@ -4401,12 +4441,10 @@ void Executor::klee_interp_internal () {
       std::exit(EXIT_FAILURE);
     }
     
-
     if (taseDebug) 
        printDebugInterpFooter();
 
     //Kludge to get us back to native execution for prohib fns with concrete input
-    //Todo -- add check to gprsAreConcrete()
     if (forceNativeRet && gprsAreConcrete() && !(exec_mode == INTERP_ONLY))
       break;
   }
@@ -4780,7 +4818,7 @@ void Executor::initializeInterpretationStructures (Function *f) {
   char ** environPtr = environ;
   char * envStr = environ[0];
   size_t len = 0;
-  char * latestEnvStr;
+  char * latestEnvStr = NULL;
   
   while (envStr != NULL) {
     
