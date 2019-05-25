@@ -123,15 +123,16 @@ bool stopAtMasterSecret = false;
 bool enableMultipass = false;
 bool killFlagsHack = false;
 bool lockOnSolverCalls = false;
-bool taseDebug;
-bool measureTime;
-bool dontFork;
+bool taseDebug =true;
+bool measureTime =true;
+bool dontFork =false;
 enum runType : int {INTERP_ONLY, MIXED};
 enum runType exec_mode;
 enum testType : int {EXPLORATION, VERIFICATION};
 enum testType test_type;
 std::string project;
-bool disableSpringboard;
+bool disableSpringboard = false;
+bool enableBounceback = false;
 bool OpenSSLTest = true;
 
 int worker2managerFD [2];
@@ -404,6 +405,9 @@ namespace {
 
   cl::opt<bool>
   dontForkArg("dontFork", cl::desc("Disable forking in TASE for debugging"), cl::init(false));
+
+  cl::opt<bool>
+  enableBouncebackArg("enableBounceback", cl::desc("Try to bounce back to native execution in TASE depending on abort code"), cl::init(false));
   
   cl::opt<bool>
   measureTimeArg("measureTime", cl::desc("Time interpretation rounds in TASE for debugging"), cl::init(true));
@@ -1470,7 +1474,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 }
 #endif
 
- void printTASEArgs(runType rt, testType tt, bool fm, bool dbg, std::string projName, bool df, bool disableSB, bool enableMP, bool stop, bool killFlags, bool dontFree, bool lckOnSolverCall, bool measureTimeVal) {
+ void printTASEArgs(runType rt, testType tt, bool fm, bool dbg, std::string projName, bool df, bool disableSB, bool enableMP, bool stop, bool killFlags, bool dontFree, bool lckOnSolverCall, bool measureTimeVal, bool enableBouncebackVal) {
 
    printf("TASE args... \n");
    if (rt == MIXED) 
@@ -1499,6 +1503,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    printf("\t skipFree           output : %d \n", dontFree);
    printf("\t lockOnSolverCalls   output : %d \n", lckOnSolverCall);
    printf("\t measureTime         output : %d \n", measureTimeVal);
+   printf("\t enableBounceback     output : %d \n", enableBouncebackVal);
  }
 
  
@@ -1526,8 +1531,9 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    skipFree = skipFreeArg;
    lockOnSolverCalls = lockOnSolverCallArg;
    measureTime = measureTimeArg;
+   enableBounceback = enableBouncebackArg;
    if (taseDebug)
-     printTASEArgs(exec_mode, test_type, taseManager, taseDebug, project, dontFork, disableSpringboard, enableMultipass, stopAtMasterSecret, killFlagsHack, skipFree, lockOnSolverCalls, measureTime);
+     printTASEArgs(exec_mode, test_type, taseManager, taseDebug, project, dontFork, disableSpringboard, enableMultipass, stopAtMasterSecret, killFlagsHack, skipFree, lockOnSolverCalls, measureTime, enableBounceback);
    
    //Redirect stdout messages to a file called "Monitor".
    //Later, calls to unix fork in executor create new filenames
@@ -1536,15 +1542,6 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    std::string IDString;
    IDString = workerIDStream.str();
    freopen(IDString.c_str(),"w", stdout);
-
-   //Debugging for heap mem ops -- not ready for multiworker yet
-   heapMemLog = fopen("heaplog.txt", "w");
-
-   //Debugging for OpenSSL's lhash name/symbol lookup tables
-   LHlog = fopen("lhlog.txt", "w");
-
-   //Debugging for modeled fn calls
-   modelLog = fopen("modellog.txt", "w");
    
    // Load the bytecode...
    std::string errorMsg;
@@ -1616,7 +1613,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
                                   /*CheckOvershift=*/CheckOvershift);
 
    const Module *finalModule = interpreter->setModule(interpModule, Opts);
-   //StackBase = (void *) &target_stack;
+
 
    
    

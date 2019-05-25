@@ -354,8 +354,6 @@ private:
   bool instructionIsModeled();
   void model_taseMakeSymbolic();
   void model_inst();
-  void model_restoreRAXOpc(); //hack for debugging
-  void model_saveRAXOpc(); // hack for debuging
   void model_sb_disabled();
   void deadRegisterFlush();
   void printDebugInterpHeader();
@@ -395,34 +393,11 @@ private:
   
   //AH: Modeled sys functions--------------------------------
   //Todo -- get rid of  rand_add and rand_load_file traps
-  void model_RAND_add(); //Temporarily trapping on RAND_add bc of dependcy on doublesd
+  void model_RAND_add(); //Temporarily trapping on RAND_add bc of dependcy on doubles
   void model_RAND_load_file(); //Temp trapping on rand_load_file bc of dependency on floats
   void model_htonl();//Temporarily here bc of bswap assembly
 
-  void model_OpenSSLDie();
-
-  void model_getpid();
-  void model_getuid();
-  void model_geteuid();
-  void model_getgid();
-  void model_getegid();
-  void model_getenv();
-  void model_stat();
-  void model_gettimeofday();
-  void model_gethostbyname();
-
-
-  void model_BIO_printf();  //Todo: generalize to make less openssl-dependent
-  void model_BIO_snprintf();
-  void model_vfprintf();
-  void model_sprintf();
-  void model_printf();
-  void model_exit();
   
-  void model___errno_location();
-  void model___ctype_b_loc();
-  void model___ctype_tolower_loc();
-  void model___isoc99_sscanf();
 
   //For debugging
   void model_memmove(); 
@@ -435,7 +410,15 @@ private:
 
   void model_time();
   void model_gmtime();
-  
+  void model_getpid();
+  void model_getuid();
+  void model_geteuid();
+  void model_getgid();
+  void model_getegid();
+  void model_getenv();
+  void model_stat();
+  void model_gettimeofday();
+  void model_gethostbyname();
   void model_fileno();
   void model_fcntl();
   void model_fopen();
@@ -458,28 +441,37 @@ private:
   void model_calloc();
   void model_realloc();
   void model_free();
+  void model_vfprintf();
+  void model_sprintf();
+  void model_printf();
+  void model_exit();
+  void model___errno_location();
+  void model___ctype_b_loc();
+  void model___ctype_tolower_loc();
+  void model___isoc99_sscanf();
   //AH: Modeling specific to tls---------------------------
 
-  
+  void model_OpenSSLDie();
+  void model_BIO_printf();  //Todo: generalize to make less openssl-dependent
+  void model_BIO_snprintf();
   void model_tls1_generate_master_secret();
-  
-  
+
+  //Prohib functions
   void model_AES_encrypt();
   void model_gcm_ghash_4bit();
   void model_gcm_gmult_4bit();
-  
   void model_SHA1_Update();
   void model_SHA1_Final();
   void model_SHA256_Update();
   void model_SHA256_Final();
-
-  void model_sha1_block_data_order();
-  void model_sha256_block_data_order();
-  
   void model_EC_KEY_generate_key();
   void model_ECDH_compute_key();
   void model_EC_POINT_point2oct(); 
 
+  void model_sha1_block_data_order(); //Internal function in sha
+  void model_sha256_block_data_order(); //Internal function in sha
+  
+  
   uint64_t tls_predict_stdin_size (int fd, uint64_t maxLen);
   BIGNUM * BN_new_tase();
   EC_POINT * EC_POINT_new_tase(EC_GROUP * group);
