@@ -35,7 +35,7 @@ extern "C" int RAND_pseudo_bytes (unsigned char *buf, int num);
 
 extern "C" int RAND_bytes (unsigned char *buf, int num);
 
-extern FILE * modelLog;
+
 extern uint64_t interpCtr;
 
 // for compatibility reasons
@@ -299,9 +299,10 @@ void kTest_free(KTest *bo) {
 static void print_fd_set(int nfds, fd_set *fds) {
   int i;
   for (i = 0; i < nfds; i++) {
-    fprintf(modelLog," %d", FD_ISSET(i, fds));
+    printf(" %d", FD_ISSET(i, fds));
   }
-  fprintf(modelLog,"\n");
+  printf("\n");
+  fflush(stdout);
 }
 
 enum { CLIENT_TO_SERVER=0, SERVER_TO_CLIENT, RNG, PRNG, TIME, STDIN, SELECT,
@@ -433,9 +434,6 @@ static void KTOV_append(KTestObjectVector *ov,
 KTestObject* KTOV_next_object(KTestObjectVector *ov, const char *name)
 {
 
-  fprintf(modelLog,"Entered ktov_next_object \n");
-  fprintf(modelLog,"playback index is %d \n", ov->playback_index);
-  fflush(modelLog);
   printf("Entered ktov_next_object \n");
   printf("playback index is %d \n", ov->playback_index);
   fflush(stdout);
@@ -449,10 +447,7 @@ KTestObject* KTOV_next_object(KTestObjectVector *ov, const char *name)
     fflush(stdout);
     exit(2);
   }
-  fprintf(modelLog, "ktov NO DBG 1 \n");
-  fflush(modelLog);
-  printf("ktov NO DBG 1 \n");
-  fflush(stdout);
+
   KTestObject *o = &ov->objects[ov->playback_index];
   if (strcmp(o->name, name) != 0) {
     printf("ERROR: ktest playback needed '%s', but recording had '%s'\n",
@@ -467,10 +462,7 @@ KTestObject* KTOV_next_object(KTestObjectVector *ov, const char *name)
     worker_exit();
     exit(2);
   }
-  fprintf(modelLog, "ktov NO DBG 2 \n");
-  fflush(modelLog);
-  printf("ktov NO DBG 2 \n");
-  fflush(stdout);
+
   ov->playback_index++;
 
   printf("Returning from ktov_next_object \n");
@@ -482,8 +474,8 @@ KTestObject* KTOV_next_object(KTestObjectVector *ov, const char *name)
  int ktest_connect_tase(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 {
 
-  fprintf(modelLog, "Entering ktest_connect at interpCtr %lu with sockfd %d \n", interpCtr, sockfd);
-  fflush(modelLog);
+  printf("Entering ktest_connect at interpCtr %lu with sockfd %d \n", interpCtr, sockfd);
+  fflush(stdout);
   
   if (ktest_mode == KTEST_NONE) { // passthrough
     return connect(sockfd, addr, addrlen);
@@ -520,8 +512,7 @@ KTestObject* KTOV_next_object(KTestObjectVector *ov, const char *name)
  int ktest_select_tase(int nfds, fd_set *readfds, fd_set *writefds,
 		 fd_set *exceptfds, struct timeval *timeout)
 {
-  fprintf(modelLog, "Entering ktest_select at interpCtr %lu \n", interpCtr);
-  fflush(modelLog);
+  printf("Entering ktest_select at interpCtr %lu \n", interpCtr);
   if (ktest_mode == KTEST_NONE) { // passthrough
     return select(nfds, readfds, writefds, exceptfds, timeout);
   }
@@ -543,11 +534,11 @@ KTestObject* KTOV_next_object(KTestObjectVector *ov, const char *name)
 
     if (KTEST_DEBUG) {
       printf("\n");
-      fprintf(modelLog,"IN readfds  = ");
+      printf("IN readfds  = ");
       print_fd_set(nfds, readfds);
-      fprintf(modelLog,"IN writefds = ");
+      printf("IN writefds = ");
       print_fd_set(nfds, writefds);
-      fflush(modelLog);
+      fflush(stdout);
     }
 
     pos += snprintf(&record[pos], size-pos,
@@ -587,26 +578,18 @@ KTestObject* KTOV_next_object(KTestObjectVector *ov, const char *name)
     return ret;
   }
   else if (ktest_mode == KTEST_PLAYBACK) {
-    fprintf(modelLog, "Entering ktest_playback mode for ktest_select \n");
-    fflush(modelLog);
 
     if (KTEST_DEBUG) {
-      fprintf(modelLog,"\n KTEST: Input readfds and writefds are:  \n");
-      fprintf(modelLog,"IN readfds  = ");
+      printf("\n KTEST: Input readfds and writefds are:  \n");
+      printf("IN readfds  = ");
       print_fd_set(nfds, readfds);
-      fprintf(modelLog,"IN writefds = ");
+      printf("IN writefds = ");
       print_fd_set(nfds, writefds);
-      fflush(modelLog);
+      fflush(stdout);
     }
-    
-    fprintf(modelLog,"ktov at 0x%lx \n", (uint64_t) &ktov);
-    fprintf(modelLog,"ktest_obj_names[SELECT] is %d \n", ktest_object_names[SELECT]);
-    fflush(modelLog);
 
     
     KTestObject *o = KTOV_next_object(&ktov, ktest_object_names[SELECT]);
-    fprintf(modelLog,"Got KTestObject at 0x%lx \n", (uint64_t) o);
-    fflush(modelLog);
     
     // Make sure we have included the socket for TLS traffic
     assert(ktest_sockfd < nfds);
@@ -697,17 +680,17 @@ KTestObject* KTOV_next_object(KTestObjectVector *ov, const char *name)
     free(recorded_select);
     
     if (KTEST_DEBUG) {
-      fprintf(modelLog,"SELECT playback (recorded_nfds = %d, actual_nfds = %d):\n",
+      printf("SELECT playback (recorded_nfds = %d, actual_nfds = %d):\n",
 	     recorded_nfds, nfds);
-      fprintf(modelLog,"  inR: ");
+      printf("  inR: ");
       print_fd_set(recorded_nfds, &in_readfds);
-      fprintf(modelLog,"  inW: ");
+      printf("  inW: ");
       print_fd_set(recorded_nfds, &in_writefds);
-      fprintf(modelLog,"  outR:");
+      printf("  outR:");
       print_fd_set(recorded_nfds, &out_readfds);
-      fprintf(modelLog,"  outW:");
+      printf("  outW:");
       print_fd_set(recorded_nfds, &out_writefds);
-      fprintf(modelLog,"  ret = %d\n", ret);
+      printf("  ret = %d\n", ret);
 
     }
 
@@ -739,16 +722,16 @@ KTestObject* KTOV_next_object(KTestObjectVector *ov, const char *name)
     }
     assert(active_fd_count == ret); // Did we miss anything?
     if (active_fd_count != ret) {
-      fprintf(modelLog, "ERROR: active_fd_count %d != ret %d in ktest_select \n", active_fd_count, ret);
+      printf( "ERROR: active_fd_count %d != ret %d in ktest_select \n", active_fd_count, ret);
     }
 
     if (KTEST_DEBUG) {
-      fprintf(modelLog,"\n KTEST: At end of ktest_select final values are: \n");
-      fprintf(modelLog,"OUT readfds  = ");
+      printf("\n KTEST: At end of ktest_select final values are: \n");
+      printf("OUT readfds  = ");
       print_fd_set(nfds, readfds);
-      fprintf(modelLog,"OUT writefds = ");
+      printf("OUT writefds = ");
       print_fd_set(nfds, writefds);
-      fflush(modelLog);
+      fflush(stdout);
     }
     
     return ret;
@@ -762,7 +745,6 @@ KTestObject* KTOV_next_object(KTestObjectVector *ov, const char *name)
 ssize_t ktest_writesocket_tase(int fd, const void *buf, size_t count)
 {
 
-  fprintf(modelLog, "Entering ktest_writesocket at interpCtr %lu \n", interpCtr);
   
   if (ktest_mode == KTEST_NONE) { // passthrough
     return writesocket(fd, buf, count);
@@ -786,35 +768,29 @@ ssize_t ktest_writesocket_tase(int fd, const void *buf, size_t count)
 
     if (KTEST_DEBUG) {
       int i;
-      fprintf(modelLog,"Attempting to write playback [%d]", count);
+      printf("Attempting to write playback [%d]", count);
       for (i = 0; i < count; i++) {
-	fprintf(modelLog," %2.2x", ((unsigned char*)buf)[i]);
+	printf(" %2.2x", ((unsigned char*)buf)[i]);
       }
-      fprintf(modelLog,"\n");
+      printf("\n");
     }
     
     if (KTEST_DEBUG) {
       int i;
-      fprintf(modelLog,"writesocket playback [%d]", o->numBytes);
+      printf("writesocket playback [%d]", o->numBytes);
       for (i = 0; i < o->numBytes; i++) {
-	fprintf(modelLog," %2.2x", ((unsigned char*) o->bytes)[i]);
+	printf(" %2.2x", ((unsigned char*) o->bytes)[i]);
       }
-      fprintf(modelLog,"\n");
+      printf("\n");
     }
-
-    fflush(modelLog);
-    
-    std::cout.flush();
-
-
     
     if (o->numBytes > count) {
       fprintf(stderr,
 	            "ktest_writesocket playback error: %zu bytes of input, "
 	      "%d bytes recorded", count, o->numBytes);
 
-      fprintf(modelLog, "ktest_writesocket playback error: %zu bytes of input, %d bytes recorded \n ", count, o->numBytes);
-      fflush(modelLog);
+      printf("ktest_writesocket playback error: %zu bytes of input, %d bytes recorded \n ", count, o->numBytes);
+      fflush(stdout);
       std::exit(EXIT_FAILURE);
       // exit(2);
     }
@@ -822,8 +798,8 @@ ssize_t ktest_writesocket_tase(int fd, const void *buf, size_t count)
     
     if (o->numBytes > 0 && memcmp(buf, o->bytes, o->numBytes) != 0) {
       fprintf(stderr, "WARNING: ktest_writesocket playback - data mismatch\n");
-      fprintf(modelLog, "WARNING: ktet_writesocket playback - data mismatch \n");
-      fflush(modelLog);
+      printf("WARNING: ktet_writesocket playback - data mismatch \n");
+      fflush(stdout);
       std::exit(EXIT_FAILURE);
       
     }
@@ -848,7 +824,6 @@ ssize_t ktest_writesocket_tase(int fd, const void *buf, size_t count)
  ssize_t ktest_readsocket_tase(int fd, void *buf, size_t count)
 {
 
-  fprintf(modelLog, "Entering ktest_readsocket at interpCtr %lu \n", interpCtr);
   printf("Entering ktest_readsocket \n");
   if (ktest_mode == KTEST_NONE) { // passthrough
     return readsocket(fd, buf, count);
@@ -900,7 +875,6 @@ ssize_t ktest_writesocket_tase(int fd, const void *buf, size_t count)
  int ktest_raw_read_stdin_tase(void *buf,int siz)
 {
 
-  fprintf(modelLog, "Entering ktest_raw_read_stdin at interpCtr %lu \n", interpCtr);
   
   if (ktest_mode == KTEST_NONE) {
     return read(fileno(stdin), buf, siz);
@@ -960,7 +934,7 @@ ssize_t ktest_writesocket_tase(int fd, const void *buf, size_t count)
 
  int ktest_RAND_bytes_tase(unsigned char *buf, int num)
 {
-  fprintf(modelLog, "Entering ktest_RAND_bytes at interpCtr %lu \n", interpCtr);
+
   
   if (ktest_mode == KTEST_NONE) {
     return RAND_bytes(buf, num);
@@ -1000,7 +974,7 @@ ssize_t ktest_writesocket_tase(int fd, const void *buf, size_t count)
 
 int ktest_RAND_pseudo_bytes_tase(unsigned char *buf, int num)
 {
-  fprintf(modelLog, "Entering ktest_RAND_pseudo_bytes at interpCtr %lu \n", interpCtr);
+
   
   if (ktest_mode == KTEST_NONE) {
     return RAND_pseudo_bytes(buf, num);
@@ -1039,7 +1013,7 @@ int ktest_RAND_pseudo_bytes_tase(unsigned char *buf, int num)
 }
 
  void ktest_master_secret_tase(unsigned char *ms, int len) {
-  fprintf(modelLog, "Entering ktest_master_secret at interpCtr %lu \n", interpCtr);
+
   
   if (ktest_mode == KTEST_NONE) {
     return;
@@ -1062,25 +1036,19 @@ int ktest_RAND_pseudo_bytes_tase(unsigned char *buf, int num)
       fprintf(stderr,
 	            "ktest_master_secret playback error: %d bytes requested, "
 	      "%d bytes recorded", len, o->numBytes);
-      fprintf(modelLog, "ERROR: mismatch in length of ktest_master_secret during playback \n");
-      fflush(modelLog);
+      printf( "ERROR: mismatch in length of ktest_master_secret during playback \n");
+      fflush(stdout);
       exit(2);
     }
-
-    fprintf(modelLog, "master secret is the following in hex \n");
-    fflush(modelLog);
-    for (int i = 0; i < len; i++)
-      fprintf(modelLog, "%x", (o->bytes[i]));
-    fprintf(modelLog, "\n");
     
     if (o->numBytes > 0 && memcmp(ms, o->bytes, len) != 0) {
       fprintf(stderr, "WARNING: ktest_master_secret playback data mismatch\n");
-      fprintf(modelLog, "ERROR: Mismatch in master_secret playback \n");
-      fflush(modelLog);
+      printf( "ERROR: Mismatch in master_secret playback \n");
+      fflush(stdout);
       
     } else {
-      fprintf(modelLog, "master_secret generation MATCHES ktest_ playback record \n");
-      fflush(modelLog);
+      printf( "master_secret generation MATCHES ktest_ playback record \n");
+      fflush(stdout);
     }
     memcpy(ms, o->bytes, len);
     if (KTEST_DEBUG) {
@@ -1102,8 +1070,6 @@ int ktest_RAND_pseudo_bytes_tase(unsigned char *buf, int num)
 
 
 void ktest_start_tase(const char *filename, enum kTestMode mode) {
-  fprintf(modelLog, "Entering ktest_start at interpCtr %lu \n", interpCtr);
-  fprintf(modelLog, "ktest filename is %s \n", filename);
   
   KTOV_init(&ktov);
   ktest_mode = mode;
@@ -1147,8 +1113,6 @@ void ktest_start_tase(const char *filename, enum kTestMode mode) {
 }
 
 void ktest_finish_tase() {
-
-  fprintf(modelLog, "Entering ktest_finish at interpCtr %lu \n", interpCtr);
 
   KTest ktest;
 

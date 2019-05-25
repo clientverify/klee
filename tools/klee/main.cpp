@@ -78,11 +78,8 @@ struct timeval targetEndTime;
 double target_start_time;
 double target_end_time;
 
-//gregset_t target_ctx_gregs;
-//gregset_t prev_ctx_gregs;
 #include "/playpen/humphries/zTASE/TASE/test/tase/include/tase/tase_interp.h"
 extern target_ctx_t target_ctx;
-
 greg_t * target_ctx_gregs = target_ctx.gregs;
 
 uint64_t targetMemAddr;
@@ -92,16 +89,10 @@ char ** glob_envp;
 extern KTestObjectVector ktov;
 extern "C" void begin_target_inner();
 extern "C" void klee_interp();
-//extern "C" void ENTERTASEINITIAL();
 extern "C" void enter_tase(void (*) (), int);
-//extern "C" void target_exit ();
-//extern "C" void tase_inject(int);
 
 std::stringstream workerIDStream;
 std::stringstream globalLogStream;
-FILE * heapMemLog; 
-FILE * LHlog; //Used for debugging openssl's lhash symbol/name mapping
-FILE * modelLog;
 char target_stack[STACK_SIZE + 1];
 char interp_stack[STACK_SIZE + 1];
 char * target_stack_begin_ptr = &target_stack[STACK_SIZE];
@@ -109,13 +100,10 @@ char * interp_stack_begin_ptr = &interp_stack[STACK_SIZE];
 klee::Interpreter * GlobalInterpreter;
 llvm::Module * interpModule;
 
-
 extern char * ktestModePtr;
 extern char * ktestPathPtr;
 extern char ktestMode[20];
 extern char ktestPath[100];
-
-
 
 bool skipFree = false;
 bool KTestReplay;
@@ -144,25 +132,8 @@ int max_workers = 200;
 std::vector<int> unscheduledWorkers;
 
 extern int * target_started_ptr;
- int masterPID;
-
-
+int masterPID;
 int max_depth;
-typedef struct __attribute__((__packed__))  {
-  int senderPID; //Mandatory
-  int stageNumber; //Mandatory
-  uint64_t pc; //Mandatory
-  int messageType; //Mandatory
-  int childPID; //Optional
-  int stageRootPID; //Optional
-} workerMessage;
-//messageType:
-//0 Successfully verified message
-//1 Notification of termination
-//2 Request to fork (path exploration)
-//3 Request for multipass clone of stage
-enum workerSelectionMode : int {RANDOM, DEPTH_FIRST};
-enum workerSelectionMode workerSelectionType = RANDOM;
 
 extern "C" void  exit_tase() {
 
@@ -170,27 +141,15 @@ extern "C" void  exit_tase() {
 
 void transferToTarget() {
 
-  /*
-  target_ctx_gregs[REG_RDI] = reinterpret_cast<greg_t>(&begin_target_inner);
-  target_ctx_gregs[REG_R15] = reinterpret_cast<greg_t>(&enter_tase);
-  target_ctx_gregs[REG_RSP] = reinterpret_cast<greg_t>(target_stack_begin_ptr);
-  gettimeofday(&targetStartTime,NULL);
-
-  //push on a return address for the end of execution in the target
-  target_ctx_gregs[REG_RSP] -= 8;
-  *(uint64_t *) target_ctx_gregs[REG_RSP] = (uint64_t) &target_exit;
-  */
-
-  UseForkedCoreSolver = false;
-  printf("During transferToTarget, UseForkedCoreSolver is %d \n", UseForkedCoreSolver);
+  bool forkedSolver = UseForkedCoreSolver;
+  printf("During transferToTarget, UseForkedCoreSolver is %d \n", forkedSolver);
   fflush(stdout);
-  fprintf(modelLog," During transferToTarget, UseForkedCoreSolver is %d \n", UseForkedCoreSolver);
-  fflush(modelLog);
+
   if (OpenSSLTest) {
     char * ktestModeName = "-playback";
     memset(ktestMode, 0, sizeof (ktestMode));
     strncpy(ktestMode, ktestModeName, strlen(ktestModeName));
-    fprintf(modelLog,"len of ktestmode arg is %d \n", strlen(ktestModeName));
+
 
     const char * ktestPathName;
     if (!enableMultipass) {
@@ -201,8 +160,6 @@ void transferToTarget() {
       
     memset(ktestPath, 0, sizeof(ktestPath));
     strncpy(ktestPath, ktestPathName, strlen(ktestPathName));
-    fprintf(modelLog, "len of ktestPathName arg is %d \n", strlen(ktestPathName));
-
   }
   
   target_start_time = util::getWallTime();
@@ -227,7 +184,6 @@ void transferToTarget() {
     tase_springboard = (void *) &sb_disabled;
     
     klee_interp();
-
     
   } else {
     
@@ -258,22 +214,6 @@ void transferToTarget() {
       }
     }
   }
-
-   
-
-
-  /*
-  if (exec_mode == MIXED) 
-    ENTERTASEINITIAL();
-  else if (exec_mode == INTERP_ONLY) {
-    target_ctx_gregs[REG_RIP] = (uint64_t) &enter_tase;
-    klee_interp();
-  } else {
-    printf("Unrecognized exec_mode \n");
-    std::cout.flush();
-    std::exit(EXIT_FAILURE);
-  }
-  */
   
 }
 
@@ -314,7 +254,7 @@ void tsx_init()
   uint64_t garbageVal = 1234;
   uint64_t check_page_address =  start_page_address; 
   printf("Found %lu code pages from __executable_start to __etext \n",numCodePages);  
-  for (int i = 0; i < numCodePages; i++) {
+  for (uint64_t i = 0; i < numCodePages; i++) {
     //Read a value to make sure the page is mapped in.
     //printf("Checking page at hex %lx \n", check_page_address);
     garbageVal = * ((uint64_t *)check_page_address);
@@ -382,9 +322,6 @@ namespace {
   //enum testType : int {EXPLORATION, VERIFICATION};
   cl::opt<testType>
   testTypeArg("testType", cl::desc("EXPLORATION or VERIFICATION"), cl::init(EXPLORATION));
-
-  cl::opt<bool>
-  enableMultipassArg("enableMultipass", cl::desc("Run verification"), cl::init(false));
 
   cl::opt<bool>
   skipFreeArg("skipFree", cl::desc("Debugging option to skip frees"), cl::init(false));
@@ -1474,11 +1411,11 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 }
 #endif
 
- void printTASEArgs(runType rt, testType tt, bool fm, bool dbg, std::string projName, bool df, bool disableSB, bool enableMP, bool stop, bool killFlags, bool dontFree, bool lckOnSolverCall, bool measureTimeVal, bool enableBouncebackVal) {
+ void printTASEArgs(runType rt, testType tt, bool fm, bool dbg, std::string projName, bool df, bool disableSB,  bool stop, bool killFlags, bool dontFree, bool lckOnSolverCall, bool measureTimeVal, bool enableBouncebackVal) {
 
    printf("TASE args... \n");
    if (rt == MIXED) 
-     printf("\t Running MIXED mode \n");
+     printf("\t Running MIXED mode (native with interpreter) \n");
    else if (rt == INTERP_ONLY)
      printf("\t Running INTERP_ONLY mode \n");
    else
@@ -1497,7 +1434,6 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    printf("\t taseDebug output: %d \n", dbg);
    printf("\t dontFork  output: %d \n", df);
    printf("\t disableSB output: %d \n", disableSB);
-   printf("\t enableMultipass output: %d \n", enableMultipass);
    printf("\t stopAtMasterSecret output : %d \n", stop);
    printf("\t killFlagsHack      output : %d \n", killFlags);
    printf("\t skipFree           output : %d \n", dontFree);
@@ -1525,15 +1461,20 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    dontFork = dontForkArg;
    project = projectArg;
    disableSpringboard = disableSpringboardArg;
-   enableMultipass = enableMultipassArg;
    stopAtMasterSecret = stopAtMasterSecretArg;
    killFlagsHack = killFlagsHackArg;
    skipFree = skipFreeArg;
    lockOnSolverCalls = lockOnSolverCallArg;
    measureTime = measureTimeArg;
    enableBounceback = enableBouncebackArg;
+
+   if (test_type ==VERIFICATION) {
+     printf("Enabling multipass verification for openssl \n");
+     enableMultipass = true;
+   }
+   
    if (taseDebug)
-     printTASEArgs(exec_mode, test_type, taseManager, taseDebug, project, dontFork, disableSpringboard, enableMultipass, stopAtMasterSecret, killFlagsHack, skipFree, lockOnSolverCalls, measureTime, enableBounceback);
+     printTASEArgs(exec_mode, test_type, taseManager, taseDebug, project, dontFork, disableSpringboard,  stopAtMasterSecret, killFlagsHack, skipFree, lockOnSolverCalls, measureTime, enableBounceback);
    
    //Redirect stdout messages to a file called "Monitor".
    //Later, calls to unix fork in executor create new filenames

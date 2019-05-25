@@ -428,10 +428,10 @@ private:
   void model_fwrite();
   void model_fgets();
   void model_fflush();
-  void model_read();
-  void model_readstdin();
-  void model_readsocket();
-  void model_write();
+  //void model_read();  Read modeling goes through ktest fns
+  //void model_readstdin();
+  //void model_readsocket();
+  //void model_write();  Write modeling goes through ktest fns
   void model_shutdown();
   void model_random();
   void model_strncat();

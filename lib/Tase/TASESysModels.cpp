@@ -87,7 +87,6 @@ using namespace klee;
 
 extern void tase_exit();
 
-extern bool UseForkedCoreSolver;
 extern uint64_t total_interp_returns;
 extern bool taseManager;
 extern greg_t * target_ctx_gregs;
@@ -400,6 +399,9 @@ void Executor::model_ktest_start() {
 
 
 
+//write model ------------- 
+//ssize_t write (int filedes, const void *buffer, size_t size)
+//https://www.gnu.org/software/libc/manual/html_node/I_002fO-Primitives.htm
 //writesocket(int fd, const void * buf, size_t count)
 void Executor::model_ktest_writesocket() {
   ktest_writesocket_calls++;
@@ -434,7 +436,6 @@ void Executor::model_ktest_writesocket() {
       double theTime = util::getWallTime();
       
       printf("MULTIPASS DEBUG: Entering ktest_writesocket at round %d pass %d %lf seconds into analysis \n", roundCount, passCount, theTime - target_start_time);
-      printf("UseForkedCoreSolver is %d \n", UseForkedCoreSolver);
       std::cout.flush();
       printProhibCounters();
       printKTestCounters();
@@ -667,6 +668,11 @@ void Executor::model_ktest_writesocket() {
 
   }
 
+//read model --------
+//ssize_t read (int filedes, void *buffer, size_t size)
+//https://www.gnu.org/software/libc/manual/html_node/I_002fO-Primitives.html
+
+//Can be read from stdin or from socket -- modeled separately to break up the code.
 void Executor::model_ktest_readsocket() {
   ktest_readsocket_calls++;
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
@@ -2268,162 +2274,8 @@ void Executor::model_fwrite() {
   } else {
     printf("ERROR in model_fwrite -- symbolic args \n");
     std::cout.flush();
-    std::exit(EXIT_FAILURE);
-    
-  }
-  
-  
-}
-
-//read model --------
-//ssize_t read (int filedes, void *buffer, size_t size)
-//https://www.gnu.org/software/libc/manual/html_node/I_002fO-Primitives.html
-//Can be read from stdin or from socket -- modeled separately to break up the code.
-void Executor::model_read() {
-  
-  printf("Entering model_read \n");
-  std::cout.flush();
-  //Get the input args per system V linux ABI.
-  
-  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
-  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
-  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
-  
-  if (
-      (isa<ConstantExpr>(arg1Expr)) &&
-      (isa<ConstantExpr>(arg2Expr)) &&
-      (isa<ConstantExpr>(arg3Expr)) 
-      ){
-    //Get correct message buffer to verify against based on fd
-    //TODO: Find a better way to do this.
-
-    int filedes = (int) target_ctx_gregs[REG_RDI].u64; //fd
-    //target_ctx_gregs[REG_RSI].u64; //address of dest buf  NOT USED YET
-    //target_ctx_gregs[REG_RDX].u64; //max len to read in NOT USED YET
-    
-    if (filedes == STDIN_FD)
-      model_readstdin();    
-    else if (filedes == SOCKET_FD)
-      model_readsocket();
-    else {
-      printf("Unrecognized fd %d for model_read \n", filedes);
-      std::cout.flush();
-      std::exit(EXIT_FAILURE);
-    }
-  } else  {   
-    printf("Found symbolic argument to model_read \n");
-    std::exit(EXIT_FAILURE);
-  }  
-}
-
-void Executor::model_readsocket() {
-//Get the input args per system V linux ABI.
-  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
-  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
-  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
-
-  printf("Entering model_readsocket \n");
-  
-  if (
-      (isa<ConstantExpr>(arg1Expr)) &&
-      (isa<ConstantExpr>(arg2Expr)) &&
-      (isa<ConstantExpr>(arg3Expr)) 
-      ){
-
-    int filedes = target_ctx_gregs[REG_RDI].u64; //fd
-    void * buffer = (void *) target_ctx_gregs[REG_RSI].u64; //address of dest buf 
-    size_t size = target_ctx_gregs[REG_RDX].u64; //max len to read in
-    
-    KTestObject *o = KTOV_next_object(&ktov, "s2c");
-    if (o->numBytes > size) {
-      printf("readsocket error: %zu byte destination buffer, %d bytes recorded", size, o->numBytes);
-      std::exit(EXIT_FAILURE);
-    }
-
-    printf("Printing read call: \n");
-    memcpy((void *) buffer, o->bytes, o->numBytes);
-    char * printPtr = (char *) buffer;
-    for (int i = 0; i < size; i++) {
-      printf("%c \n",*printPtr);
-      printPtr++;
-    }
-    
-    //Return number of bytes read and bump RIP.
-    ref<ConstantExpr> bytesReadExpr = ConstantExpr::create(o->numBytes, Expr::Int64);
-    target_ctx_gregs_OS->write(REG_RAX * 8, bytesReadExpr);
-    target_ctx_gregs[REG_RIP].u64 += 5;
-    return; 
-  } else {
-    printf("Found symbolic args to model_readsocket \n");
-    std::exit(EXIT_FAILURE);
-  }
-}
-
-void Executor::model_readstdin() {
-  //Get the input args per system V linux ABI.
-  
-  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
-  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
-  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
-
-  if (
-      (isa<ConstantExpr>(arg1Expr)) &&
-      (isa<ConstantExpr>(arg2Expr)) &&
-      (isa<ConstantExpr>(arg3Expr)) 
-      ){
-
-    int filedes = target_ctx_gregs[REG_RDI].u64; //fd
-    void * buffer = (void *) target_ctx_gregs[REG_RSI].u64; //address of dest buf 
-    size_t size = target_ctx_gregs[REG_RDX].u64; //max len to read in
-    
-    if (enableMultipass) {
-
-      //BEGIN NEW VERIFICATION STAGE =====>
-      //clear old multipass assignment info.
-      /*
-      multipassInfo.prevMultipassAssignment.clear();
-      multipassInfo.currMultipassAssignment.clear();
-      multipassInfo.messageNumber++;
-      multipassInfo.passCount = 0;
-      multipassInfo.roundRootPID = getpid();
-      */
-      /*
-      int pid = tase_fork();
-      if (pid == 0) {
-	//Continue on 
-      }else {
-	spinAndAwaitForkRequest();  //Should only hit this code once.
-      }
-      */
-      //BEGIN NEW VERIFICATION PASS =====>
-      //Entry point is here from spinAndAwaitForkRequest().  At this point,
-      //pass number info and the latest multipass assignment info should have been entered.     
-    }
-
-    
-    printf("link in tls_predict_stdin_size again!\n");
-    std::exit(EXIT_FAILURE);
-    
-    uint64_t numSymBytes =0;
-    
-    //uint64_t numSymBytes = tls_predict_stdin_size(filedes, size);
-    
-    if (numSymBytes <= size) // redundant based on tls_predict_stdin_size's logic.
-      tase_make_symbolic((uint64_t) buffer, numSymBytes, "stdinRead");
-    else {
-      printf("ERROR: detected too many bytes in stdin read within model_readstdin() \n");
-      std::exit(EXIT_FAILURE);
-    }
- 
-    //Return number of bytes read and bump RIP.
-    ref<ConstantExpr> bytesReadExpr = ConstantExpr::create(numSymBytes, Expr::Int64);
-    target_ctx_gregs_OS->write(REG_RAX * 8, bytesReadExpr);
-    target_ctx_gregs[REG_RIP].u64 += 5;
-
-  } else {
-    printf("Found symbolic args to model_readstdin \n");
-    std::exit(EXIT_FAILURE);
-  }
+    std::exit(EXIT_FAILURE); 
+  } 
 }
 
 //http://man7.org/linux/man-pages/man2/signal.2.html
@@ -2438,117 +2290,6 @@ void Executor::model_signal() {
   target_ctx_gregs[REG_RSP].u64 += 8;
 
 }
-
-//write model ------------- 
-//ssize_t write (int filedes, const void *buffer, size_t size)
-//https://www.gnu.org/software/libc/manual/html_node/I_002fO-Primitives.html
-void Executor::model_write() {
-  printf("Entering model_write \n");
-  //Get the input args per system V linux ABI.
- 
-  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
-  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
-  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
-
-  if (
-      (isa<ConstantExpr>(arg1Expr)) &&
-      (isa<ConstantExpr>(arg2Expr)) &&
-      (isa<ConstantExpr>(arg3Expr)) 
-      ){
-
-    int filedes = (int)  target_ctx_gregs[REG_RDI].u64; //fd
-    void * buffer = (void *) target_ctx_gregs[REG_RSI].u64; //address of dest buf 
-    size_t size = (size_t) target_ctx_gregs[REG_RDX].u64; //max len to read in
-    
-    //Note that we just verify against the actual number of bytes that
-    //would be printed, and ignore null terminators in the src buffer.
-    //Write can non-deterministically print up to X chars, depending
-    //on state of network stack buffers at time of call.
-    //Believe this is the behavior intended by the posix spec
-    
-    //Get correct message buffer to verify against based on fd
-    KTestObject *o = KTOV_next_object(&ktov,
-				      "c2s");
-    if (o->numBytes > size) {
-      printf("ktest_writesocket playback error: %lu bytes of input, %u bytes recorded", size, o->numBytes);
-      std::exit(EXIT_FAILURE);
-    }
-    // Since this is a write, compare for equality.
-    if (o->numBytes > 0 && memcmp((void *) buffer, o->bytes, o->numBytes) != 0) {
-      printf("WARNING: ktest_writesocket playback - data mismatch\n");
-      fflush(stdout);
-      worker_exit();
-      std::exit(EXIT_FAILURE);
-    }
-    
-    unsigned char * wireMessageRecord = o->bytes;
-    int wireMessageLength = o->numBytes;
-
-    ref<Expr> writeCondition = ConstantExpr::create(1,Expr::Bool);
-    
-    for (int j = 0; j < wireMessageLength; j++) {
-      ref<Expr> srcCandidateVal = tase_helper_read(((uint64_t) buffer) + j, 1);  //Get 1 byte from addr buffer + j
-      ref<ConstantExpr> wireMessageVal = ConstantExpr::create( *((uint8_t *) wireMessageRecord + j), Expr::Int8);
-      ref<Expr> equalsExpr = EqExpr::create(srcCandidateVal,wireMessageVal);
-      writeCondition = AndExpr::create(writeCondition, equalsExpr);
-    }
-
-    //Todo -- Double check if this is actually needed if we implement solveForBindings to
-    //be aware of global constraints
-    bool result;
-    //Changed below from cliver because we don't have a definition for compute_false
-    //compute_false(GlobalExecutionStatePtr, writeCondition, result);
-    solver->mustBeFalse(*GlobalExecutionStatePtr, writeCondition, result);
-    if (result) {
-      printf("ERROR: model_write detected inconsistency in state \n");
-      std::exit(EXIT_FAILURE);
-    }
-    
-    addConstraint(*GlobalExecutionStatePtr, writeCondition);
-    //Wrap up and get back to execution.
-    //Return number of bytes sent and bump RIP.
-    ref<ConstantExpr> bytesWrittenExpr = ConstantExpr::create(wireMessageLength, Expr::Int64);
-    target_ctx_gregs_OS->write(REG_RAX * 8, bytesWrittenExpr);
-
-    
-    target_ctx_gregs[REG_RIP].u64 += 5;
-
-    printf("Returning from model_write \n");
-
-    if (test_type == EXPLORATION) {
-      return;
-    } else if (test_type == VERIFICATION) {
-    
-      //Determine if we can infer new bindings based on current round of execution.
-      //If not, it's time to move on to next round.
-      /*
-      multipassInfo.currMultipassAssignment.clear();
-      multipassInfo.currMultipassAssignment.solveForBindings( solver->solver, writeCondition,GlobalExecutionStatePtr);
-
-      if (multipassInfo.currMultipassAssignment.bindings.size() && multipassInfo.currMultipassAssignment.bindings.size() !=
-	  multipassInfo.prevMultipassAssignment.bindings.size()) {
-
-	//Todo -- IMPLEMENT
-	//Request a new process to run through this stage of multipass and provide all the new details of multipass info
-	//ex new pass count, "old" CVAssignment, current message number.
-      
-      } else {
-	//increment message count to indicate we've reached a new stage of verification and keep going.
-	//todo -- IMPLEMENT
-      }
-      */
-    } else {
-      printf("Unhandled test type in model_send \n");
-      std::cout.flush();
-      std::exit(EXIT_FAILURE);
-    }
-
-  } else {   
-    printf("Found symbolic argument to model_send \n");
-    std::exit(EXIT_FAILURE);
-  } 
-}
-
 
 static void print_fd_set(int nfds, fd_set *fds) {
   int i;
