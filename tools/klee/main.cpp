@@ -71,6 +71,7 @@
 #include <sys/prctl.h>
 #include <sys/time.h>
 #include <iostream>
+#include <unordered_set>
 struct timeval taseStartTime;
 struct timeval targetStartTime;
 struct timeval targetEndTime;
@@ -90,6 +91,7 @@ extern KTestObjectVector ktov;
 extern "C" void begin_target_inner();
 extern "C" void klee_interp();
 extern "C" void enter_tase(void (*) (), int);
+std::unordered_set<uint64_t> cartridge_entry_points;
 
 std::stringstream workerIDStream;
 std::stringstream globalLogStream;
@@ -321,7 +323,12 @@ namespace {
   
   //enum testType : int {EXPLORATION, VERIFICATION};
   cl::opt<testType>
-  testTypeArg("testType", cl::desc("EXPLORATION or VERIFICATION"), cl::init(EXPLORATION));
+  testTypeArg("testType", cl::desc("EXPLORATION or VERIFICATION"),
+	      cl::values(clEnumValN(EXPLORATION, "EXPLORATION", "Just execute and don't try to verify or do multiple passes"),
+                  clEnumValN(VERIFICATION, "VERIFICATION", "Mark certain functions as symbolic and attempt to verify against a message log with multipass ")
+									     KLEE_LLVM_CL_VAL_END),
+	      
+	      cl::init(EXPLORATION));
 
   cl::opt<bool>
   skipFreeArg("skipFree", cl::desc("Debugging option to skip frees"), cl::init(false));
@@ -1573,6 +1580,9 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    interpreter->initializeInterpretationStructures(entryFn);
    GlobalInterpreter = interpreter;
 
+   //Load the start addresses of cartridges for fast lookup later
+   for (uint32_t i = 0; i < tase_num_global_records; i++)
+     cartridge_entry_points.insert(tase_global_records[i].head);
    
   
    if (taseManager) {

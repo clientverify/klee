@@ -378,7 +378,8 @@ private:
   //object's base & offset rather than direct addr.
   ref<Expr> tase_helper_read (uint64_t address, uint8_t byteWidth);
   void tase_make_symbolic (uint64_t addr, uint64_t len,const  char * name);
-
+  void rewriteConstants(uint64_t addr, size_t num);
+  
   void model_tase_debug();
   
   void model_ktest_start();

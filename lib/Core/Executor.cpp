@@ -160,6 +160,10 @@ extern  int ktest_connect_calls;
 extern  int ktest_select_calls ;
 extern  int ktest_RAND_bytes_calls ;
 extern  int ktest_RAND_pseudo_bytes_calls;
+#include <unordered_set>
+extern std::unordered_set<uint64_t> cartridge_entry_points;
+void * rodata_base_ptr;
+uint64_t rodata_size;
 
 //Debug info
 extern bool taseDebug;
@@ -3494,7 +3498,6 @@ extern bool measureTime;
 
 double interp_setup_time = 0.0; 
 double interp_find_fn_time = 0.0; //Should also account for interp_setup_time
-double interp_IBT_lookup_time = 0.0;//Time determining if inst begins transactions (IBT).  Also in setup time.
 double interp_run_time = 0.0;
 
 double interp_enter_time;
@@ -3632,8 +3635,9 @@ bool canBounceback (uint32_t abort_status, uint64_t rip, bool * isPsnTrap, bool 
     printf("Bounceback fall-through case \n");
     retry = true;
     BB_OTHER++;
-  } 
-  if (retry && retryCtr % retryMax != 0) {
+  }
+  printf("bbEnabled is %d \n", bbEnabled);
+  if (bbEnabled && retry && retryCtr % retryMax != 0) {
     printf("Attempting to bounceback to native execution at RIP 0x%lx \n", rip);
     fflush(stdout);
     return true;
@@ -3660,7 +3664,7 @@ void measure_interp_time(bool isPsnTrap, bool isMemRequest, bool isModelTrap, ui
     printf("Total time in interpreter is %lf so far \n", interpreter_time);
     printf("   - modeled time:       %lf \n", modelTime);
     printf("   - poison interp time: %lf \n", psnTime);
-    printf("During interpetation %lf seconds total performing setup and %lf seconds total calling run.  %lf seconds on findFunction and %lf seconds on IBT \n", interp_setup_time, interp_run_time, interp_find_fn_time, interp_IBT_lookup_time);
+    printf("During interpetation %lf seconds total performing setup and %lf seconds total calling run.  %lf seconds on findFunction \n", interp_setup_time, interp_run_time, interp_find_fn_time);
     printf( "Total interpreter returns: %lu \n",total_interp_returns);
     printf( "Abort_count_total: %d \n", target_ctx.abort_count_total);
     printf( "  - modeled %d \n", target_ctx.abort_count_modeled);
@@ -3868,14 +3872,23 @@ void Executor::tase_helper_write (uint64_t addr, ref<Expr> val) {
   bool success;
   if (! GlobalExecutionStatePtr->addressSpace.resolveOne(*GlobalExecutionStatePtr,solver,addrExpr, op, success) ) {
     printf("ERROR in tase_helper_write: Couldn't resolve addr to fixed value \n");
+    fflush(stdout);
     std::exit(EXIT_FAILURE);
   }
+
   ref<Expr> offset = op.first->getOffsetExpr(addrExpr);
   //end gross----------------------------
   ObjectState *wos = GlobalExecutionStatePtr->addressSpace.getWriteable(op.first, op.second);
-  //val->dump();
+
+  if (wos == NULL) {
+    printf("wos is NULL \n");
+    fflush(stdout);
+  }
+
   wos->write(offset, val);
+
   wos->applyPsnOnWrite(offset,val);
+
 }
    
 bool Executor::gprsAreConcrete() {
@@ -3883,24 +3896,7 @@ bool Executor::gprsAreConcrete() {
 }
 
 bool Executor::instructionBeginsTransaction(uint64_t pc) {
-  double entryTime = 0.0;
-  bool result = false;
-  
-  if (measureTime)
-    entryTime = util::getWallTime();
-  for (uint32_t i = 0; i < tase_num_global_records; i++) {
-    if (pc == tase_global_records[i].head) {
-      result = true;
-      break;
-    }
-  }
-  
-  if (measureTime){
-    double diffTime = util::getWallTime() - entryTime;
-    interp_IBT_lookup_time += diffTime;
-    printf("Lookup time for instruction begins tran (IBT) is %lf \n", diffTime);
-  }
-  return result;
+  return  (cartridge_entry_points.find(pc) != cartridge_entry_points.end());
 }
 
 bool Executor::resumeNativeExecution (){
@@ -3924,7 +3920,8 @@ bool Executor::resumeNativeExecution (){
       return false;
     }
   } else {
-    //printf("Inst doesn't begin transaction \n");
+    if (taseDebug)
+      printf("Inst doesn't begin transaction \n");
     return false;
   }
 }
@@ -4133,11 +4130,15 @@ void Executor::model_inst () {
     model_SHA256_Update();
   } else if (rip == (uint64_t) &SHA256_Final + 14) {
     model_SHA256_Final();
-  } else if (rip == (uint64_t) &sha1_block_data_order + 14) {
+  }
+  /*
+ else if (rip == (uint64_t) &sha1_block_data_order + 14) {
     model_sha1_block_data_order();
   } else if (rip == (uint64_t) &sha256_block_data_order + 14) {
     model_sha256_block_data_order();
-  } else if (rip == (uint64_t) &gcm_gmult_4bit + 14) {
+    } */
+
+ else if (rip == (uint64_t) &gcm_gmult_4bit + 14) {
     model_gcm_gmult_4bit();
   } else if (rip == (uint64_t) &gcm_ghash_4bit + 14) {
     model_gcm_ghash_4bit();
@@ -4211,11 +4212,8 @@ void Executor::model_inst () {
   }
   else if (rip == (uint64_t) &target_exit) {
     printf("Found call to target_exit in interpreter \n");
-    if (statsTracker) {
-      statsTracker->done();
-      printf("Found statsTracker \n");
-    }
     std::cout.flush();
+    worker_exit();
     target_exit();
   } else {
     printf("INTERPRETER: Couldn't find  model \n");
@@ -4223,23 +4221,6 @@ void Executor::model_inst () {
     std::exit(EXIT_FAILURE);
   }
   return;
-}
-
-
-//Todo -- Fix the bug in strlcpy and remove this trapping mechanism
-size_t internal_strlcpy(char *dst, const char *src, size_t size)
-
-{
-  size_t l = 0;
-
-  for(; size > 1 && *src; size--)
-    {
-      *dst++ = *src++;
-      l++;
-    }
-  if (size)
-    *dst = '\0';
-  return l + strlen(src);
 }
 
 void Executor::model_OpenSSLDie() {
@@ -4257,7 +4238,6 @@ void Executor::model_OpenSSLDie() {
 bool isSpecialInst (uint64_t rip) {
 
   //Todo -- get rid of traps for RAND_add and RAND_load_file
-  //  static const uint64_t modeledFns[] = { (uint64_t) &puts, (uint64_t)&exit, (uint64_t) &printf  /*, (uint64_t) &taseMakeSymbolic */ };
   
   static const uint64_t modeledFns [] = {(uint64_t)&signal, (uint64_t)&malloc, (uint64_t)&read, (uint64_t)&write, (uint64_t)&connect, (uint64_t)&select, (uint64_t)&socket, (uint64_t) &getuid, (uint64_t) &geteuid, (uint64_t) &getgid, (uint64_t) &getegid, (uint64_t) &getenv, (uint64_t) &stat, (uint64_t) &free, (uint64_t) &realloc,  (uint64_t) &RAND_add, (uint64_t) &RAND_load_file, (uint64_t) &kTest_free, (uint64_t) &kTest_fromFile, (uint64_t) &kTest_getCurrentVersion, (uint64_t) &kTest_isKTestFile, (uint64_t) &kTest_numBytes, (uint64_t) &kTest_toFile, (uint64_t) &ktest_RAND_bytes, (uint64_t) &ktest_RAND_pseudo_bytes, (uint64_t) &ktest_connect, (uint64_t) &ktest_finish, (uint64_t) &ktest_master_secret, (uint64_t) &ktest_raw_read_stdin, (uint64_t) &ktest_readsocket, (uint64_t) &ktest_select, (uint64_t) &ktest_start, (uint64_t) &ktest_time, (uint64_t) &time, (uint64_t) &gmtime, (uint64_t) &gettimeofday, (uint64_t) &ktest_writesocket, (uint64_t) &fileno, (uint64_t) &fcntl, (uint64_t) &fopen, (uint64_t) &fopen64, (uint64_t) &fclose,  (uint64_t) &fwrite, (uint64_t) &fflush, (uint64_t) &fread, (uint64_t) &fgets, (uint64_t) &__isoc99_sscanf, (uint64_t) &gethostbyname, (uint64_t) &setsockopt, (uint64_t) &__ctype_tolower_loc, (uint64_t) &__ctype_b_loc, (uint64_t) &__errno_location,  (uint64_t) &BIO_printf, (uint64_t) &BIO_snprintf, (uint64_t) &vfprintf,  (uint64_t) &sprintf, (uint64_t) &tase_debug,   (uint64_t) &OpenSSLDie, (uint64_t) &shutdown , (uint64_t) &malloc_tase, (uint64_t) &realloc_tase, (uint64_t) &calloc_tase, (uint64_t) &free_tase, (uint64_t) &getpid , (uint64_t) &RAND_poll};
   
@@ -4289,8 +4269,8 @@ bool isSpecialInst (uint64_t rip) {
       rip == (uint64_t) &SHA1_Final                  + 14  ||
       rip == (uint64_t) &SHA256_Update               + 14  ||
       rip == (uint64_t) &SHA256_Final                + 14  ||
-      rip == (uint64_t) &sha1_block_data_order       + 14  ||
-      rip == (uint64_t) &sha256_block_data_order     + 14  ||
+      //rip == (uint64_t) &sha1_block_data_order       + 14  ||
+      //rip == (uint64_t) &sha256_block_data_order     + 14  ||
       rip == (uint64_t) &AES_encrypt                 + 14  ||
       rip == (uint64_t) &gcm_gmult_4bit              + 14  ||
       rip == (uint64_t) &gcm_ghash_4bit              + 14  ||
@@ -4330,7 +4310,8 @@ void Executor::printDebugInterpFooter() {
 }
 
 
-
+uint64_t dbg_addr = 0;
+extern void printBuf(void * base, int num);
 void Executor::klee_interp_internal () {
   double interpSetupStartTime = 0.0, interpRunStartTime = 0.0;
   
@@ -4340,6 +4321,15 @@ void Executor::klee_interp_internal () {
       printDebugInterpHeader();
     if (measureTime)
       interpSetupStartTime = util::getWallTime();
+
+    /*
+    if (dbg_addr != 0) {
+      printf("DBG_leak: 70 raw bytes at dbg_addr 0x%lx are \n",dbg_addr );
+      printBuf((void *)dbg_addr, 70);
+      printf("isBufferEntirelyConcrete: %d \n", isBufferEntirelyConcrete(dbg_addr, 70));
+    }
+    */
+
     
     uint64_t rip = target_ctx_gregs[REG_RIP].u64;
     uint64_t rip_init = rip;
@@ -4526,6 +4516,9 @@ int Executor::printAllPossibleValues (ref <Expr> inputExpr) {
 //Hopefully there's a better builtin function in klee that we can
 //use, but if not this should do the trick.  Intended to be used
 //to help us get all possible concrete values of RIP (has dependency on RIP).
+
+
+
 void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) {
 
   int maxSolutions = 2; //Completely arbitrary.  Should not be more than 2 for our use cases in TASE
@@ -4584,6 +4577,15 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) 
     //ABH: Todo -- roll this back and support > 2 symbolic dests for things like indirect jumps
     if (isTrueChild == 0) { //Rule out latest solution and see if more exist
       ref<Expr> notEqualsSolution = NotExpr::create(EqExpr::create(inputExpr,solution));
+      if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(notEqualsSolution)) {
+	if (CE->isFalse()) {
+	  printf("IMPORTANT: forked child %d is not exploring a feasible path \n", getpid());
+	  fflush(stdout);
+	  worker_exit();
+	}
+      }
+
+	
       addConstraint(*GlobalExecutionStatePtr, notEqualsSolution);
 
 
@@ -4697,19 +4699,19 @@ void Executor::initializeInterpretationStructures (Function *f) {
   //Map in read-only globals
   //Todo -- find a less hacky way of getting the exact size of the .rodata section
 
-  void * rodataBasePtr = (void *) (&_IO_stdin_used);
-  uint64_t rodataSize = (uint64_t) ((uint64_t) (&__GNU_EH_FRAME_HDR) - (uint64_t) (&_IO_stdin_used)) ;
-  printf("Estimated rodataSize as 0x%lx \n", rodataSize);
+  rodata_base_ptr = (void *) (&_IO_stdin_used);
+  rodata_size = (uint64_t) ((uint64_t) (&__GNU_EH_FRAME_HDR) - (uint64_t) (&_IO_stdin_used)) ;
+  printf("Estimated rodataSize as 0x%lx \n", rodata_size);
 
-  rodataSize += (0x2949c + 0x2949c); //Hack to map in eh_frame_hdr and eh_frame also
+  rodata_size += (0x2949c + 0x2949c); //Hack to map in eh_frame_hdr and eh_frame also
   
-  printf("Attempting to map in .rodata section at base 0x%lx with size 0x%lx up to  0x%lx \n", (uint64_t) rodataBasePtr, rodataSize, (uint64_t) &__GNU_EH_FRAME_HDR);
+  printf("Attempting to map in .rodata section at base 0x%lx with size 0x%lx up to  0x%lx \n", (uint64_t) rodata_base_ptr, rodata_size, (uint64_t) &__GNU_EH_FRAME_HDR);
   std::cout.flush();
     
-  MemoryObject * rodataMO = addExternalObject(*GlobalExecutionStatePtr, rodataBasePtr, rodataSize, false);
+  MemoryObject * rodataMO = addExternalObject(*GlobalExecutionStatePtr, rodata_base_ptr, rodata_size, false);
   const ObjectState * rodataOSConst = GlobalExecutionStatePtr->addressSpace.findObject(rodataMO);
   ObjectState * rodataOS = GlobalExecutionStatePtr->addressSpace.getWriteable(rodataMO,rodataOSConst);
-  rodataOS->concreteStore = (uint8_t *) rodataBasePtr;
+  rodataOS->concreteStore = (uint8_t *) rodata_base_ptr;
 
   //Map in special stdin libc symbol
   MemoryObject * stdinMO = addExternalObject(*GlobalExecutionStatePtr, (void *) &stdin, 8, false);
@@ -4732,15 +4734,6 @@ void Executor::initializeInterpretationStructures (Function *f) {
   //Map in initialized and uninitialized non-read only globals into klee from .vars file.
   std::string varsFileLocation = "/playpen/humphries/zTASE/TASE/test/" + project + ".vars";
   FILE * externalsFile = fopen (varsFileLocation.c_str(), "r+");
-
-  /*
-  uint64_t ctype_tolower_add = (uint64_t) &__ctype_tolower;
-  MemoryObject * ctypeToLowerAddMO = addExternalObject(*GlobalExecutionStatePtr, (void *) ctype_tolower_add, 8, false);
-  const ObjectState * ctypeToLowerAddOSConst = GlobalExecutionStatePtr->addressSpace.findObject(ctypeToLowerAddMO);
-  ObjectState * ctypeToLowerAddOS = GlobalExecutionStatePtr->addressSpace.getWriteable(ctypeToLowerAddMO, ctypeToLowerAddOSConst);
-  ctypeToLowerAddOS->concreteStore = (uint8_t *) ctype_tolower_add;
-  */
-
   
   
   if (externalsFile == NULL) {
@@ -4968,15 +4961,6 @@ void Executor::runFunctionAsMain(Function *f,
   
   initializeGlobals(*state);
 
-  //AH addition
-  /*
-  if (true) {
-    MemoryObject * stackMem = addExternalObject(*state,(void *)targetMemAddr, 8, false );
-    const ObjectState *stackOS = state->addressSpace.findObject(stackMem);
-    ObjectState * stackOSWrite = state->addressSpace.getWriteable(stackMem,stackOS);
-    stackOSWrite->concreteStore = (uint8_t *) targetMemAddr;
-  }
-  */
   processTree = new PTree(state);
   state->ptreeNode = processTree->root;
   run(*state);

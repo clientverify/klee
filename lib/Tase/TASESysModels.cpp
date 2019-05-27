@@ -100,6 +100,8 @@ extern enum testType test_type;
 
 extern uint64_t interpCtr;
 extern bool taseDebug;
+extern void * rodata_base_ptr;
+extern uint64_t rodata_size;
 
 //Multipass
 extern double solver_start_time;
@@ -109,7 +111,6 @@ extern double target_start_time;
 extern double solver_time;
 extern double interpreter_time;
 enum runType : int {INTERP_ONLY, MIXED};
-//extern std::string project;
 extern enum runType exec_mode;
 extern bool lockOnSolverCalls; //ABH: Made for debugging.  Take semaphore when calling solver in case it's forked.
 extern int c_special_cmds; //Int used by cliver to disable special commands to s_client.  Made global for debugging
@@ -127,6 +128,7 @@ extern KTestObjectVector ktov;
 extern bool enableMultipass;
 extern void spinAndAwaitForkRequest();
 
+
 extern CVAssignment prevMPA ;
 extern void multipass_reset_round();
 extern void multipass_start_round(Executor * theExecutor, bool isReplay);
@@ -141,25 +143,7 @@ bool roundUpHeapAllocations = true; //Round the size Arg of malloc, realloc, and
 //some library functions (ex memcpy) may copy 4 or 8 byte-chunks of data at a time that cross over the edge
 //of memory object buffers that aren't 4 or 8 byte aligned.
 
-int maxFDs = 10;
-int openFD = 3;
 
-/*
-enum FDStat_ty = {Ready, Blocked, Err}; //Oversimplification for now
-
-struct FDSim_ty {
-  int num;
-  FDStat_ty FDStat; 
-}
-
-  std::map <int, FDSim_ty> fds ;
-  
-//Create FD tracking structures for limited IO interactions later
-bool initializeFDTracking () {
-  
-
-}
-*/
 void printBuf(void * buf, int count)
 {
 
@@ -170,8 +154,6 @@ void printBuf(void * buf, int count)
 }
 
 // Network capture for Cliver
-
-
 int ktest_master_secret_calls = 0;
 int ktest_start_calls = 0;
 int ktest_writesocket_calls = 0;
@@ -242,6 +224,19 @@ void Executor::model_vfprintf(){
   
 }
 
+
+//Fake a ret
+
+/*
+void Executor::fake_ret() {
+
+ref <Expr> rv = tase_helper_read(target_ctx_gregs[REG_RSP].u64, 8);
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+  target_ctx_gregs[REG_RIP].u64 = retAddr;
+  target_ctx_gregs[REG_RSP].u64 += 8;
+  
+}
+*/
 void Executor::model___errno_location() {
   printf("Entering model for __errno_location \n");
   std::cout.flush();
@@ -294,7 +289,11 @@ void Executor::model_ktest_master_secret(  ) {
     int num = (int) target_ctx_gregs[REG_RSI].u64;
     
     if (enableMultipass) {
+      printf("CRITICAL ERROR: Should have trapped on tls1_generate_master_secret since multipass is enabled but landed in ktest_master_secret instead \n");
+      fflush(stdout);
+      worker_exit();
 
+      
       FILE * theFile = fopen("monday.secret", "rb");
       unsigned char tmp [48];
       
@@ -398,13 +397,18 @@ void Executor::model_ktest_start() {
 
 
 
-
+extern uint64_t dbg_addr ;
 //write model ------------- 
 //ssize_t write (int filedes, const void *buffer, size_t size)
 //https://www.gnu.org/software/libc/manual/html_node/I_002fO-Primitives.htm
 //writesocket(int fd, const void * buf, size_t count)
 void Executor::model_ktest_writesocket() {
   ktest_writesocket_calls++;
+
+  if (ktest_writesocket_calls == 1) {
+    dbg_addr = target_ctx_gregs[REG_RSI].u64;
+    printf("Setting dbg_addr to 0x%lx \n", dbg_addr);
+  }
   
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
@@ -1450,7 +1454,7 @@ void Executor::model_socket() {
     target_ctx_gregs[REG_RIP].u64 = retAddr;
     target_ctx_gregs[REG_RSP].u64 += 8;
     
-    //openFD++;
+
   } else {
     printf("Found symbolic argument to model_socket \n");
     std::exit(EXIT_FAILURE);
@@ -2801,16 +2805,35 @@ ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); // SSL
     fflush(stdout);
 
     void * buf = (void *) target_ctx_gregs[REG_RSI].u64;
+
+
+    FILE * theFile = fopen("monday_secret_ints", "rb");
+    int val = 0;
+    uint8_t tmp [48];
     
+    printf("Loading master secret from ints file \n");
+    for (int i = 0; i < 48; i++) {
+      fscanf(theFile, "%d", &val);
+      tmp[i] = (uint8_t) val;
+    }
+    
+    /*
     FILE * theFile = fopen("monday.secret", "rb");
     unsigned char tmp [48];
-    
     fread(tmp, 1 , 48, theFile);
     printf("Printing    results of attempt to load master secret as binary... \n");
     for (int i = 0; i < 48; i++) {
       printf(" %2.2x", tmp[i]);
     }
     printf("\n");
+    */
+
+    
+    printf("PRINTING MASTER SECRET as hex \n");
+    uint8_t * base = (uint8_t *) tmp;
+    for (int i = 0; i < 48; i++)
+      printf("%02x", *(base + i));
+    printf("\n------------\n");
     
     memcpy (buf, tmp, 48); //Todo - use tase_helper read/write
 
@@ -2847,12 +2870,59 @@ void Executor::model_sha1_block_data_order() {
 
 }
 
+//Used to restore concrete values for buffers that are
+//entirely made up of constant expressions
+void Executor::rewriteConstants(uint64_t base, size_t size) {
+  printf("Rewriting constant array \n");
+  fflush(stdout);
+
+
+  if (!(
+	base > ((uint64_t) rodata_base_ptr)
+	 &&
+	base < (((uint64_t) rodata_base_ptr) + rodata_size)
+	)
+      ) {
+    printf("Base does not appear to be in rodata \n");
+    fflush(stdout);
+  } else {
+    printf("Found base in rodata.  Returning from rewriteConstants without doing anything \n");
+    fflush(stdout);
+    return;
+  }
+  
+  for (size_t i = 0; i < size; i++) {
+
+    
+    //We're assuming
+    //1. Every byte's 2-byte aligned buffer containing it has been mapped with a MO/OS at some point.
+    //2. It's OK to duplicate some of these read/write ops
+    uint64_t writeAddr;
+    if( (base + i) %2 != 0)
+      writeAddr = base + i -1;
+    else
+      writeAddr = base + i;
+    
+    ref<Expr> val = tase_helper_read(writeAddr, 2);
+    tase_helper_write(writeAddr, val);
+
+  }
+  
+  
+  printf("End result: \n");
+  fflush(stdout);
+  printBuf((void *) base, size);
+
+}
+  
+
 //Model for int SHA1_Update(SHA_CTX *c, const void *data, size_t len);
 //defined in crypto/sha/sha.h.
 //Updated 04/30/2019
 void Executor::model_SHA1_Update () {
   static int timesSHA1UpdateIsCalled = 0;
   timesSHA1UpdateIsCalled++;
+  printf("Calling model_SHA1_Update for time %d \n", timesSHA1UpdateIsCalled);
   
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //SHA_CTX * c
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); //const void * data
@@ -2871,6 +2941,11 @@ void Executor::model_SHA1_Update () {
     SHA_CTX * c = (SHA_CTX *) target_ctx_gregs[REG_RDI].u64;
     const void * data = (const void *) target_ctx_gregs[REG_RSI].u64;
     size_t len = (size_t) target_ctx_gregs[REG_RDX].u64;
+
+    printf("SHA1_Update_CTX is \n");
+    printBuf((void *) c, sizeof(SHA_CTX));
+    printf("SHA1 data buf is \n");
+    printBuf((void *) data, len);
     
     bool hasSymbolicInput = false;
 
@@ -2899,6 +2974,12 @@ void Executor::model_SHA1_Update () {
 
       
     } else { //Call natively
+
+      //Deal with cases where buffer is entirely constant exprs
+      rewriteConstants((uint64_t) c, sizeof(SHA_CTX));
+      rewriteConstants((uint64_t) data, len);
+      
+      
       printf("MULTIPASS DEBUG: Did not find symbolic input to SHA1_Update \n");
       forceNativeRet = true;
       target_ctx_gregs[REG_RIP].u64 += 17;
@@ -2918,6 +2999,8 @@ void Executor::model_SHA1_Update () {
 void Executor::model_SHA1_Final() {
   static int timesSHA1FinalIsCalled = 0;
   timesSHA1FinalIsCalled++;
+  printf("Calling model_SHA1_Final for time %d \n", timesSHA1FinalIsCalled);
+
   
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //unsigned char *md
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); //SHA_CTX *c
@@ -2929,6 +3012,11 @@ void Executor::model_SHA1_Final() {
      SHA_CTX * c = (SHA_CTX *) target_ctx_gregs[REG_RSI].u64;
      bool hasSymbolicInput = false;
 
+     printf("SHA1_Final ctx is \n");
+     printBuf((void *) c, sizeof(SHA_CTX));
+     printf("SHA1_Final md buf is \n");
+     printBuf((void *) md, SHA_DIGEST_LENGTH);
+     
      if (!isBufferEntirelyConcrete((uint64_t) c, 20) )
        hasSymbolicInput = true;
      
@@ -2955,6 +3043,10 @@ void Executor::model_SHA1_Final() {
        
      } else {
        printf("MULTIPASS DEBUG: Did not find symbolic input to SHA1_Final \n");
+
+       //Deal with cases where buffer is entirely constant exprs
+       rewriteConstants((uint64_t) c, sizeof(SHA_CTX));
+       
        fflush(stdout);
        forceNativeRet = true;
        target_ctx_gregs[REG_RIP].u64 += 17;
@@ -2975,6 +3067,7 @@ void Executor::model_SHA1_Final() {
 void Executor::model_SHA256_Update () {
   static int timesSHA256UpdateIsCalled = 0;
   timesSHA256UpdateIsCalled++;
+  printf("Calling model_SHA256_Update for time %d \n", timesSHA256UpdateIsCalled);
   
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //SHA256_CTX * c
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); //const void * data
@@ -2991,6 +3084,12 @@ void Executor::model_SHA256_Update () {
     SHA256_CTX * c = (SHA256_CTX *) target_ctx_gregs[REG_RDI].u64;
     const void * data = (const void *) target_ctx_gregs[REG_RSI].u64;
     size_t len = (size_t) target_ctx_gregs[REG_RDX].u64;
+
+    printf("SHA256_Update_CTX is \n");
+    printBuf((void *) c, sizeof(SHA256_CTX));
+    printf("SHA256 data buf is \n");
+    printBuf((void *) data, len);
+
     
     bool hasSymbolicInput = false;
     if (!isBufferEntirelyConcrete((uint64_t ) c, sizeof(SHA256_CTX)) || !isBufferEntirelyConcrete( (uint64_t ) data, len))
@@ -2999,6 +3098,7 @@ void Executor::model_SHA256_Update () {
 
     if (hasSymbolicInput) {
 
+      printf("MULTIPASS DEBUG: Found symbolic input to SHA256_Update \n");
       std::string nameString = "SHA256_Update_Output" + std::to_string(timesSHA256UpdateIsCalled);
       const char * constCopy = nameString.c_str();
       char name [40];//Arbitrary number
@@ -3018,6 +3118,11 @@ void Executor::model_SHA256_Update () {
       
     } else { //Call natively
       printf("MULTIPASS DEBUG: Did not find symbolic input to SHA256_Update \n");
+
+      //Deal with cases where buffer is entirely constant exprs
+      rewriteConstants((uint64_t) c, sizeof(SHA256_CTX));
+      rewriteConstants((uint64_t) data, len);
+      
       fflush(stdout);
       forceNativeRet = true;
       target_ctx_gregs[REG_RIP].u64 += 17;
@@ -3036,7 +3141,8 @@ void Executor::model_SHA256_Update () {
 void Executor::model_SHA256_Final() {
   static int timesSHA256FinalIsCalled = 0;
   timesSHA256FinalIsCalled++;
-
+  printf("Calling model_SHA256_Final for time %d \n", timesSHA256FinalIsCalled);
+  
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //unsigned char *md
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64); //SHA256_CTX *c
 
@@ -3045,6 +3151,12 @@ void Executor::model_SHA256_Final() {
 
      unsigned char * md = (unsigned char *) target_ctx_gregs[REG_RDI].u64;
      SHA256_CTX * c = (SHA256_CTX *) target_ctx_gregs[REG_RSI].u64;
+
+
+     printf("SHA256_Final ctx is \n");
+     printBuf((void *) c, sizeof(SHA256_CTX));
+     printf("SHA256_Final md buf is \n");
+     printBuf((void *) md, SHA_DIGEST_LENGTH);
      
      bool hasSymbolicInput = false;
 
@@ -3074,6 +3186,10 @@ void Executor::model_SHA256_Final() {
  
      } else {
        printf("MULTIPASS DEBUG: Did not find symbolic input to SHA256_Final \n");
+
+       //Deal with cases where buffer is entirely constant exprs
+       rewriteConstants((uint64_t) c, sizeof(SHA256_CTX));
+       
        fflush(stdout);
        forceNativeRet = true;
        target_ctx_gregs[REG_RIP].u64 += 17;
@@ -3113,8 +3229,10 @@ void Executor::model_AES_encrypt () {
     printf("AES_encrypt %d debug -- dumping buffer inputs at round %d pass %d \n", timesModelAESEncryptIsCalled, roundCount, passCount );
     printf("key is \n");
     printBuf((void *) key, AESBlockSize);
+    //rewriteConstants( (uint64_t) key, AESBlockSize);
     printf("in is \n");
     printBuf((void *) in, AESBlockSize);
+    //rewriteConstants( (uint64_t) in, AESBlockSize);
     fflush(stdout);
     
     
@@ -3405,58 +3523,59 @@ void Executor::make_EC_POINT_symbolic(EC_POINT* p) {
 //Public key is kG for the base point G.
 //So k is an integer, and kG is a point (three coordinates in jacobian projection or two in affine projection)
 //on the curve produced by "adding" G to itself k times.
+
+//This model always produces symbolic output, regardless of the input
 void Executor::model_EC_KEY_generate_key () {
   static int model_EC_KEY_generate_key_calls = 0;
   model_EC_KEY_generate_key_calls++;
   
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); //EC_KEY * key
-
-   if ( (isa<ConstantExpr>(arg1Expr)) ) {
-
-     EC_KEY * eckey = (EC_KEY *) target_ctx_gregs[REG_RDI].u64;
+  if ( (isa<ConstantExpr>(arg1Expr)) ) {
+    
+    EC_KEY * eckey = (EC_KEY *) target_ctx_gregs[REG_RDI].u64;
      
-     printf("Entering model_EC_KEY_generate_key for time %d \n", model_EC_KEY_generate_key_calls );
-     if (enableMultipass) {
-       printf("MULTIPASS DEBUG: Calling EC_KEY_generate_key with symbolic return \n"); 
-       fflush(stdout);
-       if (eckey->priv_key == NULL)
-	 eckey->priv_key = BN_new_tase();
-
-       if (eckey->pub_key == NULL)
-	 eckey->pub_key = EC_POINT_new_tase(eckey->group);
-       
-       //Make private key (bignum) symbolic
-       make_BN_symbolic(eckey->priv_key, "ECKEYprivate");
-
-       //Make pub key (EC point) symbolic
-       make_EC_POINT_symbolic(eckey->pub_key);
-
-       //Fake a ret;
-       //Can optionally return failure here if desired
-       int res = 1; //Force success
-       ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
-       tase_helper_write((uint64_t) &target_ctx_gregs[REG_RAX], resExpr);
-       
-       //target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
-       
-       //fake a ret
-       uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
-       target_ctx_gregs[REG_RIP].u64 = retAddr;
-       target_ctx_gregs[REG_RSP].u64 += 8;
-       
-     } else {
-       //Otherwise we're good to call natively
-       printf("DEBUG: Calling EC_KEY_generate_key natively \n");
-       fflush(stdout);
-       forceNativeRet = true;
-       target_ctx_gregs[REG_RIP].u64 += 17;
-       return; 
-     } 
-     
-   } else {
-      printf("ERROR: symbolic arg passed to model_EC_KEY_generate_key \n");
-      std::exit(EXIT_FAILURE);
-   }
+    printf("Entering model_EC_KEY_generate_key for time %d \n", model_EC_KEY_generate_key_calls );
+    if (enableMultipass) {
+      printf("MULTIPASS DEBUG: Calling EC_KEY_generate_key with symbolic return \n"); 
+      fflush(stdout);
+      if (eckey->priv_key == NULL)
+	eckey->priv_key = BN_new_tase();
+      
+      if (eckey->pub_key == NULL)
+	eckey->pub_key = EC_POINT_new_tase(eckey->group);
+      
+      //Make private key (bignum) symbolic
+      make_BN_symbolic(eckey->priv_key, "ECKEYprivate");
+      
+      //Make pub key (EC point) symbolic
+      make_EC_POINT_symbolic(eckey->pub_key);
+      
+      //Fake a ret;
+      //Can optionally return failure here if desired
+      int res = 1; //Force success
+      ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+      tase_helper_write((uint64_t) &target_ctx_gregs[REG_RAX], resExpr);
+      
+      //target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
+      
+      //fake a ret
+      uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+      target_ctx_gregs[REG_RIP].u64 = retAddr;
+      target_ctx_gregs[REG_RSP].u64 += 8;
+      
+    } else {
+      //Otherwise we're good to call natively
+      printf("DEBUG: Calling EC_KEY_generate_key natively \n");
+      fflush(stdout);
+      forceNativeRet = true;
+      target_ctx_gregs[REG_RIP].u64 += 17;
+      return; 
+    } 
+    
+  } else {
+    printf("ERROR: symbolic arg passed to model_EC_KEY_generate_key \n");
+    std::exit(EXIT_FAILURE);
+  }
 }
 
 
@@ -3603,7 +3722,7 @@ void Executor::model_ECDH_compute_key() {
 
 void tase_print_BIGNUM(BIGNUM bn) {
   printf("Printing BIGNUM \n");
-  for (int i = 0; i < sizeof(BIGNUM); i++) {
+  for (size_t i = 0; i < sizeof(BIGNUM); i++) {
     printf("%x",  *( ((uint8_t*) &(bn)) +i));
   }
   printf("\n Finished printing BIGNUM \n");

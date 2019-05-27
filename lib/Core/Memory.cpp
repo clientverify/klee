@@ -765,6 +765,7 @@ void ObjectState::write(ref<Expr> offset, ref<Expr> value) {
   // Truncate offset to 32-bits.
   offset = ZExtExpr::create(offset, Expr::Int32);
 
+  
   // Check for writes at constant offsets.
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(offset)) {
     write(CE->getZExtValue(32), value);
@@ -791,12 +792,14 @@ void ObjectState::write(ref<Expr> offset, ref<Expr> value) {
 
 void ObjectState::write(unsigned offset, ref<Expr> value) {
   // Check for writes of constant values.
+
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(value)) {
     Expr::Width w = CE->getWidth();
     if (w <= 64 && klee::bits64::isPowerOfTwo(w)) {
+
       uint64_t val = CE->getZExtValue();
       switch (w) {
-      default: assert(0 && "Invalid write size!");
+      default:  printf("Invalid write size \n"); fflush(stdout); assert(0 && "Invalid write size!");
       case  Expr::Bool:
       case  Expr::Int8:  write8(offset, val); return;
       case Expr::Int16: write16(offset, val); return;
