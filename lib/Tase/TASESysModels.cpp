@@ -397,7 +397,7 @@ void Executor::model_ktest_start() {
 
 
 
-extern uint64_t dbg_addr ;
+
 //write model ------------- 
 //ssize_t write (int filedes, const void *buffer, size_t size)
 //https://www.gnu.org/software/libc/manual/html_node/I_002fO-Primitives.htm
@@ -405,10 +405,6 @@ extern uint64_t dbg_addr ;
 void Executor::model_ktest_writesocket() {
   ktest_writesocket_calls++;
 
-  if (ktest_writesocket_calls == 1) {
-    dbg_addr = target_ctx_gregs[REG_RSI].u64;
-    printf("Setting dbg_addr to 0x%lx \n", dbg_addr);
-  }
   
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
@@ -456,20 +452,6 @@ void Executor::model_ktest_writesocket() {
     std::cout.flush();
     
     if (enableMultipass) {
-
-      if (roundCount == 2) {
-	/*
-	workerIDStream << ".";
-	workerIDStream << "MP_DBG";
-	std::string pidString ;
-	pidString = workerIDStream.str();
-	//freopen(pidString.c_str(),"w",stdout);
-	freopen(pidString.c_str(),"w",stderr);
-
-	fprintf(stderr,"Opening new file for round 2 debugging \n");
-	std::cout.flush();
-	*/
-      }
      
       //Basic structure comes from NetworkManager in klee repo of cliver.
       //Get log entry for c2s
@@ -490,27 +472,9 @@ void Executor::model_ktest_writesocket() {
       klee::ref<klee::Expr> write_condition = klee::ConstantExpr::alloc(1, klee::Expr::Bool);
       for (int i = 0; i < o->numBytes; i++) {
 	klee::ref<klee::Expr> val = tase_helper_read((uint64_t) buf + i, 1);
-	/*
-	if (!isa<ConstantExpr>(val) ) {
-	  fprintf(stderr,"byte %d symbolic \n",i);
-	} else {
-	  fprintf(stderr,"byte %d concrete \n",i);
-	}
 	fflush(stderr);
-	std::cout.flush();
-	fflush(stderr);
-	std::cout.flush();
-	fprintf(stderr,"Printing write condition: \n");
-	std::cout.flush();
-	*/
-	fflush(stderr);
-	/* ref<klee::ConstantExpr> dbgExpr = klee::ConstantExpr::alloc(o->bytes[i], klee::Expr::Int8);
-	dbgExpr->dump();
-	ref<ConstantExpr> dbgExpr2 = klee::ConstantExpr::create(o->bytes[i], Expr::Int8);
-	dbgExpr2->dump();*/
 	klee::ref<klee::Expr> condition = klee::EqExpr::create(tase_helper_read((uint64_t) buf + i, 1),
 							       klee::ConstantExpr::alloc(o->bytes[i], klee::Expr::Int8));
-	//condition->dump();
 	write_condition = klee::AndExpr::create(write_condition, condition);
       }
       
@@ -526,9 +490,6 @@ void Executor::model_ktest_writesocket() {
 
       addConstraint(*GlobalExecutionStatePtr, write_condition);
       //Check validity of write condition
-
-      //get_sem_lock(); //Just for debugging 
-
       
       if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(write_condition)) {
 	if (CE->isFalse()) {

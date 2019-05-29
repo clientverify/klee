@@ -124,6 +124,7 @@ std::string project;
 bool disableSpringboard = false;
 bool enableBounceback = false;
 bool OpenSSLTest = true;
+bool skipNops = true;
 
 int worker2managerFD [2];
 multipassRecord multipassInfo;
@@ -137,12 +138,33 @@ extern int * target_started_ptr;
 int masterPID;
 int max_depth;
 
+std::map<int,int> nops_and_offsets;
+
 extern "C" void  exit_tase() {
 
 }
 
 void transferToTarget() {
 
+  //Optimization
+
+  if (skipNops) {
+    FILE * nopsAndOffsets = fopen( (project + ".interp.nop" ).c_str() , "r+");
+    int key;
+    int val;
+
+    
+    printf("Trying to scan in nops and offsets \n");
+    fflush(stdout);
+    while (fscanf (nopsAndOffsets, "%d %d\n", &key, &val) ==2 ) {
+      nops_and_offsets.insert(std::make_pair(key,val));
+    
+    }
+  }
+  printf("Found %d items in nops_and_offsets after parsing \n", nops_and_offsets.size());
+  fflush(stdout);
+
+  
   bool forkedSolver = UseForkedCoreSolver;
   printf("During transferToTarget, UseForkedCoreSolver is %d \n", forkedSolver);
   fflush(stdout);
@@ -215,8 +237,7 @@ void transferToTarget() {
 	std::cout.flush();
       }
     }
-  }
-  
+  }  
 }
 
 //AH:  main_original_vanilla() points to the original version of main from vanilla klee.  Not ideal but it works. 
@@ -332,6 +353,10 @@ namespace {
 
   cl::opt<bool>
   skipFreeArg("skipFree", cl::desc("Debugging option to skip frees"), cl::init(false));
+
+  cl::opt<bool>
+  skipNopsArg("skipNops", cl::desc("Skip nops or instrumentation instructions when debugging"), cl::init(true));
+
   
   cl::opt<bool>
   killFlagsHackArg("killFlagsHack", cl::desc("Option to kill flags after each jump to the springboard"), cl::init(false));
@@ -1418,7 +1443,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 }
 #endif
 
- void printTASEArgs(runType rt, testType tt, bool fm, bool dbg, std::string projName, bool df, bool disableSB,  bool stop, bool killFlags, bool dontFree, bool lckOnSolverCall, bool measureTimeVal, bool enableBouncebackVal) {
+ void printTASEArgs(runType rt, testType tt, bool fm, bool dbg, std::string projName, bool df, bool disableSB,  bool stop, bool killFlags, bool dontFree, bool lckOnSolverCall, bool measureTimeVal, bool enableBouncebackVal, bool skpNops) {
 
    printf("TASE args... \n");
    if (rt == MIXED) 
@@ -1447,6 +1472,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    printf("\t lockOnSolverCalls   output : %d \n", lckOnSolverCall);
    printf("\t measureTime         output : %d \n", measureTimeVal);
    printf("\t enableBounceback     output : %d \n", enableBouncebackVal);
+   printf("\t skipNops             output : %d \n", skpNops);
  }
 
  
@@ -1474,14 +1500,15 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    lockOnSolverCalls = lockOnSolverCallArg;
    measureTime = measureTimeArg;
    enableBounceback = enableBouncebackArg;
-
+   skipNops = skipNopsArg;
+   
    if (test_type ==VERIFICATION) {
      printf("Enabling multipass verification for openssl \n");
      enableMultipass = true;
    }
    
    if (taseDebug)
-     printTASEArgs(exec_mode, test_type, taseManager, taseDebug, project, dontFork, disableSpringboard,  stopAtMasterSecret, killFlagsHack, skipFree, lockOnSolverCalls, measureTime, enableBounceback);
+     printTASEArgs(exec_mode, test_type, taseManager, taseDebug, project, dontFork, disableSpringboard,  stopAtMasterSecret, killFlagsHack, skipFree, lockOnSolverCalls, measureTime, enableBounceback, skipNopsArg);
    
    //Redirect stdout messages to a file called "Monitor".
    //Later, calls to unix fork in executor create new filenames

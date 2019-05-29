@@ -162,6 +162,7 @@ extern  int ktest_RAND_bytes_calls ;
 extern  int ktest_RAND_pseudo_bytes_calls;
 #include <unordered_set>
 extern std::unordered_set<uint64_t> cartridge_entry_points;
+extern std::map<int,int> nops_and_offsets;
 void * rodata_base_ptr;
 uint64_t rodata_size;
 
@@ -3524,6 +3525,8 @@ int SHA256_Final_calls = 0;
 int gcm_gmult_4bit_calls = 0;
 int gcm_ghash_4bit_calls = 0;
 
+
+//Make sure these are actually correctly tracked
 void resetProhibCounters() {
   AES_encrypt_calls = 0;
   ECDH_compute_key_calls = 0;
@@ -3539,7 +3542,6 @@ void resetProhibCounters() {
 
 //Todo: Make sure call counters are correctly updated
 void printKTestCounters() {
-
   printf("Total calls to ktest_start             %d \n",  ktest_start_calls);
   printf("Total calls to ktest_connect           %d \n", ktest_connect_calls);
   printf("Total calls to ktest_master_secret     %d \n", ktest_master_secret_calls);
@@ -3614,36 +3616,44 @@ bool canBounceback (uint32_t abort_status, uint64_t rip, bool * isPsnTrap, bool 
 
   if ((abort_status & 0xff) == 0) {
     //Unknown return code
-    printf("Bounceback unknown return code \n");
+    if (taseDebug)
+      printf("Bounceback unknown return code \n");
     BB_UR++;
     //retry = true;  //Todo -- make this set retry to true?
   } else if (abort_status & (1 << TSX_XABORT)) {
     if (abort_status & TSX_XABORT_MASK) {
       //modeled
-      printf("Bounceback modeled case \n");
+      if (taseDebug)
+	printf("Bounceback modeled case \n");
       retry = false;
       *isModelTrap = true;
       BB_MOD++;
     } else {
       //poison
-      printf("Bounceback psn case \n");
+      if (taseDebug)
+	printf("Bounceback psn case \n");
       *isPsnTrap = true;
       retry = false;
       BB_PSN++;
     }
   } else {
-    printf("Bounceback fall-through case \n");
+    if (taseDebug)
+      printf("Bounceback fall-through case \n");
     retry = true;
     BB_OTHER++;
   }
-  printf("bbEnabled is %d \n", bbEnabled);
+
   if (bbEnabled && retry && retryCtr % retryMax != 0) {
-    printf("Attempting to bounceback to native execution at RIP 0x%lx \n", rip);
-    fflush(stdout);
+    if (taseDebug){
+      printf("Attempting to bounceback to native execution at RIP 0x%lx \n", rip);
+      fflush(stdout);
+    }
     return true;
   } else {
-    printf("Not attempting to bounceback to native execution at RIP 0x%lx \n",rip);
-    fflush(stdout);
+    if (taseDebug) {
+      printf("Not attempting to bounceback to native execution at RIP 0x%lx \n",rip);
+      fflush(stdout);
+    }
     return false;
   }
 }
@@ -3672,7 +3682,6 @@ void measure_interp_time(bool isPsnTrap, bool isMemRequest, bool isModelTrap, ui
     printf("   - unknown %d \n", target_ctx.abort_count_unknown);
     printf("------------------------------\n");
     fflush(stdout);    
-  
 }
   
 extern "C" void klee_interp () {
@@ -3697,9 +3706,10 @@ extern "C" void klee_interp () {
 
   target_ctx_gregs[REG_R15].u64 = target_ctx_gregs[REG_RIP].u64;
   uint64_t rip =  target_ctx_gregs[REG_R15].u64;
+
   if (measureTime) 
     measure_interp_time(isPsnTrap, isMemTrap, isModelTrap, interpCtr_init, rip);
-  return;
+  return; //Returns to loop in main
 }
 
 //This function's purpose is to take a context from native execution 
@@ -3880,13 +3890,7 @@ void Executor::tase_helper_write (uint64_t addr, ref<Expr> val) {
   //end gross----------------------------
   ObjectState *wos = GlobalExecutionStatePtr->addressSpace.getWriteable(op.first, op.second);
 
-  if (wos == NULL) {
-    printf("wos is NULL \n");
-    fflush(stdout);
-  }
-
   wos->write(offset, val);
-
   wos->applyPsnOnWrite(offset,val);
 
 }
@@ -4077,16 +4081,7 @@ void Executor::model_inst () {
     printKTestCounters();
     model_shutdown();
     
-  }
-  /*
-  else if (rip == (uint64_t) &memmove_tase || rip == (uint64_t) &memmove_tase + 14 ) {
-    model_memmove(); //Just for debugging
-  } else if (rip == (uint64_t) &memcpy || rip == (uint64_t) &memcpy_tase + 14) { 
-    model_memcpy(); //Just for debugging
-  } else if (rip == (uint64_t) &memset || rip == (uint64_t) &memset_tase + 14 ) {
-    model_memset(); //Just for performance testing
-  */
- else if (rip == (uint64_t) &time ) {
+  } else if (rip == (uint64_t) &time ) {
     model_time();
   } else if (rip == (uint64_t) &gmtime) {
     model_gmtime();
@@ -4187,12 +4182,6 @@ void Executor::model_inst () {
   } else if (rip == (uint64_t) &setsockopt) {
     model_setsockopt();
   } else if (rip == (uint64_t) &exit) {
-#ifdef addBM
-    printf("addBMResult array starts at 0x%lx \n", addBMResultPtr);
-    for (int i = 0; i < numEntries; i++)  
-      printf("numEntries\[%d\] is %u at addr 0x%lx \n", i, addBMResultPtr[i], &addBMResultPtr[i]);    
-#endif
-    std::cout.flush();
     model_exit();
   } else if (rip == (uint64_t) &printf || rip == (uint64_t) &puts) {
     model_printf();
@@ -4277,6 +4266,7 @@ bool isSpecialInst (uint64_t rip) {
       rip == (uint64_t) &EC_KEY_generate_key         + 14  ||
       rip == (uint64_t) &ECDH_compute_key            + 14  ||
       rip == (uint64_t) &EC_POINT_point2oct          + 14  ||
+      //Trapping during replays should happen further down in tls1_generate_master_secret
       (rip == (uint64_t) &tls1_generate_master_secret + 14 && enableMultipass ) ||
       rip == (uint64_t) &RAND_poll                   + 14  ||
       isModeled
@@ -4309,11 +4299,24 @@ void Executor::printDebugInterpFooter() {
 
 }
 
+int isNop(uint64_t rip) {
 
-uint64_t dbg_addr = 0;
-extern void printBuf(void * base, int num);
+  auto itr = nops_and_offsets.find(rip);  
+  if (itr != nops_and_offsets.end()) {
+    int offset = itr->second;
+    
+    return offset;
+  } else {
+    return 0;
+  }
+    
+}
+
+int nopCtr = 0;
+
 void Executor::klee_interp_internal () {
   double interpSetupStartTime = 0.0, interpRunStartTime = 0.0;
+
   
   while (true) {
     interpCtr++;
@@ -4321,14 +4324,6 @@ void Executor::klee_interp_internal () {
       printDebugInterpHeader();
     if (measureTime)
       interpSetupStartTime = util::getWallTime();
-
-    /*
-    if (dbg_addr != 0) {
-      printf("DBG_leak: 70 raw bytes at dbg_addr 0x%lx are \n",dbg_addr );
-      printBuf((void *)dbg_addr, 70);
-      printf("isBufferEntirelyConcrete: %d \n", isBufferEntirelyConcrete(dbg_addr, 70));
-    }
-    */
 
     
     uint64_t rip = target_ctx_gregs[REG_RIP].u64;
@@ -4350,7 +4345,19 @@ void Executor::klee_interp_internal () {
       break;
     }
 
-    if (isSpecialInst(rip)) {
+    int nop_off;
+    
+    if (nop_off = isNop(rip)) {
+      if (taseDebug) {
+	nopCtr++;
+	printf("Found nop at addr 0x%lx with offset %d  \n", target_ctx_gregs[REG_RIP].u64, nop_off);
+	fflush(stdout);
+	printf("Found %d nops in interpreter so far with interpCtr %lu \n", nopCtr, interpCtr);
+      }
+      
+      target_ctx_gregs[REG_RIP].u64 += (uint64_t) nop_off;
+      
+    } else if (isSpecialInst(rip)) {
       model_inst();
     } else {
 
@@ -4367,8 +4374,6 @@ void Executor::klee_interp_internal () {
       //We have to manually push a frame on for the function we'll be
       //interpreting through.  At this point, no other frames should exist
       // on klee's interpretation "stack".
-
-
       GlobalExecutionStatePtr->pushFrame(0,interpFn);
       GlobalExecutionStatePtr->pc = interpFn->instructions ;
       GlobalExecutionStatePtr->prevPC = GlobalExecutionStatePtr->pc;
