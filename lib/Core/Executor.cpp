@@ -3697,14 +3697,14 @@ extern "C" void klee_interp () {
     printf("---------------ENTERING KLEE_INTERP ---------------------- \n");
     std::cout.flush();
   }
-  target_ctx_gregs[REG_RIP].u64 = target_ctx_gregs[REG_R15].u64;
+  target_ctx_gregs[REG_RIP].u64 = target_ctx_gregs[REG_R15].u64; //Should be ok to drop
   
   if (canBounceback(target_ctx.abort_status, target_ctx_gregs[REG_RIP].u64,&isPsnTrap, &isMemTrap, &isModelTrap, enableBounceback)) 
     return;
   
   GlobalInterpreter->klee_interp_internal();
 
-  target_ctx_gregs[REG_R15].u64 = target_ctx_gregs[REG_RIP].u64;
+  target_ctx_gregs[REG_R15].u64 = target_ctx_gregs[REG_RIP].u64;// Should be OK to drop
   uint64_t rip =  target_ctx_gregs[REG_R15].u64;
 
   if (measureTime) 
@@ -4299,8 +4299,34 @@ void Executor::printDebugInterpFooter() {
 
 }
 
-int isNop(uint64_t rip) {
-
+int Executor::isNop(uint64_t rip) {
+  
+  // Terrible math to detect jmp *tase_springboard---------------------
+  // Looking for something that would look like the following in objdump
+  // a6e35c:       ff 24 25 b8 1e a9 01    jmpq   *0x1a91eb8
+  //
+  
+  uint32_t firstBytes = *( (uint32_t *) rip) &0x00FFFFFF; //Endianess
+  if (firstBytes == 0x002524ff) {
+    
+    uint8_t * bytePtr = (uint8_t *) rip;
+    bytePtr += 3;
+    uint32_t fourBytes = *((uint32_t *) bytePtr);
+    fflush(stdout);
+    if ( (uint64_t) fourBytes == ((uint64_t) &tase_springboard)) {
+      if (killFlagsHack) {
+	if (taseDebug)
+	  printf("Killing flags \n");
+	uint64_t zero = 0;
+	ref<ConstantExpr> zeroExpr = ConstantExpr::create(zero, Expr::Int64);
+	tase_helper_write((uint64_t) &target_ctx_gregs[REG_EFL], zeroExpr);
+      }
+      if (taseDebug)
+	printf("Found springboard jump at 0x%lx \n", target_ctx_gregs[REG_RIP].u64);
+      return 7;
+    }
+  }
+  // ------------------------------------------ End terrible math for now
   auto itr = nops_and_offsets.find(rip);  
   if (itr != nops_and_offsets.end()) {
     int offset = itr->second;
@@ -4308,8 +4334,7 @@ int isNop(uint64_t rip) {
     return offset;
   } else {
     return 0;
-  }
-    
+  }  
 }
 
 int nopCtr = 0;
@@ -4328,6 +4353,9 @@ void Executor::klee_interp_internal () {
     
     uint64_t rip = target_ctx_gregs[REG_RIP].u64;
     uint64_t rip_init = rip;
+
+    //This doesn't work if we just skip
+    //the jmp *tase_springboard so logic is moved there
     if ( (rip == (uint64_t) &sb_reopen ||
 	  rip == (uint64_t) &sb_open   ||
 	  rip == (uint64_t) &sb_disabled
@@ -4367,7 +4395,8 @@ void Executor::klee_interp_internal () {
       KFunction * interpFn = findInterpFunction (target_ctx_gregs, kmodule);
       if (measureTime) {
 	double findInterpFnElapsedTime = (util::getWallTime() - findInterpFnStartTime);
-	printf(" %lf seconds elapsed finding interp fn at interpCtr %lu \n", findInterpFnElapsedTime, interpCtr);
+	if (taseDebug)
+	  printf(" %lf seconds elapsed finding interp fn at interpCtr %lu \n", findInterpFnElapsedTime, interpCtr);
 	interp_find_fn_time += findInterpFnElapsedTime;
       }
       
@@ -4397,7 +4426,8 @@ void Executor::klee_interp_internal () {
       if (measureTime) {
 	double runDiff = util::getWallTime() - interpRunStartTime;
 	interp_run_time += runDiff;
-	printf("%lf seconds during interp run for interpCtr %lu \n", runDiff, interpCtr);
+	if (taseDebug)
+	  printf("%lf seconds during interp run for interpCtr %lu \n", runDiff, interpCtr);
       }
       
     }

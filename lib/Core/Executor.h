@@ -358,7 +358,7 @@ private:
   void deadRegisterFlush();
   void printDebugInterpHeader();
   void printDebugInterpFooter();
-  
+  int  isNop(uint64_t rip);
   //AH: Special modeled labels added during our instrumentation.
   void model_entertran();
   void model_exittran();
