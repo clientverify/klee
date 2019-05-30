@@ -79,7 +79,7 @@ struct timeval targetEndTime;
 double target_start_time;
 double target_end_time;
 
-#include "/playpen/humphries/zTASE/TASE/test/tase/include/tase/tase_interp.h"
+#include "../../../test/tase/include/tase/tase_interp.h"
 extern target_ctx_t target_ctx;
 greg_t * target_ctx_gregs = target_ctx.gregs;
 
@@ -151,14 +151,11 @@ void transferToTarget() {
   if (skipNops) {
     FILE * nopsAndOffsets = fopen( (project + ".interp.nop" ).c_str() , "r+");
     int key;
-    int val;
-
-    
+    int val;    
     printf("Trying to scan in nops and offsets \n");
     fflush(stdout);
     while (fscanf (nopsAndOffsets, "%d %d\n", &key, &val) ==2 ) {
       nops_and_offsets.insert(std::make_pair(key,val));
-    
     }
   }
   printf("Found %d items in nops_and_offsets after parsing \n", nops_and_offsets.size());
@@ -173,13 +170,13 @@ void transferToTarget() {
     char * ktestModeName = "-playback";
     memset(ktestMode, 0, sizeof (ktestMode));
     strncpy(ktestMode, ktestModeName, strlen(ktestModeName));
-
-
+    printf("Looking in current directory for ssl ktest files and master secret\n");
+    
     const char * ktestPathName;
     if (!enableMultipass) {
-       ktestPathName ="/playpen/humphries/data/mondayTest/monday.ktest";
+       ktestPathName ="./ssl.ktest";
     } else {
-       ktestPathName ="/playpen/humphries/data/mondayTest/monday.net.ktest";
+       ktestPathName ="./ssl.net.ktest";
     }
       
     memset(ktestPath, 0, sizeof(ktestPath));

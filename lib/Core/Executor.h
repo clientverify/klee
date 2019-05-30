@@ -446,6 +446,7 @@ private:
   void model_sprintf();
   void model_printf();
   void model_exit();
+  void model_write();
   void model___errno_location();
   void model___ctype_b_loc();
   void model___ctype_tolower_loc();

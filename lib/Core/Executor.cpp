@@ -4178,13 +4178,15 @@ void Executor::model_inst () {
   }  else if (rip == (uint64_t) &getpid) {
     model_getpid();
   } else if (rip == (uint64_t) &socket) {
-    model_socket();
-  } else if (rip == (uint64_t) &setsockopt) {
-    model_setsockopt();
-  } else if (rip == (uint64_t) &exit) {
-    model_exit();
-  } else if (rip == (uint64_t) &printf || rip == (uint64_t) &puts) {
-    model_printf();
+   model_socket();
+ } else if (rip == (uint64_t) &setsockopt) {
+   model_setsockopt();
+ } else if (rip == (uint64_t) &exit) {
+   model_exit();
+ } else if (rip == (uint64_t) &write ) {
+   model_write();
+ } else if (rip == (uint64_t) &printf || rip == (uint64_t) &puts) {
+   model_printf();
   } else if (rip == (uint64_t) &RAND_add) {
     model_RAND_add();
   } else if (rip == (uint64_t) &RAND_load_file ) {

@@ -346,6 +346,30 @@ void Executor::model_exit() {
 
 }
 
+
+void Executor::model_write() {
+  //Just print the second arg for debugging.
+  //We will probably drop the server -> client messages
+  //which call write anyway as per the NSDI paper.
+
+  char * theBuf = (char *)  target_ctx_gregs[REG_RSI].u64;
+  size_t size = target_ctx_gregs[REG_RDX].u64;
+  printf("Entering model_write \n");
+  fflush(stdout);
+
+  char printMe [size];
+
+  strncpy (printMe, theBuf, size);
+  
+  printf("Found call to write.  Buf appears to be %s \n", printMe);
+  
+  //fake a ret
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+  target_ctx_gregs[REG_RIP].u64 = retAddr;
+  target_ctx_gregs[REG_RSP].u64 += 8;
+
+}
+
 void Executor::model_printf() {
   static int numCalls = 0;
   numCalls++;
@@ -2764,10 +2788,16 @@ ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); // SSL
 
     printf("Entering model_tls1_generate_master_secret at interpctr %lu \n", interpCtr);
     fflush(stdout);
+    if (enableMultipass == false) {
+      printf("ERROR: should be trapping in ktest_master_secret instead of tls1_gen_master_secret \n");
+      fflush(stdout);
+      worker_exit();
+      std::exit(EXIT_FAILURE);
+    }
 
     void * buf = (void *) target_ctx_gregs[REG_RSI].u64;
 
-
+    /*
     FILE * theFile = fopen("monday_secret_ints", "rb");
     int val = 0;
     uint8_t tmp [48];
@@ -2778,8 +2808,9 @@ ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); // SSL
       tmp[i] = (uint8_t) val;
     }
     
-    /*
-    FILE * theFile = fopen("monday.secret", "rb");
+    */
+    
+    FILE * theFile = fopen("ssl.mastersecret", "rb");
     unsigned char tmp [48];
     fread(tmp, 1 , 48, theFile);
     printf("Printing    results of attempt to load master secret as binary... \n");
@@ -2787,7 +2818,7 @@ ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); // SSL
       printf(" %2.2x", tmp[i]);
     }
     printf("\n");
-    */
+    
 
     
     printf("PRINTING MASTER SECRET as hex \n");
