@@ -165,6 +165,7 @@ extern std::unordered_set<uint64_t> cartridge_entry_points;
 extern std::map<int,int> nops_and_offsets;
 void * rodata_base_ptr;
 uint64_t rodata_size;
+extern "C" void make_byte_symbolic(uint64_t addr);
 
 //Debug info
 extern bool taseDebug;
@@ -262,11 +263,7 @@ extern int BASKET_SIZE;
 char basket[BUFFER_SIZE];
 ObjectState * basket_OS;
 MemoryObject * basket_MO;
-//#define addBM 
-#ifdef addBM
-extern uint8_t * addBMResultPtr;
-extern int numEntries;
-#endif
+
 
 
 
@@ -3405,6 +3402,7 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
   static int executeMakeSymbolicCalls = 0;  
   executeMakeSymbolicCalls++;
 
+  //#ifdef TASE_OPENSSL
   if (executeMakeSymbolicCalls ==1 ) {
     //Bootstrap multipass here for the very first round
     //before we hit a concretized writesocket call
@@ -3412,7 +3410,7 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
     multipass_reset_round();
     multipass_start_round(this, false);
   }
-
+  //#endif
   if(taseDebug) {
     printf("Calling executeMakeSymbolic on name %s \n", name.c_str());
     std::cout.flush();
@@ -3528,6 +3526,7 @@ int gcm_ghash_4bit_calls = 0;
 
 //Make sure these are actually correctly tracked
 void resetProhibCounters() {
+  //#ifdef TASE_OPENSSL
   AES_encrypt_calls = 0;
   ECDH_compute_key_calls = 0;
   EC_POINT_point2oct_calls = 0;
@@ -3538,10 +3537,12 @@ void resetProhibCounters() {
   SHA256_Final_calls = 0;
   gcm_gmult_4bit_calls = 0;
   gcm_ghash_4bit_calls = 0;
+  //#endif
 }
 
 //Todo: Make sure call counters are correctly updated
 void printKTestCounters() {
+  //#ifdef TASE_OPENSSL
   printf("Total calls to ktest_start             %d \n",  ktest_start_calls);
   printf("Total calls to ktest_connect           %d \n", ktest_connect_calls);
   printf("Total calls to ktest_master_secret     %d \n", ktest_master_secret_calls);
@@ -3552,11 +3553,13 @@ void printKTestCounters() {
   printf("Total calls to ktest_writesocket       %d \n", ktest_writesocket_calls );
   printf("Total calls to ktest_readsocket        %d \n", ktest_readsocket_calls );
   fflush(stdout);
+  //#endif
 }
 
 
 
 void countProhibCalls(uint64_t rip) {
+  //#ifdef TASE_OPENSSL
   if (rip == (uint64_t) &AES_encrypt             + 14)
     AES_encrypt_calls++;
   if (rip == (uint64_t) &ECDH_compute_key        + 14)
@@ -3577,10 +3580,12 @@ void countProhibCalls(uint64_t rip) {
     gcm_gmult_4bit_calls++;
   if (rip == (uint64_t) &gcm_ghash_4bit          + 14)
     gcm_ghash_4bit_calls++;
+  //#endif
 }
 
 //Todo: Make sure call counters are correctly updated
 void printProhibCounters() {
+  //#ifdef TASE_OPENSSL
   printf("AES_encrypt calls: %d \n", AES_encrypt_calls);
   printf("ECDH_compute_key calls: %d \n", ECDH_compute_key_calls);
   printf("EC_POINT_point2oct calls: %d \n", EC_POINT_point2oct_calls);
@@ -3592,6 +3597,7 @@ void printProhibCounters() {
   printf("gcm_gmult_4bit calls: %d \n", gcm_gmult_4bit_calls );
   printf("gcm_ghash_4bit calls: %d \n", gcm_ghash_4bit_calls );
   fflush(stdout);
+  //#endif
 }
 
 int retryMax = 5; 
@@ -3603,6 +3609,7 @@ bool canBounceback (uint32_t abort_status, uint64_t rip, bool * isPsnTrap, bool 
   retryCtr++; //This should ideally be cycled per unique rip
 
   //Check to see if instrution is a mem request for performance debugging
+  //#ifdef TASE_OPENSSL
   if (
       rip ==  (uint64_t)    &malloc
       || rip == ((uint64_t) &malloc_tase  + 14)
@@ -3613,7 +3620,7 @@ bool canBounceback (uint32_t abort_status, uint64_t rip, bool * isPsnTrap, bool 
       )  {
     *isMemTrap = true;
   }
-
+  //#endif
   if ((abort_status & 0xff) == 0) {
     //Unknown return code
     if (taseDebug)
@@ -3754,7 +3761,21 @@ KFunction * findInterpFunction (greg_t * registers, KModule * kmod) {
 //; native memory address.
 // }
 
+//Just an external trap for making a byte symbolic
+void Executor::make_byte_symbolic_model() {
 
+  printf("Hit make_byte_symbolic_model \n");
+  fflush(stdout);
+  
+  uint64_t addr = target_ctx_gregs[REG_RDI].u64;
+  tase_make_symbolic(addr, 1, "external_request");
+
+  //fake a ret
+  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
+  target_ctx_gregs[REG_RIP].u64 = retAddr;
+  target_ctx_gregs[REG_RSP].u64 += 8;
+
+}
 
 //Populate a buffer at addr with len bytes of unconstrained symbolic data.
 //We make the symbolic memory object at a malloc'd address and write the bytes to addr.
@@ -4031,7 +4052,16 @@ void Executor::model_inst () {
     printf("INTERPRETER: FOUND SPECIAL MODELED INST \n");
   }
   uint64_t rip = target_ctx_gregs[REG_RIP].u64;  
-
+  #ifdef TASE_BIGNUM
+  if (rip == (uint64_t) &make_byte_symbolic +14 || rip == (uint64_t) &make_byte_symbolic) {
+    make_byte_symbolic_model();
+  } else if (rip == (uint64_t) &exit_tase_shim) {
+    fprintf(stderr,"Successfully exited from target.  Shutting down with %d x86 instructions interpreted \n", interpCtr);
+    fflush(stdout);
+    std::exit(EXIT_SUCCESS);
+  }
+  #endif
+  //#ifdef TASE_OPENSSL
   if (rip == (uint64_t) &free || rip == ((uint64_t) &free_tase) || rip == ((uint64_t) &free_tase + 14) ) {
     model_free();
   } else if (rip == (uint64_t) &signal) {
@@ -4131,8 +4161,8 @@ void Executor::model_inst () {
     model_sha1_block_data_order();
   } else if (rip == (uint64_t) &sha256_block_data_order + 14) {
     model_sha256_block_data_order();
-    } */
-
+    } 
+  */
  else if (rip == (uint64_t) &gcm_gmult_4bit + 14) {
     model_gcm_gmult_4bit();
   } else if (rip == (uint64_t) &gcm_ghash_4bit + 14) {
@@ -4201,6 +4231,8 @@ void Executor::model_inst () {
   else if (rip == (uint64_t) &sb_disabled) {
     model_sb_disabled();
   }
+  //#endif
+  
   else if (rip == (uint64_t) &target_exit) {
     printf("Found call to target_exit in interpreter \n");
     std::cout.flush();
@@ -4229,9 +4261,12 @@ void Executor::model_OpenSSLDie() {
 bool isSpecialInst (uint64_t rip) {
 
   //Todo -- get rid of traps for RAND_add and RAND_load_file
-  
+#ifdef TASE_BIGNUM
+  static const uint64_t modeledFns [] = { (uint64_t) &make_byte_symbolic, (uint64_t) &make_byte_symbolic + 14, (uint64_t) &target_exit, (uint64_t) &exit_tase_shim};
+#endif
+  //#ifdef TASE_OPENSSL
   static const uint64_t modeledFns [] = {(uint64_t)&signal, (uint64_t)&malloc, (uint64_t)&read, (uint64_t)&write, (uint64_t)&connect, (uint64_t)&select, (uint64_t)&socket, (uint64_t) &getuid, (uint64_t) &geteuid, (uint64_t) &getgid, (uint64_t) &getegid, (uint64_t) &getenv, (uint64_t) &stat, (uint64_t) &free, (uint64_t) &realloc,  (uint64_t) &RAND_add, (uint64_t) &RAND_load_file, (uint64_t) &kTest_free, (uint64_t) &kTest_fromFile, (uint64_t) &kTest_getCurrentVersion, (uint64_t) &kTest_isKTestFile, (uint64_t) &kTest_numBytes, (uint64_t) &kTest_toFile, (uint64_t) &ktest_RAND_bytes, (uint64_t) &ktest_RAND_pseudo_bytes, (uint64_t) &ktest_connect, (uint64_t) &ktest_finish, (uint64_t) &ktest_master_secret, (uint64_t) &ktest_raw_read_stdin, (uint64_t) &ktest_readsocket, (uint64_t) &ktest_select, (uint64_t) &ktest_start, (uint64_t) &ktest_time, (uint64_t) &time, (uint64_t) &gmtime, (uint64_t) &gettimeofday, (uint64_t) &ktest_writesocket, (uint64_t) &fileno, (uint64_t) &fcntl, (uint64_t) &fopen, (uint64_t) &fopen64, (uint64_t) &fclose,  (uint64_t) &fwrite, (uint64_t) &fflush, (uint64_t) &fread, (uint64_t) &fgets, (uint64_t) &__isoc99_sscanf, (uint64_t) &gethostbyname, (uint64_t) &setsockopt, (uint64_t) &__ctype_tolower_loc, (uint64_t) &__ctype_b_loc, (uint64_t) &__errno_location,  (uint64_t) &BIO_printf, (uint64_t) &BIO_snprintf, (uint64_t) &vfprintf,  (uint64_t) &sprintf, (uint64_t) &tase_debug,   (uint64_t) &OpenSSLDie, (uint64_t) &shutdown , (uint64_t) &malloc_tase, (uint64_t) &realloc_tase, (uint64_t) &calloc_tase, (uint64_t) &free_tase, (uint64_t) &getpid , (uint64_t) &RAND_poll};
-  
+  //#endif 
   
   bool isModeled = std::find(std::begin(modeledFns), std::end(modeledFns), rip) != std::end(modeledFns);
 
@@ -4239,7 +4274,13 @@ bool isSpecialInst (uint64_t rip) {
   //For modeled or prohibitive functions, we trap
   //to the interpreter at exactly 14 bytes from the
   //label of the function.
-
+#ifdef TASE_BIGNUM
+  if (isModeled)
+    return true;
+  else
+    return false;
+#endif
+  //#ifdef TASE_OPENSSL
   if (
       rip == (uint64_t) &ktest_start             + 14 ||
       rip == (uint64_t) &ktest_writesocket       + 14 ||
@@ -4260,8 +4301,6 @@ bool isSpecialInst (uint64_t rip) {
       rip == (uint64_t) &SHA1_Final                  + 14  ||
       rip == (uint64_t) &SHA256_Update               + 14  ||
       rip == (uint64_t) &SHA256_Final                + 14  ||
-      //rip == (uint64_t) &sha1_block_data_order       + 14  ||
-      //rip == (uint64_t) &sha256_block_data_order     + 14  ||
       rip == (uint64_t) &AES_encrypt                 + 14  ||
       rip == (uint64_t) &gcm_gmult_4bit              + 14  ||
       rip == (uint64_t) &gcm_ghash_4bit              + 14  ||
@@ -4277,6 +4316,7 @@ bool isSpecialInst (uint64_t rip) {
   }  else {
     return false;
   }
+  //#endif
 }
 
 
@@ -4608,6 +4648,8 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) 
     if (res1 == NULL || res2 == NULL) {
       printf("ERROR opening new file for child process logging \n");
       fflush(stdout);
+      worker_exit();
+      std::exit(EXIT_FAILURE);
     }
 
     //Force two destinations for debugging

@@ -140,6 +140,10 @@ int max_depth;
 
 std::map<int,int> nops_and_offsets;
 
+#ifdef TASE_BIGNUM
+extern int symIndex;
+extern int numEntries;
+#endif
 extern "C" void  exit_tase() {
 
 }
@@ -166,6 +170,7 @@ void transferToTarget() {
   printf("During transferToTarget, UseForkedCoreSolver is %d \n", forkedSolver);
   fflush(stdout);
 
+  //#ifdef TASE_OPENSSL
   if (OpenSSLTest) {
     char * ktestModeName = "-playback";
     memset(ktestMode, 0, sizeof (ktestMode));
@@ -182,6 +187,7 @@ void transferToTarget() {
     memset(ktestPath, 0, sizeof(ktestPath));
     strncpy(ktestPath, ktestPathName, strlen(ktestPathName));
   }
+  //#endif
   
   target_start_time = util::getWallTime();
   
@@ -440,6 +446,13 @@ namespace {
   OptExitOnError("exit-on-error",
               cl::desc("Exit if errors occur"));
 
+  #ifdef TASE_BIGNUM
+  cl::opt<int>
+  symIndexArg("symIndex", cl::desc("Index of symbolic byte in bignum test "), cl::init(100));
+
+  cl::opt<int>
+  numEntriesArg("numEntries", cl::desc("Size of array in bignum test "), cl::init(1000));
+  #endif
 
   enum LibcType {
     NoLibc, KleeLibc, UcLibc
@@ -1506,6 +1519,13 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    
    if (taseDebug)
      printTASEArgs(exec_mode, test_type, taseManager, taseDebug, project, dontFork, disableSpringboard,  stopAtMasterSecret, killFlagsHack, skipFree, lockOnSolverCalls, measureTime, enableBounceback, skipNopsArg);
+
+#ifdef TASE_BIGNUM
+   symIndex = symIndexArg;
+   numEntries = numEntriesArg;
+   printf("symIndex is %d, numEntries is %d ", symIndex, numEntries);
+   fflush(stdout);
+#endif
    
    //Redirect stdout messages to a file called "Monitor".
    //Later, calls to unix fork in executor create new filenames

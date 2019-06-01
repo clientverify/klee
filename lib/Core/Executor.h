@@ -363,6 +363,7 @@ private:
   void model_entertran();
   void model_exittran();
   void model_reopentran();
+  void make_byte_symbolic_model();
   
   //AH: Internal helper functions--------------------------
 
