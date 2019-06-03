@@ -127,7 +127,7 @@ extern int passCount;
 extern KTestObjectVector ktov;
 extern bool enableMultipass;
 extern void spinAndAwaitForkRequest();
-
+extern bool dropS2C;
 
 extern CVAssignment prevMPA ;
 extern void multipass_reset_round();
@@ -487,7 +487,7 @@ void Executor::model_ktest_writesocket() {
       printBuf ((void *) o->bytes, o->numBytes);
 
       if (o->numBytes > count) {
-	printf("IMPORTANT: VERIFICATION ERROR - write buffer size mismatch %d vs %d : Worker exiting from terminal path in round %d pass %d. \n",o->numBytes, count,  roundCount, passCount);
+	printf("IMPORTANT: VERIFICATION ERROR - write buffer size mismatch %u vs %u : Worker exiting from terminal path in round %d pass %d. \n",o->numBytes, count,  roundCount, passCount);
 	std::cout.flush();
 	worker_exit();
       }
@@ -732,8 +732,49 @@ uint64_t Executor::tls_predict_stdin_size (int fd, uint64_t maxLen) {
     std::exit(EXIT_FAILURE);
   }
 
-  KTestObject * kto = peekNextKTestObject();
-  //Todo: Figure out better way to handle case 3
+  //Kludge to allow us to verify against gmail.ktest files without a gmail.net.ktest file
+  KTestObject * kto;
+
+  kto = peekNextKTestObject();
+
+  if (dropS2C) {
+    if (strcmp (kto->name, "c2s") != 0 && (strcmp (kto->name,"s2c") != 0 || ( roundCount >=4 ) ) ) {
+      printf("Advancing peek from record type %s in tls_predict_stdin_size \n", kto->name);
+      int i = 0;
+      while(true) {
+	printf("Advancing for time %d \n", i);
+	kto = &(ktov.objects[ktov.playback_index + i]);
+	
+	if ( roundCount < 4) {
+	  if  (strcmp (kto->name, "c2s") == 0 || strcmp (kto->name,"s2c") == 0   ) 
+	    break;
+	} else {
+	  if  (strcmp (kto->name, "c2s") == 0)
+	    break;
+	}
+	i++;
+      }
+      fflush(stdout);
+    }
+  } else {
+
+    //If it's not s2c or c2s, advance until the playback index matches one of those records.
+    if (strcmp (kto->name, "c2s") != 0 && (strcmp (kto->name,"s2c") != 0 ) ) {
+      printf("Advancing peek from record type %s in tls_predict_stdin_size \n", kto->name);
+      int i = 0;
+      while (true) {
+	printf("Advancing for time %d \n", i);
+	kto = &(ktov.objects[ktov.playback_index + i]);
+	if  (strcmp (kto->name, "c2s") == 0 || strcmp (kto->name,"s2c") == 0   ) 
+	  break;
+	i++;
+      }
+      fflush(stdout);
+    }
+  }
+
+     
+
 
 
   printf("predict_stdin_debug: kto->name is %s, kto->bytes[0] is 0x%02x, kto->numBytes is %d, name comp with c2s is %d \n", kto->name, kto->bytes[0], kto->numBytes, strncmp(kto->name, "c2s", 3));
@@ -747,13 +788,15 @@ uint64_t Executor::tls_predict_stdin_size (int fd, uint64_t maxLen) {
   } else if (strncmp(kto->name, "c2s", 3) == 0 &&
 	     (uint8_t) kto->bytes[0] == TLS_ALERT &&
 	     kto->numBytes == 31) { //Case 2
-    
+    printf("In TLS Alert case in predict stdin len \n");
+    fflush(stdout);
     stdin_len = 0;
     
   } else if (strncmp(kto->name,"c2s", 3) == 0 &&
 	     (uint8_t) kto->bytes[0] == TLS_APPDATA &&
 	     kto->numBytes > 29) {//Case 1
-    
+    printf("In TLS Appdata case in predict stdin len \n");
+    fflush(stdout);
     stdin_len = kto->numBytes - 29;
     
   } else {
@@ -1790,7 +1833,7 @@ void Executor::model_malloc() {
   if (isa<ConstantExpr>(arg1Expr)) {
     size_t sizeArg = (size_t) target_ctx_gregs[REG_RDI].u64;
     if (taseDebug)
-      printf("Entered model_malloc for time %d with requested size %d \n",times_model_malloc_called, sizeArg);
+      printf("Entered model_malloc for time %d with requested size %u \n",times_model_malloc_called, sizeArg);
 
     if (roundUpHeapAllocations) 
       sizeArg = roundUp(sizeArg, 8);
@@ -2341,19 +2384,26 @@ void Executor::model_select() {
     ref<Expr> orig_readfdExpr = tase_helper_read((uint64_t) &(readfds->fds_bits[0] ), 1) ;
     ref<Expr> orig_writefdExpr = tase_helper_read((uint64_t) &(writefds->fds_bits[0] ), 1);
 
+    ref<Expr> all_bits_or = ConstantExpr::create(0, Expr::Int8);
+    
     
     //READ
     if (times_model_select_called != 1) {
-    void * tmp1 = malloc(2);
-    MemoryObject * tmpObjRead = addExternalObject( *GlobalExecutionStatePtr, (void *) tmp1, 2, false);
-    const ObjectState * tmpObjReadOS = GlobalExecutionStatePtr->addressSpace.findObject(tmpObjRead);
-    ObjectState * tmpObjReadOSWrite = GlobalExecutionStatePtr->addressSpace.getWriteable(tmpObjRead,tmpObjReadOS);  
-    tmpObjReadOSWrite->concreteStore = (uint8_t *) tmp1;
-  
-    tase_make_symbolic ((uint64_t) tmp1, 2, "select readfds mask");
-    ref<Expr> rfdsMaskVar = tase_helper_read((uint64_t) tmp1, 1);
-    ref<Expr> rfdsMaskExpr = AndExpr::create(rfdsMaskVar, orig_readfdExpr);
-    tase_helper_write((uint64_t) &(readfds->fds_bits[0]), rfdsMaskExpr);
+      //Per cliver, we don't want to simulate a client that somehow already has data to read in
+      //from the socket on the first select.
+      void * tmp1 = malloc(2);
+      MemoryObject * tmpObjRead = addExternalObject( *GlobalExecutionStatePtr, (void *) tmp1, 2, false);
+      const ObjectState * tmpObjReadOS = GlobalExecutionStatePtr->addressSpace.findObject(tmpObjRead);
+      ObjectState * tmpObjReadOSWrite = GlobalExecutionStatePtr->addressSpace.getWriteable(tmpObjRead,tmpObjReadOS);  
+      tmpObjReadOSWrite->concreteStore = (uint8_t *) tmp1;
+      
+      tase_make_symbolic ((uint64_t) tmp1, 2, "select readfds mask");
+      ref<Expr> rfdsMaskVar = tase_helper_read((uint64_t) tmp1, 1);
+      ref<Expr> rfdsMaskExpr = AndExpr::create(rfdsMaskVar, orig_readfdExpr);
+      tase_helper_write((uint64_t) &(readfds->fds_bits[0]), rfdsMaskExpr);
+
+      all_bits_or = OrExpr::create(rfdsMaskExpr, all_bits_or);
+      
     } else {
       tase_helper_write((uint64_t) &(readfds->fds_bits[0]), ConstantExpr::create(0, Expr::Int8));
     }
@@ -2371,6 +2421,14 @@ void Executor::model_select() {
     ref<Expr> wfdsMaskExpr = AndExpr::create(wfdsMaskVar, orig_writefdExpr);
     tase_helper_write((uint64_t) &(writefds->fds_bits[0]), wfdsMaskExpr);  
 
+    all_bits_or = OrExpr::create(wfdsMaskExpr, all_bits_or);
+
+
+    ref <ConstantExpr> Zero = ConstantExpr::create(0, Expr::Int8);
+    ref <Expr> someFDPicked = NotExpr::create(EqExpr::create(all_bits_or, Zero));
+    
+    addConstraint(*GlobalExecutionStatePtr, someFDPicked);
+    
     //ref<EqExpr> wfdsEqExpr = EqExpr::create(wfdsMaskExpr, 0);
     //ref<NotExpr> wfdsNotExpr = NotExpr::create(wfdsEqExpr);
     //addConstraint(*GlobalExecutionStatePtr, wfdsNotExpr );

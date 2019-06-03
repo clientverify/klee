@@ -116,6 +116,7 @@ bool lockOnSolverCalls = false;
 bool taseDebug =true;
 bool measureTime =true;
 bool dontFork =false;
+bool workerSelfTerminate=true;
 enum runType : int {INTERP_ONLY, MIXED};
 enum runType exec_mode;
 enum testType : int {EXPLORATION, VERIFICATION};
@@ -125,6 +126,7 @@ bool disableSpringboard = false;
 bool enableBounceback = false;
 bool OpenSSLTest = true;
 bool skipNops = true;
+bool dropS2C = false;
 
 int worker2managerFD [2];
 multipassRecord multipassInfo;
@@ -189,7 +191,7 @@ void transferToTarget() {
   }
   //#endif
   
-  target_start_time = util::getWallTime();
+  
   
   if (exec_mode == INTERP_ONLY) {
     memset(&target_ctx, 0, sizeof(target_ctx));
@@ -378,8 +380,15 @@ namespace {
   cl::opt<bool>
   dontForkArg("dontFork", cl::desc("Disable forking in TASE for debugging"), cl::init(false));
 
+   cl::opt<bool>
+   workerSelfTerminateArg("workerSelfTerminate", cl::desc("Workers will exit if they see they're in an earlier round"), cl::init(true));
+
+  
   cl::opt<bool>
   enableBouncebackArg("enableBounceback", cl::desc("Try to bounce back to native execution in TASE depending on abort code"), cl::init(false));
+
+  cl::opt<bool>
+  dropS2CArg("dropS2C", cl::desc("Drop server to client messages for verification after the handshake"), cl::init(false));
   
   cl::opt<bool>
   measureTimeArg("measureTime", cl::desc("Time interpretation rounds in TASE for debugging"), cl::init(true));
@@ -1453,7 +1462,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 }
 #endif
 
- void printTASEArgs(runType rt, testType tt, bool fm, bool dbg, std::string projName, bool df, bool disableSB,  bool stop, bool killFlags, bool dontFree, bool lckOnSolverCall, bool measureTimeVal, bool enableBouncebackVal, bool skpNops) {
+ void printTASEArgs(runType rt, testType tt, bool fm, bool dbg, std::string projName, bool df, bool disableSB,  bool stop, bool killFlags, bool dontFree, bool lckOnSolverCall, bool measureTimeVal, bool enableBouncebackVal, bool skpNops, bool selfTerm, bool dS2C) {
 
    printf("TASE args... \n");
    if (rt == MIXED) 
@@ -1483,6 +1492,8 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    printf("\t measureTime         output : %d \n", measureTimeVal);
    printf("\t enableBounceback     output : %d \n", enableBouncebackVal);
    printf("\t skipNops             output : %d \n", skpNops);
+   printf("\t workerSelfTerminate  output : %d \n", selfTerm);
+   printf("\t dropS2C              output : %d \n", dS2C);
  }
 
  
@@ -1511,14 +1522,15 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    measureTime = measureTimeArg;
    enableBounceback = enableBouncebackArg;
    skipNops = skipNopsArg;
-   
+   workerSelfTerminate = workerSelfTerminateArg;
+   dropS2C = dropS2CArg;
    if (test_type ==VERIFICATION) {
      printf("Enabling multipass verification for openssl \n");
      enableMultipass = true;
    }
    
    if (taseDebug)
-     printTASEArgs(exec_mode, test_type, taseManager, taseDebug, project, dontFork, disableSpringboard,  stopAtMasterSecret, killFlagsHack, skipFree, lockOnSolverCalls, measureTime, enableBounceback, skipNopsArg);
+     printTASEArgs(exec_mode, test_type, taseManager, taseDebug, project, dontFork, disableSpringboard,  stopAtMasterSecret, killFlagsHack, skipFree, lockOnSolverCalls, measureTime, enableBounceback, skipNops, workerSelfTerminate, dropS2C);
 
 #ifdef TASE_BIGNUM
    symIndex = symIndexArg;
@@ -1647,6 +1659,8 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    std::cout.flush();
    tsx_init();
    int pid;
+
+   target_start_time = util::getWallTime();  //Moved here to initialize for both manager and workers
    if (taseManager) 
      pid = ::fork();
    else

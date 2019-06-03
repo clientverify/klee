@@ -35,8 +35,10 @@ extern "C" int RAND_pseudo_bytes (unsigned char *buf, int num);
 
 extern "C" int RAND_bytes (unsigned char *buf, int num);
 
-
+extern bool enableMultipass;
 extern uint64_t interpCtr;
+extern bool dropS2C;
+extern int roundCount;
 
 // for compatibility reasons
 #define BOUT_MAGIC "BOUT\n"
@@ -449,6 +451,22 @@ KTestObject* KTOV_next_object(KTestObjectVector *ov, const char *name)
   }
 
   KTestObject *o = &ov->objects[ov->playback_index];
+
+  /*Hack to make us skip to the next c2s or s2c record for the old gmail traces
+    for which we may not have .net.ktest files readily available */
+
+  if (enableMultipass) {
+    printf("Forcing KTOV_next_object to ignore anything but c2s and s2c \n");
+    fflush(stdout);
+    while (true) {
+      printf("skipping record of type %s at index %d \n", o->name, ov->playback_index);
+      if (strcmp(o->name,"c2s") != 0 &&  (strcmp (o->name, "s2c") != 0 || (dropS2C && roundCount >= 4) ) ) {
+	ov->playback_index++;
+	o = &ov->objects[ov->playback_index];
+      } else
+	break;
+    }
+  }
   if (strcmp(o->name, name) != 0) {
     printf("ERROR: ktest playback needed '%s', but recording had '%s'\n",
 	   name, o->name);

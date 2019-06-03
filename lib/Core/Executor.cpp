@@ -4642,11 +4642,23 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) 
     workerIDStream << ".";
     workerIDStream << i;
     std::string pidString ;
+    
     pidString = workerIDStream.str();
+    if (pidString.size() > 250) {
+      printf("Cycling log names due to large size \n");
+      workerIDStream.str("");
+      workerIDStream << "Monitor.Wrapped.";
+      workerIDStream << i;
+      pidString = workerIDStream.str();
+      printf("Cycled log name is %s \n", pidString.c_str());
+
+    }
+    printf("Before freopen, new string for log is %s \n", pidString.c_str());
     FILE * res1 = freopen(pidString.c_str(),"w",stdout);
-    FILE * res2 = freopen(pidString.c_str(),"w",stderr);
-    if (res1 == NULL || res2 == NULL) {
+
+    if (res1 == NULL ) {
       printf("ERROR opening new file for child process logging \n");
+      fprintf(stderr, "ERROR opening new file for child process logging for pid %d \n", i);
       fflush(stdout);
       worker_exit();
       std::exit(EXIT_FAILURE);

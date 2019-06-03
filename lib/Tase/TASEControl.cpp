@@ -21,6 +21,8 @@ using namespace klee;
 
 extern std::stringstream workerIDStream;
 extern bool dontFork;
+extern bool taseDebug;
+extern bool workerSelfTerminate;
 extern void deserializeAssignments ( void * buf, int bufSize, klee::Executor * exec, CVAssignment * cv);
 
 
@@ -28,14 +30,23 @@ extern void deserializeAssignments ( void * buf, int bufSize, klee::Executor * e
 extern double target_start_time;
 extern uint64_t total_interp_returns;
 
+typedef struct WorkerInfo {
+  int pid;
+  int branches;
+  int round;
+  int pass;
+  int parent;
+} WorkerInfo;
+
 
 int QR_BYTE_LEN = 4096;
 int QA_BYTE_LEN = 4096;
-int MAX_WORKERS = 32;
+int MAX_WORKERS = 10;
 
 bool taseManager = false;
 int roundCount = 0;
 int passCount = 0; //Pass ctr for current round of verification
+int tase_branches = 0;
 int multipassAssignmentSize = 16092;  //Totally arbitrary. Size of mmap'd multipass assignment buffer.
 void * MPAPtr;  //Ptr to serialized multipass info for current round of verification
 int * replayPIDPtr; //Ptr to the pid storing the replay PID for the current round of verification
@@ -49,10 +60,10 @@ CVAssignment  prevMPA;
 void * ms_base;
 int ms_size = 16384;
 
-int * ms_QR_base;
-int * ms_QR_size_ptr;
-int * ms_QA_base;
-int * ms_QA_size_ptr;
+void * ms_QR_base;
+int * ms_QR_size_ptr; //Pointer to num of workers in QR, not size in bytes
+void * ms_QA_base;
+int * ms_QA_size_ptr; //Pointer to num of workers in QA, not size in bytes
 
 int * target_started_ptr;
 
@@ -65,8 +76,6 @@ struct sembuf sem_unlock = {0, 1, 0 | SEM_UNDO};// SEM_UNDO added to release
 void get_sem_lock () {
   int res =  semop(semID, &sem_lock, 1);
   if (res == 0) {
-    //printf("Obtained sem lock \n");
-    std::cout.flush();
     return;
   }
   else {
@@ -103,22 +112,25 @@ int initialize_semaphore(int semKey) {
  return semID;
 }
 
-static void printQ( int *base_size_ptr, int * base_ptr) {
+static void printWorkerInfo(WorkerInfo * wi) {
+  printf("<pid %d> <branches %d> <round %d> <pass %d> <parent %d> \n", wi->pid, wi->branches, wi->round, wi->pass, wi->parent);
+}
+
+static void printQ( int *base_size_ptr, void * basePtr) {
   int size = *base_size_ptr;
   if (size < 0) {
     printf("Error in printQ: size less than zero \n");
     std::cout.flush();
     std::exit(EXIT_FAILURE);
   }
-  
   printf("Printing queue: \n");
   if (size == 0)
     printf("Nothing in queue! \n");
   while (size > 0) {
     size--;
-    printf("%d\n", *(base_ptr + size));
+    WorkerInfo * worker = (WorkerInfo *) ( (uint64_t) basePtr + (uint64_t) (size * sizeof(WorkerInfo)));
+    printWorkerInfo(worker);
   }
-
 }
 
 static void printQR() {
@@ -131,200 +143,327 @@ static void printQA() {
   printQ(ms_QA_size_ptr, ms_QA_base);
 }
 
-bool PidInQR(int pid) {
-  int QR_size = *ms_QR_size_ptr;
-
-  for (int i = 0; i < QR_size; i++) {
-    if ( *(ms_QR_base + i) == pid)
-      return true;
+WorkerInfo * PidInQ(int pid, int * QSizePtr, void * basePtr) {
+  int Qsize = *QSizePtr;
+  for (int i = 0; i < Qsize; i++) {
+    WorkerInfo * wi = (WorkerInfo *) ((uint64_t) basePtr + (uint64_t) (i * sizeof(WorkerInfo)) );
+    if (wi->pid == pid)
+      return wi;
   }
-  return false;  
+  return NULL;  
 }
 
-bool PidInQA(int pid) {
-  int QA_size= *ms_QA_size_ptr;
-  for (int i = 0; i < QA_size ; i++) {
-    if ( *(ms_QA_base +i)  == pid)
-      return true;
-  }
-  return false;
+WorkerInfo * PidInQR(int pid) {
+  return PidInQ(pid, ms_QR_size_ptr, ms_QR_base);
 }
 
-/* MUST be called ONLY when lock is obtained */
-static void remove_dead_workers (int * QR_size_ptr, int * QR_base_ptr) {
-  printf("Entering remove_dead_workers \n");
-  int QR_index = *QR_size_ptr;
-  int valid_QR_size = *QR_size_ptr;
-  printf("DEBUG: QR size is %d \n", QR_index);
-  printf("DEBUG: Before remove_dead_workers, QR is \n");
-  printQR();
+WorkerInfo * PidInQA(int pid) {
+  return PidInQ(pid, ms_QA_size_ptr, ms_QA_base);
+}
 
-  //Check each worker in QR
-  while (QR_index > 0) {
-    QR_index--;
-    int * curr_entry_ptr = QR_base_ptr + QR_index;
-    int pid = *curr_entry_ptr;
-    int res;
-
-    printf("Checking pid %d \n", pid);
-    
-    res = kill(pid,0);
-    printf("res is %d \n", res);
-    
-    if (res == -1) {
-      printf("Found exited pid %d \n",pid);
-      int * index_ptr = valid_QR_size + QR_base_ptr -1;
-      while (index_ptr != curr_entry_ptr) {
-	*(index_ptr -1) = *index_ptr;
-	index_ptr--;
-      }
-      valid_QR_size--;
+//Return pointer to worker in queue with earliest round, pass, branch.
+WorkerInfo * getEarliestWorker(void * basePtr, int Qsize ) {
+  if (taseDebug) {
+    printf("Manager calling getEarliestWorker \n");
+    fflush(stdout);
+  }
+  
+  //Initialization case
+  WorkerInfo * loser = (WorkerInfo *) (basePtr);
+  if (basePtr == NULL || Qsize == 0) {
+    fprintf(stderr,"getEarliestWorker called on empty/null queue \n");
+    return NULL;
+  }
+  
+  for (int i = 0; i < Qsize; i++) {
+    WorkerInfo * currWorker = (WorkerInfo *) ((uint64_t) basePtr + (uint64_t)( i *(sizeof(WorkerInfo))));
+    if (currWorker->round < loser->round) {
+      loser = currWorker; //New loser
+    } else if (currWorker->round == loser->round) { //Tie on round
+      if (currWorker->pass < loser->pass) { 
+	loser = currWorker; //New loser
+      } /* else if (currWorker->pass == loser->pass) { //Tie on pass
+	   if (currWorker->branches < loser->branches) 
+	   loser = currWorker; //New loser
+	*/
+      
     }
   }
-
-  printf("After remove_dead_workers valid_QR_size is %d \n",valid_QR_size);
-  *QR_size_ptr = valid_QR_size;
-  printQR();
-  return;
+    
+  return loser;
 }
+
+
+WorkerInfo * getLatestWorker(void * basePtr, int Qsize) {
+  if (taseDebug) {
+    printf("Manager calling getLatestWorker \n");
+    fflush(stdout);
+  }
+
+  //Initialization case
+  WorkerInfo * winner = (WorkerInfo *) (basePtr);
+  if (basePtr == NULL || Qsize == 0) {
+    fprintf(stderr,"getLatestWorker called on empty/null queue \n");
+    return NULL;
+  }
+
+  for (int i = 0; i < Qsize; i++) {
+    WorkerInfo * currWorker = (WorkerInfo *) ((uint64_t) basePtr + (uint64_t)( i *(sizeof(WorkerInfo))));
+    if (currWorker->round > winner->round) {
+      winner = currWorker; //New winner
+    } else if (currWorker->round == winner->round) { //Tie on round
+      if (currWorker->pass > winner->pass) {
+	winner = currWorker; //New winner
+      } /* else if (currWorker->pass == winner->pass) { //Tie on pass
+	   if (currWorker->branches > winner->branches)
+	   winner = currWorker; //New winner
+	*/
+    }
+  }
+  return winner;
+}
+
+void removeFromQ(WorkerInfo * worker, int * sizePtr, void * basePtr) {
+  
+  int size = *sizePtr;
+  WorkerInfo * found = PidInQ(worker->pid, sizePtr, basePtr);
+  if (found == NULL) {
+    fprintf(stderr,"Error: Trying to remove pid %d not in Q \n", worker->pid);
+    std::exit(EXIT_FAILURE);
+  }
+  memset((void *) found, 0, sizeof(WorkerInfo));
+  //Slide values down
+  WorkerInfo * edgePtr = (WorkerInfo *) ((uint64_t) basePtr + (size -1) * sizeof(WorkerInfo));
+  WorkerInfo * searchPtr = found;
+  WorkerInfo * tmpPtr;
+  while (searchPtr != edgePtr) {
+    tmpPtr = searchPtr;
+    searchPtr++;
+    memcpy ((void *) (tmpPtr), searchPtr, sizeof(WorkerInfo));
+  }
+  memset((void *) searchPtr, 0, sizeof(WorkerInfo));
+  *sizePtr = *sizePtr -1;
+}
+
+void removeFromQR(WorkerInfo * worker) {
+
+  if (worker == NULL) {
+    fprintf(stderr,"ERROR: calling removeFromQR on null ptr \n");
+    fflush(stdout);
+    std::exit(EXIT_FAILURE);
+  }
+  removeFromQ(worker, ms_QR_size_ptr, ms_QR_base);
+
+}
+
+void removeFromQA(WorkerInfo * worker) {
+  if (taseDebug) {
+    printf("Calling removeFromQA \n");
+    fflush(stdout);
+  }
+  if (worker == NULL) {
+    fprintf(stderr,"ERROR: calling removeFromQA on null ptr \n");
+    fflush(stdout);
+    std::exit(EXIT_FAILURE);
+  }
+
+  printf("Prior to removal, QA is \n");
+  printQA();
+  removeFromQ(worker, ms_QA_size_ptr, ms_QA_base);
+  printf("After removal, QA is \n");
+  printQA();
+}
+
+void addToQ(WorkerInfo * worker, int * sizePtr, void * basePtr) {
+  printf("During add to Q: \n");
+  printf("Worker pid is %d \n", worker->pid);
+  printf("Size of Q is %d \n", *sizePtr); 
+
+  void * dst = (void *) ((uint64_t) basePtr + (*sizePtr) * sizeof(WorkerInfo));
+  //printf("dst is 0x%lx \n", (uint64_t) dst);
+  void * src = (void *) worker;
+  /*
+  printf("src is 0x%lx \n", (uint64_t) src);
+  printf("Num of bytes to copy is %d \n", sizeof(WorkerInfo));
+  printf("Performing the copy now... \n");
+  */
+  memcpy(dst ,  src , sizeof(WorkerInfo));
+  *sizePtr = *sizePtr +1;
+}
+
+void addToQR(WorkerInfo * worker) {
+  addToQ(worker, ms_QR_size_ptr, ms_QR_base);
+}
+
+void addToQA(WorkerInfo * worker) {
+  if (taseDebug) {
+    printf("About to add to QA \n");
+    printQA();
+    fflush(stdout);
+  }
+  addToQ(worker, ms_QA_size_ptr, ms_QA_base);
+  if(taseDebug) {
+    printf("Finished call to add to QA. Printing result--- \n");
+    fflush(stdout);
+    printQA();
+    printf("----End result. \n");
+  }   
+}
+
+void QRtoQA(WorkerInfo * worker) {
+  if(taseDebug){
+    printf("Calling QRtoQA on pid %d \n", worker->pid);
+    fflush(stdout);
+  }
+  WorkerInfo tmp;  
+  memcpy ((void *) &tmp, (void *) worker, sizeof(WorkerInfo));
+  removeFromQR (worker);
+  addToQA(&tmp);
+}
+
+void QAtoQR(WorkerInfo * worker) {
+  if(taseDebug) {
+    printf("Calling QAtoQR on pid %d \n", worker->pid);
+    fflush(stdout);
+  }
+  WorkerInfo tmp;
+  memcpy((void *) &tmp, (void *) worker, sizeof(WorkerInfo));
+  removeFromQA (worker);
+  addToQR(&tmp);
+}
+
+
+void select_workers () {
+
+  if (*ms_QR_size_ptr == MAX_WORKERS) {
+    if(taseDebug){
+      printf("Manager sees full QR \n");
+      fflush(stdout);
+    }
+    //Get earliest worker by round, pass, branch
+    if (taseDebug) {
+      printf("Prior to call to get earliest worker, QR is \n");
+      printQR();
+    }
+    WorkerInfo * earliestWorkerQR = getEarliestWorker(ms_QR_base, *ms_QR_size_ptr);
+    printf("Earliest worker in QR is pid %d \n", earliestWorkerQR->pid);
+
+    if (earliestWorkerQR->round < managerRoundCtr ) {
+      int res = kill(earliestWorkerQR->pid, SIGKILL);
+      if (res == -1) {
+	perror("Error sigstopping in select_workers \n");
+	fprintf(stderr, "Issue delivering SIGSTOP to pid %d \n", earliestWorkerQR->pid);
+      } else {
+	printf("Manager kicking pid from QR %d; pid is in round %d when latest round is %d \n", earliestWorkerQR->pid, earliestWorkerQR->round, managerRoundCtr);
+      }
+      QRtoQA(earliestWorkerQR);
+      
+    }
+    
+    /*
+    int res = kill(earliestWorker->pid, SIGSTOP);
+    if (taseDebug) {
+      printf("Manager starting waitpid call for QRtoQA  \n");
+      fflush(stdout);
+    }
+    while (true) {
+      int status;
+      int res = waitpid(earliestWorker->pid, &status, WUNTRACED);
+      if (WIFSTOPPED(status)) {
+	QRtoQA(earliestWorker);
+	break;
+      } else if (WIFEXITED(status)) {
+	removeFromQR(earliestWorker);
+      }
+    }
+    */
+  }
+
+  if (*ms_QR_size_ptr < MAX_WORKERS && *ms_QA_size_ptr != 0) {
+
+    if (taseDebug) {
+      printf("Manager sees space in QR \n");
+      fflush(stdout);
+    }
+
+    printQA();
+    printQR();
+
+    WorkerInfo * latestWorker = getLatestWorker(ms_QA_base, *ms_QA_size_ptr);
+    /*
+    int check = waitpid(latestWorker->pid, &check, WUNTRACED | WCONTINUED | WNOHANG);
+    if (check == -1){
+      perror("Error in dummy check \n ");
+      printf("Error in dummy check for pid %d \n ", latestWorker->pid);
+    } else {
+      printf("Dummy check appears to be ok for pid %d \n", latestWorker->pid);
+    }
+    if (WIFSTOPPED(check))
+      printf("DBG: pid is stopped \n");
+    if(WIFCONTINUED(check))
+      printf("DBG: pid is continued \n");
+    if (WIFEXITED(check))
+      printf("DBG: pid is exited \n");
+    fflush(stdout);
+    */
+    if (latestWorker->round < managerRoundCtr && *ms_QR_size_ptr > 0) {
+      printf("No workers in QA in latest round %d.  Not moving to QR. \n", managerRoundCtr);
+    } else {
+      int res = kill(latestWorker->pid, SIGCONT);
+      if (res == -1){
+	perror("Error during kill sigcont \n");
+	printf("Error during kill sigcont \n");
+      } else {
+	printf("No error during kill sigcont \n");
+      }
+      fflush(stdout);
+      //printf("Manager starting waitpid call for QAtoQR on pid %d \n", latestWorker->pid);
+      //fflush(stdout);
+      //while (true) {
+      // int status =0;
+      // res = waitpid(latestWorker->pid,&status, WUNTRACED | WCONTINUED );
+      //Todo -- comment check back in
+      //if (res == -1)
+      //perror("ERROR: manager can't waitpid");
+      //if (WIFCONTINUED(status)) {
+      QAtoQR(latestWorker);
+      //break;
+      //} else if (WIFEXITED(status)) {
+      //removeFromQA(latestWorker);
+      //break;
+      //}
+      //printf("status after waitpid: %d \n", status);
+      //}
+      //printf("Manager finished waitpid call for QAtoQR \n");
+      fflush(stdout);
+    }
+  }
+}
+
 
 void manage_workers () {
   get_sem_lock();
-
+  printf("Acquired semaphore in manage workers \n");
   if (managerRoundCtr < *latestRoundPtr) {
     managerRoundCtr = *latestRoundPtr;
     double curr_time = util::getWallTime();
-    fprintf(stderr,"Manager sees new round %d starting at time %lf \n", managerRoundCtr, curr_time - target_start_time);    
+    double diff = curr_time - target_start_time;
+    fprintf(stderr,"Manager sees new round %d starting at time %lf \n", managerRoundCtr, diff);    
   }
-  
-  int QA_size_init = *ms_QA_size_ptr;
-  int QR_size_init = *ms_QR_size_ptr;
 
   //Exit case
-  if (QA_size_init == 0 && QR_size_init == 0 && *target_started_ptr == 1) {
-    printf("Manager found empty QA and QR \n");
-    std::cout.flush();
-
-    release_sem_lock();
-    std::exit(EXIT_SUCCESS);
-
+  if (*ms_QA_size_ptr == 0 && *ms_QR_size_ptr == 0 && *target_started_ptr == 1) {
+    //fprintf(stderr,"Manager found empty QA and QR \n");
+    //std::exit(EXIT_SUCCESS);
   }
   
-  if (QR_size_init > MAX_WORKERS) {
-    printf("ERROR: found more workers than expected in manage_workers \n");
+  if (*ms_QR_size_ptr > MAX_WORKERS) {
+    fprintf(stderr,"ERROR: found more workers than expected in manage_workers \n");
     std::exit(EXIT_FAILURE);
   }
-  
-  //printf("Entering manage_workers --\n");
-  //printQR();
-  //printQA();
-  
-  //remove_dead_workers(ms_QR_size_ptr,ms_QR_base); For now, depend on tase_exit
-  
-  int QR_size_updated = *ms_QR_size_ptr;
-  
-  if (QR_size_updated < MAX_WORKERS) {
-    
-    if (QA_size_init > 0 ) {
-      //grab another process and run it
-      int newWorkerPID = *(ms_QA_base + QA_size_init  -1);
-      *ms_QA_size_ptr = QA_size_init -1;
-      fprintf(stderr, "Manager moving pid %d from QA into QR \n", newWorkerPID);
-      printf("control debug: Manager moving pid %d from QA into QR \n", newWorkerPID);
-      std::cout.flush();
-      
-      int res = kill(newWorkerPID,SIGCONT);//May need to stick in a loop
-      if (res == -1) {
-	printf("Trying to sigcont %d \n",newWorkerPID);
-	std::cout.flush();
-	perror("ERROR: manager can't sigcont ");
-	std::exit(EXIT_FAILURE);
-      }
 
-      printf("Manager starting waitpid call \n");
-      std::cout.flush();
-      while (true) {
-	int status;
-	res = waitpid(newWorkerPID,&status, WUNTRACED | WCONTINUED );
-	//Todo -- comment check back in
-	//if (res == -1)
-	//perror("ERROR: manager can't waitpid");
-	if (WIFCONTINUED(status) || WIFEXITED(status))
-	  break;
-      }
-      printf("Manager finished waitpid call \n");
-      std::cout.flush();
-      //Add new worker to QR
-      *(ms_QR_base + QR_size_updated) = newWorkerPID;
-      *ms_QR_size_ptr = QR_size_updated + 1;    
-    }
-  }
-
-  if (*target_started_ptr == 1) {
-    //printf("Manager sees %d in QR, %d in QA \n", *ms_QR_size_ptr, *ms_QA_size_ptr);
-    std::cout.flush();
-    if (*ms_QR_size_ptr == 0 && *ms_QA_size_ptr == 0) {
-      printf("Manager sees empty queues \n");
-      std::cout.flush();
-      std::exit(EXIT_SUCCESS);
-    }
-  }
-    
-  //printf("Leaving manage_workers -- \n");
-  //printQR();
-  //printQA();
-  
+  select_workers();
   release_sem_lock();
-}
-
-static void remove_self_from_QR () {
-
-    //First, find self in QR
-    int * searchPtr = ms_QR_base;
-    int mypid = getpid();
-    int i = 0;
-    while (i < QR_BYTE_LEN) {
-      if (*searchPtr == mypid)
-	break;
-      else {
-	i+= sizeof(int);
-	searchPtr++;
-      }
-    }
-    if (i >= QR_BYTE_LEN){
-      printf("ERROR: couldn't find self in remove_self_from_QR \n");
-      std::exit(EXIT_FAILURE);
-    }
-
-    //Remove self
-    int QR_size = * ms_QR_size_ptr;
-    int * QR_edge_ptr = (int *) ms_QR_base + QR_size -1;
-    *searchPtr = 0;
-
-    //Slide values down stack
-    while (searchPtr < QR_edge_ptr) {
-      *searchPtr = *(searchPtr +1);
-      searchPtr++;
-    }
-
-    //Update size of QR
-    QR_size--;
-    *ms_QR_size_ptr = QR_size;
-}
-
-void QA_insert_PID(int PID) {
-
-  int QA_size= *ms_QA_size_ptr;
-  QA_size++;
-  if (QA_size * sizeof(int) > QA_BYTE_LEN) {
-    printf("FATAL ERROR: Too many process in QA \n");
-    std::cout.flush();
-    std::exit(EXIT_FAILURE);
-  }
-  *(ms_QA_base + QA_size -1) = PID;
-  *ms_QA_size_ptr = QA_size;
-  
-
 }
 
 //Todo -- Any more cleanup needed?
@@ -333,21 +472,19 @@ void worker_exit() {
     printf("WARNING: worker_exit called without taseManager \n");
     std::cout.flush();
     std::exit(EXIT_SUCCESS);
-  } else {
-    
+  } else {    
+    printf("Worker %d attempting to exit and remove self from QR \n", getpid());
     get_sem_lock();
-    
-        
-    remove_self_from_QR();
+    removeFromQR(PidInQR(getpid()));
     fflush(stdout);
     std::exit(EXIT_SUCCESS);//Releases semaphore
   }
 }
 
 int tase_fork(int parentPID, uint64_t rip) {
+  tase_branches++;
   double curr_time = util::getWallTime();
   printf("PID %d entering tase_fork at rip 0x%lx %lf seconds after analysis started \n", parentPID, rip, curr_time - target_start_time);
-  
   
   std::cout.flush();
   if (dontFork) {
@@ -357,19 +494,19 @@ int tase_fork(int parentPID, uint64_t rip) {
   }
   
   if (taseManager) {
-    
     get_sem_lock();
     printf("TASE FORKING! \n");
-
-    if (roundCount < *latestRoundPtr)  {
-      remove_self_from_QR();
+    if (roundCount < *latestRoundPtr && workerSelfTerminate)  {
       printf("Worker %d is in round %d when latest round is %d. Worker exiting. \n", getpid(), roundCount, *latestRoundPtr );
       fflush(stdout);
+      removeFromQR(PidInQR(getpid()));
       std::exit(EXIT_SUCCESS);
     }
-
-    
     int trueChildPID = ::fork();
+    if (trueChildPID == -1) {
+      printf("Error during forking \n");
+      perror("Fork error \n");
+    }
     if (trueChildPID != 0) {
       printf("Parent PID %d forked off child %d at rip 0x%lx for TRUE branch \n", parentPID, trueChildPID, rip);
       fflush(stdout);
@@ -380,15 +517,33 @@ int tase_fork(int parentPID, uint64_t rip) {
 	if (WIFSTOPPED(status))
 	  break;
       }
-      QA_insert_PID(trueChildPID);
-
-    } else  {
-     
+      WorkerInfo wi;
+      wi.pid = trueChildPID;
+      wi.round = roundCount;
+      wi.pass  = passCount;
+      wi.branches = tase_branches;
+      wi.parent = parentPID;
+      addToQA(&wi);
+    } else  {     
       raise(SIGSTOP);
+
+
+      if (taseDebug) {
+	get_sem_lock();
+	if (PidInQR(getpid()) == NULL)
+	  fprintf(stderr,"Error: Fork pid %d running but not in QR ", getpid());
+	release_sem_lock();
+      }
+
+      
       return 1;// Go back to path exploration
     } 
 
     int falseChildPID = ::fork();
+    if (falseChildPID == -1) {
+      printf("Error during forking \n");
+      perror("Fork error \n");
+    }
     if (falseChildPID != 0) {
       printf("Parent PID %d forked off child %d at rip 0x%lx for FALSE branch \n", parentPID, falseChildPID, rip );
       fflush(stdout);
@@ -401,25 +556,32 @@ int tase_fork(int parentPID, uint64_t rip) {
 	if (WIFSTOPPED(status))
 	  break;
       }
-
-      QA_insert_PID(falseChildPID);
-
+      
+      WorkerInfo wi;
+      wi.pid = falseChildPID;
+      wi.round = roundCount;
+      wi.pass = passCount;
+      wi.branches = tase_branches;
+      wi.parent = parentPID;
+      addToQA(&wi);
     } else {
-
       raise(SIGSTOP);
+      if (taseDebug) {
+	get_sem_lock();
+	if (PidInQR(getpid()) == NULL)
+	  fprintf(stderr,"Error: Fork pid %d running but not in QR ", getpid());
+	release_sem_lock();
+      }
+      
       return 0; //Go back to path exploration
-    }
-    
-    //Remove self from running queue
-
+    }    
     printQR();
-    remove_self_from_QR();
+    printQA();
     printf("control debug: Parent PID %d exiting tase_fork after producing child PIDs %d (true) and %d (false) from rip 0x%lx \n", parentPID, trueChildPID, falseChildPID, rip);
     printf("Exiting tase_fork \n");
-    std::cout.flush();
-    //Exit, and release semaphore
+    fflush(stdout);
+    removeFromQR(PidInQR(getpid()));
     std::exit(EXIT_SUCCESS);
-    
   } else {
     int pid = ::fork();
     return pid;
@@ -429,28 +591,21 @@ int tase_fork(int parentPID, uint64_t rip) {
 void tase_exit() {
   if (taseManager) {
     get_sem_lock();
-    remove_self_from_QR();
-    
-    printf("PID %d calling tase_exit \n", getpid());
-    
+    removeFromQR(PidInQR(getpid()));
+    printf("PID %d calling tase_exit \n", getpid());  
     std::cout.flush();
-    std::exit(EXIT_SUCCESS);
-    
-    release_sem_lock();
+    std::exit(EXIT_SUCCESS); //Releases semaphore
   } else {
     printf("PID %d calling tase_exit \n", getpid());
 
     std::cout.flush();
     std::exit(EXIT_SUCCESS);
-    
-    
   }
 }
 
 void initManagerStructures() {
    
    initialize_semaphore(getpid());
-
    ms_base = mmap(NULL, ms_size, PROT_READ|PROT_WRITE, MAP_ANON|MAP_SHARED, -1, 0);
 
    ms_QR_base =  ( (int *) ms_base) + 1024;
@@ -462,8 +617,11 @@ void initManagerStructures() {
    *ms_QA_size_ptr = 0;
 
    int res = prctl(PR_SET_CHILD_SUBREAPER, 1);
-   if (res == -1)
+   if (res == -1) {
      perror("Subreaper err ");
+     fprintf(stderr, "Exiting due to reaper error in initManagerStructures \n");
+     std::exit(EXIT_FAILURE);
+   }
      
    target_started_ptr = ((int *) ms_base) + 3072;
    *target_started_ptr = 0; //Switches to 1 when we execute target
@@ -480,37 +638,35 @@ void TASE_get_time_string (char * buf) {
   struct tm * tstruct= localtime(&theTime);
   strftime(buf, 80, "%T",tstruct);
   
-
 }
 
 void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
   printf("Hit top of multipass_start_round \n");
   std::cout.flush();
-
   get_sem_lock();
 
-  if (roundCount < *latestRoundPtr)  {
-    remove_self_from_QR();
+  if (roundCount < *latestRoundPtr  && workerSelfTerminate)  {
+    removeFromQR(PidInQR(getpid()));
     printf("Worker %d is in round %d when latest round is %d. Worker exiting. \n", getpid(), roundCount, *latestRoundPtr );
     fflush(stdout);
     std::exit(EXIT_SUCCESS);
   } else {
     printf("Worker sees latest round as %d; updating to %d \n", *latestRoundPtr, roundCount);
     *latestRoundPtr = roundCount;
-    
   }
-    
-  
+
   printf("IMPORTANT: Starting round %d pass %d of verification \n", roundCount, passCount);
   std::cout.flush();
   //Make backup of self
   int childPID = ::fork();
-  
+  if (childPID == -1) {
+    printf("Error during forking \n");
+    perror("Fork error \n");
+  }
   if (childPID != 0) {
     *replayPIDPtr = childPID;
     //Block until child has sigstop'd
     while (true) {
-      
       int status;
       int res = waitpid(childPID, &status, WUNTRACED);
       if (res == -1)
@@ -521,6 +677,17 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
 
     if (isReplay) {
 
+      //Pick up roundCount and passcount
+      WorkerInfo * myInfo = PidInQR(getpid());
+      if (myInfo != NULL) {
+	roundCount = myInfo->round;
+	passCount = myInfo->pass;
+      } else {
+	printf("ERROR: could not find self in QR \n");
+	fflush(stdout);
+	std::exit(EXIT_FAILURE);
+      }
+      
       //Pickup assignment info if necessary
       if (*(uint8_t *) MPAPtr != 0) {
 	printf("Attempting to deserialize MP Assignments \n");
@@ -536,19 +703,13 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
 	*replayLock = 1;
 	
       } else {
-	char buf2 [80];
-	TASE_get_time_string(buf2);
-	printf( "IMPORTANT: ERROR: control debug: deserializing from empty buf 0x%lx at time %s for replay pid %d  \n", (uint64_t) MPAPtr, buf2, getpid());
+	printf( "IMPORTANT: ERROR: control debug: deserializing from empty buf 0x%lx for replay pid %d  \n", (uint64_t) MPAPtr,  getpid());
 	std::cout.flush();
       }
- 
     }
-
     std::cout.flush();
     release_sem_lock();
-  } else {
-
-    passCount++;
+  } else {    
     raise(SIGSTOP);
 
     int i = getpid();
@@ -556,14 +717,39 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
     workerIDStream << i;
     std::string pidString ;
     pidString = workerIDStream.str();
-    freopen(pidString.c_str(),"w",stdout);
+    if (pidString.size() > 250) {
+      printf("Cycling log name due to large size \n");
+      workerIDStream.str("");
+      workerIDStream << "Monitor.Wrapped.";
+      workerIDStream << i;
+      pidString = workerIDStream.str();
+      printf("Cycled log name is %s \n", pidString.c_str());
+    }
+
+
+    printf("Before freopen, new string for log is %s \n", pidString.c_str());
     
+    FILE * res = freopen(pidString.c_str(),"w",stdout);
+
+    if (res == NULL) {
+      printf("ERROR: Couldn't open file for new replay pid %d \n", i);
+      perror("Error opening file during replay");
+      fprintf(stderr, "ERROR opening new file for child process logging for pid %d \n", i);
+      worker_exit();
+    } else 
+      printf("Worker %d opened file for logging \n", i);
+    fflush(stdout);
+    static int ctr = 0;
     while (true) {
-      
+      printf("Trying to get sem lock \n");
+      fflush(stdout);
       get_sem_lock(); 
-      if (PidInQR(i) && *replayLock == 0) {
+      if ( (PidInQR(getpid()) !=NULL) && *replayLock == 0) {
 	break;
       } else {
+	ctr++;
+	if(PidInQR(i) == NULL && ctr == 1)
+	  fprintf(stderr,"Error: replay pid %d running but not in QR \n", getpid());
 	release_sem_lock();
       }
     }
@@ -574,9 +760,8 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
     double curr_time = util::getWallTime();
     double elapsed_time = curr_time - target_start_time;
     
-    
     printf("IMPORTANT: control debug:  replaying round %d for pass %d at time %s with replay pid %d.  %lf seconds since analysis started \n", roundCount, passCount, buf, getpid(), elapsed_time );
-    if(!PidInQR(i)) 
+    if(!(PidInQR(i) != NULL)) 
       printf("IMPORTANT: Error: control debug: Process %d executing without pid in QR at time %s \n", i, buf);
     std::cout.flush();
     release_sem_lock();
@@ -586,160 +771,77 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
     std::cout.flush();
   }    
 }
-/*
-void multipass_start_round (klee::Executor * theExecutor) {
-  printf("Hit top of multipass_start_round \n");
-  std::cout.flush();
-  
-  get_sem_lock();
-  printf("IMPORTANT: Starting round %d pass %d of verification \n", roundCount, passCount);
-  std::cout.flush();
-  //Make backup of self
-  int childPID = ::fork();
- 
-  if (childPID != 0) {
-    *replayPIDPtr = childPID;
-    //Block until child has sigstop'd
-    while (true) {
-
-      int status;
-      int res = waitpid(childPID, &status, WUNTRACED);
-      if (WIFSTOPPED(status))
-	break;
-    }    
-  } else {
-    passCount++;
-    raise(SIGSTOP);
-
-
-    int i = getpid();
-    workerIDStream << ".";
-    workerIDStream << i;
-    std::string pidString ;
-    pidString = workerIDStream.str();
-    freopen(pidString.c_str(),"w",stdout);
-    
-    while (true) {
-      
-      get_sem_lock(); 
-      if (PidInQR(i) && *replayLock == 0) {
-	break;
-      } else {
-	release_sem_lock();
-      }
-    }
-    
-
-    time_t theTime;
-    time(&theTime);
-    char buf [80];
-    struct tm * tstruct = localtime(&theTime);
-    strftime(buf, 80, "%T", tstruct);
-    
-    printf("IMPORTANT: control debug:  replaying round %d for pass %d at time %s with replay pid %d \n", roundCount, passCount, buf, getpid());
-    if(!PidInQR(i)) 
-      printf("IMPORTANT: Error: control debug: Process %d executing without pid in QR at time %s \n", i, buf);
-    std::cout.flush();
-    
-    multipass_start_round(theExecutor);
-    printf("Returned from multipass_start_round \n");
-    std::cout.flush();
-
-
-
-
-    
-
-
-
-
-    
-    //Pickup assignment info if necessary
-    if (*(uint8_t *) MPAPtr != 0) {
-      printf("Attempting to deserialize MP Assignments \n");
-      std::cout.flush();
-      if (*replayLock != 0)
-	printf("IMPORTANT: Error: control debug - replay lock has value %d in multipass_start_round \n", *replayLock);
-      std::cout.flush();
-      prevMPA.clear();
-      deserializeAssignments(MPAPtr, multipassAssignmentSize, theExecutor, &prevMPA);
-      memset(MPAPtr, 0, multipassAssignmentSize); //Wipe out the multipass assignment to be safe
-      printf("Printing assignments AFTER deserialization \n");
-      prevMPA.printAllAssignments(NULL);
-      *replayLock = 1;
-
-    } else {
-      time_t theTime2;
-      time(&theTime2);
-      char buf2 [80];
-      struct tm * tstruct2= localtime(&theTime2);
-      strftime(buf2, 80, "%T",tstruct2);
-      printf( "IMPORTANT: ERROR: control debug: deserializing from empty buf 0x%lx at time %s for replay pid %d  \n", (uint64_t) MPAPtr, buf2, getpid());
-      std::cout.flush();
-    }
-  }
-  
-  std::cout.flush();  
-  release_sem_lock();
-}
-*/
 
 
 void multipass_replay_round (void * assignmentBufferPtr, CVAssignment * mpa, int * pidPtr)  {
 
+  printf("Entering multipass_replay_round \n");
+  fflush(stdout);
+  
   while(true) {//Is this actually needed?  get_sem_lock() should block until semaphore is available
  
     get_sem_lock();
-    if (roundCount < *latestRoundPtr)  {
-      remove_self_from_QR();
+    if (roundCount < *latestRoundPtr && workerSelfTerminate)  {
+      removeFromQR(PidInQR(getpid()));
       printf("Worker %d is in round %d when latest round is %d. Worker exiting. \n", getpid(), roundCount, *latestRoundPtr );
       fflush(stdout);
       std::exit(EXIT_SUCCESS);
     }
+    printf("Value of replay lock is %d \n", *replayLock);
+    if (PidInQA(*pidPtr) != NULL)
+      printf("replay pid %d is in QA \n", *pidPtr);
+    else
+      printf("replay pid %d isn't in QA \n", *pidPtr);
+
+    if (PidInQR(*pidPtr) != NULL)
+      printf("replay pid %d is in QR \n", *pidPtr);
+    else
+      printf("replay pid %d isn't in QR \n", *pidPtr);
+
+    if (*((uint8_t *) assignmentBufferPtr) != 0) 
+      printf("Assignment buf is not zero \n");
+    else
+      printf("Assignment buf is zero \n");
+    fflush(stdout);
     
-    if (*replayLock != 1  || PidInQA(*pidPtr) || PidInQR(*pidPtr) ||  *((uint8_t *) assignmentBufferPtr) != 0)  {
+    if (*replayLock != 1  || (PidInQA(*pidPtr) != NULL) || (PidInQR(*pidPtr) != NULL) ||  *((uint8_t *) assignmentBufferPtr) != 0)  {
       release_sem_lock();  //Spin and try again after pending replay fully executes
 
     } else {
-      
       
       if (*replayLock != 1) {
 	printf("IMPORTANT: control debug: Error - replayLock has unexpected value %d \n", *replayLock);
       } else {
 	*replayLock = 0;
-	if (PidInQA(*pidPtr))
+	if (PidInQA(*pidPtr) != NULL)
 	  printf("ERROR: control debug: replay pid is somehow already in QA \n");
-	time_t theTime;
-	time(&theTime);
-	char buf [80];
-	struct tm * tstruct= localtime(&theTime);
-	strftime(buf, 80, "%T",tstruct);
 
 	double curr_time = util::getWallTime();
 	double elapsed_time = curr_time - target_start_time;
 	
-	printf("mp_replay_round: control debug: replayLock obtained. Inserting replayPid %d into QA  at time %s.  %lf seconds elapsed since target analysis started \n", *pidPtr, buf, curr_time);
+	printf("mp_replay_round: control debug: replayLock obtained. Inserting replayPid %d into QA.  %lf seconds elapsed since target analysis started \n", *pidPtr,  elapsed_time);
 	std::cout.flush();
-	
       }
       std::cout.flush();
-      QA_insert_PID(*pidPtr); //Move replay child pid into QA
+      WorkerInfo wi;
+      wi.pid = *pidPtr;
+      wi.round = roundCount;
+      wi.pass = passCount + 1;
+      wi.branches = tase_branches;
+      wi.parent = getpid();
+      addToQA(&wi);  //Move replay child pid into QA
       if ( *((uint8_t *) assignmentBufferPtr) != 0) { //Move latest assignments into shared mem
-	printf("ERROR: control debug: see data in assignment buffer when trying to serialize new constraints at time % \n");
+	printf("ERROR: control debug: see data in assignment buffer when trying to serialize new constraints \n");
 	std::cout.flush();
       }
       printf("Printing assignments BEFORE serialization \n");
       mpa->printAllAssignments(NULL);
-      time_t theTime2;
-      time(&theTime2);
-      char buf2 [80];
-      struct tm * tstruct2= localtime(&theTime2);
-      strftime(buf2, 80, "%T",tstruct2);
-      printf(" control debug: Serializing to buf 0x%lx at time %s for replay pid %d in round %d \n", (uint64_t) assignmentBufferPtr, buf2, *pidPtr, roundCount);
+      double elapsed_time = util::getWallTime() - target_start_time;
+      printf(" control debug: Serializing to buf 0x%lx at time %lf for replay pid %d in round %d \n", (uint64_t) assignmentBufferPtr, elapsed_time, *pidPtr, roundCount);
       mpa->serializeAssignments(assignmentBufferPtr, multipassAssignmentSize);
       std::cout.flush();
-      remove_self_from_QR();
-      std::exit(EXIT_SUCCESS);//Exit implicitly releases the semaphore
+      removeFromQR(PidInQR(getpid()));
+      std::exit(EXIT_SUCCESS);
     }
   }
 }
