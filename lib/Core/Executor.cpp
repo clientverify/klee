@@ -166,6 +166,8 @@ extern std::map<int,int> nops_and_offsets;
 void * rodata_base_ptr;
 uint64_t rodata_size;
 extern "C" void make_byte_symbolic(uint64_t addr);
+uint64_t bounceback_offset = 14;
+bool tase_buf_could_be_symbolic (void * ptr, int size);
 
 //Debug info
 extern bool taseDebug;
@@ -178,8 +180,8 @@ int BB_UR = 0; //Unknown return codes
 int BB_MOD = 0; //Modeled return
 int BB_PSN = 0; //PSN return
 int BB_OTHER = 0;//Other return
-double psnTime = 0.0;
-double modelTime = 0.0;
+double psn_time = 0.0;
+double mdl_time = 0.0;
 uint64_t total_interp_returns = 0;
 
 //Multipass
@@ -982,6 +984,18 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
 	printf("ERROR: Could not open new file for logging child output \n");
 	fflush(stdout);
       }
+      /*
+      printf("Resetting interp time counters for this round \n");
+      interpreter_time = 0.0;
+      interp_setup_time = 0.0;
+      interp_run_time = 0.0;
+      interp_cleanup_time = 0.0;
+      interp_find_fn_time = 0.0;
+
+      mdl_time = 0.0;
+      psn_time = 0.0;
+      */
+      
       printf("DEBUG:  Child process created\n");
       addConstraint(*GlobalExecutionStatePtr, Expr::createIsZero(condition));
     } else {
@@ -3498,6 +3512,7 @@ extern bool measureTime;
 double interp_setup_time = 0.0; 
 double interp_find_fn_time = 0.0; //Should also account for interp_setup_time
 double interp_run_time = 0.0;
+double interp_cleanup_time = 0.0;
 
 double interp_enter_time;
 double interp_exit_time;
@@ -3626,7 +3641,7 @@ bool canBounceback (uint32_t abort_status, uint64_t rip, bool * isPsnTrap, bool 
     if (taseDebug)
       printf("Bounceback unknown return code \n");
     BB_UR++;
-    //retry = true;  //Todo -- make this set retry to true?
+    retry = true;  //Todo -- make this set retry to true?
   } else if (abort_status & (1 << TSX_XABORT)) {
     if (abort_status & TSX_XABORT_MASK) {
       //modeled
@@ -3673,15 +3688,15 @@ void measure_interp_time(bool isPsnTrap, bool isMemRequest, bool isModelTrap, ui
     if (isMemRequest)  
       malloc_time += diff_time;
     if (isPsnTrap)
-      psnTime += diff_time;
+      psn_time += diff_time;
     if(isModelTrap)
-      modelTime += diff_time;
+      mdl_time += diff_time;
       
     printf("Elapsed time is %lf at interpCtr %lu rip 0x%lx with %lu instructions \n", diff_time, interpCtr, rip, interpCtr - interpCtr_init);
     printf("Total time in interpreter is %lf so far \n", interpreter_time);
-    printf("   - modeled time:       %lf \n", modelTime);
-    printf("   - poison interp time: %lf \n", psnTime);
-    printf("During interpetation %lf seconds total performing setup and %lf seconds total calling run.  %lf seconds on findFunction \n", interp_setup_time, interp_run_time, interp_find_fn_time);
+    printf("   - modeled time:       %lf \n", mdl_time);
+    printf("   - poison interp time: %lf \n", psn_time);
+    printf(" Cumulative breakdown of interpreter time: \n %lf seconds total performing setup \n %lf seconds total calling run \n %lf seconds total doing cleanup \n %lf seconds total on findFunction \n", interp_setup_time, interp_run_time, interp_cleanup_time, interp_find_fn_time);
     printf( "Total interpreter returns: %lu \n",total_interp_returns);
     printf( "Abort_count_total: %d \n", target_ctx.abort_count_total);
     printf( "  - modeled %d \n", target_ctx.abort_count_modeled);
@@ -3706,8 +3721,14 @@ extern "C" void klee_interp () {
   }
   target_ctx_gregs[REG_RIP].u64 = target_ctx_gregs[REG_R15].u64; //Should be ok to drop
   
-  if (canBounceback(target_ctx.abort_status, target_ctx_gregs[REG_RIP].u64,&isPsnTrap, &isMemTrap, &isModelTrap, enableBounceback)) 
-    return;
+  if (canBounceback(target_ctx.abort_status, target_ctx_gregs[REG_RIP].u64,&isPsnTrap, &isMemTrap, &isModelTrap, enableBounceback))
+    {
+      
+      target_ctx_gregs[REG_RIP].u64 -= bounceback_offset;
+      if (taseDebug) 
+	printf("After adjusting offset, attempting to bounceback to 0x%lx \n", target_ctx_gregs[REG_RIP].u64);
+      return;
+    }
   
   GlobalInterpreter->klee_interp_internal();
 
@@ -3917,7 +3938,10 @@ void Executor::tase_helper_write (uint64_t addr, ref<Expr> val) {
 }
    
 bool Executor::gprsAreConcrete() {
-  return target_ctx_gregs_OS->isObjectEntirelyConcrete();
+  if (!tase_buf_could_be_symbolic((void *) target_ctx_gregs, NGREG * 8 ) )
+    return true;
+  else
+    return target_ctx_gregs_OS->isObjectEntirelyConcrete();
 }
 
 bool Executor::instructionBeginsTransaction(uint64_t pc) {
@@ -3966,7 +3990,6 @@ void Executor::model_taseMakeSymbolic() {
      printf("val before psn of first two bytes is 0x%x \n", valBeforePsn);
      
      printf("taseMakeSymbolic called on addr 0x%lx with size 0x%lx \n", symAddr, size);
-     
      tase_make_symbolic(symAddr, size, "ExternalTaseMakeSymbolicCall");
 
      uint16_t valAfterPsn = *( (uint16_t *) symAddr);
@@ -4155,15 +4178,7 @@ void Executor::model_inst () {
     model_SHA256_Update();
   } else if (rip == (uint64_t) &SHA256_Final + 14) {
     model_SHA256_Final();
-  }
-  /*
- else if (rip == (uint64_t) &sha1_block_data_order + 14) {
-    model_sha1_block_data_order();
-  } else if (rip == (uint64_t) &sha256_block_data_order + 14) {
-    model_sha256_block_data_order();
-    } 
-  */
- else if (rip == (uint64_t) &gcm_gmult_4bit + 14) {
+  } else if (rip == (uint64_t) &gcm_gmult_4bit + 14) {
     model_gcm_gmult_4bit();
   } else if (rip == (uint64_t) &gcm_ghash_4bit + 14) {
     model_gcm_ghash_4bit();
@@ -4379,10 +4394,45 @@ int Executor::isNop(uint64_t rip) {
   }  
 }
 
-int nopCtr = 0;
+//Fast-path check for poison tag in buffer.
+//Todo -- double check the corner cases
+bool tase_buf_could_be_symbolic (void * ptr, int size) {
+  //Promote size to an even number
+  //printf("Input args to tase_buf_could_be_symbolic: ptr 0x%lx, size %d \n", (uint64_t) ptr, size);
+  int checkSize;
+  uint16_t * checkBase;
+  
+  if ( (uint64_t) ptr % 2 == 1) {
+    checkBase = (uint16_t *)  ((uint64_t) ptr -1);
+    if (size % 2 == 0)
+      checkSize  = size + 2;
+    else
+      checkSize = size + 1;
+  } else {
+    checkBase = (uint16_t *) ptr;
+    if (size % 2 ==0)
+      checkSize = size;
+    else
+      checkSize = size +1;
+  }
 
+  //We're checking in 2-byte aligned chunks, so cut size in half.
+  //It must be even by now.
+
+  checkSize = checkSize/2;
+  
+  //printf("After normalization, args to tase_buf_could_be_symbolic: 0x%lx, size %d \n", (uint64_t) checkBase, checkSize);
+  for (int i = 0; i < checkSize; i++) {
+    if ( *( checkBase +i ) == poison_val)
+      return true;
+  }
+
+  return false;
+}
+
+int nopCtr = 0;
 void Executor::klee_interp_internal () {
-  double interpSetupStartTime = 0.0, interpRunStartTime = 0.0;
+  double interpSetupStartTime = 0.0, interpRunStartTime = 0.0, interpCleanupStartTime = 0.0;
 
   
   while (true) {
@@ -4457,7 +4507,8 @@ void Executor::klee_interp_internal () {
       if (measureTime) {
 	double setupDiff = util::getWallTime() - interpSetupStartTime;
 	interp_setup_time += setupDiff;
-	printf("%lf seconds during interp setup for interpCtr %lu \n", setupDiff, interpCtr);
+	if (taseDebug)
+	  printf("%lf seconds during interp setup for interpCtr %lu \n", setupDiff, interpCtr);
       }
 
       if (measureTime) 
@@ -4473,49 +4524,63 @@ void Executor::klee_interp_internal () {
       }
       
     }
-    
-    ref<Expr> RIPExpr = tase_helper_read((uint64_t) &(target_ctx_gregs[REG_RIP].u64), 8);
-    if (!(isa<ConstantExpr>(RIPExpr))) {
-      printf("Detected symbolic RIP \n");
-      std::cout.flush();
-      
-      printf("Attempting to call toUnique on symbolic RIP \n");
-      solver_start_time = util::getWallTime();
-      ref <Expr> uniqueRIPExpr  = toUnique(*GlobalExecutionStatePtr,RIPExpr);
-      solver_end_time = util::getWallTime();
-      solver_diff_time = solver_end_time - solver_start_time;	
-      printf("Elapsed solver time (multipass) is %lf at interpCtr %lu \n", solver_diff_time, interpCtr);
-      solver_time += solver_diff_time;
-      printf("Total solver time is %lf at interpCtr %lu \n", solver_time, interpCtr);
+    if (measureTime) {
+      interpCleanupStartTime = util::getWallTime();
+    }
 
-      if (isa<ConstantExpr> (uniqueRIPExpr)) {
-	printf("Only one valid value for RIP \n");
-	fflush(stdout);
-	tase_helper_write((uint64_t) &target_ctx_gregs[REG_RIP], uniqueRIPExpr);
-	
-      } else {      
-	printf("IMPORTANT: Calling forkOnPossibleRIPValues() \n");
+    if(tase_buf_could_be_symbolic((void *) &(target_ctx_gregs[REG_RIP].u64), 8) ) {
+      ref<Expr> RIPExpr = tase_helper_read((uint64_t) &(target_ctx_gregs[REG_RIP].u64), 8);
+      if (!(isa<ConstantExpr>(RIPExpr))) {
+	printf("Detected symbolic RIP \n");
 	std::cout.flush();
-	forkOnPossibleRIPValues(RIPExpr, rip_init);
+	
+	  
+	printf("Attempting to call toUnique on symbolic RIP \n");
+	solver_start_time = util::getWallTime();
+	ref <Expr> uniqueRIPExpr  = toUnique(*GlobalExecutionStatePtr,RIPExpr);
+	solver_end_time = util::getWallTime();
+	solver_diff_time = solver_end_time - solver_start_time;	
+	printf("Elapsed solver time (multipass) is %lf at interpCtr %lu \n", solver_diff_time, interpCtr);
+	solver_time += solver_diff_time;
+	printf("Total solver time is %lf at interpCtr %lu \n", solver_time, interpCtr);
+	
+	if (isa<ConstantExpr> (uniqueRIPExpr)) {
+	  printf("Only one valid value for RIP \n");
+	  fflush(stdout);
+	  tase_helper_write((uint64_t) &target_ctx_gregs[REG_RIP], uniqueRIPExpr);
+	  
+	} else {      
+	  printf("IMPORTANT: Calling forkOnPossibleRIPValues() \n");
+	  std::cout.flush();
+	  forkOnPossibleRIPValues(RIPExpr, rip_init);
+	}
+	std::cout.flush();	
+	ref<Expr> FinalRIPExpr = target_ctx_gregs_OS->read(REG_RIP * 8, Expr::Int64);
+	if (!(isa<ConstantExpr>(FinalRIPExpr))) {
+	  printf("ERROR: Failed to concretize RIP \n");
+	  std::cout.flush();
+	  std::exit(EXIT_FAILURE);
+	}
       }
-      std::cout.flush();
     }
-    
-    ref<Expr> FinalRIPExpr = target_ctx_gregs_OS->read(REG_RIP * 8, Expr::Int64);
-    if (!(isa<ConstantExpr>(FinalRIPExpr))) {
-      printf("ERROR: Failed to concretize RIP \n");
-      std::cout.flush();
-      std::exit(EXIT_FAILURE);
-    }
-    
     if (taseDebug) 
-       printDebugInterpFooter();
-
+      printDebugInterpFooter();
+    
     //Kludge to get us back to native execution for prohib fns with concrete input
-    if (forceNativeRet && gprsAreConcrete() && !(exec_mode == INTERP_ONLY))
-      break;
+    if (forceNativeRet)
+      if (gprsAreConcrete() && !(exec_mode == INTERP_ONLY))
+	break;
+    
+    
+    if (measureTime) {
+      double interpCleanupDiffTime = util::getWallTime() - interpCleanupStartTime;
+      interp_cleanup_time += interpCleanupDiffTime;
+      if (taseDebug)
+	printf("%lf seconds during interp cleanup for interpCtr %lu \n", interpCleanupDiffTime, interpCtr);
+    }
   }
-
+    
+    
   static int numReturns = 0;
   numReturns++;
   if (taseDebug)
@@ -4656,6 +4721,16 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) 
     printf("Before freopen, new string for log is %s \n", pidString.c_str());
     FILE * res1 = freopen(pidString.c_str(),"w",stdout);
 
+    printf("Resetting interp time counters for this round \n");
+    interpreter_time = 0.0;
+    interp_setup_time = 0.0;
+    interp_run_time = 0.0;
+    interp_cleanup_time = 0.0;
+    interp_find_fn_time = 0.0;
+    
+    mdl_time = 0.0;
+    psn_time = 0.0;
+    
     if (res1 == NULL ) {
       printf("ERROR opening new file for child process logging \n");
       fprintf(stderr, "ERROR opening new file for child process logging for pid %d \n", i);

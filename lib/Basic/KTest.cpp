@@ -471,9 +471,6 @@ KTestObject* KTOV_next_object(KTestObjectVector *ov, const char *name)
     printf("ERROR: ktest playback needed '%s', but recording had '%s'\n",
 	   name, o->name);
     fflush(stdout);
-    fprintf(stderr,
-	    "ERROR: ktest playback needed '%s', but recording had '%s'\n",
-	    name, o->name);
     printf("IMPORTANT:control debug: Worker %d exiting due to mismatch in log object \n",getpid());
     
     fflush(stdout);
