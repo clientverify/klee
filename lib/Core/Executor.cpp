@@ -3938,9 +3938,7 @@ void Executor::tase_helper_write (uint64_t addr, ref<Expr> val) {
 }
    
 bool Executor::gprsAreConcrete() {
-  if (!tase_buf_could_be_symbolic((void *) target_ctx_gregs, NGREG * 8 ) )
-    return true;
-  else
+
     return target_ctx_gregs_OS->isObjectEntirelyConcrete();
 }
 
@@ -4721,7 +4719,7 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) 
     printf("Before freopen, new string for log is %s \n", pidString.c_str());
     FILE * res1 = freopen(pidString.c_str(),"w",stdout);
 
-    printf("Resetting interp time counters for this round \n");
+    printf("Resetting interp time counters  %lf seconds after analysis began \n", util::getWallTime() - target_start_time );
     interpreter_time = 0.0;
     interp_setup_time = 0.0;
     interp_run_time = 0.0;

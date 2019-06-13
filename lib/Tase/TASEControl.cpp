@@ -25,6 +25,14 @@ extern bool taseDebug;
 extern bool workerSelfTerminate;
 extern void deserializeAssignments ( void * buf, int bufSize, klee::Executor * exec, CVAssignment * cv);
 
+extern double interpreter_time;
+extern double interp_setup_time;
+extern double interp_run_time;
+extern double interp_cleanup_time;
+extern double interp_find_fn_time;
+extern double mdl_time;
+extern double psn_time;
+
 
 //Perf debugging
 extern double target_start_time;
@@ -163,13 +171,9 @@ WorkerInfo * PidInQA(int pid) {
 
 //Return pointer to worker in queue with earliest round, pass, branch.
 WorkerInfo * getEarliestWorker(void * basePtr, int Qsize ) {
-  if (taseDebug) {
-    printf("Manager calling getEarliestWorker \n");
-    fflush(stdout);
-  }
   
   //Initialization case
-  WorkerInfo * loser = (WorkerInfo *) (basePtr);
+  WorkerInfo * earliest = (WorkerInfo *) (basePtr);
   if (basePtr == NULL || Qsize == 0) {
     fprintf(stderr,"getEarliestWorker called on empty/null queue \n");
     return NULL;
@@ -177,20 +181,18 @@ WorkerInfo * getEarliestWorker(void * basePtr, int Qsize ) {
   
   for (int i = 0; i < Qsize; i++) {
     WorkerInfo * currWorker = (WorkerInfo *) ((uint64_t) basePtr + (uint64_t)( i *(sizeof(WorkerInfo))));
-    if (currWorker->round < loser->round) {
-      loser = currWorker; //New loser
-    } else if (currWorker->round == loser->round) { //Tie on round
-      if (currWorker->pass < loser->pass) { 
-	loser = currWorker; //New loser
-      } /* else if (currWorker->pass == loser->pass) { //Tie on pass
-	   if (currWorker->branches < loser->branches) 
-	   loser = currWorker; //New loser
+    if (currWorker->round < earliest->round) {
+      earliest = currWorker; //New earliest
+    } else if (currWorker->round == earliest->round) { //Tie on round
+      if (currWorker->pass < earliest->pass) { 
+	earliest = currWorker; //New earliest
+      } /* else if (currWorker->pass == earliest->pass) { //Tie on pass
+	   if (currWorker->branches < earliest->branches) 
+	   earliest = currWorker; //New earliest
 	*/
-      
     }
   }
-    
-  return loser;
+  return earliest;
 }
 
 
@@ -201,7 +203,7 @@ WorkerInfo * getLatestWorker(void * basePtr, int Qsize) {
   }
 
   //Initialization case
-  WorkerInfo * winner = (WorkerInfo *) (basePtr);
+  WorkerInfo * latest = (WorkerInfo *) (basePtr);
   if (basePtr == NULL || Qsize == 0) {
     fprintf(stderr,"getLatestWorker called on empty/null queue \n");
     return NULL;
@@ -209,18 +211,18 @@ WorkerInfo * getLatestWorker(void * basePtr, int Qsize) {
 
   for (int i = 0; i < Qsize; i++) {
     WorkerInfo * currWorker = (WorkerInfo *) ((uint64_t) basePtr + (uint64_t)( i *(sizeof(WorkerInfo))));
-    if (currWorker->round > winner->round) {
-      winner = currWorker; //New winner
-    } else if (currWorker->round == winner->round) { //Tie on round
-      if (currWorker->pass > winner->pass) {
-	winner = currWorker; //New winner
-      } /* else if (currWorker->pass == winner->pass) { //Tie on pass
-	   if (currWorker->branches > winner->branches)
-	   winner = currWorker; //New winner
+    if (currWorker->round > latest->round) {
+      latest = currWorker; //New latest
+    } else if (currWorker->round == latest->round) { //Tie on round
+      if (currWorker->pass > latest->pass) {
+	latest = currWorker; //New latest
+      } /* else if (currWorker->pass == latest->pass) { //Tie on pass
+	   if (currWorker->branches > latest->branches)
+	   latest = currWorker; //New latest
 	*/
     }
   }
-  return winner;
+  return latest;
 }
 
 void removeFromQ(WorkerInfo * worker, int * sizePtr, void * basePtr) {
@@ -257,36 +259,17 @@ void removeFromQR(WorkerInfo * worker) {
 }
 
 void removeFromQA(WorkerInfo * worker) {
-  if (taseDebug) {
-    printf("Calling removeFromQA \n");
-    fflush(stdout);
-  }
   if (worker == NULL) {
     fprintf(stderr,"ERROR: calling removeFromQA on null ptr \n");
     fflush(stdout);
     std::exit(EXIT_FAILURE);
   }
-
-  printf("Prior to removal, QA is \n");
-  printQA();
   removeFromQ(worker, ms_QA_size_ptr, ms_QA_base);
-  printf("After removal, QA is \n");
-  printQA();
 }
 
 void addToQ(WorkerInfo * worker, int * sizePtr, void * basePtr) {
-  printf("During add to Q: \n");
-  printf("Worker pid is %d \n", worker->pid);
-  printf("Size of Q is %d \n", *sizePtr); 
-
   void * dst = (void *) ((uint64_t) basePtr + (*sizePtr) * sizeof(WorkerInfo));
-  //printf("dst is 0x%lx \n", (uint64_t) dst);
   void * src = (void *) worker;
-  /*
-  printf("src is 0x%lx \n", (uint64_t) src);
-  printf("Num of bytes to copy is %d \n", sizeof(WorkerInfo));
-  printf("Performing the copy now... \n");
-  */
   memcpy(dst ,  src , sizeof(WorkerInfo));
   *sizePtr = *sizePtr +1;
 }
@@ -296,25 +279,10 @@ void addToQR(WorkerInfo * worker) {
 }
 
 void addToQA(WorkerInfo * worker) {
-  if (taseDebug) {
-    printf("About to add to QA \n");
-    printQA();
-    fflush(stdout);
-  }
   addToQ(worker, ms_QA_size_ptr, ms_QA_base);
-  if(taseDebug) {
-    printf("Finished call to add to QA. Printing result--- \n");
-    fflush(stdout);
-    printQA();
-    printf("----End result. \n");
-  }   
 }
 
 void QRtoQA(WorkerInfo * worker) {
-  if(taseDebug){
-    printf("Calling QRtoQA on pid %d \n", worker->pid);
-    fflush(stdout);
-  }
   WorkerInfo tmp;  
   memcpy ((void *) &tmp, (void *) worker, sizeof(WorkerInfo));
   removeFromQR (worker);
@@ -322,10 +290,6 @@ void QRtoQA(WorkerInfo * worker) {
 }
 
 void QAtoQR(WorkerInfo * worker) {
-  if(taseDebug) {
-    printf("Calling QAtoQR on pid %d \n", worker->pid);
-    fflush(stdout);
-  }
   WorkerInfo tmp;
   memcpy((void *) &tmp, (void *) worker, sizeof(WorkerInfo));
   removeFromQA (worker);
@@ -336,17 +300,10 @@ void QAtoQR(WorkerInfo * worker) {
 void select_workers () {
 
   if (*ms_QR_size_ptr == MAX_WORKERS) {
-    if(taseDebug){
-      printf("Manager sees full QR \n");
-      fflush(stdout);
-    }
+
     //Get earliest worker by round, pass, branch
-    if (taseDebug) {
-      printf("Prior to call to get earliest worker, QR is \n");
-      printQR();
-    }
+
     WorkerInfo * earliestWorkerQR = getEarliestWorker(ms_QR_base, *ms_QR_size_ptr);
-    printf("Earliest worker in QR is pid %d \n", earliestWorkerQR->pid);
 
     if (earliestWorkerQR->round < managerRoundCtr ) {
       int res = kill(earliestWorkerQR->pid, SIGKILL);
@@ -357,7 +314,6 @@ void select_workers () {
 	printf("Manager kicking pid from QR %d; pid is in round %d when latest round is %d \n", earliestWorkerQR->pid, earliestWorkerQR->round, managerRoundCtr);
       }
       QRtoQA(earliestWorkerQR);
-      
     }
     
     /*
@@ -380,11 +336,6 @@ void select_workers () {
   }
 
   if (*ms_QR_size_ptr < MAX_WORKERS && *ms_QA_size_ptr != 0) {
-
-    if (taseDebug) {
-      printf("Manager sees space in QR \n");
-      fflush(stdout);
-    }
 
     printQA();
     printQR();
@@ -413,10 +364,8 @@ void select_workers () {
       if (res == -1){
 	perror("Error during kill sigcont \n");
 	printf("Error during kill sigcont \n");
-      } else {
-	printf("No error during kill sigcont \n");
-      }
-      fflush(stdout);
+	fflush(stdout);
+      } 
       //printf("Manager starting waitpid call for QAtoQR on pid %d \n", latestWorker->pid);
       //fflush(stdout);
       //while (true) {
@@ -435,7 +384,6 @@ void select_workers () {
       //printf("status after waitpid: %d \n", status);
       //}
       //printf("Manager finished waitpid call for QAtoQR \n");
-      fflush(stdout);
     }
   }
 }
@@ -443,7 +391,6 @@ void select_workers () {
 
 void manage_workers () {
   get_sem_lock();
-  printf("Acquired semaphore in manage workers \n");
   if (managerRoundCtr < *latestRoundPtr) {
     managerRoundCtr = *latestRoundPtr;
     double curr_time = util::getWallTime();
@@ -474,10 +421,11 @@ void worker_exit() {
     std::exit(EXIT_SUCCESS);
   } else {    
     printf("Worker %d attempting to exit and remove self from QR \n", getpid());
+    std::cout.flush();
     get_sem_lock();
     removeFromQR(PidInQR(getpid()));
-    fflush(stdout);
-    std::exit(EXIT_SUCCESS);//Releases semaphore
+    release_sem_lock();
+    std::exit(EXIT_SUCCESS);
   }
 }
 
@@ -500,6 +448,7 @@ int tase_fork(int parentPID, uint64_t rip) {
       printf("Worker %d is in round %d when latest round is %d. Worker exiting. \n", getpid(), roundCount, *latestRoundPtr );
       fflush(stdout);
       removeFromQR(PidInQR(getpid()));
+      release_sem_lock();
       std::exit(EXIT_SUCCESS);
     }
     int trueChildPID = ::fork();
@@ -581,6 +530,7 @@ int tase_fork(int parentPID, uint64_t rip) {
     printf("Exiting tase_fork \n");
     fflush(stdout);
     removeFromQR(PidInQR(getpid()));
+    release_sem_lock();
     std::exit(EXIT_SUCCESS);
   } else {
     int pid = ::fork();
@@ -594,6 +544,7 @@ void tase_exit() {
     removeFromQR(PidInQR(getpid()));
     printf("PID %d calling tase_exit \n", getpid());  
     std::cout.flush();
+    release_sem_lock();
     std::exit(EXIT_SUCCESS); //Releases semaphore
   } else {
     printf("PID %d calling tase_exit \n", getpid());
@@ -738,6 +689,17 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
       worker_exit();
     } else 
       printf("Worker %d opened file for logging \n", i);
+
+    printf("Resetting interp time counters  %lf seconds after analysis began \n", util::getWallTime() - target_start_time );
+    interpreter_time = 0.0;
+    interp_setup_time = 0.0;
+    interp_run_time = 0.0;
+    interp_cleanup_time = 0.0;
+    interp_find_fn_time = 0.0;
+    
+    mdl_time = 0.0;
+    psn_time = 0.0;
+    
     fflush(stdout);
     static int ctr = 0;
     while (true) {
@@ -785,6 +747,7 @@ void multipass_replay_round (void * assignmentBufferPtr, CVAssignment * mpa, int
       removeFromQR(PidInQR(getpid()));
       printf("Worker %d is in round %d when latest round is %d. Worker exiting. \n", getpid(), roundCount, *latestRoundPtr );
       fflush(stdout);
+      release_sem_lock();
       std::exit(EXIT_SUCCESS);
     }
     printf("Value of replay lock is %d \n", *replayLock);
@@ -841,6 +804,7 @@ void multipass_replay_round (void * assignmentBufferPtr, CVAssignment * mpa, int
       mpa->serializeAssignments(assignmentBufferPtr, multipassAssignmentSize);
       std::cout.flush();
       removeFromQR(PidInQR(getpid()));
+      release_sem_lock();
       std::exit(EXIT_SUCCESS);
     }
   }
