@@ -128,6 +128,7 @@ extern KTestObjectVector ktov;
 extern bool enableMultipass;
 extern void spinAndAwaitForkRequest();
 extern bool dropS2C;
+uint64_t native_ret_off = 14;
 
 extern CVAssignment prevMPA ;
 extern void multipass_reset_round();
@@ -143,14 +144,20 @@ bool roundUpHeapAllocations = true; //Round the size Arg of malloc, realloc, and
 //some library functions (ex memcpy) may copy 4 or 8 byte-chunks of data at a time that cross over the edge
 //of memory object buffers that aren't 4 or 8 byte aligned.
 
+extern FILE * bignumLog;
+void tase_print_BIGNUM(FILE * f, BIGNUM * bn);
 
-void printBuf(void * buf, int count)
+
+void printBuf(FILE * f,void * buf, size_t count)
 {
-
-  for (int i = 0; i < count; i++)
-    printf("%02x", *((uint8_t *) buf + i));
-  printf("\n\n");
-  std::cout.flush();
+  fprintf(f,"Calling printBuf with count %d \n", count);
+  fflush(f);
+  for (size_t i = 0; i < count; i++) {
+    fprintf(f,"%02x", *((uint8_t *) buf + i));
+    fflush(f);
+  }
+  fprintf(f,"\n\n");
+  fflush(f);
 }
 
 // Network capture for Cliver
@@ -376,7 +383,76 @@ void Executor::model_printf() {
   printf("Found call to printf for time %d \n",numCalls);
   char * stringArg = (char *) target_ctx_gregs[REG_RDI].u64;
   printf("First arg as string is %s \n", stringArg);
+  printf("Second arg as num is 0x%lx \n", target_ctx_gregs[REG_RSI].u64);
+  
+  //Check for special tase debug calls to bio printf
+  //where we just pass a string arg.
+  std::string argString (stringArg);
+  std::string taseDbgString ("TASE_DBG_STR");
+  if (argString.find(taseDbgString) != std::string::npos) {
+    printf("Attempting to print special TASE_DBG_STR: \n");
+    std::cout.flush();
 
+    printf("%s \n", (char *) target_ctx_gregs[REG_RSI].u64);
+    
+  }
+
+  std::string taseDbgNum ("TASE_DBG_NUM");
+  if (argString.find(taseDbgNum) != std::string::npos) {
+    printf("Attempting to print special TASE_DBG_NUM: \n");
+    std::cout.flush();
+
+    printf("DBG NUM is %d \n", (char *) target_ctx_gregs[REG_RSI].u64);
+    
+  }
+  /*
+  static int simpleAddEntryCalls = 0;
+  std::string ecGFpSimpleAddEntry ("TASE_DBG_GFp_simple_add_enter:");
+  if (argString.find(ecGFpSimpleAddEntry) != std::string::npos) {
+    simpleAddEntryCalls++;
+    printf("Printing ecGFpSimpleAdd input args for time %d --- \n", simpleAddEntryCalls);
+    fflush(stdout);
+
+    fprintf(bignumLog,"Printing ecGFpSimpleAdd input args for time %d --- \n", simpleAddEntryCalls);
+    //2nd, 3rd, and 4th args are r, a and b.
+    BIGNUM * r = (BIGNUM *)  target_ctx_gregs[REG_RSI].u64;
+    BIGNUM * a = (BIGNUM *) target_ctx_gregs[REG_RDX].u64;
+    BIGNUM * b = (BIGNUM *) target_ctx_gregs[REG_RCX].u64;
+    fprintf (bignumLog,"r is \n");
+    tase_print_BIGNUM (bignumLog,r);
+    printf("r is \n");
+    tase_print_BIGNUM(stdout, r);
+    
+    fprintf (bignumLog,"a is \n");
+    tase_print_BIGNUM (bignumLog,a);
+    fprintf (bignumLog,"b is \n");
+    tase_print_BIGNUM (bignumLog, b);
+    fprintf (bignumLog,"Done printing ecGFpSimpleAdd input ---- \n");
+  }
+
+  static int simpleAddExitCalls = 0;
+  std::string ecGFpSimpleAddExit ("TASE_DBG_GFp_simple_add_exit:");
+  if (argString.find(ecGFpSimpleAddExit) != std::string::npos) {
+    simpleAddExitCalls++;
+    printf("Printing ecGFpSimpleAdd end results for time %d --- \n", simpleAddExitCalls);
+    fflush(stdout);
+
+    fprintf(bignumLog,"Printing ecGFpSimpleAdd end results for time %d --- \n", simpleAddExitCalls);
+    //2nd, 3rd, and 4th args are r, a and b.
+    BIGNUM * r = (BIGNUM *)  target_ctx_gregs[REG_RSI].u64;
+    BIGNUM * a = (BIGNUM *) target_ctx_gregs[REG_RDX].u64;
+    BIGNUM * b = (BIGNUM *) target_ctx_gregs[REG_RCX].u64;
+    fprintf (bignumLog,"r is \n");
+    tase_print_BIGNUM (bignumLog,r);
+    fprintf (bignumLog,"a is \n");
+    tase_print_BIGNUM (bignumLog,a);
+    fprintf (bignumLog, "b is \n");
+    tase_print_BIGNUM (bignumLog,b);
+    fprintf (bignumLog,"Done printing ecGFpSimpleAdd output ---- \n");
+  }
+
+  */
+    
   std::cout.flush();
   //fake a ret
   uint64_t retAddr = *((uint64_t *) target_ctx_gregs[REG_RSP].u64);
@@ -481,10 +557,10 @@ void Executor::model_ktest_writesocket() {
       //Get log entry for c2s
       KTestObject *o = KTOV_next_object(&ktov, ktest_object_names[CLIENT_TO_SERVER]);
       printf("Buffer in writesock call : \n");
-      printBuf ((void *) buf, count);
+      printBuf (stdout,(void *) buf, count);
       
       printf("Buffer in            log : \n");
-      printBuf ((void *) o->bytes, o->numBytes);
+      printBuf (stdout,(void *) o->bytes, o->numBytes);
 
       if (o->numBytes > count) {
 	printf("IMPORTANT: VERIFICATION ERROR - write buffer size mismatch %u vs %u : Worker exiting from terminal path in round %d pass %d. \n",o->numBytes, count,  roundCount, passCount);
@@ -640,6 +716,9 @@ void Executor::model_ktest_writesocket() {
       
       
     } else {
+      printf("Buffer in writesock call : \n");
+      printBuf (stdout, (void *) buf, count);
+
       ssize_t res = ktest_writesocket_tase((int) target_ctx_gregs[REG_RDI].u64, (void *) target_ctx_gregs[REG_RSI].u64, (size_t) target_ctx_gregs[REG_RDX].u64);
       ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
       target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
@@ -668,6 +747,14 @@ void Executor::model_ktest_readsocket() {
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(REG_RDX * 8, Expr::Int64);
 
+  //Hack to trim down size of log for debugging 01
+  //TODO: Remove
+  /*
+  if (ktest_readsocket_calls == 6) {
+    fprintf(stderr,"TEMP DBG: setting taseDebug to true \n");
+    taseDebug = true;
+  }
+  */
   printf("Entering model_ktest_readsocket for time %d \n", ktest_readsocket_calls);
   fflush(stdout);
   
@@ -1110,10 +1197,10 @@ void Executor::model_memcpy() {
   }
     
   printf("Memcpy dbg -- printing source buffer as raw bytes \n");
-  printBuf(src, num);
+  printBuf(stdout,src, num);
 
   printf("Memcpy dbg -- printing dest   buffer as raw bytes \n");
-  printBuf(dst, num);
+  printBuf(stdout,dst, num);
     
   std::cout.flush();
   
@@ -1153,7 +1240,7 @@ void Executor::model_ktest_RAND_bytes() {
       tase_make_symbolic((uint64_t) buf, num, "rng");
        //Double check this
       printf("After call to tase_make_symbolic for rng, raw bytes are : \n");
-      printBuf(buf, num);
+      printBuf(stdout,buf, num);
       int res = num;
       ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
       target_ctx_gregs_OS->write(REG_RAX * 8, resExpr);
@@ -1197,7 +1284,7 @@ void Executor::model_ktest_RAND_pseudo_bytes() {
       tase_make_symbolic((uint64_t) buf, num, "prng");
 
       printf("After call to tase_make_symbolic on prng, raw output in output buffer is : \n");
-      printBuf((void *) buf, num);
+      printBuf(stdout,(void *) buf, num);
       
       //Double check this
       int res = num;
@@ -1510,12 +1597,21 @@ void Executor::model_htonl () {
 
 //Todo: Check input for symbolic args, or generalize to make not openssl-specific
 void Executor::model_BIO_printf() {
-
+  static int bio_printf_calls = 0;
+  bio_printf_calls++;
+  
+  if (bio_printf_calls == 2) {
+    fprintf(stderr, "Setting taseDebug to true \n");
+    taseDebug = true;
+  }
+  
+  
   printf("Entered bio_printf at interp Ctr %lu \n", interpCtr);
   fflush(stdout);
   
   char * errMsg = (char *) target_ctx_gregs[REG_RSI].u64;
   printf("Entered bio_printf with message %s \n", errMsg);
+  printf("Second arg as num is 0x%lx \n", target_ctx_gregs[REG_RDX].u64);
   fflush(stdout);
 
 
@@ -2770,7 +2866,7 @@ void Executor::model_connect () {
     struct sockaddr * addr = (struct sockaddr *) target_ctx_gregs[REG_RSI].u64;
     socklen_t length = (socklen_t) target_ctx_gregs[REG_RDX].u64;
 
-    //Todo -- Generalize in case sockaddr struct isn't 14 on all platfroms
+    //Todo -- Generalize in case sockaddr struct isn't 14 bytes on all platfroms
     //Need additional check to make sure sockaddr struct has no symbolic data
     bool hasSymbolicDependency = false;
     for (uint64_t i = 0; i < 14; i++) {
@@ -2847,10 +2943,11 @@ ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64); // SSL
     printf("Entering model_tls1_generate_master_secret at interpctr %lu \n", interpCtr);
     fflush(stdout);
     if (enableMultipass == false) {
-      printf("ERROR: should be trapping in ktest_master_secret instead of tls1_gen_master_secret \n");
+      printf("Will trap in ktest_master_secret further down for master secret \n");
       fflush(stdout);
-      worker_exit();
-      std::exit(EXIT_FAILURE);
+      forceNativeRet = true;
+      target_ctx_gregs[REG_RIP].u64 += native_ret_off;
+      return;
     }
 
     void * buf = (void *) target_ctx_gregs[REG_RSI].u64;
@@ -2906,7 +3003,7 @@ void Executor::model_sha256_block_data_order() {
   printf("Entering model_SHA256_block_data_order \n");
   fflush(stdout);
   forceNativeRet = true;
-  target_ctx_gregs[REG_RIP].u64 += 17;
+  target_ctx_gregs[REG_RIP].u64 += native_ret_off;
 
 }
 
@@ -2915,7 +3012,7 @@ void Executor::model_sha1_block_data_order() {
   printf("Entering model_SHA1_block_data_order \n");
   fflush(stdout);
   forceNativeRet = true;
-  target_ctx_gregs[REG_RIP].u64 += 17;
+  target_ctx_gregs[REG_RIP].u64 += native_ret_off;
 
 
 }
@@ -2961,7 +3058,7 @@ void Executor::rewriteConstants(uint64_t base, size_t size) {
   
   printf("End result: \n");
   fflush(stdout);
-  printBuf((void *) base, size);
+  printBuf(stdout,(void *) base, size);
 
 }
   
@@ -2993,9 +3090,9 @@ void Executor::model_SHA1_Update () {
     size_t len = (size_t) target_ctx_gregs[REG_RDX].u64;
 
     printf("SHA1_Update_CTX is \n");
-    printBuf((void *) c, sizeof(SHA_CTX));
+    printBuf(stdout,(void *) c, sizeof(SHA_CTX));
     printf("SHA1 data buf is \n");
-    printBuf((void *) data, len);
+    printBuf(stdout,(void *) data, len);
     
     bool hasSymbolicInput = false;
 
@@ -3032,7 +3129,7 @@ void Executor::model_SHA1_Update () {
       
       printf("MULTIPASS DEBUG: Did not find symbolic input to SHA1_Update \n");
       forceNativeRet = true;
-      target_ctx_gregs[REG_RIP].u64 += 17;
+      target_ctx_gregs[REG_RIP].u64 += native_ret_off;
 
       //Todo: provide SHA1_Update implementation for fast native execution     
     }
@@ -3063,9 +3160,9 @@ void Executor::model_SHA1_Final() {
      bool hasSymbolicInput = false;
 
      printf("SHA1_Final ctx is \n");
-     printBuf((void *) c, sizeof(SHA_CTX));
+     printBuf(stdout,(void *) c, sizeof(SHA_CTX));
      printf("SHA1_Final md buf is \n");
-     printBuf((void *) md, SHA_DIGEST_LENGTH);
+     printBuf(stdout,(void *) md, SHA_DIGEST_LENGTH);
      
      if (!isBufferEntirelyConcrete((uint64_t) c, 20) )
        hasSymbolicInput = true;
@@ -3099,7 +3196,7 @@ void Executor::model_SHA1_Final() {
        
        fflush(stdout);
        forceNativeRet = true;
-       target_ctx_gregs[REG_RIP].u64 += 17;
+       target_ctx_gregs[REG_RIP].u64 += native_ret_off;
 
        //Todo: Provide sha1_final native implementation for concrete execution
      }    
@@ -3136,9 +3233,9 @@ void Executor::model_SHA256_Update () {
     size_t len = (size_t) target_ctx_gregs[REG_RDX].u64;
 
     printf("SHA256_Update_CTX is \n");
-    printBuf((void *) c, sizeof(SHA256_CTX));
+    printBuf(stdout,(void *) c, sizeof(SHA256_CTX));
     printf("SHA256 data buf is \n");
-    printBuf((void *) data, len);
+    printBuf(stdout,(void *) data, len);
 
     
     bool hasSymbolicInput = false;
@@ -3175,7 +3272,7 @@ void Executor::model_SHA256_Update () {
       
       fflush(stdout);
       forceNativeRet = true;
-      target_ctx_gregs[REG_RIP].u64 += 17;
+      target_ctx_gregs[REG_RIP].u64 += native_ret_off;
       //todo: provide sha256_update native implementation
       
     }
@@ -3204,9 +3301,9 @@ void Executor::model_SHA256_Final() {
 
 
      printf("SHA256_Final ctx is \n");
-     printBuf((void *) c, sizeof(SHA256_CTX));
+     printBuf(stdout,(void *) c, sizeof(SHA256_CTX));
      printf("SHA256_Final md buf is \n");
-     printBuf((void *) md, SHA_DIGEST_LENGTH);
+     printBuf(stdout,(void *) md, SHA_DIGEST_LENGTH);
      
      bool hasSymbolicInput = false;
 
@@ -3242,7 +3339,7 @@ void Executor::model_SHA256_Final() {
        
        fflush(stdout);
        forceNativeRet = true;
-       target_ctx_gregs[REG_RIP].u64 += 17;
+       target_ctx_gregs[REG_RIP].u64 += native_ret_off;
        //Todo: provide fast native sha256_final implementation
       
      }
@@ -3278,10 +3375,10 @@ void Executor::model_AES_encrypt () {
     int AESBlockSize = 16; //Number of bytes in AES block    
     printf("AES_encrypt %d debug -- dumping buffer inputs at round %d pass %d \n", timesModelAESEncryptIsCalled, roundCount, passCount );
     printf("key is \n");
-    printBuf((void *) key, AESBlockSize);
+    printBuf(stdout,(void *) key, AESBlockSize);
     //rewriteConstants( (uint64_t) key, AESBlockSize);
     printf("in is \n");
-    printBuf((void *) in, AESBlockSize);
+    printBuf(stdout,(void *) in, AESBlockSize);
     //rewriteConstants( (uint64_t) in, AESBlockSize);
     fflush(stdout);
     
@@ -3315,7 +3412,7 @@ void Executor::model_AES_encrypt () {
       printf("MULTIPASS DEBUG: Did not find symbolic input to AES_encrypt \n");
       fflush(stdout);
       forceNativeRet = true;
-      target_ctx_gregs[REG_RIP].u64 += 17;
+      target_ctx_gregs[REG_RIP].u64 += native_ret_off;
       return;
 
       //AES_Encrypt(in,out,key);  //Todo -- get native call for AES_Encrypt
@@ -3348,9 +3445,9 @@ void Executor::model_gcm_gmult_4bit () {
     
     
     printf("Xi inputs are \n");
-    printBuf((void *) XiPtr, 16);
+    printBuf(stdout,(void *) XiPtr, 16);
     printf("Htable inputs are \n");
-    printBuf((void *) HtablePtr, 196);
+    printBuf(stdout,(void *) HtablePtr, 196);
 
     
     //Todo: Double check the dubious ptr cast and figure out if we
@@ -3381,7 +3478,7 @@ void Executor::model_gcm_gmult_4bit () {
       printf("MULTIPASS DEBUG: Did not find symbolic input to gcm_gmult \n");
       fflush(stdout);
       forceNativeRet = true;
-      target_ctx_gregs[REG_RIP].u64 += 17;
+      target_ctx_gregs[REG_RIP].u64 += native_ret_off;
       return; 
     }
   } else {
@@ -3417,11 +3514,11 @@ void Executor::model_gcm_ghash_4bit () {
     printf("Entering model_gcm_ghash_4bit for time %d and dumping args as raw bytes \n", modelGCMGHASH4bitCalls);
 
     printf("Xi inputs are \n");
-    printBuf((void *) XiPtr, 16);
+    printBuf(stdout,(void *) XiPtr, 16);
     printf("Htable inputs are \n");
-    printBuf((void *) HtablePtr, 196);
+    printBuf(stdout,(void *) HtablePtr, 196);
     printf("inp is \n");
-    printBuf((void *) inp, len);
+    printBuf(stdout,(void *) inp, len);
     printf("len is %lu \n", len);
     std::cout.flush();
     
@@ -3451,7 +3548,7 @@ void Executor::model_gcm_ghash_4bit () {
       printf("MULTIPASS DEBUG: Did not find symbolic input to gcm_ghash \n");
       fflush(stdout);
       forceNativeRet = true;
-      target_ctx_gregs[REG_RIP].u64 += 17;
+      target_ctx_gregs[REG_RIP].u64 += native_ret_off;
       return; 
     }
      
@@ -3618,7 +3715,7 @@ void Executor::model_EC_KEY_generate_key () {
       printf("DEBUG: Calling EC_KEY_generate_key natively \n");
       fflush(stdout);
       forceNativeRet = true;
-      target_ctx_gregs[REG_RIP].u64 += 17;
+      target_ctx_gregs[REG_RIP].u64 += native_ret_off;
       return; 
     } 
     
@@ -3759,7 +3856,7 @@ void Executor::model_ECDH_compute_key() {
       printf("DEBUG: Calling ECDH_compute_key for time %d natively \n", model_ECDH_compute_key_calls);
       fflush(stdout);
       forceNativeRet = true;
-      target_ctx_gregs[REG_RIP].u64 += 17;
+      target_ctx_gregs[REG_RIP].u64 += native_ret_off;
       return; 
     }
       
@@ -3770,35 +3867,48 @@ void Executor::model_ECDH_compute_key() {
 }
 
 
-void tase_print_BIGNUM(BIGNUM bn) {
-  printf("Printing BIGNUM \n");
-  for (size_t i = 0; i < sizeof(BIGNUM); i++) {
-    printf("%x",  *( ((uint8_t*) &(bn)) +i));
-  }
-  printf("\n Finished printing BIGNUM \n");
+void tase_print_BIGNUM(FILE * f, BIGNUM * bn) {
+  
+  fprintf(f,"Printing data in BIGNUM: \n");
+  printBuf(f,(void *) bn->d, sizeof(BN_ULONG) * bn->dmax);
+  
+  fprintf(f,"\n Finished printing BIGNUM \n");
   fflush(stdout);
 }
-void tase_print_EC_POINT(EC_POINT * pt) {
-  printf("TASE printing ec_point \n");
-  std::cout.flush();
+void tase_print_EC_POINT(FILE * f, EC_POINT * pt) {
+  fprintf(f,"TASE printing ec_point \n");
+  fflush(f);
   if (pt == NULL) {
-    printf("ec_point is NULL \n");
+    fprintf(f,"ec_point is NULL \n");
     return;
   }
     
   
-  printf("EC_METHOD is 0x%lx ", (uint64_t) pt->meth);
-  printf("X is \n");
-  tase_print_BIGNUM(pt->X);
-  printf("Y is \n");
-  tase_print_BIGNUM(pt->Y);
-  printf("Z is \n");
-  tase_print_BIGNUM(pt->Z);
-  printf("Z_is_one is 0x%x", (uint32_t) pt->Z_is_one);
-  printf("\n Finished printing ec_point \n");
-  std::cout.flush();
+  fprintf(f,"EC_METHOD is 0x%lx ", (uint64_t) pt->meth);
+  fprintf(f,"X is \n");
+  tase_print_BIGNUM(f,&(pt->X));
+  fprintf(f,"Y is \n");
+  tase_print_BIGNUM(f,&(pt->Y));
+  fprintf(f,"Z is \n");
+  tase_print_BIGNUM(f,&(pt->Z));
+  fprintf(f,"Z_is_one is 0x%x", (uint32_t) pt->Z_is_one);
+  fprintf(f,"\n Finished printing ec_point \n");
+  fflush(f);
 }
 
+void tase_print_EC_KEY(FILE * f, EC_KEY * key) {
+  fprintf(f,"Printing pub_key and priv_key fields in EC_KEY \n");
+  fprintf(f,"pub_key: \n");
+  tase_print_EC_POINT(f,(key->pub_key));
+  fprintf(f,"priv_key: \n");
+  if (key->priv_key != NULL) {
+    tase_print_BIGNUM(f,(key->priv_key));
+  } else {
+    fprintf(f,"priv_key is NULL \n");
+  }
+  fprintf(f,"Finished printing EC_KEY \n");
+
+}
 
 //model for size_t EC_POINT_point2oct(const EC_GROUP *group, const EC_POINT *point, point_conversion_form_t form,
 //        unsigned char *buf, size_t len, BN_CTX *ctx)
@@ -3814,6 +3924,8 @@ void Executor::model_EC_POINT_point2oct() {
   model_EC_POINT_point2oct_calls++;
   printf("Entering EC_POINT_point2oct at interpctr %lu \n", interpCtr);
   fflush(stdout);
+
+  //#ifdef TASE_OPENSSL
   
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(REG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(REG_RSI * 8, Expr::Int64);
@@ -3838,10 +3950,12 @@ void Executor::model_EC_POINT_point2oct() {
     BN_CTX * ctx = (BN_CTX *) target_ctx_gregs[REG_R9].u64;
 
     bool hasSymbolicInput = false;
+    
     size_t field_len = BN_num_bytes(&group->field);
+   
     size_t ret = (form == POINT_CONVERSION_COMPRESSED) ? 1 + field_len : 1 + 2*field_len;
 
-    tase_print_EC_POINT(point);
+    tase_print_EC_POINT(stdout,point);
     
     
     if (is_symbolic_EC_POINT(point))
@@ -3879,7 +3993,7 @@ void Executor::model_EC_POINT_point2oct() {
        printf("Entering EC_POINT_point2oct for time %d and calling natively \n", model_EC_POINT_point2oct_calls);
        fflush(stdout);
        forceNativeRet = true;
-       target_ctx_gregs[REG_RIP].u64 += 17;
+       target_ctx_gregs[REG_RIP].u64 += native_ret_off;
        return; 
      
     }
@@ -3888,4 +4002,6 @@ void Executor::model_EC_POINT_point2oct() {
     printf("ERROR: model_EC_POINT_point2oct called with symbolic input \n");
     std::exit(EXIT_FAILURE);
   }
+    //#endif
+    
 }

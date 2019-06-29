@@ -1,3 +1,4 @@
+
 //===-- Executor.cpp ------------------------------------------------------===//
 //
 //                     The KLEE Symbolic Virtual Machine
@@ -168,6 +169,7 @@ uint64_t rodata_size;
 extern "C" void make_byte_symbolic(uint64_t addr);
 uint64_t bounceback_offset = 14;
 bool tase_buf_could_be_symbolic (void * ptr, int size);
+uint64_t trap_off = 0;  //Offset from function address at which we trap
 
 //Debug info
 extern bool taseDebug;
@@ -3263,7 +3265,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
       value = state.constraints.simplifyExpr(value);
   }
 
-  /*
+  
    if(taseDebug) {
     printf("executeMemoryOperation DBG: \n");
     printf("bytes is %d \n", bytes);
@@ -3276,7 +3278,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
       printf("ERROR: addr should be constant or symbolic \n");
     } 
    }
-  */
+
 
   // fast path: single in-bounds resolution
   ObjectPair op;
@@ -3575,25 +3577,25 @@ void printKTestCounters() {
 
 void countProhibCalls(uint64_t rip) {
   //#ifdef TASE_OPENSSL
-  if (rip == (uint64_t) &AES_encrypt             + 14)
+  if (rip == (uint64_t) &AES_encrypt             )
     AES_encrypt_calls++;
-  if (rip == (uint64_t) &ECDH_compute_key        + 14)
+  if (rip == (uint64_t) &ECDH_compute_key        )
     ECDH_compute_key_calls++;
-  if (rip == (uint64_t) &EC_POINT_point2oct      + 14)
+  if (rip == (uint64_t) &EC_POINT_point2oct      )
     EC_POINT_point2oct_calls++;
-  if (rip == (uint64_t) &EC_KEY_generate_key     + 14)
+  if (rip == (uint64_t) &EC_KEY_generate_key     )
     EC_KEY_generate_key_calls++;
-  if (rip == (uint64_t) &SHA1_Update             + 14)
+  if (rip == (uint64_t) &SHA1_Update             )
     SHA1_Update_calls++;
-  if (rip == (uint64_t) &SHA1_Final              + 14)
+  if (rip == (uint64_t) &SHA1_Final              )
     SHA1_Final_calls++;
-  if (rip == (uint64_t) &SHA256_Update           + 14)
+  if (rip == (uint64_t) &SHA256_Update           )
     SHA256_Update_calls++;
-  if (rip == (uint64_t) &SHA256_Final            + 14)
+  if (rip == (uint64_t) &SHA256_Final            )
     SHA256_Final_calls++;
-  if (rip == (uint64_t) &gcm_gmult_4bit          + 14)
+  if (rip == (uint64_t) &gcm_gmult_4bit          )
     gcm_gmult_4bit_calls++;
-  if (rip == (uint64_t) &gcm_ghash_4bit          + 14)
+  if (rip == (uint64_t) &gcm_ghash_4bit          )
     gcm_ghash_4bit_calls++;
   //#endif
 }
@@ -3665,7 +3667,7 @@ bool canBounceback (uint32_t abort_status, uint64_t rip, bool * isPsnTrap, bool 
     BB_OTHER++;
   }
 
-  if (bbEnabled && retry && retryCtr % retryMax != 0) {
+  if (exec_mode == MIXED && bbEnabled && retry && retryCtr % retryMax != 0) {
     if (taseDebug){
       printf("Attempting to bounceback to native execution at RIP 0x%lx \n", rip);
       fflush(stdout);
@@ -4100,11 +4102,11 @@ void Executor::model_inst () {
     model___ctype_tolower_loc();
   } else if (rip == (uint64_t) &BIO_printf) {
     model_BIO_printf();
-  } else if (rip == (uint64_t) &BIO_snprintf) {
+  } /* else if (rip == (uint64_t) &BIO_snprintf) {
     model_BIO_snprintf(); 
-  } else if (rip == (uint64_t) &vfprintf) {
+    }*/ else if (rip == (uint64_t) &vfprintf) {
     model_vfprintf();
-  } else if (rip == (uint64_t) &sprintf) {
+    } else if (rip == (uint64_t) &sprintf) {
     model_sprintf();
   } else if (rip == (uint64_t) &tase_debug) {
     model_tase_debug();
@@ -4148,9 +4150,9 @@ void Executor::model_inst () {
     model_fclose();
   } else if (rip == (uint64_t) &fopen64) {
     model_fopen64();
-  } else if (rip == (uint64_t) &fread) {
+  } else if (rip == (uint64_t) &fread || (rip == (uint64_t) &fread_unlocked)) {
     model_fread();
-  } else if (rip == (uint64_t) &fwrite) {
+    } else if (rip == (uint64_t) &fwrite || (rip == (uint64_t) &fwrite_unlocked)) {
     model_fwrite();
   } else if (rip == (uint64_t) &fgets) {
     model_fgets();
@@ -4160,29 +4162,29 @@ void Executor::model_inst () {
     model___isoc99_sscanf();
   } else if (rip == (uint64_t) &gethostbyname) {
     model_gethostbyname();
-  } else if ( rip == (uint64_t) &tls1_generate_master_secret || rip == (uint64_t) &tls1_generate_master_secret + 14 ) {
+  } else if ( rip == (uint64_t) &tls1_generate_master_secret + trap_off ) {
     model_tls1_generate_master_secret();
-  } else if (rip == (uint64_t) &EC_POINT_point2oct + 14) {
+  } else if (rip == (uint64_t) &EC_POINT_point2oct + trap_off) {
     model_EC_POINT_point2oct();
-  } else if (rip == (uint64_t) &ECDH_compute_key + 14) {
+  } else if (rip == (uint64_t) &ECDH_compute_key + trap_off) {
     model_ECDH_compute_key();
-  } else if (rip == (uint64_t) &EC_KEY_generate_key + 14 ) {
+  } else if (rip == (uint64_t) &EC_KEY_generate_key + trap_off ) {
     model_EC_KEY_generate_key();
-  } else if (rip == (uint64_t) &SHA1_Update + 14) {
+  } else if (rip == (uint64_t) &SHA1_Update + trap_off) {
     model_SHA1_Update();
-  } else if (rip == (uint64_t) &SHA1_Final + 14) {
+  } else if (rip == (uint64_t) &SHA1_Final + trap_off) {
     model_SHA1_Final();
-  } else if (rip == (uint64_t) &SHA256_Update + 14) {
+  } else if (rip == (uint64_t) &SHA256_Update + trap_off) {
     model_SHA256_Update();
-  } else if (rip == (uint64_t) &SHA256_Final + 14) {
+  } else if (rip == (uint64_t) &SHA256_Final + trap_off) {
     model_SHA256_Final();
-  } else if (rip == (uint64_t) &gcm_gmult_4bit + 14) {
+  } else if (rip == (uint64_t) &gcm_gmult_4bit + trap_off) {
     model_gcm_gmult_4bit();
-  } else if (rip == (uint64_t) &gcm_ghash_4bit + 14) {
+  } else if (rip == (uint64_t) &gcm_ghash_4bit + trap_off) {
     model_gcm_ghash_4bit();
-  } else if (rip == (uint64_t) &AES_encrypt + 14) {
+  } else if (rip == (uint64_t) &AES_encrypt + trap_off) {
     model_AES_encrypt();
-  } else if (rip == (uint64_t) &ktest_master_secret +14 || rip == (uint64_t) &ktest_master_secret) {
+  } else if (rip == (uint64_t) &ktest_master_secret + trap_off) {
 
     printf("Entering ktest_master_secret model \n");
     fflush(stdout);
@@ -4192,20 +4194,22 @@ void Executor::model_inst () {
       std::exit(EXIT_FAILURE);
     } 
     model_ktest_master_secret();
-  } else if (rip == (uint64_t)  &ktest_writesocket +14 || rip == (uint64_t) &ktest_writesocket) {
+  } else if (rip == (uint64_t)  &ktest_writesocket + trap_off) {
     model_ktest_writesocket();
-  } else if (rip == (uint64_t) &ktest_readsocket +14 || rip == (uint64_t) &ktest_readsocket) {
+  } else if (rip == (uint64_t) &ktest_readsocket + trap_off) {
     model_ktest_readsocket();
-  } else if (rip == (uint64_t) &ktest_raw_read_stdin +14 || rip == (uint64_t) &ktest_raw_read_stdin) {
+  } else if (rip == (uint64_t) &ktest_raw_read_stdin + trap_off) {
     model_ktest_raw_read_stdin();
-  } else if (rip == (uint64_t) &ktest_connect +14 || rip == (uint64_t) &ktest_connect) {
+  } else if (rip == (uint64_t) &ktest_connect + trap_off) {
     model_ktest_connect();
-  } else if (rip == (uint64_t) &ktest_select +14 || rip == (uint64_t) &ktest_select) {
+  } else if (rip == (uint64_t) &ktest_select + trap_off) {
     model_ktest_select();
-  } else if (rip == (uint64_t) &ktest_RAND_bytes +14 || rip == (uint64_t) &ktest_RAND_bytes) {
+  } else if (rip == (uint64_t) &ktest_RAND_bytes + trap_off ) {
     model_ktest_RAND_bytes();
-  } else if (rip == (uint64_t) &ktest_RAND_pseudo_bytes +14 || rip == (uint64_t) &ktest_RAND_pseudo_bytes) {
+  } else if (rip == (uint64_t) &ktest_RAND_pseudo_bytes +trap_off) {
     model_ktest_RAND_pseudo_bytes();
+  } else if (rip == (uint64_t) &ktest_start + trap_off) {
+    model_ktest_start();
   } else if (rip == (uint64_t) &gettimeofday)  {
     model_gettimeofday();
   } else if (rip == (uint64_t) &getuid) {
@@ -4234,18 +4238,16 @@ void Executor::model_inst () {
     model_RAND_add();
   } else if (rip == (uint64_t) &RAND_load_file ) {
     model_RAND_load_file();
-  } else if (rip == (uint64_t) &RAND_poll || rip == (uint64_t) &RAND_poll + 14 ) {  
+  } else if (rip == (uint64_t) &RAND_poll + trap_off) {  
     model_RAND_poll();
-  } else if (rip == (uint64_t) &ktest_start +14 || rip == (uint64_t) &ktest_start) {
-    model_ktest_start();
-  } else if (rip == (uint64_t) &sb_reopen) {
+  }  else if (rip == (uint64_t) &sb_reopen) {
     model_reopentran();
   }
   else if (rip == (uint64_t) &sb_disabled) {
     model_sb_disabled();
   }
   //#endif
-  
+
   else if (rip == (uint64_t) &target_exit) {
     printf("Found call to target_exit in interpreter \n");
     std::cout.flush();
@@ -4275,54 +4277,53 @@ bool isSpecialInst (uint64_t rip) {
 
   //Todo -- get rid of traps for RAND_add and RAND_load_file
 #ifdef TASE_BIGNUM
-  static const uint64_t modeledFns [] = { (uint64_t) &make_byte_symbolic, (uint64_t) &make_byte_symbolic + 14, (uint64_t) &target_exit, (uint64_t) &exit_tase_shim};
+  static const uint64_t modeledFns [] = { (uint64_t) &make_byte_symbolic, (uint64_t) &make_byte_symbolic + trap_off, (uint64_t) &target_exit, (uint64_t) &exit_tase_shim};
 #endif
+
+
+  
   //#ifdef TASE_OPENSSL
-  static const uint64_t modeledFns [] = {(uint64_t)&signal, (uint64_t)&malloc, (uint64_t)&read, (uint64_t)&write, (uint64_t)&connect, (uint64_t)&select, (uint64_t)&socket, (uint64_t) &getuid, (uint64_t) &geteuid, (uint64_t) &getgid, (uint64_t) &getegid, (uint64_t) &getenv, (uint64_t) &stat, (uint64_t) &free, (uint64_t) &realloc,  (uint64_t) &RAND_add, (uint64_t) &RAND_load_file, (uint64_t) &kTest_free, (uint64_t) &kTest_fromFile, (uint64_t) &kTest_getCurrentVersion, (uint64_t) &kTest_isKTestFile, (uint64_t) &kTest_numBytes, (uint64_t) &kTest_toFile, (uint64_t) &ktest_RAND_bytes, (uint64_t) &ktest_RAND_pseudo_bytes, (uint64_t) &ktest_connect, (uint64_t) &ktest_finish, (uint64_t) &ktest_master_secret, (uint64_t) &ktest_raw_read_stdin, (uint64_t) &ktest_readsocket, (uint64_t) &ktest_select, (uint64_t) &ktest_start, (uint64_t) &ktest_time, (uint64_t) &time, (uint64_t) &gmtime, (uint64_t) &gettimeofday, (uint64_t) &ktest_writesocket, (uint64_t) &fileno, (uint64_t) &fcntl, (uint64_t) &fopen, (uint64_t) &fopen64, (uint64_t) &fclose,  (uint64_t) &fwrite, (uint64_t) &fflush, (uint64_t) &fread, (uint64_t) &fgets, (uint64_t) &__isoc99_sscanf, (uint64_t) &gethostbyname, (uint64_t) &setsockopt, (uint64_t) &__ctype_tolower_loc, (uint64_t) &__ctype_b_loc, (uint64_t) &__errno_location,  (uint64_t) &BIO_printf, (uint64_t) &BIO_snprintf, (uint64_t) &vfprintf,  (uint64_t) &sprintf, (uint64_t) &tase_debug,   (uint64_t) &OpenSSLDie, (uint64_t) &shutdown , (uint64_t) &malloc_tase, (uint64_t) &realloc_tase, (uint64_t) &calloc_tase, (uint64_t) &free_tase, (uint64_t) &getpid , (uint64_t) &RAND_poll};
+  static const uint64_t modeledFns [] = {(uint64_t)&signal, (uint64_t)&malloc, (uint64_t)&read, (uint64_t)&write, (uint64_t)&connect, (uint64_t)&select, (uint64_t)&socket, (uint64_t) &getuid, (uint64_t) &geteuid, (uint64_t) &getgid, (uint64_t) &getegid, (uint64_t) &getenv, (uint64_t) &stat, (uint64_t) &free, (uint64_t) &realloc,  (uint64_t) &RAND_add, (uint64_t) &RAND_load_file, (uint64_t) &kTest_free, (uint64_t) &kTest_fromFile, (uint64_t) &kTest_getCurrentVersion, (uint64_t) &kTest_isKTestFile, (uint64_t) &kTest_numBytes, (uint64_t) &kTest_toFile, (uint64_t) &ktest_RAND_bytes, (uint64_t) &ktest_RAND_pseudo_bytes, (uint64_t) &ktest_connect, (uint64_t) &ktest_finish, (uint64_t) &ktest_master_secret, (uint64_t) &ktest_raw_read_stdin, (uint64_t) &ktest_readsocket, (uint64_t) &ktest_select, (uint64_t) &ktest_start, (uint64_t) &ktest_time, (uint64_t) &time, (uint64_t) &gmtime, (uint64_t) &gettimeofday, (uint64_t) &ktest_writesocket, (uint64_t) &fileno, (uint64_t) &fcntl, (uint64_t) &fopen, (uint64_t) &fopen64, (uint64_t) &fclose,  (uint64_t) &fwrite, (uint64_t) &fwrite_unlocked, (uint64_t) &fflush, (uint64_t) &fread, (uint64_t) &fread_unlocked, (uint64_t) &fgets, (uint64_t) &__isoc99_sscanf, (uint64_t) &gethostbyname, (uint64_t) &setsockopt, (uint64_t) &__ctype_tolower_loc, (uint64_t) &__ctype_b_loc, (uint64_t) &__errno_location,  (uint64_t) &BIO_printf, /* (uint64_t) &BIO_snprintf,*/ (uint64_t) &vfprintf,  (uint64_t) &sprintf, (uint64_t) &printf, (uint64_t) &tase_debug,   (uint64_t) &OpenSSLDie, (uint64_t) &shutdown , (uint64_t) &malloc_tase, (uint64_t) &realloc_tase, (uint64_t) &calloc_tase, (uint64_t) &free_tase, (uint64_t) &getpid , (uint64_t) &RAND_poll};
   //#endif 
   
   bool isModeled = std::find(std::begin(modeledFns), std::end(modeledFns), rip) != std::end(modeledFns);
 
-  //ABH: The plus 14 offset below is a temporary hack.
+  //ABH: The trap_off offset below is a temporary hack.
   //For modeled or prohibitive functions, we trap
-  //to the interpreter at exactly 14 bytes from the
+  //to the interpreter at exactly trap_off bytes from the
   //label of the function.
-#ifdef TASE_BIGNUM
-  if (isModeled)
-    return true;
-  else
-    return false;
-#endif
+
+
   //#ifdef TASE_OPENSSL
   if (
-      rip == (uint64_t) &ktest_start             + 14 ||
-      rip == (uint64_t) &ktest_writesocket       + 14 ||
-      rip == (uint64_t) &ktest_readsocket        + 14 ||
-      rip == (uint64_t) &ktest_raw_read_stdin    + 14 ||
-      rip == (uint64_t) &ktest_connect           + 14 ||
-      rip == (uint64_t) &ktest_select            + 14 ||
-      rip == (uint64_t) &ktest_RAND_bytes        + 14 ||
-      rip == (uint64_t) &ktest_RAND_pseudo_bytes + 14 ||
-      rip == (uint64_t) &ktest_master_secret     + 14 ||
+      rip == (uint64_t) &ktest_start             + trap_off ||
+      rip == (uint64_t) &ktest_writesocket       + trap_off ||
+      rip == (uint64_t) &ktest_readsocket        + trap_off ||
+      rip == (uint64_t) &ktest_raw_read_stdin    + trap_off ||
+      rip == (uint64_t) &ktest_connect           + trap_off ||
+      rip == (uint64_t) &ktest_select            + trap_off ||
+      rip == (uint64_t) &ktest_RAND_bytes        + trap_off ||
+      rip == (uint64_t) &ktest_RAND_pseudo_bytes + trap_off ||
+      rip == (uint64_t) &ktest_master_secret     + trap_off ||
       rip == (uint64_t) &sb_reopen                    ||
       rip == (uint64_t) &sb_disabled                  ||
       rip == (uint64_t) &target_exit                  ||
       rip == (uint64_t) &malloc_tase                 + 14  ||
       rip == (uint64_t) &realloc_tase                + 14  ||
       rip == (uint64_t) &free_tase                   + 14  ||
-      rip == (uint64_t) &SHA1_Update                 + 14  ||
-      rip == (uint64_t) &SHA1_Final                  + 14  ||
-      rip == (uint64_t) &SHA256_Update               + 14  ||
-      rip == (uint64_t) &SHA256_Final                + 14  ||
-      rip == (uint64_t) &AES_encrypt                 + 14  ||
-      rip == (uint64_t) &gcm_gmult_4bit              + 14  ||
-      rip == (uint64_t) &gcm_ghash_4bit              + 14  ||
-      rip == (uint64_t) &EC_KEY_generate_key         + 14  ||
-      rip == (uint64_t) &ECDH_compute_key            + 14  ||
-      rip == (uint64_t) &EC_POINT_point2oct          + 14  ||
+      rip == (uint64_t) &SHA1_Update                 + trap_off  ||
+      rip == (uint64_t) &SHA1_Final                  + trap_off  ||
+      rip == (uint64_t) &SHA256_Update               + trap_off  ||
+      rip == (uint64_t) &SHA256_Final                + trap_off  ||
+      rip == (uint64_t) &AES_encrypt                 + trap_off  ||
+      rip == (uint64_t) &gcm_gmult_4bit              + trap_off  ||
+      rip == (uint64_t) &gcm_ghash_4bit              + trap_off  ||
+      rip == (uint64_t) &EC_KEY_generate_key         + trap_off  ||
+      rip == (uint64_t) &ECDH_compute_key            + trap_off  ||
+      rip == (uint64_t) &EC_POINT_point2oct          + trap_off  ||
       //Trapping during replays should happen further down in tls1_generate_master_secret
-      (rip == (uint64_t) &tls1_generate_master_secret + 14 && enableMultipass ) ||
-      rip == (uint64_t) &RAND_poll                   + 14  ||
+      (rip == (uint64_t) &tls1_generate_master_secret + trap_off ) ||
+      rip == (uint64_t) &RAND_poll                   + trap_off  ||
       isModeled
       )  {
     return true;
@@ -4427,56 +4428,399 @@ bool tase_buf_could_be_symbolic (void * ptr, int size) {
 
   return false;
 }
+extern FILE * bignumLog;
+
+int DBG_BN_is_bit_set(const BIGNUM *a, int n)
+{
+  int i,j;
+  
+  //  bn_check_top(a);
+  if (n < 0) return 0;
+  i=n/BN_BITS2;
+  j=n%BN_BITS2;
+  if (a->top <= i) return 0;
+  fprintf(bignumLog, "DBG_BN_is_bit_set: returning idx %d from chunk 0x%lx \n", j, (a->d[i]));
+  fflush(bignumLog);
+  return (int)(((a->d[i])>>j)&((BN_ULONG)1));
+}
+
+
+
+extern "C" int ECDSA_verify(int type, const unsigned char *dgst, int dgst_len,
+	 const unsigned char *sigbuf, int sig_len, EC_KEY *eckey);
+
+extern void printBuf(FILE * f,void * buf, size_t count);
+extern void tase_print_EC_KEY(FILE * f, EC_KEY * key);
+extern void tase_print_BIGNUM(FILE * f, BIGNUM * bn);
+void Executor::DBG_ECDSA_verify() {
+  
+  int type = (int) target_ctx_gregs[REG_RDI].u64;
+  void * dgst = (void *) target_ctx_gregs[REG_RSI].u64;
+  size_t dgst_len = (size_t) target_ctx_gregs[REG_RDX].u64;
+  void * sig = (void *) target_ctx_gregs[REG_RCX].u64;
+  size_t sig_len  = (size_t) target_ctx_gregs[REG_R8].u64;
+  EC_KEY * eckey = (EC_KEY *) target_ctx_gregs[REG_R9].u64;
+
+  //fprintf(stderr,"TEMP DBG: setting taseDebug to true \n");
+  //taseDebug = true;
+  
+  printf("ECDSA_verify dbg: \n");
+  printf("type is %d \n", type);
+  printf("dgst is \n");
+  printBuf(stdout,dgst, dgst_len);
+  printf("sig is \n");
+  printBuf(stdout,sig, sig_len);
+  printf("eckey is \n");
+  tase_print_EC_KEY(stdout,eckey);
+}
+
+extern "C" int BN_num_bits (const BIGNUM * a);
+uint64_t BN_num_bits_ret_offset = 198; //O1
+//uint64_t BN_num_bits_ret_offset = 513; //O0
+
+extern "C" int BN_num_bits_word (BN_ULONG l);
+uint64_t BN_num_bits_word_ret_offset = 587; //O1
+//uint64_t BN_num_bits_word_ret_offset =1257; //O0
+
+extern "C" BN_ULONG BN_get_word(const BIGNUM * a);
+uint64_t BN_get_word_ret_offset = 157; //O1
+//uint64_t BN_get_word_ret_offset = 438; //O0
+
+extern "C" int BN_ucmp(const BIGNUM *a, const BIGNUM *b);
+uint64_t BN_ucmp_ret_offset = 266; //O1
+//uint64_t BN_ucmp_ret_offset = 1122; //O0
+
+extern "C" int BN_cmp(const BIGNUM * a, const BIGNUM * b);
+uint64_t BN_cmp_ret_offset = 543 ; //O1
+//uint64_t BN_cmp_ret_offset = 1900; //O0
+
+extern "C" int BN_is_bit_set(const BIGNUM *a, int n);
+uint64_t BN_is_bit_set_ret_offset = 180; //O1
+//uint64_t BN_is_bit_set_ret_offset = 591; //O0
+
+extern "C" int BN_mask_bits(BIGNUM * a, int n);
+//uint64_t BN_mask_bits_ret_offset; //O1
+
+
+extern "C" int bn_cmp_words (const BN_ULONG * a, const BN_ULONG * b);
+uint64_t bn_cmp_words_ret_offset = 313; //O1
+//uint64_t bn_cmp_words_ret_offset = 1136; //O0
+
+extern "C" int bn_cmp_part_words(const BN_ULONG *a, const BN_ULONG *b, int cl, int dl);
+uint64_t bn_cmp_part_words_ret_offset = 352;  //O1
+//uint64_t bn_cmp_part_words_ret_offset =  1080; //O0
+
+
+//Debugging for bn_asm
+
+extern "C" BN_ULONG bn_add_words(BN_ULONG *r, const BN_ULONG *a, const BN_ULONG *b, int n); 
+uint64_t bn_add_words_ret_off = 697;   //CGP
+//uint64_t bn_add_words_ret_off = 633;
+
+extern "C" BN_ULONG bn_div_words(BN_ULONG h, BN_ULONG l, BN_ULONG d);
+uint64_t bn_div_words_ret_off = 857;
+//uint64_t bn_div_words_ret_off = 821;  //Two rets; using second one
+
+extern "C" BN_ULONG bn_mul_add_words(BN_ULONG *rp, const BN_ULONG *ap, int num, BN_ULONG w);
+uint64_t bn_mul_add_words_ret_off = 1099;
+//uint64_t bn_mul_add_words_ret_off = 1142;
+
+extern "C" void bn_mul_comba4(BN_ULONG *r, BN_ULONG *a, BN_ULONG *b);
+uint64_t bn_mul_comba4_ret_off = 2487;
+//uint64_t bn_mul_comba4_ret_off = 2451;
+
+extern "C" void bn_mul_comba8(BN_ULONG *r, BN_ULONG *a, BN_ULONG *b);
+uint64_t bn_mul_comba8_ret_off = 8938;
+//uint64_t bn_mul_comba8_ret_off = 9107;
+
+extern "C" int bn_mul_mont(BN_ULONG *rp, const BN_ULONG *ap, const BN_ULONG *bp, const BN_ULONG *np,const BN_ULONG *n0p, int num);
+uint64_t bn_mul_mont_ret_off = 38;
+//uint64_t bn_mul_mont_ret_off = 38;
+
+extern "C" BN_ULONG bn_mul_words(BN_ULONG *rp, const BN_ULONG *ap, int num, BN_ULONG w);
+uint64_t bn_mul_words_ret_off = 924;
+//uint64_t bn_mul_words_ret_off = 948;
+
+extern "C" void bn_sqr_comba4(BN_ULONG *r, const BN_ULONG *a);
+uint64_t bn_sqr_comba4_ret_off = 1630;
+//uint64_t bn_sqr_comba4_ret_off = 1920;
+
+extern "C" void bn_sqr_comba8(BN_ULONG *r, const BN_ULONG *a);
+uint64_t bn_sqr_comba8_ret_off = 6341;
+//uint64_t bn_sqr_comba8_ret_off = 7458;
+
+extern "C" void bn_sqr_words(BN_ULONG *r, const BN_ULONG *a, int n);
+uint64_t bn_sqr_words_ret_off = 716;
+//uint64_t bn_sqr_words_ret_off = 755;
+
+extern "C" BN_ULONG bn_sub_words(BN_ULONG *r, const BN_ULONG *a, const BN_ULONG *b, int n);
+uint64_t bn_sub_words_ret_off = 677;
+//uint64_t bn_sub_words_ret_off = 677;
 
 int nopCtr = 0;
 void Executor::klee_interp_internal () {
   double interpSetupStartTime = 0.0, interpRunStartTime = 0.0, interpCleanupStartTime = 0.0;
 
-  
   while (true) {
     interpCtr++;
     if (taseDebug)
       printDebugInterpHeader();
     if (measureTime)
       interpSetupStartTime = util::getWallTime();
-
-    
+      
     uint64_t rip = target_ctx_gregs[REG_RIP].u64;
+    uint64_t rax = target_ctx_gregs[REG_RAX].u64;
+    uint64_t rdi = target_ctx_gregs[REG_RDI].u64;
     uint64_t rip_init = rip;
 
-    //This doesn't work if we just skip
-    //the jmp *tase_springboard so logic is moved there
-    if ( (rip == (uint64_t) &sb_reopen ||
-	  rip == (uint64_t) &sb_open   ||
-	  rip == (uint64_t) &sb_disabled
-	  )
-	 && killFlagsHack)
-      {
-	if (taseDebug) 
-	  printf("Killing flags \n");
-	uint64_t zero = 0;
-	ref<ConstantExpr> zeroExpr = ConstantExpr::create(zero, Expr::Int64);
-	tase_helper_write((uint64_t) &target_ctx_gregs[REG_EFL], zeroExpr);
-      }
-    
-    if (resumeNativeExecution()){
-      break;
+    if (rip == (uint64_t) &ECDSA_verify)
+      DBG_ECDSA_verify();
+
+
+    static BN_ULONG * addWordsRes = 0;
+    static int addNumWords = 0;
+    if (rip == (uint64_t) &bn_add_words ) {
+      //fprintf(stderr, "Setting tasedebug to true \n");
+      //taseDebug = true;
+      addWordsRes = (BN_ULONG *)  target_ctx_gregs[REG_RDI].u64;
+      addNumWords = (int) target_ctx_gregs[REG_RCX].u64;
+      BN_ULONG * a = (BN_ULONG *) target_ctx_gregs[REG_RSI].u64;
+      BN_ULONG * b = (BN_ULONG *) target_ctx_gregs[REG_RDX].u64;
+      fprintf(bignumLog, "Printing bn_add_words bn a \n");
+      for (int i = 0; i < addNumWords; i++)
+	fprintf(bignumLog, "0x%lx \n", a[i]);
+      fprintf(bignumLog, "------- \n");
+      fprintf(bignumLog, "Printing bn_add_words bn b \n");
+      for (int i = 0; i < addNumWords; i++)
+	fprintf(bignumLog, "0x%lx \n", b[i]);
+      fprintf(bignumLog, "------- \n");
+      
+    }
+    static int bn_add_words_returns = 0;
+    if (rip == (uint64_t) &bn_add_words + bn_add_words_ret_off) {
+      bn_add_words_returns++;
+      fprintf(bignumLog, "bn_add_words for time %d returns 0x%lx \n", bn_add_words_returns, rax);
+      fprintf(bignumLog, "Printing bn_add_words res \n");
+      for (int i = 0; i < addNumWords; i++)
+	fprintf(bignumLog,"0x%lx \n", addWordsRes[i]);
+
+      //fprintf(stderr, "DEBUG: Stopping early at end of first bn_add_words return \n");
+      //std::exit(EXIT_SUCCESS);
+      
+      fflush(bignumLog);
     }
 
-    int nop_off;
+    static int bn_div_words_returns = 0;
+    if (rip == (uint64_t) &bn_div_words + bn_div_words_ret_off) {
+      bn_div_words_returns++;
+      fprintf(bignumLog, "bn_div_words for time %d returns 0x%lx \n", bn_div_words_returns, rax);
+      fflush(bignumLog);
+    }
+
+    static int bn_mul_add_words_returns = 0;
+    if (rip == (uint64_t) &bn_mul_add_words + bn_mul_add_words_ret_off) {
+      bn_mul_add_words_returns++;
+      fprintf(bignumLog, "bn_mul_add_words for time %d returns 0x%lx \n", bn_mul_add_words_returns, rax);
+      fflush(bignumLog);
+    }
+
+    static BN_ULONG * bn_mul_comba4_res = 0;
+    if (rip == (uint64_t) &bn_mul_comba4) {
+      printf("DBG1 \n");
+      fprintf(bignumLog, "Setting bn_mul_comba4_res \n");
+      fflush(bignumLog);
+      bn_mul_comba4_res = (BN_ULONG *) rdi;
+      
+    }
+    static int bn_mul_comba4_returns = 0;
+    if (rip == (uint64_t) &bn_mul_comba4 + bn_mul_comba4_ret_off) {
+      printf("DBG2 \n");
+      bn_mul_comba4_returns++;
+      fprintf(bignumLog,"bignumLog trying to print rv in bn_mul_comba4 \n");
+      printf("DBG3 \n");
+      fflush(bignumLog);
+      fprintf(bignumLog,"bn_mul_comba4_res as pointer is 0x%lx \n", (uint64_t) bn_mul_comba4_res);
+      fflush(bignumLog);
+      fprintf(bignumLog,"rdi is 0x%lx \n", rdi);
+      fflush(bignumLog);
+      fprintf(bignumLog, "bn_mul_comba4 for time %d returns 0x%lx \n", bn_mul_comba4_returns, *bn_mul_comba4_res);
+      fflush(bignumLog);
+    }
+
+    static BN_ULONG * bn_mul_comba8_res = 0;
+    if (rip == (uint64_t) &bn_mul_comba8)
+	bn_mul_comba8_res = (BN_ULONG *) rdi;
+    static int bn_mul_comba8_returns = 0;
+    if (rip == (uint64_t) &bn_mul_comba8 + bn_mul_comba8_ret_off) {
+      bn_mul_comba8_returns++;
+      fprintf(bignumLog, "bn_mul_comba8 for time %d returns 0x%lx \n", bn_mul_comba8_returns, *bn_mul_comba8_res);
+      fflush(bignumLog);
+    }
+
+    if (rip == (uint64_t) &bn_mul_words) {
+      //fprintf(stderr, "Setting tasedebug to true \n");
+      //taseDebug = true;
+      fprintf(bignumLog, "bn_mul_words input args: \n");
+      int mulNum = (int) target_ctx_gregs[REG_RDX].u64;
+      fprintf(bignumLog, "num is %d \n", mulNum);
+      fprintf(bignumLog, "w is 0x%lx \n", target_ctx_gregs[REG_RCX].u64);
+      fprintf(bignumLog, "printing entries in ap : \n");
+      BN_ULONG * apMul = (BN_ULONG *) target_ctx_gregs[REG_RSI].u64;
+      for (int i = 0; i < mulNum; i++) 
+	fprintf(bignumLog, "0x%lx \n", apMul[i]);
+
+      fprintf(bignumLog, "-------- \n");
+    }
     
-    if (nop_off = isNop(rip)) {
+    static int bn_mul_words_returns = 0;
+    if (rip == (uint64_t) &bn_mul_words + bn_mul_words_ret_off) {
+      bn_mul_words_returns++;
+      fprintf(bignumLog, "bn_mul_words for time %d returns 0x%lx \n", bn_mul_words_returns, rax);
+      fflush(bignumLog);
+    }
+
+    static BN_ULONG * bn_sqr_comba4_res = 0;
+    if (rip == (uint64_t) &bn_sqr_comba4) 
+      bn_sqr_comba4_res = (BN_ULONG *) rdi;
+    static int bn_sqr_comba4_returns = 0;
+    if (rip == (uint64_t) &bn_sqr_comba4 + bn_sqr_comba4_ret_off) {
+      bn_sqr_comba4_returns++;
+      fprintf(bignumLog, "bn_sqr_comba4 for time %d returns 0x%lx  \n", bn_sqr_comba4_returns, *bn_sqr_comba4_res  );
+      fflush(bignumLog);
+    }
+
+    static BN_ULONG * bn_sqr_comba8_res = 0;
+    if (rip == (uint64_t) &bn_sqr_comba8)
+      bn_sqr_comba8_res = (BN_ULONG *) rdi;
+    static int bn_sqr_comba8_returns = 0;
+    if (rip == (uint64_t) &bn_sqr_comba8 + bn_sqr_comba8_ret_off) {
+      bn_sqr_comba8_returns++;
+      fprintf(bignumLog, "bn_sqr_comba8 for time %d returns 0x%lx \n", bn_sqr_comba8_returns, *bn_sqr_comba8_res);
+      fflush(bignumLog);
+    }
+
+    static BN_ULONG * bn_sqr_words_res = 0;
+    if (rip == (uint64_t) &bn_sqr_words)
+      bn_sqr_words_res = (BN_ULONG *) rdi;
+    static int bn_sqr_words_returns = 0;
+    if (rip == (uint64_t) &bn_sqr_words + bn_sqr_words_ret_off) {
+      bn_sqr_words_returns++;
+      fprintf(bignumLog, "bn_sqr_words for time %d returns 0x%lx \n", bn_sqr_words_returns, *bn_sqr_words_res);
+      fflush(bignumLog);
+    }
+
+    static int bnSubNum = 0;
+    static BN_ULONG * bnSubRes = 0;
+    if (rip == (uint64_t) &bn_sub_words) {
+      bnSubNum = (int) target_ctx_gregs[REG_RCX].u64;
+      bnSubRes = (BN_ULONG *) target_ctx_gregs[REG_RDI].u64;
+      BN_ULONG * a = (BN_ULONG *) target_ctx_gregs[REG_RSI].u64;
+      BN_ULONG * b = (BN_ULONG *) target_ctx_gregs[REG_RDX].u64;
+      fprintf(bignumLog, "Printing bnSubWords arg a \n");
+      for (int i = 0; i < bnSubNum; i++)
+	fprintf(bignumLog, "0x%lx \n", a[i]);
+      fprintf(bignumLog, "------- \n");
+      fprintf(bignumLog, "Printing bnSubWords arg b \n");
+      for (int i = 0; i < bnSubNum; i++)
+	fprintf(bignumLog, "0x%lx \n", b[i]);
+      fprintf(bignumLog, "------- \n");
+    }
+    static int bn_sub_words_returns = 0;
+    if (rip == (uint64_t) &bn_sub_words + bn_sub_words_ret_off) {
+      bn_sub_words_returns++;
+      fprintf(bignumLog, "bn_sub_words for time %d returns 0x%lx \n", bn_sub_words_returns, rax);
+      fprintf(bignumLog, "Printing bn_sub_words result : \n");
+      for (int i = 0; i < bnSubNum; i++) 
+	fprintf(bignumLog,"0x%lx \n", bnSubRes[i]);
+      fprintf(bignumLog, "------- \n");
+
+      
+      fflush(bignumLog);
+    }
+    
+    /*
+    static int BN_num_bits_returns = 0;
+    if (rip == (uint64_t) &BN_num_bits + BN_num_bits_ret_offset) {
+      BN_num_bits_returns++;
+      fprintf(bignumLog,"BN_num_bits for time %d returns 0x%lx \n", BN_num_bits_returns, rax);
+      fflush(bignumLog);
+    }
+    static int BN_num_bits_word_returns = 0;
+    if (rip == (uint64_t) &BN_num_bits_word + BN_num_bits_word_ret_offset) {
+      BN_num_bits_word_returns++;
+      fprintf(bignumLog, "BN_num_bits_word for time %d returns 0x%lx \n", BN_num_bits_word_returns, rax);
+      fflush(bignumLog);
+    }
+    static int BN_get_word_returns = 0;
+    if (rip == (uint64_t) &BN_get_word + BN_get_word_ret_offset) {
+      BN_get_word_returns++;
+      fprintf(bignumLog, "BN_get_word for time %d returns 0x%lx \n", BN_get_word_returns, rax);
+    }
+    static int BN_ucmp_returns = 0;
+    if (rip == (uint64_t) &BN_ucmp + BN_ucmp_ret_offset) {
+      BN_ucmp_returns++;
+      fprintf(bignumLog, "BN_ucmp for time %d returns 0x%lx \n", BN_ucmp_returns, rax);
+      fflush(bignumLog);
+    }
+    static int BN_cmp_returns = 0;
+    if (rip == (uint64_t) &BN_cmp + BN_cmp_ret_offset) {
+      BN_cmp_returns++;
+      fprintf(bignumLog, "BN_cmp for time %d returns 0x%lx \n", BN_cmp_returns, rax);
+      fflush(bignumLog);
+    }
+
+    static int BN_is_bit_set_calls = 0;
+    if (rip == (uint64_t) &BN_is_bit_set) {
+      BN_is_bit_set_calls++;
+      fprintf(bignumLog, "-------Input args to BN_is_bit_set: \n");
+      tase_print_BIGNUM(bignumLog,(BIGNUM *) target_ctx_gregs[REG_RDI].u64);
+      fprintf(bignumLog, "Index is %d \n", (int) target_ctx_gregs[REG_RSI].u64);
+
+      fprintf(bignumLog,"DBG_BN_is_bit_set returns %d \n", DBG_BN_is_bit_set((BIGNUM *) target_ctx_gregs[REG_RDI].u64, (int) target_ctx_gregs[REG_RSI].u64) );
+      printf("Turning on logging for BN_is_bit_set for time %d \n", BN_is_bit_set_calls );
+      taseDebug =true;
+      
+    }
+    
+    static int BN_is_bit_set_returns = 0;
+    if (rip == (uint64_t) &BN_is_bit_set + BN_is_bit_set_ret_offset ) {
+      BN_is_bit_set_returns++;
+      fprintf(bignumLog, "BN_is_bit_set for time %d returns 0x%lx \n", BN_is_bit_set_returns, rax);
+      fflush(bignumLog);
+      printf("Turning off logging for BN_is_bit_set for time %d \n", BN_is_bit_set_returns);
+      taseDebug = false;
+    }
+
+
+    
+    static int bn_cmp_words_returns = 0;
+    if (rip == (uint64_t) &bn_cmp_words + bn_cmp_words_ret_offset ) {
+      bn_cmp_words_returns++;
+      fprintf(bignumLog, "bn_cmp_words for time %d returns 0x%lx \n", bn_cmp_words_returns, rax);
+      fflush(bignumLog);
+    }
+
+    static int bn_cmp_part_words_returns = 0;
+    if (rip == (uint64_t) &bn_cmp_part_words + bn_cmp_words_ret_offset ) {
+      bn_cmp_part_words_returns++;
+      fprintf(bignumLog, "bn_cmp_part_words for time %d returns 0x%lx \n",bn_cmp_part_words_returns,  rax);
+      fflush(bignumLog);
+    }
+    */
+    
+    int nop_off;
+    if (isSpecialInst(rip)) {
+      model_inst();
+    } else if (resumeNativeExecution()) {
+      break;
+    } else if ((nop_off = isNop(rip))) {
       if (taseDebug) {
 	nopCtr++;
 	printf("Found nop at addr 0x%lx with offset %d  \n", target_ctx_gregs[REG_RIP].u64, nop_off);
 	fflush(stdout);
 	printf("Found %d nops in interpreter so far with interpCtr %lu \n", nopCtr, interpCtr);
       }
-      
       target_ctx_gregs[REG_RIP].u64 += (uint64_t) nop_off;
-      
-    } else if (isSpecialInst(rip)) {
-      model_inst();
     } else {
 
       double findInterpFnStartTime = 0.0;
@@ -4562,7 +4906,7 @@ void Executor::klee_interp_internal () {
       }
     }
     if (taseDebug) 
-      printDebugInterpFooter();
+      //printDebugInterpFooter();
     
     //Kludge to get us back to native execution for prohib fns with concrete input
     if (forceNativeRet)
@@ -4719,7 +5063,7 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) 
     printf("Before freopen, new string for log is %s \n", pidString.c_str());
     FILE * res1 = freopen(pidString.c_str(),"w",stdout);
 
-    printf("Resetting interp time counters  %lf seconds after analysis began \n", util::getWallTime() - target_start_time );
+    printf("Resetting interp time counters for fork  %lf seconds after analysis began \n", util::getWallTime() - target_start_time );
     interpreter_time = 0.0;
     interp_setup_time = 0.0;
     interp_run_time = 0.0;

@@ -150,6 +150,8 @@ extern "C" void  exit_tase() {
 
 }
 
+FILE * bignumLog;
+
 void transferToTarget() {
 
   //Optimization
@@ -1546,6 +1548,8 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    std::string IDString;
    IDString = workerIDStream.str();
    freopen(IDString.c_str(),"w", stdout);
+
+   bignumLog = fopen("bignumLog.txt", "w");
    
    // Load the bytecode...
    std::string errorMsg;

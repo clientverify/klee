@@ -405,6 +405,7 @@ private:
   void model_memmove(); 
   void model_memset();
   void model_memcpy();
+  void DBG_ECDSA_verify();
   
   void model_setsockopt();
   void model_socket();

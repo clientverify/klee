@@ -459,8 +459,9 @@ KTestObject* KTOV_next_object(KTestObjectVector *ov, const char *name)
     printf("Forcing KTOV_next_object to ignore anything but c2s and s2c \n");
     fflush(stdout);
     while (true) {
-      printf("skipping record of type %s at index %d \n", o->name, ov->playback_index);
+      
       if (strcmp(o->name,"c2s") != 0 &&  (strcmp (o->name, "s2c") != 0 || (dropS2C && roundCount >= 4) ) ) {
+	printf("skipping record of type %s at index %d \n", o->name, ov->playback_index);
 	ov->playback_index++;
 	o = &ov->objects[ov->playback_index];
       } else
