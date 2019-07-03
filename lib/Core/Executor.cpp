@@ -106,14 +106,13 @@ using namespace klee;
 #include <sys/stat.h>
 #include <netdb.h>
 #include <fcntl.h>
-#include "/playpen/humphries/zTASE/TASE/test/tase/include/tase/tase_interp.h"
+#include "../../../test/tase/include/tase/tase_interp.h"
 #include "tase/TASEControl.h"
 //#include <signal.h>
 //Can't include signal.h directly if it has conflicts with our tase_interp.h definitions
 extern "C"  void ( *signal(int signum, void (*handler)(int)) ) (int){
   return NULL;
   }
-
 
 extern "C" {
   void * calloc_tase (unsigned long num, unsigned long size);
@@ -135,7 +134,6 @@ extern uint16_t poison_val;
 enum runType : int {INTERP_ONLY, MIXED};
 extern std::string project;
 extern enum runType exec_mode;
-extern int worker2managerFD [2];
 extern char target_stack[STACK_SIZE +1];
 extern Module * interpModule;
 extern char * target_stack_begin_ptr;
@@ -205,6 +203,7 @@ extern int passCount;
 int multipass_symbolic_vars = 0;
 extern CVAssignment prevMPA;
 bool forceNativeRet = false;
+
 //Addition from cliver
 std::map<std::string, uint64_t> array_name_index_map_;
 std::string get_unique_array_name(const std::string &s) {
@@ -4428,134 +4427,8 @@ bool tase_buf_could_be_symbolic (void * ptr, int size) {
 
   return false;
 }
-extern FILE * bignumLog;
 
-int DBG_BN_is_bit_set(const BIGNUM *a, int n)
-{
-  int i,j;
-  
-  //  bn_check_top(a);
-  if (n < 0) return 0;
-  i=n/BN_BITS2;
-  j=n%BN_BITS2;
-  if (a->top <= i) return 0;
-  fprintf(bignumLog, "DBG_BN_is_bit_set: returning idx %d from chunk 0x%lx \n", j, (a->d[i]));
-  fflush(bignumLog);
-  return (int)(((a->d[i])>>j)&((BN_ULONG)1));
-}
-
-
-
-extern "C" int ECDSA_verify(int type, const unsigned char *dgst, int dgst_len,
-	 const unsigned char *sigbuf, int sig_len, EC_KEY *eckey);
-
-extern void printBuf(FILE * f,void * buf, size_t count);
-extern void tase_print_EC_KEY(FILE * f, EC_KEY * key);
-extern void tase_print_BIGNUM(FILE * f, BIGNUM * bn);
-void Executor::DBG_ECDSA_verify() {
-  
-  int type = (int) target_ctx_gregs[REG_RDI].u64;
-  void * dgst = (void *) target_ctx_gregs[REG_RSI].u64;
-  size_t dgst_len = (size_t) target_ctx_gregs[REG_RDX].u64;
-  void * sig = (void *) target_ctx_gregs[REG_RCX].u64;
-  size_t sig_len  = (size_t) target_ctx_gregs[REG_R8].u64;
-  EC_KEY * eckey = (EC_KEY *) target_ctx_gregs[REG_R9].u64;
-
-  //fprintf(stderr,"TEMP DBG: setting taseDebug to true \n");
-  //taseDebug = true;
-  
-  printf("ECDSA_verify dbg: \n");
-  printf("type is %d \n", type);
-  printf("dgst is \n");
-  printBuf(stdout,dgst, dgst_len);
-  printf("sig is \n");
-  printBuf(stdout,sig, sig_len);
-  printf("eckey is \n");
-  tase_print_EC_KEY(stdout,eckey);
-}
-
-extern "C" int BN_num_bits (const BIGNUM * a);
-uint64_t BN_num_bits_ret_offset = 198; //O1
-//uint64_t BN_num_bits_ret_offset = 513; //O0
-
-extern "C" int BN_num_bits_word (BN_ULONG l);
-uint64_t BN_num_bits_word_ret_offset = 587; //O1
-//uint64_t BN_num_bits_word_ret_offset =1257; //O0
-
-extern "C" BN_ULONG BN_get_word(const BIGNUM * a);
-uint64_t BN_get_word_ret_offset = 157; //O1
-//uint64_t BN_get_word_ret_offset = 438; //O0
-
-extern "C" int BN_ucmp(const BIGNUM *a, const BIGNUM *b);
-uint64_t BN_ucmp_ret_offset = 266; //O1
-//uint64_t BN_ucmp_ret_offset = 1122; //O0
-
-extern "C" int BN_cmp(const BIGNUM * a, const BIGNUM * b);
-uint64_t BN_cmp_ret_offset = 543 ; //O1
-//uint64_t BN_cmp_ret_offset = 1900; //O0
-
-extern "C" int BN_is_bit_set(const BIGNUM *a, int n);
-uint64_t BN_is_bit_set_ret_offset = 180; //O1
-//uint64_t BN_is_bit_set_ret_offset = 591; //O0
-
-extern "C" int BN_mask_bits(BIGNUM * a, int n);
-//uint64_t BN_mask_bits_ret_offset; //O1
-
-
-extern "C" int bn_cmp_words (const BN_ULONG * a, const BN_ULONG * b);
-uint64_t bn_cmp_words_ret_offset = 313; //O1
-//uint64_t bn_cmp_words_ret_offset = 1136; //O0
-
-extern "C" int bn_cmp_part_words(const BN_ULONG *a, const BN_ULONG *b, int cl, int dl);
-uint64_t bn_cmp_part_words_ret_offset = 352;  //O1
-//uint64_t bn_cmp_part_words_ret_offset =  1080; //O0
-
-
-//Debugging for bn_asm
-
-extern "C" BN_ULONG bn_add_words(BN_ULONG *r, const BN_ULONG *a, const BN_ULONG *b, int n); 
-uint64_t bn_add_words_ret_off = 697;   //CGP
-//uint64_t bn_add_words_ret_off = 633;
-
-extern "C" BN_ULONG bn_div_words(BN_ULONG h, BN_ULONG l, BN_ULONG d);
-uint64_t bn_div_words_ret_off = 857;
-//uint64_t bn_div_words_ret_off = 821;  //Two rets; using second one
-
-extern "C" BN_ULONG bn_mul_add_words(BN_ULONG *rp, const BN_ULONG *ap, int num, BN_ULONG w);
-uint64_t bn_mul_add_words_ret_off = 1099;
-//uint64_t bn_mul_add_words_ret_off = 1142;
-
-extern "C" void bn_mul_comba4(BN_ULONG *r, BN_ULONG *a, BN_ULONG *b);
-uint64_t bn_mul_comba4_ret_off = 2487;
-//uint64_t bn_mul_comba4_ret_off = 2451;
-
-extern "C" void bn_mul_comba8(BN_ULONG *r, BN_ULONG *a, BN_ULONG *b);
-uint64_t bn_mul_comba8_ret_off = 8938;
-//uint64_t bn_mul_comba8_ret_off = 9107;
-
-extern "C" int bn_mul_mont(BN_ULONG *rp, const BN_ULONG *ap, const BN_ULONG *bp, const BN_ULONG *np,const BN_ULONG *n0p, int num);
-uint64_t bn_mul_mont_ret_off = 38;
-//uint64_t bn_mul_mont_ret_off = 38;
-
-extern "C" BN_ULONG bn_mul_words(BN_ULONG *rp, const BN_ULONG *ap, int num, BN_ULONG w);
-uint64_t bn_mul_words_ret_off = 924;
-//uint64_t bn_mul_words_ret_off = 948;
-
-extern "C" void bn_sqr_comba4(BN_ULONG *r, const BN_ULONG *a);
-uint64_t bn_sqr_comba4_ret_off = 1630;
-//uint64_t bn_sqr_comba4_ret_off = 1920;
-
-extern "C" void bn_sqr_comba8(BN_ULONG *r, const BN_ULONG *a);
-uint64_t bn_sqr_comba8_ret_off = 6341;
-//uint64_t bn_sqr_comba8_ret_off = 7458;
-
-extern "C" void bn_sqr_words(BN_ULONG *r, const BN_ULONG *a, int n);
-uint64_t bn_sqr_words_ret_off = 716;
-//uint64_t bn_sqr_words_ret_off = 755;
-
-extern "C" BN_ULONG bn_sub_words(BN_ULONG *r, const BN_ULONG *a, const BN_ULONG *b, int n);
-uint64_t bn_sub_words_ret_off = 677;
-//uint64_t bn_sub_words_ret_off = 677;
+int strtoul_calls = 0;
 
 int nopCtr = 0;
 void Executor::klee_interp_internal () {
@@ -4569,244 +4442,12 @@ void Executor::klee_interp_internal () {
       interpSetupStartTime = util::getWallTime();
       
     uint64_t rip = target_ctx_gregs[REG_RIP].u64;
-    uint64_t rax = target_ctx_gregs[REG_RAX].u64;
-    uint64_t rdi = target_ctx_gregs[REG_RDI].u64;
     uint64_t rip_init = rip;
 
-    if (rip == (uint64_t) &ECDSA_verify)
-      DBG_ECDSA_verify();
-
-
-    static BN_ULONG * addWordsRes = 0;
-    static int addNumWords = 0;
-    if (rip == (uint64_t) &bn_add_words ) {
-      //fprintf(stderr, "Setting tasedebug to true \n");
-      //taseDebug = true;
-      addWordsRes = (BN_ULONG *)  target_ctx_gregs[REG_RDI].u64;
-      addNumWords = (int) target_ctx_gregs[REG_RCX].u64;
-      BN_ULONG * a = (BN_ULONG *) target_ctx_gregs[REG_RSI].u64;
-      BN_ULONG * b = (BN_ULONG *) target_ctx_gregs[REG_RDX].u64;
-      fprintf(bignumLog, "Printing bn_add_words bn a \n");
-      for (int i = 0; i < addNumWords; i++)
-	fprintf(bignumLog, "0x%lx \n", a[i]);
-      fprintf(bignumLog, "------- \n");
-      fprintf(bignumLog, "Printing bn_add_words bn b \n");
-      for (int i = 0; i < addNumWords; i++)
-	fprintf(bignumLog, "0x%lx \n", b[i]);
-      fprintf(bignumLog, "------- \n");
-      
+    if (rip == (uint64_t) &strtoul) {
+      strtoul_calls++;
+      printf("Calling strtoul for time %d \n", strtoul_calls);
     }
-    static int bn_add_words_returns = 0;
-    if (rip == (uint64_t) &bn_add_words + bn_add_words_ret_off) {
-      bn_add_words_returns++;
-      fprintf(bignumLog, "bn_add_words for time %d returns 0x%lx \n", bn_add_words_returns, rax);
-      fprintf(bignumLog, "Printing bn_add_words res \n");
-      for (int i = 0; i < addNumWords; i++)
-	fprintf(bignumLog,"0x%lx \n", addWordsRes[i]);
-
-      //fprintf(stderr, "DEBUG: Stopping early at end of first bn_add_words return \n");
-      //std::exit(EXIT_SUCCESS);
-      
-      fflush(bignumLog);
-    }
-
-    static int bn_div_words_returns = 0;
-    if (rip == (uint64_t) &bn_div_words + bn_div_words_ret_off) {
-      bn_div_words_returns++;
-      fprintf(bignumLog, "bn_div_words for time %d returns 0x%lx \n", bn_div_words_returns, rax);
-      fflush(bignumLog);
-    }
-
-    static int bn_mul_add_words_returns = 0;
-    if (rip == (uint64_t) &bn_mul_add_words + bn_mul_add_words_ret_off) {
-      bn_mul_add_words_returns++;
-      fprintf(bignumLog, "bn_mul_add_words for time %d returns 0x%lx \n", bn_mul_add_words_returns, rax);
-      fflush(bignumLog);
-    }
-
-    static BN_ULONG * bn_mul_comba4_res = 0;
-    if (rip == (uint64_t) &bn_mul_comba4) {
-      printf("DBG1 \n");
-      fprintf(bignumLog, "Setting bn_mul_comba4_res \n");
-      fflush(bignumLog);
-      bn_mul_comba4_res = (BN_ULONG *) rdi;
-      
-    }
-    static int bn_mul_comba4_returns = 0;
-    if (rip == (uint64_t) &bn_mul_comba4 + bn_mul_comba4_ret_off) {
-      printf("DBG2 \n");
-      bn_mul_comba4_returns++;
-      fprintf(bignumLog,"bignumLog trying to print rv in bn_mul_comba4 \n");
-      printf("DBG3 \n");
-      fflush(bignumLog);
-      fprintf(bignumLog,"bn_mul_comba4_res as pointer is 0x%lx \n", (uint64_t) bn_mul_comba4_res);
-      fflush(bignumLog);
-      fprintf(bignumLog,"rdi is 0x%lx \n", rdi);
-      fflush(bignumLog);
-      fprintf(bignumLog, "bn_mul_comba4 for time %d returns 0x%lx \n", bn_mul_comba4_returns, *bn_mul_comba4_res);
-      fflush(bignumLog);
-    }
-
-    static BN_ULONG * bn_mul_comba8_res = 0;
-    if (rip == (uint64_t) &bn_mul_comba8)
-	bn_mul_comba8_res = (BN_ULONG *) rdi;
-    static int bn_mul_comba8_returns = 0;
-    if (rip == (uint64_t) &bn_mul_comba8 + bn_mul_comba8_ret_off) {
-      bn_mul_comba8_returns++;
-      fprintf(bignumLog, "bn_mul_comba8 for time %d returns 0x%lx \n", bn_mul_comba8_returns, *bn_mul_comba8_res);
-      fflush(bignumLog);
-    }
-
-    if (rip == (uint64_t) &bn_mul_words) {
-      //fprintf(stderr, "Setting tasedebug to true \n");
-      //taseDebug = true;
-      fprintf(bignumLog, "bn_mul_words input args: \n");
-      int mulNum = (int) target_ctx_gregs[REG_RDX].u64;
-      fprintf(bignumLog, "num is %d \n", mulNum);
-      fprintf(bignumLog, "w is 0x%lx \n", target_ctx_gregs[REG_RCX].u64);
-      fprintf(bignumLog, "printing entries in ap : \n");
-      BN_ULONG * apMul = (BN_ULONG *) target_ctx_gregs[REG_RSI].u64;
-      for (int i = 0; i < mulNum; i++) 
-	fprintf(bignumLog, "0x%lx \n", apMul[i]);
-
-      fprintf(bignumLog, "-------- \n");
-    }
-    
-    static int bn_mul_words_returns = 0;
-    if (rip == (uint64_t) &bn_mul_words + bn_mul_words_ret_off) {
-      bn_mul_words_returns++;
-      fprintf(bignumLog, "bn_mul_words for time %d returns 0x%lx \n", bn_mul_words_returns, rax);
-      fflush(bignumLog);
-    }
-
-    static BN_ULONG * bn_sqr_comba4_res = 0;
-    if (rip == (uint64_t) &bn_sqr_comba4) 
-      bn_sqr_comba4_res = (BN_ULONG *) rdi;
-    static int bn_sqr_comba4_returns = 0;
-    if (rip == (uint64_t) &bn_sqr_comba4 + bn_sqr_comba4_ret_off) {
-      bn_sqr_comba4_returns++;
-      fprintf(bignumLog, "bn_sqr_comba4 for time %d returns 0x%lx  \n", bn_sqr_comba4_returns, *bn_sqr_comba4_res  );
-      fflush(bignumLog);
-    }
-
-    static BN_ULONG * bn_sqr_comba8_res = 0;
-    if (rip == (uint64_t) &bn_sqr_comba8)
-      bn_sqr_comba8_res = (BN_ULONG *) rdi;
-    static int bn_sqr_comba8_returns = 0;
-    if (rip == (uint64_t) &bn_sqr_comba8 + bn_sqr_comba8_ret_off) {
-      bn_sqr_comba8_returns++;
-      fprintf(bignumLog, "bn_sqr_comba8 for time %d returns 0x%lx \n", bn_sqr_comba8_returns, *bn_sqr_comba8_res);
-      fflush(bignumLog);
-    }
-
-    static BN_ULONG * bn_sqr_words_res = 0;
-    if (rip == (uint64_t) &bn_sqr_words)
-      bn_sqr_words_res = (BN_ULONG *) rdi;
-    static int bn_sqr_words_returns = 0;
-    if (rip == (uint64_t) &bn_sqr_words + bn_sqr_words_ret_off) {
-      bn_sqr_words_returns++;
-      fprintf(bignumLog, "bn_sqr_words for time %d returns 0x%lx \n", bn_sqr_words_returns, *bn_sqr_words_res);
-      fflush(bignumLog);
-    }
-
-    static int bnSubNum = 0;
-    static BN_ULONG * bnSubRes = 0;
-    if (rip == (uint64_t) &bn_sub_words) {
-      bnSubNum = (int) target_ctx_gregs[REG_RCX].u64;
-      bnSubRes = (BN_ULONG *) target_ctx_gregs[REG_RDI].u64;
-      BN_ULONG * a = (BN_ULONG *) target_ctx_gregs[REG_RSI].u64;
-      BN_ULONG * b = (BN_ULONG *) target_ctx_gregs[REG_RDX].u64;
-      fprintf(bignumLog, "Printing bnSubWords arg a \n");
-      for (int i = 0; i < bnSubNum; i++)
-	fprintf(bignumLog, "0x%lx \n", a[i]);
-      fprintf(bignumLog, "------- \n");
-      fprintf(bignumLog, "Printing bnSubWords arg b \n");
-      for (int i = 0; i < bnSubNum; i++)
-	fprintf(bignumLog, "0x%lx \n", b[i]);
-      fprintf(bignumLog, "------- \n");
-    }
-    static int bn_sub_words_returns = 0;
-    if (rip == (uint64_t) &bn_sub_words + bn_sub_words_ret_off) {
-      bn_sub_words_returns++;
-      fprintf(bignumLog, "bn_sub_words for time %d returns 0x%lx \n", bn_sub_words_returns, rax);
-      fprintf(bignumLog, "Printing bn_sub_words result : \n");
-      for (int i = 0; i < bnSubNum; i++) 
-	fprintf(bignumLog,"0x%lx \n", bnSubRes[i]);
-      fprintf(bignumLog, "------- \n");
-
-      
-      fflush(bignumLog);
-    }
-    
-    /*
-    static int BN_num_bits_returns = 0;
-    if (rip == (uint64_t) &BN_num_bits + BN_num_bits_ret_offset) {
-      BN_num_bits_returns++;
-      fprintf(bignumLog,"BN_num_bits for time %d returns 0x%lx \n", BN_num_bits_returns, rax);
-      fflush(bignumLog);
-    }
-    static int BN_num_bits_word_returns = 0;
-    if (rip == (uint64_t) &BN_num_bits_word + BN_num_bits_word_ret_offset) {
-      BN_num_bits_word_returns++;
-      fprintf(bignumLog, "BN_num_bits_word for time %d returns 0x%lx \n", BN_num_bits_word_returns, rax);
-      fflush(bignumLog);
-    }
-    static int BN_get_word_returns = 0;
-    if (rip == (uint64_t) &BN_get_word + BN_get_word_ret_offset) {
-      BN_get_word_returns++;
-      fprintf(bignumLog, "BN_get_word for time %d returns 0x%lx \n", BN_get_word_returns, rax);
-    }
-    static int BN_ucmp_returns = 0;
-    if (rip == (uint64_t) &BN_ucmp + BN_ucmp_ret_offset) {
-      BN_ucmp_returns++;
-      fprintf(bignumLog, "BN_ucmp for time %d returns 0x%lx \n", BN_ucmp_returns, rax);
-      fflush(bignumLog);
-    }
-    static int BN_cmp_returns = 0;
-    if (rip == (uint64_t) &BN_cmp + BN_cmp_ret_offset) {
-      BN_cmp_returns++;
-      fprintf(bignumLog, "BN_cmp for time %d returns 0x%lx \n", BN_cmp_returns, rax);
-      fflush(bignumLog);
-    }
-
-    static int BN_is_bit_set_calls = 0;
-    if (rip == (uint64_t) &BN_is_bit_set) {
-      BN_is_bit_set_calls++;
-      fprintf(bignumLog, "-------Input args to BN_is_bit_set: \n");
-      tase_print_BIGNUM(bignumLog,(BIGNUM *) target_ctx_gregs[REG_RDI].u64);
-      fprintf(bignumLog, "Index is %d \n", (int) target_ctx_gregs[REG_RSI].u64);
-
-      fprintf(bignumLog,"DBG_BN_is_bit_set returns %d \n", DBG_BN_is_bit_set((BIGNUM *) target_ctx_gregs[REG_RDI].u64, (int) target_ctx_gregs[REG_RSI].u64) );
-      printf("Turning on logging for BN_is_bit_set for time %d \n", BN_is_bit_set_calls );
-      taseDebug =true;
-      
-    }
-    
-    static int BN_is_bit_set_returns = 0;
-    if (rip == (uint64_t) &BN_is_bit_set + BN_is_bit_set_ret_offset ) {
-      BN_is_bit_set_returns++;
-      fprintf(bignumLog, "BN_is_bit_set for time %d returns 0x%lx \n", BN_is_bit_set_returns, rax);
-      fflush(bignumLog);
-      printf("Turning off logging for BN_is_bit_set for time %d \n", BN_is_bit_set_returns);
-      taseDebug = false;
-    }
-
-
-    
-    static int bn_cmp_words_returns = 0;
-    if (rip == (uint64_t) &bn_cmp_words + bn_cmp_words_ret_offset ) {
-      bn_cmp_words_returns++;
-      fprintf(bignumLog, "bn_cmp_words for time %d returns 0x%lx \n", bn_cmp_words_returns, rax);
-      fflush(bignumLog);
-    }
-
-    static int bn_cmp_part_words_returns = 0;
-    if (rip == (uint64_t) &bn_cmp_part_words + bn_cmp_words_ret_offset ) {
-      bn_cmp_part_words_returns++;
-      fprintf(bignumLog, "bn_cmp_part_words for time %d returns 0x%lx \n",bn_cmp_part_words_returns,  rax);
-      fflush(bignumLog);
-    }
-    */
     
     int nop_off;
     if (isSpecialInst(rip)) {
@@ -4912,8 +4553,7 @@ void Executor::klee_interp_internal () {
     if (forceNativeRet)
       if (gprsAreConcrete() && !(exec_mode == INTERP_ONLY))
 	break;
-    
-    
+        
     if (measureTime) {
       double interpCleanupDiffTime = util::getWallTime() - interpCleanupStartTime;
       interp_cleanup_time += interpCleanupDiffTime;
@@ -4921,8 +4561,7 @@ void Executor::klee_interp_internal () {
 	printf("%lf seconds during interp cleanup for interpCtr %lu \n", interpCleanupDiffTime, interpCtr);
     }
   }
-    
-    
+
   static int numReturns = 0;
   numReturns++;
   if (taseDebug)
@@ -5154,9 +4793,7 @@ void printCtx(greg_t * registers ) {
 void Executor::initializeInterpretationStructures (Function *f) {
 
   printf("INITIALIZING INTERPRETATION STRUCTURES \n");
-
   printf("UseForkedCoreSolver is %d \n", (bool ) UseForkedCoreSolver);
-  
   printf("Creating new execution state \n");
   GlobalExecutionStatePtr = new ExecutionState(kmodule->functionMap[f]);
 
@@ -5169,7 +4806,6 @@ void Executor::initializeInterpretationStructures (Function *f) {
   // starts at address StackBase and covers up to StackBase + sizeof(target_stack) -1.
 
   printf("target_ctx.target_stack located at 0x%lx \n", (uint64_t) &target_ctx.target_stack);
-  
   uint64_t stackBase = (uint64_t) &target_ctx.target_stack - STACK_SIZE;
   uint64_t stackSize = STACK_SIZE;
   
@@ -5185,9 +4821,6 @@ void Executor::initializeInterpretationStructures (Function *f) {
   printf("Adding external object target_ctx_gregs_MO \n");
   target_ctx_gregs_MO = addExternalObject(*GlobalExecutionStatePtr, (void *) target_ctx_gregs, NGREG * REG_SIZE, false );
   printf("target_ctx_gregs is address %lu, hex 0x%p \n", (uint64_t) target_ctx_gregs, (void *) target_ctx_gregs);
-  printf("target_ctx_gregs is located at address %lu, hex 0x%p \n", (uint64_t) (target_ctx_gregs), (void *) target_ctx_gregs);
-  printf("target_ctx_gregs_MO represents address %lu, hex 0x%p \n", (uint64_t) target_ctx_gregs_MO->address, (void *) target_ctx_gregs);
-
   printf("Size of gregs is %d \n", NGREG * REG_SIZE);
   
   printf("Setting concrete store in target_ctx_gregs_OS to target_ctx_gregs \n");
@@ -5195,14 +4828,7 @@ void Executor::initializeInterpretationStructures (Function *f) {
   target_ctx_gregs_OS = GlobalExecutionStatePtr->addressSpace.getWriteable(target_ctx_gregs_MO,targetCtxOS);
   target_ctx_gregs_OS->concreteStore = (uint8_t *) target_ctx_gregs;
     
-  printf("IMMEDIATELY AFTER ADDING extern objs:  target_ctx_gregs conc store at %lx \n",(uint64_t) &(target_ctx_gregs_OS->concreteStore[0]));
-  printf("Adding structure to track verification message output \n");
-  basket_MO = addExternalObject(*GlobalExecutionStatePtr,(void *)&basket, BUFFER_SIZE, false );
-  const ObjectState * basketOS = GlobalExecutionStatePtr->addressSpace.findObject(basket_MO);
-  basket_OS = GlobalExecutionStatePtr->addressSpace.getWriteable(basket_MO,basketOS);
-  basket_OS->concreteStore = (uint8_t *) &basket;
-
-  
+  printf("Target_ctx_gregs conc store at %lx \n",(uint64_t) &(target_ctx_gregs_OS->concreteStore[0]));
 
   //Map in read-only globals
   //Todo -- find a less hacky way of getting the exact size of the .rodata section
@@ -5240,7 +4866,8 @@ void Executor::initializeInterpretationStructures (Function *f) {
   stderrOS->concreteStore = (uint8_t *) &stderr;
   
   //Map in initialized and uninitialized non-read only globals into klee from .vars file.
-  std::string varsFileLocation = "/playpen/humphries/zTASE/TASE/test/" + project + ".vars";
+  std::string varsFileLocation = "./" + project + ".vars";
+
   FILE * externalsFile = fopen (varsFileLocation.c_str(), "r+");
   
   
@@ -5295,17 +4922,9 @@ void Executor::initializeInterpretationStructures (Function *f) {
       continue;
     }
 
-    printf("Calling addExternObj \n");
-    std::cout.flush();
     MemoryObject * GlobalVarMO = addExternalObject(*GlobalExecutionStatePtr,(void *) addrVal, sizeVal, false );
-    printf("Called addExternObj \n");
-    std::cout.flush();
     const ObjectState * ConstGlobalVarOS = GlobalExecutionStatePtr->addressSpace.findObject(GlobalVarMO);
-    printf("Called findObject \n");
-    std::cout.flush();
     ObjectState * GlobalVarOS = GlobalExecutionStatePtr->addressSpace.getWriteable(GlobalVarMO,ConstGlobalVarOS);
-    printf("Called getWritable \n");
-    std::cout.flush();
     //Technically I think this is redundant, with addExternalObject changed in tase. 
     GlobalVarOS->concreteStore = (uint8_t *) addrVal;
     

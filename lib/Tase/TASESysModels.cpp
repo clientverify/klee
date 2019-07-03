@@ -353,7 +353,8 @@ void Executor::model_exit() {
 
 }
 
-
+//http://man7.org/linux/man-pages/man2/write.2.html
+//ssize_t write(int fd, const void *buf, size_t count);
 void Executor::model_write() {
   //Just print the second arg for debugging.
   //We will probably drop the server -> client messages
@@ -367,6 +368,11 @@ void Executor::model_write() {
   char printMe [size];
 
   strncpy (printMe, theBuf, size);
+
+  //Assume that the write succeeds 
+  uint64_t res = target_ctx_gregs[REG_RDX].u64;
+  ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+  tase_helper_write((uint64_t) &target_ctx_gregs[REG_RAX].u64, resExpr);
   
   printf("Found call to write.  Buf appears to be %s \n", printMe);
   
@@ -1599,11 +1605,13 @@ void Executor::model_htonl () {
 void Executor::model_BIO_printf() {
   static int bio_printf_calls = 0;
   bio_printf_calls++;
-  
+
+
+  /*
   if (bio_printf_calls == 2) {
     fprintf(stderr, "Setting taseDebug to true \n");
     taseDebug = true;
-  }
+    }*/
   
   
   printf("Entered bio_printf at interp Ctr %lu \n", interpCtr);
