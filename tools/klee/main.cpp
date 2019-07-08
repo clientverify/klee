@@ -78,7 +78,7 @@ struct timeval targetEndTime;
 
 double target_start_time;
 double target_end_time;
-
+#include "../../../test/tase/include/tase/tase.h"
 #include "../../../test/tase/include/tase/tase_interp.h"
 extern target_ctx_t target_ctx;
 greg_t * target_ctx_gregs = target_ctx.gregs;
@@ -90,7 +90,7 @@ char ** glob_envp;
 extern KTestObjectVector ktov;
 extern "C" void begin_target_inner();
 extern "C" void klee_interp();
-extern "C" void enter_tase(void (*) (), int);
+//extern  void enter_tase(void (*) (), int);
 std::unordered_set<uint64_t> cartridge_entry_points;
 
 std::stringstream workerIDStream;
@@ -146,9 +146,7 @@ std::map<int,int> nops_and_offsets;
 extern int symIndex;
 extern int numEntries;
 #endif
-extern "C" void  exit_tase() {
-
-}
+extern void  exit_tase();
 
 FILE * bignumLog;
 
@@ -180,7 +178,7 @@ void transferToTarget() {
     memset(ktestMode, 0, sizeof (ktestMode));
     strncpy(ktestMode, ktestModeName, strlen(ktestModeName));
     printf("Looking in current directory for ssl ktest files and master secret\n");
-    
+    fflush(stdout);
     const char * ktestPathName;
     if (!enableMultipass) {
        ktestPathName ="./ssl.ktest";
@@ -192,8 +190,9 @@ void transferToTarget() {
     strncpy(ktestPath, ktestPathName, strlen(ktestPathName));
   }
   //#endif
-  
-  
+  fflush(stdout);
+  printf("DBG0 \n");
+  fflush(stdout);
   
   if (exec_mode == INTERP_ONLY) {
     memset(&target_ctx, 0, sizeof(target_ctx));
@@ -226,13 +225,13 @@ void transferToTarget() {
       sbArg = 0;
     }
     printf("sbArg is %d \n", sbArg);
-      
+    fflush(stdout);
     enter_tase(&begin_target_inner, sbArg);
     if (taseDebug) {
       printf("TASE - returned from enter_tase... \n");
       std::cout.flush();
     }
-    while (target_ctx_gregs[REG_RIP].u64 != (uint64_t) &tase_exit) {
+    while (target_ctx_gregs[GREG_RIP].u64 != (uint64_t) &tase_exit) {
       klee_interp();
       if (taseDebug) {
 	printf("Returning from klee_interp ... \n");
@@ -1708,7 +1707,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 
      printf("DEBUG: target_ctx located at 0x%lx \n ", (uint64_t) &target_ctx);
      
-     printf("DEBUG: REG_RIP located at 0x%lx \n",(uint64_t) &(target_ctx_gregs[REG_RIP].u64 ) );
+     printf("DEBUG: GREG_RIP located at 0x%lx \n",(uint64_t) &(target_ctx_gregs[GREG_RIP].u64 ) );
      
      transferToTarget();
      printf("RETURNING TO MAIN HANDLER \n");
