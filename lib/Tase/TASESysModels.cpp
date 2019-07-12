@@ -144,6 +144,8 @@ bool roundUpHeapAllocations = true; //Round the size Arg of malloc, realloc, and
 //some library functions (ex memcpy) may copy 4 or 8 byte-chunks of data at a time that cross over the edge
 //of memory object buffers that aren't 4 or 8 byte aligned.
 
+
+
 extern int AES_encrypt_calls ;
 extern int ECDH_compute_key_calls ;
 extern int EC_POINT_point2oct_calls ;
@@ -700,6 +702,11 @@ void Executor::model_ktest_writesocket() {
 //Can be read from stdin or from socket -- modeled separately to break up the code.
 void Executor::model_ktest_readsocket() {
   ktest_readsocket_calls++;
+  /*
+  if (ktest_readsocket_calls == 2) {
+    fprintf(stderr, "Setting  interp only to true \n");
+    exec_mode= INTERP_ONLY;
+    }*/
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(GREG_RSI * 8, Expr::Int64);
   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(GREG_RDX * 8, Expr::Int64);

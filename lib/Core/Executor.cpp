@@ -4520,14 +4520,18 @@ void Executor::klee_interp_internal () {
 	}
       }
     }
-    if (taseDebug) 
+    //if (taseDebug) 
       //printDebugInterpFooter();
     
-    //Kludge to get us back to native execution for prohib fns with concrete input
-    if (forceNativeRet)
-      if (gprsAreConcrete() && !(exec_mode == INTERP_ONLY))
+      //Kludge to get us back to native execution for prohib fns with concrete input
+    if (forceNativeRet) {
+      printf("gprsAreConcrete() is %d \n", (int) gprsAreConcrete());
+      printCtx(target_ctx_gregs);
+      if (gprsAreConcrete() && !(exec_mode == INTERP_ONLY)) {
+	printf("Trying to return to native execution \n");
 	break;
-        
+      }
+    }
     if (measureTime) {
       double interpCleanupDiffTime = util::getWallTime() - interpCleanupStartTime;
       interp_cleanup_time += interpCleanupDiffTime;
