@@ -92,6 +92,8 @@ extern "C" void begin_target_inner();
 extern "C" void klee_interp();
 //extern  void enter_tase(void (*) (), int);
 std::unordered_set<uint64_t> cartridge_entry_points;
+std::unordered_set<uint64_t> cartridges_with_flags_live;
+std::unordered_set<uint64_t> cartridge_modeled_fns;
 
 std::stringstream workerIDStream;
 std::stringstream globalLogStream;
@@ -1530,8 +1532,8 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      enableMultipass = true;
    }
    
-   if (taseDebug)
-     printTASEArgs(exec_mode, test_type, taseManager, taseDebug, project, dontFork, disableSpringboard,  stopAtMasterSecret, killFlagsHack, skipFree, lockOnSolverCalls, measureTime, enableBounceback, skipNops, workerSelfTerminate, dropS2C);
+   
+   printTASEArgs(exec_mode, test_type, taseManager, taseDebug, project, dontFork, disableSpringboard,  stopAtMasterSecret, killFlagsHack, skipFree, lockOnSolverCalls, measureTime, enableBounceback, skipNops, workerSelfTerminate, dropS2C);
 
 #ifdef TASE_BIGNUM
    symIndex = symIndexArg;
@@ -1643,7 +1645,23 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    for (uint32_t i = 0; i < tase_num_global_records; i++)
      cartridge_entry_points.insert(tase_global_records[i].head);
    
-  
+   //Load list of cartridges for which flags is live-in.
+   int numLiveBlocks = 0;
+   for (uint32_t i = 0; i < tase_num_live_flags_block_records; i++) {
+     cartridges_with_flags_live.insert(tase_live_flags_block_records[i].head);
+     numLiveBlocks++;
+   }
+
+   int numModeledBlocks = 0;
+   for (uint32_t i = 0; i < tase_num_modeled_records; i++) {
+     printf("Adding rip 0x%lx to modeled record list \n", tase_modeled_records[i].head);
+     cartridge_modeled_fns.insert(tase_modeled_records[i].head);
+     numModeledBlocks++;
+   }
+
+   printf("Found %d modeled cn block entries \n", numModeledBlocks);
+   printf("Found %d basic blocks with flags live-in \n", numLiveBlocks);
+   
    if (taseManager) {
 
      //Maybe we don't need the sig_ign registered for sigchld?

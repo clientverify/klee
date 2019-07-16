@@ -94,12 +94,13 @@ extern klee::Interpreter * GlobalInterpreter;
 extern MemoryObject * target_ctx_gregs_MO;
 extern ObjectState * target_ctx_gregs_OS;
 extern ExecutionState * GlobalExecutionStatePtr;
-
+extern bool gprsAreConcrete();
 enum testType : int {EXPLORATION, VERIFICATION};
 extern enum testType test_type;
 
 extern uint64_t interpCtr;
 extern bool taseDebug;
+bool modelDebug = false;
 extern void * rodata_base_ptr;
 extern uint64_t rodata_size;
 
@@ -128,7 +129,9 @@ extern KTestObjectVector ktov;
 extern bool enableMultipass;
 extern void spinAndAwaitForkRequest();
 extern bool dropS2C;
-uint64_t native_ret_off = 14;
+uint64_t native_ret_off = 0;
+
+extern bool dont_model;
 
 extern CVAssignment prevMPA ;
 extern void multipass_reset_round();
@@ -2991,9 +2994,10 @@ void Executor::rewriteConstants(uint64_t base, size_t size) {
 //Updated 04/30/2019
 void Executor::model_SHA1_Update () {
   SHA1_Update_calls++;
-  
-  printf("Calling model_SHA1_Update for time %d \n", SHA1_Update_calls);
-  
+
+  if (modelDebug) {
+    printf("Calling model_SHA1_Update for time %d \n", SHA1_Update_calls);
+  }
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64); //SHA_CTX * c
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(GREG_RSI * 8, Expr::Int64); //const void * data
   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(GREG_RDX * 8, Expr::Int64); //size_t len
@@ -3011,12 +3015,12 @@ void Executor::model_SHA1_Update () {
     SHA_CTX * c = (SHA_CTX *) target_ctx_gregs[GREG_RDI].u64;
     const void * data = (const void *) target_ctx_gregs[GREG_RSI].u64;
     size_t len = (size_t) target_ctx_gregs[GREG_RDX].u64;
-
-    printf("SHA1_Update_CTX is \n");
-    printBuf(stdout,(void *) c, sizeof(SHA_CTX));
-    printf("SHA1 data buf is \n");
-    printBuf(stdout,(void *) data, len);
-    
+    if (modelDebug) {
+      printf("SHA1_Update_CTX is \n");
+      printBuf(stdout,(void *) c, sizeof(SHA_CTX));
+      printf("SHA1 data buf is \n");
+      printBuf(stdout,(void *) data, len);
+    }
     bool hasSymbolicInput = false;
 
     if (!isBufferEntirelyConcrete((uint64_t) c, sizeof(SHA_CTX)) || !isBufferEntirelyConcrete((uint64_t) data, len))
@@ -3049,10 +3053,18 @@ void Executor::model_SHA1_Update () {
       rewriteConstants((uint64_t) c, sizeof(SHA_CTX));
       rewriteConstants((uint64_t) data, len);
       
+      if (modelDebug) {
+	printf("MULTIPASS DEBUG: Did not find symbolic input to SHA1_Update \n");
+      }
+       if (gprsAreConcrete() && !(exec_mode == INTERP_ONLY)) {
+	forceNativeRet = true;
+	target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
+      } else {
+	 dont_model = true;
+      }
+      return;
       
-      printf("MULTIPASS DEBUG: Did not find symbolic input to SHA1_Update \n");
-      forceNativeRet = true;
-      target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
+
 
       //Todo: provide SHA1_Update implementation for fast native execution     
     }
@@ -3117,9 +3129,15 @@ void Executor::model_SHA1_Final() {
        rewriteConstants((uint64_t) c, sizeof(SHA_CTX));
        
        fflush(stdout);
-       forceNativeRet = true;
-       target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
 
+       if (gprsAreConcrete() && !(exec_mode == INTERP_ONLY)) {
+	 forceNativeRet = true;
+	 target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
+       } else {
+	 dont_model = true;
+       }
+       return;
+       
        //Todo: Provide sha1_final native implementation for concrete execution
      }    
    } else {
@@ -3192,9 +3210,15 @@ void Executor::model_SHA256_Update () {
       rewriteConstants((uint64_t) data, len);
       
       fflush(stdout);
-      forceNativeRet = true;
-      target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
-      //todo: provide sha256_update native implementation
+
+       if (gprsAreConcrete() && !(exec_mode == INTERP_ONLY)) {
+	forceNativeRet = true;
+	target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
+      } else {
+	 dont_model = true;
+      }
+      return;
+
       
     }
 
@@ -3258,9 +3282,15 @@ void Executor::model_SHA256_Final() {
        rewriteConstants((uint64_t) c, sizeof(SHA256_CTX));
        
        fflush(stdout);
-       forceNativeRet = true;
-       target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
-       //Todo: provide fast native sha256_final implementation
+
+       if (gprsAreConcrete() && !(exec_mode == INTERP_ONLY)) {
+	 forceNativeRet = true;
+	 target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
+       } else {
+	 dont_model = true;
+       }
+       return;
+
       
      }
      
@@ -3293,14 +3323,14 @@ void Executor::model_AES_encrypt () {
     const AES_KEY * key = (const AES_KEY *) target_ctx_gregs[GREG_RDX].u64;
 
     int AESBlockSize = 16; //Number of bytes in AES block    
-    printf("AES_encrypt %d debug -- dumping buffer inputs at round %d pass %d \n", AES_encrypt_calls, roundCount, passCount );
-    printf("key is \n");
-    printBuf(stdout,(void *) key, AESBlockSize);
+    //printf("AES_encrypt %d debug -- dumping buffer inputs at round %d pass %d \n", AES_encrypt_calls, roundCount, passCount );
+    //printf("key is \n");
+    //printBuf(stdout,(void *) key, AESBlockSize);
     //rewriteConstants( (uint64_t) key, AESBlockSize);
-    printf("in is \n");
-    printBuf(stdout,(void *) in, AESBlockSize);
+    //printf("in is \n");
+    //printBuf(stdout,(void *) in, AESBlockSize);
     //rewriteConstants( (uint64_t) in, AESBlockSize);
-    fflush(stdout);
+    //fflush(stdout);
     
     
    
@@ -3313,8 +3343,11 @@ void Executor::model_AES_encrypt () {
       hasSymbolicDependency = true;
     
     if (hasSymbolicDependency) {
-      printf("MULTIPASS DEBUG: Found symbolic input to AES_encrypt \n");
-      fflush(stdout);
+
+      if (modelDebug) {
+	printf("MULTIPASS DEBUG: Found symbolic input to AES_encrypt \n");
+	fflush(stdout);
+      }
       std::string nameString = "aes_Encrypt_output " + std::to_string(AES_encrypt_calls);
       const char * constCopy = nameString.c_str();
       char name [40];//Arbitrary number
@@ -3328,11 +3361,17 @@ void Executor::model_AES_encrypt () {
       target_ctx_gregs[GREG_RSP].u64 += 8;
       
     } else {
-      //Otherwise we're good to call natively
-      printf("MULTIPASS DEBUG: Did not find symbolic input to AES_encrypt \n");
-      fflush(stdout);
-      forceNativeRet = true;
-      target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
+      //Otherwise we're good to call natively, assuming no taint in registers
+      if (modelDebug) {
+	printf("MULTIPASS DEBUG: Did not find symbolic input to AES_encrypt \n");
+	fflush(stdout);
+      }
+      if (gprsAreConcrete() && !(exec_mode == INTERP_ONLY)) {
+	forceNativeRet = true;
+	target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
+      } else {
+	dont_model = true;
+      }
       return;
 
       //AES_Encrypt(in,out,key);  //Todo -- get native call for AES_Encrypt
@@ -3359,14 +3398,15 @@ void Executor::model_gcm_gmult_4bit () {
     
     u64 * XiPtr = (u64 *) target_ctx_gregs[GREG_RDI].u64;
     u128 * HtablePtr = (u128 *) target_ctx_gregs[GREG_RSI].u64;
-
-    printf("Entering model_gcm_gmult_4bit for time %d and dumping raw input as bytes \n", gcm_gmult_4bit_calls);
     
+    if (modelDebug) {
+      printf("Entering model_gcm_gmult_4bit for time %d and dumping raw input as bytes \n", gcm_gmult_4bit_calls);
+    }
     
-    printf("Xi inputs are \n");
-    printBuf(stdout,(void *) XiPtr, 16);
-    printf("Htable inputs are \n");
-    printBuf(stdout,(void *) HtablePtr, 196);
+    //printf("Xi inputs are \n");
+    //printBuf(stdout,(void *) XiPtr, 16);
+    //printf("Htable inputs are \n");
+    //printBuf(stdout,(void *) HtablePtr, 196);
 
     
     //Todo: Double check the dubious ptr cast and figure out if we
@@ -3378,8 +3418,10 @@ void Executor::model_gcm_gmult_4bit () {
     }
     
     if (hasSymbolicInput) {
-      printf("MULTIPASS DEBUG: Found symbolic input to gcm_gmult \n");
-      fflush(stdout);
+      if (modelDebug) {
+	printf("MULTIPASS DEBUG: Found symbolic input to gcm_gmult \n");
+	fflush(stdout);
+      }
       std::string nameString = "GCM_GMULT_output " + std::to_string(gcm_gmult_4bit_calls);
       const char * constCopy = nameString.c_str();
       char name [40];//Arbitrary number
@@ -3394,11 +3436,18 @@ void Executor::model_gcm_gmult_4bit () {
       
     } else {
       //Otherwise we're good to call natively
-      printf("MULTIPASS DEBUG: Did not find symbolic input to gcm_gmult \n");
-      fflush(stdout);
-      forceNativeRet = true;
-      target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
-      return; 
+      if (modelDebug) {
+	printf("MULTIPASS DEBUG: Did not find symbolic input to gcm_gmult \n");
+	fflush(stdout);
+      }
+       if (gprsAreConcrete() && !(exec_mode == INTERP_ONLY)) {
+	 forceNativeRet = true;
+	 target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
+       } else {
+	 dont_model = true;
+       }
+       return;
+      
     }
   } else {
     printf("ERROR: symbolic arg passed to model_gcm_gmult_4bit \n");
@@ -3429,16 +3478,16 @@ void Executor::model_gcm_ghash_4bit () {
     u128 * HtablePtr = (u128 *) target_ctx_gregs[GREG_RSI].u64;
     const u8 * inp = (const u8 *) target_ctx_gregs[GREG_RDX].u64;
     size_t len = (size_t) target_ctx_gregs[GREG_RCX].u64;
-    printf("Entering model_gcm_ghash_4bit for time %d and dumping args as raw bytes \n", gcm_ghash_4bit_calls);
+    //printf("Entering model_gcm_ghash_4bit for time %d and dumping args as raw bytes \n", gcm_ghash_4bit_calls);
 
-    printf("Xi inputs are \n");
-    printBuf(stdout,(void *) XiPtr, 16);
-    printf("Htable inputs are \n");
-    printBuf(stdout,(void *) HtablePtr, 196);
-    printf("inp is \n");
-    printBuf(stdout,(void *) inp, len);
-    printf("len is %lu \n", len);
-    std::cout.flush();
+    //printf("Xi inputs are \n");
+    //printBuf(stdout,(void *) XiPtr, 16);
+    //printf("Htable inputs are \n");
+    //printBuf(stdout,(void *) HtablePtr, 196);
+    //printf("inp is \n");
+    //printBuf(stdout,(void *) inp, len);
+    //printf("len is %lu \n", len);
+    //std::cout.flush();
     
     //Todo: Double check the dubious ptr casts and figure out if we
     //are falsely assuming any structs or arrays are packed
@@ -3448,8 +3497,10 @@ void Executor::model_gcm_ghash_4bit () {
       hasSymbolicInput = true;
     
     if (hasSymbolicInput) {
-      printf("MULTIPASS DEBUG: Found symbolic input to gcm_ghash \n");
-      fflush(stdout);
+      if (modelDebug) {
+	printf("MULTIPASS DEBUG: Found symbolic input to gcm_ghash \n");
+	fflush(stdout);
+      }
       std::string nameString = "GCM_GHASH_output " + std::to_string(gcm_ghash_4bit_calls);
       const char * constCopy = nameString.c_str();
       char name [40];//Arbitrary number
@@ -3463,11 +3514,18 @@ void Executor::model_gcm_ghash_4bit () {
       
     } else {
       //Otherwise we're good to call natively
-      printf("MULTIPASS DEBUG: Did not find symbolic input to gcm_ghash \n");
-      fflush(stdout);
-      forceNativeRet = true;
-      target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
-      return; 
+      if (modelDebug) {
+	printf("MULTIPASS DEBUG: Did not find symbolic input to gcm_ghash \n");
+	fflush(stdout);
+      }
+       if (gprsAreConcrete() && !(exec_mode == INTERP_ONLY)) {
+	forceNativeRet = true;
+	target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
+      } else {
+	 dont_model = true;
+      }
+       return;
+
     }
      
   } else {

@@ -337,9 +337,10 @@ void select_workers () {
 
   if (*ms_QR_size_ptr < MAX_WORKERS && *ms_QA_size_ptr != 0) {
 
-    printQA();
-    printQR();
-
+    if (taseDebug) {
+      printQA();
+      printQR();
+    }
     WorkerInfo * latestWorker = getLatestWorker(ms_QA_base, *ms_QA_size_ptr);
     /*
     int check = waitpid(latestWorker->pid, &check, WUNTRACED | WCONTINUED | WNOHANG);
@@ -358,7 +359,9 @@ void select_workers () {
     fflush(stdout);
     */
     if (latestWorker->round < managerRoundCtr && *ms_QR_size_ptr > 0) {
-      printf("No workers in QA in latest round %d.  Not moving to QR. \n", managerRoundCtr);
+      if (taseDebug) {
+	printf("No workers in QA in latest round %d.  Not moving to QR. \n", managerRoundCtr);
+      }
     } else {
       int res = kill(latestWorker->pid, SIGCONT);
       if (res == -1){
@@ -443,22 +446,37 @@ int tase_fork(int parentPID, uint64_t rip) {
   
   if (taseManager) {
     get_sem_lock();
-    printf("TASE FORKING! \n");
+    if (taseDebug) {
+      printf("TASE FORKING! \n");
+    }
+    
     if (roundCount < *latestRoundPtr && workerSelfTerminate)  {
-      printf("Worker %d is in round %d when latest round is %d. Worker exiting. \n", getpid(), roundCount, *latestRoundPtr );
-      fflush(stdout);
+      if (taseDebug) {
+	printf("Worker %d is in round %d when latest round is %d. Worker exiting. \n", getpid(), roundCount, *latestRoundPtr );
+	fflush(stdout);
+      }
       removeFromQR(PidInQR(getpid()));
       release_sem_lock();
       std::exit(EXIT_SUCCESS);
     }
+
+    curr_time = util::getWallTime();
+    printf("DBG1 : %lf \n", curr_time - target_start_time);
+    
     int trueChildPID = ::fork();
     if (trueChildPID == -1) {
       printf("Error during forking \n");
       perror("Fork error \n");
     }
+
+    curr_time = util::getWallTime();
+    printf("DBG2 : %lf \n", curr_time - target_start_time);
+    
     if (trueChildPID != 0) {
-      printf("Parent PID %d forked off child %d at rip 0x%lx for TRUE branch \n", parentPID, trueChildPID, rip);
-      fflush(stdout);
+      if (taseDebug) {
+	printf("Parent PID %d forked off child %d at rip 0x%lx for TRUE branch \n", parentPID, trueChildPID, rip);
+	fflush(stdout);
+      }
       //Block until child has sigstop'd.
       while (true) {
 	int status;
@@ -466,6 +484,8 @@ int tase_fork(int parentPID, uint64_t rip) {
 	if (WIFSTOPPED(status))
 	  break;
       }
+      curr_time = util::getWallTime();
+      printf("DBG3 : %lf \n", curr_time - target_start_time);
       WorkerInfo wi;
       wi.pid = trueChildPID;
       wi.round = roundCount;
@@ -489,13 +509,17 @@ int tase_fork(int parentPID, uint64_t rip) {
     } 
 
     int falseChildPID = ::fork();
+    curr_time = util::getWallTime();
+    printf("DBG4 : %lf \n", curr_time - target_start_time);
     if (falseChildPID == -1) {
       printf("Error during forking \n");
       perror("Fork error \n");
     }
     if (falseChildPID != 0) {
-      printf("Parent PID %d forked off child %d at rip 0x%lx for FALSE branch \n", parentPID, falseChildPID, rip );
-      fflush(stdout);
+      if (taseDebug) {
+	printf("Parent PID %d forked off child %d at rip 0x%lx for FALSE branch \n", parentPID, falseChildPID, rip );
+	fflush(stdout);
+      }
       //Block until child has sigstop'd
       while (true) {
 	int status;
@@ -505,7 +529,8 @@ int tase_fork(int parentPID, uint64_t rip) {
 	if (WIFSTOPPED(status))
 	  break;
       }
-      
+      curr_time = util::getWallTime();
+      printf("DBG5 : %lf \n", curr_time - target_start_time);
       WorkerInfo wi;
       wi.pid = falseChildPID;
       wi.round = roundCount;
@@ -523,13 +548,17 @@ int tase_fork(int parentPID, uint64_t rip) {
       }
       
       return 0; //Go back to path exploration
-    }    
-    printQR();
-    printQA();
-    printf("control debug: Parent PID %d exiting tase_fork after producing child PIDs %d (true) and %d (false) from rip 0x%lx \n", parentPID, trueChildPID, falseChildPID, rip);
-    printf("Exiting tase_fork \n");
-    fflush(stdout);
+    }
+    if (taseDebug) {
+      printQR();
+      printQA();
+    }
     removeFromQR(PidInQR(getpid()));
+    curr_time = util::getWallTime();
+    printf("control debug: Parent PID %d exiting tase_fork after producing child PIDs %d (true) and %d (false) from rip 0x%lx at time %lf \n", parentPID, trueChildPID, falseChildPID, rip, curr_time - target_start_time);
+    printf("Exiting tase_fork \n");
+   
+    
     release_sem_lock();
     std::exit(EXIT_SUCCESS);
   } else {
@@ -548,7 +577,6 @@ void tase_exit() {
     std::exit(EXIT_SUCCESS); //Releases semaphore
   } else {
     printf("PID %d calling tase_exit \n", getpid());
-
     std::cout.flush();
     std::exit(EXIT_SUCCESS);
   }

@@ -161,13 +161,15 @@ extern  int ktest_RAND_bytes_calls ;
 extern  int ktest_RAND_pseudo_bytes_calls;
 #include <unordered_set>
 extern std::unordered_set<uint64_t> cartridge_entry_points;
+extern std::unordered_set<uint64_t> cartridges_with_flags_live;
+extern std::unordered_set<uint64_t> cartridge_modeled_fns;
 extern std::map<int,int> nops_and_offsets;
 void * rodata_base_ptr;
 uint64_t rodata_size;
 extern "C" void make_byte_symbolic(uint64_t addr);
 uint64_t bounceback_offset = 14;
 bool tase_buf_could_be_symbolic (void * ptr, int size);
-uint64_t trap_off = 0;  //Offset from function address at which we trap
+uint64_t trap_off = 14;  //Offset from function address at which we trap
 
 //Debug info
 extern bool taseDebug;
@@ -202,7 +204,37 @@ extern bool killFlagsHack;
 extern int passCount;
 int multipass_symbolic_vars = 0;
 extern CVAssignment prevMPA;
+
 bool forceNativeRet = false;
+bool dont_model = false;
+
+//Todo : fix these functions and remove traps
+
+extern "C" {
+  void sha1_block_data_order (SHA_CTX *c, const void *p,size_t num);
+  void sha256_block_data_order (SHA256_CTX *ctx, const void *in, size_t num);
+  void RAND_add(const void * buf, int num, double entropy);
+  int RAND_load_file(const char *filename, long max_bytes);
+}
+
+
+void OpenSSLDie (const char * file, int line, const char * assertion);
+
+extern "C" {
+  int RAND_poll();
+  int tls1_generate_master_secret(SSL *s, unsigned char *out, unsigned char *p, int len);
+  int ssl3_connect(SSL *s);
+  void gcm_gmult_4bit(u64 Xi[2],const u128 Htable[16]);
+  void gcm_ghash_4bit(u64 Xi[2],const u128 Htable[16],const u8 *inp,size_t len);
+}
+
+//Distinction between prohib_fns and modeled_fns is that we sometimes may want to "jump back" into native execution
+//for prohib_fns.  Modeled fns are always skipped and emulated with a return.
+static const uint64_t prohib_fns [] = { (uint64_t) &AES_encrypt, (uint64_t) &ECDH_compute_key, (uint64_t) &EC_POINT_point2oct, (uint64_t) &EC_KEY_generate_key, (uint64_t) &SHA1_Update, (uint64_t) &SHA1_Final, (uint64_t) &SHA256_Update, (uint64_t) &SHA256_Final, (uint64_t) &gcm_gmult_4bit, (uint64_t) &gcm_ghash_4bit, (uint64_t) &tls1_generate_master_secret };
+
+static const uint64_t sys_mem_fns [] = {(uint64_t) &malloc_tase, (uint64_t) &realloc_tase, (uint64_t) &calloc_tase, (uint64_t) &free_tase};
+
+bool isSpecialInst(uint64_t rip);
 
 //Addition from cliver
 std::map<std::string, uint64_t> array_name_index_map_;
@@ -232,25 +264,7 @@ extern "C" { int ktest_connect(int sockfd, const struct sockaddr *addr, socklen_
   
 }
 
-//Todo : fix these functions and remove traps
 
-extern "C" {
-  void sha1_block_data_order (SHA_CTX *c, const void *p,size_t num);
-  void sha256_block_data_order (SHA256_CTX *ctx, const void *in, size_t num);
-  void RAND_add(const void * buf, int num, double entropy);
-  int RAND_load_file(const char *filename, long max_bytes);
-}
-
-
-void OpenSSLDie (const char * file, int line, const char * assertion);
-
-extern "C" {
-  int RAND_poll();
-  int tls1_generate_master_secret(SSL *s, unsigned char *out, unsigned char *p, int len);
-  int ssl3_connect(SSL *s);
-  void gcm_gmult_4bit(u64 Xi[2],const u128 Htable[16]);
-  void gcm_ghash_4bit(u64 Xi[2],const u128 Htable[16],const u8 *inp,size_t len);
-}
 
 
 //TASE: Project-specific symbols
@@ -3916,6 +3930,20 @@ bool Executor::gprsAreConcrete() {
     return target_ctx_gregs_OS->isObjectEntirelyConcrete();
 }
 
+
+//CAUTION: This only works if the pc points to the beginning of the cartridge 
+bool cartridgeHasFlagsDead(uint64_t pc) {
+  return (cartridges_with_flags_live.find(pc) == cartridges_with_flags_live.end());
+}
+
+bool instructionBeginsModeledFn(uint64_t pc ) {
+  return(cartridge_modeled_fns.find(pc) != cartridge_modeled_fns.end());
+}
+
+bool isProhibFn(uint64_t pc) {
+  return  std::find(std::begin(prohib_fns), std::end(prohib_fns), pc) != std::end(prohib_fns);
+}
+
 bool Executor::instructionBeginsTransaction(uint64_t pc) {
   return  (cartridge_entry_points.find(pc) != cartridge_entry_points.end());
 }
@@ -3928,6 +3956,9 @@ bool Executor::resumeNativeExecution (){
   greg_t * registers = target_ctx_gregs;
   bool instBeginsTrans = instructionBeginsTransaction(registers[GREG_RIP].u64);
   if (instBeginsTrans) {
+    
+    if (isProhibFn(registers[GREG_RIP].u64))
+	return false;
     bool concGprs = gprsAreConcrete();
     if (taseDebug)
       printf("Inst begins transaction \n");
@@ -4156,7 +4187,7 @@ void Executor::model_inst () {
     model_gcm_ghash_4bit();
   } else if (rip == (uint64_t) &AES_encrypt + trap_off) {
     model_AES_encrypt();
-  } else if (rip == (uint64_t) &ktest_master_secret + trap_off) {
+  } else if (rip == (uint64_t) &ktest_master_secret + trap_off  || rip == (uint64_t) &ktest_master_secret) {
 
     printf("Entering ktest_master_secret model \n");
     fflush(stdout);
@@ -4166,21 +4197,21 @@ void Executor::model_inst () {
       std::exit(EXIT_FAILURE);
     } 
     model_ktest_master_secret();
-  } else if (rip == (uint64_t)  &ktest_writesocket + trap_off) {
+  } else if (rip == (uint64_t)  &ktest_writesocket + trap_off || rip == (uint64_t) &ktest_writesocket) {
     model_ktest_writesocket();
-  } else if (rip == (uint64_t) &ktest_readsocket + trap_off) {
+  } else if (rip == (uint64_t) &ktest_readsocket + trap_off || rip == (uint64_t) &ktest_readsocket) {
     model_ktest_readsocket();
-  } else if (rip == (uint64_t) &ktest_raw_read_stdin + trap_off) {
+  } else if (rip == (uint64_t) &ktest_raw_read_stdin + trap_off || rip == (uint64_t) &ktest_raw_read_stdin) {
     model_ktest_raw_read_stdin();
-  } else if (rip == (uint64_t) &ktest_connect + trap_off) {
+  } else if (rip == (uint64_t) &ktest_connect + trap_off || rip == (uint64_t) &ktest_connect) {
     model_ktest_connect();
-  } else if (rip == (uint64_t) &ktest_select + trap_off) {
+  } else if (rip == (uint64_t) &ktest_select + trap_off || rip == (uint64_t) &ktest_select) {
     model_ktest_select();
-  } else if (rip == (uint64_t) &ktest_RAND_bytes + trap_off ) {
+  } else if (rip == (uint64_t) &ktest_RAND_bytes + trap_off || rip == (uint64_t) &ktest_RAND_bytes) {
     model_ktest_RAND_bytes();
-  } else if (rip == (uint64_t) &ktest_RAND_pseudo_bytes +trap_off) {
+  } else if (rip == (uint64_t) &ktest_RAND_pseudo_bytes +trap_off   || rip == (uint64_t) &ktest_RAND_pseudo_bytes) {
     model_ktest_RAND_pseudo_bytes();
-  } else if (rip == (uint64_t) &ktest_start + trap_off) {
+  } else if (rip == (uint64_t) &ktest_start + trap_off  || rip == (uint64_t) &ktest_start) {
     model_ktest_start();
   } else if (rip == (uint64_t) &gettimeofday)  {
     model_gettimeofday();
@@ -4210,7 +4241,7 @@ void Executor::model_inst () {
     model_RAND_add();
   } else if (rip == (uint64_t) &RAND_load_file ) {
     model_RAND_load_file();
-  } else if (rip == (uint64_t) &RAND_poll + trap_off) {  
+  } else if (rip == (uint64_t) &RAND_poll + trap_off || rip == (uint64_t) &RAND_poll) {  
     model_RAND_poll();
   }  else if (rip == (uint64_t) &sb_reopen) {
     model_reopentran();
@@ -4245,6 +4276,9 @@ void Executor::model_OpenSSLDie() {
   std::exit(EXIT_FAILURE);
 }
 
+
+
+
 bool isSpecialInst (uint64_t rip) {
 
   //Todo -- get rid of traps for RAND_add and RAND_load_file
@@ -4255,7 +4289,7 @@ bool isSpecialInst (uint64_t rip) {
 
   
   //#ifdef TASE_OPENSSL
-  static const uint64_t modeledFns [] = {(uint64_t)&signal, (uint64_t)&malloc, (uint64_t)&read, (uint64_t)&write, (uint64_t)&connect, (uint64_t)&select, (uint64_t)&socket, (uint64_t) &getuid, (uint64_t) &geteuid, (uint64_t) &getgid, (uint64_t) &getegid, (uint64_t) &getenv, (uint64_t) &stat, (uint64_t) &free, (uint64_t) &realloc,  (uint64_t) &RAND_add, (uint64_t) &RAND_load_file, (uint64_t) &kTest_free, (uint64_t) &kTest_fromFile, (uint64_t) &kTest_getCurrentVersion, (uint64_t) &kTest_isKTestFile, (uint64_t) &kTest_numBytes, (uint64_t) &kTest_toFile, (uint64_t) &ktest_RAND_bytes, (uint64_t) &ktest_RAND_pseudo_bytes, (uint64_t) &ktest_connect, (uint64_t) &ktest_finish, (uint64_t) &ktest_master_secret, (uint64_t) &ktest_raw_read_stdin, (uint64_t) &ktest_readsocket, (uint64_t) &ktest_select, (uint64_t) &ktest_start, (uint64_t) &ktest_time, (uint64_t) &time, (uint64_t) &gmtime, (uint64_t) &gettimeofday, (uint64_t) &ktest_writesocket, (uint64_t) &fileno, (uint64_t) &fcntl, (uint64_t) &fopen, (uint64_t) &fopen64, (uint64_t) &fclose,  (uint64_t) &fwrite, (uint64_t) &fwrite_unlocked, (uint64_t) &fflush, (uint64_t) &fread, (uint64_t) &fread_unlocked, (uint64_t) &fgets, (uint64_t) &__isoc99_sscanf, (uint64_t) &sscanf, (uint64_t) &gethostbyname, (uint64_t) &setsockopt, (uint64_t) &__ctype_tolower_loc, (uint64_t) &__ctype_b_loc, (uint64_t) &__errno_location,  (uint64_t) &BIO_printf, /* (uint64_t) &BIO_snprintf,*/ (uint64_t) &vfprintf,  (uint64_t) &sprintf, (uint64_t) &printf, (uint64_t) &tase_debug,   (uint64_t) &OpenSSLDie, (uint64_t) &shutdown , (uint64_t) &malloc_tase, (uint64_t) &realloc_tase, (uint64_t) &calloc_tase, (uint64_t) &free_tase, (uint64_t) &getpid , (uint64_t) &RAND_poll};
+  static const uint64_t modeledFns [] = {(uint64_t)&signal, (uint64_t)&malloc, (uint64_t)&read, (uint64_t)&write, (uint64_t)&connect, (uint64_t)&select, (uint64_t)&socket, (uint64_t) &getuid, (uint64_t) &geteuid, (uint64_t) &getgid, (uint64_t) &getegid, (uint64_t) &getenv, (uint64_t) &stat, (uint64_t) &free, (uint64_t) &realloc,  (uint64_t) &RAND_add, (uint64_t) &RAND_load_file,  (uint64_t) &kTest_free, (uint64_t) &kTest_fromFile, (uint64_t) &kTest_getCurrentVersion,  (uint64_t) &kTest_isKTestFile, (uint64_t) &kTest_numBytes, (uint64_t) &kTest_toFile, (uint64_t) &ktest_RAND_bytes, (uint64_t) &ktest_RAND_pseudo_bytes, (uint64_t) &ktest_connect, (uint64_t) &ktest_finish, (uint64_t) &ktest_master_secret, (uint64_t) &ktest_raw_read_stdin, (uint64_t) &ktest_readsocket, (uint64_t) &ktest_select,  (uint64_t) &ktest_start, (uint64_t) &ktest_time, (uint64_t) &time, (uint64_t) &gmtime, (uint64_t) &gettimeofday,  (uint64_t) &ktest_writesocket, (uint64_t) &fileno, (uint64_t) &fcntl, (uint64_t) &fopen, (uint64_t) &fopen64, (uint64_t) &fclose,  (uint64_t) &fwrite, (uint64_t) &fwrite_unlocked, (uint64_t) &fflush, (uint64_t) &fread, (uint64_t) &fread_unlocked, (uint64_t) &fgets, (uint64_t) &__isoc99_sscanf, (uint64_t) &sscanf, (uint64_t) &gethostbyname, (uint64_t) &setsockopt, (uint64_t) &__ctype_tolower_loc, (uint64_t) &__ctype_b_loc, (uint64_t) &__errno_location,  (uint64_t) &BIO_printf, /* (uint64_t) &BIO_snprintf,*/ (uint64_t) &vfprintf,  (uint64_t) &sprintf, (uint64_t) &printf, (uint64_t) &tase_debug,   (uint64_t) &OpenSSLDie, (uint64_t) &shutdown , (uint64_t) &malloc_tase, (uint64_t) &realloc_tase, (uint64_t) &calloc_tase, (uint64_t) &free_tase, (uint64_t) &getpid , (uint64_t) &RAND_poll};
   //#endif 
   
   bool isModeled = std::find(std::begin(modeledFns), std::end(modeledFns), rip) != std::end(modeledFns);
@@ -4334,6 +4368,18 @@ int Executor::isNop(uint64_t rip) {
   // Looking for something that would look like the following in objdump
   // a6e35c:       ff 24 25 b8 1e a9 01    jmpq   *0x1a91eb8
   //
+
+  if (killFlagsHack) {
+    if (instructionBeginsTransaction(rip)) {
+      if (cartridgeHasFlagsDead(rip)) {
+	if (taseDebug)
+	  printf("Killing flags \n");
+	uint64_t zero = 0;
+	ref<ConstantExpr> zeroExpr = ConstantExpr::create(zero, Expr::Int64);
+	tase_helper_write((uint64_t) &target_ctx_gregs[GREG_EFL], zeroExpr);
+      }
+    }
+  }
   
   uint32_t firstBytes = *( (uint32_t *) rip) &0x00FFFFFF; //Endianess
   if (firstBytes == 0x002524ff) {
@@ -4342,7 +4388,8 @@ int Executor::isNop(uint64_t rip) {
     bytePtr += 3;
     uint32_t fourBytes = *((uint32_t *) bytePtr);
     fflush(stdout);
-    if ( (uint64_t) fourBytes == ((uint64_t) &tase_springboard)) {
+    if ( (uint64_t) fourBytes == ((uint64_t) &tase_springboard) || ((uint64_t) fourBytes == (uint64_t) &tase_model) ) {
+      /*
       if (killFlagsHack) {
 	if (taseDebug)
 	  printf("Killing flags \n");
@@ -4350,8 +4397,9 @@ int Executor::isNop(uint64_t rip) {
 	ref<ConstantExpr> zeroExpr = ConstantExpr::create(zero, Expr::Int64);
 	tase_helper_write((uint64_t) &target_ctx_gregs[GREG_EFL], zeroExpr);
       }
+      */
       if (taseDebug)
-	printf("Found springboard jump at 0x%lx \n", target_ctx_gregs[GREG_RIP].u64);
+	printf("Found springboard or tase_modeled jump at 0x%lx \n", target_ctx_gregs[GREG_RIP].u64);
       return 7;
     }
   }
@@ -4417,16 +4465,16 @@ void Executor::klee_interp_internal () {
       
     uint64_t rip = target_ctx_gregs[GREG_RIP].u64;
     uint64_t rip_init = rip;
-
-    if (rip == (uint64_t) &strtoul) {
-      strtoul_calls++;
-      printf("Calling strtoul for time %d \n", strtoul_calls);
-    }
     
     int nop_off;
-    if (isSpecialInst(rip)) {
+    //IMPORTANT -- The springboard is written assuming we never try to
+    // jump right back into a modeled fn.  The sb_modeled label immediately XENDs, which will
+    // cause a segfault if the process isn't executing a transaction.
+
+    //dont_model is used to force execution in interpreter when a register is tainted (but no args are symbolic) for a modeled fn 
+    if (isSpecialInst(rip) && !dont_model) {
       model_inst();
-    } else if (resumeNativeExecution()) {
+    } else if (resumeNativeExecution() && !dont_model) {
       break;
     } else if ((nop_off = isNop(rip))) {
       if (taseDebug) {
@@ -4438,6 +4486,8 @@ void Executor::klee_interp_internal () {
       target_ctx_gregs[GREG_RIP].u64 += (uint64_t) nop_off;
     } else {
 
+      dont_model = false;
+      
       double findInterpFnStartTime = 0.0;
       if (measureTime)
 	findInterpFnStartTime = util::getWallTime();
@@ -4524,9 +4574,10 @@ void Executor::klee_interp_internal () {
       //printDebugInterpFooter();
     
       //Kludge to get us back to native execution for prohib fns with concrete input
+    
     if (forceNativeRet) {
-      printf("gprsAreConcrete() is %d \n", (int) gprsAreConcrete());
-      printCtx(target_ctx_gregs);
+      //printf("gprsAreConcrete() is %d \n", (int) gprsAreConcrete());
+      //printCtx(target_ctx_gregs);
       if (gprsAreConcrete() && !(exec_mode == INTERP_ONLY)) {
 	printf("Trying to return to native execution \n");
 	break;
