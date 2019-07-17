@@ -445,12 +445,13 @@ int tase_fork(int parentPID, uint64_t rip) {
   }
   
   if (taseManager) {
-    get_sem_lock();
+    //get_sem_lock();  //Let's try to elide this
     if (taseDebug) {
       printf("TASE FORKING! \n");
     }
     
     if (roundCount < *latestRoundPtr && workerSelfTerminate)  {
+      get_sem_lock();
       if (taseDebug) {
 	printf("Worker %d is in round %d when latest round is %d. Worker exiting. \n", getpid(), roundCount, *latestRoundPtr );
 	fflush(stdout);
@@ -484,6 +485,7 @@ int tase_fork(int parentPID, uint64_t rip) {
 	if (WIFSTOPPED(status))
 	  break;
       }
+      get_sem_lock();
       curr_time = util::getWallTime();
       printf("DBG3 : %lf \n", curr_time - target_start_time);
       WorkerInfo wi;
@@ -504,63 +506,21 @@ int tase_fork(int parentPID, uint64_t rip) {
 	release_sem_lock();
       }
 
+      curr_time = util::getWallTime();
+      printf("DBG4 Returning to path exploration : %lf \n", curr_time - target_start_time);
       
       return 1;// Go back to path exploration
     } 
 
-    int falseChildPID = ::fork();
-    curr_time = util::getWallTime();
-    printf("DBG4 : %lf \n", curr_time - target_start_time);
-    if (falseChildPID == -1) {
-      printf("Error during forking \n");
-      perror("Fork error \n");
-    }
-    if (falseChildPID != 0) {
-      if (taseDebug) {
-	printf("Parent PID %d forked off child %d at rip 0x%lx for FALSE branch \n", parentPID, falseChildPID, rip );
-	fflush(stdout);
-      }
-      //Block until child has sigstop'd
-      while (true) {
-	int status;
-	int res = waitpid(falseChildPID, &status, WUNTRACED);
-	if (res == -1)
-	  perror("Waitpid error in tase_fork()");
-	if (WIFSTOPPED(status))
-	  break;
-      }
-      curr_time = util::getWallTime();
-      printf("DBG5 : %lf \n", curr_time - target_start_time);
-      WorkerInfo wi;
-      wi.pid = falseChildPID;
-      wi.round = roundCount;
-      wi.pass = passCount;
-      wi.branches = tase_branches;
-      wi.parent = parentPID;
-      addToQA(&wi);
-    } else {
-      raise(SIGSTOP);
-      if (taseDebug) {
-	get_sem_lock();
-	if (PidInQR(getpid()) == NULL)
-	  fprintf(stderr,"Error: Fork pid %d running but not in QR ", getpid());
-	release_sem_lock();
-      }
-      
-      return 0; //Go back to path exploration
-    }
-    if (taseDebug) {
-      printQR();
-      printQA();
-    }
-    removeFromQR(PidInQR(getpid()));
-    curr_time = util::getWallTime();
-    printf("control debug: Parent PID %d exiting tase_fork after producing child PIDs %d (true) and %d (false) from rip 0x%lx at time %lf \n", parentPID, trueChildPID, falseChildPID, rip, curr_time - target_start_time);
-    printf("Exiting tase_fork \n");
-   
-    
+    //Make self the false branch
+    WorkerInfo * myInfo = PidInQR(getpid());
+    myInfo->branches++;
+
     release_sem_lock();
-    std::exit(EXIT_SUCCESS);
+
+    return 0;
+
+
   } else {
     int pid = ::fork();
     return pid;
@@ -626,14 +586,21 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
 
   if (roundCount < *latestRoundPtr  && workerSelfTerminate)  {
     removeFromQR(PidInQR(getpid()));
-    printf("Worker %d is in round %d when latest round is %d. Worker exiting. \n", getpid(), roundCount, *latestRoundPtr );
-    fflush(stdout);
+    if (taseDebug){
+      printf("Worker %d is in round %d when latest round is %d. Worker exiting. \n", getpid(), roundCount, *latestRoundPtr );
+      fflush(stdout);
+    }
+    release_sem_lock(); //is this safe?
     std::exit(EXIT_SUCCESS);
   } else {
-    printf("Worker sees latest round as %d; updating to %d \n", *latestRoundPtr, roundCount);
+    if (taseDebug) {
+      printf("Worker sees latest round as %d; updating to %d \n", *latestRoundPtr, roundCount);
+    }
     *latestRoundPtr = roundCount;
   }
-
+  //Added
+  //release_sem_lock();
+  
   printf("IMPORTANT: Starting round %d pass %d of verification \n", roundCount, passCount);
   std::cout.flush();
   //Make backup of self
@@ -642,6 +609,8 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
     printf("Error during forking \n");
     perror("Fork error \n");
   }
+  //Added
+  //get_sem_lock();
   if (childPID != 0) {
     *replayPIDPtr = childPID;
     //Block until child has sigstop'd
@@ -669,16 +638,20 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
       
       //Pickup assignment info if necessary
       if (*(uint8_t *) MPAPtr != 0) {
-	printf("Attempting to deserialize MP Assignments \n");
-	std::cout.flush();
+	if (taseDebug) {
+	  printf("Attempting to deserialize MP Assignments \n");
+	  std::cout.flush();
+	}
 	if (*replayLock != 0)
 	  printf("IMPORTANT: Error: control debug - replay lock has value %d in multipass_start_round \n", *replayLock);
 	std::cout.flush();
 	prevMPA.clear();
 	deserializeAssignments(MPAPtr, multipassAssignmentSize, theExecutor, &prevMPA);
 	memset(MPAPtr, 0, multipassAssignmentSize); //Wipe out the multipass assignment to be safe
-	printf("Printing assignments AFTER deserialization \n");
-	prevMPA.printAllAssignments(NULL);
+	if (taseDebug) {
+	  printf("Printing assignments AFTER deserialization \n");
+	  prevMPA.printAllAssignments(NULL);
+	}
 	*replayLock = 1;
 	
       } else {
@@ -686,7 +659,7 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
 	std::cout.flush();
       }
     }
-    std::cout.flush();
+    
     release_sem_lock();
   } else {    
     raise(SIGSTOP);
@@ -825,8 +798,10 @@ void multipass_replay_round (void * assignmentBufferPtr, CVAssignment * mpa, int
 	printf("ERROR: control debug: see data in assignment buffer when trying to serialize new constraints \n");
 	std::cout.flush();
       }
-      printf("Printing assignments BEFORE serialization \n");
-      mpa->printAllAssignments(NULL);
+      if (taseDebug){
+	printf("Printing assignments BEFORE serialization \n");
+	mpa->printAllAssignments(NULL);
+      }
       double elapsed_time = util::getWallTime() - target_start_time;
       printf(" control debug: Serializing to buf 0x%lx at time %lf for replay pid %d in round %d \n", (uint64_t) assignmentBufferPtr, elapsed_time, *pidPtr, roundCount);
       mpa->serializeAssignments(assignmentBufferPtr, multipassAssignmentSize);

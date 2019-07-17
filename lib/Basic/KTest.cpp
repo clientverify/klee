@@ -27,7 +27,7 @@
 #define KTEST_MAGIC "KTEST"
 #include <cstdlib>
 #include <iostream>
-#define KTEST_DEBUG 1
+#define KTEST_DEBUG 0
 
 extern void worker_exit();
 
@@ -855,12 +855,12 @@ ssize_t ktest_writesocket_tase(int fd, const void *buf, size_t count)
     return num_bytes;
   }
   else if (ktest_mode == KTEST_PLAYBACK) {
-    printf("Entered ktest_playback branch \n");
-    fflush(stdout);
+    //printf("Entered ktest_playback branch \n");
+    //fflush(stdout);
     KTestObject *o = KTOV_next_object(&ktov,
 				      ktest_object_names[SERVER_TO_CLIENT]);
-    printf("Called KTOV_next_object \n");
-    fflush(stdout);
+    //printf("Called KTOV_next_object \n");
+    //fflush(stdout);
     if (o->numBytes > count) {
       printf("Error in ktest_readsocket size \n");
       fflush(stdout);
@@ -879,7 +879,7 @@ ssize_t ktest_writesocket_tase(int fd, const void *buf, size_t count)
       }
       printf("\n");
     }
-    fflush(stdout);
+    //fflush(stdout);
     return o->numBytes;
   }
   else {

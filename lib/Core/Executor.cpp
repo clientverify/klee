@@ -971,12 +971,16 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
 
   //Either condition is always true, always false, or we need to fork.
   if (res==Solver::True) {
-    printf("DEBUG:FORK - Solver returned true \n");
-    std::cout.flush();
+    if (taseDebug) {
+      printf("DEBUG:FORK - Solver returned true \n");
+      std::cout.flush();
+    }
     return StatePair(&current, 0);
   } else if (res==Solver::False) {
-    printf("Debug:FORK - Solver returned false \n");
-    std::cout.flush();
+    if (taseDebug) {
+      printf("Debug:FORK - Solver returned false \n");
+      std::cout.flush();
+    }
     return StatePair(0, &current);
   } else {
     TimerStatIncrementer timer(stats::forkTime);
@@ -3603,13 +3607,19 @@ void printProhibCounters() {
   //#endif
 }
 
-int retryMax = 5; 
+int retryMax = 3; 
 bool canBounceback (uint32_t abort_status, uint64_t rip, bool * isPsnTrap, bool * isMemTrap, bool * isModelTrap, bool bbEnabled) {
   
   bool retry = false;
   static uint64_t retryCtr = 0;
+  static uint64_t prevRIP = 0;
 
-  retryCtr++; //This should ideally be cycled per unique rip
+  if (rip == prevRIP) {
+    retryCtr++;
+  } else {
+    prevRIP = rip;
+    retryCtr = 0;
+  }
 
   //Check to see if instrution is a mem request for performance debugging
   //#ifdef TASE_OPENSSL
@@ -3653,7 +3663,7 @@ bool canBounceback (uint32_t abort_status, uint64_t rip, bool * isPsnTrap, bool 
     BB_OTHER++;
   }
 
-  if (exec_mode == MIXED && bbEnabled && retry && retryCtr % retryMax != 0) {
+  if (exec_mode == MIXED && bbEnabled && retry && retryCtr < retryMax ) {
     if (taseDebug){
       printf("Attempting to bounceback to native execution at RIP 0x%lx \n", rip);
       fflush(stdout);
@@ -3662,6 +3672,7 @@ bool canBounceback (uint32_t abort_status, uint64_t rip, bool * isPsnTrap, bool 
   } else {
     if (taseDebug) {
       printf("Not attempting to bounceback to native execution at RIP 0x%lx \n",rip);
+      retryCtr = 0;
       fflush(stdout);
     }
     return false;

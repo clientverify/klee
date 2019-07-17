@@ -522,12 +522,12 @@ void Executor::model_ktest_writesocket() {
       //Basic structure comes from NetworkManager in klee repo of cliver.
       //Get log entry for c2s
       KTestObject *o = KTOV_next_object(&ktov, ktest_object_names[CLIENT_TO_SERVER]);
-      printf("Buffer in writesock call : \n");
-      printBuf (stdout,(void *) buf, count);
-      
-      printf("Buffer in            log : \n");
-      printBuf (stdout,(void *) o->bytes, o->numBytes);
-
+      if (modelDebug) {
+	printf("Buffer in writesock call : \n");
+	printBuf (stdout,(void *) buf, count);
+	printf("Buffer in            log : \n");
+	printBuf (stdout,(void *) o->bytes, o->numBytes);
+      }
       if (o->numBytes > count) {
 	printf("IMPORTANT: VERIFICATION ERROR - write buffer size mismatch %u vs %u : Worker exiting from terminal path in round %d pass %d. \n",o->numBytes, count,  roundCount, passCount);
 	std::cout.flush();
@@ -610,11 +610,12 @@ void Executor::model_ktest_writesocket() {
       }
 
       //print assignments
-      printf("About to print assignments \n");
-      std::cout.flush();
-      
-      currMPA.printAllAssignments(NULL);
-
+      if (modelDebug) {
+	printf("About to print assignments \n");
+	std::cout.flush();
+	
+	currMPA.printAllAssignments(NULL);
+      }
       //REPLAY ROUND
       //------------------------
       // NOT(isInQA(*replayPidPtr)) => isDead(MPAPtr);
@@ -2538,10 +2539,6 @@ void Executor::model_select() {
     return;
     
     
-   
-    
-
-    
     bool debugSelect = false;
     if (debugSelect) {
 
@@ -2949,9 +2946,10 @@ void Executor::model_sha1_block_data_order() {
 //Used to restore concrete values for buffers that are
 //entirely made up of constant expressions
 void Executor::rewriteConstants(uint64_t base, size_t size) {
-  printf("Rewriting constant array \n");
-  fflush(stdout);
-
+  if (modelDebug) {
+    printf("Rewriting constant array \n");
+    fflush(stdout);
+  }
 
   if (!(
 	base > ((uint64_t) rodata_base_ptr)
@@ -2959,11 +2957,15 @@ void Executor::rewriteConstants(uint64_t base, size_t size) {
 	base < (((uint64_t) rodata_base_ptr) + rodata_size)
 	)
       ) {
-    printf("Base does not appear to be in rodata \n");
-    fflush(stdout);
+    if (modelDebug) {
+      printf("Base does not appear to be in rodata \n");
+      fflush(stdout);
+    }
   } else {
-    printf("Found base in rodata.  Returning from rewriteConstants without doing anything \n");
-    fflush(stdout);
+    if (modelDebug) {
+      printf("Found base in rodata.  Returning from rewriteConstants without doing anything \n");
+      fflush(stdout);
+    }
     return;
   }
   
@@ -2981,11 +2983,12 @@ void Executor::rewriteConstants(uint64_t base, size_t size) {
     ref<Expr> val = tase_helper_read(writeAddr, 2);
     tase_helper_write(writeAddr, val);
 
-  }  
-  printf("End result: \n");
-  fflush(stdout);
-  printBuf(stdout,(void *) base, size);
-
+  }
+  if (modelDebug) {
+    printf("End result: \n");
+    fflush(stdout);
+    printBuf(stdout,(void *) base, size);
+  }
 }
   
 
@@ -3007,8 +3010,9 @@ void Executor::model_SHA1_Update () {
 	(isa<ConstantExpr>(arg3Expr))
 	) {
 
-
-    printf("Entered model_SHA1Update for time %d \n", SHA1_Update_calls );
+    if (modelDebug) {
+      printf("Entered model_SHA1Update for time %d \n", SHA1_Update_calls );
+    }
     //Determine if SHA_CTX or data have symbolic values.
     //If not, run the underlying function.
 
@@ -3093,11 +3097,12 @@ void Executor::model_SHA1_Final() {
      SHA_CTX * c = (SHA_CTX *) target_ctx_gregs[GREG_RSI].u64;
      bool hasSymbolicInput = false;
 
-     printf("SHA1_Final ctx is \n");
-     printBuf(stdout,(void *) c, sizeof(SHA_CTX));
-     printf("SHA1_Final md buf is \n");
-     printBuf(stdout,(void *) md, SHA_DIGEST_LENGTH);
-     
+     if (modelDebug) {
+       printf("SHA1_Final ctx is \n");
+       printBuf(stdout,(void *) c, sizeof(SHA_CTX));
+       printf("SHA1_Final md buf is \n");
+       printBuf(stdout,(void *) md, SHA_DIGEST_LENGTH);
+     }
      if (!isBufferEntirelyConcrete((uint64_t) c, 20) )
        hasSymbolicInput = true;
      
@@ -3109,7 +3114,7 @@ void Executor::model_SHA1_Final() {
        strncpy(name, constCopy, 40);
       
        printf("MULTIPASS DEBUG: Found symbolic input to SHA1_Final \n");
-       fflush(stdout);
+
        tase_make_symbolic( (uint64_t) md, SHA_DIGEST_LENGTH, name);
 
        //Can optionally return failure here if desired
@@ -3123,12 +3128,12 @@ void Executor::model_SHA1_Final() {
        target_ctx_gregs[GREG_RSP].u64 += 8;
        
      } else {
-       printf("MULTIPASS DEBUG: Did not find symbolic input to SHA1_Final \n");
-
+       if (modelDebug) {
+	 printf("MULTIPASS DEBUG: Did not find symbolic input to SHA1_Final \n");
+       }
        //Deal with cases where buffer is entirely constant exprs
        rewriteConstants((uint64_t) c, sizeof(SHA_CTX));
        
-       fflush(stdout);
 
        if (gprsAreConcrete() && !(exec_mode == INTERP_ONLY)) {
 	 forceNativeRet = true;
@@ -3171,11 +3176,12 @@ void Executor::model_SHA256_Update () {
     const void * data = (const void *) target_ctx_gregs[GREG_RSI].u64;
     size_t len = (size_t) target_ctx_gregs[GREG_RDX].u64;
 
-    printf("SHA256_Update_CTX is \n");
-    printBuf(stdout,(void *) c, sizeof(SHA256_CTX));
-    printf("SHA256 data buf is \n");
-    printBuf(stdout,(void *) data, len);
-
+    if (modelDebug) {
+      printf("SHA256_Update_CTX is \n");
+      printBuf(stdout,(void *) c, sizeof(SHA256_CTX));
+      printf("SHA256 data buf is \n");
+      printBuf(stdout,(void *) data, len);
+    }
     
     bool hasSymbolicInput = false;
     if (!isBufferEntirelyConcrete((uint64_t ) c, sizeof(SHA256_CTX)) || !isBufferEntirelyConcrete( (uint64_t ) data, len))
@@ -3209,7 +3215,6 @@ void Executor::model_SHA256_Update () {
       rewriteConstants((uint64_t) c, sizeof(SHA256_CTX));
       rewriteConstants((uint64_t) data, len);
       
-      fflush(stdout);
 
        if (gprsAreConcrete() && !(exec_mode == INTERP_ONLY)) {
 	forceNativeRet = true;
@@ -3243,12 +3248,12 @@ void Executor::model_SHA256_Final() {
      unsigned char * md = (unsigned char *) target_ctx_gregs[GREG_RDI].u64;
      SHA256_CTX * c = (SHA256_CTX *) target_ctx_gregs[GREG_RSI].u64;
 
-
-     printf("SHA256_Final ctx is \n");
-     printBuf(stdout,(void *) c, sizeof(SHA256_CTX));
-     printf("SHA256_Final md buf is \n");
-     printBuf(stdout,(void *) md, SHA_DIGEST_LENGTH);
-     
+     if (modelDebug) {
+       printf("SHA256_Final ctx is \n");
+       printBuf(stdout,(void *) c, sizeof(SHA256_CTX));
+       printf("SHA256_Final md buf is \n");
+       printBuf(stdout,(void *) md, SHA_DIGEST_LENGTH);
+     }
      bool hasSymbolicInput = false;
 
      if (!isBufferEntirelyConcrete((uint64_t) c, 32) )
@@ -3281,7 +3286,6 @@ void Executor::model_SHA256_Final() {
        //Deal with cases where buffer is entirely constant exprs
        rewriteConstants((uint64_t) c, sizeof(SHA256_CTX));
        
-       fflush(stdout);
 
        if (gprsAreConcrete() && !(exec_mode == INTERP_ONLY)) {
 	 forceNativeRet = true;

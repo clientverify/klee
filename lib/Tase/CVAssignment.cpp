@@ -212,7 +212,7 @@ void CVAssignment::printAllAssignments(FILE * fp) {
 //| 210 (uint8_t)  |
 
 
-bool debugSerial = true;
+bool debugSerial = false;
 
 void CVAssignment::serializeAssignments(void * buf, int bufSize) {
 
@@ -417,8 +417,10 @@ void deserializeAssignments ( void * buf, int bufSize, Executor * exec,  CVAssig
     //std::exit(EXIT_FAILURE);
   }
   CV->addBindings(objects,values);
-  printf("Returning from deserialization \n");
-  std::cout.flush();
+  if (debugSerial) {
+    printf("Returning from deserialization \n");
+    std::cout.flush();
+  }
   
   
 }
