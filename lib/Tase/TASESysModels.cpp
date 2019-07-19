@@ -1929,7 +1929,7 @@ void Executor::model_malloc() {
     uint64_t retAddr = *((uint64_t *) target_ctx_gregs[GREG_RSP].u64);
     target_ctx_gregs[GREG_RIP].u64 = retAddr;
     target_ctx_gregs[GREG_RSP].u64 += 8;
-
+    
     if (taseDebug) {
       printf("INTERPRETER: Exiting model_malloc \n"); 
       std::cout.flush();

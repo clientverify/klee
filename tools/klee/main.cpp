@@ -129,6 +129,7 @@ bool enableBounceback = false;
 bool OpenSSLTest = true;
 bool skipNops = true;
 bool dropS2C = false;
+int retryMax = 2;
 
 int worker2managerFD [2];
 multipassRecord multipassInfo;
@@ -402,6 +403,9 @@ namespace {
 
   cl::opt<bool>
   disableSpringboardArg("disableSpringboard", cl::desc("Enable or noop the sprinfboard"), cl::init(false));
+
+  cl::opt<int>
+  retryMaxArg("retryMax", cl::desc("Number of times to try and bounceback to native execution if abort status allows it "), cl::init(2));
   
   cl::opt<std::string>
   EntryPoint("entry-point",
@@ -1465,7 +1469,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 }
 #endif
 
- void printTASEArgs(runType rt, testType tt, bool fm, bool dbg, std::string projName, bool df, bool disableSB,  bool stop, bool killFlags, bool dontFree, bool lckOnSolverCall, bool measureTimeVal, bool enableBouncebackVal, bool skpNops, bool selfTerm, bool dS2C) {
+ void printTASEArgs(runType rt, testType tt, bool fm, bool dbg, std::string projName, bool df, bool disableSB,  bool stop, bool killFlags, bool dontFree, bool lckOnSolverCall, bool measureTimeVal, bool enableBouncebackVal, bool skpNops, bool selfTerm, bool dS2C, int rm) {
 
    printf("TASE args... \n");
    if (rt == MIXED) 
@@ -1497,6 +1501,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    printf("\t skipNops             output : %d \n", skpNops);
    printf("\t workerSelfTerminate  output : %d \n", selfTerm);
    printf("\t dropS2C              output : %d \n", dS2C);
+   printf("\t retryMax             output : %d \n", rm);
  }
 
  
@@ -1531,9 +1536,9 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      printf("Enabling multipass verification for openssl \n");
      enableMultipass = true;
    }
+   retryMax = retryMaxArg;
    
-   
-   printTASEArgs(exec_mode, test_type, taseManager, taseDebug, project, dontFork, disableSpringboard,  stopAtMasterSecret, killFlagsHack, skipFree, lockOnSolverCalls, measureTime, enableBounceback, skipNops, workerSelfTerminate, dropS2C);
+   printTASEArgs(exec_mode, test_type, taseManager, taseDebug, project, dontFork, disableSpringboard,  stopAtMasterSecret, killFlagsHack, skipFree, lockOnSolverCalls, measureTime, enableBounceback, skipNops, workerSelfTerminate, dropS2C, retryMax);
 
 #ifdef TASE_BIGNUM
    symIndex = symIndexArg;

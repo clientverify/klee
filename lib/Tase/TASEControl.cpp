@@ -25,6 +25,14 @@ extern bool taseDebug;
 extern bool workerSelfTerminate;
 extern void deserializeAssignments ( void * buf, int bufSize, klee::Executor * exec, CVAssignment * cv);
 
+extern void reset_run_timers();
+extern void print_run_timers();
+
+extern double run_start_time;
+extern double run_interp_time;
+extern double run_fork_time;
+extern double interp_enter_time;
+
 extern double interpreter_time;
 extern double interp_setup_time;
 extern double interp_run_time;
@@ -436,6 +444,11 @@ int tase_fork(int parentPID, uint64_t rip) {
   tase_branches++;
   double curr_time = util::getWallTime();
   printf("PID %d entering tase_fork at rip 0x%lx %lf seconds after analysis started \n", parentPID, rip, curr_time - target_start_time);
+
+  printf("END RUN INFO: -- \n");
+  printf("Exiting with path exploration fork \n");
+  printf("Spent %lf seconds in interpreter \n", run_interp_time );
+  
   
   std::cout.flush();
   if (dontFork) {
@@ -461,23 +474,22 @@ int tase_fork(int parentPID, uint64_t rip) {
       std::exit(EXIT_SUCCESS);
     }
 
-    curr_time = util::getWallTime();
-    printf("DBG1 : %lf \n", curr_time - target_start_time);
-    
+    double T1 =  util::getWallTime();
     int trueChildPID = ::fork();
     if (trueChildPID == -1) {
       printf("Error during forking \n");
       perror("Fork error \n");
     }
-
-    curr_time = util::getWallTime();
-    printf("DBG2 : %lf \n", curr_time - target_start_time);
+    double T2 = util::getWallTime();
     
     if (trueChildPID != 0) {
       if (taseDebug) {
 	printf("Parent PID %d forked off child %d at rip 0x%lx for TRUE branch \n", parentPID, trueChildPID, rip);
 	fflush(stdout);
-      }
+      }       
+
+      run_fork_time += T2-T1;
+      
       //Block until child has sigstop'd.
       while (true) {
 	int status;
@@ -486,8 +498,7 @@ int tase_fork(int parentPID, uint64_t rip) {
 	  break;
       }
       get_sem_lock();
-      curr_time = util::getWallTime();
-      printf("DBG3 : %lf \n", curr_time - target_start_time);
+
       WorkerInfo wi;
       wi.pid = trueChildPID;
       wi.round = roundCount;
@@ -506,18 +517,29 @@ int tase_fork(int parentPID, uint64_t rip) {
 	release_sem_lock();
       }
 
-      curr_time = util::getWallTime();
-      printf("DBG4 Returning to path exploration : %lf \n", curr_time - target_start_time);
+      
+      
+      
+
       
       return 1;// Go back to path exploration
     } 
 
+    curr_time = util::getWallTime();
+    printf("Parent returning to path exploration %lf seconds into analysis \n", curr_time - target_start_time);
+
+    
+
+    
     //Make self the false branch
     WorkerInfo * myInfo = PidInQR(getpid());
     myInfo->branches++;
 
     release_sem_lock();
 
+    print_run_timers();
+    
+    
     return 0;
 
 
@@ -598,20 +620,22 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
     }
     *latestRoundPtr = roundCount;
   }
-  //Added
-  //release_sem_lock();
+
   
   printf("IMPORTANT: Starting round %d pass %d of verification \n", roundCount, passCount);
   std::cout.flush();
   //Make backup of self
+
+  double T1 = util::getWallTime();
   int childPID = ::fork();
   if (childPID == -1) {
     printf("Error during forking \n");
     perror("Fork error \n");
   }
-  //Added
-  //get_sem_lock();
+  double T2 = util::getWallTime();
+
   if (childPID != 0) {
+    run_fork_time +=  T2-T1;
     *replayPIDPtr = childPID;
     //Block until child has sigstop'd
     while (true) {
@@ -664,6 +688,8 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
   } else {    
     raise(SIGSTOP);
 
+    
+
     int i = getpid();
     workerIDStream << ".";
     workerIDStream << i;
@@ -678,11 +704,12 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
       printf("Cycled log name is %s \n", pidString.c_str());
     }
 
-
     printf("Before freopen, new string for log is %s \n", pidString.c_str());
     
     FILE * res = freopen(pidString.c_str(),"w",stdout);
-
+    reset_run_timers();
+    
+    
     if (res == NULL) {
       printf("ERROR: Couldn't open file for new replay pid %d \n", i);
       perror("Error opening file during replay");
@@ -691,7 +718,9 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
     } else 
       printf("Worker %d opened file for logging \n", i);
 
-    printf("Resetting interp time counters  %lf seconds after analysis began \n", util::getWallTime() - target_start_time );
+    interp_run_time = 0;
+    interp_enter_time = util::getWallTime();
+    
     interpreter_time = 0.0;
     interp_setup_time = 0.0;
     interp_run_time = 0.0;
@@ -751,6 +780,7 @@ void multipass_replay_round (void * assignmentBufferPtr, CVAssignment * mpa, int
       release_sem_lock();
       std::exit(EXIT_SUCCESS);
     }
+    /*
     printf("Value of replay lock is %d \n", *replayLock);
     if (PidInQA(*pidPtr) != NULL)
       printf("replay pid %d is in QA \n", *pidPtr);
@@ -767,7 +797,7 @@ void multipass_replay_round (void * assignmentBufferPtr, CVAssignment * mpa, int
     else
       printf("Assignment buf is zero \n");
     fflush(stdout);
-    
+    */
     if (*replayLock != 1  || (PidInQA(*pidPtr) != NULL) || (PidInQR(*pidPtr) != NULL) ||  *((uint8_t *) assignmentBufferPtr) != 0)  {
       release_sem_lock();  //Spin and try again after pending replay fully executes
 
@@ -808,6 +838,7 @@ void multipass_replay_round (void * assignmentBufferPtr, CVAssignment * mpa, int
       std::cout.flush();
       removeFromQR(PidInQR(getpid()));
       release_sem_lock();
+      print_run_timers();
       std::exit(EXIT_SUCCESS);
     }
   }
