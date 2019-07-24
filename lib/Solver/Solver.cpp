@@ -101,9 +101,11 @@ Solver::getInitialValues(const Query& query,
   bool success =
     impl->computeInitialValues(query, objects, values, hasSolution);
   // FIXME: Propogate this out.
-  if (!hasSolution)
+  if (!hasSolution) {
+    printf("Doesn't have solution \n");
+    fflush(stdout);
     return false;
-    
+  }
   return success;
 }
 

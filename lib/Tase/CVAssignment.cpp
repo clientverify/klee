@@ -40,19 +40,29 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
   std::vector<const klee::Array*> arrays;
   std::vector< std::vector<unsigned char> > initial_values;
 
+  printf("CV DBG 1\n");
+  fflush(stdout);
+  
   klee::findSymbolicObjects(expr, arrays);
   //ABH: It needs to be the case that the write condition was added to
   //exec state's constraints before solveForBindings was called.
   //Todo:  Make this simpler and less prone to misuse.
 
+  printf("CV DBG2 \n");
+  fflush(stdout);
   //ABH: Should be able to just add in the expr via cm.addConstraint ?
   //Todo: Double check
   klee::ConstraintManager cm;
   //(ExecStatePtr->constraints);
   cm.addConstraint(expr);
 
+  printf("CV DBG 3 \n");
+  fflush(stdout);
+  
   klee::Query query(cm, klee::ConstantExpr::alloc(0, klee::Expr::Bool));
 
+  printf("CV DBG 4 \n");
+  fflush(stdout);
 
   /*
   std::string s;
@@ -72,6 +82,7 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
 
   if (!res) {
     printf("IMPORTANT: solver->getInitialValues failed in solveForBindings \n");
+    fflush(stdout);
   }
 
   //////////////////////////////////////////////////////////////////
@@ -125,23 +136,38 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
       value_disjunction = klee::OrExpr::create(value_disjunction, neq_expr);
     }
   }
-
+  printf("CV DBG5 \n");
+  fflush(stdout);
+  
   // This may be a null-op how this interaction works needs to be better
   // understood
   value_disjunction = cm.simplifyExpr(value_disjunction);
-
+  printf("CV DBG6 \n");
+  fflush(stdout);
   if (value_disjunction->getKind() == klee::Expr::Constant
       && cast<klee::ConstantExpr>(value_disjunction)->isFalse()) {
+    printf("CV DBG7 \n");
+    fflush(stdout);
     addBindings(arrays, initial_values);
+    printf("CV DBG8 \n");
+    fflush(stdout);
   } else {
+    printf("CV DBG9 \n");
+    fflush(stdout);
     cm.addConstraint(value_disjunction);
 
+    printf("CV DBG10 \n");
+    fflush(stdout);
+    
     bool result;
     solver->mayBeTrue(klee::Query(cm,
 				  klee::ConstantExpr::alloc(0, klee::Expr::Bool)), result);
 
+    printf("CV DBG11 \n");
+    fflush(stdout);
     if (result) {
       printf("INVALID solver concretization!");
+      fflush(stdout);
       std::exit(EXIT_FAILURE);
     } else {
       //TODO Test this path

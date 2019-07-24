@@ -162,7 +162,6 @@ extern  int ktest_RAND_pseudo_bytes_calls;
 #include <unordered_set>
 extern std::unordered_set<uint64_t> cartridge_entry_points;
 extern std::unordered_set<uint64_t> cartridges_with_flags_live;
-extern std::unordered_set<uint64_t> cartridge_modeled_fns;
 extern std::map<int,int> nops_and_offsets;
 void * rodata_base_ptr;
 uint64_t rodata_size;
@@ -1064,12 +1063,14 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
 }
 
 void Executor::addConstraint(ExecutionState &state, ref<Expr> condition) {
+  printf("Entered addConstraint \n");
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(condition)) {
     if (!CE->isTrue())
       llvm::report_fatal_error("attempt to add invalid constraint");
     return;
   }
-
+  printf("DBG1 \n");
+  fflush(stdout);
   // Check to see if this constraint violates seeds.
   std::map< ExecutionState*, std::vector<SeedInfo> >::iterator it = 
     seedMap.find(&state);
@@ -1090,11 +1091,18 @@ void Executor::addConstraint(ExecutionState &state, ref<Expr> condition) {
     if (warn)
       klee_warning("seeds patched for violating constraint"); 
   }
-
+  printf("DBG2 \n");
+  fflush(stdout);
+  
   state.addConstraint(condition);
+  printf("DBG3 \n");
+  fflush(stdout);
   if (ivcEnabled)
     doImpliedValueConcretization(state, condition, 
                                  ConstantExpr::alloc(1, Expr::Bool));
+
+  printf("DBG4 \n");
+  fflush(stdout);
 }
 
 const Cell& Executor::eval(KInstruction *ki, unsigned index, 
@@ -3617,80 +3625,8 @@ void printProhibCounters() {
 }
 
 uint64_t garbageCtr = 0;
+uint64_t * last_heap_addr = 0;
 
-bool canBounceback (uint32_t abort_status, uint64_t rip, bool * isPsnTrap, bool * isMemTrap, bool * isModelTrap, bool bbEnabled) {
-  
-  bool retry = false;
-  static uint64_t retryCtr = 0;
-  static uint64_t prevRIP = 0;
-
-  if (rip == prevRIP) {
-    retryCtr++;
-  } else {
-    prevRIP = rip;
-    retryCtr = 0;
-  }
-
-  //Check to see if instrution is a mem request for performance debugging
-  //#ifdef TASE_OPENSSL
-  if (
-      rip ==  (uint64_t)    &malloc
-      || rip == ((uint64_t) &malloc_tase  + 14)
-      || rip ==  (uint64_t) &realloc
-      || rip == ((uint64_t) &realloc_tase + 14)
-      || rip == (uint64_t)  &free
-      || rip == ((uint64_t) &free_tase    + 14)
-      )  {
-    *isMemTrap = true;
-  }
-  //#endif
-  if ((abort_status & 0xff) == 0) {
-    //Unknown return code
-    if (taseDebug)
-      printf("Bounceback unknown return code \n");
-    BB_UR++;
-    retry = true; 
-  } else if (abort_status & (1 << TSX_XABORT)) {
-    if (abort_status & TSX_XABORT_MASK) {
-      //modeled
-      if (taseDebug)
-	printf("Bounceback modeled case \n");
-      retry = false;
-      *isModelTrap = true;
-      BB_MOD++;
-    } else {
-      //poison
-      if (taseDebug)
-	printf("Bounceback psn case \n");
-      *isPsnTrap = true;
-      retry = false;
-      BB_PSN++;
-    }
-  } else {
-    if (taseDebug)
-      printf("Bounceback fall-through case \n");
-    retry = true;
-    BB_OTHER++;
-  }
-
-  if (exec_mode == MIXED && bbEnabled && retry && retryCtr < retryMax ) {
-    if (taseDebug){
-      printf("Attempting to bounceback to native execution at RIP 0x%lx \n", rip);
-      fflush(stdout);
-    }
-    //Heuristic to try and avoid page faults.
-    garbageCtr += target_ctx_gregs[GREG_RSP].u64;
-    
-    return true;
-  } else {
-    if (taseDebug) {
-      printf("Not attempting to bounceback to native execution at RIP 0x%lx \n",rip);
-      retryCtr = 0;
-      fflush(stdout);
-    }
-    return false;
-  }
-}
 
 void reset_run_timers() {
   printf("Resetting run timers at %lf seconds into analysis \n", util::getWallTime() - target_start_time);
@@ -3709,16 +3645,13 @@ void print_run_timers() {
   printf(" - Fork   time: %lf \n", run_fork_time );
 }
   
-void measure_interp_time(bool isPsnTrap, bool isMemRequest, bool isModelTrap, uint64_t interpCtr_init, uint64_t rip) {
+void measure_interp_time(bool isPsnTrap, bool isModelTrap, uint64_t interpCtr_init, uint64_t rip) {
 
     double interp_exit_time = util::getWallTime();
-
-    run_interp_time += (interp_exit_time - interp_enter_time);
-    
+    run_interp_time += (interp_exit_time - interp_enter_time);    
     double diff_time = (interp_exit_time) - (interp_enter_time);
     interpreter_time += diff_time;
-    if (isMemRequest)  
-      malloc_time += diff_time;
+
     if (isPsnTrap)
       psn_time += diff_time;
     if(isModelTrap)
@@ -3742,12 +3675,17 @@ void measure_interp_time(bool isPsnTrap, bool isMemRequest, bool isModelTrap, ui
 
     
 }
-  
+
+bool canBounceback( uint32_t abortStatus , uint64_t rip);
+
+bool is_psn_trap = false;
+bool is_model_trap = false;
+
 extern "C" void klee_interp () {
   total_interp_returns++;
   uint64_t interpCtr_init = interpCtr;
   forceNativeRet = false;  
-  bool isPsnTrap = false, isMemTrap = false, isModelTrap = false;
+
   
   if (measureTime) 
     interp_enter_time = util::getWallTime();
@@ -3756,11 +3694,9 @@ extern "C" void klee_interp () {
     printf("---------------ENTERING KLEE_INTERP ---------------------- \n");
     std::cout.flush();
   }
-  target_ctx_gregs[GREG_RIP].u64 = target_ctx_gregs[GREG_R15].u64; //Should be ok to drop
   
-  if (canBounceback(target_ctx.abort_status, target_ctx_gregs[GREG_RIP].u64,&isPsnTrap, &isMemTrap, &isModelTrap, enableBounceback))
-    {
-      
+  if (canBounceback(target_ctx.abort_status, target_ctx_gregs[GREG_RIP].u64))
+    {    
       target_ctx_gregs[GREG_RIP].u64 -= bounceback_offset;
       if (taseDebug) 
 	printf("After adjusting offset, attempting to bounceback to 0x%lx \n", target_ctx_gregs[GREG_RIP].u64);
@@ -3768,14 +3704,75 @@ extern "C" void klee_interp () {
     }
   
   GlobalInterpreter->klee_interp_internal();
-
-  target_ctx_gregs[GREG_R15].u64 = target_ctx_gregs[GREG_RIP].u64;// Should be OK to drop
+  
   uint64_t rip =  target_ctx_gregs[GREG_R15].u64;
-
   if (measureTime) 
-    measure_interp_time(isPsnTrap, isMemTrap, isModelTrap, interpCtr_init, rip);
+    measure_interp_time(is_psn_trap,  is_model_trap, interpCtr_init, rip);
+
   return; //Returns to loop in main
 }
+
+bool canBounceback (uint32_t abort_status, uint64_t rip) {
+  
+  bool retry = false;
+  static int retryCtr = 0;
+  static uint64_t prevRIP = 0;
+
+  if (rip == prevRIP) {
+    retryCtr++;
+  } else {
+    prevRIP = rip;
+    retryCtr = 0;
+  }
+
+  //Classify the type of return first
+  is_model_trap = false;
+  is_psn_trap = false;
+  
+  if ((abort_status & 0xff) == 0) {
+    //Unknown return code
+    if (taseDebug)
+      printf("Bounceback unknown return code \n");
+    BB_UR++;
+    retry = true; 
+  } else if (abort_status & (1 << TSX_XABORT)) {
+    if (abort_status & TSX_XABORT_MASK) {
+      retry = false;
+      is_model_trap = true;
+      BB_MOD++;
+    } else {
+      is_psn_trap = true;
+      retry = false;
+      BB_PSN++;
+    }
+  } else {
+    if (taseDebug)
+      printf("Bounceback fall-through case \n");
+    retry = true;
+    BB_OTHER++;
+  }
+
+  if (exec_mode == MIXED && enableBounceback && retry && retryCtr < retryMax ) {
+    if (taseDebug){
+      printf("Attempting to bounceback to native execution at RIP 0x%lx \n", rip);
+      fflush(stdout);
+    }
+    //Heuristic to try and avoid page faults.
+    garbageCtr += target_ctx_gregs[GREG_RSP].u64;
+    if (last_heap_addr != 0) {
+      garbageCtr += *last_heap_addr; //Todo: this won't work if we start doing frees.
+    }
+    return true;
+  } else {
+    if (taseDebug) {
+      printf("Not attempting to bounceback to native execution at RIP 0x%lx \n",rip);
+      fflush(stdout);
+    }
+    retryCtr = 0;
+    return false;
+  }
+}
+
 
 //This function's purpose is to take a context from native execution 
 //and return an llvm function for interpretation.  It's OK for now if
@@ -3978,7 +3975,7 @@ bool Executor::gprsAreConcrete() {
 
   return !tase_buf_could_be_symbolic((void *) &target_ctx_gregs[0], NGREG * GREG_SIZE);
   
-  //  return target_ctx_gregs_OS->isObjectEntirelyConcrete();
+  //return target_ctx_gregs_OS->isObjectEntirelyConcrete();
 }
 
 
@@ -3987,9 +3984,7 @@ bool cartridgeHasFlagsDead(uint64_t pc) {
   return (cartridges_with_flags_live.find(pc) == cartridges_with_flags_live.end());
 }
 
-bool instructionBeginsModeledFn(uint64_t pc ) {
-  return(cartridge_modeled_fns.find(pc) != cartridge_modeled_fns.end());
-}
+
 
 bool isProhibFn(uint64_t pc) {
   return  std::find(std::begin(prohib_fns), std::end(prohib_fns), pc) != std::end(prohib_fns);
@@ -4141,6 +4136,9 @@ void Executor::model_inst () {
   //#ifdef TASE_OPENSSL
   if (rip == (uint64_t) &free || rip == ((uint64_t) &free_tase) || rip == ((uint64_t) &free_tase + 14) ) {
     model_free();
+  }  else if (rip == (uint64_t) &sb_modeled) {
+    printf("Doing sb_modeled hack \n");
+    target_ctx_gregs[GREG_RIP].u64 = target_ctx_gregs[GREG_R15].u64;
   } else if (rip == (uint64_t) &signal) {
     model_signal();
   } else if (rip == (uint64_t) &malloc  || rip == ((uint64_t) &malloc_tase + 14) || rip == (uint64_t) &malloc_tase  ) {
@@ -4364,6 +4362,7 @@ bool isSpecialInst (uint64_t rip) {
       rip == (uint64_t) &sb_reopen                    ||
       rip == (uint64_t) &sb_disabled                  ||
       rip == (uint64_t) &target_exit                  ||
+      rip == (uint64_t) &sb_modeled                   ||
       rip == (uint64_t) &malloc_tase                 + 14  ||
       rip == (uint64_t) &realloc_tase                + 14  ||
       rip == (uint64_t) &free_tase                   + 14  ||
@@ -4496,18 +4495,21 @@ int strtoul_calls = 0;
 int nopCtr = 0;
 void Executor::klee_interp_internal () {
   double interpSetupStartTime = 0.0, interpRunStartTime = 0.0, interpCleanupStartTime = 0.0;
-
+  static int killFlagCtr = 0;
+  
+  
+  tase_model = (void *) &sb_modeled;
+  
   while (true) {
     interpCtr++;
     if (taseDebug)
       printDebugInterpHeader();
     if (measureTime)
       interpSetupStartTime = util::getWallTime();
-      
+    
     uint64_t rip = target_ctx_gregs[GREG_RIP].u64;
     uint64_t rip_init = rip;
     
-    int nop_off;
     //IMPORTANT -- The springboard is written assuming we never try to
     // jump right back into a modeled fn.  The sb_modeled label immediately XENDs, which will
     // cause a segfault if the process isn't executing a transaction.
@@ -4517,18 +4519,21 @@ void Executor::klee_interp_internal () {
       model_inst();
     } else if (resumeNativeExecution() && !dont_model) {
       break;
-    } else if ((nop_off = isNop(rip))) {
-      if (taseDebug) {
-	nopCtr++;
-	printf("Found nop at addr 0x%lx with offset %d  \n", target_ctx_gregs[GREG_RIP].u64, nop_off);
-	fflush(stdout);
-	printf("Found %d nops in interpreter so far with interpCtr %lu \n", nopCtr, interpCtr);
-      }
-      target_ctx_gregs[GREG_RIP].u64 += (uint64_t) nop_off;
     } else {
-
       dont_model = false;
-      
+      if (killFlagsHack) {
+	if (instructionBeginsTransaction(rip)) {
+	  if (cartridgeHasFlagsDead(rip)) {
+	    if (taseDebug) {
+	      printf("Killing flags \n");
+	    }
+	    uint64_t zero = 0;
+	    ref<ConstantExpr> zeroExpr = ConstantExpr::create(zero, Expr::Int64);
+	    tase_helper_write((uint64_t) &target_ctx_gregs[GREG_EFL], zeroExpr);
+	  }
+	}
+      }
+  
       double findInterpFnStartTime = 0.0;
       if (measureTime)
 	findInterpFnStartTime = util::getWallTime();
@@ -4563,7 +4568,7 @@ void Executor::klee_interp_internal () {
 	interpRunStartTime = util::getWallTime();
       
       run(*GlobalExecutionStatePtr);
-
+      
       if (measureTime) {
 	double runDiff = util::getWallTime() - interpRunStartTime;
 	interp_run_time += runDiff;
@@ -4602,6 +4607,9 @@ void Executor::klee_interp_internal () {
 	}
 	ref<Expr> FinalRIPExpr = target_ctx_gregs_OS->read(GREG_RIP * 8, Expr::Int64);
 	if (!(isa<ConstantExpr>(FinalRIPExpr))) {
+	  //Hack to make sure garbageCtr isn't optimized out
+	  printf("garbageCtr is 0x%lx \n", garbageCtr);
+	  
 	  printf("ERROR: Failed to concretize RIP \n");
 	  std::cout.flush();
 	  std::exit(EXIT_FAILURE);

@@ -100,7 +100,7 @@ extern enum testType test_type;
 
 extern uint64_t interpCtr;
 extern bool taseDebug;
-bool modelDebug = false;
+bool modelDebug = true;
 extern void * rodata_base_ptr;
 extern uint64_t rodata_size;
 
@@ -516,6 +516,12 @@ void Executor::model_ktest_writesocket() {
       printf("Symbolic data in buffer for writesock call \n");
 
     std::cout.flush();
+
+    if (modelDebug) {
+      printf("Buffer in writesock call : \n");
+      printBuf (stdout,(void *) buf, count);
+
+    }
     
     if (enableMultipass) {
      
@@ -523,8 +529,7 @@ void Executor::model_ktest_writesocket() {
       //Get log entry for c2s
       KTestObject *o = KTOV_next_object(&ktov, ktest_object_names[CLIENT_TO_SERVER]);
       if (modelDebug) {
-	printf("Buffer in writesock call : \n");
-	printBuf (stdout,(void *) buf, count);
+	
 	printf("Buffer in            log : \n");
 	printBuf (stdout,(void *) o->bytes, o->numBytes);
       }
@@ -534,6 +539,8 @@ void Executor::model_ktest_writesocket() {
 	worker_exit();
       }
 
+      printf("DBG1 \n");
+      
       //Create write condition
       klee::ref<klee::Expr> write_condition = klee::ConstantExpr::alloc(1, klee::Expr::Bool);
       for (int i = 0; i < o->numBytes; i++) {
@@ -543,7 +550,9 @@ void Executor::model_ktest_writesocket() {
 							       klee::ConstantExpr::alloc(o->bytes[i], klee::Expr::Int8));
 	write_condition = klee::AndExpr::create(write_condition, condition);
       }
-      
+
+      printf("DBG2 \n");
+      fflush(stdout);
       //Fast path
       /*
 	if (concWrite) {
@@ -556,7 +565,9 @@ void Executor::model_ktest_writesocket() {
 
       addConstraint(*GlobalExecutionStatePtr, write_condition);
       //Check validity of write condition
-      
+
+      printf("DBG3 \n");
+      fflush(stdout);
       if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(write_condition)) {
 	if (CE->isFalse()) {
 	  printf("IMPORTANT: VERIFICATION ERROR: false write condition. Worker exiting from terminal path in round %d pass %d \n", roundCount, passCount);
@@ -564,13 +575,16 @@ void Executor::model_ktest_writesocket() {
 	  worker_exit();
 	}
       } else {
-	
+	printf("DBG4 \n");
+	fflush(stdout);
 	bool result;
 	solver_start_time = util::getWallTime();
 	if (lockOnSolverCalls)
 	  get_sem_lock();
 	
 	solver->mustBeFalse(*GlobalExecutionStatePtr, write_condition, result);
+
+       
 	printf("lockOnSolverCalls is %d \n", lockOnSolverCalls);
 	if (lockOnSolverCalls)
 	  release_sem_lock();
@@ -590,7 +604,10 @@ void Executor::model_ktest_writesocket() {
 	  fflush(stdout);
 	}
       }
-      
+
+
+      printf("DBG 5 \n");
+      fflush(stdout);
       //Solve for multipass assignments
       CVAssignment currMPA;
       currMPA.clear();
@@ -599,9 +616,13 @@ void Executor::model_ktest_writesocket() {
 	solver_start_time = util::getWallTime();
 	if (lockOnSolverCalls)
 	  get_sem_lock();
+	printf("DBG 6 \n");
+	fflush(stdout);
 	currMPA.solveForBindings(solver->solver, write_condition,GlobalExecutionStatePtr);
 	if (lockOnSolverCalls)
 	  release_sem_lock();
+	printf("DBG 7 \n");
+	fflush(stdout);
 	solver_end_time = util::getWallTime();
 	solver_diff_time = solver_end_time - solver_start_time;
 	printf("Elapsed solver time (solver) is %lf at interpCtr %lu \n", solver_diff_time, interpCtr);
@@ -1889,6 +1910,7 @@ ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
 }
 
 
+extern uint64_t * last_heap_addr;
 
 //http://man7.org/linux/man-pages/man3/malloc.3.html
 void Executor::model_malloc() {
@@ -1909,6 +1931,7 @@ void Executor::model_malloc() {
       sizeArg++;
       }*/
     void * buf = malloc(sizeArg);
+    last_heap_addr = (uint64_t *) buf;
     if (taseDebug) {
       printf("Returned ptr at 0x%lx \n", (uint64_t) buf);
       std::cout.flush();
@@ -2887,8 +2910,12 @@ ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64); // SS
     if (enableMultipass == false) {
       printf("Will trap in ktest_master_secret further down for master secret \n");
       fflush(stdout);
-      forceNativeRet = true;
-      target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
+      if (exec_mode != INTERP_ONLY) {
+	forceNativeRet = true;
+	target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
+      } else {
+	dont_model =true;
+      }
       return;
     }
 
@@ -3064,6 +3091,7 @@ void Executor::model_SHA1_Update () {
 	forceNativeRet = true;
 	target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
       } else {
+	 printf("Register contains taint prior to prohib call: SHA1_Update \n");
 	 dont_model = true;
       }
       return;
@@ -3139,6 +3167,7 @@ void Executor::model_SHA1_Final() {
 	 forceNativeRet = true;
 	 target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
        } else {
+	 printf("Register contains taint prior to prohib call: SHA1_Final \n");
 	 dont_model = true;
        }
        return;
@@ -3220,6 +3249,7 @@ void Executor::model_SHA256_Update () {
 	forceNativeRet = true;
 	target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
       } else {
+	 printf("Register contains taint prior to prohib call: SHA256_Update \n");
 	 dont_model = true;
       }
       return;
@@ -3291,6 +3321,7 @@ void Executor::model_SHA256_Final() {
 	 forceNativeRet = true;
 	 target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
        } else {
+	 printf("Register contains taint prior to prohib call: SHA256_Final \n");
 	 dont_model = true;
        }
        return;
@@ -3327,14 +3358,19 @@ void Executor::model_AES_encrypt () {
     const AES_KEY * key = (const AES_KEY *) target_ctx_gregs[GREG_RDX].u64;
 
     int AESBlockSize = 16; //Number of bytes in AES block    
-    //printf("AES_encrypt %d debug -- dumping buffer inputs at round %d pass %d \n", AES_encrypt_calls, roundCount, passCount );
-    //printf("key is \n");
-    //printBuf(stdout,(void *) key, AESBlockSize);
-    //rewriteConstants( (uint64_t) key, AESBlockSize);
-    //printf("in is \n");
-    //printBuf(stdout,(void *) in, AESBlockSize);
-    //rewriteConstants( (uint64_t) in, AESBlockSize);
-    //fflush(stdout);
+
+    if (modelDebug) {
+      printf("AES_encrypt %d debug -- dumping buffer inputs at round %d pass %d \n", AES_encrypt_calls, roundCount, passCount );
+      printf("key is \n");
+      printBuf(stdout,(void *) key, AESBlockSize);
+    }
+    rewriteConstants( (uint64_t) key, AESBlockSize);
+    if (modelDebug) {
+      printf("in is \n");
+      printBuf(stdout,(void *) in, AESBlockSize);
+    }
+    rewriteConstants( (uint64_t) in, AESBlockSize);
+
     
     
    
@@ -3374,6 +3410,7 @@ void Executor::model_AES_encrypt () {
 	forceNativeRet = true;
 	target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
       } else {
+	printf("Register contains taint prior to prohib call: AES_encrypt \n");
 	dont_model = true;
       }
       return;
@@ -3405,13 +3442,11 @@ void Executor::model_gcm_gmult_4bit () {
     
     if (modelDebug) {
       printf("Entering model_gcm_gmult_4bit for time %d and dumping raw input as bytes \n", gcm_gmult_4bit_calls);
+      printf("Xi inputs are \n");
+      printBuf(stdout,(void *) XiPtr, 16);
+      printf("Htable inputs are \n");
+      printBuf(stdout,(void *) HtablePtr, 196);
     }
-    
-    //printf("Xi inputs are \n");
-    //printBuf(stdout,(void *) XiPtr, 16);
-    //printf("Htable inputs are \n");
-    //printBuf(stdout,(void *) HtablePtr, 196);
-
     
     //Todo: Double check the dubious ptr cast and figure out if we
     //are assuming any structs are packed
@@ -3448,6 +3483,7 @@ void Executor::model_gcm_gmult_4bit () {
 	 forceNativeRet = true;
 	 target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
        } else {
+	 printf("Register contains taint prior to prohib call: gcm_gmult \n");
 	 dont_model = true;
        }
        return;
@@ -3482,16 +3518,18 @@ void Executor::model_gcm_ghash_4bit () {
     u128 * HtablePtr = (u128 *) target_ctx_gregs[GREG_RSI].u64;
     const u8 * inp = (const u8 *) target_ctx_gregs[GREG_RDX].u64;
     size_t len = (size_t) target_ctx_gregs[GREG_RCX].u64;
-    //printf("Entering model_gcm_ghash_4bit for time %d and dumping args as raw bytes \n", gcm_ghash_4bit_calls);
-
-    //printf("Xi inputs are \n");
-    //printBuf(stdout,(void *) XiPtr, 16);
-    //printf("Htable inputs are \n");
-    //printBuf(stdout,(void *) HtablePtr, 196);
-    //printf("inp is \n");
-    //printBuf(stdout,(void *) inp, len);
-    //printf("len is %lu \n", len);
-    //std::cout.flush();
+    if (modelDebug){
+      printf("Entering model_gcm_ghash_4bit for time %d and dumping args as raw bytes \n", gcm_ghash_4bit_calls);
+      
+      printf("Xi inputs are \n");
+      printBuf(stdout,(void *) XiPtr, 16);
+      printf("Htable inputs are \n");
+      printBuf(stdout,(void *) HtablePtr, 196);
+      printf("inp is \n");
+      printBuf(stdout,(void *) inp, len);
+      printf("len is %lu \n", len);
+      std::cout.flush();
+    }
     
     //Todo: Double check the dubious ptr casts and figure out if we
     //are falsely assuming any structs or arrays are packed
@@ -3526,6 +3564,7 @@ void Executor::model_gcm_ghash_4bit () {
 	forceNativeRet = true;
 	target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
       } else {
+	 printf("Register contains taint prior to prohib call: gcm_ghash \n");
 	 dont_model = true;
       }
        return;
@@ -3651,6 +3690,12 @@ void Executor::make_EC_POINT_symbolic(EC_POINT* p) {
 void Executor::model_EC_KEY_generate_key () {
 
   EC_KEY_generate_key_calls++;
+
+  if (EC_KEY_generate_key_calls > 10 ) {
+    fprintf(stderr, "Too many calls to ec_key_generate_key \n");
+    std::exit(EXIT_FAILURE);
+
+  }
   
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64); //EC_KEY * key
   if ( (isa<ConstantExpr>(arg1Expr)) ) {
@@ -3690,8 +3735,13 @@ void Executor::model_EC_KEY_generate_key () {
       //Otherwise we're good to call natively
       printf("DEBUG: Calling EC_KEY_generate_key natively \n");
       fflush(stdout);
-      forceNativeRet = true;
-      target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
+      if (gprsAreConcrete() && exec_mode != INTERP_ONLY) {
+	forceNativeRet = true;
+	target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
+      } else {
+	dont_model = true;
+      }
+	
       return; 
     } 
     
@@ -3782,8 +3832,11 @@ bool Executor::is_symbolic_EC_POINT(EC_POINT * pt) {
 void Executor::model_ECDH_compute_key() {
   ECDH_compute_key_calls++;
 
-  //static int model_ECDH_compute_key_calls = 0;
-  //model_ECDH_compute_key_calls++;
+  if (ECDH_compute_key_calls > 10) {
+    fprintf(stderr, "Too many ECDH_compute_key_calls. Exiting \n");
+    std::exit(EXIT_FAILURE);
+  }
+
   
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(GREG_RSI * 8, Expr::Int64);
@@ -3832,8 +3885,12 @@ void Executor::model_ECDH_compute_key() {
       //Otherwise we're good to call natively
       printf("DEBUG: Calling ECDH_compute_key for time %d natively \n", ECDH_compute_key_calls);
       fflush(stdout);
-      forceNativeRet = true;
-      target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
+      if (gprsAreConcrete() && exec_mode != INTERP_ONLY) {
+	forceNativeRet = true;
+	target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
+      } else {
+	dont_model =true;
+      }
       return; 
     }
       
@@ -3962,10 +4019,14 @@ void Executor::model_EC_POINT_point2oct() {
       
     } else {
       //Otherwise we're good to call natively
-       printf("Entering EC_POINT_point2oct for time %d and calling natively \n", EC_POINT_point2oct_calls);
-       fflush(stdout);
-       forceNativeRet = true;
-       target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
+      if (gprsAreConcrete() && !(exec_mode == INTERP_ONLY)) {
+	  printf("Entering EC_POINT_point2oct for time %d and calling natively \n", EC_POINT_point2oct_calls);
+	  fflush(stdout);
+	  forceNativeRet = true;
+	  target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
+	} else {
+	  dont_model =true;
+	}
        return; 
      
     }

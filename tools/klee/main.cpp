@@ -93,7 +93,7 @@ extern "C" void klee_interp();
 //extern  void enter_tase(void (*) (), int);
 std::unordered_set<uint64_t> cartridge_entry_points;
 std::unordered_set<uint64_t> cartridges_with_flags_live;
-std::unordered_set<uint64_t> cartridge_modeled_fns;
+
 
 std::stringstream workerIDStream;
 std::stringstream globalLogStream;
@@ -1647,8 +1647,20 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    GlobalInterpreter = interpreter;
 
    //Load the start addresses of cartridges for fast lookup later
-   for (uint32_t i = 0; i < tase_num_global_records; i++)
+   printf("Detected %d total basic blocks \n", tase_num_global_records);
+   
+   for (uint32_t i = 0; i < tase_num_global_records; i++) 
      cartridge_entry_points.insert(tase_global_records[i].head);
+
+
+   FILE * cartridgeLog = fopen("cartridge_info.txt", "w");
+   for (uint32_t i = 0; i < tase_num_global_records; i++) {
+     uint32_t head = tase_global_records[i].head;
+     uint16_t head_size = tase_global_records[i].head_size;
+     uint16_t body_size = tase_global_records[i].body_size;
+     fprintf(cartridgeLog, "%d %d\n", head + head_size, head + head_size + body_size);
+   }
+
    
    //Load list of cartridges for which flags is live-in.
    int numLiveBlocks = 0;
@@ -1657,14 +1669,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      numLiveBlocks++;
    }
 
-   int numModeledBlocks = 0;
-   for (uint32_t i = 0; i < tase_num_modeled_records; i++) {
-     printf("Adding rip 0x%lx to modeled record list \n", tase_modeled_records[i].head);
-     cartridge_modeled_fns.insert(tase_modeled_records[i].head);
-     numModeledBlocks++;
-   }
 
-   printf("Found %d modeled cn block entries \n", numModeledBlocks);
    printf("Found %d basic blocks with flags live-in \n", numLiveBlocks);
    
    if (taseManager) {
