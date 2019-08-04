@@ -97,10 +97,13 @@ void MemoryObject::getAllocInfo(std::string &result) const {
 
 /***/
 
-ObjectState::ObjectState(const MemoryObject *mo)
+
+//ABH: Added "forTASE" arg to avoid an unnecessary malloc for some
+//use cases, ex tase_map_buf.
+ObjectState::ObjectState(const MemoryObject *mo, bool forTASE)
   : refCount(0),
     object(mo),
-    concreteStore(new uint8_t[mo->size]),
+    concreteStore(forTASE ? NULL : new uint8_t[mo->size]),
     concreteMask(0),
     flushMask(0),
     knownSymbolics(0),
@@ -114,7 +117,10 @@ ObjectState::ObjectState(const MemoryObject *mo)
         getArrayCache()->CreateArray("tmp_arr" + llvm::utostr(++id), size);
     updates = UpdateList(array, 0);
   }
-  memset(concreteStore, 0, size);
+  
+  if (!forTASE) 
+    memset(concreteStore, 0, size);
+  
 }
 
 

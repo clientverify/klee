@@ -265,7 +265,7 @@ private:
   // Given a concrete object in our [klee's] address space, add it to 
   // objects checked code can reference.
   MemoryObject *addExternalObject(ExecutionState &state, void *addr, 
-                                  unsigned size, bool isReadOnly);
+                                  unsigned size, bool isReadOnly, bool forTASE = false);
 
   void initializeGlobalObject(ExecutionState &state, ObjectState *os, 
 			      const llvm::Constant *c,
@@ -284,7 +284,7 @@ private:
                             std::vector< ref<Expr> > &arguments);
 
   ObjectState *bindObjectInState(ExecutionState &state, const MemoryObject *mo,
-                                 bool isLocal, const Array *array = 0);
+                                 bool isLocal, const Array *array = 0, bool forTASE = false);
 
   /// Resolve a pointer to the memory objects it could point to the
   /// start of, forking execution when necessary and generating errors
@@ -367,6 +367,8 @@ private:
   
   //AH: Internal helper functions--------------------------
 
+  ObjectState * tase_map_buf (uint64_t addr, size_t size);
+  
   int printAllPossibleValues(ref<Expr> input);
   
   //Tase helper to write an expr directly to an addr.  Width

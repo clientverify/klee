@@ -656,10 +656,11 @@ void Executor::initializeGlobalObject(ExecutionState &state, ObjectState *os,
 
 MemoryObject * Executor::addExternalObject(ExecutionState &state, 
                                            void *addr, unsigned size, 
-                                           bool isReadOnly) {
+                                           bool isReadOnly, bool forTASE) {
   MemoryObject *mo = memory->allocateFixed((uint64_t) (unsigned long) addr, 
                                            size, 0);
-  ObjectState *os = bindObjectInState(state, mo, false);
+
+  ObjectState *os = bindObjectInState(state, mo, false, NULL, forTASE);
   
   //printf("Mapping external buf: mo->address is 0x%lx, size is 0x%x \n", mo->address, size);
   os->concreteStore = (uint8_t *) mo->address;
@@ -3072,8 +3073,9 @@ ref<Expr> Executor::replaceReadWithSymbolic(ExecutionState &state,
 ObjectState *Executor::bindObjectInState(ExecutionState &state, 
                                          const MemoryObject *mo,
                                          bool isLocal,
-                                         const Array *array) {
-  ObjectState *os = array ? new ObjectState(mo, array) : new ObjectState(mo);
+                                         const Array *array,
+					 bool forTASE ) {
+  ObjectState *os = array ? new ObjectState(mo, array) : new ObjectState(mo, forTASE);
   state.addressSpace.bindObject(mo, os);
 
   // Its possible that multiple bindings of the same mo in the state
@@ -3916,6 +3918,17 @@ ref<Expr> Executor::tase_helper_read (uint64_t addr, uint8_t byteWidth) {
   return returnVal;
 }
 
+
+//Todo -- make this play nice with our alignment requirements
+ObjectState * Executor::tase_map_buf(uint64_t addr, size_t size) {
+  MemoryObject * MOres = addExternalObject(*GlobalExecutionStatePtr, (void *) addr, size, false, true);
+  const ObjectState * OSConst = GlobalExecutionStatePtr->addressSpace.findObject(MOres);
+  ObjectState * OSres = GlobalExecutionStatePtr->addressSpace.getWriteable(MOres, OSConst);
+  OSres->concreteStore = (uint8_t *) addr;
+
+  return OSres;
+}
+
 //Todo: See if we can make this faster with the poison checking scheme.
 //tase_helper_write: Helper function similar to tase_helper_read
 //that helps us avoid rewriting the offset-lookup logic over and over.
@@ -4593,8 +4606,6 @@ int Executor::printAllPossibleValues (ref <Expr> inputExpr) {
 //use, but if not this should do the trick.  Intended to be used
 //to help us get all possible concrete values of RIP (has dependency on RIP).
 
-
-
 void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) {
 
   int maxSolutions = 2; //Completely arbitrary.  Should not be more than 2 for our use cases in TASE
@@ -4767,13 +4778,14 @@ void Executor::initializeInterpretationStructures (Function *f) {
   uint64_t stackSize = STACK_SIZE;
   
   printf("Adding structures to track target stack starting at 0x%lx with size %lu \n", stackBase, stackSize);
-  
+  tase_map_buf(stackBase, stackSize);
+  /*
   MemoryObject * stackMem = addExternalObject(*GlobalExecutionStatePtr,(void *) stackBase, stackSize, false );
   const ObjectState *stackOS = GlobalExecutionStatePtr->addressSpace.findObject(stackMem);
   ObjectState * stackOSWrite = GlobalExecutionStatePtr->addressSpace.getWriteable(stackMem,stackOS);  
   printf("Setting concrete store to point to target stack \n");
   stackOSWrite->concreteStore = (uint8_t *) stackBase;
-
+  */
   printf("Adding external object target_ctx_gregs_MO \n");
   target_ctx_gregs_MO = addExternalObject(*GlobalExecutionStatePtr, (void *) target_ctx_gregs, NGREG * GREG_SIZE, false );
   printf("target_ctx_gregs is address %lu, hex 0x%p \n", (uint64_t) target_ctx_gregs, (void *) target_ctx_gregs);
@@ -4797,12 +4809,14 @@ void Executor::initializeInterpretationStructures (Function *f) {
   
   printf("Attempting to map in .rodata section at base 0x%lx with size 0x%lx up to  0x%lx \n", (uint64_t) rodata_base_ptr, rodata_size, (uint64_t) &__GNU_EH_FRAME_HDR);
   std::cout.flush();
-    
+
+  tase_map_buf((uint64_t) rodata_base_ptr, rodata_size);
+  /*
   MemoryObject * rodataMO = addExternalObject(*GlobalExecutionStatePtr, rodata_base_ptr, rodata_size, false);
   const ObjectState * rodataOSConst = GlobalExecutionStatePtr->addressSpace.findObject(rodataMO);
   ObjectState * rodataOS = GlobalExecutionStatePtr->addressSpace.getWriteable(rodataMO,rodataOSConst);
   rodataOS->concreteStore = (uint8_t *) rodata_base_ptr;
-
+  */
   //Map in special stdin libc symbol
   MemoryObject * stdinMO = addExternalObject(*GlobalExecutionStatePtr, (void *) &stdin, 8, false);
   const ObjectState * stdinOSConst = GlobalExecutionStatePtr->addressSpace.findObject(stdinMO);
@@ -4873,12 +4887,14 @@ void Executor::initializeInterpretationStructures (Function *f) {
       continue;
     }
 
+    tase_map_buf(addrVal, sizeVal);
+    /*
     MemoryObject * GlobalVarMO = addExternalObject(*GlobalExecutionStatePtr,(void *) addrVal, sizeVal, false );
     const ObjectState * ConstGlobalVarOS = GlobalExecutionStatePtr->addressSpace.findObject(GlobalVarMO);
     ObjectState * GlobalVarOS = GlobalExecutionStatePtr->addressSpace.getWriteable(GlobalVarMO,ConstGlobalVarOS);
     //Technically I think this is redundant, with addExternalObject changed in tase. 
     GlobalVarOS->concreteStore = (uint8_t *) addrVal;
-    
+    */
   }
 
   printf("Mapping in env vars \n");
@@ -4912,11 +4928,15 @@ void Executor::initializeInterpretationStructures (Function *f) {
   
   printf("Size of envs is 0x%lx \n", envSize);
   std::cout.flush();
+
+  tase_map_buf(baseEnvAddr, envSize);
+  /*
   MemoryObject * envMO = addExternalObject(*GlobalExecutionStatePtr, (void *) baseEnvAddr, envSize, false);
   const ObjectState * envOSConst = GlobalExecutionStatePtr->addressSpace.findObject(envMO);
   ObjectState *envOS = GlobalExecutionStatePtr->addressSpace.getWriteable(envMO,envOSConst);
   envOS->concreteStore = (uint8_t *) baseEnvAddr;
-
+  */
+  
   //Add mappings for stderr and stdout
   //Todo -- remove dependency on _edata location
   printf("Mapping edata at 0x%lx \n", (uint64_t) &edata);
