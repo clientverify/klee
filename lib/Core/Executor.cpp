@@ -134,10 +134,7 @@ extern uint16_t poison_val;
 enum runType : int {INTERP_ONLY, MIXED};
 extern std::string project;
 extern enum runType exec_mode;
-extern char target_stack[STACK_SIZE +1];
 extern Module * interpModule;
-extern char * target_stack_begin_ptr;
-extern char * interp_stack_begin_ptr;
 extern klee::Interpreter * GlobalInterpreter;
 MemoryObject * target_ctx_gregs_MO;
 ObjectState * target_ctx_gregs_OS;
@@ -149,7 +146,6 @@ void printCtx(greg_t *);
 extern struct timeval taseStartTime;
 extern struct timeval targetStartTime;
 extern struct timeval targetEndTime;
-extern bool stopAtMasterSecret;
 extern  int ktest_master_secret_calls;
 extern  int ktest_start_calls;
 extern  int ktest_writesocket_calls;
@@ -162,7 +158,6 @@ extern  int ktest_RAND_pseudo_bytes_calls;
 #include <unordered_set>
 extern std::unordered_set<uint64_t> cartridge_entry_points;
 extern std::unordered_set<uint64_t> cartridges_with_flags_live;
-extern std::map<int,int> nops_and_offsets;
 void * rodata_base_ptr;
 uint64_t rodata_size;
 extern "C" void make_byte_symbolic(uint64_t addr);
@@ -172,6 +167,7 @@ uint64_t trap_off = 14;  //Offset from function address at which we trap
 
 //Debug info
 extern bool taseDebug;
+extern bool modelDebug;
 uint64_t interpCtr =0;
 uint64_t instCtr=0;
 int forkSolverCalls = 0;
@@ -195,9 +191,6 @@ double run_solver_time = 0;
 //Multipass
 extern int c_special_cmds; //Int used by cliver to disable special commands to s_client.  Made global for debugging
 extern bool UseForkedCoreSolver;
-extern bool point2oct_hack;
-extern void get_sem_lock();
-extern void release_sem_lock();
 extern void worker_exit();
 extern void multipass_reset_round();
 extern void multipass_start_round(Executor * theExecutor, bool isReplay);
@@ -219,8 +212,6 @@ extern int retryMax;
 //Todo : fix these functions and remove traps
 
 extern "C" {
-  void sha1_block_data_order (SHA_CTX *c, const void *p,size_t num);
-  void sha256_block_data_order (SHA256_CTX *ctx, const void *in, size_t num);
   void RAND_add(const void * buf, int num, double entropy);
   int RAND_load_file(const char *filename, long max_bytes);
 }
@@ -271,24 +262,6 @@ extern "C" { int ktest_connect(int sockfd, const struct sockaddr *addr, socklen_
  
   
 }
-
-
-
-
-//TASE: Project-specific symbols
-//Fruitbasket 
-//TODO Be careful, as BUFFER_SIZE is a macro we're defining twice now.
-#define BUFFER_SIZE 256
-extern char message_test_buffer[BUFFER_SIZE];
-//TODO Test verification with automatic message_buf_length stuff now..
-extern uint64_t message_buf_length;
-uint64_t bytes_printed = 0;
-extern int MESSAGE_COUNT;
-extern int BASKET_SIZE;
-char basket[BUFFER_SIZE];
-ObjectState * basket_OS;
-MemoryObject * basket_MO;
-
 
 
 
@@ -3359,15 +3332,17 @@ void Executor::executeMemoryOperation(ExecutionState &state,
           ObjectState *wos = state.addressSpace.getWriteable(mo, os);
           wos->write(offset, value);
 	  wos->applyPsnOnWrite(offset,value);
+
         }          
       } else {
+	
 	ref<Expr> result = os->read(offset, type);
 	ObjectState *wos = state.addressSpace.getWriteable(mo, os);
 	wos->applyPsnOnRead(offset);
 	if (interpreterOpts.MakeConcreteSymbolic)
 	  result = replaceReadWithSymbolic(state, result);
 	
-	bindLocal(target, state, result);	
+	bindLocal(target, state, result);
       }
       
       return;
@@ -3451,7 +3426,7 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
 
   static int executeMakeSymbolicCalls = 0;  
   executeMakeSymbolicCalls++;
-
+  
   //#ifdef TASE_OPENSSL
   if (executeMakeSymbolicCalls ==1 ) {
     //Bootstrap multipass here for the very first round
@@ -3461,7 +3436,7 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
     multipass_start_round(this, false);
   }
   //#endif
-  if(taseDebug) {
+  if(modelDebug) {
     printf("Calling executeMakeSymbolic on name %s \n", name.c_str());
     std::cout.flush();
   }
@@ -3471,9 +3446,9 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
   std::cout.flush();
   
   std::string array_name = get_unique_array_name(name);
-
+  
   printf("DBG executeMakeSymbolic: Encountered unique name for %s \n", array_name.c_str());
-   std::cout.flush();
+  std::cout.flush();
   //See if we have an assignment
   const klee::Array *array = NULL;
   if (!unnamed && prevMPA.bindings.size() != 0) {
@@ -3536,9 +3511,6 @@ extern "C" void target_exit() {
 
 }
 
-extern "C" void tase_debug (char * s1, char * s2) {
-  //Void, just a testing harness
-}
 
 extern double target_start_time;
 extern double target_end_time;
@@ -4092,28 +4064,6 @@ void Executor::model_RAND_add() {
 
 }
 
-void Executor::model_tase_debug() {
-
-  char * str1 = (char *) target_ctx_gregs[GREG_RDI].u64;
-  char * str2 = (char *) target_ctx_gregs[GREG_RSI].u64;
-  printf("str 1 is %s \n", str1);
-  printf("str 2 is %s \n", str2);
-  //Totally arbitrary choice of 6 below -- just using this to debug
-  // our parsing of variadic functions with multiple args
-  for (int i = 0; i < 6; i++) {
-    printf(" byte %d is %d in buf1 \n", i, (int) str1[i]);
-    printf(" byte %d is %d in buf2 \n", i, (int) str2[i]);
-
-  }
-
-  fflush(stdout);
-  
-  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[GREG_RSP].u64);
-  target_ctx_gregs[GREG_RIP].u64 = retAddr;
-  target_ctx_gregs[GREG_RSP].u64 += 8;
-
-}
-
 static int model_malloc_calls = 0;
 
 //Look for a model for the current instruction at target_ctx_gregs[GREG_RIP].u64
@@ -4154,14 +4104,10 @@ void Executor::model_inst () {
     model___ctype_tolower_loc();
   } else if (rip == (uint64_t) &BIO_printf) {
     model_BIO_printf();
-  } /* else if (rip == (uint64_t) &BIO_snprintf) {
-    model_BIO_snprintf(); 
-    }*/ else if (rip == (uint64_t) &vfprintf) {
+  }  else if (rip == (uint64_t) &vfprintf) {
     model_vfprintf();
-    } else if (rip == (uint64_t) &sprintf) {
+  } else if (rip == (uint64_t) &sprintf) {
     model_sprintf();
-  } else if (rip == (uint64_t) &tase_debug) {
-    model_tase_debug();
   } else if (rip == (uint64_t) &OpenSSLDie) {
     model_OpenSSLDie();
   } else if (rip == (uint64_t) &shutdown) {
@@ -4169,21 +4115,7 @@ void Executor::model_inst () {
     double total_time =  target_end_time - target_start_time;  
     printf("----END RUN STATS ---- \n");
     printf("Entire time in target took roughly %f seconds \n", total_time);
-    if (measureTime) {
-      printf("Spent roughly %f seconds in interpreter \n", interpreter_time);
-      printf(" - time for malloc interpretation: %lf \n", malloc_time);
-      printf(" - time interpreting prohib functions: %lf \n", prohib_time);
-    }
-    printf("Total X86 instructions interpreted: %lu \n", interpCtr);
-    printf("Total interpreter returns: %lu \n",total_interp_returns);
-    //
-    printf("Abort_count_total: %d \n", target_ctx.abort_count_total);
-    printf("  - modeled %d \n", target_ctx.abort_count_modeled);
-    printf("  - poison %d \n", target_ctx.abort_count_poison);
-    printf("  - unknown %d \n", target_ctx.abort_count_unknown);
 
-    printf("Total calls to model_malloc            %d \n\n", model_malloc_calls);
-    printKTestCounters();
     model_shutdown();
     
   } else if (rip == (uint64_t) &time ) {
@@ -4240,11 +4172,6 @@ void Executor::model_inst () {
 
     printf("Entering ktest_master_secret model \n");
     fflush(stdout);
-    if (stopAtMasterSecret) {
-      printf("Stopping at master secret call \n");
-      std::cout.flush();
-      std::exit(EXIT_FAILURE);
-    } 
     model_ktest_master_secret();
   } else if (rip == (uint64_t)  &ktest_writesocket + trap_off || rip == (uint64_t) &ktest_writesocket) {
     model_ktest_writesocket();
@@ -4337,7 +4264,7 @@ bool isSpecialInst (uint64_t rip) {
 
 
   //#ifdef TASE_OPENSSL
-  static const uint64_t modeledFns [] = {(uint64_t)&signal, (uint64_t)&malloc, (uint64_t)&read, (uint64_t)&write, (uint64_t)&connect, (uint64_t)&select, (uint64_t)&socket, (uint64_t) &getuid, (uint64_t) &geteuid, (uint64_t) &getgid, (uint64_t) &getegid, (uint64_t) &getenv, (uint64_t) &stat, (uint64_t) &free, (uint64_t) &realloc,  (uint64_t) &RAND_add, (uint64_t) &RAND_load_file,  (uint64_t) &kTest_free, (uint64_t) &kTest_fromFile, (uint64_t) &kTest_getCurrentVersion,  (uint64_t) &kTest_isKTestFile, (uint64_t) &kTest_numBytes, (uint64_t) &kTest_toFile, (uint64_t) &ktest_RAND_bytes, (uint64_t) &ktest_RAND_pseudo_bytes, (uint64_t) &ktest_connect, (uint64_t) &ktest_finish, (uint64_t) &ktest_master_secret, (uint64_t) &ktest_raw_read_stdin, (uint64_t) &ktest_readsocket, (uint64_t) &ktest_select,  (uint64_t) &ktest_start, (uint64_t) &ktest_time, (uint64_t) &time, (uint64_t) &gmtime, (uint64_t) &gettimeofday,  (uint64_t) &ktest_writesocket, (uint64_t) &fileno, (uint64_t) &fcntl, (uint64_t) &fopen, (uint64_t) &fopen64, (uint64_t) &fclose,  (uint64_t) &fwrite, (uint64_t) &fwrite_unlocked, (uint64_t) &fflush, (uint64_t) &fread, (uint64_t) &fread_unlocked, (uint64_t) &fgets, (uint64_t) &__isoc99_sscanf, (uint64_t) &sscanf, (uint64_t) &gethostbyname, (uint64_t) &setsockopt, (uint64_t) &__ctype_tolower_loc, (uint64_t) &__ctype_b_loc, (uint64_t) &__errno_location,  (uint64_t) &BIO_printf, /* (uint64_t) &BIO_snprintf,*/ (uint64_t) &vfprintf,  (uint64_t) &sprintf, (uint64_t) &printf, (uint64_t) &tase_debug,   (uint64_t) &OpenSSLDie, (uint64_t) &shutdown , (uint64_t) &malloc_tase, (uint64_t) &realloc_tase, (uint64_t) &calloc_tase, (uint64_t) &free_tase, (uint64_t) &getpid , (uint64_t) &RAND_poll};
+  static const uint64_t modeledFns [] = {(uint64_t)&signal, (uint64_t)&malloc, (uint64_t)&read, (uint64_t)&write, (uint64_t)&connect, (uint64_t)&select, (uint64_t)&socket, (uint64_t) &getuid, (uint64_t) &geteuid, (uint64_t) &getgid, (uint64_t) &getegid, (uint64_t) &getenv, (uint64_t) &stat, (uint64_t) &free, (uint64_t) &realloc,  (uint64_t) &RAND_add, (uint64_t) &RAND_load_file,  (uint64_t) &kTest_free, (uint64_t) &kTest_fromFile, (uint64_t) &kTest_getCurrentVersion,  (uint64_t) &kTest_isKTestFile, (uint64_t) &kTest_numBytes, (uint64_t) &kTest_toFile, (uint64_t) &ktest_RAND_bytes, (uint64_t) &ktest_RAND_pseudo_bytes, (uint64_t) &ktest_connect, (uint64_t) &ktest_finish, (uint64_t) &ktest_master_secret, (uint64_t) &ktest_raw_read_stdin, (uint64_t) &ktest_readsocket, (uint64_t) &ktest_select,  (uint64_t) &ktest_start, (uint64_t) &ktest_time, (uint64_t) &time, (uint64_t) &gmtime, (uint64_t) &gettimeofday,  (uint64_t) &ktest_writesocket, (uint64_t) &fileno, (uint64_t) &fcntl, (uint64_t) &fopen, (uint64_t) &fopen64, (uint64_t) &fclose,  (uint64_t) &fwrite, (uint64_t) &fwrite_unlocked, (uint64_t) &fflush, (uint64_t) &fread, (uint64_t) &fread_unlocked, (uint64_t) &fgets, (uint64_t) &__isoc99_sscanf, (uint64_t) &sscanf, (uint64_t) &gethostbyname, (uint64_t) &setsockopt, (uint64_t) &__ctype_tolower_loc, (uint64_t) &__ctype_b_loc, (uint64_t) &__errno_location,  (uint64_t) &BIO_printf, /* (uint64_t) &BIO_snprintf,*/ (uint64_t) &vfprintf,  (uint64_t) &sprintf, (uint64_t) &printf,   (uint64_t) &OpenSSLDie, (uint64_t) &shutdown , (uint64_t) &malloc_tase, (uint64_t) &realloc_tase, (uint64_t) &calloc_tase, (uint64_t) &free_tase, (uint64_t) &getpid , (uint64_t) &RAND_poll};
   //#endif 
   
   bool isModeled = std::find(std::begin(modeledFns), std::end(modeledFns), rip) != std::end(modeledFns);
@@ -4408,51 +4335,8 @@ void Executor::printDebugInterpFooter() {
   printf("Executor has %lu states \n", this->states.size() );
   printf("Finished round %lu of interpretation. \n", interpCtr);
   printf("-------------------------------------------\n");
-
 }
 
-int Executor::isNop(uint64_t rip) {
-  
-  // Terrible math to detect jmp *tase_springboard---------------------
-  // Looking for something that would look like the following in objdump
-  // a6e35c:       ff 24 25 b8 1e a9 01    jmpq   *0x1a91eb8
-  //
-
-  if (killFlagsHack) {
-    if (instructionBeginsTransaction(rip)) {
-      if (cartridgeHasFlagsDead(rip)) {
-	if (taseDebug)
-	  printf("Killing flags \n");
-	uint64_t zero = 0;
-	ref<ConstantExpr> zeroExpr = ConstantExpr::create(zero, Expr::Int64);
-	tase_helper_write((uint64_t) &target_ctx_gregs[GREG_EFL], zeroExpr);
-      }
-    }
-  }
-  
-  uint32_t firstBytes = *( (uint32_t *) rip) &0x00FFFFFF; //Endianess
-  if (firstBytes == 0x002524ff) {
-    
-    uint8_t * bytePtr = (uint8_t *) rip;
-    bytePtr += 3;
-    uint32_t fourBytes = *((uint32_t *) bytePtr);
-    fflush(stdout);
-    if ( (uint64_t) fourBytes == ((uint64_t) &tase_springboard) || ((uint64_t) fourBytes == (uint64_t) &tase_model) ) {
-      if (taseDebug)
-	printf("Found springboard or tase_modeled jump at 0x%lx \n", target_ctx_gregs[GREG_RIP].u64);
-      return 7;
-    }
-  }
-  // ------------------------------------------ End terrible math for now
-  auto itr = nops_and_offsets.find(rip);  
-  if (itr != nops_and_offsets.end()) {
-    int offset = itr->second;
-    
-    return offset;
-  } else {
-    return 0;
-  }  
-}
 
 //Fast-path check for poison tag in buffer.
 //Todo -- double check the corner cases
@@ -4490,13 +4374,8 @@ bool tase_buf_could_be_symbolic (void * ptr, int size) {
   return false;
 }
 
-int strtoul_calls = 0;
-
-int nopCtr = 0;
 void Executor::klee_interp_internal () {
   double interpSetupStartTime = 0.0, interpRunStartTime = 0.0, interpCleanupStartTime = 0.0;
-  static int killFlagCtr = 0;
-  
   
   tase_model = (void *) &sb_modeled;
   
@@ -4622,7 +4501,9 @@ void Executor::klee_interp_internal () {
     
     if (forceNativeRet) {
       if (gprsAreConcrete() && !(exec_mode == INTERP_ONLY)) {
-	printf("Trying to return to native execution \n");
+	if (taseDebug) {
+	  printf("Trying to return to native execution \n");
+	}
 	break;
       }
     }
@@ -4724,13 +4605,7 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) 
     ref<ConstantExpr> solution;
     numSolutions++;
     printf("Looking at solution number %d in forkOnPossibleRIPValues() \n", numSolutions);
-    /*
-    printf("Total interpreter returns: %lu \n",total_interp_returns);
-    printf("Abort_count_total: %d \n", target_ctx.abort_count_total);
-    printf("  - modeled %d \n", target_ctx.abort_count_modeled);
-    printf("  - poison %d \n", target_ctx.abort_count_poison);
-    printf("  - unknown %d \n", target_ctx.abort_count_unknown);
-    */
+
     if (numSolutions > maxSolutions) {
       printf("IMPORTANT: control debug: Found too many symbolic values for next instruction after 0x%lx \n ", initRIP);
       std::cout.flush();
@@ -4777,6 +4652,7 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) 
     }
     printf("Before freopen, new string for log is %s \n", pidString.c_str());
     FILE * res1 = freopen(pidString.c_str(),"w",stdout);
+    FILE * res2 = freopen(pidString.c_str(), "w", stderr);
     reset_run_timers();
     
     printf("Resetting interp time counters for fork  %lf seconds after analysis began \n", util::getWallTime() - target_start_time );
@@ -4814,7 +4690,6 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) 
 
 	
       addConstraint(*GlobalExecutionStatePtr, notEqualsSolution);
-
 
       solver_start_time = util::getWallTime();
       success = solver->getValue(*GlobalExecutionStatePtr, inputExpr, solution);
@@ -4892,7 +4767,6 @@ void Executor::initializeInterpretationStructures (Function *f) {
   uint64_t stackSize = STACK_SIZE;
   
   printf("Adding structures to track target stack starting at 0x%lx with size %lu \n", stackBase, stackSize);
-  printf("interp stack base ptr is 0x%p \n", interp_stack_begin_ptr);
   
   MemoryObject * stackMem = addExternalObject(*GlobalExecutionStatePtr,(void *) stackBase, stackSize, false );
   const ObjectState *stackOS = GlobalExecutionStatePtr->addressSpace.findObject(stackMem);
@@ -4951,8 +4825,7 @@ void Executor::initializeInterpretationStructures (Function *f) {
   std::string varsFileLocation = "./" + project + ".vars";
 
   FILE * externalsFile = fopen (varsFileLocation.c_str(), "r+");
-  
-  
+
   if (externalsFile == NULL) {
     printf("Error reading externals file within initializeInterpretationStructures() \n");
     worker_exit();
@@ -4999,10 +4872,6 @@ void Executor::initializeInterpretationStructures (Function *f) {
       printf("Found target_ctx_gregs while mapping extern symbols \n");
       continue;
     }
-    if ((uint64_t) addrVal == (uint64_t) &basket) {
-      printf("Found basket while mapping extern symbols \n ");
-      continue;
-    }
 
     MemoryObject * GlobalVarMO = addExternalObject(*GlobalExecutionStatePtr,(void *) addrVal, sizeVal, false );
     const ObjectState * ConstGlobalVarOS = GlobalExecutionStatePtr->addressSpace.findObject(GlobalVarMO);
@@ -5027,17 +4896,6 @@ void Executor::initializeInterpretationStructures (Function *f) {
     uint32_t size = strlen(envStr);
     printf("Found env var at 0x%lx with size 0x%x \n", (uint64_t) envStr, size);
 
-    /*
-    if (size % 2 == 1)
-      size++;
-    if (size != 0) {
-      MemoryObject * envMO = addExternalObject(*GlobalExecutionStatePtr, (void *) envStr, size, false);
-      const ObjectState * envOSConst = GlobalExecutionStatePtr->addressSpace.findObject(envMO);
-      ObjectState *envOS = GlobalExecutionStatePtr->addressSpace.getWriteable(envMO,envOSConst);
-      envOS->concreteStore = (uint8_t *) envStr;
-
-    }
-    */
     envStr = *(environPtr++);
     if (envStr != NULL) {
       len = strlen(envStr);
@@ -5073,9 +4931,9 @@ void Executor::initializeInterpretationStructures (Function *f) {
   GlobalExecutionStatePtr->ptreeNode = processTree->root;
 
   bindModuleConstants(); //Moved from "run"
-  
-  printf("END OF INITIALIZEINTERPSTRUCTS:  target_ctx_gregs conc store at %lx \n",(uint64_t) &(target_ctx_gregs_OS->concreteStore[0]));
-  std::cout.flush();
+
+  fclose(externalsFile);
+ 
   
 }
 				   

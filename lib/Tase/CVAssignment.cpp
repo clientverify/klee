@@ -11,7 +11,10 @@
 #include "../Core/Executor.h"
 #include <iostream>
 
+#include "../Core/ExecutorTimerInfo.h"
 
+
+using namespace llvm;
 
 CVAssignment::CVAssignment(std::vector<const klee::Array*> &objects,
 			   std::vector< std::vector<unsigned char> > &values) {
@@ -40,29 +43,28 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
   std::vector<const klee::Array*> arrays;
   std::vector< std::vector<unsigned char> > initial_values;
 
-  printf("CV DBG 1\n");
-  fflush(stdout);
-  
+
+
+  double T0 = util::getWallTime();
   klee::findSymbolicObjects(expr, arrays);
+  double T1 = util::getWallTime();
+  printf("Time on findSymbolicObjects: %lf \n", T1 - T0);
+  
   //ABH: It needs to be the case that the write condition was added to
   //exec state's constraints before solveForBindings was called.
   //Todo:  Make this simpler and less prone to misuse.
+  T0 = util::getWallTime();
 
-  printf("CV DBG2 \n");
-  fflush(stdout);
   //ABH: Should be able to just add in the expr via cm.addConstraint ?
   //Todo: Double check
   klee::ConstraintManager cm;
   //(ExecStatePtr->constraints);
   cm.addConstraint(expr);
 
-  printf("CV DBG 3 \n");
-  fflush(stdout);
   
   klee::Query query(cm, klee::ConstantExpr::alloc(0, klee::Expr::Bool));
-
-  printf("CV DBG 4 \n");
-  fflush(stdout);
+  T1 = util::getWallTime();
+  printf("Time making query and adding expr constraint: %lf \n", T1 - T0);
 
   /*
   std::string s;
@@ -77,9 +79,12 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
   fprintf(stderr, "\n\n----------------------------------------- \n\n");
   */
   
-  
+  T0 = util::getWallTime();
   bool res = solver->getInitialValues(query, arrays, initial_values);
+  T1 = util::getWallTime();
+  printf("Time calling getInitialValues: %lf \n", T1 - T0);
 
+  
   if (!res) {
     printf("IMPORTANT: solver->getInitialValues failed in solveForBindings \n");
     fflush(stdout);
@@ -117,6 +122,8 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
   
 
   ////////////////////////////////////////////////////////////////////////
+
+  T0 = util::getWallTime();
   
   klee::ref<klee::Expr> value_disjunction
     = klee::ConstantExpr::alloc(0, klee::Expr::Bool);
@@ -136,35 +143,34 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
       value_disjunction = klee::OrExpr::create(value_disjunction, neq_expr);
     }
   }
-  printf("CV DBG5 \n");
-  fflush(stdout);
   
   // This may be a null-op how this interaction works needs to be better
   // understood
   value_disjunction = cm.simplifyExpr(value_disjunction);
-  printf("CV DBG6 \n");
-  fflush(stdout);
+  T1 = util::getWallTime();
+  printf("Time creating value disjunction  %lf \n", T1 - T0);
+  T0 = util::getWallTime(); 
   if (value_disjunction->getKind() == klee::Expr::Constant
       && cast<klee::ConstantExpr>(value_disjunction)->isFalse()) {
-    printf("CV DBG7 \n");
-    fflush(stdout);
+
     addBindings(arrays, initial_values);
-    printf("CV DBG8 \n");
-    fflush(stdout);
+
   } else {
-    printf("CV DBG9 \n");
-    fflush(stdout);
+
     cm.addConstraint(value_disjunction);
 
-    printf("CV DBG10 \n");
-    fflush(stdout);
-    
+    T1 = util::getWallTime();
+    printf("Time from value disjunction to mayBeTrue: %lf \n", T1 - T0);
     bool result;
+    
+    
+    T0 = util::getWallTime();
     solver->mayBeTrue(klee::Query(cm,
 				  klee::ConstantExpr::alloc(0, klee::Expr::Bool)), result);
+    T1 = util::getWallTime();
+    printf("Time calling mayBeTrue: %lf \n", T1 - T0);
+    T0 = util::getWallTime();
 
-    printf("CV DBG11 \n");
-    fflush(stdout);
     if (result) {
       printf("INVALID solver concretization!");
       fflush(stdout);
@@ -172,6 +178,8 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
     } else {
       //TODO Test this path
       addBindings(arrays, initial_values);
+      T1 = util::getWallTime();
+      printf("Time from mayBeTrue to CV exit:  %lf \n", T1 - T0);
     }
   }
 }

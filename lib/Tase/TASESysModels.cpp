@@ -100,7 +100,8 @@ extern enum testType test_type;
 
 extern uint64_t interpCtr;
 extern bool taseDebug;
-bool modelDebug = true;
+extern bool modelDebug;
+extern void printCtx(greg_t *);
 extern void * rodata_base_ptr;
 extern uint64_t rodata_size;
 
@@ -113,10 +114,7 @@ extern double solver_time;
 extern double interpreter_time;
 enum runType : int {INTERP_ONLY, MIXED};
 extern enum runType exec_mode;
-extern bool lockOnSolverCalls; //ABH: Made for debugging.  Take semaphore when calling solver in case it's forked.
 extern int c_special_cmds; //Int used by cliver to disable special commands to s_client.  Made global for debugging
-extern void get_sem_lock();
-extern void release_sem_lock();
 extern std::stringstream workerIDStream;
 extern void * MPAPtr;
 extern int * replayPIDPtr;
@@ -539,7 +537,7 @@ void Executor::model_ktest_writesocket() {
 	worker_exit();
       }
 
-      printf("DBG1 \n");
+
       
       //Create write condition
       klee::ref<klee::Expr> write_condition = klee::ConstantExpr::alloc(1, klee::Expr::Bool);
@@ -548,11 +546,26 @@ void Executor::model_ktest_writesocket() {
 	fflush(stderr);
 	klee::ref<klee::Expr> condition = klee::EqExpr::create(tase_helper_read((uint64_t) buf + i, 1),
 							       klee::ConstantExpr::alloc(o->bytes[i], klee::Expr::Int8));
+	if (modelDebug) {
+	  fflush(stdout);
+	  outs().flush();
+	  outs() << "Printing byte write condition " << i << "\n";
+	  
+	  fflush(stdout);
+	  condition->print(outs());
+	  fflush(stdout);
+	  outs() << "\n";
+	  fflush(stdout);
+	  outs().flush();
+	}
 	write_condition = klee::AndExpr::create(write_condition, condition);
       }
-
-      printf("DBG2 \n");
-      fflush(stdout);
+      /*
+      outs() << "Printing entire write condition ----- \n";
+      write_condition->print(outs());
+      outs() << "------------------------------------- \n";
+      outs().flush();
+      */
       //Fast path
       /*
 	if (concWrite) {
@@ -563,11 +576,10 @@ void Executor::model_ktest_writesocket() {
 	std::exit(EXIT_SUCCESS);
 	}*/
 
-      addConstraint(*GlobalExecutionStatePtr, write_condition);
+      //addConstraint(*GlobalExecutionStatePtr, write_condition); //Redundant
+      
       //Check validity of write condition
 
-      printf("DBG3 \n");
-      fflush(stdout);
       if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(write_condition)) {
 	if (CE->isFalse()) {
 	  printf("IMPORTANT: VERIFICATION ERROR: false write condition. Worker exiting from terminal path in round %d pass %d \n", roundCount, passCount);
@@ -575,19 +587,11 @@ void Executor::model_ktest_writesocket() {
 	  worker_exit();
 	}
       } else {
-	printf("DBG4 \n");
-	fflush(stdout);
 	bool result;
 	solver_start_time = util::getWallTime();
-	if (lockOnSolverCalls)
-	  get_sem_lock();
 	
 	solver->mustBeFalse(*GlobalExecutionStatePtr, write_condition, result);
 
-       
-	printf("lockOnSolverCalls is %d \n", lockOnSolverCalls);
-	if (lockOnSolverCalls)
-	  release_sem_lock();
 	solver_end_time = util::getWallTime();
 	solver_diff_time = solver_end_time - solver_start_time;	
 	printf("Elapsed solver time (multipass) is %lf at interpCtr %lu \n", solver_diff_time, interpCtr);
@@ -606,23 +610,13 @@ void Executor::model_ktest_writesocket() {
       }
 
 
-      printf("DBG 5 \n");
-      fflush(stdout);
       //Solve for multipass assignments
       CVAssignment currMPA;
       currMPA.clear();
       
       if (!isa<ConstantExpr>(write_condition)) {
 	solver_start_time = util::getWallTime();
-	if (lockOnSolverCalls)
-	  get_sem_lock();
-	printf("DBG 6 \n");
-	fflush(stdout);
 	currMPA.solveForBindings(solver->solver, write_condition,GlobalExecutionStatePtr);
-	if (lockOnSolverCalls)
-	  release_sem_lock();
-	printf("DBG 7 \n");
-	fflush(stdout);
 	solver_end_time = util::getWallTime();
 	solver_diff_time = solver_end_time - solver_start_time;
 	printf("Elapsed solver time (solver) is %lf at interpCtr %lu \n", solver_diff_time, interpCtr);
@@ -727,23 +721,12 @@ void Executor::model_ktest_writesocket() {
 //Can be read from stdin or from socket -- modeled separately to break up the code.
 void Executor::model_ktest_readsocket() {
   ktest_readsocket_calls++;
-  /*
-  if (ktest_readsocket_calls == 2) {
-    fprintf(stderr, "Setting  interp only to true \n");
-    exec_mode= INTERP_ONLY;
-    }*/
+
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(GREG_RSI * 8, Expr::Int64);
   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(GREG_RDX * 8, Expr::Int64);
 
-  //Hack to trim down size of log for debugging 01
-  //TODO: Remove
-  /*
-  if (ktest_readsocket_calls == 6) {
-    fprintf(stderr,"TEMP DBG: setting taseDebug to true \n");
-    taseDebug = true;
-  }
-  */
+
   printf("Entering model_ktest_readsocket for time %d \n", ktest_readsocket_calls);
   fflush(stdout);
   
@@ -1228,8 +1211,10 @@ void Executor::model_ktest_RAND_bytes() {
     if (enableMultipass) {
       tase_make_symbolic((uint64_t) buf, num, "rng");
        //Double check this
-      printf("After call to tase_make_symbolic for rng, raw bytes are : \n");
-      printBuf(stdout,buf, num);
+      if (modelDebug) {
+	printf("After call to tase_make_symbolic for rng, raw bytes are : \n");
+	printBuf(stdout,buf, num);
+      }
       int res = num;
       ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
       target_ctx_gregs_OS->write(GREG_RAX * 8, resExpr);
@@ -1272,9 +1257,10 @@ void Executor::model_ktest_RAND_pseudo_bytes() {
 
       tase_make_symbolic((uint64_t) buf, num, "prng");
 
-      printf("After call to tase_make_symbolic on prng, raw output in output buffer is : \n");
-      printBuf(stdout,(void *) buf, num);
-      
+      if (modelDebug) {
+	printf("After call to tase_make_symbolic on prng, raw output in output buffer is : \n");
+	printBuf(stdout,(void *) buf, num);
+      }
       //Double check this
       int res = num;
       ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
@@ -2952,23 +2938,6 @@ ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64); // SS
   }
 }
 
-//Just here for debugging perf
-void Executor::model_sha256_block_data_order() {
-  printf("Entering model_SHA256_block_data_order \n");
-  fflush(stdout);
-  forceNativeRet = true;
-  target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
-
-}
-
-//Just here for debugging perf
-void Executor::model_sha1_block_data_order() {
-  printf("Entering model_SHA1_block_data_order \n");
-  fflush(stdout);
-  forceNativeRet = true;
-  target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
-
-}
 
 //Used to restore concrete values for buffers that are
 //entirely made up of constant expressions
@@ -3090,6 +3059,8 @@ void Executor::model_SHA1_Update () {
        if (gprsAreConcrete() && !(exec_mode == INTERP_ONLY)) {
 	forceNativeRet = true;
 	target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
+
+	
       } else {
 	 printf("Register contains taint prior to prohib call: SHA1_Update \n");
 	 dont_model = true;
@@ -3409,9 +3380,20 @@ void Executor::model_AES_encrypt () {
       if (gprsAreConcrete() && !(exec_mode == INTERP_ONLY)) {
 	forceNativeRet = true;
 	target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
+	
       } else {
 	printf("Register contains taint prior to prohib call: AES_encrypt \n");
-	dont_model = true;
+	printCtx(target_ctx_gregs);
+
+	int OSTest = target_ctx_gregs_OS->isObjectEntirelyConcrete();
+	printf("isObjectEntirelyConcrete returns %d \n",OSTest);
+	int zero = 0; //Force kill rcx -- DEBUG
+	ref<ConstantExpr> zeroExpr = ConstantExpr::create((uint64_t) zero, Expr::Int64);
+	tase_helper_write((uint64_t) &target_ctx_gregs[GREG_RCX], zeroExpr);
+	forceNativeRet = true;
+	target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
+	
+	//dont_model = true;
       }
       return;
 
@@ -3958,6 +3940,7 @@ void Executor::model_EC_POINT_point2oct() {
   printf("Entering EC_POINT_point2oct at interpctr %lu \n", interpCtr);
   fflush(stdout);
 
+ 
   //#ifdef TASE_OPENSSL
   
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);

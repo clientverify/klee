@@ -588,11 +588,7 @@ void ObjectState::applyPsnOnWrite(ref<Expr> offset, ref<Expr> value) {
     case Expr::Int64: endOff = 8;
       break;
     }
-    /*
-    printf("Initially unsigned endOff is %d \n", endOff);
-    printf("Unsigned firstOff is %d \n", firstOff);
-    printf("Now perform arithmetic \n");
-    */
+
     endOff = firstOff + endOff -1;
 
     //printf("ApplyPsnOnWrite DBG: \n");
@@ -600,8 +596,6 @@ void ObjectState::applyPsnOnWrite(ref<Expr> offset, ref<Expr> value) {
     
     uint64_t firstAddr = this->getObject()->address + (uint64_t) firstOff;
     uint64_t endAddr = this->getObject()->address + (uint64_t) endOff;
-
-    //printf("firstAddr is 0x%lx, endAddr is 0x%lx \n", firstAddr, endAddr);
     
     bool concVal = false;
     
@@ -620,25 +614,50 @@ void ObjectState::applyPsnOnWrite(ref<Expr> offset, ref<Expr> value) {
 	//Fall through to "ends" case
       } else if (valWidth == Expr::Int16) {
 	if (twoByteAligned) 
-	  *(uint16_t *) firstAddr = poison_val;			
+	  *(uint16_t *) firstAddr = poison_val;
+	//If not twoByteAligned, fall through to the "ends" case
       } else if (valWidth == Expr::Int32) {
 	if (twoByteAligned) {
+	  ref <Expr> b1 = read8(firstOff);
+	  ref <Expr> b2 = read8(firstOff + 1);
+	  write8AsExpr(firstOff,b1);
+	  write8AsExpr(firstOff+1 ,b2);
 	  *(uint16_t *) firstAddr = poison_val;
+
+	  ref <Expr> b3 = read8(firstOff + 2);
+	  ref <Expr> b4 = read8(firstOff + 3);
+	  write8AsExpr(firstOff + 2, b3);
+	  write8AsExpr(firstOff + 3, b4);
 	  *((uint16_t *) firstAddr +1) = poison_val;
 	} else {
 	  uint64_t tempAddr =  firstAddr +1;
+	  ref <Expr> b2 = read8(firstOff +1);
+	  ref <Expr> b3 = read8(firstOff +2);
+	  write8AsExpr(firstOff + 1, b2);
+	  write8AsExpr(firstOff + 2, b3);
 	  *(uint16_t *) tempAddr = poison_val;
 	}
       } else if (valWidth == Expr::Int64) {
       	if (twoByteAligned) {
 	  uint16_t * tempAddr = (uint16_t *) firstAddr;
-	  for (int i = 0; i < 4; i++)
+	  for (int i = 0; i < 4; i++) {
+	    ref<Expr> b_first = read8(firstOff + 2*i);
+	    ref<Expr> b_second = read8(firstOff + 2*i + 1);
+	    write8AsExpr(firstOff + 2*i, b_first);
+	    write8AsExpr(firstOff + 2*i + 1, b_second);
 	    *(tempAddr +i) = poison_val;
+
+	  }
 	} else {
 	  uint64_t tmp = (uint64_t) firstAddr +1;
 	  uint16_t * tempAddr = (uint16_t *) tmp; 
-	  for (int i = 0; i < 3; i++)
+	  for (int i = 0; i < 3; i++){
+	    ref<Expr> b_first = read8(firstOff + 2*i + 1);
+	    ref<Expr> b_second = read8(firstOff + 2*i + 2);
+	    write8AsExpr(firstOff + 2*i + 1, b_first);
+	    write8AsExpr(firstOff + 2*i + 2, b_second);
 	    *(tempAddr +i) = poison_val;
+	  }
 	}
       } else {
 	printf("ERROR: Unknown expression size in ApplyPsnOnWrite \n");

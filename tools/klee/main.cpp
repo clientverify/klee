@@ -62,9 +62,6 @@
 //---------------------------------------------------------
 //AH: BEGINNING OF OUR ADDITIONS (not including .h files)
 
-
-
-//#include "tase/tase_constants.h"
 #include "klee/CVAssignment.h"
 #include "klee/util/ExprUtil.h"
 #include "tase/TASEControl.h"
@@ -97,10 +94,6 @@ std::unordered_set<uint64_t> cartridges_with_flags_live;
 
 std::stringstream workerIDStream;
 std::stringstream globalLogStream;
-char target_stack[STACK_SIZE + 1];
-char interp_stack[STACK_SIZE + 1];
-char * target_stack_begin_ptr = &target_stack[STACK_SIZE];
-char * interp_stack_begin_ptr = &interp_stack[STACK_SIZE];
 klee::Interpreter * GlobalInterpreter;
 llvm::Module * interpModule;
 
@@ -111,11 +104,10 @@ extern char ktestPath[100];
 
 bool skipFree = false;
 bool KTestReplay;
-bool stopAtMasterSecret = false;
 bool enableMultipass = false;
 bool killFlagsHack = false;
-bool lockOnSolverCalls = false;
-bool taseDebug =true;
+bool modelDebug = false;
+bool taseDebug =false;
 bool measureTime =true;
 bool dontFork =false;
 bool workerSelfTerminate=true;
@@ -124,26 +116,18 @@ enum runType exec_mode;
 enum testType : int {EXPLORATION, VERIFICATION};
 enum testType test_type;
 std::string project;
-bool disableSpringboard = false;
+bool useCMS4 = true;
+
 bool enableBounceback = false;
 bool OpenSSLTest = true;
-bool skipNops = true;
+
 bool dropS2C = false;
 int retryMax = 2;
 
-int worker2managerFD [2];
-multipassRecord multipassInfo;
-//Todo: Later, generalize for when we have more than 8 cores available.
-int max_scheduled_workers = 8;
-std::vector<int> scheduledWorkers;
-int max_workers = 200;
-std::vector<int> unscheduledWorkers;
 
 extern int * target_started_ptr;
 int masterPID;
 int max_depth;
-
-std::map<int,int> nops_and_offsets;
 
 #ifdef TASE_BIGNUM
 extern int symIndex;
@@ -151,24 +135,7 @@ extern int numEntries;
 #endif
 extern void  exit_tase();
 
-FILE * bignumLog;
-
 void transferToTarget() {
-
-  //Optimization
-
-  if (skipNops) {
-    FILE * nopsAndOffsets = fopen( (project + ".interp.nop" ).c_str() , "r+");
-    int key;
-    int val;    
-    printf("Trying to scan in nops and offsets \n");
-    fflush(stdout);
-    while (fscanf (nopsAndOffsets, "%d %d\n", &key, &val) ==2 ) {
-      nops_and_offsets.insert(std::make_pair(key,val));
-    }
-  }
-  printf("Found %d items in nops_and_offsets after parsing \n", nops_and_offsets.size());
-  fflush(stdout);
 
   
   bool forkedSolver = UseForkedCoreSolver;
@@ -193,13 +160,10 @@ void transferToTarget() {
     strncpy(ktestPath, ktestPathName, strlen(ktestPathName));
   }
   //#endif
-  fflush(stdout);
-  printf("DBG0 \n");
-  fflush(stdout);
+
   
   if (exec_mode == INTERP_ONLY) {
     memset(&target_ctx, 0, sizeof(target_ctx));
-    printf("DBG1 \n");
     
     target_ctx.target_exit_addr = (uintptr_t)&exit_tase_shim;
     target_ctx.sentinel[0] = CTX_STACK_SENTINEL;
@@ -221,12 +185,10 @@ void transferToTarget() {
   } else {
     
     //Make sure you change tase_exit to exit_tase
-    int sbArg;
-    if (disableSpringboard == false) {
-      sbArg = 1;
-    } else {
-      sbArg = 0;
-    }
+
+    
+    int sbArg = 1;
+    
     printf("sbArg is %d \n", sbArg);
     fflush(stdout);
     enter_tase(&begin_target_inner, sbArg);
@@ -252,10 +214,6 @@ void transferToTarget() {
 //AH:  main_original_vanilla() points to the original version of main from vanilla klee.  Not ideal but it works. 
 void main_original_vanilla();
 
-//Fruit basket specific code.
-//TODO: Get rid of this third pound define for buffer size!
-char message_test_buffer [BUFFER_SIZE];
-uint64_t message_buf_length;
 
 //AH: From the tsgx folks.
 //TO-DO: Make sure this is properly cited and recognized.
@@ -268,6 +226,7 @@ extern void * _end;
 extern char  __executable_start;
 extern char  __etext;
 
+/*
 void tsx_init()
 {
   //uint64_t *addr = &tsx_init;
@@ -330,7 +289,7 @@ void tsx_init()
   printf("malloc addr: %lx\n", (uint64_t)ptr);
 #endif
 }
-
+*/
 
 //AH: END OF OUR ADDITIONS
 //-----------------------------------
@@ -363,17 +322,10 @@ namespace {
   cl::opt<bool>
   skipFreeArg("skipFree", cl::desc("Debugging option to skip frees"), cl::init(false));
 
-  cl::opt<bool>
-  skipNopsArg("skipNops", cl::desc("Skip nops or instrumentation instructions when debugging"), cl::init(true));
-
   
   cl::opt<bool>
   killFlagsHackArg("killFlagsHack", cl::desc("Option to kill flags after each jump to the springboard"), cl::init(false));
-
-  cl::opt<bool> lockOnSolverCallArg("lockOnSolverCalls", cl::desc("TASE debugging -- obtain semaphore around solver calls \n"), cl::init(false));
   
-  cl::opt<bool>
-  stopAtMasterSecretArg("stopAtMasterSecret", cl::desc("TASE debugging -- stop at master secret generation \n"), cl::init(false));
   
   cl::opt<bool>
   taseManagerArg("taseManager", cl::desc("Fork off a manager process in TASE.  Expect a fork bomb if false."), cl::init(false));
@@ -381,6 +333,9 @@ namespace {
   cl::opt<bool>
   taseDebugArg("taseDebug", cl::desc("Verbose logging in TASE"), cl::init(false));
 
+  cl::opt<bool>
+  modelDebugArg("modelDebug", cl::desc("Logging for models in TASE"), cl::init(false));
+  
   cl::opt<bool>
   dontForkArg("dontFork", cl::desc("Disable forking in TASE for debugging"), cl::init(false));
 
@@ -397,12 +352,14 @@ namespace {
   cl::opt<bool>
   measureTimeArg("measureTime", cl::desc("Time interpretation rounds in TASE for debugging"), cl::init(true));
 
+  cl::opt<bool>
+  useCMS4Arg("useCMS4", cl::desc("Use cryptominisat4 instead of minisat as the SAT backend for STP "), cl::init(true));
   
   cl::opt<std::string>
   projectArg("project", cl::desc("Name of project in TASE"), cl::init("-"));
 
   cl::opt<bool>
-  disableSpringboardArg("disableSpringboard", cl::desc("Enable or noop the sprinfboard"), cl::init(false));
+  disableSpringboardArg("disableSpringboard", cl::desc("Enable or noop the springboard"), cl::init(false));
 
   cl::opt<int>
   retryMaxArg("retryMax", cl::desc("Number of times to try and bounceback to native execution if abort status allows it "), cl::init(2));
@@ -1469,7 +1426,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 }
 #endif
 
- void printTASEArgs(runType rt, testType tt, bool fm, bool dbg, std::string projName, bool df, bool disableSB,  bool stop, bool killFlags, bool dontFree, bool lckOnSolverCall, bool measureTimeVal, bool enableBouncebackVal, bool skpNops, bool selfTerm, bool dS2C, int rm) {
+ void printTASEArgs(runType rt, testType tt, bool fm, bool dbg, std::string projName, bool df, bool killFlags, bool dontFree,  bool measureTimeVal, bool enableBouncebackVal, bool selfTerm, bool dS2C, int rm, bool mdlDbg, bool cms4) {
 
    printf("TASE args... \n");
    if (rt == MIXED) 
@@ -1490,18 +1447,16 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    
    printf("\t taseManager: %d \n", fm);
    printf("\t taseDebug output: %d \n", dbg);
+   printf("\t modelDebug output: %d \n", mdlDbg);
    printf("\t dontFork  output: %d \n", df);
-   printf("\t disableSB output: %d \n", disableSB);
-   printf("\t stopAtMasterSecret output : %d \n", stop);
    printf("\t killFlagsHack      output : %d \n", killFlags);
    printf("\t skipFree           output : %d \n", dontFree);
-   printf("\t lockOnSolverCalls   output : %d \n", lckOnSolverCall);
    printf("\t measureTime         output : %d \n", measureTimeVal);
    printf("\t enableBounceback     output : %d \n", enableBouncebackVal);
-   printf("\t skipNops             output : %d \n", skpNops);
    printf("\t workerSelfTerminate  output : %d \n", selfTerm);
    printf("\t dropS2C              output : %d \n", dS2C);
    printf("\t retryMax             output : %d \n", rm);
+   printf("\t useCMS4              output : %d \n", cms4);
  }
 
  
@@ -1520,16 +1475,14 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    test_type = testTypeArg;
    taseManager = taseManagerArg;
    taseDebug = taseDebugArg;
+   modelDebug = modelDebugArg;
+   useCMS4 = useCMS4Arg;
    dontFork = dontForkArg;
    project = projectArg;
-   disableSpringboard = disableSpringboardArg;
-   stopAtMasterSecret = stopAtMasterSecretArg;
    killFlagsHack = killFlagsHackArg;
    skipFree = skipFreeArg;
-   lockOnSolverCalls = lockOnSolverCallArg;
    measureTime = measureTimeArg;
    enableBounceback = enableBouncebackArg;
-   skipNops = skipNopsArg;
    workerSelfTerminate = workerSelfTerminateArg;
    dropS2C = dropS2CArg;
    if (test_type ==VERIFICATION) {
@@ -1538,7 +1491,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    }
    retryMax = retryMaxArg;
    
-   printTASEArgs(exec_mode, test_type, taseManager, taseDebug, project, dontFork, disableSpringboard,  stopAtMasterSecret, killFlagsHack, skipFree, lockOnSolverCalls, measureTime, enableBounceback, skipNops, workerSelfTerminate, dropS2C, retryMax);
+   printTASEArgs(exec_mode, test_type, taseManager, taseDebug, project, dontFork, killFlagsHack, skipFree,  measureTime, enableBounceback,  workerSelfTerminate, dropS2C, retryMax, modelDebug, useCMS4);
 
 #ifdef TASE_BIGNUM
    symIndex = symIndexArg;
@@ -1554,8 +1507,6 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    std::string IDString;
    IDString = workerIDStream.str();
    freopen(IDString.c_str(),"w", stdout);
-
-   bignumLog = fopen("bignumLog.txt", "w");
    
    // Load the bytecode...
    std::string errorMsg;
@@ -1660,7 +1611,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      uint16_t body_size = tase_global_records[i].body_size;
      fprintf(cartridgeLog, "%d %d\n", head + head_size, head + head_size + body_size);
    }
-
+   fclose(cartridgeLog);
    
    //Load list of cartridges for which flags is live-in.
    int numLiveBlocks = 0;
@@ -1680,15 +1631,14 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 
      //std::exit(EXIT_FAILURE); //ABH added this until we can comment sig back in.
      //signal(SIGCHLD,SIG_IGN);
-    
-     
+         
      initManagerStructures();
      
    }
    
-   printf("Calling tsx_init to map in pages \n");
-   std::cout.flush();
-   tsx_init();
+   //printf("Calling tsx_init to map in pages \n");
+   //std::cout.flush();
+   //tsx_init();
    int pid;
 
    target_start_time = util::getWallTime();  //Moved here to initialize for both manager and workers

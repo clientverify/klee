@@ -28,6 +28,8 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 
+extern bool useCMS4;  //Added for TASE
+
 namespace {
 
 llvm::cl::opt<bool> DebugDumpSTPQueries(
@@ -99,6 +101,12 @@ STPSolverImpl::STPSolverImpl(bool _useForkedSTP, bool _optimizeDivides)
   // the pointers using vc_DeleteExpr.  By setting EXPRDELETE to 0
   // we restore the old behaviour.
   vc_setInterfaceFlags(vc, EXPRDELETE, 0);
+
+  //ABH Added to enable cryptominisat4
+  if (useCMS4) {
+    printf("Attempting to create STP solver with cryptominisat back end \n");
+    vc_setInterfaceFlags(vc, CMS4, 0);
+  }
 
   make_division_total(vc);
 
