@@ -10,6 +10,8 @@
 #ifndef KLEE_EXECUTIONSTATE_H
 #define KLEE_EXECUTIONSTATE_H
 
+#include "../../lib/Core/Empirical_Mem_Mod.h"
+
 #include "klee/Constraints.h"
 #include "klee/Expr.h"
 #include "klee/Internal/ADT/TreeStream.h"
@@ -74,6 +76,9 @@ private:
   std::map<std::string, std::string> fnAliases;
 
 public:
+  // Record modified memory for a specific function to skip
+  Empirical_Mem_Mod record_mem_mod;
+
   // Execution - Control Flow specific
 
   /// @brief Pointer to instruction to be executed after the current

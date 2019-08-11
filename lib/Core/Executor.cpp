@@ -1370,8 +1370,9 @@ void Executor::executeCall(ExecutionState &state,
       // size. This happens to work fir x86-32 and x86-64, however.
       Expr::Width WordSize = Context::get().getPointerWidth();
       if (WordSize == Expr::Int32) {
+        assert(ki != nullptr);
         executeMemoryOperation(state, true, arguments[0], 
-                               sf.varargs->getBaseExpr(), 0);
+                               sf.varargs->getBaseExpr(), ki);
       } else {
         assert(WordSize == Expr::Int64 && "Unknown word size!");
 
@@ -1541,6 +1542,7 @@ void Executor::transferToBasicBlock(BasicBlock *dst, BasicBlock *src,
 
 void Executor::printFileLine(ExecutionState &state, KInstruction *ki,
                              llvm::raw_ostream &debugFile) {
+  assert(ki != nullptr);
   const InstructionInfo &ii = *ki->info;
   if (ii.file != "")
     debugFile << "     " << ii.file << ":" << ii.line << ":";
@@ -1607,6 +1609,11 @@ static inline const llvm::fltSemantics * fpWidthToSemantics(unsigned width) {
   }
 }
 
+//Marie: need to add commandline option for this,
+//and put in a more accessible place:
+const std::string skip_function = "skip_me";
+
+
 void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   Instruction *i = ki->inst;
   switch (i->getOpcode()) {
@@ -1626,6 +1633,14 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       assert(!caller && "caller set on initial stack frame");
       terminateStateOnExit(state);
     } else {
+      //Marie: this is where we want to turn off recording
+      if(state.record_mem_mod.recording()) {
+        StackFrame* sf = &state.stack.back();
+        assert(std::string(sf->kf->function->getName().data()) ==
+                std::string(i->getParent()->getParent()->getName().data()));
+        state.record_mem_mod.end_recording();
+      }
+
       state.popFrame();
 
       if (statsTracker)
@@ -1926,6 +1941,16 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       }
 
       executeCall(state, ki, f, arguments);
+      ExecutionState* record_state = &state;
+      if(std::string(f->getName().data()) == skip_function
+          && !record_state->record_mem_mod.recording()){
+        //assert that sf's function is the function we're
+        //skipping
+        StackFrame* sf = &record_state->stack.back();
+        record_state->record_mem_mod.start_recording(sf);
+        assert(std::string(sf->kf->function->getName().data()) ==
+            std::string(f->getName().data()));
+      }
     } else {
       ref<Expr> v = eval(ki, 0, state).value;
 
@@ -1953,6 +1978,17 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
                                 f->getName().data());
 
             executeCall(*res.first, ki, f, arguments);
+            ExecutionState* record_state = res.first;
+            if(std::string(f->getName().data()) == skip_function
+                && !record_state->record_mem_mod.recording()){
+              //assert that sf's function is the function we're
+              //skipping
+              StackFrame* sf = &record_state->stack.back();
+              record_state->record_mem_mod.start_recording(sf);
+              assert(std::string(sf->kf->function->getName().data()) ==
+                std::string(f->getName().data()));
+            }
+
           } else {
             if (!hasInvalid) {
               terminateStateOnExecError(state, "invalid function pointer");
@@ -2210,7 +2246,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   case Instruction::Store: {
     ref<Expr> base = eval(ki, 1, state).value;
     ref<Expr> value = eval(ki, 0, state).value;
-    executeMemoryOperation(state, true, base, value, 0);
+    //Added ki to list of arguments. Was 0 before.
+    executeMemoryOperation(state, true, base, value, ki);
     break;
   }
 
@@ -3530,6 +3567,8 @@ void Executor::executeMemoryOperation(ExecutionState &state,
                                 ReadOnly);
         } else {
           ObjectState *wos = state.addressSpace.getWriteable(mo, os);
+          if(isWrite && !mo->isLocal && state.record_mem_mod.recording())
+            state.record_mem_mod.add_mod_mo(mo, target);
           wos->write(offset, value);
         }          
       } else {
@@ -3573,6 +3612,8 @@ void Executor::executeMemoryOperation(ExecutionState &state,
                                 ReadOnly);
         } else {
           ObjectState *wos = bound->addressSpace.getWriteable(mo, os);
+          if(isWrite && !mo->isLocal && state.record_mem_mod.recording())
+            state.record_mem_mod.add_mod_mo(mo, target);
           wos->write(mo->getOffsetExpr(address), value);
         }
       } else {

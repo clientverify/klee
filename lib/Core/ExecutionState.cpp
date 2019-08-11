@@ -67,6 +67,7 @@ StackFrame::~StackFrame() {
 /***/
 
 ExecutionState::ExecutionState(KFunction *kf) :
+    record_mem_mod(),
     pc(kf->instructions),
     prevPC(pc),
 
@@ -95,6 +96,7 @@ ExecutionState::~ExecutionState() {
 }
 
 ExecutionState::ExecutionState(const ExecutionState& state):
+    record_mem_mod(state.record_mem_mod),
     fnAliases(state.fnAliases),
     pc(state.pc),
     prevPC(state.prevPC),
