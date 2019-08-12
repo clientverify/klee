@@ -25,7 +25,7 @@ bool MemoryData::mod_contains(const MemoryObject* mo) {
 
 bool MemoryData::mod_insert(const MemoryObject* mo, const KInstruction* ki_modified) {
   assert(mo != nullptr && ki_modified != nullptr);
-  assert(!mo->isLocal);
+  assert(mo->record_me);
   //Already in map.
   if(mod_contains(mo))
     return false;

@@ -51,6 +51,7 @@ public:
   bool isLocal;
   mutable bool isGlobal;
   bool isFixed;
+  bool record_me;
 
   /// true if created by us.
   bool fake_object;
@@ -98,6 +99,7 @@ public:
       isLocal(_isLocal),
       isGlobal(_isGlobal),
       isFixed(_isFixed),
+      record_me(true),
       fake_object(false),
       isUserSpecified(false),
       parent(_parent), 
@@ -105,6 +107,11 @@ public:
   }
 
   ~MemoryObject();
+
+  void dont_record_me(){
+    assert(record_me);
+    record_me = false;
+  }
 
   /// Get an identifying string for this allocation.
   void getAllocInfo(std::string &result) const;

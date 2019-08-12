@@ -3359,6 +3359,9 @@ void Executor::executeAlloc(ExecutionState &state,
       bindLocal(target, state, 
                 ConstantExpr::alloc(0, Context::get().getPointerWidth()));
     } else {
+      if(state.record_mem_mod.recording() && isLocal){
+        mo->dont_record_me();
+      }
       ObjectState *os = bindObjectInState(state, mo, isLocal);
       if (zeroMemory) {
         os->initializeToZero();
@@ -3567,7 +3570,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
                                 ReadOnly);
         } else {
           ObjectState *wos = state.addressSpace.getWriteable(mo, os);
-          if(isWrite && !mo->isLocal && state.record_mem_mod.recording())
+          if(isWrite && mo->record_me && state.record_mem_mod.recording())
             state.record_mem_mod.add_mod_mo(mo, target);
           wos->write(offset, value);
         }          
@@ -3612,7 +3615,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
                                 ReadOnly);
         } else {
           ObjectState *wos = bound->addressSpace.getWriteable(mo, os);
-          if(isWrite && !mo->isLocal && state.record_mem_mod.recording())
+          if(isWrite && mo->record_me && state.record_mem_mod.recording())
             state.record_mem_mod.add_mod_mo(mo, target);
           wos->write(mo->getOffsetExpr(address), value);
         }
