@@ -12,7 +12,11 @@
 #include <iostream>
 
 #include "../Core/ExecutorTimerInfo.h"
+extern void worker_exit();
+extern std::stringstream worker_ID_stream;
+extern std::string prev_worker_ID;
 
+int ID_string_size = 384;
 
 using namespace llvm;
 
@@ -57,8 +61,7 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
 
   //ABH: Should be able to just add in the expr via cm.addConstraint ?
   //Todo: Double check
-  klee::ConstraintManager cm;
-  //(ExecStatePtr->constraints);
+  klee::ConstraintManager cm(ExecStatePtr->constraints);
   cm.addConstraint(expr);
 
   
@@ -86,8 +89,9 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
 
   
   if (!res) {
-    printf("IMPORTANT: solver->getInitialValues failed in solveForBindings \n");
+    printf("IMPORTANT: solver->getInitialValues failed in solveForBindings \n");    
     fflush(stdout);
+    worker_exit();
   }
 
   //////////////////////////////////////////////////////////////////
@@ -238,8 +242,8 @@ void CVAssignment::printAllAssignments(FILE * fp) {
 }
 //Take a list of constraints and their values, and a buffer.  Return size of serialization.
 
-// |Header (magic)|| Header (# records) ||Rec1 name size X ||Rec1 val size Y||  Rec1 name   ||  Rec1 data   |
-// |123 (uint8_t) ||<-    uint16_t    ->||<-   uint16_t -> ||<-  uint16_t ->||<- X  bytes ->||<- Y  bytes ->|
+// |Header (magic)|| Header (# records) ||Prev worker log (string) ||Rec1 name size X ||Rec1 val size Y||  Rec1 name   ||  Rec1 data   |
+// |123 (uint8_t) ||<-    uint16_t    ->||<-ID_string_size bytes ->||<-   uint16_t -> ||<-  uint16_t ->||<- X  bytes ->||<- Y  bytes ->|
 
 //And so on for all records until..
 //| Footer (magic) |
@@ -250,7 +254,7 @@ bool debugSerial = false;
 
 void CVAssignment::serializeAssignments(void * buf, int bufSize) {
 
-
+  printf("DBG3 -- worker ID is %s \n",worker_ID_stream.str().c_str());
   std::vector<const klee::Array *> objects;
   std::vector<std::vector<unsigned char> > values;
 
@@ -281,6 +285,24 @@ void CVAssignment::serializeAssignments(void * buf, int bufSize) {
   *(uint16_t *) itrPtr = assignments;
   itrPtr += 2;
 
+  //Get prev worker ID for logging
+  
+  std::string tmp = worker_ID_stream.str();  //Non-intuitive cpp behavior necessitates the tmp here
+  
+  const  char * src = tmp.c_str();
+  if (strlen(src) > ID_string_size -1) {
+    printf("ERROR: worker ID string is too long \n");
+    fflush(stdout);
+    std::exit(EXIT_FAILURE);
+  }
+  printf("Serializing worker id as %s \n", src);
+  printf("String length is %d \n", strlen(src));
+  
+  strncpy((char *) itrPtr, src , ID_string_size -1); 
+
+  itrPtr += ID_string_size;
+  //Assignments
+  
   std::vector< std::vector<unsigned char> >::iterator valIt =
     values.begin();
   for (std::vector<const klee::Array*>::iterator it = objects.begin(),
@@ -385,6 +407,12 @@ void deserializeAssignments ( void * buf, int bufSize, Executor * exec,  CVAssig
     std::cout.flush();
   }
 
+  char nameTmpBuf  [ID_string_size];
+  strncpy (nameTmpBuf , (char *) itrPtr, ID_string_size -1);
+  prev_worker_ID = nameTmpBuf;
+  printf("Debug -- deserialized prev worker ID name %s \n", prev_worker_ID.c_str());
+  itrPtr += ID_string_size;
+  
   //Iterate through records
   std::vector<const klee::Array*> objects;
   std::vector< std::vector<unsigned char> > values;

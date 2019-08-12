@@ -10,7 +10,6 @@ klee_add_component(kleeTase
   CVAssignment.cpp
   TASEControl.cpp
   TASESysModels.cpp
-  TASECryptoModels.cpp
 )
 
 target_link_libraries(kleeTase PRIVATE ${ZLIB_LIBRARIES})

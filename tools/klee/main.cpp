@@ -69,12 +69,10 @@
 #include <sys/time.h>
 #include <iostream>
 #include <unordered_set>
-struct timeval taseStartTime;
-struct timeval targetStartTime;
-struct timeval targetEndTime;
 
 double target_start_time;
 double target_end_time;
+extern double run_start_time;
 #include "../../../test/tase/include/tase/tase.h"
 #include "../../../test/tase/include/tase/tase_interp.h"
 extern target_ctx_t target_ctx;
@@ -92,8 +90,8 @@ std::unordered_set<uint64_t> cartridge_entry_points;
 std::unordered_set<uint64_t> cartridges_with_flags_live;
 
 
-std::stringstream workerIDStream;
-std::stringstream globalLogStream;
+std::stringstream worker_ID_stream;
+std::string prev_worker_ID;
 klee::Interpreter * GlobalInterpreter;
 llvm::Module * interpModule;
 
@@ -102,6 +100,7 @@ extern char * ktestPathPtr;
 extern char ktestMode[20];
 extern char ktestPath[100];
 
+bool tasePreProcess = false;
 bool skipFree = false;
 bool KTestReplay;
 bool enableMultipass = false;
@@ -117,6 +116,7 @@ enum testType : int {EXPLORATION, VERIFICATION};
 enum testType test_type;
 std::string project;
 bool useCMS4 = true;
+bool UseLegacyIndependentSolver = false;
 
 bool enableBounceback = false;
 bool OpenSSLTest = true;
@@ -127,7 +127,6 @@ int retryMax = 2;
 
 extern int * target_started_ptr;
 int masterPID;
-int max_depth;
 
 #ifdef TASE_BIGNUM
 extern int symIndex;
@@ -135,12 +134,7 @@ extern int numEntries;
 #endif
 extern void  exit_tase();
 
-void transferToTarget() {
-
-  
-  bool forkedSolver = UseForkedCoreSolver;
-  printf("During transferToTarget, UseForkedCoreSolver is %d \n", forkedSolver);
-  fflush(stdout);
+void __attribute__ ((noreturn)) transferToTarget()  {
 
   //#ifdef TASE_OPENSSL
   if (OpenSSLTest) {
@@ -161,6 +155,7 @@ void transferToTarget() {
   }
   //#endif
 
+  run_start_time = util::getWallTime();
   
   if (exec_mode == INTERP_ONLY) {
     memset(&target_ctx, 0, sizeof(target_ctx));
@@ -215,82 +210,6 @@ void transferToTarget() {
 void main_original_vanilla();
 
 
-//AH: From the tsgx folks.
-//TO-DO: Make sure this is properly cited and recognized.
-//Todo:  I'm not actually sure we're mapping in everything.
-//Believe we need to hit the initialized global vars in .DATA
-//too.
-extern void * __bss_start;
-extern void * _end;
-//Start and end of text section
-extern char  __executable_start;
-extern char  __etext;
-
-/*
-void tsx_init()
-{
-  //uint64_t *addr = &tsx_init;
-  uint64_t addr = (uint64_t)tsx_init & 0xfffffffffff00000;
-  uint64_t bcc_start, bcc_end;
-  unsigned access;
-  int i;
-  
-  //Hitting code pages---------------------------
-
-  uint64_t start_page_address = ((uint64_t) (&__executable_start))  & 0xfffffffffffff000;
-  uint64_t end_page_address = ((uint64_t) (&__etext) ) & 0xfffffffffffff000;
-  printf("__executable_start at 0x%lx \n", start_page_address);
-  printf("__etext at 0x%lx \n", end_page_address);
-  uint64_t numCodePages = ( end_page_address - start_page_address)/4096  +1;
-  uint64_t garbageVal = 1234;
-  uint64_t check_page_address =  start_page_address; 
-  printf("Found %lu code pages from __executable_start to __etext \n",numCodePages);  
-  for (uint64_t i = 0; i < numCodePages; i++) {
-    //Read a value to make sure the page is mapped in.
-    //printf("Checking page at hex %lx \n", check_page_address);
-    garbageVal = * ((uint64_t *)check_page_address);
-    check_page_address += 4096;
-  }
-  //Don't want the compiler to eliminate the loop above
-  //as dead code
-  printf(" Garbage is %lu \n",garbageVal);
-  //-----------------------------------------------  
-    
-  //AH I've removed the assignment to 1 below for the stack and bss
-  //sections.
-
-  //Hitting bss pages---------------------------------------
-  bcc_start = (uint64_t)&__bss_start & 0xfffffffffffff000;
-  bcc_end = (uint64_t)&_end & 0xfffffffffffff000;
-  //printf("bcc addr: %lx\n", bcc_start);
-  // Uninitialized data pages
-  while (bcc_start <= bcc_end) {
-    access = *(uint64_t *)(bcc_start);
-    //*(uint64_t *)(bcc_start) = 1;
-    bcc_start += 4096;
-  }
-  //-------------------------------------------------------
-  
-  // Hitting stack pages----------------------------------
-  //AH: Actually, I don't think this does anything anymore.
-  //We really only care about the target stack anyway.
-  addr = (uint64_t)&target_stack;
-  //printf("stack addr: %lx\n", addr);
-  for (i = 0; i < STACK_SIZE; i += 1) {
-    access = *(uint64_t *)(addr + i);
-  }
-  //------------------------------------------------------
-#if 0 // Seems we do not need to touch heap memory.
-  void *heap_base = get_heap_base();
-  printf("heap addr: %lx\n", (uint64_t)heap_base);
-  
-  void *ptr;
-  ptr = malloc(8192);
-  printf("malloc addr: %lx\n", (uint64_t)ptr);
-#endif
-}
-*/
-
 //AH: END OF OUR ADDITIONS
 //-----------------------------------
 
@@ -329,6 +248,9 @@ namespace {
   
   cl::opt<bool>
   taseManagerArg("taseManager", cl::desc("Fork off a manager process in TASE.  Expect a fork bomb if false."), cl::init(false));
+
+  cl::opt<bool>
+  tasePreProcessArg("tasePreProcess", cl::desc("Set to TRUE to run preprocessing in TASE and generate IR with code located in the executable"), cl::init(false));
   
   cl::opt<bool>
   taseDebugArg("taseDebug", cl::desc("Verbose logging in TASE"), cl::init(false));
@@ -342,6 +264,9 @@ namespace {
    cl::opt<bool>
    workerSelfTerminateArg("workerSelfTerminate", cl::desc("Workers will exit if they see they're in an earlier round"), cl::init(true));
 
+
+  cl::opt<bool>
+  useLegacyIndependentSolverArg("use-legacy-independent-solver", cl::desc("Per cliver, pass through getInitialValue call in the independent solver without aggressive optimization"), cl::init(false));
   
   cl::opt<bool>
   enableBouncebackArg("enableBounceback", cl::desc("Try to bounce back to native execution in TASE depending on abort code"), cl::init(false));
@@ -1254,6 +1179,7 @@ static void interrupt_handle_watchdog() {
 // normal "nice" watchdog termination process. We try to request the
 // interpreter to halt using this mechanism as a last resort to save
 // the state data before going ahead and killing it.
+/*
 static void halt_via_gdb(int pid) {
   char buffer[256];
   sprintf(buffer,
@@ -1264,7 +1190,7 @@ static void halt_via_gdb(int pid) {
   if (system(buffer)==-1)
     perror("system");
 }
-
+*/
 // returns the end of the string put in buf
 static char *format_tdiff(char *buf, long seconds)
 {
@@ -1426,44 +1352,68 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 }
 #endif
 
- void printTASEArgs(runType rt, testType tt, bool fm, bool dbg, std::string projName, bool df, bool killFlags, bool dontFree,  bool measureTimeVal, bool enableBouncebackVal, bool selfTerm, bool dS2C, int rm, bool mdlDbg, bool cms4) {
+ void printTASEArgs() {
 
    printf("TASE args... \n");
-   if (rt == MIXED) 
+   if (exec_mode == MIXED) 
      printf("\t Running MIXED mode (native with interpreter) \n");
-   else if (rt == INTERP_ONLY)
+   else if (exec_mode == INTERP_ONLY)
      printf("\t Running INTERP_ONLY mode \n");
    else
      printf("ERROR: unrecognized execMode \n");
 
-   if (tt == EXPLORATION)
+   if (test_type == EXPLORATION)
      printf("\t Test type is EXPLORATION (running through all paths) \n");
-   else if (tt == VERIFICATION )
+   else if (test_type == VERIFICATION )
      printf("\t Test type is VERIFICATION \n");
    else
      printf("ERROR: unrecognized testType \n");
 
-   printf("\t TASE project name: %s \n", projName.c_str());
+   printf("\t TASE project name: %s \n", project.c_str());
    
-   printf("\t taseManager: %d \n", fm);
-   printf("\t taseDebug output: %d \n", dbg);
-   printf("\t modelDebug output: %d \n", mdlDbg);
-   printf("\t dontFork  output: %d \n", df);
-   printf("\t killFlagsHack      output : %d \n", killFlags);
-   printf("\t skipFree           output : %d \n", dontFree);
-   printf("\t measureTime         output : %d \n", measureTimeVal);
-   printf("\t enableBounceback     output : %d \n", enableBouncebackVal);
-   printf("\t workerSelfTerminate  output : %d \n", selfTerm);
-   printf("\t dropS2C              output : %d \n", dS2C);
-   printf("\t retryMax             output : %d \n", rm);
-   printf("\t useCMS4              output : %d \n", cms4);
+   printf("\t taseManager: %d \n", taseManager);
+   printf("\t tasePreProcess  : %d \n", tasePreProcess);
+   printf("\t taseDebug output: %d \n", taseDebug);
+   printf("\t modelDebug output: %d \n", modelDebug);
+   printf("\t dontFork  output: %d \n", dontFork);
+   printf("\t killFlagsHack      output : %d \n", killFlagsHack);
+   printf("\t skipFree           output : %d \n", skipFree);
+   printf("\t measureTime         output : %d \n", measureTime);
+   printf("\t enableBounceback     output : %d \n", enableBounceback);
+   printf("\t workerSelfTerminate  output : %d \n", workerSelfTerminate);
+   printf("\t dropS2C              output : %d \n", dropS2C);
+   printf("\t retryMax             output : %d \n", retryMax);
+   printf("\t useCMS4              output : %d \n", useCMS4);
+   printf("\t UseLegacyIndependentSolver output : %d \n", UseLegacyIndependentSolver);
  }
 
+
+ //Load cartridge reference info.
+ //This is marked "noinline" in the hope that any stack space used
+ //in the initialization can be reclaimed before we transfer to the
+ //analysis target and get stuck dealing with it across forks.
  
+ void __attribute__((noinline)) loadCartridgeInfo()  {
+
+   //Load the start addresses of cartridges for fast lookup later
+   printf("Detected %d total basic blocks \n", tase_num_global_records);
+   
+   for (uint32_t i = 0; i < tase_num_global_records; i++) 
+     cartridge_entry_points.insert(tase_global_records[i].head);
+
+   int numLiveBlocks = 0;
+   for (uint32_t i = 0; i < tase_num_live_flags_block_records; i++) {
+     cartridges_with_flags_live.insert(tase_live_flags_block_records[i].head);
+     numLiveBlocks++;
+   }
+
+
+   printf("Found %d basic blocks with flags live-in \n", numLiveBlocks);
+
+ };
  
  int main (int argc, char **argv, char **envp) {
    
-   gettimeofday(&taseStartTime,NULL);
    glob_argc = argc;
    glob_argv = argv;
    glob_envp = envp;
@@ -1471,10 +1421,12 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    llvm::InitializeNativeTarget();
    parseArguments(argc, argv);
 
+   UseLegacyIndependentSolver = useLegacyIndependentSolverArg;
    exec_mode = execModeArg;
    test_type = testTypeArg;
    taseManager = taseManagerArg;
    taseDebug = taseDebugArg;
+   tasePreProcess = tasePreProcessArg;
    modelDebug = modelDebugArg;
    useCMS4 = useCMS4Arg;
    dontFork = dontForkArg;
@@ -1490,23 +1442,40 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      enableMultipass = true;
    }
    retryMax = retryMaxArg;
-   
-   printTASEArgs(exec_mode, test_type, taseManager, taseDebug, project, dontFork, killFlagsHack, skipFree,  measureTime, enableBounceback,  workerSelfTerminate, dropS2C, retryMax, modelDebug, useCMS4);
-
+   if (!tasePreProcess) {
+     printTASEArgs();
+   }
 #ifdef TASE_BIGNUM
    symIndex = symIndexArg;
    numEntries = numEntriesArg;
    printf("symIndex is %d, numEntries is %d ", symIndex, numEntries);
    fflush(stdout);
 #endif
+
+   if (tasePreProcess) {
+     printf("Running TASE preprocessing... \n");
+     
+     FILE * cartridgeLog = fopen("cartridge_info.txt", "w");
+     for (uint32_t i = 0; i < tase_num_global_records; i++) {
+       uint32_t head = tase_global_records[i].head;
+       uint16_t head_size = tase_global_records[i].head_size;
+       uint16_t body_size = tase_global_records[i].body_size;
+       fprintf(cartridgeLog, "%d %d\n", head + head_size, head + head_size + body_size);
+     }
+     fclose(cartridgeLog);
+     printf("Finished TASE preprocessing \n");
+     fflush(stdout);
+     std::exit(EXIT_SUCCESS);
+   }
    
    //Redirect stdout messages to a file called "Monitor".
    //Later, calls to unix fork in executor create new filenames
    //after each fork.
-   workerIDStream << "Monitor";
+   worker_ID_stream << "Monitor";
    std::string IDString;
-   IDString = workerIDStream.str();
+   IDString = worker_ID_stream.str();
    freopen(IDString.c_str(),"w", stdout);
+   prev_worker_ID = "Init";
    
    // Load the bytecode...
    std::string errorMsg;
@@ -1597,31 +1566,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    interpreter->initializeInterpretationStructures(entryFn);
    GlobalInterpreter = interpreter;
 
-   //Load the start addresses of cartridges for fast lookup later
-   printf("Detected %d total basic blocks \n", tase_num_global_records);
-   
-   for (uint32_t i = 0; i < tase_num_global_records; i++) 
-     cartridge_entry_points.insert(tase_global_records[i].head);
-
-
-   FILE * cartridgeLog = fopen("cartridge_info.txt", "w");
-   for (uint32_t i = 0; i < tase_num_global_records; i++) {
-     uint32_t head = tase_global_records[i].head;
-     uint16_t head_size = tase_global_records[i].head_size;
-     uint16_t body_size = tase_global_records[i].body_size;
-     fprintf(cartridgeLog, "%d %d\n", head + head_size, head + head_size + body_size);
-   }
-   fclose(cartridgeLog);
-   
-   //Load list of cartridges for which flags is live-in.
-   int numLiveBlocks = 0;
-   for (uint32_t i = 0; i < tase_num_live_flags_block_records; i++) {
-     cartridges_with_flags_live.insert(tase_live_flags_block_records[i].head);
-     numLiveBlocks++;
-   }
-
-
-   printf("Found %d basic blocks with flags live-in \n", numLiveBlocks);
+   loadCartridgeInfo();
    
    if (taseManager) {
 
@@ -1652,10 +1597,10 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      std::cout.flush();
      if (taseManager) {
        int i = getpid();
-       workerIDStream << ".";
-       workerIDStream << i;
+       worker_ID_stream << ".";
+       worker_ID_stream << i;
        std::string pidString ;
-       pidString = workerIDStream.str();
+       pidString = worker_ID_stream.str();
        freopen(pidString.c_str(),"w",stdout);
        freopen(pidString.c_str(),"w",stderr);
 
@@ -1683,9 +1628,6 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
        std::cout.flush();
      }
 
-     printf("DEBUG: target_ctx located at 0x%lx \n ", (uint64_t) &target_ctx);
-     
-     printf("DEBUG: GREG_RIP located at 0x%lx \n",(uint64_t) &(target_ctx_gregs[GREG_RIP].u64 ) );
      
      transferToTarget();
      printf("RETURNING TO MAIN HANDLER \n");

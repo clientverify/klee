@@ -15,6 +15,8 @@
 #include "klee/Internal/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 
+extern bool UseLegacyIndependentSolver;
+
 namespace klee {
 Solver *constructSolverChain(Solver *coreSolver,
                              std::string querySMT2LogPath,
@@ -49,8 +51,8 @@ Solver *constructSolverChain(Solver *coreSolver,
   if (UseCache)
     solver = createCachingSolver(solver);
 
-  if (UseIndependentSolver)
-    solver = createIndependentSolver(solver);
+  if (UseIndependentSolver) 
+    solver = createIndependentSolver(solver, UseLegacyIndependentSolver);
 
   if (DebugValidateSolver)
     solver = createValidatingSolver(solver, coreSolver);

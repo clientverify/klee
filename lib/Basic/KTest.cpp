@@ -38,7 +38,7 @@ extern "C" int RAND_bytes (unsigned char *buf, int num);
 extern bool enableMultipass;
 extern uint64_t interpCtr;
 extern bool dropS2C;
-extern int roundCount;
+extern int round_count;
 
 // for compatibility reasons
 #define BOUT_MAGIC "BOUT\n"
@@ -460,7 +460,7 @@ KTestObject* KTOV_next_object(KTestObjectVector *ov, const char *name)
     fflush(stdout);
     while (true) {
       
-      if (strcmp(o->name,"c2s") != 0 &&  (strcmp (o->name, "s2c") != 0 || (dropS2C && roundCount >= 4) ) ) {
+      if (strcmp(o->name,"c2s") != 0 &&  (strcmp (o->name, "s2c") != 0 || (dropS2C && round_count >= 3) ) ) {
 	printf("skipping record of type %s at index %d \n", o->name, ov->playback_index);
 	ov->playback_index++;
 	o = &ov->objects[ov->playback_index];

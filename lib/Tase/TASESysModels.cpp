@@ -121,8 +121,9 @@ extern int * replayPIDPtr;
 //extern multipassRecord multipassInfo;
 extern void printKTestCounters();
 extern void printProhibCounters();
-extern int roundCount;
-extern int passCount;
+extern int round_count;
+extern int pass_count;
+extern int run_count;
 extern KTestObjectVector ktov;
 extern bool enableMultipass;
 extern void spinAndAwaitForkRequest();
@@ -132,7 +133,7 @@ uint64_t native_ret_off = 0;
 extern bool dont_model;
 
 extern CVAssignment prevMPA ;
-extern void multipass_reset_round();
+extern void multipass_reset_round(bool isFirstCall);
 extern void multipass_start_round(Executor * theExecutor, bool isReplay);
 extern void multipass_replay_round(void * assignmentBufferPtr, CVAssignment * mpa, int * thePid);
 extern void worker_exit();
@@ -145,7 +146,7 @@ bool roundUpHeapAllocations = true; //Round the size Arg of malloc, realloc, and
 //some library functions (ex memcpy) may copy 4 or 8 byte-chunks of data at a time that cross over the edge
 //of memory object buffers that aren't 4 or 8 byte aligned.
 
-
+extern std::stringstream worker_ID_stream;
 
 extern int AES_encrypt_calls ;
 extern int ECDH_compute_key_calls ;
@@ -157,6 +158,12 @@ extern int SHA256_Update_calls ;
 extern int SHA256_Final_calls ;
 extern int gcm_gmult_4bit_calls ;
 extern int gcm_ghash_4bit_calls ;
+
+extern int * target_ended_ptr;
+extern double run_solver_time;
+extern std::string prev_worker_ID;
+extern double target_end_time;
+
 
 extern FILE * bignumLog;
 void tase_print_BIGNUM(FILE * f, BIGNUM * bn);
@@ -358,7 +365,7 @@ void Executor::model_exit() {
 
   printf(" Found call to exit.  TASE should shutdown. \n");
   std::cout.flush();
-  printf("IMPORTANT: Worker exiting from terminal path in round %d pass %d from model_exit \n", roundCount, passCount);
+  printf("IMPORTANT: Worker exiting from terminal path in round %d pass %d from model_exit \n", round_count, pass_count);
   std::cout.flush();
   worker_exit();
   std::exit(EXIT_SUCCESS);
@@ -496,10 +503,10 @@ void Executor::model_ktest_writesocket() {
     bool debugMultipass = true;
 
     if (debugMultipass) {
-      printf("MULTIPASS DEBUG: Entering call to ktest_writesocket round %d pass %d \n", roundCount, passCount);
+      printf("MULTIPASS DEBUG: Entering call to ktest_writesocket round %d pass %d \n", round_count, pass_count);
       double theTime = util::getWallTime();
       
-      printf("MULTIPASS DEBUG: Entering ktest_writesocket at round %d pass %d %lf seconds into analysis \n", roundCount, passCount, theTime - target_start_time);
+      printf("MULTIPASS DEBUG: Entering ktest_writesocket at round %d pass %d %lf seconds into analysis \n", round_count, pass_count, theTime - target_start_time);
       std::cout.flush();
       printProhibCounters();
       printKTestCounters();
@@ -532,7 +539,7 @@ void Executor::model_ktest_writesocket() {
 	printBuf (stdout,(void *) o->bytes, o->numBytes);
       }
       if (o->numBytes > count) {
-	printf("IMPORTANT: VERIFICATION ERROR - write buffer size mismatch %u vs %u : Worker exiting from terminal path in round %d pass %d. \n",o->numBytes, count,  roundCount, passCount);
+	printf("IMPORTANT: VERIFICATION ERROR - write buffer size mismatch %u vs %u : Worker exiting from terminal path in round %d pass %d. \n",o->numBytes, count,  round_count, pass_count);
 	std::cout.flush();
 	worker_exit();
       }
@@ -582,31 +589,35 @@ void Executor::model_ktest_writesocket() {
 
       if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(write_condition)) {
 	if (CE->isFalse()) {
-	  printf("IMPORTANT: VERIFICATION ERROR: false write condition. Worker exiting from terminal path in round %d pass %d \n", roundCount, passCount);
+	  printf("IMPORTANT: VERIFICATION ERROR: false write condition. Worker exiting from terminal path in round %d pass %d \n", round_count, pass_count);
 	  std::cout.flush();
 	  worker_exit();
 	}
       } else {
-	bool result;
+	bool result = false;
 	solver_start_time = util::getWallTime();
+	//Todo -- Double check interface for getInitialValues later down in solve for bindings.  
+	//Todo -- determine if the call to getInitialValues as modified with legacy behavior assumes a solution exists
+	//solver->mustBeFalse(*GlobalExecutionStatePtr, write_condition, result);
 	
-	solver->mustBeFalse(*GlobalExecutionStatePtr, write_condition, result);
-
 	solver_end_time = util::getWallTime();
-	solver_diff_time = solver_end_time - solver_start_time;	
+	solver_diff_time = solver_end_time - solver_start_time;
+	run_solver_time += solver_diff_time;
 	printf("Elapsed solver time (multipass) is %lf at interpCtr %lu \n", solver_diff_time, interpCtr);
 	solver_time += solver_diff_time;
 	printf("Total solver time is %lf at interpCtr %lu \n", solver_time, interpCtr);
+
 	
 	if (result) {
 	  printf("VERIFICATION ERROR: write condition determined false \n");
-	  printf("IMPORTANT: VERIFICATION ERROR: false write condition. Worker exiting from terminal path in round %d pass %d \n", roundCount, passCount);
+	  printf("IMPORTANT: VERIFICATION ERROR: false write condition. Worker exiting from terminal path in round %d pass %d \n", round_count, pass_count);
 	  fflush(stdout);
 	  worker_exit();
 	} else {
 	  printf("Good news.  mustBeFalse(write_condition) returned false \n");
 	  fflush(stdout);
 	}
+	
       }
 
 
@@ -621,6 +632,7 @@ void Executor::model_ktest_writesocket() {
 	solver_diff_time = solver_end_time - solver_start_time;
 	printf("Elapsed solver time (solver) is %lf at interpCtr %lu \n", solver_diff_time, interpCtr);
 	solver_time += solver_diff_time;
+	run_solver_time += solver_diff_time;
 	printf("Total solver time is %lf at interpCtr %lu \n", solver_time, interpCtr);
       }
 
@@ -645,33 +657,32 @@ void Executor::model_ktest_writesocket() {
 
       double curr_time = util::getWallTime();
       
-      printf("Near end of ktest_writesocket round %d pass %d, times are as follows: \n", roundCount, passCount);
+      printf("Near end of ktest_writesocket round %d pass %d, times are as follows: \n", round_count, pass_count);
       printf("Total time since analysis began: %lf \n", curr_time - target_start_time  );
       printf("Total time in solver calls : %lf \n", solver_time);
       printf("Total time in interpreter  : %lf \n", interpreter_time);
-     
       
       if (currMPA.size()  != 0 ) {
 	if (prevMPA.bindings.size() != 0) {
 	  if  (prevMPA.bindings != currMPA.bindings ) {
-	    printf("IMPORTANT: prevMPA and currMPA bindings differ. Replaying round from round %d pass %d \n", roundCount, passCount);
+	    printf("IMPORTANT: prevMPA and currMPA bindings differ. Replaying round from round %d pass %d \n", round_count, pass_count);
 	    std::cout.flush();
 	    multipass_replay_round(MPAPtr, &currMPA, replayPIDPtr); //Sets up child to run from prev "NEW ROUND" point
 	  } else {
-	    printf("IMPORTANT: No new bindings found at end of round %d pass %d.  Not replaying. \n", roundCount, passCount);
+	    printf("IMPORTANT: No new bindings found at end of round %d pass %d.  Not replaying. \n", round_count, pass_count);
 	    std::cout.flush();
 	  }
 	} else {
-	  printf("IMPORTANT: found assignments and prevMPA is null so replaying at end of round %d pass %d \n",  roundCount, passCount);
+	  printf("IMPORTANT: found assignments and prevMPA is null so replaying at end of round %d pass %d \n",  round_count, pass_count);
 	  multipass_replay_round(MPAPtr, &currMPA, replayPIDPtr); //Sets up child to run from prev "NEW ROUND" point
 	  std::cout.flush();
 	}
       } else {
-	printf("IMPORTANT: No assignments found in currMPA. Not replaying inside writesocket call at round %d pass %d \n", roundCount, passCount);
+	printf("IMPORTANT: No assignments found in currMPA. Not replaying inside writesocket call at round %d pass %d \n", round_count, pass_count);
 	std::cout.flush();
       }
 
-      printf("Hit new call to multipass_reset_round in writesocket for round %d pass %d \n", roundCount, passCount);
+      printf("Hit new call to multipass_reset_round in writesocket for round %d pass %d \n", round_count, pass_count);
       std::cout.flush();
       tase_helper_write((uint64_t) &target_ctx_gregs[GREG_RAX], ConstantExpr::create(o->numBytes, Expr::Int64));
       
@@ -679,7 +690,7 @@ void Executor::model_ktest_writesocket() {
       //-------------------------------------------
       //1. MMAP a new buffer storing the ID of the replay for the current round.
       //2. MMAP a new buffer for storing the assignments learned from the previous pass 
-      multipass_reset_round(); //Sets up new buffer for MPA and destroys multipass child process
+      multipass_reset_round(false); //Sets up new buffer for MPA and destroys multipass child process
       
       //NEW ROUND
       //-------------------------------------------
@@ -688,7 +699,7 @@ void Executor::model_ktest_writesocket() {
 
       curr_time = util::getWallTime();
       
-      printf("At start of ktest_writesocket round %d pass %d, time since beginning is %lf \n", roundCount, passCount, curr_time - target_start_time);
+      printf("At start of ktest_writesocket round %d pass %d, time since beginning is %lf \n", round_count, pass_count, curr_time - target_start_time);
       printf("Total time since analysis began: %lf \n", curr_time - target_start_time  );
       printf("Total time in solver calls : %lf \n", solver_time);
       printf("Total time in interpreter  : %lf \n", interpreter_time);
@@ -797,14 +808,14 @@ uint64_t Executor::tls_predict_stdin_size (int fd, uint64_t maxLen) {
   kto = peekNextKTestObject();
 
   if (dropS2C) {
-    if (strcmp (kto->name, "c2s") != 0 && (strcmp (kto->name,"s2c") != 0 || ( roundCount >=4 ) ) ) {
+    if (strcmp (kto->name, "c2s") != 0 && (strcmp (kto->name,"s2c") != 0 || ( round_count >=3 ) ) ) {
       printf("Advancing peek from record type %s in tls_predict_stdin_size \n", kto->name);
       int i = 0;
       while(true) {
 	printf("Advancing for time %d \n", i);
 	kto = &(ktov.objects[ktov.playback_index + i]);
 	
-	if ( roundCount < 4) {
+	if ( round_count < 3) {
 	  if  (strcmp (kto->name, "c2s") == 0 || strcmp (kto->name,"s2c") == 0   ) 
 	    break;
 	} else {
@@ -965,10 +976,28 @@ void Executor::model_shutdown() {
 	(isa<ConstantExpr>(arg2Expr))
 	) {
 
-    std::cerr << " Entered model_shutdown call on FD %lu \n ", target_ctx_gregs[GREG_RDI].u64;
-    
+    printf( " Entered model_shutdown call on FD %lu \n ", target_ctx_gregs[GREG_RDI].u64);
+
     if (ktov.size == ktov.playback_index) {
       printf("SUCCESS: All messages verified \n");
+
+      target_end_time = util::getWallTime();
+      double totalTime =  target_end_time - target_start_time;  
+      
+      get_sem_lock();
+      if (*target_ended_ptr == 0) {
+	*target_ended_ptr = 1;
+	FILE * finalLog = fopen("log.final", "w+");
+	fprintf(finalLog, "Prev Log ID, Total runtime \n");
+	fprintf(finalLog, "%s, %lf", prev_worker_ID.c_str(), totalTime);
+      } else {
+	printf("Not the first worker to exit \n");
+      }
+      release_sem_lock();
+	
+    
+      
+      
       fflush(stdout);
       std::cerr << "All playback messages retrieved \n";
       printf("All playback messages retrieved \n");
@@ -1057,144 +1086,6 @@ void Executor::model_RAND_poll(){
 
 }
 
-
-//Just for debugging perf
-/*
- */
-
-//void * memmove (void * dst, void * src, size_t number)
-void Executor::model_memmove() {
-  static int model_memmove_calls = 0;
-  model_memmove_calls++;
-  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
-  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(GREG_RSI * 8, Expr::Int64);
-  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(GREG_RDX * 8, Expr::Int64);
-
-  if (  (isa<ConstantExpr>(arg1Expr)) &&
-	(isa<ConstantExpr>(arg2Expr)) &&
-	(isa<ConstantExpr>(arg3Expr)) )
-    {
-
-      uint8_t * dest = (uint8_t *) target_ctx_gregs[GREG_RDI].u64;
-      uint8_t * src = (uint8_t *) target_ctx_gregs[GREG_RSI].u64;
-      size_t num = (size_t) target_ctx_gregs[GREG_RDX].u64;
-      printf("Entered model_memmove at interpCtr %lu for dest 0x%lx and src 0x%lx \n", interpCtr, (uint64_t) dest, (uint64_t) src);
-      fflush(stdout);
-      
-      ref<Expr> tmp [num];
-      for (size_t i = 0; i < num; i++) {
-	tmp[i] = tase_helper_read((uint64_t) (src + i), 1);
-      }
-      for (size_t i = 0; i < num; i++) {
-	tase_helper_write( (uint64_t) (dest + i), tmp[i]);
-      }
-
-      ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) dest, Expr::Int64);
-      tase_helper_write( (uint64_t) &(target_ctx_gregs[GREG_RAX].u64), resExpr);
-      
-      uint64_t retAddr = *((uint64_t *) target_ctx_gregs[GREG_RSP].u64);
-      target_ctx_gregs[GREG_RIP].u64 = retAddr;
-      target_ctx_gregs[GREG_RSP].u64 += 8;
-      
-      
-    } else  {
-    printf("ERROR: Symbolic input provided to memmove \n");
-    std::cout.flush();
-    std::exit(EXIT_FAILURE);
-  }
-
-}
-
-// void * memset (void * buf, int val, size_t number)
-void Executor::model_memset() {
-  static int model_memset_calls = 0;
-  model_memset_calls++;
-  printf("Entering model_memset for time %d \n", model_memset_calls);
-  
-  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
-  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(GREG_RSI * 8, Expr::Int64);
-  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(GREG_RDX * 8, Expr::Int64);
-  
-  if (  (isa<ConstantExpr>(arg1Expr)) &&
-	(isa<ConstantExpr>(arg2Expr)) &&
-	(isa<ConstantExpr>(arg3Expr)) )
-    {
-      void * buf = (void *) target_ctx_gregs[GREG_RDI].u64;
-      uint8_t val = (uint8_t) target_ctx_gregs[GREG_RSI].u64;
-      size_t num = (size_t) target_ctx_gregs[GREG_RDX].u64;
-      ref<ConstantExpr> valExpr = ConstantExpr::create(val, Expr::Int8);
-      uint8_t * bufPtr = (uint8_t *) buf;
-      
-      for (int i = 0; i < num ; i++) 
-	tase_helper_write((uint64_t) (bufPtr + i), valExpr);
-      
-      //void * res = memset(buf,val,num);
-      ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) buf, Expr::Int64);
-      tase_helper_write( (uint64_t) &(target_ctx_gregs[GREG_RAX].u64), resExpr);
-      
-      //Fake a return
-      uint64_t retAddr = *((uint64_t *) target_ctx_gregs[GREG_RSP].u64);
-      target_ctx_gregs[GREG_RIP].u64 = retAddr;
-      target_ctx_gregs[GREG_RSP].u64 += 8;
-    } else  {
-    printf("ERROR: Symbolic ptr provided to memset \n");
-    std::cout.flush();
-    std::exit(EXIT_FAILURE);
-  }
-}
-
-
-
-
-//Just for debugging
-//void *memcpy(void *dest, const void *src, size_t n);
-void Executor::model_memcpy() {
-  printf("Entering model_memcpy: Moving 0x%lx bytes from 0x%lx to 0x%lx \n",(size_t) target_ctx_gregs[GREG_RDX].u64,   target_ctx_gregs[GREG_RSI].u64 ,  target_ctx_gregs[GREG_RDI].u64  );
-  fflush(stdout);
-  
-  void * dst = (void *) target_ctx_gregs[GREG_RDI].u64;
-  void * src = (void *) target_ctx_gregs[GREG_RSI].u64;
-  size_t num = (size_t) target_ctx_gregs[GREG_RDX].u64;
-    
-  void * res;
-  if (isBufferEntirelyConcrete((uint64_t) src, num) && isBufferEntirelyConcrete((uint64_t) dst, num)) 
-    printf("Found entirely concrete buffer to buffer copy \n ");
-  else {
-    printf("Found some symbolic taint in mempcy buffers \n");
-    if (!isBufferEntirelyConcrete((uint64_t) src, num) )
-      printf("Src has symbolic taint \n");
-    if (!isBufferEntirelyConcrete((uint64_t) dst, num) )
-      printf("Dst has symbolic taint \n");
-    
-  }
-    
-  printf("Memcpy dbg -- printing source buffer as raw bytes \n");
-  printBuf(stdout,src, num);
-
-  printf("Memcpy dbg -- printing dest   buffer as raw bytes \n");
-  printBuf(stdout,dst, num);
-    
-  std::cout.flush();
-  
-  
-  std::cout.flush();
-  for (int i = 0; i < num; i++) {
-    ref<Expr> srcByte = tase_helper_read( ((uint64_t) src)+i, 1);
-    tase_helper_write (((uint64_t)dst +i), srcByte);
-  }
-  res = dst;
-  
-    
-  ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
-  tase_helper_write((uint64_t) &(target_ctx_gregs[GREG_RAX].u64), resExpr);
-  
-  
-  //Fake a return
-  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[GREG_RSP].u64);
-  target_ctx_gregs[GREG_RIP].u64 = retAddr;
-  target_ctx_gregs[GREG_RSP].u64 += 8;
-
-}
 
 void Executor::model_ktest_RAND_bytes() {
   ktest_RAND_bytes_calls++;
@@ -1552,24 +1443,6 @@ void Executor::model_socket() {
 }
 
 
-//This is here temporarily until we emit code without bswap assembly instructions
-void Executor::model_htonl () {
-
-  printf("Entering model_htonl at in interpCtr %lu \n", interpCtr);
-  
-  uint32_t res = htonl((uint32_t) target_ctx_gregs[GREG_RDI].u64);
-  ref<ConstantExpr> FDExpr = ConstantExpr::create(res, Expr::Int64);
-  target_ctx_gregs_OS->write(GREG_RAX * 8, FDExpr);
-
-  //fake a ret
-  uint64_t retAddr = *((uint64_t *) target_ctx_gregs[GREG_RSP].u64);
-  target_ctx_gregs[GREG_RIP].u64 = retAddr;
-  target_ctx_gregs[GREG_RSP].u64 += 8;
-}
-
-
-
-
 //Todo: Check input for symbolic args, or generalize to make not openssl-specific
 void Executor::model_BIO_printf() {
   static int bio_printf_calls = 0;
@@ -1793,8 +1666,7 @@ void Executor::model_calloc() {
   } else {
     printf("Found symbolic argument to model_calloc \n");
     std::exit(EXIT_FAILURE);
-  }
-    
+  }    
 }
 
 
@@ -1961,7 +1833,6 @@ void Executor::model_free() {
 
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
   if (isa<ConstantExpr>(arg1Expr)) {
-
 
     if (!skipFree) {
     
@@ -2644,6 +2515,8 @@ ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64); // SS
 
     ref<ConstantExpr> res = ConstantExpr::create(SSL3_MASTER_SECRET_SIZE, Expr::Int64);
     tase_helper_write((uint64_t) &(target_ctx_gregs[GREG_RAX].u64), res);
+
+    fclose(theFile);
     
     //fake a ret
     uint64_t retAddr = *((uint64_t *) target_ctx_gregs[GREG_RSP].u64);
@@ -3031,7 +2904,6 @@ void Executor::model_SHA256_Final() {
 //Updated 04/30/2019
 void Executor::model_AES_encrypt () {
   AES_encrypt_calls++;
-
   
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64); //const unsigned char *in
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(GREG_RSI * 8, Expr::Int64); //unsigned char * out
@@ -3049,7 +2921,7 @@ void Executor::model_AES_encrypt () {
     int AESBlockSize = 16; //Number of bytes in AES block    
 
     if (modelDebug) {
-      printf("AES_encrypt %d debug -- dumping buffer inputs at round %d pass %d \n", AES_encrypt_calls, roundCount, passCount );
+      printf("AES_encrypt %d debug -- dumping buffer inputs at round %d pass %d \n", AES_encrypt_calls, round_count, pass_count );
       printf("key is \n");
       printBuf(stdout,(void *) key, AESBlockSize);
     }

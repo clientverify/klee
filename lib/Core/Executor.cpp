@@ -143,9 +143,6 @@ extern target_ctx_t target_ctx;
 extern greg_t * target_ctx_gregs;
 void printCtx(greg_t *);
 #include <sys/time.h>
-extern struct timeval taseStartTime;
-extern struct timeval targetStartTime;
-extern struct timeval targetEndTime;
 extern  int ktest_master_secret_calls;
 extern  int ktest_start_calls;
 extern  int ktest_writesocket_calls;
@@ -171,8 +168,9 @@ extern bool modelDebug;
 uint64_t interpCtr =0;
 uint64_t instCtr=0;
 int forkSolverCalls = 0;
-extern std::stringstream globalLogStream;
-extern std::stringstream workerIDStream;
+
+extern std::stringstream worker_ID_stream;
+extern std::string prev_worker_ID;
 int BB_UR = 0; //Unknown return codes
 int BB_MOD = 0; //Modeled return
 int BB_PSN = 0; //PSN return
@@ -192,7 +190,7 @@ double run_solver_time = 0;
 extern int c_special_cmds; //Int used by cliver to disable special commands to s_client.  Made global for debugging
 extern bool UseForkedCoreSolver;
 extern void worker_exit();
-extern void multipass_reset_round();
+extern void multipass_reset_round(bool isFirstCall);
 extern void multipass_start_round(Executor * theExecutor, bool isReplay);
 extern void multipass_replay_round(void * assignmentBufferPtr, CVAssignment * mpa, int thePid);
 extern multipassRecord multipassInfo;
@@ -200,7 +198,9 @@ extern KTestObjectVector ktov;
 extern bool enableMultipass;
 extern bool enableBounceback;
 extern bool killFlagsHack;
-extern int passCount;
+extern int round_count;
+extern int pass_count;
+extern int run_count;
 int multipass_symbolic_vars = 0;
 extern CVAssignment prevMPA;
 
@@ -974,37 +974,29 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     int pid  = tase_fork(parentPID,rip);
     printf("TASE Forking at 0x%lx \n", target_ctx_gregs[GREG_RIP].u64);
     if (pid ==0 ) {
-      int i = getpid(); 
-      workerIDStream << ".";
-      workerIDStream << i;
+      prev_worker_ID = worker_ID_stream.str();
+      int i = getpid();
+      worker_ID_stream << ".";
+      worker_ID_stream << i;
       std::string pidString ;
-      pidString = workerIDStream.str();
+      pidString = worker_ID_stream.str();
       FILE * res1 = freopen(pidString.c_str(),"w",stdout);
       FILE * res2 = freopen(pidString.c_str(),"w",stderr);
       if (res1 == NULL || res2 == NULL) {
 	printf("ERROR: Could not open new file for logging child output \n");
 	fflush(stdout);
       }
-      /*
-      printf("Resetting interp time counters for this round \n");
-      interpreter_time = 0.0;
-      interp_setup_time = 0.0;
-      interp_run_time = 0.0;
-      interp_cleanup_time = 0.0;
-      interp_find_fn_time = 0.0;
 
-      mdl_time = 0.0;
-      psn_time = 0.0;
-      */
       
       printf("DEBUG:  Child process created\n");
       addConstraint(*GlobalExecutionStatePtr, Expr::createIsZero(condition));
     } else {
+      prev_worker_ID = worker_ID_stream.str();
       int i = getpid();
-      workerIDStream << ".";
-      workerIDStream << i;
+      worker_ID_stream << ".";
+      worker_ID_stream << i;
       std::string pidString ;
-      pidString = workerIDStream.str();
+      pidString = worker_ID_stream.str();
       FILE * res1 = freopen(pidString.c_str(),"w",stdout);
       FILE * res2 = freopen(pidString.c_str(),"w",stderr);
       if (res1 == NULL || res2 == NULL) {
@@ -1037,14 +1029,13 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
 }
 
 void Executor::addConstraint(ExecutionState &state, ref<Expr> condition) {
-  printf("Entered addConstraint \n");
+
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(condition)) {
     if (!CE->isTrue())
       llvm::report_fatal_error("attempt to add invalid constraint");
     return;
   }
-  printf("DBG1 \n");
-  fflush(stdout);
+
   // Check to see if this constraint violates seeds.
   std::map< ExecutionState*, std::vector<SeedInfo> >::iterator it = 
     seedMap.find(&state);
@@ -1065,18 +1056,15 @@ void Executor::addConstraint(ExecutionState &state, ref<Expr> condition) {
     if (warn)
       klee_warning("seeds patched for violating constraint"); 
   }
-  printf("DBG2 \n");
-  fflush(stdout);
+
   
   state.addConstraint(condition);
-  printf("DBG3 \n");
-  fflush(stdout);
+
   if (ivcEnabled)
     doImpliedValueConcretization(state, condition, 
                                  ConstantExpr::alloc(1, Expr::Bool));
 
-  printf("DBG4 \n");
-  fflush(stdout);
+
 }
 
 const Cell& Executor::eval(KInstruction *ki, unsigned index, 
@@ -3434,7 +3422,7 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
     //Bootstrap multipass here for the very first round
     //before we hit a concretized writesocket call
 
-    multipass_reset_round();
+    multipass_reset_round(true);
     multipass_start_round(this, false);
   }
   //#endif
@@ -3476,7 +3464,7 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
   bindObjectInState(state, mo, false, array);
 
   std::vector<unsigned char> *bindings = NULL;
-  if (passCount > 0 && multipass) {
+  if (pass_count > 0 && multipass) {
     bindings = prevMPA.getBindings(array_name);
     
     if (!bindings || bindings->size() != mo->size) {
@@ -3604,6 +3592,8 @@ uint64_t * last_heap_addr = 0;
 
 void reset_run_timers() {
   printf("Resetting run timers at %lf seconds into analysis \n", util::getWallTime() - target_start_time);
+  printf("ID string is %s \n", worker_ID_stream.str().c_str());
+ 
   run_start_time = util::getWallTime();
   interp_enter_time = util::getWallTime();
   run_interp_time = 0;
@@ -3613,10 +3603,21 @@ void reset_run_timers() {
 
 void print_run_timers() {
   printf(" --- Printing run timers ----\n");
-  printf("Total run time: %lf \n",  util::getWallTime() - run_start_time);
+  printf("ID string is %s \n", worker_ID_stream.str().c_str());
+  printf("Prev worker ID string is %s \n", prev_worker_ID.c_str());
+  double totalRunTime =  util::getWallTime() - run_start_time;
+  printf("Total run time: %lf \n",  totalRunTime);
   printf(" - Interp time: %lf \n", run_interp_time);
-  printf("        Solver: %lf \n", run_solver_time);
-  printf(" - Fork   time: %lf \n", run_fork_time );
+  printf("       -Solver: %lf \n", run_solver_time);
+  printf("       -Fork  : %lf \n", run_fork_time );
+
+  std::string logID = "log." + worker_ID_stream.str();
+  
+  FILE * logFile = fopen(logID.c_str(), "w+");
+  fprintf(logFile,"Prev log name, Round, Pass, Total Runtime, Interp Time, Solver Time, Fork Time \n");
+  fprintf(logFile,"%s, %d, %d,", prev_worker_ID.c_str(), round_count, pass_count);
+  fprintf(logFile, " %lf, %lf, %lf, %lf \n", totalRunTime, run_interp_time, run_solver_time, run_fork_time);
+  fclose(logFile);
 }
   
 void measure_interp_time(bool isPsnTrap, bool isModelTrap, uint64_t interpCtr_init, uint64_t rip) {
@@ -3630,7 +3631,8 @@ void measure_interp_time(bool isPsnTrap, bool isModelTrap, uint64_t interpCtr_in
       psn_time += diff_time;
     if(isModelTrap)
       mdl_time += diff_time;
-      
+
+    
     printf("Elapsed time is %lf at interpCtr %lu rip 0x%lx with %lu instructions \n", diff_time, interpCtr, rip, interpCtr - interpCtr_init);
     /*
     printf("Total time in interpreter is %lf so far \n", interpreter_time);
@@ -4124,12 +4126,11 @@ void Executor::model_inst () {
   } else if (rip == (uint64_t) &OpenSSLDie) {
     model_OpenSSLDie();
   } else if (rip == (uint64_t) &shutdown) {
-    target_end_time = util::getWallTime();
-    double total_time =  target_end_time - target_start_time;  
-    printf("----END RUN STATS ---- \n");
-    printf("Entire time in target took roughly %f seconds \n", total_time);
 
+    
+    
     model_shutdown();
+    
     
   } else if (rip == (uint64_t) &time ) {
     model_time();
@@ -4646,18 +4647,20 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) 
     int initPID = getpid();
     std::cout.flush();
     int isTrueChild = tase_fork(initPID, initRIP); //Returns 0 for false branch, 1 for true.  Not intuitive
+    prev_worker_ID = worker_ID_stream.str();
+    
     int i = getpid();
-    workerIDStream << ".";
-    workerIDStream << i;
+    worker_ID_stream << ".";
+    worker_ID_stream << i;
     std::string pidString ;
     
-    pidString = workerIDStream.str();
+    pidString = worker_ID_stream.str();
     if (pidString.size() > 250) {
       printf("Cycling log names due to large size \n");
-      workerIDStream.str("");
-      workerIDStream << "Monitor.Wrapped.";
-      workerIDStream << i;
-      pidString = workerIDStream.str();
+      worker_ID_stream.str("");
+      worker_ID_stream << "Monitor.Wrapped.";
+      worker_ID_stream << i;
+      pidString = worker_ID_stream.str();
       printf("Cycled log name is %s \n", pidString.c_str());
 
     }
@@ -4667,6 +4670,7 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) 
     reset_run_timers();
     
     printf("Resetting interp time counters for fork  %lf seconds after analysis began \n", util::getWallTime() - target_start_time );
+    printf("Prev log ID is log.%s ", prev_worker_ID.c_str());
     interpreter_time = 0.0;
     interp_setup_time = 0.0;
     interp_run_time = 0.0;
@@ -4761,8 +4765,6 @@ void printCtx(greg_t * registers ) {
 void Executor::initializeInterpretationStructures (Function *f) {
 
   printf("INITIALIZING INTERPRETATION STRUCTURES \n");
-  printf("UseForkedCoreSolver is %d \n", (bool ) UseForkedCoreSolver);
-  printf("Creating new execution state \n");
   GlobalExecutionStatePtr = new ExecutionState(kmodule->functionMap[f]);
 
   //AH: We may not actually need this...
@@ -4772,31 +4774,17 @@ void Executor::initializeInterpretationStructures (Function *f) {
   //Set up the KLEE memory object for the stack, and back the concrete store with the actual stack.
   //Need to be careful here.  The buffer we allocate for the stack is char [X] target_stack. It
   // starts at address StackBase and covers up to StackBase + sizeof(target_stack) -1.
-
-  printf("target_ctx.target_stack located at 0x%lx \n", (uint64_t) &target_ctx.target_stack);
   uint64_t stackBase = (uint64_t) &target_ctx.target_stack - STACK_SIZE;
   uint64_t stackSize = STACK_SIZE;
-  
-  printf("Adding structures to track target stack starting at 0x%lx with size %lu \n", stackBase, stackSize);
   tase_map_buf(stackBase, stackSize);
-  /*
-  MemoryObject * stackMem = addExternalObject(*GlobalExecutionStatePtr,(void *) stackBase, stackSize, false );
-  const ObjectState *stackOS = GlobalExecutionStatePtr->addressSpace.findObject(stackMem);
-  ObjectState * stackOSWrite = GlobalExecutionStatePtr->addressSpace.getWriteable(stackMem,stackOS);  
-  printf("Setting concrete store to point to target stack \n");
-  stackOSWrite->concreteStore = (uint8_t *) stackBase;
-  */
-  printf("Adding external object target_ctx_gregs_MO \n");
-  target_ctx_gregs_MO = addExternalObject(*GlobalExecutionStatePtr, (void *) target_ctx_gregs, NGREG * GREG_SIZE, false );
-  printf("target_ctx_gregs is address %lu, hex 0x%p \n", (uint64_t) target_ctx_gregs, (void *) target_ctx_gregs);
-  printf("Size of gregs is %d \n", NGREG * GREG_SIZE);
+
+
   
-  printf("Setting concrete store in target_ctx_gregs_OS to target_ctx_gregs \n");
+  target_ctx_gregs_MO = addExternalObject(*GlobalExecutionStatePtr, (void *) target_ctx_gregs, NGREG * GREG_SIZE, false );
   const ObjectState *targetCtxOS = GlobalExecutionStatePtr->addressSpace.findObject(target_ctx_gregs_MO);
   target_ctx_gregs_OS = GlobalExecutionStatePtr->addressSpace.getWriteable(target_ctx_gregs_MO,targetCtxOS);
   target_ctx_gregs_OS->concreteStore = (uint8_t *) target_ctx_gregs;
-    
-  printf("Target_ctx_gregs conc store at %lx \n",(uint64_t) &(target_ctx_gregs_OS->concreteStore[0]));
+
 
   //Map in read-only globals
   //Todo -- find a less hacky way of getting the exact size of the .rodata section
@@ -4811,29 +4799,15 @@ void Executor::initializeInterpretationStructures (Function *f) {
   std::cout.flush();
 
   tase_map_buf((uint64_t) rodata_base_ptr, rodata_size);
-  /*
-  MemoryObject * rodataMO = addExternalObject(*GlobalExecutionStatePtr, rodata_base_ptr, rodata_size, false);
-  const ObjectState * rodataOSConst = GlobalExecutionStatePtr->addressSpace.findObject(rodataMO);
-  ObjectState * rodataOS = GlobalExecutionStatePtr->addressSpace.getWriteable(rodataMO,rodataOSConst);
-  rodataOS->concreteStore = (uint8_t *) rodata_base_ptr;
-  */
+
   //Map in special stdin libc symbol
-  MemoryObject * stdinMO = addExternalObject(*GlobalExecutionStatePtr, (void *) &stdin, 8, false);
-  const ObjectState * stdinOSConst = GlobalExecutionStatePtr->addressSpace.findObject(stdinMO);
-  ObjectState * stdinOS = GlobalExecutionStatePtr->addressSpace.getWriteable(stdinMO,stdinOSConst);
-  stdinOS->concreteStore = (uint8_t *) &stdin;
+  tase_map_buf((uint64_t) &stdin, 8);
   
   //Map in special stdout libc symbol
-  MemoryObject * stdoutMO = addExternalObject(*GlobalExecutionStatePtr, (void *) &stdout, 8, false);
-  const ObjectState * stdoutOSConst = GlobalExecutionStatePtr->addressSpace.findObject(stdoutMO);
-  ObjectState * stdoutOS = GlobalExecutionStatePtr->addressSpace.getWriteable(stdoutMO,stdoutOSConst);
-  stdoutOS->concreteStore = (uint8_t *) &stdout;
+  tase_map_buf((uint64_t) &stdout, 8);
   
   //Map in special stderr libc symbol
-  MemoryObject * stderrMO = addExternalObject(*GlobalExecutionStatePtr, (void *) &stderr, 8, false);
-  const ObjectState * stderrOSConst = GlobalExecutionStatePtr->addressSpace.findObject(stderrMO);
-  ObjectState * stderrOS = GlobalExecutionStatePtr->addressSpace.getWriteable(stderrMO,stderrOSConst);
-  stderrOS->concreteStore = (uint8_t *) &stderr;
+  tase_map_buf((uint64_t) &stderr, 8);
   
   //Map in initialized and uninitialized non-read only globals into klee from .vars file.
   std::string varsFileLocation = "./" + project + ".vars";
@@ -4940,10 +4914,7 @@ void Executor::initializeInterpretationStructures (Function *f) {
   //Add mappings for stderr and stdout
   //Todo -- remove dependency on _edata location
   printf("Mapping edata at 0x%lx \n", (uint64_t) &edata);
-  MemoryObject * stdMO = addExternalObject(*GlobalExecutionStatePtr, (void *) &edata, 16, false);
-  const ObjectState * stdOSConst = GlobalExecutionStatePtr->addressSpace.findObject(stdMO);
-  ObjectState *stdOS = GlobalExecutionStatePtr->addressSpace.getWriteable(stdMO,stdOSConst);
-  stdOS->concreteStore = (uint8_t *) &edata;
+  tase_map_buf((uint64_t) &edata, 16);
 
   //Get rid of the dummy function used for initialization
   GlobalExecutionStatePtr->popFrame();

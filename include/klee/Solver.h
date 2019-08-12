@@ -246,7 +246,7 @@ namespace klee {
   /// solver.
   ///
   /// \param s - The underlying solver to use.
-  Solver *createIndependentSolver(Solver *s);
+  Solver *createIndependentSolver(Solver *s, bool legacy_mode=false);
   
   /// createKQueryLoggingSolver - Create a solver which will forward all queries
   /// after writing them to the given path in .kquery format.
