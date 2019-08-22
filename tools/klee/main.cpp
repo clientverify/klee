@@ -73,6 +73,7 @@
 double target_start_time;
 double target_end_time;
 extern double run_start_time;
+extern double last_message_verification_time;
 #include "../../../test/tase/include/tase/tase.h"
 #include "../../../test/tase/include/tase/tase_interp.h"
 extern target_ctx_t target_ctx;
@@ -100,6 +101,7 @@ extern char * ktestPathPtr;
 extern char ktestMode[20];
 extern char ktestPath[100];
 
+
 bool tasePreProcess = false;
 bool skipFree = false;
 bool KTestReplay;
@@ -116,12 +118,13 @@ enum testType : int {EXPLORATION, VERIFICATION};
 enum testType test_type;
 std::string project;
 bool useCMS4 = true;
+bool use_XOR_opt = true;
 bool UseLegacyIndependentSolver = false;
 
 bool enableBounceback = false;
 bool OpenSSLTest = true;
-
 bool dropS2C = false;
+
 int retryMax = 2;
 
 
@@ -279,6 +282,9 @@ namespace {
 
   cl::opt<bool>
   useCMS4Arg("useCMS4", cl::desc("Use cryptominisat4 instead of minisat as the SAT backend for STP "), cl::init(true));
+
+  cl::opt<bool>
+  useXOROptArg("useXOROpt", cl::desc("Use optimization from cliver to eliminate unnecessary XOR expressions when using solver in writesocket model"), cl::init(true));
   
   cl::opt<std::string>
   projectArg("project", cl::desc("Name of project in TASE"), cl::init("-"));
@@ -288,6 +294,9 @@ namespace {
 
   cl::opt<int>
   retryMaxArg("retryMax", cl::desc("Number of times to try and bounceback to native execution if abort status allows it "), cl::init(2));
+
+  cl::opt<int>
+  tranMaxArg("tranBBMax", cl::desc("Max number of basic blocks to wrap into a single transaction"), cl::init(8));
   
   cl::opt<std::string>
   EntryPoint("entry-point",
@@ -1383,7 +1392,9 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    printf("\t workerSelfTerminate  output : %d \n", workerSelfTerminate);
    printf("\t dropS2C              output : %d \n", dropS2C);
    printf("\t retryMax             output : %d \n", retryMax);
-   printf("\t useCMS4              output : %d \n", useCMS4);
+   printf("\t tranBBMax            output : %lu \n", tran_max);
+   printf("\t useCMS4                    output : %d \n", useCMS4);
+   printf("\t useXOROpt                  output : %d \n", use_XOR_opt);
    printf("\t UseLegacyIndependentSolver output : %d \n", UseLegacyIndependentSolver);
  }
 
@@ -1428,12 +1439,14 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    taseDebug = taseDebugArg;
    tasePreProcess = tasePreProcessArg;
    modelDebug = modelDebugArg;
+   use_XOR_opt = useXOROptArg;
    useCMS4 = useCMS4Arg;
    dontFork = dontForkArg;
    project = projectArg;
    killFlagsHack = killFlagsHackArg;
    skipFree = skipFreeArg;
    measureTime = measureTimeArg;
+  
    enableBounceback = enableBouncebackArg;
    workerSelfTerminate = workerSelfTerminateArg;
    dropS2C = dropS2CArg;
@@ -1442,6 +1455,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      enableMultipass = true;
    }
    retryMax = retryMaxArg;
+   tran_max = (uint64_t) tranMaxArg;
    if (!tasePreProcess) {
      printTASEArgs();
    }
@@ -1585,8 +1599,9 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    //std::cout.flush();
    //tsx_init();
    int pid;
-
-   target_start_time = util::getWallTime();  //Moved here to initialize for both manager and workers
+   double theTime = util::getWallTime();
+   target_start_time = theTime;  //Moved here to initialize for both manager and workers
+   last_message_verification_time = theTime;
    if (taseManager) 
      pid = ::fork();
    else

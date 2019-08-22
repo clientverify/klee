@@ -42,8 +42,11 @@ public:
   void simplifyForValidConstraint(ref<Expr> e);
 
   ref<Expr> simplifyExpr(ref<Expr> e) const;
-
+  ref<Expr> simplifyWithXorOptimization(ref<Expr> e) const;
+  
   void addConstraint(ref<Expr> e);
+
+  void DoXorOptimization();
   
   bool empty() const {
     return constraints.empty();

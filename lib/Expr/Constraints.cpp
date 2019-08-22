@@ -166,3 +166,87 @@ void ConstraintManager::addConstraint(ref<Expr> e) {
   e = simplifyExpr(e);
   addConstraintInternal(e);
 }
+
+//XOR optimization from cliver:
+
+class ExtractExprVisitor : public ExprVisitor {
+public:
+  ExtractExprVisitor() {}
+
+  Action visitExtract(const ExtractExpr &extractExpr) {
+    auto e = extractExpr.getKid(0);
+
+    if (e->getNumKids() == 2) {
+      switch (e->getKind()) {
+      case Expr::Xor: {
+        ref<Expr> left = ExtractExpr::create(e->getKid(0), extractExpr.offset,
+                                             extractExpr.width);
+        ref<Expr> right = ExtractExpr::create(e->getKid(1), extractExpr.offset,
+                                              extractExpr.width);
+	ref<Expr> res = XorExpr::create(left, right);
+        return Action::changeTo(res);
+
+        break;
+      }
+      }
+      return Action::doChildren();
+    }
+  }
+};
+
+class XorLiftVisitor : public ExprVisitor {
+public:
+  XorLiftVisitor() {}
+
+  Action visitEq(const EqExpr &e) {
+    if ((isa<ConstantExpr>(e.getKid(0)) && isa<XorExpr>(e.getKid(1)))) {
+      auto xorExpr = e.getKid(1);
+      if (isa<ConstantExpr>(xorExpr->getKid(0))) {
+        // llvm::outs() << "we can optimize!\n";                                                                                                                      
+        auto xorExprConstant = xorExpr->getKid(0);
+        ref<Expr> left = XorExpr::create(xorExprConstant, e.getKid(0));
+        ref<Expr> right = XorExpr::create(xorExprConstant, e.getKid(1));
+        ref<Expr> res = EqExpr::create(left, right);
+        return Action::changeTo(res);
+      }
+    }
+    return Action::doChildren();
+  }
+};
+
+class XorPropagateVisitor : public ExprVisitor {
+public:
+  XorPropagateVisitor() {}
+
+  Action visitXor(const XorExpr &e) {
+    if ((isa<ConstantExpr>(e.getKid(0)) && isa<XorExpr>(e.getKid(1)))) {
+      if (e.getKid(1)->getKid(0) == e.getKid(0)) {
+        // llvm::outs() << "we can optimize!\n";                                                                                                                      
+        return Action::changeTo(e.getKid(1)->getKid(1));
+      }
+    }
+    return Action::doChildren();
+  }
+};
+
+void ConstraintManager::DoXorOptimization() {
+
+  ExtractExprVisitor v;
+  XorLiftVisitor xl;
+  XorPropagateVisitor xp;
+
+  rewriteConstraints(v);
+  rewriteConstraints(xl);
+  rewriteConstraints(xp);
+}
+
+ref<Expr> ConstraintManager::simplifyWithXorOptimization(ref<Expr> e) const {
+
+  ExtractExprVisitor v;
+  XorLiftVisitor xl;
+  XorPropagateVisitor xp;
+  e = v.visit(e);
+  e = xl.visit(e);
+  e = xp.visit(e);
+  return e;
+}

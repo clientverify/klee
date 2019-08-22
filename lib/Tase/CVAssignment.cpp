@@ -61,7 +61,8 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
 
   //ABH: Should be able to just add in the expr via cm.addConstraint ?
   //Todo: Double check
-  klee::ConstraintManager cm(ExecStatePtr->constraints);
+  //klee::ConstraintManager cm;
+  klee::ConstraintManager cm (ExecStatePtr->constraints);
   cm.addConstraint(expr);
 
   
@@ -75,11 +76,11 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
   info << "CVAssignment query:\n\n";
   klee::ExprPPrinter::printQuery(info, cm,
 				 klee::ConstantExpr::alloc(0, klee::Expr::Bool));
-  fprintf(stderr, "Dumping CVAssignment info: \n");
-  fprintf(stderr, "----------------------------------------- \n\n\n\n\n");
-  fprintf(stderr, " %s ", info.str().c_str());
+  fprintf(stdout, "Dumping CVAssignment info: \n");
+  fprintf(stdout, "----------------------------------------- \n\n\n\n\n");
+  fprintf(stdout, " %s ", info.str().c_str());
   
-  fprintf(stderr, "\n\n----------------------------------------- \n\n");
+  fprintf(stdout, "\n\n----------------------------------------- \n\n");
   */
   
   T0 = util::getWallTime();
@@ -295,8 +296,6 @@ void CVAssignment::serializeAssignments(void * buf, int bufSize) {
     fflush(stdout);
     std::exit(EXIT_FAILURE);
   }
-  printf("Serializing worker id as %s \n", src);
-  printf("String length is %d \n", strlen(src));
   
   strncpy((char *) itrPtr, src , ID_string_size -1); 
 
@@ -410,7 +409,6 @@ void deserializeAssignments ( void * buf, int bufSize, Executor * exec,  CVAssig
   char nameTmpBuf  [ID_string_size];
   strncpy (nameTmpBuf , (char *) itrPtr, ID_string_size -1);
   prev_worker_ID = nameTmpBuf;
-  printf("Debug -- deserialized prev worker ID name %s \n", prev_worker_ID.c_str());
   itrPtr += ID_string_size;
   
   //Iterate through records

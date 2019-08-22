@@ -159,7 +159,7 @@ void * rodata_base_ptr;
 uint64_t rodata_size;
 extern "C" void make_byte_symbolic(uint64_t addr);
 uint64_t bounceback_offset = 14;
-bool tase_buf_could_be_symbolic (void * ptr, int size);
+bool tase_buf_has_taint (void * ptr, int size);
 uint64_t trap_off = 14;  //Offset from function address at which we trap
 
 //Debug info
@@ -3436,27 +3436,30 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
   std::cout.flush();
   
   std::string array_name = get_unique_array_name(name);
-  
-  printf("DBG executeMakeSymbolic: Encountered unique name for %s \n", array_name.c_str());
-  std::cout.flush();
+  if (modelDebug) {
+    printf("DBG executeMakeSymbolic: Encountered unique name for %s \n", array_name.c_str());
+    std::cout.flush();
+  }
   //See if we have an assignment
   const klee::Array *array = NULL;
   if (!unnamed && prevMPA.bindings.size() != 0) {
-    printf("Trying to find array with MP assignment \n");
     array = prevMPA.getArray(array_name);
-
   }
   
   bool multipass = false;
   if (array != NULL) {
-    printf("Found concretization \n");
-    std::cout.flush();
+    if (taseDebug) {
+      printf("Found concretization \n");
+      std::cout.flush();
+    }
     //CVDEBUG("Multi-pass: Concretization found for " << array_name);
     multipass = true;
   } else {
     if (!unnamed) {
-      printf("Didn't find concretization \n");
-      std::cout.flush();
+      if (taseDebug) {
+	printf("Didn't find concretization \n");
+	std::cout.flush();
+      }
     }
     array = arrayCache.CreateArray(array_name, mo->size);
   }
@@ -3482,11 +3485,12 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
       }
     }
   } else {
-    printf("DBG executeMakeSymbolic: Created symbolic var for %s \n", name.c_str());
-    std::cout.flush();
+    if (modelDebug) {
+      printf("DBG executeMakeSymbolic: Created symbolic var for %s \n", name.c_str());
+      std::cout.flush();
+    }
     state.addSymbolic(mo, array);
     multipass_symbolic_vars++;
-    std::cout.flush();
   }
 
 }
@@ -3606,6 +3610,8 @@ void print_run_timers() {
   printf("ID string is %s \n", worker_ID_stream.str().c_str());
   printf("Prev worker ID string is %s \n", prev_worker_ID.c_str());
   double totalRunTime =  util::getWallTime() - run_start_time;
+  run_interp_time += (util::getWallTime() - interp_enter_time);
+  
   printf("Total run time: %lf \n",  totalRunTime);
   printf(" - Interp time: %lf \n", run_interp_time);
   printf("       -Solver: %lf \n", run_solver_time);
@@ -3646,9 +3652,6 @@ void measure_interp_time(bool isPsnTrap, bool isModelTrap, uint64_t interpCtr_in
     printf("   - unknown %d \n", target_ctx.abort_count_unknown);
     */
     printf("------------------------------\n");
-
-    //fflush(stdout);
-
     
 }
 
@@ -3840,27 +3843,11 @@ void Executor::model_reopentran() {
 
 //Todo: Double check the edge cases and make non-ugly
 bool Executor::isBufferEntirelyConcrete (uint64_t addr, int size) {
-  /*
-  uint16_t * objIterator;
-  uint64_t addrInt = (uint64_t) addr;
-  if (addrInt % 2 == 1) {
-    printf("WARNING: Working with unaligned buffer at 0x%lx \n", addrInt);
-    objIterator = (uint16_t *) addrInt -1;  //Todo -- is this a bug?
-  } else {
-    objIterator = (uint16_t *) addrInt;
-  }
 
   //Fast path
-  bool foundPsn = false;
-  for (int i = 0; i < size/2 ; i++){
-    if (*(objIterator + i) == poison_val)
-      foundPsn = true;
-  }
-  if (foundPsn == false) 
+  bool definitelyConcrete = !tase_buf_has_taint((void *) addr, size);
+  if (definitelyConcrete)
     return true;
-  */
-
-  //Debug the issue with the fast path check.  Until then, easy does it...
   
   //Slow path
   uint64_t byteItr = (uint64_t) addr;
@@ -3960,7 +3947,7 @@ void Executor::tase_helper_write (uint64_t addr, ref<Expr> val) {
 //Todo: Update if we switch to SIMD execution
 bool Executor::gprsAreConcrete() {
 
-  return !tase_buf_could_be_symbolic((void *) &target_ctx_gregs[0], NGREG * GREG_SIZE);
+  return !tase_buf_has_taint((void *) &target_ctx_gregs[0], NGREG * GREG_SIZE);
   
   //return target_ctx_gregs_OS->isObjectEntirelyConcrete();
 }
@@ -4102,7 +4089,9 @@ void Executor::model_inst () {
   if (rip == (uint64_t) &free || rip == ((uint64_t) &free_tase) || rip == ((uint64_t) &free_tase + 14) ) {
     model_free();
   }  else if (rip == (uint64_t) &sb_modeled) {
-    printf("Doing sb_modeled hack \n");
+    if (taseDebug) {
+      printf("Doing sb_modeled hack \n");
+    }
     target_ctx_gregs[GREG_RIP].u64 = target_ctx_gregs[GREG_R15].u64;
   } else if (rip == (uint64_t) &signal) {
     model_signal();
@@ -4354,9 +4343,9 @@ void Executor::printDebugInterpFooter() {
 
 //Fast-path check for poison tag in buffer.
 //Todo -- double check the corner cases
-bool tase_buf_could_be_symbolic (void * ptr, int size) {
+bool tase_buf_has_taint (void * ptr, int size) {
   //Promote size to an even number
-  //printf("Input args to tase_buf_could_be_symbolic: ptr 0x%lx, size %d \n", (uint64_t) ptr, size);
+  //printf("Input args to tase_buf_has_taint: ptr 0x%lx, size %d \n", (uint64_t) ptr, size);
   int checkSize;
   uint16_t * checkBase;
   
@@ -4375,11 +4364,11 @@ bool tase_buf_could_be_symbolic (void * ptr, int size) {
   }
 
   //We're checking in 2-byte aligned chunks, so cut size in half.
-  //It must be even by now.
+  //Checksize and Checkbase must be even by now.
 
   checkSize = checkSize/2;
   
-  //printf("After normalization, args to tase_buf_could_be_symbolic: 0x%lx, size %d \n", (uint64_t) checkBase, checkSize);
+  //printf("After normalization, args to tase_buf_has_taint: 0x%lx, size %d \n", (uint64_t) checkBase, checkSize);
   for (int i = 0; i < checkSize; i++) {
     if ( *( checkBase +i ) == poison_val)
       return true;
@@ -4474,7 +4463,7 @@ void Executor::klee_interp_internal () {
       interpCleanupStartTime = util::getWallTime();
     }
 
-    if(tase_buf_could_be_symbolic((void *) &(target_ctx_gregs[GREG_RIP].u64), 8) ) {
+    if(tase_buf_has_taint((void *) &(target_ctx_gregs[GREG_RIP].u64), 8) ) {
       ref<Expr> RIPExpr = tase_helper_read((uint64_t) &(target_ctx_gregs[GREG_RIP].u64), 8);
       if (!(isa<ConstantExpr>(RIPExpr))) {
 	printf("Detected symbolic RIP \n");

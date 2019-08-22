@@ -10,6 +10,7 @@
 #include <sys/prctl.h>
 #include <time.h>
 #include "klee/CVAssignment.h"
+#include "klee/Internal/ADT/KTest.h"
 //#include "/playpen/humphries/zTASE/TASE/test/tase/include/tase/tase_interp.h"
 #include "/playpen/humphries/zTASE/TASE/klee/lib/Core/Executor.h"
 
@@ -42,6 +43,18 @@ extern double interp_find_fn_time;
 extern double mdl_time;
 extern double psn_time;
 
+double last_message_verification_time = 0;
+
+typedef struct RoundRecord {
+  uint16_t RoundNumber;  //Index of message, starting with 0
+  uint64_t RoundRealTime;  //Time to verify message in microseconds  
+  uint16_t SocketEventType;  //0 for c2s, 1 for s2c
+  int SocketEventSize;  //Size of message in bytes
+  struct timeval SocketEventTimestamp;
+  
+} RoundRecord;
+
+extern KTestObjectVector ktov;
 
 //Perf debugging
 extern double target_start_time;
@@ -56,9 +69,7 @@ typedef struct WorkerInfo {
 } WorkerInfo;
 
 
-int QR_BYTE_LEN = 4096;
-int QA_BYTE_LEN = 4096;
-int MAX_WORKERS = 10;
+
 
 bool taseManager = false;
 int round_count = 0;
@@ -75,13 +86,24 @@ int managerRoundCtr = 0;
 
 CVAssignment  prevMPA;
 
+
+const int QR_OFF = 512;
+const int QA_OFF = 1536;
+const int RECORD_OFF = 15360;
+const int QR_MAX_WORKERS = 10;
+const int QA_MAX_WORKERS = 495;
+const int MAX_ROUND_RECORDS = 400;
 void * ms_base;
-int ms_size = 16384;
+int ms_size = 32000; //Size in bytes of shared manager structures buffer.
 
 void * ms_QR_base;
 int * ms_QR_size_ptr; //Pointer to num of workers in QR, not size in bytes
+
 void * ms_QA_base;
 int * ms_QA_size_ptr; //Pointer to num of workers in QA, not size in bytes
+
+void * ms_Records_base;
+int * ms_Records_count_ptr;  //Pointer to num of records in record list, not size in bytes
 
 int * target_started_ptr;
 int * target_ended_ptr;
@@ -307,10 +329,21 @@ void QAtoQR(WorkerInfo * worker) {
   addToQR(&tmp);
 }
 
+void addRoundRecord(RoundRecord r) {
+  void * dst = (void *) ((uint64_t) ms_Records_base + *ms_Records_count_ptr * sizeof(RoundRecord));
+  void * src = (void *) &r;
+  memcpy (dst,src, sizeof(RoundRecord));
+  *ms_Records_count_ptr = *ms_Records_count_ptr + 1;
 
+  if (*ms_Records_count_ptr > MAX_ROUND_RECORDS) {
+    fprintf(stderr, "FATAL ERROR: Too many records \n");
+    std::exit(EXIT_FAILURE);
+  }
+}
+  
 void select_workers () {
 
-  if (*ms_QR_size_ptr == MAX_WORKERS) {
+  if (*ms_QR_size_ptr == QR_MAX_WORKERS) {
 
     //Get earliest worker by round, pass, branch
 
@@ -346,7 +379,7 @@ void select_workers () {
     */
   }
 
-  if (*ms_QR_size_ptr < MAX_WORKERS && *ms_QA_size_ptr != 0) {
+  if (*ms_QR_size_ptr < QR_MAX_WORKERS && *ms_QA_size_ptr != 0) {
 
     if (taseDebug) {
       printQA();
@@ -402,14 +435,97 @@ void select_workers () {
   }
 }
 
+void print_log_header(FILE * f) {
+  
+
+  fprintf(f, "RoundNumber,RoundUserTime,RoundRealTime,RoundRealTimePassOne,RoundSysTime,MergedStates,MergerTime,SearcherTime,ForkTime,InstructionCount,InstructionCountPassOne,RecvInstructionCount,RebuildTime,BindingsSolveTime,ExecTreeTime,EditDistTime,EditDistBuildTime,EditDistHintTime,EditDistStatTime,StageCount,StateCloneCount,StateRemoveCount,SocketEventType,SocketEventSize,SocketEventTimestamp,ValidPathInstructionCount,ValidPathInstructionCountPassOne,SymbolicVariableCount,PassCount,EditDist,EditDistK,EditDistMedoidCount,EditDistSelfFirstMedoid,EditDistSelfLastMedoid,EditDistSelfSocketEvent,EditDistSocketEventFirstMedoid,EditDistSocketEventLastMedoid,BackTrackCount,RewriteTime,SimplifyExprTime,SimplifyExprTimeV2,SimplifyExprTimeV3,SimplifyExprTimeV4,SolverTime,QueryTime,CexCacheTime,QueryConstructTime,ResolveTime,Queries,QueriesInvalid,QueriesValid,QueryCacheHits,QueryCacheMisses,QueriesConstructs");
+
+  fprintf(f,"\n");
+  
+}
+
+void print_log_record(FILE * f, RoundRecord r) {
+
+  //Column 1 
+  fprintf(f, "%d,", r.RoundNumber);
+  //Columns 2-3
+  fprintf(f, "0,%lu,", r.RoundRealTime);
+  //Columns 4-22
+  fprintf(f, "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,");
+  //Column 23
+  fprintf(f,"%d,",r.SocketEventType);
+  //Column 24
+  fprintf(f,"%d,", r.SocketEventSize);
+  //Column 25
+  //Formatting from cliver
+  uint64_t timestamp =
+    (1000000)*((uint64_t)r.SocketEventTimestamp.tv_sec)
+    + (uint64_t)r.SocketEventTimestamp.tv_usec;
+  fprintf(f,"%lu,", timestamp);
+  //Columns 26-53
+  for (int i = 0; i < 28; i++)
+    fprintf(f, "0,");
+  //Column 54
+  fprintf(f,"0");
+
+  fprintf(f,"\n");
+  
+}
 
 void manage_workers () {
   get_sem_lock();
+  
+  //Check to see if analysis completed
+  if (*target_ended_ptr == 1) {
+    double ct = util::getWallTime();
+    fprintf(stderr, "Verification complete at time %lf \n", ct - target_start_time);
+
+    FILE * f = fopen("TASE_RESULTS.csv", "w+");
+    print_log_header(f);
+
+
+    RoundRecord * rPtr = (RoundRecord *) ms_Records_base;
+    
+    for (int i = 0 ; i < *ms_Records_count_ptr; i++) {
+      
+     
+      RoundRecord r = *rPtr;
+      //fprintf(stderr,"Printing round record for round %d \n", r.RoundNumber);
+
+      //Formatting from cliver
+      uint64_t timestamp =
+      (1000000)*((uint64_t)r.SocketEventTimestamp.tv_sec)
+      + (uint64_t)r.SocketEventTimestamp.tv_usec;
+      
+      //fprintf(stderr, "SocketEventTimestamp: %lu , time: %lu, EventType: %d, size: %d \n", timestamp, r.RoundRealTime, r.SocketEventType, r.SocketEventSize);
+      
+      print_log_record(f, r);
+      rPtr += 1;
+      
+    }
+
+    //R scripts expect 2 last rows to be ignored, so populate them with zeros.
+    RoundRecord rTmp;
+    struct timeval t;
+    t.tv_usec = 49380481;
+    t.tv_sec = 14143968;
+    rTmp.RoundNumber = 0;
+    rTmp.SocketEventSize = 0;
+    rTmp.SocketEventType = 0;
+    rTmp.RoundRealTime = 0;
+    rTmp.SocketEventTimestamp = t;
+    print_log_record(f,rTmp);
+    print_log_record(f,rTmp);
+    
+    fflush(stdout);
+    std::exit(EXIT_SUCCESS);
+  }
+  
   if (managerRoundCtr < *latestRoundPtr) {
     managerRoundCtr = *latestRoundPtr;
     double curr_time = util::getWallTime();
     double diff = curr_time - target_start_time;
-    fprintf(stderr,"Manager sees new round %d starting at time %lf \n", managerRoundCtr, diff);    
+    fprintf(stderr,"Manager sees new round %d starting at time %lf \n", managerRoundCtr, diff);
   }
 
   //Exit case
@@ -418,7 +534,7 @@ void manage_workers () {
     //std::exit(EXIT_SUCCESS);
   }
   
-  if (*ms_QR_size_ptr > MAX_WORKERS) {
+  if (*ms_QR_size_ptr > QR_MAX_WORKERS) {
     fprintf(stderr,"ERROR: found more workers than expected in manage_workers \n");
     std::exit(EXIT_FAILURE);
   }
@@ -519,20 +635,12 @@ int tase_fork(int parentPID, uint64_t rip) {
 	  fprintf(stderr,"Error: Fork pid %d running but not in QR ", getpid());
 	release_sem_lock();
       }
-
-      
-      
-      
-
       
       return 1;// Go back to path exploration
     } 
 
     curr_time = util::getWallTime();
     printf("Parent returning to path exploration %lf seconds into analysis \n", curr_time - target_start_time);
-
-    
-
     
     //Make self the false branch
     WorkerInfo * myInfo = PidInQR(getpid());
@@ -567,19 +675,65 @@ void tase_exit() {
   }
 }
 
+
+
 void initManagerStructures() {
    
    initialize_semaphore(getpid());
+   
    ms_base = mmap(NULL, ms_size, PROT_READ|PROT_WRITE, MAP_ANON|MAP_SHARED, -1, 0);
 
-   ms_QR_base =  ( (int *) ms_base) + 1024;
+   //--------------------------------------------
+   //Random shared vars--------------------------
+   //-------------------------------------------
+   target_started_ptr = ((int *) ms_base) + 8;
+   *target_started_ptr = 0; //Switches to 1 when we execute target
+
+   target_ended_ptr  = ((int *) ms_base) + 16;
+   *target_ended_ptr = 0;  //First worker to complete verification flips to 1
+   
+   latestRoundPtr = ((int *) ms_base) + 24;
+   *latestRoundPtr = 0;
+   
+   //--------------------------------------------
+   //Space for queues and records----------------
+   //--------------------------------------------
+   ms_QR_base =  ms_base + QR_OFF;
    ms_QR_size_ptr = (int *)(ms_QR_base -4);
    *ms_QR_size_ptr = 0;
-   
-   ms_QA_base =  ((int*) ms_base) + 2048;
+      
+   ms_QA_base =  ms_base + QA_OFF;
    ms_QA_size_ptr = (int *)(ms_QA_base -4);
    *ms_QA_size_ptr = 0;
 
+   ms_Records_base = (ms_base) + RECORD_OFF;
+   ms_Records_count_ptr = (int *) (ms_Records_base -4);
+   *ms_Records_count_ptr = 0;
+
+   //-------------------------------------------
+   //Boundary checks----------------------------
+   //-------------------------------------------
+   //Note that 20 bytes of "wiggle room" is added
+   
+   //Is QR too big?
+   if ( (uint64_t) ms_QR_base + (sizeof(WorkerInfo) * QR_MAX_WORKERS) + 20 > (uint64_t) ms_QA_base) {
+     fprintf(stderr, "FATAL MANAGER ERROR: Not enough space for QR \n");
+     std::exit(EXIT_FAILURE);
+   }
+
+   //Is QA too big?
+   if ( (uint64_t) ms_QA_base + (sizeof(WorkerInfo) * QA_MAX_WORKERS) + 20 > (uint64_t) ms_Records_base ) {
+     fprintf(stderr, "FATAL MANAGER ERROR: Not enough space for QA \n");
+     std::exit(EXIT_FAILURE);
+   }
+
+   //Is the records buffer too big?
+   if ( (uint64_t) ms_Records_base + (sizeof(RoundRecord) * MAX_ROUND_RECORDS) + 20 > (uint64_t) ms_base + (uint64_t) ms_size) {
+     fprintf(stderr, "FATAL MANAGER ERROR: Not enough space for record info \n");
+     fprintf(stderr, "Need at least %lu bytes just for records \n", (sizeof(RoundRecord) * MAX_ROUND_RECORDS) + 20);
+     std::exit(EXIT_FAILURE);
+   }
+   
    int res = prctl(PR_SET_CHILD_SUBREAPER, 1);
    if (res == -1) {
      perror("Subreaper err ");
@@ -587,14 +741,7 @@ void initManagerStructures() {
      std::exit(EXIT_FAILURE);
    }
      
-   target_started_ptr = ((int *) ms_base) + 3072;
-   *target_started_ptr = 0; //Switches to 1 when we execute target
-
-   target_ended_ptr  = ((int *) ms_base) + 3076;
-   *target_ended_ptr = 0;  //First worker to complete verification flips to 1
-   
-   latestRoundPtr = ((int *) ms_base) + 100;
-   *latestRoundPtr = 0;
+  
  }
 
 //Fill a buffer with string for the time
@@ -624,7 +771,37 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
     if (taseDebug) {
       printf("Worker sees latest round as %d; updating to %d \n", *latestRoundPtr, round_count);
     }
-    *latestRoundPtr = round_count;
+
+    
+    //Make record for eval later
+    if (round_count != 0 && round_count > *latestRoundPtr) {
+    
+      *latestRoundPtr = round_count;
+      double currTime = util::getWallTime();
+      double RT = currTime - last_message_verification_time;
+      last_message_verification_time = currTime;
+      
+      KTestObject * kto = &(ktov.objects[ktov.playback_index -1]);
+      int eventType = 0;
+      if (strcmp(kto->name ,"c2s") == 0) {
+	eventType = 0;
+      } else if (strcmp(kto->name,"s2c") == 0) {
+	eventType = 1;
+      } else {
+	printf(" ERROR: unrecognized ktest object type \n");
+	fflush(stdout);
+	std::exit(EXIT_FAILURE);
+      }
+      
+      RoundRecord r;
+      r.RoundNumber = round_count -1;
+      r.RoundRealTime = RT * 1000000.; 
+      r.SocketEventType = eventType;
+      r.SocketEventSize = kto->numBytes;
+      r.SocketEventTimestamp = kto->timestamp ;
+      addRoundRecord(r);
+      
+    }
   }
 
   
@@ -773,7 +950,7 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
 void multipass_replay_round (void * assignmentBufferPtr, CVAssignment * mpa, int * pidPtr)  {
 
   printf("Entering multipass_replay_round \n");
-  fflush(stdout);
+  
   
   while(true) {//Is this actually needed?  get_sem_lock() should block until semaphore is available
  
@@ -815,13 +992,14 @@ void multipass_replay_round (void * assignmentBufferPtr, CVAssignment * mpa, int
 	if (PidInQA(*pidPtr) != NULL)
 	  printf("ERROR: control debug: replay pid is somehow already in QA \n");
 
-	double curr_time = util::getWallTime();
-	double elapsed_time = curr_time - target_start_time;
+	//double curr_time = util::getWallTime();
+	//double elapsed_time = curr_time - target_start_time;
 	
-	printf("mp_replay_round: control debug: replayLock obtained. Inserting replayPid %d into QA.  %lf seconds elapsed since target analysis started \n", *pidPtr,  elapsed_time);
-	std::cout.flush();
+	//printf("mp_replay_round: control debug: replayLock obtained. Inserting replayPid %d into QA.  %lf seconds elapsed since target analysis started \n", *pidPtr,  elapsed_time);
+	//std::cout.flush();
+	
       }
-      std::cout.flush();
+
       WorkerInfo wi;
       wi.pid = *pidPtr;
       wi.round = round_count;
@@ -837,11 +1015,16 @@ void multipass_replay_round (void * assignmentBufferPtr, CVAssignment * mpa, int
 	printf("Printing assignments BEFORE serialization \n");
 	mpa->printAllAssignments(NULL);
       }
-      double elapsed_time = util::getWallTime() - target_start_time;
-      printf(" control debug: Serializing to buf 0x%lx at time %lf for replay pid %d in round %d \n", (uint64_t) assignmentBufferPtr, elapsed_time, *pidPtr, round_count);
 
+      /*
+      double elapsed_time = util::getWallTime() - target_start_time;
+      
+      printf(" control debug: Serializing to buf 0x%lx at time %lf for replay pid %d in round %d \n", (uint64_t) assignmentBufferPtr, elapsed_time, *pidPtr, round_count);
+      */
       mpa->serializeAssignments(assignmentBufferPtr, multipassAssignmentSize);
-      std::cout.flush();
+
+      //printQA();
+      
       removeFromQR(PidInQR(getpid()));
       release_sem_lock();
       print_run_timers();

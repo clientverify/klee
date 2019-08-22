@@ -354,6 +354,7 @@ private:
   bool instructionIsModeled();
   void model_taseMakeSymbolic();
   void model_inst();
+  void do_ret();
   void model_sb_disabled();
   void deadRegisterFlush();
   void printDebugInterpHeader();
