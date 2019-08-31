@@ -354,6 +354,7 @@ private:
   bool instructionIsModeled();
   void model_taseMakeSymbolic();
   void model_inst();
+  void killDeadRegsPreCall();
   void do_ret();
   void model_sb_disabled();
   void deadRegisterFlush();
@@ -443,6 +444,7 @@ private:
   void model_strncat();
   void model_select();
   void model_signal();
+  void model_memcpy_tase();
   void model_malloc();
   void model_calloc();
   void model_realloc();

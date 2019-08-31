@@ -123,11 +123,12 @@ ObjectState::ObjectState(const MemoryObject *mo, bool forTASE)
   
 }
 
-
-ObjectState::ObjectState(const MemoryObject *mo, const Array *array)
+//ABH: Added "forTASE" arg to avoid an unnecessary malloc for some
+//use cases
+ObjectState::ObjectState(const MemoryObject *mo, const Array *array, bool forTASE)
   : refCount(0),
     object(mo),
-    concreteStore(new uint8_t[mo->size]),
+    concreteStore(forTASE ? NULL : new uint8_t[mo->size]),
     concreteMask(0),
     flushMask(0),
     knownSymbolics(0),
@@ -135,10 +136,15 @@ ObjectState::ObjectState(const MemoryObject *mo, const Array *array)
     size(mo->size),
     readOnly(false) {
   mo->refCount++;
-  //AH Changed to memset to 0 before call to makeSymbolic.
-  memset(concreteStore, 0, size);
-  
-  makeSymbolic();
+  //AH Changed  memset to 0 before call to makeSymbolic.
+  if (!forTASE) {
+    memset(concreteStore, 0, size);
+    makeSymbolic();
+  } else {
+    concreteStore = (uint8_t *) mo->address;
+    memset(concreteStore, 0, size);
+    makeSymbolic();
+  }
 }
 
 ObjectState::ObjectState(const ObjectState &os) 

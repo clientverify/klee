@@ -28,6 +28,8 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 
+#include "klee/Internal/System/Time.h"
+
 extern bool useCMS4;  //Added for TASE
 
 namespace {
@@ -363,9 +365,13 @@ bool STPSolverImpl::computeInitialValues(
     success = ((SOLVER_RUN_STATUS_SUCCESS_SOLVABLE == runStatusCode) ||
                (SOLVER_RUN_STATUS_SUCCESS_UNSOLVABLE == runStatusCode));
   } else {
+
+    double T0 = util::getWallTime();
     runStatusCode =
         runAndGetCex(vc, builder, stp_e, objects, values, hasSolution);
     success = true;
+
+    printf("Core solver query took %lf seconds \n", util::getWallTime() - T0);
   }
 
   if (success) {

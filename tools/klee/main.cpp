@@ -101,7 +101,7 @@ extern char * ktestPathPtr;
 extern char ktestMode[20];
 extern char ktestPath[100];
 
-
+int QR_MAX_WORKERS = 8;
 bool tasePreProcess = false;
 bool skipFree = false;
 bool KTestReplay;
@@ -111,6 +111,7 @@ bool modelDebug = false;
 bool taseDebug =false;
 bool measureTime =true;
 bool dontFork =false;
+bool noLog = false;
 bool workerSelfTerminate=true;
 enum runType : int {INTERP_ONLY, MIXED};
 enum runType exec_mode;
@@ -264,6 +265,9 @@ namespace {
   cl::opt<bool>
   dontForkArg("dontFork", cl::desc("Disable forking in TASE for debugging"), cl::init(false));
 
+  cl::opt<bool>
+  noLogArg("noLog", cl::desc("No logging at all in TASE"), cl::init(false));
+  
    cl::opt<bool>
    workerSelfTerminateArg("workerSelfTerminate", cl::desc("Workers will exit if they see they're in an earlier round"), cl::init(true));
 
@@ -295,6 +299,9 @@ namespace {
   cl::opt<int>
   retryMaxArg("retryMax", cl::desc("Number of times to try and bounceback to native execution if abort status allows it "), cl::init(2));
 
+  cl::opt<int>
+  QRMaxWorkersArg("QRMaxWorkers", cl::desc("Maximum number of workers in TASE "), cl::init(8));
+  
   cl::opt<int>
   tranMaxArg("tranBBMax", cl::desc("Max number of basic blocks to wrap into a single transaction"), cl::init(8));
   
@@ -1384,7 +1391,9 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    printf("\t tasePreProcess  : %d \n", tasePreProcess);
    printf("\t taseDebug output: %d \n", taseDebug);
    printf("\t modelDebug output: %d \n", modelDebug);
+   printf("\t noLog      output: %d \n", noLog);
    printf("\t dontFork  output: %d \n", dontFork);
+   
    printf("\t killFlagsHack      output : %d \n", killFlagsHack);
    printf("\t skipFree           output : %d \n", skipFree);
    printf("\t measureTime         output : %d \n", measureTime);
@@ -1393,6 +1402,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    printf("\t dropS2C              output : %d \n", dropS2C);
    printf("\t retryMax             output : %d \n", retryMax);
    printf("\t tranBBMax            output : %lu \n", tran_max);
+   printf("\t QRMaxWorkers         output : %d  \n", QR_MAX_WORKERS);
    printf("\t useCMS4                    output : %d \n", useCMS4);
    printf("\t useXOROpt                  output : %d \n", use_XOR_opt);
    printf("\t UseLegacyIndependentSolver output : %d \n", UseLegacyIndependentSolver);
@@ -1441,6 +1451,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    modelDebug = modelDebugArg;
    use_XOR_opt = useXOROptArg;
    useCMS4 = useCMS4Arg;
+   noLog = noLogArg;
    dontFork = dontForkArg;
    project = projectArg;
    killFlagsHack = killFlagsHackArg;
@@ -1455,6 +1466,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      enableMultipass = true;
    }
    retryMax = retryMaxArg;
+   QR_MAX_WORKERS = QRMaxWorkersArg;
    tran_max = (uint64_t) tranMaxArg;
    if (!tasePreProcess) {
      printTASEArgs();

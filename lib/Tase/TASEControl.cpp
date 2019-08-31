@@ -20,10 +20,13 @@
 using namespace llvm;
 using namespace klee;
 
+extern FILE * prev_stdout_log;
 extern std::stringstream worker_ID_stream;
 extern std::string prev_worker_ID;
 extern bool dontFork;
+extern bool noLog;
 extern bool taseDebug;
+extern bool modelDebug;
 extern bool workerSelfTerminate;
 extern void deserializeAssignments ( void * buf, int bufSize, klee::Executor * exec, CVAssignment * cv);
 
@@ -34,14 +37,6 @@ extern double run_start_time;
 extern double run_interp_time;
 extern double run_fork_time;
 extern double interp_enter_time;
-
-extern double interpreter_time;
-extern double interp_setup_time;
-extern double interp_run_time;
-extern double interp_cleanup_time;
-extern double interp_find_fn_time;
-extern double mdl_time;
-extern double psn_time;
 
 double last_message_verification_time = 0;
 
@@ -69,8 +64,6 @@ typedef struct WorkerInfo {
 } WorkerInfo;
 
 
-
-
 bool taseManager = false;
 int round_count = 0;
 int pass_count = 0; //Pass ctr for current round of verification
@@ -90,7 +83,7 @@ CVAssignment  prevMPA;
 const int QR_OFF = 512;
 const int QA_OFF = 1536;
 const int RECORD_OFF = 15360;
-const int QR_MAX_WORKERS = 10;
+extern int QR_MAX_WORKERS;
 const int QA_MAX_WORKERS = 495;
 const int MAX_ROUND_RECORDS = 400;
 void * ms_base;
@@ -483,39 +476,30 @@ void manage_workers () {
     FILE * f = fopen("TASE_RESULTS.csv", "w+");
     print_log_header(f);
 
-
     RoundRecord * rPtr = (RoundRecord *) ms_Records_base;
     
     for (int i = 0 ; i < *ms_Records_count_ptr; i++) {
-      
-     
       RoundRecord r = *rPtr;
-      //fprintf(stderr,"Printing round record for round %d \n", r.RoundNumber);
-
-      //Formatting from cliver
-      uint64_t timestamp =
-      (1000000)*((uint64_t)r.SocketEventTimestamp.tv_sec)
-      + (uint64_t)r.SocketEventTimestamp.tv_usec;
-      
-      //fprintf(stderr, "SocketEventTimestamp: %lu , time: %lu, EventType: %d, size: %d \n", timestamp, r.RoundRealTime, r.SocketEventType, r.SocketEventSize);
-      
       print_log_record(f, r);
       rPtr += 1;
-      
     }
 
-    //R scripts expect 2 last rows to be ignored, so populate them with zeros.
-    RoundRecord rTmp;
+    //R scripts expect 2 last rows to be ignored, so populate them with bogus late values.
+    RoundRecord rTmp1;
     struct timeval t;
     t.tv_usec = 49380481;
     t.tv_sec = 14143968;
-    rTmp.RoundNumber = 0;
-    rTmp.SocketEventSize = 0;
-    rTmp.SocketEventType = 0;
-    rTmp.RoundRealTime = 0;
-    rTmp.SocketEventTimestamp = t;
-    print_log_record(f,rTmp);
-    print_log_record(f,rTmp);
+    rTmp1.RoundNumber = managerRoundCtr+1;
+    rTmp1.SocketEventSize = 0;
+    rTmp1.SocketEventType = 0;
+    rTmp1.RoundRealTime = 0;
+    rTmp1.SocketEventTimestamp = t;
+    print_log_record(f,rTmp1);
+    RoundRecord rTmp2;
+    rTmp2 = rTmp1;
+    rTmp2.RoundNumber = managerRoundCtr+2;
+    
+    print_log_record(f,rTmp2);
     
     fflush(stdout);
     std::exit(EXIT_SUCCESS);
@@ -559,39 +543,42 @@ void worker_exit() {
   }
 }
 
+void worker_self_term() {
+  get_sem_lock();
+  if (taseDebug) {
+     printf("Worker %d is in round %d when latest round is %d. Worker exiting. \n", getpid(), round_count, *latestRoundPtr );
+     fflush(stdout);
+   }
+   removeFromQR(PidInQR(getpid()));
+   release_sem_lock();
+   std::exit(EXIT_SUCCESS);
+}
+
 int tase_fork(int parentPID, uint64_t rip) {
   tase_branches++;
   double curr_time = util::getWallTime();
   printf("PID %d entering tase_fork at rip 0x%lx %lf seconds after analysis started \n", parentPID, rip, curr_time - target_start_time);
 
-  printf("END RUN INFO: -- \n");
-  printf("Exiting with path exploration fork \n");
-  printf("Spent %lf seconds in interpreter \n", run_interp_time );
-  
-  
-  std::cout.flush();
   if (dontFork) {
     printf("Forking is disabled.  Shutting down \n");
     std::cout.flush();
     std::exit(EXIT_FAILURE);
   }
-  
   if (taseManager) {
-    //get_sem_lock();  //Let's try to elide this
     if (taseDebug) {
       printf("TASE FORKING! \n");
     }
-    
+
+    //Should actually place check to latestRoundPtr in semaphore
     if (round_count < *latestRoundPtr && workerSelfTerminate)  {
-      get_sem_lock();
-      if (taseDebug) {
-	printf("Worker %d is in round %d when latest round is %d. Worker exiting. \n", getpid(), round_count, *latestRoundPtr );
-	fflush(stdout);
-      }
-      removeFromQR(PidInQR(getpid()));
-      release_sem_lock();
-      std::exit(EXIT_SUCCESS);
+      worker_self_term();
     }
+   
+    WorkerInfo wi;
+    wi.round = round_count;
+    wi.pass  = pass_count;
+    wi.branches = tase_branches +1;
+    wi.parent = parentPID;
 
     double T1 =  util::getWallTime();
     int trueChildPID = ::fork();
@@ -601,34 +588,28 @@ int tase_fork(int parentPID, uint64_t rip) {
     }
     double T2 = util::getWallTime();
     
-    if (trueChildPID != 0) {
+    if (trueChildPID != 0) {  //PARENT
       if (taseDebug) {
 	printf("Parent PID %d forked off child %d at rip 0x%lx for TRUE branch \n", parentPID, trueChildPID, rip);
 	fflush(stdout);
       }       
-
       run_fork_time += T2-T1;
-      
+
       //Block until child has sigstop'd.
       while (true) {
 	int status;
 	int res = waitpid(trueChildPID, &status, WUNTRACED);
 	if (WIFSTOPPED(status))
 	  break;
-      }
+      }	
+      
       get_sem_lock();
 
-      WorkerInfo wi;
-      wi.pid = trueChildPID;
-      wi.round = round_count;
-      wi.pass  = pass_count;
-      wi.branches = tase_branches;
-      wi.parent = parentPID;
+      wi.pid = trueChildPID;     
       addToQA(&wi);
-    } else  {     
+      
+    } else  {                //CHILD
       raise(SIGSTOP);
-
-
       if (taseDebug) {
 	get_sem_lock();
 	if (PidInQR(getpid()) == NULL)
@@ -636,23 +617,19 @@ int tase_fork(int parentPID, uint64_t rip) {
 	release_sem_lock();
       }
       
-      return 1;// Go back to path exploration
+      return 0;// Go back to path exploration
     } 
 
     curr_time = util::getWallTime();
-    printf("Parent returning to path exploration %lf seconds into analysis \n", curr_time - target_start_time);
+    if (modelDebug)
+      printf("Parent returning to path exploration %lf seconds into analysis \n", curr_time - target_start_time);
     
     //Make self the false branch
     WorkerInfo * myInfo = PidInQR(getpid());
     myInfo->branches++;
-
     release_sem_lock();
-
     print_run_timers();
-    
-    
-    return 0;
-
+    return 1;
 
   } else {
     int pid = ::fork();
@@ -662,10 +639,10 @@ int tase_fork(int parentPID, uint64_t rip) {
 
 void tase_exit() {
   if (taseManager) {
-    get_sem_lock();
-    removeFromQR(PidInQR(getpid()));
     printf("PID %d calling tase_exit \n", getpid());  
     std::cout.flush();
+    get_sem_lock();
+    removeFromQR(PidInQR(getpid()));
     release_sem_lock();
     std::exit(EXIT_SUCCESS); //Releases semaphore
   } else {
@@ -744,19 +721,11 @@ void initManagerStructures() {
   
  }
 
-//Fill a buffer with string for the time
-void TASE_get_time_string (char * buf) {
-  time_t theTime;
-  time(&theTime);
-
-  struct tm * tstruct= localtime(&theTime);
-  strftime(buf, 80, "%T",tstruct);
-  
-}
-
 void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
-  printf("Hit top of multipass_start_round \n");
-  std::cout.flush();
+  if (modelDebug) {
+    printf("Hit top of multipass_start_round \n");
+    std::cout.flush();
+  }
   get_sem_lock();
 
   if (round_count < *latestRoundPtr  && workerSelfTerminate)  {
@@ -805,8 +774,7 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
   }
 
   
-  printf("IMPORTANT: Starting round %d pass %d of verification \n", round_count, pass_count);
-  std::cout.flush();
+  //printf("IMPORTANT: Starting round %d pass %d of verification \n", round_count, pass_count);
   //Make backup of self
 
   double T1 = util::getWallTime();
@@ -870,12 +838,15 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
     release_sem_lock();
   } else {    
     raise(SIGSTOP);
-
+    reset_run_timers();
     //prev_worker_ID was assigned in deserialize assignments
+    
+    double T0 = util::getWallTime();
     int i = getpid();
     worker_ID_stream << ".";
     worker_ID_stream << i;
     std::string pidString ;
+
     pidString = worker_ID_stream.str();
     if (pidString.size() > 250) {
       printf("Cycling log name due to large size \n");
@@ -885,38 +856,32 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
       pidString = worker_ID_stream.str();
       printf("Cycled log name is %s \n", pidString.c_str());
     }
-
-    printf("Before freopen, new string for log is %s \n", pidString.c_str());
-    
-    FILE * res = freopen(pidString.c_str(),"w",stdout);
-    reset_run_timers();
     
     
-    if (res == NULL) {
+    //printf("Before freopen, new string for log is %s \n", pidString.c_str());
+    if (prev_stdout_log != NULL)
+      fclose(prev_stdout_log);
+    
+    
+    prev_stdout_log = freopen(pidString.c_str(),"w",stdout);
+    printf("Resetting run timers \n");
+    
+    
+    
+    if (prev_stdout_log == NULL) {
       printf("ERROR: Couldn't open file for new replay pid %d \n", i);
       perror("Error opening file during replay");
       fprintf(stderr, "ERROR opening new file for child process logging for pid %d \n", i);
       worker_exit();
-    } else 
-      printf("Worker %d opened file for logging \n", i);
-
-    interp_run_time = 0;
-    interp_enter_time = util::getWallTime();
+    }
     
-    interpreter_time = 0.0;
-    interp_setup_time = 0.0;
-    interp_run_time = 0.0;
-    interp_cleanup_time = 0.0;
-    interp_find_fn_time = 0.0;
     
-    mdl_time = 0.0;
-    psn_time = 0.0;
+    double T1 = util::getWallTime();
+    printf("Spent %lf seconds reopening log \n", T1 - T0);
+    interp_enter_time = T1;
     
-    fflush(stdout);
     static int ctr = 0;
     while (true) {
-      printf("Trying to get sem lock \n");
-      fflush(stdout);
       get_sem_lock(); 
       if ( (PidInQR(getpid()) !=NULL) && *replayLock == 0) {
 	break;
@@ -928,17 +893,19 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
       }
     }
     
-    char buf [80];
-    TASE_get_time_string(buf);
-
-    double curr_time = util::getWallTime();
-    double elapsed_time = curr_time - target_start_time;
-    
-    printf("IMPORTANT: control debug:  replaying round %d for pass %d at time %s with replay pid %d.  %lf seconds since analysis started \n", round_count, pass_count, buf, getpid(), elapsed_time );
-    if(!(PidInQR(i) != NULL)) 
-      printf("IMPORTANT: Error: control debug: Process %d executing without pid in QR at time %s \n", i, buf);
-    std::cout.flush();
+   
+    if(!(PidInQR(i) != NULL)) {
+      double elapsed_time = util::getWallTime() - target_start_time;
+      printf("IMPORTANT: Error: control debug: Process %d executing without pid in QR at time %lf \n", i, elapsed_time);
+      std::cout.flush();
+    }
     release_sem_lock();
+
+    if (modelDebug) {
+      double elapsed_time = util::getWallTime() - target_start_time;
+      printf("IMPORTANT: control debug:  replaying round %d for pass %d  with replay pid %d.  %lf seconds since analysis started \n", round_count, pass_count,  getpid(), elapsed_time );
+    }
+
     
     multipass_start_round(theExecutor, true);
     printf("Returned from multipass_start_round \n");
@@ -957,9 +924,9 @@ void multipass_replay_round (void * assignmentBufferPtr, CVAssignment * mpa, int
     get_sem_lock();
     if (round_count < *latestRoundPtr && workerSelfTerminate)  {
       removeFromQR(PidInQR(getpid()));
+      release_sem_lock();
       printf("Worker %d is in round %d when latest round is %d. Worker exiting. \n", getpid(), round_count, *latestRoundPtr );
       fflush(stdout);
-      release_sem_lock();
       std::exit(EXIT_SUCCESS);
     }
     /*
@@ -1023,7 +990,7 @@ void multipass_replay_round (void * assignmentBufferPtr, CVAssignment * mpa, int
       */
       mpa->serializeAssignments(assignmentBufferPtr, multipassAssignmentSize);
 
-      //printQA();
+
       
       removeFromQR(PidInQR(getpid()));
       release_sem_lock();

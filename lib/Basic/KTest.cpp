@@ -35,6 +35,7 @@ extern "C" int RAND_pseudo_bytes (unsigned char *buf, int num);
 
 extern "C" int RAND_bytes (unsigned char *buf, int num);
 
+extern bool taseDebug;
 extern bool enableMultipass;
 extern uint64_t interpCtr;
 extern bool dropS2C;
@@ -436,9 +437,6 @@ static void KTOV_append(KTestObjectVector *ov,
 KTestObject* KTOV_next_object(KTestObjectVector *ov, const char *name)
 {
 
-  printf("Entered ktov_next_object \n");
-  printf("playback index is %d \n", ov->playback_index);
-  fflush(stdout);
   
   if (ov->playback_index >= ov->size) {
     printf("ERROR: ktest playback -- no more recorded events \n");
@@ -456,12 +454,13 @@ KTestObject* KTOV_next_object(KTestObjectVector *ov, const char *name)
     for which we may not have .net.ktest files readily available */
 
   if (enableMultipass) {
-    printf("Forcing KTOV_next_object to ignore anything but c2s and s2c \n");
-    fflush(stdout);
+
     while (true) {
       
       if (strcmp(o->name,"c2s") != 0 &&  (strcmp (o->name, "s2c") != 0 || (dropS2C && round_count >= 3) ) ) {
-	printf("skipping record of type %s at index %d \n", o->name, ov->playback_index);
+	if (taseDebug) {
+	  printf("skipping record of type %s at index %d \n", o->name, ov->playback_index);
+	}
 	ov->playback_index++;
 	o = &ov->objects[ov->playback_index];
       } else
@@ -480,9 +479,10 @@ KTestObject* KTOV_next_object(KTestObjectVector *ov, const char *name)
   }
 
   ov->playback_index++;
-
-  printf("Returning from ktov_next_object \n");
-  fflush(stdout);
+  if (taseDebug) {
+    printf("Returning from ktov_next_object \n");
+    fflush(stdout);
+  }
   return o;
 }
 
@@ -490,9 +490,10 @@ KTestObject* KTOV_next_object(KTestObjectVector *ov, const char *name)
  int ktest_connect_tase(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 {
 
-  printf("Entering ktest_connect at interpCtr %lu with sockfd %d \n", interpCtr, sockfd);
-  fflush(stdout);
-  
+  if(taseDebug) {
+    printf("Entering ktest_connect at interpCtr %lu with sockfd %d \n", interpCtr, sockfd);
+    fflush(stdout);
+  }
   if (ktest_mode == KTEST_NONE) { // passthrough
     return connect(sockfd, addr, addrlen);
   }

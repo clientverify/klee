@@ -15,6 +15,9 @@
 extern void worker_exit();
 extern std::stringstream worker_ID_stream;
 extern std::string prev_worker_ID;
+extern int round_count;
+
+extern std::vector<const klee::Array *> round_symbolics;
 
 int ID_string_size = 384;
 
@@ -47,23 +50,56 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
   std::vector<const klee::Array*> arrays;
   std::vector< std::vector<unsigned char> > initial_values;
 
+  std::vector<std::string> symObjNames;
 
 
   double T0 = util::getWallTime();
   klee::findSymbolicObjects(expr, arrays);
+  //Get list of names of symbolic vars in write condition
+  for (std::vector<const klee::Array*>::iterator it = arrays.begin(),
+	 ie = arrays.end(); it != ie; ++it) {
+    symObjNames.push_back((*it)->name);
+  }
+  
+  
+  //Get assignments for variables not in write condition
+  //Will be inefficient if we have lots of symbolic vars per round
+  //Todo -- Make sure we're not making bad assumptions about uniqueness of names
+  if (round_count >= 3) {
+    for (std::vector<const klee::Array*>::iterator it = round_symbolics.begin(),
+	   ie = round_symbolics.end(); it != ie; ++it) {
+      std::string objName = (*it)->name;
+      bool nameInList = false;
+      for (std::vector<std::string>::iterator nameIt = symObjNames.begin(),
+	     nameIe = symObjNames.end(); nameIt != nameIe; ++nameIt) {
+	if (objName == *nameIt){
+	  nameInList = true;
+	}
+      }
+      if (!nameInList) {
+	printf("Found sym var name %s not in write condition \n", objName.c_str());
+	//Add sym var to list here.
+	//DBG -- just add selects for now
+	std::string::size_type res = objName.find("select");
+	if (res != std::string::npos) {
+	  printf("Requesting solution for %s \n", objName.c_str());
+	  arrays.push_back(*it);
+	}
+      }
+    }
+  }
+  
   double T1 = util::getWallTime();
   printf("Time on findSymbolicObjects: %lf \n", T1 - T0);
-  
-  //ABH: It needs to be the case that the write condition was added to
-  //exec state's constraints before solveForBindings was called.
-  //Todo:  Make this simpler and less prone to misuse.
   T0 = util::getWallTime();
 
   //ABH: Should be able to just add in the expr via cm.addConstraint ?
   //Todo: Double check
   //klee::ConstraintManager cm;
-  klee::ConstraintManager cm (ExecStatePtr->constraints);
+
+  klee::ConstraintManager cm (ExecStatePtr->constraints);  //Fast
   cm.addConstraint(expr);
+
 
   
   klee::Query query(cm, klee::ConstantExpr::alloc(0, klee::Expr::Bool));
@@ -151,7 +187,7 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
   
   // This may be a null-op how this interaction works needs to be better
   // understood
-  value_disjunction = cm.simplifyExpr(value_disjunction);
+  //value_disjunction = cm.simplifyExpr(value_disjunction);
   T1 = util::getWallTime();
   printf("Time creating value disjunction  %lf \n", T1 - T0);
   T0 = util::getWallTime(); 
@@ -176,6 +212,10 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
     printf("Time calling mayBeTrue: %lf \n", T1 - T0);
     T0 = util::getWallTime();
 
+
+    
+   
+    
     if (result) {
       printf("INVALID solver concretization!");
       fflush(stdout);
@@ -255,7 +295,7 @@ bool debugSerial = false;
 
 void CVAssignment::serializeAssignments(void * buf, int bufSize) {
 
-  printf("DBG3 -- worker ID is %s \n",worker_ID_stream.str().c_str());
+
   std::vector<const klee::Array *> objects;
   std::vector<std::vector<unsigned char> > values;
 
