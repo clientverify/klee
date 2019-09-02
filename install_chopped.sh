@@ -67,9 +67,9 @@ make PREFIX=$ROOT_DIR/local/klee-uclibc/install install
 
 #Build KLEE:
 cd $ROOT_DIR
-git clone https://github.com/davidtr1037/chopper.git
+git clone git@git.cs.unc.edu:cliver/klee chopper
 cd chopper
-git checkout master
+git checkout chop_branch
 mkdir klee_build
 cd klee_build
 CXXFLAGS="-fno-rtti" cmake \
