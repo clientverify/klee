@@ -138,6 +138,7 @@ public:
   }
 };
 
+/*
 class ExprHashVisitor : public ExprVisitor {
   ExprHashSet visited_set;
 
@@ -167,7 +168,8 @@ public:
     return Action::doChildren();
   }
 };
-
+*/
+/*
 ConstraintManager::ConstraintManager(const std::vector< ref<Expr> > &_constraints)
   : constraints(_constraints) {
   equalities_map.clear();
@@ -182,6 +184,7 @@ ConstraintManager::ConstraintManager(const ConstraintManager &cs)
   : constraints(cs.constraints),
     equalities_map(cs.equalities_map),
     equalities_hashval_map(cs.equalities_hashval_map) {}
+*/
 
 void ConstraintManager::DoXorOptimization() {
 
@@ -225,12 +228,13 @@ bool ConstraintManager::rewriteConstraints(ExprVisitor &visitor) {
       constraints.push_back(ce);
     }
   }
-
+  /*
   if (changed) {
     for (auto& e : constraints) {
       addToEqualitiesMap(e);
     }
   }
+  */
 
   return changed;
 }
@@ -251,7 +255,7 @@ void ConstraintManager::simplifyForValidConstraint(ref<Expr> e) {
 
 
 
-
+/*
 void ConstraintManager::addToEqualitiesMap(ref<Expr> e) {
 
   if (const EqExpr *ee = dyn_cast<EqExpr>(e)) {
@@ -276,10 +280,10 @@ void ConstraintManager::addToEqualitiesMap(ref<Expr> e) {
     equalities_map.insert(std::make_pair(e,ConstantExpr::alloc(1, Expr::Bool)));
   }
 }
+*/
 
 
-
-
+/*
 ref<Expr> ConstraintManager::simplifyExpr(ref<Expr> e) const {
   if (isa<ConstantExpr>(e))
     return e;
@@ -297,6 +301,33 @@ ref<Expr> ConstraintManager::simplifyExpr(ref<Expr> e) const {
 
   return res;
 }
+*/
+
+ref<Expr> ConstraintManager::simplifyExpr(ref<Expr> e) const {
+  if (isa<ConstantExpr>(e))
+    return e;
+
+  std::map< ref<Expr>, ref<Expr> > equalities;
+
+  for (ConstraintManager::constraints_ty::const_iterator
+         it = constraints.begin(), ie = constraints.end(); it != ie; ++it) {
+    if (const EqExpr *ee = dyn_cast<EqExpr>(*it)) {
+      if (isa<ConstantExpr>(ee->left)) {
+        equalities.insert(std::make_pair(ee->right,
+                                         ee->left));
+      } else {
+        equalities.insert(std::make_pair(*it,
+                                         ConstantExpr::alloc(1, Expr::Bool)));
+      }
+    } else {
+      equalities.insert(std::make_pair(*it,
+                                       ConstantExpr::alloc(1, Expr::Bool)));
+    }
+  }
+
+  return ExprReplaceVisitor2(equalities).visit(e);
+}
+
 
 void ConstraintManager::addConstraintInternal(ref<Expr> e) {
   // rewrite any known equalities and split Ands into different conjuncts
@@ -329,7 +360,7 @@ void ConstraintManager::addConstraintInternal(ref<Expr> e) {
       }
     }
     //double T0 = util::getWallTime();
-    addToEqualitiesMap(e);
+    //addToEqualitiesMap(e);
     //double T1 = util::getWallTime();
     constraints.push_back(e);
     //double T2 = util::getWallTime();
@@ -338,7 +369,7 @@ void ConstraintManager::addConstraintInternal(ref<Expr> e) {
   }
 
   default:
-    addToEqualitiesMap(e);
+    //addToEqualitiesMap(e);
     constraints.push_back(e);
     break;
   }

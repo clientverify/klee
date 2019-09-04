@@ -3604,7 +3604,7 @@ uint64_t * last_heap_addr = 0;
 
 
 void reset_run_timers() {
-  //printf("Resetting run timers at %lf seconds into analysis \n", util::getWallTime() - target_start_time);
+  printf("Resetting run timers at %lf seconds into analysis \n", util::getWallTime() - target_start_time);
   //printf("ID string is %s \n", worker_ID_stream.str().c_str());
  
   run_start_time = util::getWallTime();
@@ -3615,6 +3615,8 @@ void reset_run_timers() {
 }
 
 void print_run_timers() {
+  if (!noLog) {
+  
   printf(" --- Printing run timers ----\n");
   printf("ID string is %s \n", worker_ID_stream.str().c_str());
   printf("Prev worker ID string is %s \n", prev_worker_ID.c_str());
@@ -3633,6 +3635,7 @@ void print_run_timers() {
   fprintf(logFile,"%s, %d, %d,", prev_worker_ID.c_str(), round_count, pass_count);
   fprintf(logFile, " %lf, %lf, %lf, %lf \n", totalRunTime, run_interp_time, run_solver_time, run_fork_time);
   fclose(logFile);
+  }
 }
   
 void measure_interp_time(bool isPsnTrap, bool isModelTrap, uint64_t interpCtr_init, uint64_t rip) {
@@ -3692,6 +3695,8 @@ bool canBounceback (uint32_t abort_status, uint64_t rip) {
   static int retryCtr = 0;
   static uint64_t prevRIP = 0;
 
+  printf("Trapped at rip 0x%lx \n", rip);
+  
   if (rip == prevRIP) {
     retryCtr++;
   } else {
@@ -3704,13 +3709,15 @@ bool canBounceback (uint32_t abort_status, uint64_t rip) {
   is_psn_trap = false;
 
   if (modelDebug) {
-    printf("Abort code: %08lx \n", abort_status);
+    printf("Abort code: 0x%08lx at rip 0x%lx \n", abort_status, rip);
+    printf("Tran max is %d \n", tran_max);
   }
   if ((abort_status & 0xff) == 0) {
     //Unknown return code
     if (modelDebug)
       printf("Bounceback unknown return code \n");
-    tran_max = 4;
+    //printf("Trying again with tran_max set to 1 \n");
+    tran_max = 1;
     BB_UR++;
     retry = true; 
   } else if (abort_status & (1 << TSX_XABORT)) {
@@ -3739,7 +3746,7 @@ bool canBounceback (uint32_t abort_status, uint64_t rip) {
   if (exec_mode == MIXED && enableBounceback && retry && retryCtr < retryMax ) {
     if (modelDebug){
       printf("Attempting to bounceback to native execution at RIP 0x%lx \n", rip);
-
+      printf("retryCtr: %d retryMax: %d \n", retryCtr, retryMax);
     }
     //Heuristic to try and avoid page faults.
     garbageCtr += *( (uint64_t *)target_ctx_gregs[GREG_RSP].u64);
@@ -4609,51 +4616,50 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) 
     prev_worker_ID = worker_ID_stream.str();
     reset_run_timers();
 
-    double T0 = util::getWallTime();
-    int i = getpid();
-    worker_ID_stream << ".";
-    worker_ID_stream << i;
-    std::string pidString ;
-
-    pidString = worker_ID_stream.str();
-    if (pidString.size() > 250) {
-      printf("Cycling log names due to large size \n");
-      worker_ID_stream.str("");
-      worker_ID_stream << "Monitor.Wrapped.";
+    if (!noLog) {
+      double T0 = util::getWallTime();
+      int i = getpid();
+      worker_ID_stream << ".";
       worker_ID_stream << i;
+      std::string pidString ;
+      
       pidString = worker_ID_stream.str();
-      printf("Cycled log name is %s \n", pidString.c_str());
-
+      if (pidString.size() > 250) {
+	printf("Cycling log names due to large size \n");
+	worker_ID_stream.str("");
+	worker_ID_stream << "Monitor.Wrapped.";
+	worker_ID_stream << i;
+	pidString = worker_ID_stream.str();
+	printf("Cycled log name is %s \n", pidString.c_str());
+	
+      }
+      
+      //printf("Before freopen, new string for log is %s \n", pidString.c_str());
+      
+      if (prev_stdout_log != NULL)
+	fclose(prev_stdout_log);
+      if (prev_stderr_log != NULL)
+	fclose(prev_stderr_log);
+      
+      prev_stdout_log = freopen(pidString.c_str(),"w",stdout);
+      prev_stderr_log = freopen(pidString.c_str(), "w", stderr);
+      fflush(stdout);
+      fflush(stderr);
+      
+      double T1 = util::getWallTime();
+      printf("Spent %lf seconds resetting log streams \n", T1-T0);
+    
+      if (prev_stdout_log == NULL ) {
+	printf("ERROR opening new file for child process logging \n");
+	fprintf(stderr, "ERROR opening new file for child process logging for pid %d \n", i);
+	fflush(stdout);
+	worker_exit();
+	std::exit(EXIT_FAILURE);
+      }
     }
     
-    //printf("Before freopen, new string for log is %s \n", pidString.c_str());
-
-    if (prev_stdout_log != NULL)
-      fclose(prev_stdout_log);
-    if (prev_stderr_log != NULL)
-      fclose(prev_stderr_log);
-    
-    prev_stdout_log = freopen(pidString.c_str(),"w",stdout);
-    prev_stderr_log = freopen(pidString.c_str(), "w", stderr);
-    fflush(stdout);
-    fflush(stderr);
-    
-    double T1 = util::getWallTime();
-    printf("Spent %lf seconds resetting log streams \n", T1-T0);
-
-
     run_interp_time = 0;
     interp_enter_time = util::getWallTime();
-
-    
-    if (prev_stdout_log == NULL ) {
-      printf("ERROR opening new file for child process logging \n");
-      fprintf(stderr, "ERROR opening new file for child process logging for pid %d \n", i);
-      fflush(stdout);
-      worker_exit();
-      std::exit(EXIT_FAILURE);
-    }
-
     //Force two destinations for debugging
     //ABH: Todo -- roll this back and support > 2 symbolic dests for things like indirect jumps
     if (isTrueChild == 0) { //Rule out latest solution and see if more exist
@@ -4676,9 +4682,9 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) 
       solver_diff_time = solver_end_time - solver_start_time;
       run_solver_time += solver_diff_time;
 
-
-      printf("Elapsed solver time (fork - path constraint) is %lf at interpCtr %lu \n", solver_diff_time, interpCtr);
-
+      if (!noLog) {
+	printf("Elapsed solver time (fork - path constraint) is %lf at interpCtr %lu \n", solver_diff_time, interpCtr);
+      }
       
       if (!success) {
 	printf("ERROR: couldn't get RIP value in forkOnPossibleRIPValues for false child \n");
@@ -4686,9 +4692,9 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) 
 	worker_exit();
 	std::exit(EXIT_FAILURE);
       }
-
-      printf("IMPORTANT: control debug: Found dest RIP 0x%lx on false branch in forkOnRip from RIP 0x%lx with pid %d \n", (uint64_t) solution->getZExtValue(), initRIP, getpid());
-      
+      if (!noLog) {
+	printf("IMPORTANT: control debug: Found dest RIP 0x%lx on false branch in forkOnRip from RIP 0x%lx with pid %d \n", (uint64_t) solution->getZExtValue(), initRIP, getpid());
+      }
       addConstraint(*GlobalExecutionStatePtr, EqExpr::create(inputExpr, solution));
       target_ctx_gregs_OS->write(GREG_RIP*8, solution);
       break;
@@ -4697,11 +4703,7 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) 
 
       printf("IMPORTANT: control debug: Found dest RIP 0x%lx on true branch in forkOnRip from RIP 0x%lx with pid %d \n", (uint64_t) solution->getZExtValue(), initRIP, getpid());
 
-      double T0 = util::getWallTime();
       addConstraint(*GlobalExecutionStatePtr, EqExpr::create(inputExpr, solution));
-      double T1 = util::getWallTime();
-
-      printf("DBG1 %lf \n", T1 - T0);
 
       target_ctx_gregs_OS->write(GREG_RIP*8, solution);
 

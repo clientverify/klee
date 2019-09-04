@@ -626,7 +626,7 @@ void Executor::model_ktest_writesocket() {
     int fd = (int) target_ctx_gregs[GREG_RDI].u64;
     void * buf = (void *) target_ctx_gregs[GREG_RSI].u64;
     size_t count = (size_t) target_ctx_gregs[GREG_RDX].u64;
-    
+    printf("%d bytes in writesocket call \n", count);
     bool concWrite = isBufferEntirelyConcrete((uint64_t)buf, count);
 
     if (!noLog) {
@@ -994,10 +994,18 @@ uint64_t Executor::tls_predict_stdin_size (int fd, uint64_t maxLen) {
 
 
 void Executor::model_ktest_raw_read_stdin() {
+  double T0 = util::getWallTime();
+  
   ktest_raw_read_stdin_calls++;
   if (!noLog) {
     printf("Entering model_ktest_raw_read_stdin for time %d \n", ktest_raw_read_stdin_calls);
   }
+
+  printf("DBG: Killing RBX \n");
+
+  int zero = 0; //Force kill rbx -- DEBUG
+  ref<ConstantExpr> zeroExpr = ConstantExpr::create((uint64_t) zero, Expr::Int64);
+  tase_helper_write((uint64_t) &target_ctx_gregs[GREG_RBX], zeroExpr);
   
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(GREG_RSI * 8, Expr::Int64);
@@ -1020,7 +1028,9 @@ void Executor::model_ktest_raw_read_stdin() {
       uint64_t res = len;
       ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
       tase_helper_write((uint64_t) &target_ctx_gregs[GREG_RAX].u64, resExpr);
+      double T1 = util::getWallTime();
       tase_make_symbolic( (uint64_t) buf, len, "stdin");
+      printf("Spent %lf seconds on tase_make_symbolic in read_stdin model \n", util::getWallTime() -T1);
       
     } else {      
       //return result of call
@@ -1029,6 +1039,7 @@ void Executor::model_ktest_raw_read_stdin() {
       tase_helper_write((uint64_t) &target_ctx_gregs[GREG_RAX].u64, resExpr);
     }
     do_ret();//Fake a ret
+    printf("Spent %lf seconds in read_stdin \n", util::getWallTime() - T0);
     
   } else {
     printf("ERROR in ktest_raw_read_stdin -- symbolic args \n");
@@ -2277,8 +2288,9 @@ bool debugSelect = false;
 void Executor::model_select() {
   static int times_model_select_called = 0;
   times_model_select_called++;
-
-  printf("Entering model_select for time %d \n", times_model_select_called);
+  if (!noLog) {
+    printf("Entering model_select for time %d \n", times_model_select_called);
+  }
   double T0 = util::getWallTime();
   
   //Get the input args per system V linux ABI.
@@ -2327,8 +2339,9 @@ void Executor::model_select() {
 
       //Todo - Clumsy.  Improve.
       std::string s1 = "select readfds mask" + std::to_string(times_model_select_called);
-
-      //printf("Select readfds var name is %s \n", s1.c_str());
+      if (debugSelect) {
+	printf("Select readfds var name is %s \n", s1.c_str());
+      }
       const char * constCopy1 = s1.c_str();
       char selectReadName [40];//Arbitrary number
       strncpy(selectReadName, constCopy1, 40);
@@ -2353,7 +2366,9 @@ void Executor::model_select() {
 
      //Todo - Clumsy.  Improve.
     std::string s2 = "select writefds mask" + std::to_string(times_model_select_called);
-    //printf("select writefds var name is %s \n", s2.c_str());
+    if (debugSelect) {
+      printf("select writefds var name is %s \n", s2.c_str());
+    }
     const char * constCopy2 = s2.c_str();
     char selectWriteName [40];//Arbitrary number
     strncpy(selectWriteName, constCopy2, 40);
@@ -2369,6 +2384,12 @@ void Executor::model_select() {
     ref <ConstantExpr> Zero = ConstantExpr::create(0, Expr::Int8);
     ref <Expr> someFDPicked = NotExpr::create(EqExpr::create(all_bits_or, Zero));
     double T1 = util::getWallTime();
+
+    if (isa<ConstantExpr> (someFDPicked) ) {
+      printf("someFDPicked is a constant expr \n");
+    } else {
+      printf("someFDPicked is a constant expr \n");
+    }
     addConstraint(*GlobalExecutionStatePtr, someFDPicked);
     printf("Took %lf seconds adding constraint in select \n", util::getWallTime() - T1);
     //ref<EqExpr> wfdsEqExpr = EqExpr::create(wfdsMaskExpr, 0);
@@ -2391,8 +2412,9 @@ void Executor::model_select() {
       print_fd_set(nfds, writefds);
       std::cout.flush();
     }
-    printf("Entire time in select call: %lf seconds \n", util::getWallTime() - T0);
-    
+    if (!noLog) {
+      printf("Entire time in select call: %lf seconds \n", util::getWallTime() - T0);
+    }
     do_ret();//fake a ret
 
     return;

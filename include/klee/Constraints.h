@@ -34,12 +34,14 @@ public:
 
   // create from constraints with no optimization
   explicit
-  ConstraintManager(const std::vector< ref<Expr> > &_constraints);
-
-  ConstraintManager(const ConstraintManager &cs);
+  ConstraintManager(const std::vector< ref<Expr> > &_constraints) :
+    constraints(_constraints) {}
+  
+  ConstraintManager(const ConstraintManager &cs) : constraints(cs.constraints) {}
+  
 
   typedef std::vector< ref<Expr> >::const_iterator constraint_iterator;
-  typedef std::vector< ref<Expr> >::iterator nonconst_constraint_iterator;
+  //typedef std::vector< ref<Expr> >::iterator nonconst_constraint_iterator;
   
   // given a constraint which is known to be valid, attempt to 
   // simplify the existing constraint set
@@ -64,14 +66,14 @@ public:
   constraint_iterator end() const {
     return constraints.end();
   }
-
+  /*
   nonconst_constraint_iterator begin() {
     return constraints.begin();
   }
   nonconst_constraint_iterator end() {
     return constraints.end();
   }
-
+  */
   
   size_t size() const {
     return constraints.size();
@@ -88,14 +90,14 @@ public:
   
 private:
   std::vector< ref<Expr> > constraints;
-  std::map< ref<Expr>, ref<Expr> > equalities_map;
-  std::unordered_map< unsigned, std::pair< ref<Expr>, ref<Expr> > > equalities_hashval_map;
+  //std::map< ref<Expr>, ref<Expr> > equalities_map;
+  //std::unordered_map< unsigned, std::pair< ref<Expr>, ref<Expr> > > equalities_hashval_map;
   
   // returns true iff the constraints were modified
   bool rewriteConstraints(ExprVisitor &visitor);
 
   void addConstraintInternal(ref<Expr> e);
-  void addToEqualitiesMap(ref<Expr> e);
+  //void addToEqualitiesMap(ref<Expr> e);
 };
 
 }
