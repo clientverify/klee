@@ -17,14 +17,14 @@
 
 #include "cliver/ExecutionObserver.h"
 #include "cliver/Socket.h" // For SocketEventList typedef
-#include "cliver/Statistics.h"
+//#include "cliver/Statistics.h"
 
 #include "klee/Interpreter.h"
 #include "klee/Statistic.h"
 #include "klee/Statistics.h"
 #include "klee/TimerStatIncrementer.h"
 #include "klee/Internal/ADT/KTest.h"
-#include "klee/util/Mutex.h"
+//#include "klee/util/Mutex.h"
 
 #include "llvm/Support/CommandLine.h"
 

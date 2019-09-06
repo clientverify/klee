@@ -9,19 +9,19 @@
 // TODO: Combine KEditDistance and EditDistance trees
 //===----------------------------------------------------------------------===//
 
-#include "cliver/ExecutionTraceManager.h"
+//#include "cliver/ExecutionTraceManager.h"
 #include "cliver/ClientVerifier.h"
 #include "cliver/CVExecutionState.h"
 #include "cliver/CVExecutor.h"
 #include "cliver/CVStream.h"
-#include "cliver/EditDistance.h"
-#include "cliver/ExecutionTrace.h"
+//#include "cliver/EditDistance.h"
+//#include "cliver/ExecutionTrace.h"
 #include "cliver/NetworkManager.h"
-#include "cliver/SocketEventMeasurement.h"
-#include "cliver/Training.h"
-#include "cliver/TrainingCluster.h"
+//#include "cliver/SocketEventMeasurement.h"
+//#include "cliver/Training.h"
+//#include "cliver/TrainingCluster.h"
 
-#include "CVCommon.h"
+//#include "CVCommon.h"
 
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/Internal/Module/KModule.h"

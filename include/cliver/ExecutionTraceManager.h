@@ -8,24 +8,24 @@
 #ifndef CLIVER_EXECUTION_TRACE_MANAGER_H
 #define CLIVER_EXECUTION_TRACE_MANAGER_H
 
-#include "cliver/EditDistance.h"
+//#include "cliver/EditDistance.h"
 #include "cliver/ExecutionStateProperty.h"
 #include "cliver/ExecutionObserver.h"
-#include "cliver/ExecutionTrace.h"
-#include "cliver/ExecutionTraceTree.h"
-#include "cliver/HMMPathPredictor.h"
-#include "cliver/LevenshteinRadixTree.h"
-#include "cliver/KExtensionTree.h"
-#include "cliver/Training.h"
-#include "cliver/TrainingCluster.h"
+//#include "cliver/ExecutionTrace.h"
+//#include "cliver/ExecutionTraceTree.h"
+//#include "cliver/HMMPathPredictor.h"
+//#include "cliver/LevenshteinRadixTree.h"
+//#include "cliver/KExtensionTree.h"
+//#include "cliver/Training.h"
+//#include "cliver/TrainingCluster.h"
 
 #include "klee/Solver.h"
 #include "klee/Internal/Module/KModule.h"
-#include "klee/util/Mutex.h"
+//#include "klee/util/Mutex.h"
 
 #include "llvm/Analysis/Trace.h"
 
-#include "folly/ThreadLocal.h"
+//#include "folly/ThreadLocal.h"
 
 #include <set>
 #include <list>

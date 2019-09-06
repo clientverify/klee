@@ -12,15 +12,15 @@
 #include "cliver/ClientVerifier.h"
 #include "cliver/CVExecutionState.h"
 #include "cliver/CVExecutor.h"
-#include "cliver/ConstraintPruner.h"
+//#include "cliver/ConstraintPruner.h"
 #include "cliver/CVStream.h"
 #include "cliver/ExecutionTraceManager.h"
 #include "cliver/NetworkManager.h"
-#include "cliver/StateMerger.h"
+//#include "cliver/StateMerger.h"
 
 #include "klee/util/ExprUtil.h" // Needed for findSymbolicObjects()
 
-#include "CVCommon.h"
+//#include "CVCommon.h"
 
 #include "llvm/Support/CommandLine.h"
 

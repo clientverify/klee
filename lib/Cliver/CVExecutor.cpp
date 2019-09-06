@@ -8,16 +8,16 @@
 //===----------------------------------------------------------------------===//
 #include "cliver/CVExecutor.h"
 
-#include "cliver/ConstraintPruner.h"
+//#include "cliver/ConstraintPruner.h"
 #include "cliver/CVExecutionState.h"
 #include "cliver/CVSearcher.h"
 #include "cliver/CVStream.h"
 #include "cliver/ExecutionObserver.h"
 #include "cliver/NetworkManager.h"
-#include "cliver/StateMerger.h"
-#include "cliver/LockFreeVerifySearcher.h"
-#include "cliver/ThreadBufferedSearcher.h"
-#include "CVCommon.h"
+//#include "cliver/StateMerger.h"
+//#include "cliver/LockFreeVerifySearcher.h"
+//#include "cliver/ThreadBufferedSearcher.h"
+//#include "CVCommon.h"
 
 #include "klee/Internal/Support/ErrorHandling.h"
 #include "../Core/Context.h"
@@ -37,7 +37,7 @@
 
 #include "klee/CommandLine.h"
 #include "klee/Common.h"
-#include "klee/Constants.h"
+//#include "klee/Constants.h"
 #include "klee/Config/config.h"
 #include "klee/ExecutionState.h"
 #include "klee/Expr.h"

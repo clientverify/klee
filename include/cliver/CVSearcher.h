@@ -15,11 +15,11 @@
 #include "cliver/CVExecutor.h"
 #include "cliver/ExecutionStateProperty.h"
 #include "cliver/ExecutionObserver.h"
-#include "cliver/SearcherStage.h"
+//#include "cliver/SearcherStage.h"
 
-#include "../Core/Searcher.h"
-#include "klee/util/Mutex.h"
-#include "klee/util/Atomic.h"
+#include "../../lib/Core/Searcher.h"
+//#include "klee/util/Mutex.h"
+//#include "klee/util/Atomic.h"
 
 #if defined(USE_BOOST_GRAPHVIZ)
 #include <boost/graph/graphviz.hpp>

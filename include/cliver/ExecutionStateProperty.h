@@ -8,8 +8,8 @@
 #ifndef CLIVER_EXECUTION_STATE_PROPERTY_H
 #define CLIVER_EXECUTION_STATE_PROPERTY_H
 
-#include "cliver/CVExecutionState.h"
-#include "cliver/ExecutionTraceTree.h"
+//#include "cliver/CVExecutionState.h"
+//#include "cliver/ExecutionTraceTree.h"
 
 #include <llvm/ADT/PriorityQueue.h>
 

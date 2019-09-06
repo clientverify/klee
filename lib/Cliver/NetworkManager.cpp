@@ -10,14 +10,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "cliver/NetworkManager.h"
-#include "cliver/CVAssignment.h"
+//#include "cliver/CVAssignment.h"
 #include "cliver/CVExecutor.h"
 #include "cliver/CVExecutionState.h"
 #include "cliver/CVStream.h"
 #include "cliver/ClientVerifier.h"
 #include "cliver/ExecutionObserver.h"
 #include "cliver/ExecutionStateProperty.h"
-#include "CVCommon.h"
+//#include "CVCommon.h"
 
 #include "../Core/ImpliedValue.h"
 #include "../Core/Memory.h"

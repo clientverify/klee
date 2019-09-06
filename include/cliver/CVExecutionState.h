@@ -10,8 +10,8 @@
 #define CLIVER_EXECUTION_STATE_H
 
 #include "klee/ExecutionState.h"
-#include "cliver/CVAssignment.h"
-#include "cliver/LazyConstraint.h"
+//#include "cliver/CVAssignment.h"
+//#include "cliver/LazyConstraint.h"
 
 #include <list>
 #include <sstream>

@@ -8,7 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "cliver/ClientVerifier.h"
-#include "cliver/ConstraintPruner.h"
+//#include "cliver/ConstraintPruner.h"
 #include "cliver/CVExecutionState.h"
 #include "cliver/CVExecutor.h"
 #include "cliver/CVSearcher.h"
@@ -16,13 +16,13 @@
 #include "cliver/ExecutionObserver.h"
 #include "cliver/ExecutionTraceManager.h"
 #include "cliver/NetworkManager.h"
-#include "cliver/StateMerger.h"
-#include "cliver/TestHelper.h"
-#include "CVCommon.h"
-#include "ExternalHandlers.h"
+//#include "cliver/StateMerger.h"
+//#include "cliver/TestHelper.h"
+//#include "CVCommon.h"
+//#include "ExternalHandlers.h"
 
 #include "klee/Internal/Module/KModule.h"
-#include "klee/util/Mutex.h"
+//#include "klee/util/Mutex.h"
 #include "../lib/Core/SpecialFunctionHandler.h"
 #include "../lib/Core/CoreStats.h"
 #include "klee/SolverStats.h"
