@@ -1,5 +1,6 @@
 #!/bin/bash
 
+export REQUIRES_RTTI=1
 ROOT_DIR=$(pwd)
 
 mkdir ./local
