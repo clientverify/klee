@@ -395,15 +395,7 @@ endif()
 # RTTI
 ###############################################################################
 if (NOT LLVM_ENABLE_RTTI)
-  if (ENABLE_SOLVER_METASMT)
-    message(WARNING "Not disabling RTTI because metaSMT uses them")
-    # FIXME: Should this be FATAL_ERROR rather than ERROR?
-    message(WARNING
-      "This build configuration is not supported and will likely not work."
-      "You should recompile LLVM with RTTI enabled.")
-  else()
-    klee_component_add_cxx_flag("-fno-rtti" REQUIRED)
-  endif()
+  error( "LLVM must be compiled with rtti enabled" )
 endif()
 
 ################################################################################
