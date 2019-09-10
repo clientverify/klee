@@ -383,13 +383,7 @@ endif()
 ###############################################################################
 # Exception handling
 ###############################################################################
-if (NOT LLVM_ENABLE_EH)
-  if (ENABLE_SOLVER_METASMT)
-    message(WARNING "Not disabling exceptions because metaSMT uses them")
-  else()
-    klee_component_add_cxx_flag("-fno-exceptions" REQUIRED)
-  endif()
-endif()
+klee_component_add_cxx_flag("-fexceptions" REQUIRED)
 
 ###############################################################################
 # RTTI
