@@ -86,6 +86,8 @@ using namespace klee;
 #include <fcntl.h>
 #include <fstream>
 
+#include <byteswap.h>
+
 extern void tase_exit();
 
 extern uint64_t total_interp_returns;
@@ -608,14 +610,17 @@ void Executor::model_ktest_start() {
 //https://www.gnu.org/software/libc/manual/html_node/I_002fO-Primitives.htm
 //writesocket(int fd, const void * buf, size_t count)
 void Executor::model_ktest_writesocket() {
+  double T0 = util::getWallTime();
+  
   ktest_writesocket_calls++;
   
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(GREG_RSI * 8, Expr::Int64);
   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(GREG_RDX * 8, Expr::Int64);
 
-  printf("Entering model_ktest_writesocket for time %d with pid %d \n", ktest_writesocket_calls, getpid());
-  fflush(stdout);
+  if (!noLog) {
+    printf("Entering model_ktest_writesocket for time %d with pid %d \n", ktest_writesocket_calls, getpid());
+  }
   
   if  (
        (isa<ConstantExpr>(arg1Expr)) &&
@@ -626,7 +631,9 @@ void Executor::model_ktest_writesocket() {
     int fd = (int) target_ctx_gregs[GREG_RDI].u64;
     void * buf = (void *) target_ctx_gregs[GREG_RSI].u64;
     size_t count = (size_t) target_ctx_gregs[GREG_RDX].u64;
-    printf("%d bytes in writesocket call \n", count);
+    if (!noLog) {
+      printf("%d bytes in writesocket call \n", count);
+    }
     bool concWrite = isBufferEntirelyConcrete((uint64_t)buf, count);
 
     if (!noLog) {
@@ -659,144 +666,162 @@ void Executor::model_ktest_writesocket() {
 	if (memcmp(o->bytes, buf, count) == 0) {
 	  concreteMatch = true;
 	}
-      }
-
+      }      
+      
       if (!concreteMatch) {
-      //Create write condition
-      klee::ref<klee::Expr> write_condition = klee::ConstantExpr::alloc(1, klee::Expr::Bool);
-      for (int i = 0; i < o->numBytes; i++) {
-	klee::ref<klee::Expr> val = tase_helper_read((uint64_t) buf + i, 1);
-	fflush(stderr);
-	klee::ref<klee::Expr> condition = klee::EqExpr::create(tase_helper_read((uint64_t) buf + i, 1),
-							       klee::ConstantExpr::alloc(o->bytes[i], klee::Expr::Int8));
-	if (use_XOR_opt) {
-	  //condition = GlobalExecutionStatePtr->constraints.simplifyWithXorOptimization(condition);
+	
+	//Create write condition
+	double WC0 = util::getWallTime();
+	klee::ref<klee::Expr> write_condition = klee::ConstantExpr::alloc(1, klee::Expr::Bool);
+	for (int i = 0; i < o->numBytes; i++) {
+	  klee::ref<klee::Expr> condition;
+	  //printf("i is %d \n", i);;
+	  //Try to create write condition multiple bytes at a time, if possible.
+	  //if ( o->numBytes -i  > 8 && i> 12) {
+	  if (false ) {
+	    klee::ref<klee::Expr> val = tase_helper_read((uint64_t) buf + i, 8);
+	    uint64_t logNum =  * ((uint64_t *)  &(o->bytes[i]));
+	    //logNum = bswap_64(logNum);  //Undoing x86_64 endianness
+	    
+	    condition = klee::EqExpr::create(val, klee::ConstantExpr::alloc(logNum, klee::Expr::Int64));
+	    i+=7;
+	  }
+	  else {
+	    
+	    //klee::ref<klee::Expr> val = tase_helper_read((uint64_t) buf + i, 1);
+	    condition = klee::EqExpr::create(tase_helper_read((uint64_t) buf + i, 1),
+					     klee::ConstantExpr::alloc(o->bytes[i], klee::Expr::Int8));
+	  }
+	  if (use_XOR_opt) {
+	    condition = GlobalExecutionStatePtr->constraints.simplifyWithXorOptimization(condition);
+	  }
+	  if (modelDebug) {
+	    fflush(stdout);
+	    outs().flush();
+	    outs() << "Printing byte write condition  " << i << "\n";	  
+	    condition->print(outs());
+	    outs() << "\n";
+	    fflush(stdout);
+	    outs().flush();
+	  }
+	  write_condition = klee::AndExpr::create(write_condition, condition);
 	}
-	if (modelDebug) {
-	  fflush(stdout);
-	  outs().flush();
-	  outs() << "Printing byte write condition  " << i << "\n";	  
-	  condition->print(outs());
-	  outs() << "\n";
-	  fflush(stdout);
-	  outs().flush();
-	}
-	write_condition = klee::AndExpr::create(write_condition, condition);
-      }
-      //addConstraint(*GlobalExecutionStatePtr, write_condition); //Redundant
 
-      //outs() << "Printing full write condition BEFORE xor opt \n";
-      //write_condition->print(outs());
-      
-      write_condition = GlobalExecutionStatePtr->constraints.simplifyWithXorOptimization(write_condition);
-      
-      //outs() << "Printing full  write condition AFTER xor opt \n";
-      //write_condition->print(outs());
-      
-      //Check validity of write condition
-      if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(write_condition)) {
-	if (CE->isFalse()) {
-	  printf("IMPORTANT: VERIFICATION ERROR: false write condition. Worker exiting from terminal path in round %d pass %d \n", round_count, pass_count);
-	  std::cout.flush();
-	  worker_exit();
-	}
-      } else {
-
-
-	//Todo -- Double check interface for getInitialValues later down in solve for bindings.  
-	//Todo -- determine if the call to getInitialValues as modified with legacy behavior assumes a solution exists
-	//solver->mustBeFalse(*GlobalExecutionStatePtr, write_condition, result);
-	/*
-	if (result) {
-	  printf("VERIFICATION ERROR: write condition determined false \n");
-	  printf("IMPORTANT: VERIFICATION ERROR: false write condition. Worker exiting from terminal path in round %d pass %d \n", round_count, pass_count);
-	  fflush(stdout);
-	  worker_exit();
-	} 
-	*/
-      }
-      
-      
-
-      //Solve for multipass assignments
-      CVAssignment currMPA;
-      currMPA.clear();
-      
-      if (!isa<ConstantExpr>(write_condition)) {
-	solver_start_time = util::getWallTime();
-	currMPA.solveForBindings(solver->solver, write_condition,GlobalExecutionStatePtr);
-	solver_end_time = util::getWallTime();
-	solver_diff_time = solver_end_time - solver_start_time;
 	if (!noLog) {
-	  printf("Elapsed solver time (solveForBindings) is %lf at interpCtr %lu \n", solver_diff_time, interpCtr);
+	  printf("Spent %lf seconds on making write condition \n", util::getWallTime() - WC0);
 	}
-	run_solver_time += solver_diff_time;
 
-      }
-
-      //print assignments
-      if (modelDebug) {
-	printf("About to print assignments \n");
-	std::cout.flush();	
-	currMPA.printAllAssignments(NULL);
-      }
-      //REPLAY ROUND
-      //------------------------
-      // NOT(isInQA(*replayPidPtr)) => isDead(MPAPtr);
-      //-------------------------------
-      //In other words, we deserialize the data in the MMap'd MPAPtr buffer and set up a new replay PID
-      //atomically so that multiple processes replaying in the current round don't clobber each other's
-      //serialized constraints.
-      //1.  Spin until semaphore is available, AND NOT(isInQA(*replayPidPtr)).
-      //2.  After acquiring semaphore when NOT(isInQA(*replayPidPtr)),
-      //     atomically (serialize current MPA assignment in MPAPtr, and move *replayPidPtr into QA)
-      //3.  Remove self from QR and exit, releasing semaphore.
-
-      double curr_time = util::getWallTime();
-
-      if (!noLog) {
-	printf("Total time since analysis began: %lf \n", curr_time - target_start_time  );
-      }
-      
-      
-      if (currMPA.size()  != 0 ) {
-	if (prevMPA.bindings.size() != 0) {
-	  if  (prevMPA.bindings != currMPA.bindings ) {
-	    if (!noLog) {
-	      printf("IMPORTANT: prevMPA and currMPA bindings differ. Replaying round from round %d pass %d \n", round_count, pass_count);
-	    }
-
-	    multipass_replay_round(MPAPtr, &currMPA, replayPIDPtr); //Sets up child to run from prev "NEW ROUND" point
-	  } else {
-	    if (!noLog) {
-	      printf("IMPORTANT: No new bindings found at end of round %d pass %d.  Not replaying. \n", round_count, pass_count);
-	    }
+	//double opt0 = util::getWallTime();
+	//write_condition = GlobalExecutionStatePtr->constraints.simplifyWithXorOptimization(write_condition);
+	//printf("Spent %lf seconds on xor opt \n", util::getWallTime() - opt0);
+	
+	//Check validity of write condition
+	if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(write_condition)) {
+	  if (CE->isFalse()) {
+	    printf("IMPORTANT: VERIFICATION ERROR: false write condition. Worker exiting from terminal path in round %d pass %d \n", round_count, pass_count);
+	    std::cout.flush();
+	    worker_exit();
 	  }
 	} else {
-	  if (!noLog) {
-	    printf("IMPORTANT: found assignments and prevMPA is null so replaying at end of round %d pass %d \n",  round_count, pass_count);
-	  }
-	  multipass_replay_round(MPAPtr, &currMPA, replayPIDPtr); //Sets up child to run from prev "NEW ROUND" point
-
+	  
+	  
+	  //Todo -- Double check interface for getInitialValues later down in solve for bindings.  
+	  //Todo -- determine if the call to getInitialValues as modified with legacy behavior assumes a solution exists
+	  //solver->mustBeFalse(*GlobalExecutionStatePtr, write_condition, result);
+	  /*
+	    if (result) {
+	    printf("VERIFICATION ERROR: write condition determined false \n");
+	    printf("IMPORTANT: VERIFICATION ERROR: false write condition. Worker exiting from terminal path in round %d pass %d \n", round_count, pass_count);
+	    fflush(stdout);
+	    worker_exit();
+	    } 
+	  */
 	}
-      } else {
-	if (modelDebug) {
-	  printf("IMPORTANT: No assignments found in currMPA. Not replaying inside writesocket call at round %d pass %d \n", round_count, pass_count);
+      
+      
+
+	//Solve for multipass assignments
+	CVAssignment currMPA;
+	currMPA.clear();
+	
+	if (!isa<ConstantExpr>(write_condition)) {
+	  solver_start_time = util::getWallTime();
+	  currMPA.solveForBindings(solver->solver, write_condition,GlobalExecutionStatePtr);
+	  solver_end_time = util::getWallTime();
+	  solver_diff_time = solver_end_time - solver_start_time;
+	  if (!noLog) {
+	    printf("Elapsed solver time (solveForBindings) is %lf at interpCtr %lu \n", solver_diff_time, interpCtr);
+	  }
+	  run_solver_time += solver_diff_time;
 	  
 	}
+	
+	//print assignments
+	if (modelDebug) {
+	  printf("About to print assignments \n");
+	  std::cout.flush();	
+	  currMPA.printAllAssignments(NULL);
+	}
+	//REPLAY ROUND
+	//------------------------
+	// NOT(isInQA(*replayPidPtr)) => isDead(MPAPtr);
+	//-------------------------------
+	//In other words, we deserialize the data in the MMap'd MPAPtr buffer and set up a new replay PID
+	//atomically so that multiple processes replaying in the current round don't clobber each other's
+	//serialized constraints.
+	//1.  Spin until semaphore is available, AND NOT(isInQA(*replayPidPtr)).
+	//2.  After acquiring semaphore when NOT(isInQA(*replayPidPtr)),
+	//     atomically (serialize current MPA assignment in MPAPtr, and move *replayPidPtr into QA)
+	//3.  Remove self from QR and exit, releasing semaphore.
+	
+	double curr_time = util::getWallTime();
+	
+	if (!noLog) {
+	  printf("Total time since analysis began: %lf \n", curr_time - target_start_time  );
+	  printf("Spent %lf seconds in writesock model before multipass_reset_round \n", curr_time - T0);
+	}
+	
+	
+	if (currMPA.size()  != 0 ) {
+	  if (prevMPA.bindings.size() != 0) {
+	    if  (prevMPA.bindings != currMPA.bindings ) {
+	      if (!noLog) {
+		printf("IMPORTANT: prevMPA and currMPA bindings differ. Replaying round from round %d pass %d \n", round_count, pass_count);
+	      }
+	      
+	      multipass_replay_round(MPAPtr, &currMPA, replayPIDPtr); //Sets up child to run from prev "NEW ROUND" point
+	    } else {
+	      if (!noLog) {
+		printf("IMPORTANT: No new bindings found at end of round %d pass %d.  Not replaying. \n", round_count, pass_count);
+	      }
+	    }
+	  } else {
+	    if (!noLog) {
+	      printf("IMPORTANT: found assignments and prevMPA is null so replaying at end of round %d pass %d \n",  round_count, pass_count);
+	    }
+	    multipass_replay_round(MPAPtr, &currMPA, replayPIDPtr); //Sets up child to run from prev "NEW ROUND" point
+	    
+	  }
+	} else {
+	  if (modelDebug) {
+	    printf("IMPORTANT: No assignments found in currMPA. Not replaying inside writesocket call at round %d pass %d \n", round_count, pass_count);
+	    
+	  }
+	}
+	
+	
       }
-
-
-      }
-
+      
       
       
       if (!noLog) {
 	printf("Hit new call to multipass_reset_round in writesocket for round %d pass %d \n", round_count, pass_count);
       }
       tase_helper_write((uint64_t) &target_ctx_gregs[GREG_RAX], ConstantExpr::create(o->numBytes, Expr::Int64));
-
+      
       round_symbolics.clear();
+
+      printf("Spent %lf seconds in writesock model before multipass_reset_round \n", util::getWallTime() - T0);
       
       //RESET ROUND
       //-------------------------------------------
@@ -969,8 +994,9 @@ uint64_t Executor::tls_predict_stdin_size (int fd, uint64_t maxLen) {
   } else if (strncmp(kto->name,"c2s", 3) == 0 &&
 	     (uint8_t) kto->bytes[0] == TLS_APPDATA &&
 	     kto->numBytes > 29) {//Case 1
-    printf("In TLS Appdata case in predict stdin len \n");
-
+    if (!noLog) {
+      printf("In TLS Appdata case in predict stdin len \n");
+    }
     stdin_len = kto->numBytes - 29;
     
   } else {
@@ -1140,8 +1166,9 @@ void Executor::model_shutdown() {
 
 void Executor::model_ktest_select() {
   ktest_select_calls++;
-  printf("Entering model_ktest_select \n");
-  
+  if (!noLog) {
+    printf("Entering model_ktest_select \n");
+  }
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(GREG_RSI * 8, Expr::Int64);
   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(GREG_RDX * 8, Expr::Int64);
@@ -1169,7 +1196,7 @@ void Executor::model_ktest_select() {
       ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
       target_ctx_gregs_OS->write(GREG_RAX * 8, resExpr);
 
-      printf( "After ktest_select, readfds is 0x%lx, writefds is 0x%lx \n", *( (uint64_t *) target_ctx_gregs[GREG_RSI].u64), *( (uint64_t *) target_ctx_gregs[GREG_RDX].u64));
+      
     
       do_ret();//Fake a return
 
@@ -1196,7 +1223,9 @@ void Executor::model_RAND_poll(){
 
 void Executor::model_ktest_RAND_bytes() {
   ktest_RAND_bytes_calls++;
-  printf("Calling model_ktest_RAND_bytes for time %d at interpCtr %lu \n", ktest_RAND_bytes_calls, interpCtr);
+  if (!noLog) {
+    printf("Calling model_ktest_RAND_bytes for time %d at interpCtr %lu \n", ktest_RAND_bytes_calls, interpCtr);
+  }
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(GREG_RSI * 8, Expr::Int64);
   if  (
@@ -1235,7 +1264,9 @@ void Executor::model_ktest_RAND_bytes() {
 
 void Executor::model_ktest_RAND_pseudo_bytes() {
   ktest_RAND_pseudo_bytes_calls++;
-  printf("Calling model_ktest_RAND_PSEUDO_bytes for time %d at interp ctr %lu \n", ktest_RAND_pseudo_bytes_calls, interpCtr);
+  if (!noLog) {
+    printf("Calling model_ktest_RAND_PSEUDO_bytes for time %d at interp ctr %lu \n", ktest_RAND_pseudo_bytes_calls, interpCtr);
+  }
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(GREG_RSI * 8, Expr::Int64);
 
@@ -1281,10 +1312,22 @@ void Executor::model_ktest_RAND_pseudo_bytes() {
 //https://linux.die.net/man/3/fileno
 //int fileno(FILE *stream); 
 void Executor::model_fileno() {
-
+ 
   if (!noLog){
     printf("Entering model_fileno at %lu \n",interpCtr);
   }
+  
+  
+  /*
+  if (round_count > 4 && model_fileno_calls == 4) {
+     printf("DBG: Killing RBX in model_fileno\n");
+
+     int zero = 0; //Force kill rbx -- DEBUG
+     ref<ConstantExpr> zeroExpr = ConstantExpr::create((uint64_t) zero, Expr::Int64);
+     tase_helper_write((uint64_t) &target_ctx_gregs[GREG_RBX], zeroExpr);
+
+  }
+  */
   
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
   if  (
@@ -1520,15 +1563,15 @@ void Executor::model_socket() {
 void Executor::model_BIO_printf() {
   static int bio_printf_calls = 0;
   bio_printf_calls++;
+  if (!noLog) {
+    printf("Entered bio_printf at interp Ctr %lu \n", interpCtr);
+    fflush(stdout);
     
-  printf("Entered bio_printf at interp Ctr %lu \n", interpCtr);
-  fflush(stdout);
-  
-  char * errMsg = (char *) target_ctx_gregs[GREG_RSI].u64;
-  printf("Entered bio_printf with message %s \n", errMsg);
-  printf("Second arg as num is 0x%lx \n", target_ctx_gregs[GREG_RDX].u64);
-  fflush(stdout);
-
+    char * errMsg = (char *) target_ctx_gregs[GREG_RSI].u64;
+    printf("Entered bio_printf with message %s \n", errMsg);
+    printf("Second arg as num is 0x%lx \n", target_ctx_gregs[GREG_RDX].u64);
+    fflush(stdout);
+  }
   do_ret();//fake a ret
 
 }
@@ -1563,9 +1606,10 @@ void Executor::model_BIO_snprintf() {
 //time_t time(time_t *tloc);
 // http://man7.org/linux/man-pages/man2/time.2.html
 void Executor::model_time() {
-  printf("Entering call to time at interpCtr %lu \n", interpCtr);
-  fflush(stdout);
-  
+  if (!noLog) {
+    printf("Entering call to time at interpCtr %lu \n", interpCtr);
+    fflush(stdout);
+  }
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
   
   if  (
@@ -1574,9 +1618,10 @@ void Executor::model_time() {
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
 
     char * timeString = ctime(&res);
-    printf("timeString is %s \n", timeString);
-    printf("Size of timeVal is %lu \n", sizeof(time_t));
-    fflush(stdout);
+    if (!noLog) {
+      printf("timeString is %s \n", timeString);
+      printf("Size of timeVal is %lu \n", sizeof(time_t));
+    }
     
     target_ctx_gregs_OS->write(GREG_RAX * 8, resExpr);
     do_ret();//fake a ret
@@ -1594,8 +1639,9 @@ void Executor::model_time() {
 //struct tm *gmtime(const time_t *timep);
 //https://linux.die.net/man/3/gmtime
 void Executor::model_gmtime() {
-  printf("Entering call to gmtime at interpCtr %lu \n", interpCtr);
-  fflush(stdout);
+  if (!noLog) {
+    printf("Entering call to gmtime at interpCtr %lu \n", interpCtr);
+  }
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
   
   if  (
@@ -1605,9 +1651,10 @@ void Executor::model_gmtime() {
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
     char timeBuf[30];
     strftime(timeBuf, 30, "%Y-%m-%d %H:%M:%S", res);
+    if (!noLog) {
+      printf("gmtime result is %s \n", timeBuf);
+    }
 
-    printf("gmtime result is %s \n", timeBuf);
-    fflush(stdout);
     
     //If it doesn't exit, back returned struct with a memory object.
     ObjectPair OP;
@@ -1617,8 +1664,10 @@ void Executor::model_gmtime() {
       fflush(stdout);
       
     } else {
-      printf("Creating MO to back tm at 0x%lx with size 0x%lx \n", (uint64_t) res, sizeof(struct tm));
-      fflush(stdout);
+      if (!noLog) {
+	printf("Creating MO to back tm at 0x%lx with size 0x%lx \n", (uint64_t) res, sizeof(struct tm));
+      }
+
       MemoryObject * newMO = addExternalObject(*GlobalExecutionStatePtr, (void *) res, sizeof(struct tm), false);
       const ObjectState * newOSConst = GlobalExecutionStatePtr->addressSpace.findObject(newMO);
       ObjectState *newOS = GlobalExecutionStatePtr->addressSpace.getWriteable(newMO,newOSConst);
@@ -1697,9 +1746,11 @@ void Executor::model_calloc() {
 
     if (roundUpHeapAllocations)
       numBytes = roundUp(numBytes,8);
-    
-    printf("calloc at 0x%lx for 0x%lx bytes \n", (uint64_t) res, numBytes);
-    std::cout.flush();
+
+    if (!noLog) {
+      printf("calloc at 0x%lx for 0x%lx bytes \n", (uint64_t) res, numBytes);
+    }
+
     //fprintf(heapMemLog, "CALLOC buf at 0x%lx - 0x%lx, size 0x%lx, interpCtr %lu \n", (uint64_t) res, ((uint64_t) res + numBytes -1), numBytes, interpCtr);
     //Make a memory object to represent the requested buffer
     MemoryObject * heapMem = addExternalObject(*GlobalExecutionStatePtr,res, numBytes , false );
@@ -1858,21 +1909,24 @@ void Executor::model_malloc() {
 
 extern bool skipFree;
 void Executor::model_free() {
-
+  static int freeCtr = 0;
+  freeCtr++;
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
   if (isa<ConstantExpr>(arg1Expr)) {
 
+    //if (freeCtr < 710){
     if (!skipFree) {
     
+    
       void * freePtr = (void *) target_ctx_gregs[GREG_RDI].u64;
-      printf("Calling model_free on addr 0x%lx \n", (uint64_t) freePtr);
+      //printf("Calling model_free on addr 0x%lx \n", (uint64_t) freePtr);
       free(freePtr);
 
       ObjectPair OP;
       ref<ConstantExpr> addrExpr = ConstantExpr::create((uint64_t) freePtr, Expr::Int64);
       if (GlobalExecutionStatePtr->addressSpace.resolveOne(addrExpr, OP)) {
-	printf("Unbinding object in free \n");
-	std::cout.flush();
+	//printf("Unbinding object in free \n");
+	//std::cout.flush();
 	GlobalExecutionStatePtr->addressSpace.unbindObject(OP.first);
       
       } else {
@@ -2122,8 +2176,9 @@ void Executor::model_setsockopt() {
 
 //No args for this one
 void Executor::model___ctype_b_loc() {
-  printf("Entering model__ctype_b_loc at interpCtr %lu \n", interpCtr);
-  fflush(stdout);
+  if (!noLog) {
+    printf("Entering model__ctype_b_loc at interpCtr %lu \n", interpCtr);
+  }
 
   const unsigned short ** constRes = __ctype_b_loc();
   unsigned short ** res = const_cast<unsigned short **>(constRes);
@@ -2140,9 +2195,10 @@ void Executor::model___ctype_b_loc() {
 //No args
 //Todo -- allocate symbolic underlying results later for testing
 void Executor::model___ctype_tolower_loc() {
-  printf("Entering model__ctype_tolower_loc at interpCtr %lu \n", interpCtr);
-  fflush(stdout);
-
+  if (!noLog) {
+    printf("Entering model__ctype_tolower_loc at interpCtr %lu \n", interpCtr);
+  }
+  
   const int  ** constRes = __ctype_tolower_loc();
   int ** res = const_cast<int **>(constRes);
   
@@ -2156,11 +2212,11 @@ void Executor::model___ctype_tolower_loc() {
 //int fflush(FILE *stream);
 //Todo -- Actually model this or provide a symbolic return status
 void Executor::model_fflush(){
-
-  printf("Entering model_fflush at %lu \n", interpCtr);
-  fflush(stdout);
+  if (!noLog) {
+    printf("Entering model_fflush at %lu \n", interpCtr);
+  }
   
-  std::cout.flush();
+
   //Get the input args per system V linux ABI.
 
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
@@ -2186,12 +2242,10 @@ void Executor::model_fflush(){
 //char *fgets(char *s, int size, FILE *stream);
 //https://linux.die.net/man/3/fgets
 void Executor::model_fgets() {
-  printf("Entering model_fgets at %lu \n", interpCtr);
-  fflush(stdout);
-  
-  std::cout.flush();
-  //Get the input args per system V linux ABI.
-  
+  if (!noLog) {
+    printf("Entering model_fgets at %lu \n", interpCtr);
+  }
+  //Get the input args per system V linux ABI.  
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(GREG_RSI * 8, Expr::Int64);
   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(GREG_RDX * 8, Expr::Int64);
@@ -2220,8 +2274,9 @@ void Executor::model_fgets() {
 // size_t fwrite(const void *ptr, size_t size, size_t nmemb,
 // FILE *stream);
 void Executor::model_fwrite() {
-  printf("Entering model_fwrite \n");
-
+  if (!noLog) {
+    printf("Entering model_fwrite \n");
+  }
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(GREG_RSI * 8, Expr::Int64);
   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(GREG_RDX * 8, Expr::Int64);
@@ -2383,15 +2438,16 @@ void Executor::model_select() {
 
     ref <ConstantExpr> Zero = ConstantExpr::create(0, Expr::Int8);
     ref <Expr> someFDPicked = NotExpr::create(EqExpr::create(all_bits_or, Zero));
-    double T1 = util::getWallTime();
 
-    if (isa<ConstantExpr> (someFDPicked) ) {
-      printf("someFDPicked is a constant expr \n");
-    } else {
-      printf("someFDPicked is a constant expr \n");
+    if (!noLog) {
+      if (isa<ConstantExpr> (someFDPicked) ) {
+	printf("someFDPicked is a constant expr \n");
+      } else {
+	printf("someFDPicked is NOT a constant expr \n");
+      } 
     }
     addConstraint(*GlobalExecutionStatePtr, someFDPicked);
-    printf("Took %lf seconds adding constraint in select \n", util::getWallTime() - T1);
+
     //ref<EqExpr> wfdsEqExpr = EqExpr::create(wfdsMaskExpr, 0);
     //ref<NotExpr> wfdsNotExpr = NotExpr::create(wfdsEqExpr);
     //addConstraint(*GlobalExecutionStatePtr, wfdsNotExpr );

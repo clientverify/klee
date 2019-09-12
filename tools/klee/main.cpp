@@ -121,6 +121,7 @@ std::string project;
 bool useCMS4 = true;
 bool use_XOR_opt = true;
 bool UseLegacyIndependentSolver = false;
+bool UseCanonicalization = false;
 
 bool enableBounceback = false;
 bool OpenSSLTest = true;
@@ -274,6 +275,9 @@ namespace {
 
   cl::opt<bool>
   useLegacyIndependentSolverArg("use-legacy-independent-solver", cl::desc("Per cliver, pass through getInitialValue call in the independent solver without aggressive optimization"), cl::init(false));
+
+  cl::opt<bool>
+  useCanonicalizationArg("UseCanonicalization", cl::desc("Per cliver, canonicalize queries to be independent of variable name"), cl::init(false));
   
   cl::opt<bool>
   enableBouncebackArg("enableBounceback", cl::desc("Try to bounce back to native execution in TASE depending on abort code"), cl::init(false));
@@ -1406,6 +1410,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    printf("\t useCMS4                    output : %d \n", useCMS4);
    printf("\t useXOROpt                  output : %d \n", use_XOR_opt);
    printf("\t UseLegacyIndependentSolver output : %d \n", UseLegacyIndependentSolver);
+   printf("\t UseCanonicalization        output : %d \n", UseCanonicalization);
  }
 
 
@@ -1443,6 +1448,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    parseArguments(argc, argv);
 
    UseLegacyIndependentSolver = useLegacyIndependentSolverArg;
+   UseCanonicalization        = useCanonicalizationArg;
    exec_mode = execModeArg;
    test_type = testTypeArg;
    taseManager = taseManagerArg;
@@ -1497,12 +1503,15 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    //Redirect stdout messages to a file called "Monitor".
    //Later, calls to unix fork in executor create new filenames
    //after each fork.
-   worker_ID_stream << "Monitor";
-   std::string IDString;
-   IDString = worker_ID_stream.str();
-   freopen(IDString.c_str(),"w", stdout);
-   prev_worker_ID = "Init";
+
+   if (!noLog) {
    
+     worker_ID_stream << "Monitor";
+     std::string IDString;
+     IDString = worker_ID_stream.str();
+     freopen(IDString.c_str(),"w", stdout);
+     prev_worker_ID = "Init";
+   }
    // Load the bytecode...
    std::string errorMsg;
    LLVMContext ctx;
@@ -1623,14 +1632,15 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      printf("----------------SWAPPING TO TARGET CONTEXT------------------ \n");
      std::cout.flush();
      if (taseManager) {
-       int i = getpid();
-       worker_ID_stream << ".";
-       worker_ID_stream << i;
-       std::string pidString ;
-       pidString = worker_ID_stream.str();
-       freopen(pidString.c_str(),"w",stdout);
-       freopen(pidString.c_str(),"w",stderr);
-
+       if (!noLog) {
+	 int i = getpid();
+	 worker_ID_stream << ".";
+	 worker_ID_stream << i;
+	 std::string pidString ;
+	 pidString = worker_ID_stream.str();
+	 freopen(pidString.c_str(),"w",stdout);
+	 freopen(pidString.c_str(),"w",stderr);
+       }
        //Add self to queue
        get_sem_lock();
 
@@ -1639,10 +1649,8 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 	 perror("Initial prctl error ");
 
        
-       printf("Adding self to queue \n");
        *target_started_ptr = 1;
        int offset = *ms_QR_size_ptr;
-       printf("offset is %d \n", offset);
        *(ms_QR_base + offset) = getpid();
        offset++;
        *ms_QR_size_ptr = offset;

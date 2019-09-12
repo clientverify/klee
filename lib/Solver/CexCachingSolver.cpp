@@ -24,6 +24,8 @@
 
 #include "llvm/Support/CommandLine.h"
 
+#include "klee/Internal/System/Time.h"
+
 using namespace klee;
 using namespace llvm;
 
@@ -339,10 +341,12 @@ CexCachingSolver::computeInitialValues(const Query& query,
                                        bool &hasSolution) {
   TimerStatIncrementer t(stats::cexCacheTime);
   Assignment *a;
+  double T0 = util::getWallTime();
+  
   if (!getAssignment(query, a))
     return false;
   hasSolution = !!a;
-  
+  printf(" %lf seconds elapsed in CexCaching call to computeInitialValues \n", util::getWallTime() - T0);
   if (!a)
     return true;
 

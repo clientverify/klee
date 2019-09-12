@@ -69,7 +69,7 @@ int round_count = 0;
 int pass_count = 0; //Pass ctr for current round of verification
 int run_count = 0;
 int tase_branches = 0;
-int multipassAssignmentSize = 16092;  //Totally arbitrary. Size of mmap'd multipass assignment buffer.
+int multipassAssignmentSize = 8000;  //Totally arbitrary. Size of mmap'd multipass assignment buffer.
 void * MPAPtr;  //Ptr to serialized multipass info for current round of verification
 int * replayPIDPtr; //Ptr to the pid storing the replay PID for the current round of verification
 int * replayLock ; //Lock to request replay.  1 is available, 0 unavailable.
@@ -473,9 +473,9 @@ void manage_workers () {
     double ct = util::getWallTime();
     fprintf(stderr, "Verification complete at time %lf \n", ct - target_start_time);
 
+    //Kludge to fake a cliver-compatible log
     FILE * f = fopen("TASE_RESULTS.csv", "w+");
     print_log_header(f);
-
     RoundRecord * rPtr = (RoundRecord *) ms_Records_base;
     
     for (int i = 0 ; i < *ms_Records_count_ptr; i++) {
@@ -504,12 +504,13 @@ void manage_workers () {
     fflush(stdout);
     std::exit(EXIT_SUCCESS);
   }
-  
+  bool sawNewRound = false;
+  double diff;
   if (managerRoundCtr < *latestRoundPtr) {
+    sawNewRound = true;
     managerRoundCtr = *latestRoundPtr;
-    double curr_time = util::getWallTime();
-    double diff = curr_time - target_start_time;
-    fprintf(stderr,"Manager sees new round %d starting at time %lf \n", managerRoundCtr, diff);
+    diff = util::getWallTime() - target_start_time;
+    
   }
 
   //Exit case
@@ -525,6 +526,10 @@ void manage_workers () {
 
   select_workers();
   release_sem_lock();
+  if (sawNewRound && !noLog) {
+    fprintf(stderr,"Manager sees new round %d starting at time %lf \n", managerRoundCtr, diff);
+  }
+  
 }
 
 //Todo -- Any more cleanup needed?
@@ -534,24 +539,27 @@ void worker_exit() {
     std::cout.flush();
     std::exit(EXIT_SUCCESS);
   } else {    
+    int p = getpid();
+    get_sem_lock();
+    removeFromQR(PidInQR(p));
+    release_sem_lock();
     printf("Worker %d attempting to exit and remove self from QR \n", getpid());
     std::cout.flush();
-    get_sem_lock();
-    removeFromQR(PidInQR(getpid()));
-    release_sem_lock();
     std::exit(EXIT_SUCCESS);
   }
 }
 
 void worker_self_term() {
+
+  int p = getpid();
   get_sem_lock();
+  removeFromQR(PidInQR(p));
+  release_sem_lock();
   if (taseDebug) {
-     printf("Worker %d is in round %d when latest round is %d. Worker exiting. \n", getpid(), round_count, *latestRoundPtr );
-     fflush(stdout);
-   }
-   removeFromQR(PidInQR(getpid()));
-   release_sem_lock();
-   std::exit(EXIT_SUCCESS);
+    printf("Worker %d is in round %d when latest round is %d. Worker exiting. \n", getpid(), round_count, *latestRoundPtr );
+    fflush(stdout);
+  }
+  std::exit(EXIT_SUCCESS);
 }
 
 int tase_fork(int parentPID, uint64_t rip) {
@@ -574,11 +582,12 @@ int tase_fork(int parentPID, uint64_t rip) {
     if (round_count < *latestRoundPtr && workerSelfTerminate)  {
       worker_self_term();
     }
-   
+
+    
     WorkerInfo wi;
     wi.round = round_count;
     wi.pass  = pass_count;
-    wi.branches = tase_branches +1;
+    wi.branches = tase_branches;
     wi.parent = parentPID;
 
     double T1 =  util::getWallTime();
@@ -603,9 +612,12 @@ int tase_fork(int parentPID, uint64_t rip) {
 	if (WIFSTOPPED(status))
 	  break;
       }	
+
+      
       
       get_sem_lock();
 
+      
       wi.pid = trueChildPID;     
       addToQA(&wi);
       
@@ -645,15 +657,13 @@ void tase_exit() {
     get_sem_lock();
     removeFromQR(PidInQR(getpid()));
     release_sem_lock();
-    std::exit(EXIT_SUCCESS); //Releases semaphore
+    std::exit(EXIT_SUCCESS); 
   } else {
     printf("PID %d calling tase_exit \n", getpid());
     std::cout.flush();
     std::exit(EXIT_SUCCESS);
   }
 }
-
-
 
 void initManagerStructures() {
    
@@ -920,20 +930,29 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
 }
 */
 
+
+//Fork off a child, and schedule it to explore the current round.
+
+//Child will learn assignments and use the parent as the replay process.
+//GCM in OpenSSL for TLS 1.2 requires only two passes, but we can
+//generalize to have more.  Ideally, the final pass should be conducted
+//by the parent to avoid deepening the process tree across successive rounds
+//of verification, but that's an optimization.
 void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
   if (modelDebug) {
     printf("Hit top of multipass_start_round \n");
     std::cout.flush();
   }
-  //get_sem_lock();//Try to elide
 
   if (round_count < *latestRoundPtr  && workerSelfTerminate)  {
+    get_sem_lock(); //DBG -- Make sure this is OK
     removeFromQR(PidInQR(getpid()));
+   
+    release_sem_lock(); //is this safe?
     if (taseDebug){
       printf("Worker %d is in round %d when latest round is %d. Worker exiting. \n", getpid(), round_count, *latestRoundPtr );
       fflush(stdout);
     }
-    release_sem_lock(); //is this safe?
     std::exit(EXIT_SUCCESS);
   } else {
     if (taseDebug) {
@@ -973,11 +992,10 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
     release_sem_lock();
     
   }
+
+
   int parentPID = getpid();
   *replayPIDPtr = getpid();
-  
-  //printf("IMPORTANT: Starting round %d pass %d of verification \n", round_count, pass_count);
-  //Make backup of self
 
   double T1 = util::getWallTime();
   int childPID = ::fork();
@@ -998,7 +1016,7 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
       if (WIFSTOPPED(status))
 	break;
     }
-    printf("In parent path \n");
+    //printf("In parent path \n");
     
     get_sem_lock();
 
@@ -1026,46 +1044,48 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
     raise(SIGSTOP);
 
     //Replay path
+    if (!noLog) {
 
-
-    int i = getpid();
-    worker_ID_stream << ".";
-    worker_ID_stream << i;
-    std::string pidString ;
-    
-    pidString = worker_ID_stream.str();
-    if (pidString.size() > 250) {
-      
-      printf("Cycling log name due to large size \n");
-      worker_ID_stream.str("");
-      worker_ID_stream << "Monitor.Wrapped.";
+      int i = getpid();
+      worker_ID_stream << ".";
       worker_ID_stream << i;
-      pidString = worker_ID_stream.str();
-      printf("Cycled log name is %s \n", pidString.c_str());
+      std::string pidString ;
       
-    }    
-    
-    //printf("Before freopen, new string for log is %s \n", pidString.c_str());
-    if (prev_stdout_log != NULL)
-      fclose(prev_stdout_log);
-    
-    prev_stdout_log = freopen(pidString.c_str(),"w",stdout);
-    printf("Resetting run timers \n");
-    
-    if (prev_stdout_log == NULL) {
-      printf("ERROR: Couldn't open file for new replay pid %d \n", i);
-      perror("Error opening file during replay");
-      fprintf(stderr, "ERROR during replay for child process logging for pid %d \n", i);
-      worker_exit();
+      pidString = worker_ID_stream.str();
+      if (pidString.size() > 250) {
+	
+	//printf("Cycling log name due to large size \n");
+	worker_ID_stream.str("");
+	worker_ID_stream << "Monitor.Wrapped.";
+	worker_ID_stream << i;
+	pidString = worker_ID_stream.str();
+	//printf("Cycled log name is %s \n", pidString.c_str());
+	
+      }    
+      
+      //printf("Before freopen, new string for log is %s \n", pidString.c_str());
+      if (prev_stdout_log != NULL)
+	fclose(prev_stdout_log);
+      
+      prev_stdout_log = freopen(pidString.c_str(),"w",stdout);
+      //printf("Resetting run timers \n");
+      
+      if (prev_stdout_log == NULL) {
+	printf("ERROR: Couldn't open file for new replay pid %d \n", i);
+	perror("Error opening file during replay");
+	fprintf(stderr, "ERROR during replay for child process logging for pid %d \n", i);
+	worker_exit();
+      }
     }
-    
     double T1 = util::getWallTime();
     
     interp_enter_time = T1;
     
+    
+    
     get_sem_lock();
-
-
+    
+    
     //Pick up round_count and pass_count
     WorkerInfo * replayWI = PidInQR(getpid());
     if (myInfo != NULL) {
@@ -1085,7 +1105,7 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
       }
       if (*replayLock != 0)
 	printf("IMPORTANT: Error: control debug - replay lock has value %d in multipass_start_round \n", *replayLock);
-      std::cout.flush();
+      //std::cout.flush();
       prevMPA.clear();
       deserializeAssignments(MPAPtr, multipassAssignmentSize, theExecutor, &prevMPA);
       memset(MPAPtr, 0, multipassAssignmentSize); //Wipe out the multipass assignment to be safe
@@ -1104,7 +1124,7 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
   } else {    //CHILD
     raise(SIGSTOP);
     reset_run_timers();
-    printf("In child path \n");
+    //printf("In child path \n");
     
     kill(parentPID, SIGSTOP);
     
@@ -1113,7 +1133,9 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
 }
 
 void multipass_replay_round (void * assignmentBufferPtr, CVAssignment * mpa, int * pidPtr)  {
-  printf("Entering multipass_replay_round \n");
+  //printf("Entering multipass_replay_round \n");
+  print_run_timers();
+  
   while(true) {//Is this actually needed?  get_sem_lock() should block until semaphore is available
  
     get_sem_lock();
@@ -1170,7 +1192,7 @@ void multipass_replay_round (void * assignmentBufferPtr, CVAssignment * mpa, int
       *pidPtr= -1;//ABH DBG
       
       release_sem_lock();
-      print_run_timers();
+
       std::exit(EXIT_SUCCESS);
     }
   }
@@ -1183,9 +1205,12 @@ void  multipass_reset_round(bool isFirstCall) {
     round_count++;
   }
   MPAPtr = mmap(NULL, multipassAssignmentSize, PROT_READ|PROT_WRITE, MAP_ANON|MAP_SHARED, -1, 0);
-  memset(MPAPtr, 0, multipassAssignmentSize);
-  replayPIDPtr = (int *) mmap(NULL, sizeof(int), PROT_READ|PROT_WRITE, MAP_ANON|MAP_SHARED, -1, 0);
+  //memset(MPAPtr, 0, multipassAssignmentSize);
+  //replayPIDPtr = (int *) mmap(NULL, 2 * sizeof(int), PROT_READ|PROT_WRITE, MAP_ANON|MAP_SHARED, -1, 0);
+  replayPIDPtr = (int *) ((uint64_t) MPAPtr + multipassAssignmentSize - 8);
+
   *replayPIDPtr = 0;
-  replayLock = (int *) mmap(NULL, sizeof(int), PROT_READ|PROT_WRITE, MAP_ANON|MAP_SHARED, -1, 0);
+  replayLock = replayPIDPtr + 1;
+  //replayLock = (int *) mmap(NULL, sizeof(int), PROT_READ|PROT_WRITE, MAP_ANON|MAP_SHARED, -1, 0);
   *replayLock = 1;
 }

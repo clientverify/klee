@@ -139,6 +139,7 @@ enum runType : int {INTERP_ONLY, MIXED};
 extern std::string project;
 extern enum runType exec_mode;
 extern Module * interpModule;
+Executor * GlobalExecutorPtr;
 extern klee::Interpreter * GlobalInterpreter;
 MemoryObject * target_ctx_gregs_MO;
 ObjectState * target_ctx_gregs_OS;
@@ -975,11 +976,15 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     TimerStatIncrementer timer(stats::forkTime);
     ExecutionState *falseState, *trueState = &current;
     ++stats::forks;
-    //ABH: Here's where we fork in TASE.
+    //ABH: This, along with "forkOnPossibleRIPValues", is one of
+    //the two places we fork during path exploration in TASE.
+    
     int parentPID = getpid();
     uint64_t rip = target_ctx_gregs[GREG_RIP].u64;
     int pid  = tase_fork(parentPID,rip);
     printf("TASE Forking at 0x%lx \n", target_ctx_gregs[GREG_RIP].u64);
+
+
     if (pid ==0 ) {
       prev_worker_ID = worker_ID_stream.str();
       int i = getpid();
@@ -996,7 +1001,6 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
       }
 
       
-      printf("DEBUG:  Child process created\n");
       addConstraint(*GlobalExecutionStatePtr, Expr::createIsZero(condition));
     } else {
       prev_worker_ID = worker_ID_stream.str();
@@ -3604,37 +3608,59 @@ uint64_t * last_heap_addr = 0;
 
 
 void reset_run_timers() {
-  printf("Resetting run timers at %lf seconds into analysis \n", util::getWallTime() - target_start_time);
-  //printf("ID string is %s \n", worker_ID_stream.str().c_str());
+  if (!noLog) {
+    printf("Resetting run timers at %lf seconds into analysis \n", util::getWallTime() - target_start_time);
+  }
  
   run_start_time = util::getWallTime();
   interp_enter_time = util::getWallTime();
   run_interp_time = 0;
   run_fork_time = 0;
   run_solver_time = 0;
+
+  BB_UR = 0;
+  BB_MOD = 0;
+  BB_PSN = 0;
+  BB_OTHER = 0;
 }
 
 void print_run_timers() {
   if (!noLog) {
   
-  printf(" --- Printing run timers ----\n");
-  printf("ID string is %s \n", worker_ID_stream.str().c_str());
-  printf("Prev worker ID string is %s \n", prev_worker_ID.c_str());
-  double totalRunTime =  util::getWallTime() - run_start_time;
-  run_interp_time += (util::getWallTime() - interp_enter_time);
-  
-  printf("Total run time: %lf \n",  totalRunTime);
-  printf(" - Interp time: %lf \n", run_interp_time);
-  printf("       -Solver: %lf \n", run_solver_time);
-  printf("       -Fork  : %lf \n", run_fork_time );
+    printf(" --- Printing run timers ----\n");
+    printf("ID string is %s \n", worker_ID_stream.str().c_str());
+    printf("Prev worker ID string is %s \n", prev_worker_ID.c_str());
+    double totalRunTime =  util::getWallTime() - run_start_time;
+    run_interp_time += (util::getWallTime() - interp_enter_time);
+    
+    printf("Total run time: %lf \n",  totalRunTime);
+    printf(" - Interp time: %lf \n", run_interp_time);
+    printf("       -Solver: %lf \n", run_solver_time);
+    printf("       -Fork  : %lf \n", run_fork_time );
+    if (taseDebug) {
+      printf("BB_UR:    %d \n", BB_UR);
+      printf("BB_MOD:   %d \n", BB_MOD);
+      printf("BB_PSN:   %d \n", BB_PSN);
+      printf("BB_OTHER: %d \n", BB_OTHER);
+    }
 
-  std::string logID = "log." + worker_ID_stream.str();
-  
-  FILE * logFile = fopen(logID.c_str(), "w+");
-  fprintf(logFile,"Prev log name, Round, Pass, Total Runtime, Interp Time, Solver Time, Fork Time \n");
-  fprintf(logFile,"%s, %d, %d,", prev_worker_ID.c_str(), round_count, pass_count);
-  fprintf(logFile, " %lf, %lf, %lf, %lf \n", totalRunTime, run_interp_time, run_solver_time, run_fork_time);
-  fclose(logFile);
+/*
+int BB_UR = 0; //Unknown return codes
+int BB_MOD = 0; //Modeled return
+int BB_PSN = 0; //PSN return
+int BB_OTHER = 0;//Other return
+*/
+
+
+    /*
+    std::string logID = "log." + worker_ID_stream.str();
+    
+    FILE * logFile = fopen(logID.c_str(), "w+");
+    fprintf(logFile,"Prev log name, Round, Pass, Total Runtime, Interp Time, Solver Time, Fork Time \n");
+    fprintf(logFile,"%s, %d, %d,", prev_worker_ID.c_str(), round_count, pass_count);
+    fprintf(logFile, " %lf, %lf, %lf, %lf \n", totalRunTime, run_interp_time, run_solver_time, run_fork_time);
+    fclose(logFile);
+    */
   }
 }
   
@@ -3692,18 +3718,20 @@ extern "C" void klee_interp () {
 bool canBounceback (uint32_t abort_status, uint64_t rip) {
   
   bool retry = false;
-  static int retryCtr = 0;
+  //static int retryCtr = 0;
   static uint64_t prevRIP = 0;
 
-  printf("Trapped at rip 0x%lx \n", rip);
-  
+  if (modelDebug) {
+    printf("Trapped at rip 0x%lx \n", rip);
+  }
+  /*
   if (rip == prevRIP) {
     retryCtr++;
   } else {
     prevRIP = rip;
     retryCtr = 0;
   }
-
+  */
   //Classify the type of return first
   is_model_trap = false;
   is_psn_trap = false;
@@ -3711,17 +3739,22 @@ bool canBounceback (uint32_t abort_status, uint64_t rip) {
   if (modelDebug) {
     printf("Abort code: 0x%08lx at rip 0x%lx \n", abort_status, rip);
     printf("Tran max is %d \n", tran_max);
+    //printf("Tmp1 is 0x%08lx \n", abort_status & TSX_XABORT_MASK);
+    printf("tran_ctr is 0x%lx \n", tran_ctr);
   }
   if ((abort_status & 0xff) == 0) {
     //Unknown return code
     if (modelDebug)
       printf("Bounceback unknown return code \n");
-    //printf("Trying again with tran_max set to 1 \n");
-    tran_max = 1;
+
+    //if (tran_max > 1) {
+    tran_max = tran_max/2;
+    //}
+    //printf("Tran_max set to %d \n", tran_max);
     BB_UR++;
     retry = true; 
   } else if (abort_status & (1 << TSX_XABORT)) {
-    if (abort_status & TSX_XABORT_MASK) {
+    if ((abort_status & TSX_XABORT_MASK) == 0xFF000000) {
       if (modelDebug) {
 	printf("Model abort \n");
       }
@@ -3732,34 +3765,48 @@ bool canBounceback (uint32_t abort_status, uint64_t rip) {
       if (modelDebug) {
 	printf("Psn abort \n");
       }
+      //if (tran_max > 1) {
+      //tran_max = tran_max/2;
+	//}
+      uint8_t psnCode = (uint8_t) (abort_status >> 24);
+      //printf("Tran_max set to %d \n", psnCode);
+      tran_max = (uint64_t) psnCode;
       is_psn_trap = true;
-      retry = false;
+      retry = true;
       BB_PSN++;
     }
   } else {
     if (modelDebug)
       printf("Bounceback fall-through case \n");
+    //if (tran_max > 1) {
+    tran_max = tran_max/2;
+      //}
+    
+    //printf("Tran_max set to %d \n", tran_max);
     retry = true;
     BB_OTHER++;
   }
 
-  if (exec_mode == MIXED && enableBounceback && retry && retryCtr < retryMax ) {
+  //if (exec_mode == MIXED && enableBounceback && retry && retryCtr < retryMax ) {
+  if (exec_mode == MIXED && enableBounceback && retry && tran_max > 0) {
     if (modelDebug){
       printf("Attempting to bounceback to native execution at RIP 0x%lx \n", rip);
-      printf("retryCtr: %d retryMax: %d \n", retryCtr, retryMax);
+      //printf("retryCtr: %d retryMax: %d \n", retryCtr, retryMax);
     }
     //Heuristic to try and avoid page faults.
+    /*
     garbageCtr += *( (uint64_t *)target_ctx_gregs[GREG_RSP].u64);
     if (last_heap_addr != 0) {
       garbageCtr += *last_heap_addr; //Todo: this won't work if we start doing frees.
     }
+    */
     return true;
   } else {
     if (modelDebug) {
       printf("Not attempting to bounceback to native execution at RIP 0x%lx \n",rip);
-      fflush(stdout);
+      tran_max = 8;
     }
-    retryCtr = 0;
+      //retryCtr = 0;
     return false;
   }
 }
@@ -3825,10 +3872,14 @@ void Executor::make_byte_symbolic_model() {
 //Populate a buffer at addr with len bytes of unconstrained symbolic data.
 //We make the symbolic memory object at a malloc'd address and write the bytes to addr.
 void Executor::tase_make_symbolic(uint64_t addr, uint64_t len, const char * name)  {
-  printf("tase_make_symbolic called on buf 0x%lx with size 0x%lx named %s \n", addr, len, name);
+  //double T0 = util::getWallTime();
+  if (!noLog) {
+    printf("tase_make_symbolic called on buf 0x%lx with size 0x%lx named %s \n", addr, len, name);
+  }
   if (addr %2 != 0)
     printf("WARNING: tase_make_symbolic called on unaligned object \n");
-  std::cout.flush();
+
+  
   void * buf = malloc(len);
   MemoryObject * bufMO = memory->allocateFixed((uint64_t) buf, len,  NULL);
   std::string nameString = name;
@@ -3836,10 +3887,13 @@ void Executor::tase_make_symbolic(uint64_t addr, uint64_t len, const char * name
   executeMakeSymbolic(*GlobalExecutionStatePtr, bufMO, name);
   const ObjectState * constBufOS = GlobalExecutionStatePtr->addressSpace.findObject(bufMO);
   ObjectState * bufOS = GlobalExecutionStatePtr->addressSpace.getWriteable(bufMO, constBufOS);
-  
+  //printf("DBG 1: %lf seconds \n", util::getWallTime() - T0);
+  //double T1 = util::getWallTime();
   for (uint64_t i = 0; i < len; i++) {
     tase_helper_write(addr + i, bufOS->read(i, Expr::Int8));
   }
+
+  //printf("DBG 2: %lf seconds \n", util::getWallTime() - T1);
 }
 
 void Executor::model_sb_disabled() {
@@ -4063,11 +4117,10 @@ void Executor::model_RAND_load_file() {
 }
 
 
+//Good to skip for verification because we make rng inputs symbolic later
 void Executor::model_RAND_add() {
 
   printf("Entering model_RAND_add \n");
-  std::cout.flush();
-  //RAND_add((void *) target_ctx_gregs[GREG_RDI], (int) target_ctx_gregs[GREG_RSI], 0);                                         
 
   //fake a ret                                                                                                                
   uint64_t retAddr = *((uint64_t *) target_ctx_gregs[GREG_RSP].u64);
@@ -4396,11 +4449,17 @@ void Executor::klee_interp_internal () {
     
     uint64_t rip = target_ctx_gregs[GREG_RIP].u64;
     uint64_t rip_init = rip;
-
+    
+    
+    
+    
     if (modelDebug) {
       printf("RIP at top of klee_interp_internal loop is 0x%lx \n", rip);
     }
     
+   
+      
+      
     //IMPORTANT -- The springboard is written assuming we never try to
     // jump right back into a modeled fn.  The sb_modeled label immediately XENDs, which will
     // cause a segfault if the process isn't executing a transaction.
@@ -4424,36 +4483,54 @@ void Executor::klee_interp_internal () {
 	  }
 	}
       }
-  
-      KFunction * interpFn = findInterpFunction (target_ctx_gregs, kmodule);
-      
-      //We have to manually push a frame on for the function we'll be
-      //interpreting through.  At this point, no other frames should exist
-      // on klee's interpretation "stack".
-      GlobalExecutionStatePtr->pushFrame(0,interpFn);
-      GlobalExecutionStatePtr->pc = interpFn->instructions ;
-      GlobalExecutionStatePtr->prevPC = GlobalExecutionStatePtr->pc;
-      std::vector<ref<Expr> > arguments;
-      uint64_t regAddr = (uint64_t) target_ctx_gregs;
-      ref<ConstantExpr> regExpr = ConstantExpr::create(regAddr, Context::get().getPointerWidth());
-      arguments.push_back(regExpr);
-      bindArgument(interpFn, 0, *GlobalExecutionStatePtr, arguments[0]);
-      
-      run(*GlobalExecutionStatePtr);
-      
-    }
 
+      //opt to skip LEAs
+      uint64_t tmp =  *((uint64_t *) rip) ;      
+      uint64_t maskedVal = tmp & 0x00ffffffffffffff;
+      if (maskedVal == 0x00000000073d8d4c ) {
+	target_ctx_gregs[GREG_RIP].u64 += 14;
+	if (modelDebug) {
+	  printf("Skipping LEA ... \n");
+	}
+      } else {
+        
+	
+	KFunction * interpFn = findInterpFunction (target_ctx_gregs, kmodule);
+	
+	//We have to manually push a frame on for the function we'll be
+	//interpreting through.  At this point, no other frames should exist
+	// on klee's interpretation "stack".
+	GlobalExecutionStatePtr->pushFrame(0,interpFn);
+	GlobalExecutionStatePtr->pc = interpFn->instructions ;
+	GlobalExecutionStatePtr->prevPC = GlobalExecutionStatePtr->pc;
+	std::vector<ref<Expr> > arguments;
+	uint64_t regAddr = (uint64_t) target_ctx_gregs;
+	ref<ConstantExpr> regExpr = ConstantExpr::create(regAddr, Context::get().getPointerWidth());  //Wasteful
+	arguments.push_back(regExpr);
+	bindArgument(interpFn, 0, *GlobalExecutionStatePtr, arguments[0]);
+
+        
+	run(*GlobalExecutionStatePtr);
+	
+	
+
+      }
+    }
+    
     if(tase_buf_has_taint((void *) &(target_ctx_gregs[GREG_RIP].u64), 8) ) {
       ref<Expr> RIPExpr = tase_helper_read((uint64_t) &(target_ctx_gregs[GREG_RIP].u64), 8);
       if (!(isa<ConstantExpr>(RIPExpr))) {
-	printf("Detected symbolic RIP \n");
-	printf("Attempting to call toUnique on symbolic RIP \n");
-     
+	if (!noLog) {
+	  printf("Detected symbolic RIP \n");
+	  printf("Attempting to call toUnique on symbolic RIP \n");
+	}
 	solver_start_time = util::getWallTime();
 	ref <Expr> uniqueRIPExpr  = toUnique(*GlobalExecutionStatePtr,RIPExpr);
 	solver_end_time = util::getWallTime();
-	solver_diff_time = solver_end_time - solver_start_time;	
-	printf("Elapsed solver time (RIP toUnique) is %lf at interpCtr %lu \n", solver_diff_time, interpCtr);
+	solver_diff_time = solver_end_time - solver_start_time;
+	if (!noLog) {
+	  printf("Elapsed solver time (RIP toUnique) is %lf at interpCtr %lu \n", solver_diff_time, interpCtr);
+	}
 	run_solver_time += solver_diff_time;
 
 
@@ -4470,6 +4547,8 @@ void Executor::klee_interp_internal () {
 	  printf("Coming out of forkOnPossibleRIPValues, %lf elapsed \n", util::getWallTime() - interp_enter_time);
 	  
 	}
+	
+	
 	if (taseDebug) {
 	  ref<Expr> FinalRIPExpr = target_ctx_gregs_OS->read(GREG_RIP * 8, Expr::Int64);
 	  if (!(isa<ConstantExpr>(FinalRIPExpr))) {
@@ -4481,6 +4560,7 @@ void Executor::klee_interp_internal () {
 	    std::exit(EXIT_FAILURE);
 	  }
 	}
+        
       }
     }
 
@@ -4701,8 +4781,9 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) 
 
     } else { // Take the concrete value of solution and explore that path.
 
-      printf("IMPORTANT: control debug: Found dest RIP 0x%lx on true branch in forkOnRip from RIP 0x%lx with pid %d \n", (uint64_t) solution->getZExtValue(), initRIP, getpid());
-
+      if (!noLog) {
+	printf("IMPORTANT: control debug: Found dest RIP 0x%lx on true branch in forkOnRip from RIP 0x%lx with pid %d \n", (uint64_t) solution->getZExtValue(), initRIP, getpid());
+      }
       addConstraint(*GlobalExecutionStatePtr, EqExpr::create(inputExpr, solution));
 
       target_ctx_gregs_OS->write(GREG_RIP*8, solution);
@@ -4739,8 +4820,12 @@ void printCtx(greg_t * registers ) {
 void Executor::initializeInterpretationStructures (Function *f) {
 
   printf("INITIALIZING INTERPRETATION STRUCTURES \n");
+
+  GlobalExecutorPtr = this;
   GlobalExecutionStatePtr = new ExecutionState(kmodule->functionMap[f]);
 
+  
+  
   //AH: We may not actually need this...
   printf("Initializing globals ... \n");
   initializeGlobals(*GlobalExecutionStatePtr);
@@ -4765,12 +4850,12 @@ void Executor::initializeInterpretationStructures (Function *f) {
 
   rodata_base_ptr = (void *) (&_IO_stdin_used);
   rodata_size = (uint64_t) ((uint64_t) (&__GNU_EH_FRAME_HDR) - (uint64_t) (&_IO_stdin_used)) ;
-  printf("Estimated rodataSize as 0x%lx \n", rodata_size);
+  //printf("Estimated rodataSize as 0x%lx \n", rodata_size);
 
   rodata_size += (0x2949c + 0x2949c); //Hack to map in eh_frame_hdr and eh_frame also
   
-  printf("Attempting to map in .rodata section at base 0x%lx with size 0x%lx up to  0x%lx \n", (uint64_t) rodata_base_ptr, rodata_size, (uint64_t) &__GNU_EH_FRAME_HDR);
-  std::cout.flush();
+  //printf("Attempting to map in .rodata section at base 0x%lx with size 0x%lx up to  0x%lx \n", (uint64_t) rodata_base_ptr, rodata_size, (uint64_t) &__GNU_EH_FRAME_HDR);
+  //std::cout.flush();
 
   tase_map_buf((uint64_t) rodata_base_ptr, rodata_size);
 
@@ -4819,8 +4904,8 @@ void Executor::initializeInterpretationStructures (Function *f) {
     sizeStream << std::hex << size;
     sizeStream >> sizeVal;
     
-    printf ("After parsing,  global addr is 0x%lx, ", addrVal);
-    printf (" and sizeVal is 0x%lx \n", sizeVal);
+    //printf ("After parsing,  global addr is 0x%lx, ", addrVal);
+    //printf (" and sizeVal is 0x%lx \n", sizeVal);
 
     if ((sizeVal %2) == 1) {
       sizeVal = sizeVal + 1;
@@ -4831,7 +4916,7 @@ void Executor::initializeInterpretationStructures (Function *f) {
     //The checks are there now to prevent us from creating two different MO/OS
     //for the variables, since we map them above already.
     if ((uint64_t) addrVal == (uint64_t) &target_ctx_gregs) {
-      printf("Found target_ctx_gregs while mapping extern symbols \n");
+      //printf("Found target_ctx_gregs while mapping extern symbols \n");
       continue;
     }
 
@@ -4845,8 +4930,8 @@ void Executor::initializeInterpretationStructures (Function *f) {
     */
   }
 
-  printf("Mapping in env vars \n");
-  std::cout.flush();
+  //printf("Mapping in env vars \n");
+  //std::cout.flush();
 
 
   //Todo -- De-hackify this environ variable mapping
@@ -4874,8 +4959,8 @@ void Executor::initializeInterpretationStructures (Function *f) {
   if (envSize % 2 == 1)
     envSize++;
   
-  printf("Size of envs is 0x%lx \n", envSize);
-  std::cout.flush();
+  //printf("Size of envs is 0x%lx \n", envSize);
+  //std::cout.flush();
 
   tase_map_buf(baseEnvAddr, envSize);
   /*
@@ -4887,7 +4972,7 @@ void Executor::initializeInterpretationStructures (Function *f) {
   
   //Add mappings for stderr and stdout
   //Todo -- remove dependency on _edata location
-  printf("Mapping edata at 0x%lx \n", (uint64_t) &edata);
+  //printf("Mapping edata at 0x%lx \n", (uint64_t) &edata);
   tase_map_buf((uint64_t) &edata, 16);
 
   //Get rid of the dummy function used for initialization

@@ -16,6 +16,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 extern bool UseLegacyIndependentSolver;
+extern bool UseCanonicalization;
 
 namespace klee {
 Solver *constructSolverChain(Solver *coreSolver,
@@ -51,6 +52,9 @@ Solver *constructSolverChain(Solver *coreSolver,
   if (UseCache)
     solver = createCachingSolver(solver);
 
+  if (UseCanonicalization)
+    solver = createCanonicalSolver(solver);
+  
   if (UseIndependentSolver) 
     solver = createIndependentSolver(solver, UseLegacyIndependentSolver);
 

@@ -77,12 +77,12 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
 	}
       }
       if (!nameInList) {
-	printf("Found sym var name %s not in write condition \n", objName.c_str());
+	//printf("Found sym var name %s not in write condition \n", objName.c_str());
 	//Add sym var to list here.
 	//DBG -- just add selects for now
 	std::string::size_type res = objName.find("select");
 	if (res != std::string::npos) {
-	  printf("Requesting solution for %s \n", objName.c_str());
+	  //printf("Requesting solution for %s \n", objName.c_str());
 	  arrays.push_back(*it);
 	}
       }
@@ -514,7 +514,6 @@ void deserializeAssignments ( void * buf, int bufSize, Executor * exec,  CVAssig
   if (debugSerial) {
     printf("Exiting deserialization \n");
     std::cout.flush();
-    //std::exit(EXIT_FAILURE);
   }
   CV->addBindings(objects,values);
   if (debugSerial) {

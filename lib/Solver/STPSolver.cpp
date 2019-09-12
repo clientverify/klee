@@ -106,7 +106,6 @@ STPSolverImpl::STPSolverImpl(bool _useForkedSTP, bool _optimizeDivides)
 
   //ABH Added to enable cryptominisat4
   if (useCMS4) {
-    printf("Attempting to create STP solver with cryptominisat back end \n");
     vc_setInterfaceFlags(vc, CMS4, 0);
   }
 
@@ -335,6 +334,8 @@ runAndGetCexForked(::VC vc, STPBuilder *builder, ::VCExpr q,
 bool STPSolverImpl::computeInitialValues(
     const Query &query, const std::vector<const Array *> &objects,
     std::vector<std::vector<unsigned char> > &values, bool &hasSolution) {
+  double T0 = util::getWallTime();
+  
   runStatusCode = SOLVER_RUN_STATUS_FAILURE;
 
   TimerStatIncrementer t(stats::queryTime);
@@ -366,12 +367,12 @@ bool STPSolverImpl::computeInitialValues(
                (SOLVER_RUN_STATUS_SUCCESS_UNSOLVABLE == runStatusCode));
   } else {
 
-    double T0 = util::getWallTime();
+    double T1 = util::getWallTime();
     runStatusCode =
         runAndGetCex(vc, builder, stp_e, objects, values, hasSolution);
     success = true;
 
-    printf("Core solver query took %lf seconds \n", util::getWallTime() - T0);
+    printf("Core solver query took %lf seconds \n", util::getWallTime() - T1);
   }
 
   if (success) {
@@ -383,6 +384,8 @@ bool STPSolverImpl::computeInitialValues(
 
   vc_pop(vc);
 
+  printf("Total time in STP solveForInitialValues: %lf \n", util::getWallTime() - T0);
+  
   return success;
 }
 

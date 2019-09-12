@@ -9,6 +9,7 @@
 klee_add_component(kleaverSolver
   AssignmentValidatingSolver.cpp
   CachingSolver.cpp
+  CanonicalSolver.cpp
   CexCachingSolver.cpp
   ConstantDivision.cpp
   CoreSolver.cpp
