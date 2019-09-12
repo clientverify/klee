@@ -14,6 +14,12 @@ set(KLEE_LIBS
   kleaverSolver
 )
 
-target_link_libraries(kleaver ${KLEE_LIBS})
+find_package(Boost COMPONENTS system filesystem REQUIRED)
+target_link_libraries(kleaver
+    ${KLEE_LIBS}
+    ${Boost_LIBRARY_DIRS}
+    ${Boost_SYSTEM_LIBRARY}
+    ${Boost_FILESYSTEM_LIBRARY}
+)
 
 install(TARGETS kleaver RUNTIME DESTINATION bin)

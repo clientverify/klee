@@ -9,6 +9,7 @@
 klee_add_component(kleeCore
   AddressSpace.cpp
   CallPathManager.cpp
+  Cloud9Init.cpp
   Context.cpp
   CoreStats.cpp
   ExecutionState.cpp
@@ -23,6 +24,7 @@ klee_add_component(kleeCore
   Searcher.cpp
   SeedInfo.cpp
   SpecialFunctionHandler.cpp
+  SpecialFunctionHandler-Cloud9.cpp
   StatsTracker.cpp
   TimingSolver.cpp
   UserSearcher.cpp
@@ -54,6 +56,7 @@ target_include_directories(kleeCore PUBLIC
 )
 target_link_libraries(kleeCore PRIVATE
   kleeAnalysis
+  cliverCore
   kleeBasic
   kleeModule
   kleaverSolver

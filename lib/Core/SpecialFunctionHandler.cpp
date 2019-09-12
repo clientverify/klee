@@ -17,6 +17,8 @@
 #include "klee/Internal/Module/KModule.h"
 #include "klee/Internal/Support/Debug.h"
 #include "klee/Internal/Support/ErrorHandling.h"
+#include "klee/util/ExprUtil.h"
+#include "klee/util/Thread.h"
 
 #include "Executor.h"
 #include "MemoryManager.h"
@@ -29,6 +31,7 @@
 #include "llvm/Module.h"
 #endif
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/CommandLine.h"
 
 #if LLVM_VERSION_CODE <= LLVM_VERSION(3, 1)
 #include "llvm/Target/TargetData.h"
@@ -39,6 +42,13 @@
 #endif
 
 #include <errno.h>
+#include <iostream>
+
+namespace klee {
+  extern llvm::cl::opt<bool> AlwaysOutputSeeds;
+  extern llvm::cl::opt<bool> OnlyOutputStatesCoveringNew;
+  extern llvm::cl::opt<bool> OutputIStats;
+}
 
 using namespace llvm;
 using namespace klee;
@@ -92,6 +102,7 @@ static SpecialFunctionHandler::HandlerInfo handlerInfo[] = {
   add("free", handleFree, false),
   add("klee_assume", handleAssume, false),
   add("klee_check_memory_access", handleCheckMemoryAccess, false),
+  add("klee_event", handleEvent, false),
   add("klee_get_valuef", handleGetValue, true),
   add("klee_get_valued", handleGetValue, true),
   add("klee_get_valuel", handleGetValue, true),
@@ -101,20 +112,28 @@ static SpecialFunctionHandler::HandlerInfo handlerInfo[] = {
   add("klee_define_fixed_object", handleDefineFixedObject, false),
   add("klee_get_obj_size", handleGetObjSize, true),
   add("klee_get_errno", handleGetErrno, true),
+  add("klee_get_wlist", handleGetWList, true),
   add("klee_is_symbolic", handleIsSymbolic, true),
+  add("klee_is_symbolic_buffer", handleIsSymbolicBuffer, true),
   add("klee_make_symbolic", handleMakeSymbolic, false),
+  add("klee_make_shared", handleMakeShared, false),
+  add("klee_debug", handleDebug, false),
   add("klee_mark_global", handleMarkGlobal, false),
   add("klee_merge", handleMerge, false),
   add("klee_prefer_cex", handlePreferCex, false),
   add("klee_posix_prefer_cex", handlePosixPreferCex, false),
   add("klee_print_expr", handlePrintExpr, false),
+  add("klee_print_bytes", handlePrintBytes, false),
   add("klee_print_range", handlePrintRange, false),
+  add("klee_print_thread_id", handlePrintThreadId, false),
   add("klee_set_forking", handleSetForking, false),
   add("klee_stack_trace", handleStackTrace, false),
   add("klee_warning", handleWarning, false),
   add("klee_warning_once", handleWarningOnce, false),
   add("klee_alias_function", handleAliasFunction, false),
   add("malloc", handleMalloc, true),
+  add("klee_memset", handleMemset, true),
+  add("klee_memcpy", handleMemcpy, true),
   add("realloc", handleRealloc, true),
 
   // operator delete[](void*)
@@ -232,9 +251,35 @@ bool SpecialFunctionHandler::handle(ExecutionState &state,
       (this->*h)(state, target, arguments);
     }
     return true;
+  }
+
+  external_handlers_ty::iterator eit = external_handlers.find(f);
+  if (eit != external_handlers.end()) {    
+    ExternalHandler h = eit->second.first;
+    bool hasReturnValue = eit->second.second;
+     // FIXME: Check this... add test?
+    if (!hasReturnValue && !target->inst->use_empty()) {
+      executor.terminateStateOnExecError(state, 
+                                         "expected return value from void special function");
+    } else {
+      h(&executor, &state, target, arguments);
+    }
+    return true;
   } else {
     return false;
   }
+}
+
+void SpecialFunctionHandler::addExternalHandler(llvm::Function *function, 
+		ExternalHandler external_handler, bool has_return_value) {
+  assert(external_handlers.find(function) == external_handlers.end()
+			&& "already added external handler for this function");
+	external_handlers[function] =  
+			std::make_pair(external_handler, has_return_value);
+}
+
+void SpecialFunctionHandler::removeExternalHandler(llvm::Function *function) {
+	external_handlers.erase(function);
 }
 
 /****/
@@ -392,6 +437,117 @@ void SpecialFunctionHandler::handleMalloc(ExecutionState &state,
   executor.executeAlloc(state, arguments[0], false, target);
 }
 
+void SpecialFunctionHandler::handleMemcpy(ExecutionState &state,
+                                  KInstruction *target,
+                                  std::vector<ref<Expr> > &arguments) {
+  assert(arguments.size()==3 && "invalid number of arguments to memcpy");
+
+  size_t len = cast<ConstantExpr>(arguments[2])->getZExtValue();
+
+  ObjectPair op_dst;
+  bool success_dst;
+  state.addressSpace.resolveOne(state, executor.solver,
+                                arguments[0], op_dst, success_dst);
+
+  ObjectPair op_src;
+  bool success_src;
+  state.addressSpace.resolveOne(state, executor.solver,
+                                arguments[1], op_src, success_src);
+
+  if (success_src && success_dst) {
+
+    const MemoryObject *mo_dst = op_dst.first;
+    const ObjectState *os_dst = op_dst.second;
+    ref<Expr> offset_dst = mo_dst->getOffsetExpr(arguments[0]);
+
+    const MemoryObject *mo_src = op_src.first;
+    const ObjectState *os_src = op_src.second;
+    ref<Expr> offset_src = mo_src->getOffsetExpr(arguments[1]);
+
+    ConstantExpr *offset_src_CE= dyn_cast<ConstantExpr>(offset_src);
+    ConstantExpr *offset_dst_CE= dyn_cast<ConstantExpr>(offset_dst);
+    if (offset_src_CE && offset_dst_CE) {
+      uint64_t offset_src_constant  = offset_src_CE->getZExtValue();
+      uint64_t offset_dst_constant  = offset_dst_CE->getZExtValue();
+
+      ObjectState *wos_dst = state.addressSpace.getWriteable(mo_dst, os_dst);
+
+      for (unsigned i=0; i<len; ++i) {
+        wos_dst->write(offset_dst_constant+i,
+                       os_src->read8(offset_src_constant+i));
+      }
+
+    } else {
+      success_src = success_dst = false;
+    }
+  }
+
+  if (!success_src || !success_dst) {
+    executor.terminateStateOnError(state,
+          "memcpy failure: symbolic parameters (disable klee_memcpy recommended)",
+          Executor::Model);
+    return;
+  }
+
+  executor.bindLocal(target, state, arguments[0]);
+}
+
+void SpecialFunctionHandler::handleMemset(ExecutionState &state,
+                                          KInstruction *target,
+                                          std::vector<ref<Expr> > &arguments) {
+  assert(arguments.size()==3 && "invalid number of arguments to memset");
+
+  ref<Expr> address = arguments[0];
+  ref<Expr> c = arguments[1];
+
+  // Fail if count is non-constant
+  size_t count = 0;
+  if (ConstantExpr *AE = dyn_cast<ConstantExpr>(arguments[2])) {
+    count = AE->getZExtValue();
+  } else {
+    executor.terminateStateOnError(state,
+          "memset failure: symbolic parameters (disable klee_memset recommended)",
+          Executor::Model);
+    return;
+  }
+
+  bool constant_fill = isa<ConstantExpr>(c);
+  int fill = constant_fill ? cast<ConstantExpr>(c)->getZExtValue() : 0;
+
+  ObjectPair op;
+  bool success;
+  if (state.addressSpace.resolveOne(state,
+                                    executor.solver,
+                                    address, op, success)) {
+    const MemoryObject *mo = op.first;
+    const ObjectState *os = op.second;
+
+    ref<Expr> offset_expr = mo->getOffsetExpr(address);
+    if (ConstantExpr *offset_CE= dyn_cast<ConstantExpr>(offset_expr)) {
+      uint64_t offset = offset_CE->getZExtValue();
+      ObjectState *wos = state.addressSpace.getWriteable(mo, os);
+      for (size_t i=0; i<count; ++i) {
+        if (constant_fill)
+          wos->write8(i+offset, fill);
+        else
+          wos->write(i+offset, arguments[1]);
+      }
+    } else {
+      success = false;
+    }
+  }
+
+  if (!success) {
+    for (unsigned i=0; i<count; ++i) {
+      ref<Expr> addressOffset = AddExpr::create(arguments[0], ConstantExpr::create(i, 64));
+      executor.executeMemoryOperation(state, false, addressOffset, arguments[1], 0);
+    }
+  }
+
+  executor.bindLocal(target, state, arguments[0]);
+
+}
+
 void SpecialFunctionHandler::handleAssume(ExecutionState &state,
                             KInstruction *target,
                             std::vector<ref<Expr> > &arguments) {
@@ -417,14 +573,53 @@ void SpecialFunctionHandler::handleAssume(ExecutionState &state,
     executor.addConstraint(state, e);
   }
 }
+void SpecialFunctionHandler::handleIsSymbolicBuffer(ExecutionState &state,
+                                KInstruction *target,
+                                std::vector<ref<Expr> > &arguments) {
+  assert(arguments.size()==2 && "invalid number of arguments to klee_is_symbolic_addr");
+  // arg 1 ptr, arg 2 len
+
+  int is_symbolic = 0;
+  if (!isa<ConstantExpr>(arguments[0]) || !isa<ConstantExpr>(arguments[1])) {
+    is_symbolic = 1;
+  } else {
+    ref<ConstantExpr> addressExpr = cast<ConstantExpr>(arguments[0]);
+    ObjectPair op;
+    state.addressSpace.resolveOne(addressExpr, op);
+    const ObjectState *os = op.second;
+    const MemoryObject *mo = op.first;
+
+    uint8_t* address = (uint8_t*) addressExpr->getZExtValue();
+    uint8_t *base_address = (uint8_t*) (unsigned long) mo->address;
+    size_t offset = (size_t)(address - base_address);
+    size_t len = (size_t)cast<ConstantExpr>(arguments[1])->getZExtValue();
+
+    if (!os->isConcrete()) {
+      for (unsigned i=0; i<len; ++i) {
+        if (!isa<ConstantExpr>(os->read8(offset+i))) {
+          is_symbolic = 1;
+          break;
+        }
+      }
+    }
+  }
+
+  executor.bindLocal(target, state, ConstantExpr::create(is_symbolic,Expr::Int32));
+}
 
 void SpecialFunctionHandler::handleIsSymbolic(ExecutionState &state,
                                 KInstruction *target,
                                 std::vector<ref<Expr> > &arguments) {
   assert(arguments.size()==1 && "invalid number of arguments to klee_is_symbolic");
 
+  // Try to simply expr if it is non-constant
+  // FIXME: is this needed?
+  ref<Expr> e = arguments[0];
+  if (!isa<ConstantExpr>(arguments[0])) {
+    e = state.constraints.simplifyExpr(arguments[0]);
+  }
   executor.bindLocal(target, state, 
-                     ConstantExpr::create(!isa<ConstantExpr>(arguments[0]),
+                     ConstantExpr::create(!isa<ConstantExpr>(e),
                                           Expr::Int32));
 }
 
@@ -462,6 +657,49 @@ void SpecialFunctionHandler::handlePrintExpr(ExecutionState &state,
 
   std::string msg_str = readStringAtAddress(state, arguments[0]);
   llvm::errs() << msg_str << ":" << arguments[1] << "\n";
+}
+
+void SpecialFunctionHandler::handlePrintBytes(ExecutionState &state,
+                                  KInstruction *target,
+                                  std::vector<ref<Expr> > &arguments) {
+  assert(arguments.size()==3 &&
+         "invalid number of arguments to klee_print_bytes");
+
+  std::string msg_str = readStringAtAddress(state, arguments[0]);
+
+  std::stringstream ss;
+  ref<Expr> sizeExpr;
+  sizeExpr = executor.toUnique(state, arguments[2]);
+  ref<ConstantExpr> size = cast<ConstantExpr>(sizeExpr);
+  uint64_t sizeConcrete = size->getZExtValue();
+
+  ss << msg_str << " size:" << sizeConcrete << " bytes:";
+
+  ref<Expr> addressExpr;
+  addressExpr = executor.toUnique(state, arguments[1]);
+  ref<ConstantExpr> address = cast<ConstantExpr>(addressExpr);
+
+  ObjectPair op;
+  if (!state.addressSpace.resolveOne(address, op))
+    assert(0 && "XXX out of bounds / multiple resolution unhandled");
+  bool res;
+  const MemoryObject *mo = op.first;
+  const ObjectState *os = op.second;
+
+  uint64_t addressConcrete = address->getZExtValue();
+  assert(addressConcrete >= mo->address && "invalid address");
+  uint64_t i = 0;
+  uint64_t offset = addressConcrete - mo->address;
+  for (; i < sizeConcrete; i++) {
+    ss << os->read8(offset+i) << " ";
+  }
+  llvm::errs() << ss.str() << "\n";
+}
+
+void SpecialFunctionHandler::handlePrintThreadId(ExecutionState &state,
+                                          KInstruction *target,
+                                          std::vector<ref<Expr> > &arguments) {
+  klee_message("KLEE Thread ID: %d", klee::GetThreadID());
 }
 
 void SpecialFunctionHandler::handleSetForking(ExecutionState &state,
@@ -688,11 +926,25 @@ void SpecialFunctionHandler::handleMakeSymbolic(ExecutionState &state,
                                                 KInstruction *target,
                                                 std::vector<ref<Expr> > &arguments) {
   std::string name;
+  std::string expr_name;
 
   // FIXME: For backwards compatibility, we should eventually enforce the
   // correct arguments.
   if (arguments.size() == 2) {
     name = "unnamed";
+  } else if (arguments.size() == 4) {
+    // Extract the symbolic variables (if any) referenced by the 4th arg
+    // and prepend these variable names to the name of this new symbolic
+    // variable. This is to be used to track sym var flow.
+    name = readStringAtAddress(state, arguments[2]);
+    std::vector<const klee::Array*> symbolic_objects;
+    klee::findSymbolicObjects(arguments[3], symbolic_objects);
+    for (unsigned i=0; i<symbolic_objects.size(); ++i)
+      expr_name = expr_name + symbolic_objects[i]->name + "__";
+    if (expr_name.size())
+      expr_name += "_";
+
+    name = expr_name + name;
   } else {
     // FIXME: Should be a user.err, not an assert.
     assert(arguments.size()==3 &&
@@ -706,7 +958,15 @@ void SpecialFunctionHandler::handleMakeSymbolic(ExecutionState &state,
   for (Executor::ExactResolutionList::iterator it = rl.begin(), 
          ie = rl.end(); it != ie; ++it) {
     const MemoryObject *mo = it->first.first;
-    mo->setName(name);
+
+    // Only set memory object name if will be used by recording or replaying
+    // seed values, otherwise if the same memory object is declared symbolic
+    // multiple times, we will have an error where the name is overwritten
+#if 0  //Marie merge remove:
+    if (!OnlyOutputStatesCoveringNew || OutputIStats || AlwaysOutputSeeds ||
+        executor.usingSeeds || executor.replayKTest != NULL)
+#endif
+      mo->setName(name);
     
     const ObjectState *old = it->first.second;
     ExecutionState *s = it->second;

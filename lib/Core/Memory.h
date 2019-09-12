@@ -209,6 +209,7 @@ public:
   void write32(unsigned offset, uint32_t value);
   void write64(unsigned offset, uint64_t value);
 
+  bool isConcrete() const { return !concreteMask; }
 private:
   const UpdateList &getUpdates() const;
 

@@ -36,6 +36,17 @@ namespace klee {
                      std::pair<Handler,bool> > handlers_ty;
 
     handlers_ty handlers;
+
+    typedef void (*ExternalHandler)(Executor* executor,
+                                    ExecutionState *state,
+                                    KInstruction *target, 
+                                    std::vector<ref<Expr> > 
+                                      &arguments);
+    typedef std::map<const llvm::Function*, 
+                     std::pair<ExternalHandler,bool> > external_handlers_ty;
+
+    external_handlers_ty external_handlers;
+
     class Executor &executor;
 
     struct HandlerInfo {
@@ -88,6 +99,10 @@ namespace klee {
                 KInstruction *target,
                 std::vector< ref<Expr> > &arguments);
 
+    void addExternalHandler(llvm::Function *function, ExternalHandler external_handler,
+				bool void_return);
+    void removeExternalHandler(llvm::Function *function);
+
     /* Convenience routines */
 
     std::string readStringAtAddress(ExecutionState &state, ref<Expr> address);
@@ -103,18 +118,25 @@ namespace klee {
     HANDLER(handleAssume);
     HANDLER(handleCalloc);
     HANDLER(handleCheckMemoryAccess);
+    HANDLER(handleDebug);
     HANDLER(handleDefineFixedObject);
     HANDLER(handleDelete);    
     HANDLER(handleDeleteArray);
     HANDLER(handleExit);
+    HANDLER(handleEvent);
     HANDLER(handleAliasFunction);
     HANDLER(handleFree);
     HANDLER(handleGetErrno);
     HANDLER(handleGetObjSize);
     HANDLER(handleGetValue);
+    HANDLER(handleGetWList);
     HANDLER(handleIsSymbolic);
+    HANDLER(handleIsSymbolicBuffer);
+    HANDLER(handleMakeShared);
     HANDLER(handleMakeSymbolic);
     HANDLER(handleMalloc);
+    HANDLER(handleMemset);
+    HANDLER(handleMemcpy);
     HANDLER(handleMarkGlobal);
     HANDLER(handleMerge);
     HANDLER(handleNew);
@@ -122,7 +144,9 @@ namespace klee {
     HANDLER(handlePreferCex);
     HANDLER(handlePosixPreferCex);
     HANDLER(handlePrintExpr);
+    HANDLER(handlePrintBytes);
     HANDLER(handlePrintRange);
+    HANDLER(handlePrintThreadId);
     HANDLER(handleRange);
     HANDLER(handleRealloc);
     HANDLER(handleReportError);
