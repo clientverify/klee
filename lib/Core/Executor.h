@@ -122,7 +122,7 @@ public:
     Unhandled
   };
 
-private:
+protected:
   static const char *TerminateReasonNames[];
 
   class TimerInfo;
@@ -135,6 +135,7 @@ private:
   TimingSolver *solver;
   MemoryManager *memory;
   std::set<ExecutionState*> states;
+  Atomic<int>::type stateCount;
   StatsTracker *statsTracker;
   TreeStreamWriter *pathWriter, *symPathWriter;
   SpecialFunctionHandler *specialFunctionHandler;
@@ -552,6 +553,10 @@ public:
     inhibitForking = value;
   }
 
+  virtual bool getHaltExecution() {
+    return haltExecution;
+  }
+
   /*** State accessor methods ***/
 
   virtual unsigned getPathStreamID(const ExecutionState &state);
@@ -570,6 +575,8 @@ public:
 
   virtual void getCoveredLines(const ExecutionState &state,
                                std::map<const std::string*, std::set<unsigned> > &res);
+
+  void executeEvent(ExecutionState &state, unsigned int type, long int value);
 
   Expr::Width getWidthForLLVMType(LLVM_TYPE_Q llvm::Type *type) const;
 };
