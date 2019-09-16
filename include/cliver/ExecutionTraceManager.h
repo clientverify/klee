@@ -25,7 +25,7 @@
 
 #include "llvm/Analysis/Trace.h"
 
-#include "folly/ThreadLocal.h"
+//#include "folly/ThreadLocal.h"
 
 #include <set>
 #include <list>
@@ -56,7 +56,7 @@ typedef boost::unordered_map<ExecutionStage*, RemovedTrackerList >
 //    SocketEventDistanceMetric> SocketEventClusterer;
 //typedef KMedoidsClusterer<TrainingObject, 
 //    TrainingObjectDistanceMetric> TrainingObjectClusterer;
-
+#if 0
 typedef KMeansClusterer<SocketEvent, 
     SocketEventDistanceMetric> SocketEventClusterer;
 typedef KMeansClusterer<TrainingObject, 
@@ -64,6 +64,7 @@ typedef KMeansClusterer<TrainingObject,
 
 typedef TrainingObjectClusterManager<TrainingObjectClusterer,
     SocketEventClusterer> TrainingObjectManager;
+#endif
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -127,7 +128,7 @@ class ExecutionTraceManager : public ExecutionObserver {
   // Instead of ThreadSpecificPointer, we use folly::ThreadLocal to enable one
   // thread to iterate through the others at some point.
   class ETMTag; // segments global folly::ThreadLocal mutex
-  folly::ThreadLocal<StageRemovedTrackerListMap, ETMTag> removed_trackers_;
+//  folly::ThreadLocal<StageRemovedTrackerListMap, ETMTag> removed_trackers_;
 };
 
 class TrainingExecutionTraceManager : public ExecutionTraceManager {
@@ -184,12 +185,14 @@ class VerifyExecutionTraceManager : public ExecutionTraceManager {
 
   ExecutionTraceEditDistanceTree* clone_ed_tree(ExecutionStateProperty *property);
 
-  TrainingObjectSet training_data_;
+//  TrainingObjectSet training_data_;
   SocketEventSimilarity *similarity_measure_;
 
+#if 0
   // Training Filter
   TrainingFilterMap filter_map_;
   TrainingObjectManager *cluster_manager_;
+#endif
 
   // Training objects that were found for the current verification task
   std::set<TrainingObject*> self_training_data_;
@@ -199,8 +202,10 @@ class VerifyExecutionTraceManager : public ExecutionTraceManager {
 
 	unsigned last_round_cleared_;
 
+#if 0
   // Hidden Markov Model Path predictor (enabled via UseHMM)
   HMMPathPredictor* hmm_;
+#endif
 
   // HMM training objects
   std::vector<std::shared_ptr<TrainingObject> > hmm_training_objs_;

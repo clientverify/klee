@@ -26,6 +26,7 @@
 #include <boost/serialization/vector.hpp>
 #include <boost/unordered_map.hpp>
 
+#if 0
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace cliver {
@@ -289,3 +290,4 @@ class TrainingManager {
 
 #endif // CLIVER_TRAINING_H
 
+#endif //0

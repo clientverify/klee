@@ -107,6 +107,8 @@ public:
 
   typedef std::pair<ExecutionState*,ExecutionState*> StatePair;
 
+  Atomic<int>::type live_threads_;
+
   enum TerminateReason {
     Abort,
     Assert,
@@ -437,9 +439,11 @@ protected:
                          KInstruction *target, 
                          const std::vector<ref<Expr> > &arguments);
 
+public:
   void doImpliedValueConcretization(ExecutionState &state,
                                     ref<Expr> e,
                                     ref<ConstantExpr> value);
+protected:
 
   /// Add a timer to be executed periodically.
   ///

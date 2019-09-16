@@ -188,7 +188,9 @@ void ExecutionTraceManager::remove_from_stage(ExecutionStateProperty* p) {
 }
 
 bool ExecutionTraceManager::remove_property(ExecutionStateProperty* p) {
-
+  assert(0);
+  return false;
+#if 0
   ExecutionStage* stage = get_stage(p);
   if (stage && stage->etrace_tree && stage->etrace_tree->tracks(p)) {
     stage->etrace_tree->remove_tracker_lazy(p);
@@ -198,9 +200,12 @@ bool ExecutionTraceManager::remove_property(ExecutionStateProperty* p) {
     return true;
   }
   return false;
+#endif
 }
 
 void ExecutionTraceManager::lazy_property_removals() {
+  assert(0);
+#if 0
   klee::WallTimer cleanup_timer;
   int removed_count = 0;
 
@@ -216,6 +221,7 @@ void ExecutionTraceManager::lazy_property_removals() {
   }
   CVDEBUG("Removed " << removed_count << " tracks from tree in "
           << cleanup_timer.check() / 1000000. << " secs");
+#endif
 }
 
 void ExecutionTraceManager::notify(ExecutionEvent ev) {
@@ -356,7 +362,8 @@ TrainingExecutionTraceManager::TrainingExecutionTraceManager(ClientVerifier* cv)
 // Write this state's path and associated socket event data to file
 void TrainingExecutionTraceManager::write_training_object(
     ExecutionStage* stage, ExecutionStateProperty* property) {
-
+  assert(0);
+#if 0
   assert(stage->etrace_tree->tracks(property));
 
   // Get path from the execution tree
@@ -369,6 +376,7 @@ void TrainingExecutionTraceManager::write_training_object(
   TrainingFilter tf(&training_obj);
   CVMESSAGE("Writing training object: (TF)" << tf << ", (property)" << *property);
   training_obj.write(property, cv_);
+#endif
 }
 
 void TrainingExecutionTraceManager::notify(ExecutionEvent ev) {
@@ -417,11 +425,13 @@ void TrainingExecutionTraceManager::notify(ExecutionEvent ev) {
 
 VerifyExecutionTraceManager::VerifyExecutionTraceManager(ClientVerifier* cv) 
   : ExecutionTraceManager(cv),
-    last_round_cleared_(0),
-    cluster_manager_(0),
-    hmm_(0) {}
+    last_round_cleared_(0){}
+//    cluster_manager_(0),
+//    hmm_(0) {}
 
 void VerifyExecutionTraceManager::initialize() {
+  assert(0);
+#if 0
   //klee::LockGuard guard(lock_);
   klee::WallTimer timer;
   // Create similarity measure
@@ -516,6 +526,7 @@ void VerifyExecutionTraceManager::initialize() {
     hmm_training_objs_ = hmm_->getAllTrainingObjects();
     CVMESSAGE("HMM: Retrieved " << hmm_training_objs_.size() << " training objects");
   }
+#endif
 }
 
 ExecutionTraceEditDistanceTree* VerifyExecutionTraceManager::get_root_ed_tree(
@@ -572,17 +583,22 @@ void VerifyExecutionTraceManager::delete_ed_tree(
 }
 
 void VerifyExecutionTraceManager::initialize_training_data() {
+  assert(0);
+#if 0
   klee::WallTimer timer;
   cluster_manager_ = new TrainingObjectManager(ClusterSize,SocketEventClusterSize);
   std::vector<TrainingObject*> tobj_vec(training_data_.begin(), training_data_.end());
   cluster_manager_->cluster(tobj_vec);
   CVMESSAGE("Finished initialized training data in " 
             << timer.check() / 1000000. << "s");
+#endif
 }
 
 void VerifyExecutionTraceManager::update_edit_distance(
     ExecutionStateProperty* property,
     CVExecutionState* state) {
+  assert(0);
+#if 0
 
   ExecutionStage* stage = get_stage(property);
   assert(stage);
@@ -674,10 +690,13 @@ void VerifyExecutionTraceManager::update_edit_distance(
       }
     }
   }
+#endif
 }
 
 void VerifyExecutionTraceManager::compute_self_training_stats(CVExecutionState* state,
                                                               std::vector<TrainingObject*> &selected) {
+  assert(0);
+#if 0
   ExecutionStateProperty *property = state->property();
 
   stats::edit_distance_medoid_count = selected.size();
@@ -708,6 +727,7 @@ void VerifyExecutionTraceManager::compute_self_training_stats(CVExecutionState* 
     stats::edit_distance_self_socket_event = ed;
     stats::edit_distance_stat_time += stat_timer.check();
   }
+#endif
 }
 
 // When a new stage is created, we start with zero-length execution fragments.
@@ -721,6 +741,8 @@ void VerifyExecutionTraceManager::compute_self_training_stats(CVExecutionState* 
 // option for this is AsyncCreateEDTree.
 void VerifyExecutionTraceManager::create_ed_tree_future(
     CVExecutionState *state) {
+  assert(0);
+#if 0
   ExecutionStateProperty *property = state->property();
   ExecutionStage* stage = get_stage(property);
   klee::LockGuard ed_tree_guard(ed_tree_lock_);
@@ -759,13 +781,15 @@ void VerifyExecutionTraceManager::create_ed_tree_future(
   } else {
     CVDEBUG("Not Creating ED Tree: No filter match");
   }
+#endif
 }
 
 void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state,
                                                  ExecutionStage* stage,
                                                  TrainingFilter tf,
                                                  const SocketEvent* socket_event) {
-
+  assert(0);
+#if 0
   ExecutionStateProperty *property = state->property();
   //ExecutionStage* stage = get_stage(property);
 
@@ -933,6 +957,7 @@ void VerifyExecutionTraceManager::create_ed_tree(CVExecutionState* state,
 
   stage->root_ed_tree = root_ed_tree;
   stage->ed_tree_ready = true;
+#endif
 }
 
 void VerifyExecutionTraceManager::notify(ExecutionEvent ev) {

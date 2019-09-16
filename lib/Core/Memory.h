@@ -209,7 +209,12 @@ public:
   void write32(unsigned offset, uint32_t value);
   void write64(unsigned offset, uint64_t value);
 
+  void print(std::ostream &os, bool print_bytes=true) const;
+  void print(llvm::raw_ostream &os, bool print_bytes=true) const;
+  void print();
+
   bool isConcrete() const { return !concreteMask; }
+
 private:
   const UpdateList &getUpdates() const;
 
@@ -236,7 +241,6 @@ private:
   void markByteUnflushed(unsigned offset);
   void setKnownSymbolic(unsigned offset, Expr *value);
 
-  void print();
   ArrayCache *getArrayCache() const;
 };
   

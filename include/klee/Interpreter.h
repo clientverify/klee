@@ -38,6 +38,11 @@ public:
   virtual std::string getOutputFilename(const std::string &filename) = 0;
   virtual llvm::raw_fd_ostream *openOutputFile(const std::string &filename) = 0;
 
+  virtual void incPathsExplored(){};
+  virtual void incRecoveryStatesCount() {};
+  virtual void incGeneratedSlicesCount() {};
+  virtual void incSnapshotsCount() {};
+#if 0
   virtual void incPathsExplored() = 0;
 
   virtual void incRecoveryStatesCount() = 0;
@@ -45,6 +50,8 @@ public:
   virtual void incGeneratedSlicesCount() = 0;
 
   virtual void incSnapshotsCount() = 0;
+#endif
+
 
   virtual void processTestCase(const ExecutionState &state,
                                const char *err, 

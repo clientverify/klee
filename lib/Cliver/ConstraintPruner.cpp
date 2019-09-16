@@ -47,8 +47,11 @@ DebugConstraintPruner("debug-constraint-pruner",llvm::cl::init(false));
 ConstraintPruner::ConstraintPruner() {}
 
 void ConstraintPruner::prune_independent_constraints(CVExecutionState &state) {
+  assert(0);
+#if 0
   AddressSpaceGraph graph(&state);
   prune_independent_constraints(state, graph);
+#endif
 }
 
 /// Remove constraints from the constraint manager that are

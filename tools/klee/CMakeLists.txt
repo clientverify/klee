@@ -12,9 +12,10 @@ add_executable(klee
 
 set(KLEE_LIBS
   kleeCore
+  cliverCore
 )
 
-find_package(Boost COMPONENTS thread system REQUIRED)
+find_package(Boost COMPONENTS thread system regex REQUIRED)
 
 find_library(SVF_LIB Svf.so HINTS ${SVF_ROOT_DIR}/build/lib)
 find_library(CUDD_LIB Cudd.so HINTS ${SVF_ROOT_DIR}/build/lib/CUDD)
@@ -33,6 +34,7 @@ target_link_libraries(klee
     ${KLEE_LIBS}
     ${Boost_THREAD_LIBRARY}
     ${Boost_SYSTEM_LIBRARY}
+    ${Boost_REGEX_LIBRARY}
 )
 
 install(TARGETS klee RUNTIME DESTINATION bin)

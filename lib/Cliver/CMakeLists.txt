@@ -7,8 +7,32 @@
 #
 #===------------------------------------------------------------------------===#
 klee_add_component(cliverCore
+#  AddressSpaceGraph.cpp
+  BranchSelector.cpp
   ClientVerifier.cpp
+  Configuration.cpp
+  ConstraintPruner.cpp
+  CVAssignment.cpp
   CVCommon.h
+  CVExecutionState.cpp
+  CVExecutor.cpp
+  CVSearcher.cpp
+  CVStream.cpp
+  ExecutionObserver.cpp
+  ExecutionStateProperty.cpp
+  ExecutionTraceManager.cpp
+  ExternalHandlers.cpp
+  ExternalHandlers.h
+#  HMMPathPredictor.cpp
+  LazyConstraintConfig.cpp
+  LazyConstraint.cpp
+  LockFreeVerifySearcher.cpp
+  NetworkManager.cpp
+  Socket.cpp
+#  StateMerger.cpp
+  Statistics.cpp
+  TestHelper.cpp
+  ThreadBufferedSearcher.cpp
 )
 
 # TODO: Work out what the correct LLVM components are for
@@ -46,4 +70,5 @@ target_link_libraries(cliverCore PRIVATE
   kleaverSolver
   kleaverExpr
   kleeSupport
+  kleeCore
 )

@@ -34,6 +34,7 @@
 #include "../../lib/Cliver/CVCommon.h"
 #include "CVStream.h"
 
+#if 0
 namespace cliver {
 
 class TrainingObject;
@@ -349,4 +350,4 @@ class TrainingObjectClusterManager {
 } // end namespace cliver
 
 #endif // CLIVER_TRAINING_CLUSTER_H
-
+#endif

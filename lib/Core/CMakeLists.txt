@@ -12,6 +12,7 @@ klee_add_component(kleeCore
   Cloud9Init.cpp
   Context.cpp
   CoreStats.cpp
+  Cloud9Init.cpp
   ExecutionState.cpp
   Executor.cpp
   ExecutorTimers.cpp

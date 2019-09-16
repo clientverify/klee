@@ -31,6 +31,7 @@
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/raw_os_ostream.h"
 
 #include <cassert>
 #include <sstream>
@@ -582,6 +583,87 @@ void ObjectState::write64(unsigned offset, uint64_t value) {
     write8(offset + idx, (uint8_t) (value >> (8 * i)));
   }
 }
+
+void ObjectState::print(std::ostream &os, bool print_bytes) const {
+  llvm::raw_os_ostream adaptor(os);
+  this->print(adaptor, print_bytes);
+}
+
+void ObjectState::print(llvm::raw_ostream &os, bool print_bytes) const {
+  os << size << "B ";
+  os << object->id << " ";
+  os << object->name << " ";
+
+  if (object->isLocal)
+    os << "local ";
+  if (object->isGlobal)
+    os << "global ";
+  if (object->isFixed)
+    os << "fixed ";
+  if (object->fake_object)
+    os << "Fake ";
+  if (object->isUserSpecified)
+    os << "user-specified ";
+
+  if (updates.root)
+    os << updates.root << ":" << updates.root->name << " ";
+  else
+    os << "(no name) ";
+
+  if (object->allocSite) {
+    std::string str;
+    llvm::raw_string_ostream info(str);
+    if (const Instruction *i = dyn_cast<Instruction>(object->allocSite)) {
+      info << i->getParent()->getParent()->getName() << ": ";
+      info << *i;
+    } else if (const GlobalValue *gv =
+                   dyn_cast<GlobalValue>(object->allocSite)) {
+      info << "global:" << gv->getName();
+    } else {
+      info << "value:" << *object->allocSite;
+    }
+    info.flush();
+    os << str;
+  } else {
+    os << "(no alloc info) ";
+  }
+
+#if 0
+  if (print_bytes || AlwaysPrintObjectBytes) {
+    os << " ";
+    ref<Expr> prev_e = read8(0);
+    int repeat = 0;
+    for (unsigned i = 1; i <= size; i++) {
+      if (i == size || prev_e != read8(i)) {
+        if (repeat > 0) {
+          os << "[" << i - repeat - 1 << "-" << i - 1 << ":" << prev_e << "]";
+          // If this byte is a pointer, annotate with astrisk
+          if (pointerMask->get(i - 1))
+            os << "*";
+        } else {
+          os << "[" << prev_e << "]";
+          // If this byte is a pointer, annotate with astrisk
+          if (pointerMask->get(i - 1))
+            os << "*";
+        }
+        repeat = 0;
+        if (i < size)
+          prev_e = read8(i);
+      } else {
+        repeat++;
+      }
+    }
+  }
+#endif
+
+  if (updates.head) {
+    os << "updates: ";
+    for (const UpdateNode *un = updates.head; un; un = un->next) {
+      os << "[" << un->index << "] = " << un->value << ", ";
+    }
+  }
+}
+
 
 void ObjectState::print() {
   llvm::errs() << "-- ObjectState --\n";

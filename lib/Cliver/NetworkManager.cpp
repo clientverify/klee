@@ -296,8 +296,11 @@ void NetworkManager::execute_write(CVExecutor* executor,
 		bool result; 
 
     if (EnableXorOptimization) {
+      assert(0);
+#if 0
       klee::ConstraintManager cm;
       write_condition = state_->constraints.simplifyWithXorOptimization(write_condition);
+#endif
     }
 
     // Solve for whether the write_condition is consistent with the path

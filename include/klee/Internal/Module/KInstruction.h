@@ -12,7 +12,10 @@
 
 #include "klee/Config/Version.h"
 #include "llvm/Support/DataTypes.h"
+#include "llvm/Support/raw_os_ostream.h"
 #include <vector>
+#include <iostream>
+#include <assert.h>
 
 namespace llvm {
   class Instruction;
@@ -70,6 +73,14 @@ namespace klee {
     /// instruction.
     uint64_t offset;
   };
+
+  // Utility for printing KInstruction
+  inline std::ostream &operator<<(std::ostream &os, const klee::KInstruction &ki) {
+    assert(0);
+    std::string str;
+    llvm::raw_string_ostream ros(str);
+    return os << ros.str();
+  }
 }
 
 #endif

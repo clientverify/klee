@@ -6,6 +6,7 @@
 //
 //
 //===----------------------------------------------------------------------===//
+#if 0
 #ifndef CLIVER_HMM_PATH_PREDICTOR_H
 #define CLIVER_HMM_PATH_PREDICTOR_H
 
@@ -218,4 +219,4 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 #endif // CLIVER_HMM_PATH_PREDICTOR_H
-
+#endif

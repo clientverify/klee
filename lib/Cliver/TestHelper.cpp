@@ -38,7 +38,8 @@ namespace cliver {
 void ExternalHandler_test_extract_pointers(klee::Executor* executor,
 		klee::ExecutionState *state, klee::KInstruction *target, 
     std::vector<klee::ref<klee::Expr> > &arguments) {
-
+    assert(0);
+#if 0
 	cv_message("test_extract_pointers: START");
 	AddressSpaceGraph *asg= new AddressSpaceGraph(state);
 	asg->build();
@@ -73,6 +74,7 @@ void ExternalHandler_test_extract_pointers(klee::Executor* executor,
 	}
 	delete asg;
 	cv_message("test_extract_pointers: PASSED");
+#endif
 }
 
 }

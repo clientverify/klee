@@ -26,7 +26,7 @@ class ConstraintPruner;
 
 class CVExecutor : public klee::Executor {
  public:
-  CVExecutor(const InterpreterOptions &opts, klee::InterpreterHandler *ie);
+  CVExecutor(InterpreterOptions &opts, klee::InterpreterHandler *ie);
 
   virtual ~CVExecutor();
 

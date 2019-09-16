@@ -126,7 +126,7 @@ using namespace klee;
 
 
 
-namespace {
+namespace klee {
   cl::opt<bool>
   DumpStatesOnHalt("dump-states-on-halt",
                    cl::init(true),

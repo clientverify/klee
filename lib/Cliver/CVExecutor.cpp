@@ -210,7 +210,7 @@ klee::Solver *createCanonicalSolver(klee::Solver *_solver);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-CVExecutor::CVExecutor(const InterpreterOptions &opts, klee::InterpreterHandler *ih)
+CVExecutor::CVExecutor(InterpreterOptions &opts, klee::InterpreterHandler *ih)
 : klee::Executor(opts, ih), 
   cv_(static_cast<ClientVerifier*>(ih)),
   memory_usage_mbs_(0),
@@ -275,6 +275,8 @@ void CVExecutor::callExternalFunction(klee::ExecutionState &state,
 /// maintaining the global std::set of ExecutionStates
 void CVExecutor::parallelUpdateStates(klee::ExecutionState *current,
                                       bool updateStateCount) {
+  assert(0);
+#if 0
   // Retrieve state counts for this thread
   int addedCount = getContext().addedStates.size();
   int removedCount = getContext().removedStates.size();
@@ -317,6 +319,7 @@ void CVExecutor::parallelUpdateStates(klee::ExecutionState *current,
     searcherCond.notify_all();
   }
   }
+#endif
 }
 
 void CVExecutor::runFunctionAsMain(llvm::Function *f,
@@ -441,6 +444,8 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
 void CVExecutor::execute(klee::ExecutionState *initialState,
                          klee::MemoryManager *memory) {
   // Initialize thread specific globals and objects
+  assert(0);
+#if 0
   initializePerThread(*initialState, memory);
 
   // Wait until all threads have initialized
@@ -691,10 +696,13 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
   // Print per-thread stats
   CVMESSAGE("Thread " << klee::GetThreadID() << ": executed "
                       << *threadInstCount << " instructions and exited");
+#endif
 }
 
 #if 1
 void CVExecutor::run(klee::ExecutionState &initialState) {
+  assert(0);
+#if 0
   bindModuleConstants();
 
   // Delay init till now so that ticks don't accrue during
@@ -773,7 +781,7 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
   for (std::vector<klee::MemoryManager*>::iterator it = memoryManagers.begin(),
        ie = memoryManagers.end(); it != ie; ++it)
     delete *it;
-
+#endif
 }
 #endif
 
@@ -1008,7 +1016,10 @@ CVExecutor::fork(klee::ExecutionState &current,
     }
 
     falseState = trueState->branch();
-    getContext().addedStates.push_back(falseState);
+    //getContext was never called in the tetrinet run, commenting it out
+    //here, but it needs to be made if this code is ever reached.
+    assert(0);
+    //getContext().addedStates.push_back(falseState);
 
     addConstraint(*trueState, condition);
     addConstraint(*falseState, klee::Expr::createIsZero(condition));
@@ -1026,7 +1037,8 @@ CVExecutor::fork(klee::ExecutionState &current,
 void CVExecutor::branch(klee::ExecutionState &state, 
 		const std::vector< klee::ref<klee::Expr> > &conditions,
     std::vector<klee::ExecutionState*> &result) {
-
+  assert(0);
+#if 0
   unsigned N = conditions.size();
   assert(N);
 
@@ -1068,6 +1080,7 @@ void CVExecutor::add_external_handler(std::string name,
 		specialFunctionHandler->addExternalHandler(function, 
 				external_handler, has_return_value);
 	}
+#endif
 }
 
 void CVExecutor::resolve_one(klee::ExecutionState *state, 
@@ -1075,7 +1088,7 @@ void CVExecutor::resolve_one(klee::ExecutionState *state,
     bool writeable = false) {
 
   bool success;
-  state->addressSpace.resolveOne(*state, solver.get(), address_expr,
+  state->addressSpace.resolveOne(*state, solver, address_expr,
                                  result, success);
   assert(success && "resolveOne failed");
   const klee::MemoryObject *mo = result.first;
@@ -1090,6 +1103,8 @@ void CVExecutor::resolve_one(klee::ExecutionState *state,
 }
 
 void CVExecutor::terminateStateOnExit(klee::ExecutionState &state) {
+  assert(0);
+#if 0
   if (!klee::OnlyOutputStatesCoveringNew || state.coveredNew || 
       (klee::AlwaysOutputSeeds && seedMap.count(&state)))
     interpreterHandler->processTestCase(state, 0, 0);
@@ -1104,6 +1119,7 @@ void CVExecutor::terminateStateOnExit(klee::ExecutionState &state) {
   } else {
     terminateState(state);
   }
+#endif
 }
 
 void CVExecutor::terminate_state(CVExecutionState* state) {
@@ -1111,20 +1127,26 @@ void CVExecutor::terminate_state(CVExecutionState* state) {
 }
 
 void CVExecutor::remove_state_internal(CVExecutionState* state) {
+  assert(0);
+#if 0
   cv_->notify_all(ExecutionEvent(CV_STATE_REMOVED, state));
   {
     klee::LockGuard guard(statesMutex);
     states.erase(state);
   }
   delete state;
+#endif
 }
 
 void CVExecutor::remove_state_internal_without_notify(CVExecutionState* state) {
+  assert(0);
+#if 0
   {
     klee::LockGuard guard(statesMutex);
     states.erase(state);
   }
   delete state;
+#endif
 }
 
 void CVExecutor::bind_local(klee::KInstruction *target, 
@@ -1150,7 +1172,7 @@ void CVExecutor::add_constraint(CVExecutionState *state,
 }
 
 klee::TimingSolver* CVExecutor::get_solver() {
-  return solver.get();
+  return solver;
 }
 
 void CVExecutor::register_function_call_event(const char **fname, 
@@ -1201,12 +1223,18 @@ void CVExecutor::register_function_call_event(const char **fname,
 //}
 
 void CVExecutor::add_state(CVExecutionState* state) {
+    assert(0);
+#if 0
 	getContext().addedStates.push_back(state);
+#endif
 }
 
 void CVExecutor::add_state_internal(CVExecutionState* state) {
+  assert(0);
+#if 0
   klee::LockGuard guard(statesMutex);
 	states.insert(state);
+#endif
 }
 
 // FIXME incorporate CanonicalSolver

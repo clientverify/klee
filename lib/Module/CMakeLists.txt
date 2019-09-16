@@ -43,6 +43,7 @@ target_link_libraries(kleeModule PRIVATE
   # `ModuleUtil.cpp` uses `klee::SpecialFunctionHandler` (in `kleeCore`) but
   # `kleeCore` uses `kleeModule`.
   kleeCore
+  cliverCore
 )
 target_include_directories(kleeModule PUBLIC
     ${SVF_ROOT_DIR}/include

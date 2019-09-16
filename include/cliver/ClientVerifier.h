@@ -120,7 +120,7 @@ class ClientVerifier : public klee::InterpreterHandler {
 
   void setInterpreter(klee::Interpreter *i);
 
-  static klee::Interpreter *create_interpreter(const klee::Interpreter::InterpreterOptions &opts,
+  static klee::Interpreter *create_interpreter(klee::Interpreter::InterpreterOptions &opts,
                                  klee::InterpreterHandler *ih);
 
 	// Initialization
