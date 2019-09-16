@@ -65,7 +65,7 @@ using namespace llvm;
 
 ///
 
-namespace {  
+namespace klee {  
   cl::opt<bool>
   TrackInstructionTime("track-instruction-time",
                        cl::init(false),

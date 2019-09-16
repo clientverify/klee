@@ -962,10 +962,8 @@ void SpecialFunctionHandler::handleMakeSymbolic(ExecutionState &state,
     // Only set memory object name if will be used by recording or replaying
     // seed values, otherwise if the same memory object is declared symbolic
     // multiple times, we will have an error where the name is overwritten
-#if 0  //Marie merge remove:
     if (!OnlyOutputStatesCoveringNew || OutputIStats || AlwaysOutputSeeds ||
         executor.usingSeeds || executor.replayKTest != NULL)
-#endif
       mo->setName(name);
     
     const ObjectState *old = it->first.second;
