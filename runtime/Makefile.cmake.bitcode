@@ -13,6 +13,7 @@ DIRS += Intrinsic
 DIRS += klee-libc
 ifneq ($(ENABLE_POSIX_RUNTIME),0)
 	DIRS += POSIX
+	DIRS += cloud9-POSIX
 endif
 
 include $(LEVEL)/Makefile.cmake.bitcode.rules

@@ -58,6 +58,7 @@ configure_file("Makefile.cmake.bitcode.rules" "Makefile.cmake.bitcode.rules" COP
 set(BITCODE_LIBRARIES "Intrinsic" "klee-libc")
 if (ENABLE_POSIX_RUNTIME)
   list(APPEND BITCODE_LIBRARIES "POSIX")
+  list(APPEND BITCODE_LIBRARIES "cloud9-POSIX")
 endif()
 foreach (bl ${BITCODE_LIBRARIES})
   configure_file("${bl}/Makefile.cmake.bitcode"
@@ -138,6 +139,8 @@ endif()
 if (ENABLE_POSIX_RUNTIME)
   list(APPEND RUNTIME_FILES_TO_INSTALL
     "${KLEE_RUNTIME_DIRECTORY}/libkleeRuntimePOSIX.bca")
+  list(APPEND RUNTIME_FILES_TO_INSTALL
+    "${KLEE_RUNTIME_DIRECTORY}/libkleeRuntimeCloud9POSIX.bca")
 endif()
 
 install(FILES

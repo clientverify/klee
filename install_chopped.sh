@@ -57,8 +57,9 @@ make -j 12
 
 #Build UC-Klee
 cd $ROOT_DIR/local
-git clone https://github.com/davidtr1037/klee-uclibc.git
+git clone git@git.cs.unc.edu:cliver/klee-uclibc.git
 cd klee-uclibc
+git checkout chopped_dependency
 ./configure --make-llvm-lib \
     --with-llvm=$ROOT_DIR/local/configure_llvm-3.4.2.obj/Release+Asserts/bin/llvm-config
 make -j 12
@@ -70,7 +71,7 @@ make PREFIX=$ROOT_DIR/local/klee-uclibc/install install
 cd $ROOT_DIR
 git clone git@git.cs.unc.edu:cliver/klee chopper
 cd chopper
-git checkout chop_branch
+git checkout chop_cliver
 mkdir klee_build
 cd klee_build
 CXXFLAGS="-fno-rtti" cmake \
