@@ -712,6 +712,7 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
   states.insert(&initialState);
   ++stateCount;
 
+  //This may be complicated, since we want to have a different searcher?
   CVSearcher* cv_searcher = cv_->searcher();
   LockFreeVerifySearcher* lfvs = NULL;
 
@@ -1065,6 +1066,7 @@ void CVExecutor::branch(klee::ExecutionState &state,
   for (unsigned i=0; i<N; ++i)
     if (result[i])
       addConstraint(*result[i], conditions[i]);
+#endif
 }
 
 void CVExecutor::add_external_handler(std::string name, 
@@ -1080,7 +1082,6 @@ void CVExecutor::add_external_handler(std::string name,
 		specialFunctionHandler->addExternalHandler(function, 
 				external_handler, has_return_value);
 	}
-#endif
 }
 
 void CVExecutor::resolve_one(klee::ExecutionState *state, 
