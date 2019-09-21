@@ -60,8 +60,6 @@ CVStatisticsManager::get_context_statistic_value(unsigned index,
 
 void CVStatisticsManager::set_context(unsigned index,
                                       cliver::SearcherStage *stage) {
-  assert(0);
-#if 0
   // Allocate new StatisticRecord if this a new round
   klee::StatisticRecord *sr = NULL;
   if (index == statistic_records_.size()) {
@@ -85,7 +83,6 @@ void CVStatisticsManager::set_context(unsigned index,
 
   // Set new cliver stage context within KLEE stats
   klee::theStatisticManager->setCliverStageContext(sr);
-#endif
 }
 
 // Add time elapsed since last time this function was run to stats::round_time

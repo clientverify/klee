@@ -44,6 +44,8 @@ namespace klee {
     uint64_t *globalStats;
     uint64_t *indexedStats;
     StatisticRecord *contextStats;
+    StatisticRecord *cliverRoundStats;
+    StatisticRecord *cliverStageStats;
     unsigned index;
 
   public:
@@ -54,6 +56,8 @@ namespace klee {
 
     StatisticRecord *getContext();
     void setContext(StatisticRecord *sr); /* null to reset */
+    void setCliverRoundContext(StatisticRecord *sr); /* null to reset */
+    void setCliverStageContext(StatisticRecord *sr); /* null to reset */
 
     void setIndex(unsigned i) { index = i; }
     unsigned getIndex() { return index; }
@@ -83,6 +87,10 @@ namespace klee {
         if (contextStats)
           contextStats->data[s.id] += addend;
       }
+      if (cliverRoundStats)
+        cliverRoundStats->data[s.id] += addend;
+      if (cliverStageStats)
+        cliverStageStats->data[s.id] += addend;
     }
   }
 
@@ -95,12 +103,10 @@ namespace klee {
         if (contextStats)
           contextStats->data[s.id] = value;
       }
-#if 0
                        if (cliverRoundStats)
                                cliverRoundStats->data[s.id] = value;
                        if (cliverStageStats)
                                cliverStageStats->data[s.id] = value;
-#endif
      }
    }
 
@@ -109,6 +115,13 @@ namespace klee {
   }
   inline void StatisticManager::setContext(StatisticRecord *sr) {
     contextStats = sr;
+  }
+
+  inline void StatisticManager::setCliverRoundContext(StatisticRecord *sr) {
+    cliverRoundStats = sr;
+  }
+  inline void StatisticManager::setCliverStageContext(StatisticRecord *sr) {
+    cliverStageStats = sr;
   }
 
   inline void StatisticRecord::zero() {
