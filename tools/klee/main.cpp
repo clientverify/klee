@@ -9,6 +9,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "cliver/ClientVerifier.h"
+
+#include "klee/Cloud9Init.h"
 #include "klee/ExecutionState.h"
 #include "klee/Expr.h"
 #include "klee/Interpreter.h"
@@ -21,6 +24,14 @@
 #include "klee/Internal/System/Time.h"
 #include "klee/Internal/Support/PrintVersion.h"
 #include "klee/Internal/Support/ErrorHandling.h"
+#include "klee/util/Atomic.h"
+
+// FIXME: Ugh, this is gross. But otherwise our config.h conflicts with LLVMs.
+#undef PACKAGE_BUGREPORT
+#undef PACKAGE_NAME
+#undef PACKAGE_STRING
+#undef PACKAGE_TARNAME
+#undef PACKAGE_VERSION
 
 #if LLVM_VERSION_CODE > LLVM_VERSION(3, 2)
 #include "llvm/IR/Constants.h"
@@ -75,7 +86,7 @@
 using namespace llvm;
 using namespace klee;
 
-namespace {
+namespace klee {
   cl::opt<std::string>
   InputFile(cl::desc("<input bytecode>"), cl::Positional, cl::init("-"));
 
@@ -175,6 +186,11 @@ namespace {
 		cl::init(false));
 
   cl::opt<bool>
+  WithCloud9POSIXRuntime("cloud9-posix-runtime",
+               cl::desc("Link with the cloud9 POSIX runtime.  Options that can be passed as arguments to the programs are: --sym-argv <max-len>  --sym-argvs <min-argvs> <max-argvs> <max-len> + file model options"),
+        cl::init(false));
+
+  cl::opt<bool>
   WithSymArgsRuntime("sym-arg-runtime",
 		cl::desc("Options that can be passed as arguments to the programs are: --sym-arg <max-len>  --sym-args <min-argvs> <max-argvs> <max-len>"),
 		cl::init(false));
@@ -249,6 +265,12 @@ namespace {
 }
 
 extern cl::opt<double> MaxTime;
+
+namespace cliver {
+  extern cl::opt<bool> EnableCliver;
+}
+
+#include "cliver.h"
 
 /***/
 
@@ -707,6 +729,13 @@ static void parseArguments(int argc, char **argv) {
 #else
   cl::ParseCommandLineOptions(argc, argv, " klee\n", /*ReadResponseFiles=*/ true);
 #endif
+  if (cliver::EnableCliver) {
+    // Check if klee options are compatible with cliver, 
+    // doesn't support options read from response file above
+    std::vector<std::string> arguments;
+    arguments.insert(arguments.begin(), argv, argv + argc);
+    processKleeArgumentsForCliver(arguments);
+  }
 }
 
 static int initEnv(Module *mainModule) {
@@ -1114,7 +1143,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
                                                     true));
 
   // force various imports
-  if (WithPOSIXRuntime) {
+  if (WithPOSIXRuntime || WithCloud9POSIXRuntime) {
     LLVM_TYPE_Q llvm::Type *i8Ty = Type::getInt8Ty(getGlobalContext());
     mainModule->getOrInsertFunction("realpath",
                                     PointerType::getUnqual(i8Ty),
@@ -1440,6 +1469,14 @@ int main(int argc, char **argv, char **envp) {
                                   /*CheckDivZero=*/CheckDivZero,
                                   /*CheckOvershift=*/CheckOvershift);
 
+  if (WithPOSIXRuntime && cliver::EnableCliver) {
+    SmallString<128> Path(Opts.LibraryDir);
+    llvm::sys::path::append(Path, "libkleeRuntimePOSIX.bca");
+    klee_message("NOTE: Using model: %s", Path.c_str());
+    mainModule = klee::linkWithLibrary(mainModule, Path.c_str());
+    assert(mainModule && "unable to link with simple model");
+  }
+
   switch (Libc) {
   case NoLibc: /* silence compiler warning */
     break;
@@ -1462,12 +1499,19 @@ int main(int argc, char **argv, char **envp) {
     break;
   }
 
-  if (WithPOSIXRuntime) {
+  if (WithPOSIXRuntime && !cliver::EnableCliver) {
+    assert(0);
     SmallString<128> Path(Opts.LibraryDir);
     llvm::sys::path::append(Path, "libkleeRuntimePOSIX.bca");
     klee_message("NOTE: Using model: %s", Path.c_str());
     mainModule = klee::linkWithLibrary(mainModule, Path.c_str());
     assert(mainModule && "unable to link with simple model");
+  }
+
+  if (WithCloud9POSIXRuntime) {
+    SmallString<128> Path(Opts.LibraryDir);
+    llvm::sys::path::append(Path, "libkleeRuntimeCloud9POSIX.bca");
+    mainModule = linkWithCloud9POSIX(mainModule, Path.c_str());
   }
 
   std::vector<std::string>::iterator libs_it;
@@ -1545,11 +1589,21 @@ int main(int argc, char **argv, char **envp) {
   IOpts.inlinedFunctions = inlinedFunctions;
   IOpts.errorLocations = errorLocationOptions;
   IOpts.maxErrorCount = MaxErrorCount;
-  KleeHandler *handler = new KleeHandler(pArgc, pArgv);
-  Interpreter *interpreter =
-    theInterpreter = Interpreter::create(IOpts, handler);
-  handler->setInterpreter(interpreter);
 
+  InterpreterHandler *handler = NULL;
+  Interpreter *interpreter = NULL;
+
+  if (cliver::EnableCliver) {
+    handler = new cliver::ClientVerifier(InputFile, NoOutput, OutputDir);
+    interpreter = theInterpreter = cliver::ClientVerifier::create_interpreter(IOpts, handler);
+    static_cast<cliver::ClientVerifier*>(handler)->setInterpreter(interpreter);
+  } else {
+    handler = new KleeHandler(pArgc, pArgv);
+    interpreter = theInterpreter = Interpreter::create(IOpts, handler);
+    static_cast<KleeHandler*>(handler)->setInterpreter(interpreter);
+  }
+
+  llvm::raw_ostream &infoFile = handler->getInfoStream();
   for (int i=0; i<argc; i++) {
     handler->getInfoStream() << argv[i] << (i+1<argc ? " ":"\n");
   }
@@ -1712,22 +1766,24 @@ int main(int argc, char **argv, char **envp) {
     << "KLEE: done: query cex = " << queryCounterexamples << "\n";
 
   std::stringstream stats;
-  stats << "\n";
-  stats << "KLEE: done: total instructions = "
-        << instructions << "\n";
-  stats << "KLEE: done: completed paths = "
-        << handler->getNumPathsExplored() << "\n";
-  stats << "KLEE: done: generated tests = "
-        << handler->getNumTestCases() << "\n";
+  if(KleeHandler* khandler = dynamic_cast<KleeHandler*>(handler)){
+    stats << "\n";
+    stats << "KLEE: done: total instructions = "
+          << instructions << "\n";
+    stats << "KLEE: done: completed paths = "
+          << khandler->getNumPathsExplored() << "\n";
+    stats << "KLEE: done: generated tests = "
+          << khandler->getNumTestCases() << "\n";
 
-  /* these are relevant only when we have a slicing option */
-  if (!IOpts.skippedFunctions.empty()) {
-    stats << "KLEE: done: recovery states = "
-          << handler->getRecoveryStatesCount() << "\n";
-    stats << "KLEE: done: generated slices = "
-          << handler->getGeneratedSlicesCount() << "\n";
-    stats << "KLEE: done: created snapshots = "
-          << handler->getSnapshotsCount() << "\n";
+    /* these are relevant only when we have a slicing option */
+    if (!IOpts.skippedFunctions.empty()) {
+      stats << "KLEE: done: recovery states = "
+            << khandler->getRecoveryStatesCount() << "\n";
+      stats << "KLEE: done: generated slices = "
+            << khandler->getGeneratedSlicesCount() << "\n";
+      stats << "KLEE: done: created snapshots = "
+            << khandler->getSnapshotsCount() << "\n";
+    }
   }
 
   bool useColors = llvm::errs().is_displayed();
