@@ -448,9 +448,6 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
 #if 0
   initializePerThread(*initialState, memory);
 
-  // Wait until all threads have initialized
-  threadBarrier->wait();
-
   // Only one thread needs to add state to searcher after init
   thread_call_once(searcher_init_flag_,
             [](klee::Searcher *s, klee::ExecutionState *e) {
@@ -461,14 +458,7 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
               },
             searcher, initialState);
 
-  // Now all states can execute
-  threadBarrier->wait();
-
   klee::ExecutionState *statePtr = NULL;
-
-  threadInstCount.reset(new unsigned());
-  *threadInstCount = 0;
-  ++live_threads_;
 
   Executor::ExecutorContext& context = getContext();
   unsigned instCountBeforeUpdate = 0;
@@ -490,10 +480,6 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
       klee::KInstruction *ki = state.pc;
       stepInstruction(state);
       executeInstruction(state, ki);
-      ++(*threadInstCount);
-
-      // XXX Process timers in cliver?
-      //processTimers(&state, klee::MaxInstructionTime);
 
       // Increment instruction counters
       ++stats::round_instructions;
@@ -582,39 +568,6 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
       searcher->update(NULL,
                        std::vector<klee::ExecutionState*>(),
                        std::vector<klee::ExecutionState*>());
-
-#if 1
-      if (klee::UseThreads > 1) {
-        klee::UniqueLock searcherCondGuard(searcherCondLock);
-        if (!pauseExecution && live_threads_ > 1) {
-          --live_threads_;
-          searcherCond.wait(searcherCondGuard);
-          ++live_threads_;
-        }
-      }
-
-      if (pauseExecution) {
-        // All threads except one (in PauseExecution) will wait here
-        threadBarrier->wait();
-        // All threads except one (in UnPauseExecution) will wait here
-        threadBarrier->wait();
-      }
-
-#endif
-
-#if 0
-      {
-        //if (!pauseExecution && live_threads_ > 1) {
-          --live_threads_;
-          {
-          klee::UniqueLock searcherCondGuard(searcherCondLock);
-          searcherCond.wait(searcherCondGuard);
-          }
-          ++live_threads_;
-        //}
-      }
-#endif
-
     }
 
     // Check if we are running out of memory
@@ -738,7 +691,7 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
     lfvs->searcherCondLock = &searcherCondLock;
   }
 
-  live_threads_ = 0;
+//  live_threads_ = 0;
 
   totalThreadCount = klee::UseThreads;
   if (!empty()) {
