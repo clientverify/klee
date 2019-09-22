@@ -646,6 +646,8 @@ KFunction::KFunction(llvm::Function *_function,
   unsigned i = 0;
   for (llvm::Function::iterator bbit = function->begin(), 
          bbie = function->end(); bbit != bbie; ++bbit) {
+    KBasicBlock* kbb = new KBasicBlock(&(*bbit), 0);
+    km->llvm_kbasicblocks[&(*bbit)] = kbb;
     for (llvm::BasicBlock::iterator it = bbit->begin(), ie = bbit->end();
          it != ie; ++it) {
       KInstruction *ki;
