@@ -667,14 +667,6 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
 
   //This may be complicated, since we want to have a different searcher?
   CVSearcher* cv_searcher = cv_->searcher();
-  LockFreeVerifySearcher* lfvs = NULL;
-
-  if (EnableLockFreeSearcher)
-    cv_searcher = lfvs = new LockFreeVerifySearcher(cv_searcher, this);
-
-  if (BufferedSearcherSize > 0)
-    cv_searcher = new ThreadBufferedSearcher(cv_searcher);
-
 	searcher = cv_searcher;
 
   if (!searcher) {
@@ -685,38 +677,12 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
 
   threadBarrier = new klee::Barrier(klee::UseThreads);
 
-  if (klee::UseThreads > 1 && EnableLockFreeSearcher) {
-    lfvs->threadBarrier = threadBarrier;
-    lfvs->searcherCond = &searcherCond;
-    lfvs->searcherCondLock = &searcherCondLock;
-  }
-
-//  live_threads_ = 0;
-
-  totalThreadCount = klee::UseThreads;
+  assert(klee::UseThreads <= 1);
   if (!empty()) {
-    if (klee::UseThreads <= 1) {
+      assert(klee::UseThreads <= 1);
       // Execute state in this thread
       execute(&initialState, NULL);
-    } else {
-      klee::ThreadGroup threadGroup;
-      int worker_count = klee::UseThreads;
-      if (EnableLockFreeSearcher) {
-        worker_count--;
-        threadGroup.add_thread(
-            new klee::Thread(&cliver::LockFreeVerifySearcher::Worker, lfvs));
-      }
-      for (unsigned i=0; i<worker_count; ++i) {
-        memoryManagers.push_back(new klee::MemoryManager(&arrayCache));
-        threadGroup.add_thread(new klee::Thread(&cliver::CVExecutor::execute,
-                                          this, &initialState, memoryManagers.back()));
-      }
-
-      // Wait for all threads to finish
-      threadGroup.join_all();
-    }
   }
-  totalThreadCount = 1;
 
   cv_->WriteSearcherStageGraph();
 
