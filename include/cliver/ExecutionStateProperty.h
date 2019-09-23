@@ -87,6 +87,7 @@ class EditDistanceExecutionStateProperty : public ExecutionStateProperty {
 
 inline std::ostream &operator<<(std::ostream &os, 
 		const EditDistanceExecutionStateProperty &p) {
+  assert(0);
   p.print(os);
   return os;
 }
@@ -102,6 +103,7 @@ class XPilotEditDistanceExecutionStateProperty : public ExecutionStateProperty {
 
 inline std::ostream &operator<<(std::ostream &os,
 		const XPilotEditDistanceExecutionStateProperty &p) {
+  assert(0);
   p.print(os);
   return os;
 }

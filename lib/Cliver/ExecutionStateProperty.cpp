@@ -131,9 +131,10 @@ ExecutionStateProperty& ExecutionStateProperty::operator=(const ExecutionStatePr
 
 //////////////////////////////////////////////////////////////////////////////
 
-EditDistanceExecutionStateProperty::EditDistanceExecutionStateProperty() {}
+EditDistanceExecutionStateProperty::EditDistanceExecutionStateProperty() { assert(0);}
 
 ExecutionStateProperty* EditDistanceExecutionStateProperty::clone() { 
+  assert(0);
   ExecutionStateProperty* esp = new EditDistanceExecutionStateProperty();
   clone_helper(esp);
   esp->recompute = true;
@@ -143,6 +144,7 @@ ExecutionStateProperty* EditDistanceExecutionStateProperty::clone() {
 // Only compare edit distance
 int EditDistanceExecutionStateProperty::compare(
     const ExecutionStateProperty *b) const {
+    assert(0);
 
 	const EditDistanceExecutionStateProperty *_b 
       = static_cast<const EditDistanceExecutionStateProperty*>(b);
@@ -190,9 +192,10 @@ int EditDistanceExecutionStateProperty::compare(
 
 //////////////////////////////////////////////////////////////////////////////
 
-XPilotEditDistanceExecutionStateProperty::XPilotEditDistanceExecutionStateProperty() {}
+XPilotEditDistanceExecutionStateProperty::XPilotEditDistanceExecutionStateProperty() {assert(0);}
 
 ExecutionStateProperty* XPilotEditDistanceExecutionStateProperty::clone() {
+  assert(0);
   ExecutionStateProperty* esp = new XPilotEditDistanceExecutionStateProperty();
   clone_helper(esp);
   esp->recompute = true;
@@ -201,6 +204,7 @@ ExecutionStateProperty* XPilotEditDistanceExecutionStateProperty::clone() {
 
 int XPilotEditDistanceExecutionStateProperty::compare(
     const ExecutionStateProperty *b) const {
+    assert(0);
 
 	const XPilotEditDistanceExecutionStateProperty *_b
       = static_cast<const XPilotEditDistanceExecutionStateProperty*>(b);
