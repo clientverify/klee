@@ -466,7 +466,7 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
 
 
     if (statePtr == NULL) {
-      statePtr = searcher->trySelectState();
+      statePtr = &(searcher->selectState());
     }
 
     if (statePtr != NULL && !haltExecution) {
@@ -675,8 +675,6 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
 
   cv_->hook(cv_searcher);
 
-  threadBarrier = new klee::Barrier(klee::UseThreads);
-
   assert(klee::UseThreads <= 1);
   if (!empty()) {
       assert(klee::UseThreads <= 1);
@@ -688,7 +686,7 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
 
   if (klee::DumpStatesOnHalt && !empty()) {
     std::cerr << "KLEE: halting execution, dumping remaining states\n";
-    while (klee::ExecutionState* state = searcher->trySelectState()) {
+    while (klee::ExecutionState* state = &(searcher->selectState())) {
       stepInstruction(*state); // keep stats rolling
       terminateStateEarly(*state, "Execution halting.");
       searcher->update(state, getContext().addedStates, getContext().removedStates);
