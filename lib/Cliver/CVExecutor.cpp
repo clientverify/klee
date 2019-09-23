@@ -445,8 +445,6 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
 void CVExecutor::execute(klee::ExecutionState *initialState,
                          klee::MemoryManager *memory) {
   // Initialize thread specific globals and objects
-  assert(0);
-#if 0
 
   // Only one thread needs to add state to searcher after init
   thread_call_once(searcher_init_flag_,
@@ -631,8 +629,6 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
 
 #if 1
 void CVExecutor::run(klee::ExecutionState &initialState) {
-  assert(0);
-#if 0
   bindModuleConstants();
 
   // Delay init till now so that ticks don't accrue during
