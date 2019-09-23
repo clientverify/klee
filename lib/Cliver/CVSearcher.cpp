@@ -229,7 +229,6 @@ SearcherStage* VerifySearcher::select_stage() {
       pending_states_processed) {
 
     lock_.unlock();
-    if (cv_->executor()->PauseExecution()) {
       if (parent_searcher_ != NULL)
         parent_searcher_->flush();
 
@@ -280,12 +279,6 @@ SearcherStage* VerifySearcher::select_stage() {
         cv_error("No stages remain!");
       }
 
-      cv_->executor()->UnPauseExecution();
-    } else {
-      lock_.lock();
-      CVDEBUG("Failed to create new stage, unable to pause execution");
-      return NULL;
-    }
   }
 
   return current_stage_;
@@ -307,7 +300,6 @@ CVExecutionState* VerifySearcher::check_state_property(
       && !stage->rebuilding()) {
 
     lock_.unlock();
-    if (cv_->executor()->PauseExecution()) {
       CVMESSAGE("Next state is INT_MAX, Rebuilding, # states = " << stage->size());
       // Add state back and process all states
       stage->add_state(state);
@@ -318,10 +310,6 @@ CVExecutionState* VerifySearcher::check_state_property(
       // recompute edit distance
       stage->set_states(states);
       updated_state = stage->next_state();
-      cv_->executor()->UnPauseExecution();
-    } else {
-      CVDEBUG("Rebuild Failure: Next state is INT_MAX, couldn't pause execution");
-    }
     lock_.lock();
   }
 
@@ -672,6 +660,7 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
 
         // Debug: Compute and print constraint variable counts
         if (DebugSearcher) {
+#if 0
           std::map<std::string,int> constraint_map;
           foreach (klee::ref<klee::Expr> e, state->constraints) {
             std::vector<const klee::Array*> arrays;
@@ -688,6 +677,7 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
             ss << v.first << ":" << v.second << ", ";
           }
           CVDEBUG(ss.str());
+#endif
         }
 
         if (FinishAfterLastMessage) {
