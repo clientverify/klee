@@ -615,11 +615,14 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
     searcher->update(statePtr, getContext().addedStates, getContext().removedStates);
   }
 
+#if 0
   // Alert threads to wake up if there are no more states to execute
   searcherCond.notify_all();
+#endif
 
   cv_->notify_all(ExecutionEvent(CV_HALT_EXECUTION));
 
+#if 0
   // Release TSS memory (i.e., don't destroy with thread); the memory manager
   // for this thread may still be needed in dumpState
   this->memory.release();
@@ -656,6 +659,7 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
 
   cv_->WriteSearcherStageGraph();
 
+#if 0
   if (klee::DumpStatesOnHalt && !empty()) {
     std::cerr << "KLEE: halting execution, dumping remaining states\n";
     while (klee::ExecutionState* state = &(searcher->selectState())) {
