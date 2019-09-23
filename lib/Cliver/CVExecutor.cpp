@@ -311,6 +311,7 @@ void CVExecutor::parallelUpdateStates(klee::ExecutionState *current,
   getContext().removedStates.clear();
   getContext().addedStates.clear();
 
+#if 0
   if (!EnableLockFreeSearcher) {
   // Wake up sleeping threads
   if (addedCount == 1) {
@@ -532,9 +533,11 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
 
         // Update searcher with new states and get next state to execute
         // (if supported by searcher)
-        statePtr = searcher->updateAndTrySelectState(&state,
+
+        searcher->update(&state,
                                                      context.addedStates,
                                                      context.removedStates);
+        statePtr = &(searcher->selectState());
 
         // Update Executor state tracking (stateCount already updated above)
         parallelUpdateStates(&state, false);
@@ -543,7 +546,7 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
 
     // We hit this point after we execute an instruction, or if our
     // trySelectState failed and we have a null state pointer.
-
+#if 0
     // Check if we are running out of memory
     if (klee::MaxMemory) {
       // Note: Only one thread needs to check the memory situation
@@ -604,6 +607,7 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
         memory_lock_.unlock();
       }
     }
+#endif
   }
 
   // Update searcher with last state we executed if we are halting early
@@ -645,9 +649,7 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
 
   cv_->hook(cv_searcher);
 
-  assert(klee::UseThreads <= 1);
   if (!states.empty()) {
-      assert(klee::UseThreads <= 1);
       // Execute state in this thread
       execute(&initialState, NULL);
   }
