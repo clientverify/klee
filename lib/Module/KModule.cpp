@@ -663,6 +663,7 @@ KFunction::KFunction(llvm::Function *_function,
 
       ki->inst = it;      
       ki->dest = registerMap[it];
+      ki->kbb = kbb;
 
       if (isa<CallInst>(it) || isa<InvokeInst>(it)) {
         CallSite cs(it);
@@ -682,6 +683,9 @@ KFunction::KFunction(llvm::Function *_function,
           ki->operands[j] = getOperandNum(v, registerMap, km, ki);
         }
       }
+
+      if (it == bbit->begin())
+        kbb->kinst = ki;
 
       instructions[i++] = ki;
     }
