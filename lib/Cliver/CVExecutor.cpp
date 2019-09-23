@@ -446,7 +446,6 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
   // Initialize thread specific globals and objects
   assert(0);
 #if 0
-  initializePerThread(*initialState, memory);
 
   // Only one thread needs to add state to searcher after init
   thread_call_once(searcher_init_flag_,
@@ -462,7 +461,7 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
 
   Executor::ExecutorContext& context = getContext();
   unsigned instCountBeforeUpdate = 0;
-  while (!empty() && !haltExecution) {
+  while (!states.empty() && !haltExecution) {
 
 
     if (statePtr == NULL) {
@@ -545,31 +544,6 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
     // We hit this point after we execute an instruction, or if our
     // trySelectState failed and we have a null state pointer.
 
-    // If I should go to sleep, go to sleep.
-    //
-    // Reasons for going to sleep comprise:
-    // 1. pauseExecution (global), usually indicating the round is "finished"
-    // 2. round is unfinished but no work is available for this thread
-    //    - no state currently being executed (statePtr == NULL)
-    //    - searcher has no states ready to be executed (searcher->empty())
-    //    - somewhere there are still states to execute (!empty())
-    //    - we have not fully finished behavioral verification (!haltExecution)
-    while (pauseExecution ||
-           (!statePtr && searcher->empty() && !empty() && !haltExecution)) {
-
-      if (pauseExecution && statePtr) {
-        searcher->update(statePtr,
-                         std::vector<klee::ExecutionState*>(),
-                         std::vector<klee::ExecutionState*>());
-        statePtr = NULL;
-      }
-
-      // Call empty update to flush buffered searcher
-      searcher->update(NULL,
-                       std::vector<klee::ExecutionState*>(),
-                       std::vector<klee::ExecutionState*>());
-    }
-
     // Check if we are running out of memory
     if (klee::MaxMemory) {
       // Note: Only one thread needs to check the memory situation
@@ -645,10 +619,6 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
   // Release TSS memory (i.e., don't destroy with thread); the memory manager
   // for this thread may still be needed in dumpState
   this->memory.release();
-
-  // Print per-thread stats
-  CVMESSAGE("Thread " << klee::GetThreadID() << ": executed "
-                      << *threadInstCount << " instructions and exited");
 #endif
 }
 
@@ -676,7 +646,7 @@ void CVExecutor::run(klee::ExecutionState &initialState) {
   cv_->hook(cv_searcher);
 
   assert(klee::UseThreads <= 1);
-  if (!empty()) {
+  if (!states.empty()) {
       assert(klee::UseThreads <= 1);
       // Execute state in this thread
       execute(&initialState, NULL);
