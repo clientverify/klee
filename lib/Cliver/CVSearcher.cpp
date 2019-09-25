@@ -213,9 +213,6 @@ SearcherStage* VerifySearcher::create_and_add_stage(CVExecutionState* state) {
 }
 
 SearcherStage* VerifySearcher::select_stage() {
-  assert(0);
-  return NULL;
-#if 0
   bool pending_states_processed = false;
   if (!pending_states_.empty()) {
     process_unique_pending_states();
@@ -282,14 +279,10 @@ SearcherStage* VerifySearcher::select_stage() {
   }
 
   return current_stage_;
-#endif
 }
 
 CVExecutionState* VerifySearcher::check_state_property(
     SearcherStage* stage, CVExecutionState* state) {
-  assert(0);
-  return NULL;
-#if 0
   if (!state) return NULL;
 
   CVExecutionState *updated_state = state;
@@ -310,11 +303,9 @@ CVExecutionState* VerifySearcher::check_state_property(
       // recompute edit distance
       stage->set_states(states);
       updated_state = stage->next_state();
-    lock_.lock();
   }
 
   return updated_state;
-#endif
 }
 
 klee::ExecutionState* VerifySearcher::trySelectState() {
@@ -548,9 +539,6 @@ void VerifySearcher::remove_state(CVExecutionState* state) {
 // Checks if there are any pending events to processed associated with
 // this state
 bool VerifySearcher::check_pending(CVExecutionState* state) {
-  assert(0);
-  return false;
-#if 0
   bool result = false;
   if (pending_events_.count(state)) {
     klee::TimerStatIncrementer timer(stats::searcher_time);
@@ -733,7 +721,6 @@ bool VerifySearcher::check_pending(CVExecutionState* state) {
 
   }
   return result;
-#endif
 }
 
 void VerifySearcher::notify(ExecutionEvent ev) {
