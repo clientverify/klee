@@ -76,7 +76,6 @@ namespace klee {
 
   // Utility for printing KInstruction
   inline std::ostream &operator<<(std::ostream &os, const klee::KInstruction &ki) {
-    assert(0);
     std::string str;
     llvm::raw_string_ostream ros(str);
     return os << ros.str();
