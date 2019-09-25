@@ -202,6 +202,8 @@ void LockFreeVerifySearcher::flush() {
 }
 
 void LockFreeVerifySearcher::Worker() {
+  assert(0);
+#if 0
   threadBarrier->wait();
   threadBarrier->wait();
 
@@ -239,6 +241,7 @@ void LockFreeVerifySearcher::Worker() {
     //}
   }
   CVMESSAGE("Stopping LockFreeVerifySearcher::Worker");
+#endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////
