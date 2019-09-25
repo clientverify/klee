@@ -450,3 +450,11 @@ void ExecutionState::getCallTrace(std::vector<Instruction *> &callTrace) {
         callTrace.push_back(inst);
     }
 }
+
+//This function does not always return the correct file line
+//number.  I suspect that this is a result of klee optimization passes
+//to the llvm IR.
+void ExecutionState::dumpStack() const {
+  dumpStack(llvm::outs());
+  llvm::outs().flush();
+}

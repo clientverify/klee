@@ -301,6 +301,7 @@ public:
 
   bool merge(const ExecutionState &b);
   void dumpStack(llvm::raw_ostream &out) const;
+  void dumpStack() const;
 
   void setType(int type) {
     this->type = type;
