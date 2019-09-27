@@ -343,7 +343,7 @@ void select_workers () {
     WorkerInfo * earliestWorkerQR = getEarliestWorker(ms_QR_base, *ms_QR_size_ptr);
 
     if (earliestWorkerQR->round < managerRoundCtr ) {
-      int res = kill(earliestWorkerQR->pid, SIGKILL);
+      int res = kill(earliestWorkerQR->pid, SIGSTOP);
       if (res == -1) {
 	perror("Error sigstopping in select_workers \n");
 	fprintf(stderr, "Issue delivering SIGSTOP to pid %d \n", earliestWorkerQR->pid);
@@ -515,8 +515,14 @@ void manage_workers () {
 
   //Exit case
   if (*ms_QA_size_ptr == 0 && *ms_QR_size_ptr == 0 && *target_started_ptr == 1) {
-    //fprintf(stderr,"Manager found empty QA and QR \n");
-    //std::exit(EXIT_SUCCESS);
+    fprintf(stderr,"Manager found empty QA and QR.  Latest round reached was %d \n", managerRoundCtr);
+    if (*target_ended_ptr != 1) {
+      fprintf(stderr,"Verification failed. \n");
+    } else {
+      fprintf(stderr,"All messages verified. \n");
+    }
+    
+    std::exit(EXIT_SUCCESS);
   }
   
   if (*ms_QR_size_ptr > QR_MAX_WORKERS) {
@@ -637,7 +643,7 @@ int tase_fork(int parentPID, uint64_t rip) {
     if (modelDebug)
       printf("Parent returning to path exploration %lf seconds into analysis \n", curr_time - target_start_time);
     
-    //Make self the false branch
+    //Make self the True branch
     WorkerInfo * myInfo = PidInQR(getpid());
     myInfo->branches++;
     release_sem_lock();

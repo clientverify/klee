@@ -267,14 +267,14 @@ void Executor::model_memcpy_tase() {
     void * src = (void *) target_ctx_gregs[GREG_RSI].u64;
     size_t s = (size_t) target_ctx_gregs[GREG_RDX].u64;
 
-    
-    
     if (isBufferEntirelyConcrete((uint64_t) dst, s) && isBufferEntirelyConcrete((uint64_t) src, s)) {
       rewriteConstants((uint64_t) dst, s);
       rewriteConstants((uint64_t) src, s);
       memcpy(dst, src, s);
     } else {
-
+      
+      
+      
       //Fast path aligned case
       if ((((uint64_t) dst) %2 == 0) && (((uint64_t) src) % 2 == 0) && (((uint64_t) s) %2 == 0)) {
 	for (int i = 0; i < s; i++) {
@@ -288,28 +288,64 @@ void Executor::model_memcpy_tase() {
 	      i++;
 	    } else {
 	    
+	    
+	    
 	    ref <Expr> b = tase_helper_read((uint64_t) src + i, 1);
 	    tase_helper_write((uint64_t) dst +i,b );
+	    
 	  }
-	  
-	  /*
-	    printf("i is %d \n", i);
-	    ref <Expr> b = tase_helper_read((uint64_t) src + i, 2);
-	    fflush(stdout);
-	    outs() << "Src at " << i << " \n";
-	    b->print(outs());
-	    outs() << "\n";
-	    outs() << "Dst before write \n";
-	    ref <Expr> tmp = tase_helper_read((uint64_t) dst + i, 2);
-	    tmp->print(outs());
-	    outs() << "\n";
-	    tase_helper_write((uint64_t) dst + i, b);
-	    outs() << "Dst after write \n";
-	    ref <Expr> tmp2 = tase_helper_read((uint64_t) dst + i, 2);
-	    tmp2->print(outs());
-	    outs() << "\n";
-	  */
 	}
+	  /*
+	    
+	    if ((i %2 == 0) && ( i < s-1)) {
+	      
+	      printf("--------------------------------- \n");
+	      printf("i is %d \n", i);
+	      printf("Raw 2 bytes at src are 0x%x \n", *((uint16_t *) ( (uint8_t *)src + i) ));
+	      
+	      ref <Expr> b_both = tase_helper_read((uint64_t) src + i, 2);
+	      fflush(stdout);
+	      outs() << "2 byte Src at " << i << " : \n";
+	      b_both->print(outs());
+	      outs() << "\n";
+	      
+	      ref <Expr> b1 = tase_helper_read((uint64_t)src + i, 1);
+	      
+	      fflush(stdout);
+	      outs() << "First byte : " << " \n";
+	      b1->print(outs());
+	      outs() << "\n";
+	      outs().flush();
+	      
+	      ref <Expr> b2 = tase_helper_read((uint64_t) src + i +1, 1);
+	      fflush(stdout);
+	      outs() << "Second byte : " << " \n";
+	      b2->print(outs());
+	      outs() << "\n";
+	      outs().flush();
+	    }
+	    
+	    //ref <Expr> b = tase_helper_read((uint64_t) src + i, 2);
+	    ref <Expr> b1 = tase_helper_read((uint64_t)src + i, 1);
+	    ref <Expr> b2 = tase_helper_read((uint64_t) src + i +1, 1);
+	    ref <Expr> b = ConcatExpr::create(b2,b1);
+	    tase_helper_write((uint64_t) dst +i,b );
+	    
+	    slowPathCtr++;
+	    
+	    printf("Raw 2 bytes at dst are 0x%x after write \n", *((uint16_t *) ( (uint8_t *)dst + i) ));
+	    ref <Expr> b_res = tase_helper_read((uint64_t) dst + i, 2);
+	    fflush(stdout);
+	    outs() << "2 byte dst after write " << i << " : \n";
+	    b_res->print(outs());
+	    outs() << "\n";
+	    outs().flush();
+	    
+	    i++;
+	    
+	    
+	    }
+	    } */
 	
 	//Sanity check
 	/*
@@ -317,19 +353,24 @@ void Executor::model_memcpy_tase() {
 	  ref <Expr> b1 = tase_helper_read((uint64_t) src + i, 1);
 	  ref <Expr> b2 = tase_helper_read((uint64_t) dst +i,1 );
 	  if ( b1 != b2) {
-	    printf("memcpy DBG IMPORTANT \n");
-	    printf("Mismatch at interpCtr %lu \n",interpCtr);
+
+	    outs() << "Mismatch :\n";
+	  } else {
+	    outs() << "No Mismatch :\n";
+	  }
+	      
 	    fflush(stdout);
-	    outs() << "Printing mismatch b1 at idx " << i <<" \n";
+	    outs() << "Printing b1 at idx " << i <<" \n";
 	    b1->print(outs());
 	    outs() << "\n";
-	    outs() << "Printing mismatch b2 at idx " << i <<" \n";
+	    outs() << "Printing  b2 at idx " << i <<" \n";
 	    b2->print(outs());
 	    outs() << "\n";
 	    fflush(stdout);
-	  }
+	    //}
 	}
 	*/
+	
       } else {
 	for (int i = 0; i < s; i++) {
 	  ref <Expr> b = tase_helper_read((uint64_t) src + i, 1);
@@ -337,7 +378,7 @@ void Executor::model_memcpy_tase() {
 	}
       }
     }
-
+    
     double T1 = util::getWallTime();
     if (!noLog) {
       printf("Memcpy took %lf seconds \n", T1-T0);
@@ -688,7 +729,7 @@ void Executor::model_ktest_writesocket() {
 	  }
 	  else {
 	    
-	    //klee::ref<klee::Expr> val = tase_helper_read((uint64_t) buf + i, 1);
+	    klee::ref<klee::Expr> val = tase_helper_read((uint64_t) buf + i, 1);
 	    condition = klee::EqExpr::create(tase_helper_read((uint64_t) buf + i, 1),
 					     klee::ConstantExpr::alloc(o->bytes[i], klee::Expr::Int8));
 	  }
@@ -971,8 +1012,6 @@ uint64_t Executor::tls_predict_stdin_size (int fd, uint64_t maxLen) {
 
     }
   }
-
-     
 
 
   if (modelDebug && !noLog) {
@@ -3170,15 +3209,18 @@ void Executor::model_gcm_ghash_4bit () {
 }
 
 BIGNUM * Executor::BN_new_tase() {
+
+  
   
   BIGNUM * result = (BIGNUM *) malloc(sizeof(BIGNUM));
-
+  printf("BIGNUM malloc'd at addr 0x%lx \n", (uint64_t) result);
+  
   MemoryObject * BNMem = addExternalObject(*GlobalExecutionStatePtr,(void *) result, sizeof(BIGNUM), false );
   const ObjectState * BNOS = GlobalExecutionStatePtr->addressSpace.findObject(BNMem);
   ObjectState * BNOSWrite = GlobalExecutionStatePtr->addressSpace.getWriteable(BNMem,BNOS);  
   BNOSWrite->concreteStore = (uint8_t *) result;
   
-  result->flags=BN_FLG_MALLOCED;
+  result->flags=BN_FLG_STATIC_DATA;
   result->top=0;
   result->neg=0;
   result->dmax=0;
@@ -3191,6 +3233,8 @@ EC_POINT * Executor::EC_POINT_new_tase(EC_GROUP * group) {
 
   EC_POINT * result = (EC_POINT *) malloc(sizeof(EC_POINT));
 
+  printf("EC_POINT malloc'd at addr 0x%lx \n", (uint64_t) result);
+  
   MemoryObject * ECPMem = addExternalObject(*GlobalExecutionStatePtr,(void *) result, sizeof(EC_POINT), false );
   const ObjectState * ECPOS = GlobalExecutionStatePtr->addressSpace.findObject(ECPMem);
   ObjectState * ECPOSWrite = GlobalExecutionStatePtr->addressSpace.getWriteable(ECPMem,ECPOS);  
@@ -3201,7 +3245,7 @@ EC_POINT * Executor::EC_POINT_new_tase(EC_GROUP * group) {
 
   //Init X
   BIGNUM * X = &(result->X);
-  X->flags=BN_FLG_MALLOCED;
+  X->flags=BN_FLG_STATIC_DATA;
   X->top=0;
   X->neg=0;
   X->dmax=0;
@@ -3209,7 +3253,7 @@ EC_POINT * Executor::EC_POINT_new_tase(EC_GROUP * group) {
 
   //Init Y
   BIGNUM * Y = &(result->Y);
-  Y->flags=BN_FLG_MALLOCED;
+  Y->flags=BN_FLG_STATIC_DATA;
   Y->top=0;
   Y->neg=0;
   Y->dmax=0;
@@ -3217,7 +3261,7 @@ EC_POINT * Executor::EC_POINT_new_tase(EC_GROUP * group) {
 
   //Init Z
   BIGNUM * Z = &(result->Z);
-  Z->flags=BN_FLG_MALLOCED;
+  Z->flags=BN_FLG_STATIC_DATA;
   Z->top=0;
   Z->neg=0;
   Z->dmax=0;
