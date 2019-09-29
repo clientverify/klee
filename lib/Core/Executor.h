@@ -241,7 +241,7 @@ protected:
   void printFileLine(ExecutionState &state, KInstruction *ki,
                      llvm::raw_ostream &file);
 
-  void run(ExecutionState &initialState);
+  virtual void run(ExecutionState &initialState);
 
   // Given a concrete object in our [klee's] address space, add it to 
   // objects checked code can reference.
@@ -253,9 +253,9 @@ protected:
 			      unsigned offset);
   void initializeGlobals(ExecutionState &state);
 
-  void stepInstruction(ExecutionState &state);
-  void updateStates(ExecutionState *current);
-  void transferToBasicBlock(llvm::BasicBlock *dst, 
+  virtual void stepInstruction(ExecutionState &state);
+  virtual void updateStates(ExecutionState *current);
+  virtual void transferToBasicBlock(llvm::BasicBlock *dst, 
 			    llvm::BasicBlock *src,
 			    ExecutionState &state);
 
@@ -326,21 +326,21 @@ protected:
                               ref<Expr> value /* undef if read */,
                               KInstruction *target /* undef if write */);
 
-  void executeMakeSymbolic(ExecutionState &state, const MemoryObject *mo,
+  virtual void executeMakeSymbolic(ExecutionState &state, const MemoryObject *mo,
                            const std::string &name);
 
   /// Create a new state where each input condition has been added as
   /// a constraint and return the results. The input state is included
   /// as one of the results. Note that the output vector may included
   /// NULL pointers for states which were unable to be created.
-  void branch(ExecutionState &state, 
+  virtual void branch(ExecutionState &state, 
               const std::vector< ref<Expr> > &conditions,
               std::vector<ExecutionState*> &result);
 
   // Fork current and return states in which condition holds / does
   // not hold, respectively. One of the states is necessarily the
   // current state, and one of the states may be null.
-  StatePair fork(ExecutionState &current, ref<Expr> condition, bool isInternal);
+  virtual StatePair fork(ExecutionState &current, ref<Expr> condition, bool isInternal);
 
   /// Add the given (boolean) condition as a constraint on state. This
   /// function is a wrapper around the state's addConstraint function
@@ -405,11 +405,11 @@ protected:
   bool shouldExitOn(enum TerminateReason termReason);
 
   // remove state from queue and delete
-  void terminateState(ExecutionState &state);
+  virtual void terminateState(ExecutionState &state);
   // call exit handler and terminate state
   void terminateStateEarly(ExecutionState &state, const llvm::Twine &message);
   // call exit handler and terminate state
-  void terminateStateOnExit(ExecutionState &state);
+  virtual void terminateStateOnExit(ExecutionState &state);
   // call error handler and terminate state
   void terminateStateOnError(ExecutionState &state, const llvm::Twine &message,
                              enum TerminateReason termReason,
