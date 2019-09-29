@@ -127,8 +127,8 @@ class ExecutionTraceManager : public ExecutionObserver {
 
   // Instead of ThreadSpecificPointer, we use folly::ThreadLocal to enable one
   // thread to iterate through the others at some point.
-  class ETMTag; // segments global folly::ThreadLocal mutex
-//  folly::ThreadLocal<StageRemovedTrackerListMap, ETMTag> removed_trackers_;
+  //class ETMTag; // segments global folly::ThreadLocal mutex
+  StageRemovedTrackerListMap removed_trackers_;
 };
 
 class TrainingExecutionTraceManager : public ExecutionTraceManager {

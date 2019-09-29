@@ -188,19 +188,15 @@ void ExecutionTraceManager::remove_from_stage(ExecutionStateProperty* p) {
 }
 
 bool ExecutionTraceManager::remove_property(ExecutionStateProperty* p) {
-  assert(0);
-  return false;
-#if 0
   ExecutionStage* stage = get_stage(p);
   if (stage && stage->etrace_tree && stage->etrace_tree->tracks(p)) {
     stage->etrace_tree->remove_tracker_lazy(p);
-    (*removed_trackers_)[stage].push_back(
+    (removed_trackers_)[stage].push_back(
         std::make_pair(p, p->tracker_node));
     remove_from_stage(p);
     return true;
   }
   return false;
-#endif
 }
 
 void ExecutionTraceManager::lazy_property_removals() {
