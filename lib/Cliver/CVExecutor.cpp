@@ -275,11 +275,9 @@ void CVExecutor::callExternalFunction(klee::ExecutionState &state,
 /// maintaining the global std::set of ExecutionStates
 void CVExecutor::parallelUpdateStates(klee::ExecutionState *current,
                                       bool updateStateCount) {
-  assert(0);
-#if 0
   // Retrieve state counts for this thread
-  int addedCount = getContext().addedStates.size();
-  int removedCount = getContext().removedStates.size();
+  int addedCount = addedStates.size();
+  int removedCount = removedStates.size();
 
   // update atomic stateCount
   if (updateStateCount) {
@@ -301,15 +299,14 @@ void CVExecutor::parallelUpdateStates(klee::ExecutionState *current,
   if (!EnableLockFreeSearcher) {
     // Delete removed states 
     // TODO move all state delete into cvsearcher
-    auto& removedStates = getContext().removedStates;
     for (auto es : removedStates) {
       delete es;
     }
   }
 
   // Clear thread local state sets
-  getContext().removedStates.clear();
-  getContext().addedStates.clear();
+  removedStates.clear();
+  addedStates.clear();
 
 #if 0
   if (!EnableLockFreeSearcher) {
@@ -444,8 +441,6 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
 
 void CVExecutor::execute(klee::ExecutionState *initialState,
                          klee::MemoryManager *memory) {
-  // Initialize thread specific globals and objects
-
   // Only one thread needs to add state to searcher after init
   thread_call_once(searcher_init_flag_,
             [](klee::Searcher *s, klee::ExecutionState *e) {
@@ -458,7 +453,6 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
 
   klee::ExecutionState *statePtr = NULL;
 
-  Executor::ExecutorContext& context = getContext();
   unsigned instCountBeforeUpdate = 0;
   while (!states.empty() && !haltExecution) {
 
@@ -486,18 +480,18 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
         ++stats::recv_round_instructions;
 
       // Handle post execution events if state wasn't removed
-      if (std::find(context.removedStates.begin(), context.removedStates.end(),
-                    &state) == context.removedStates.end()) {
+      if (std::find(removedStates.begin(), removedStates.end(),
+                    &state) == removedStates.end()) {
         handle_post_execution_events(state);
       }
 
       // Handle post execution events for each newly added state
-      foreach (klee::ExecutionState* astate, context.addedStates) {
+      foreach (klee::ExecutionState* astate, addedStates) {
         handle_post_execution_events(*astate);
       }
 
       // Notify all if a state was removed
-      foreach (klee::ExecutionState* rstate, context.removedStates) {
+      foreach (klee::ExecutionState* rstate, removedStates) {
         cv_->notify_all(ExecutionEvent(CV_STATE_REMOVED, rstate));
       }
 
@@ -506,7 +500,7 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
       // If nothing interesting happened (e.g., add instruction), we just
       // continue with the same state.
       if (static_cast<CVExecutionState *>(&state)->event_flag() ||
-          !context.removedStates.empty() || !context.addedStates.empty()) {
+          !removedStates.empty() || !addedStates.empty()) {
 
         // Update stateCount *before* potentially passing any new states off to
         // the searcher. Why is this important? If a worker makes new states
@@ -525,16 +519,15 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
         // Between steps 7 and 8, we have a small amount of time when
         // stateCount = 0, so other worker threads may detect empty() == true,
         // and exit.
-        int addedCount = context.addedStates.size();
-        int removedCount = context.removedStates.size();
+        int addedCount = addedStates.size();
+        int removedCount = removedStates.size();
         stateCount += (addedCount - removedCount);
 
         // Update searcher with new states and get next state to execute
         // (if supported by searcher)
-
         searcher->update(&state,
-                                                     context.addedStates,
-                                                     context.removedStates);
+                                                     addedStates,
+                                                     removedStates);
         statePtr = &(searcher->selectState());
 
         // Update Executor state tracking (stateCount already updated above)
@@ -610,7 +603,7 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
 
   // Update searcher with last state we executed if we are halting early
   if (statePtr) {
-    searcher->update(statePtr, getContext().addedStates, getContext().removedStates);
+    searcher->update(statePtr, addedStates, removedStates);
   }
 
 #if 0
@@ -906,10 +899,8 @@ CVExecutor::fork(klee::ExecutionState &current,
     }
 
     falseState = trueState->branch();
-    //getContext was never called in the tetrinet run, commenting it out
-    //here, but it needs to be made if this code is ever reached.
-    assert(0);
-    //getContext().addedStates.push_back(falseState);
+    assert(falseState != NULL);
+    addedStates.push_back(falseState);
 
     addConstraint(*trueState, condition);
     addConstraint(*falseState, klee::Expr::createIsZero(condition));
@@ -1113,10 +1104,9 @@ void CVExecutor::register_function_call_event(const char **fname,
 //}
 
 void CVExecutor::add_state(CVExecutionState* state) {
+    assert(state != NULL);
     assert(0);
-#if 0
-	getContext().addedStates.push_back(state);
-#endif
+	addedStates.push_back(state);
 }
 
 void CVExecutor::add_state_internal(CVExecutionState* state) {
