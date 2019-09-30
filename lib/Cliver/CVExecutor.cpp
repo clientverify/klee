@@ -537,7 +537,6 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
 
     // We hit this point after we execute an instruction, or if our
     // trySelectState failed and we have a null state pointer.
-#if 0
     // Check if we are running out of memory
     if (klee::MaxMemory) {
       // Note: Only one thread needs to check the memory situation
@@ -548,11 +547,7 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
         // is O(elts on freelist). This is really bad since we start
         // to pummel the freelist once we hit the memory cap.
         unsigned mbs;
-        if (klee::UseThreads > 1) {
-          mbs = GetMemoryUsage() >> 20;
-        } else {
-          mbs = klee::util::GetTotalMallocUsage() >> 20;
-        }
+        mbs = klee::util::GetTotalMallocUsage() >> 20;
 
         if (mbs > klee::MaxMemory) {
           if (mbs > klee::MaxMemory + 100) {
@@ -563,9 +558,6 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
                                std::vector<klee::ExecutionState*>());
               statePtr = NULL;
             }
-
-            // Try to PauseExecution(), may fail
-            if (PauseExecution()) {
 
               // just guess at how many to kill
               unsigned numStates = stateCount;
@@ -587,8 +579,6 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
                 std::swap(arr[idx], arr[N-1]);
                 terminateStateEarly(*arr[N-1], "Memory limit exceeded.");
               }
-              UnPauseExecution();
-            }
           }
           atMemoryLimit = true;
         } else {
@@ -598,7 +588,6 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
         memory_lock_.unlock();
       }
     }
-#endif
   }
 
   // Update searcher with last state we executed if we are halting early
