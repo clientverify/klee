@@ -311,8 +311,6 @@ void ClientVerifier::initialize() {
 }
 
 void ClientVerifier::initialize_external_handlers(CVExecutor *executor) {
-  assert(0);
-#if 0
   unsigned N = sizeof(external_handler_info)/sizeof(external_handler_info[0]);
   for (unsigned i=0; i<N; ++i) {
     ExternalHandlerInfo &hi = external_handler_info[i];
@@ -321,7 +319,6 @@ void ClientVerifier::initialize_external_handlers(CVExecutor *executor) {
       executor->register_function_call_event(&hi.name, hi.event_triggered);
     }
 	}
-#endif
 }
 
 void ClientVerifier::assign_basic_block_ids() {
@@ -676,8 +673,6 @@ uint64_t ClientVerifier::get_round_statistic_value(int round,
 
 void ClientVerifier::set_round(int round, SearcherStage *stage) {
 
-  assert(0);
-#if 0
   // Increment context timers before we switch to new context
   statistics_manager_.update_context_timers();
 
@@ -716,9 +711,7 @@ void ClientVerifier::set_round(int round, SearcherStage *stage) {
 
   // Set new round number
   round_number_ = round;
-#if 0 //Marie merge remove:
   stats::round_number = round;
-#endif
   ++stats::backtrack_count;
 
   // Rebuild solvers each round change to keep caches fresh.
@@ -756,7 +749,6 @@ void ClientVerifier::set_round(int round, SearcherStage *stage) {
 	if (MaxRoundNumber && round_number_ > MaxRoundNumber) {
     executor_->setHaltExecution(true);
 	}
-#endif
 }
 
 int ClientVerifier::status() {
