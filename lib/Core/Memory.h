@@ -248,7 +248,13 @@ private:
 
   ArrayCache *getArrayCache() const;
 };
-  
+
+// Printing operators
+inline std::ostream &operator<<(std::ostream &os, const ObjectState &obj) {
+  obj.print(os, false);
+  return os;
+}
+
 } // End klee namespace
 
 #endif

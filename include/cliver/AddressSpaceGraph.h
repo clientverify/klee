@@ -84,14 +84,12 @@ friend class AddressSpaceGraphVisitor;
       klee::ref<klee::Expr> e) const;
 
  private:
-#if 0
   // Check equivalence of ObjectStates in the context of the AddressSpaceGraph
   bool objects_equal(klee::ObjectState &a, klee::ObjectState &b) const;
   bool objects_equal(const AddressSpaceGraph &asg_b, klee::ObjectState &a,
       klee::ObjectState &b) const;
   bool objects_equal(const AddressSpaceGraph &asg_b, klee::ObjectState &a,
       klee::ObjectState &b, bool &candidate_symbolic_merge) const;
-#endif
 
   // Helpers for checking the equivalence of AddressSpaceGraphs
   bool array_size_equal(const AddressSpaceGraph &b) const;

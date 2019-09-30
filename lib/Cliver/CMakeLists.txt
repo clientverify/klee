@@ -7,7 +7,7 @@
 #
 #===------------------------------------------------------------------------===#
 klee_add_component(cliverCore
-#  AddressSpaceGraph.cpp
+  AddressSpaceGraph.cpp
   BranchSelector.cpp
   ClientVerifier.cpp
   Configuration.cpp
@@ -29,7 +29,7 @@ klee_add_component(cliverCore
   LockFreeVerifySearcher.cpp
   NetworkManager.cpp
   Socket.cpp
-#  StateMerger.cpp
+  StateMerger.cpp
   Statistics.cpp
   TestHelper.cpp
   ThreadBufferedSearcher.cpp
