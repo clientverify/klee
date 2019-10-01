@@ -973,8 +973,6 @@ void CVExecutor::resolve_one(klee::ExecutionState *state,
 }
 
 void CVExecutor::terminateStateOnExit(klee::ExecutionState &state) {
-  assert(0);
-#if 0
   if (!klee::OnlyOutputStatesCoveringNew || state.coveredNew || 
       (klee::AlwaysOutputSeeds && seedMap.count(&state)))
     interpreterHandler->processTestCase(state, 0, 0);
@@ -989,7 +987,6 @@ void CVExecutor::terminateStateOnExit(klee::ExecutionState &state) {
   } else {
     terminateState(state);
   }
-#endif
 }
 
 void CVExecutor::terminate_state(CVExecutionState* state) {
