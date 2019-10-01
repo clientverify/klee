@@ -907,21 +907,21 @@ CVExecutor::fork(klee::ExecutionState &current,
 void CVExecutor::branch(klee::ExecutionState &state, 
 		const std::vector< klee::ref<klee::Expr> > &conditions,
     std::vector<klee::ExecutionState*> &result) {
-  assert(0);
-#if 0
+  state.dumpStack();
   unsigned N = conditions.size();
   assert(N);
 
   klee::stats::forks += N-1;
 
   // Cliver assumes each state branches from a single other state
-  assert(N <= 1); // FIXME: This seems wrong, given the loop bound below
+  // Violated by select instructions.
+  //assert(N <= 1); // FIXME: This seems wrong, given the loop bound below
 
   result.push_back(&state);
   for (unsigned i=1; i<N; ++i) {
 		klee::ExecutionState *es = result[klee::theRNG.getInt32() % i];
 		klee::ExecutionState *ns = es->branch();
-    getContext().addedStates.push_back(ns);
+    addedStates.push_back(ns);
     result.push_back(ns);
     es->ptreeNode->data = 0;
     std::pair<klee::PTree::Node*,klee::PTree::Node*> res = 
@@ -935,7 +935,6 @@ void CVExecutor::branch(klee::ExecutionState &state,
   for (unsigned i=0; i<N; ++i)
     if (result[i])
       addConstraint(*result[i], conditions[i]);
-#endif
 }
 
 void CVExecutor::add_external_handler(std::string name, 
