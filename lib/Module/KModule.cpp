@@ -68,7 +68,7 @@
 using namespace llvm;
 using namespace klee;
 
-namespace {
+namespace klee {
   enum SwitchImplType {
     eSwitchTypeSimple,
     eSwitchTypeLLVM,

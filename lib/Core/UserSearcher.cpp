@@ -18,7 +18,7 @@
 using namespace llvm;
 using namespace klee;
 
-namespace {
+namespace klee {
   cl::list<Searcher::CoreSearchType>
   CoreSearch("search", cl::desc("Specify the search heuristic (default=random-path interleaved with nurs:covnew)"),
 	     cl::values(clEnumValN(Searcher::DFS, "dfs", "use Depth First Search (DFS)"),
