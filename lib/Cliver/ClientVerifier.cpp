@@ -161,7 +161,10 @@ ClientVerifier::ClientVerifier(std::string &input_file, bool no_output, std::str
     execution_trace_manager_(NULL),
 		array_id_(0),
 		round_number_(0),
-		replay_objs_(NULL) {
+		replay_objs_(NULL),
+        m_recoveryStatesCount(0),
+        m_generatedSlicesCount(0),
+        m_snapshotsCount(0) {
 
 	cvstream_->init();
 

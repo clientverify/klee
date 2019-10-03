@@ -94,11 +94,38 @@ class CVStream;
 class SearcherStage;
 
 class ClientVerifier : public klee::InterpreterHandler {
+ private:
+  unsigned m_testIndex;  // number of tests written so far
+  unsigned m_pathsExplored; // number of paths explored so far
+  unsigned m_recoveryStatesCount; // number of recovery states
+  unsigned m_generatedSlicesCount; // number of generated slices
+  unsigned m_snapshotsCount; // number of created snapshots
+
  public:
   //Marie merge: problematic, actually implement these...
-  virtual void incRecoveryStatesCount() {};
-  virtual void incGeneratedSlicesCount() {};
-  virtual void incSnapshotsCount() {};
+  unsigned getRecoveryStatesCount() {
+    return m_recoveryStatesCount;
+  }
+
+  void incRecoveryStatesCount() {
+    m_recoveryStatesCount++;
+  }
+
+  unsigned getGeneratedSlicesCount() {
+    return m_generatedSlicesCount;
+  }
+
+  void incGeneratedSlicesCount() {
+    m_generatedSlicesCount++;
+  }
+
+  unsigned getSnapshotsCount() {
+    return m_snapshotsCount;
+  }
+
+  void incSnapshotsCount() {
+    m_snapshotsCount++;
+  }
 
   ClientVerifier(std::string &input_file, bool no_output, std::string &output_dir);
   ~ClientVerifier();
