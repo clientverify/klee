@@ -442,6 +442,8 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
 void CVExecutor::execute(klee::ExecutionState *initialState,
                          klee::MemoryManager *memory) {
   // Only one thread needs to add state to searcher after init
+
+#if 0
   thread_call_once(searcher_init_flag_,
             [](klee::Searcher *s, klee::ExecutionState *e) {
               std::vector<klee::ExecutionState*> one_state, empty_vec;
@@ -450,6 +452,13 @@ void CVExecutor::execute(klee::ExecutionState *initialState,
               s->update(0, empty_vec, empty_vec); // Force flush (ThreadBufferedSearcher)
               },
             searcher, initialState);
+#endif
+  std::vector<klee::ExecutionState*> one_state, empty_vec;
+  one_state.push_back(initialState);
+  searcher->update(0, one_state, empty_vec); // Add state
+  searcher->update(0, empty_vec, empty_vec); // Force flush (ThreadBufferedSearcher)
+
+
 
   klee::ExecutionState *statePtr = NULL;
 
