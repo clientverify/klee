@@ -65,7 +65,7 @@ using namespace klee;
 
 //AH: Our additions below. --------------------------------------
 //extern int loopCtr;
-
+#include "../../../test/proj_defs.h"
 #include "../../../test/tase/include/tase/tase_interp.h"
 #include <iostream>
 #include "klee/CVAssignment.h"
@@ -3581,7 +3581,7 @@ void Executor::model_EC_POINT_point2oct() {
 
 
  
-  //#ifdef TASE_OPENSSL
+  #ifdef TASE_OPENSSL
   
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(GREG_RSI * 8, Expr::Int64);
@@ -3606,8 +3606,9 @@ void Executor::model_EC_POINT_point2oct() {
     BN_CTX * ctx = (BN_CTX *) target_ctx_gregs[GREG_R9].u64;
 
     bool hasSymbolicInput = false;
-    
+
     size_t field_len = BN_num_bytes(&group->field);
+    
     size_t ret = (form == POINT_CONVERSION_COMPRESSED) ? 1 + field_len : 1 + 2*field_len;
     if (modelDebug){
       tase_print_EC_POINT(stdout,point);
@@ -3657,6 +3658,6 @@ void Executor::model_EC_POINT_point2oct() {
     printf("ERROR: model_EC_POINT_point2oct called with symbolic input \n");
     std::exit(EXIT_FAILURE);
   }
-    //#endif
+    #endif
     
 }

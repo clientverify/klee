@@ -98,6 +98,8 @@ using namespace llvm;
 using namespace klee;
 
 //AH: Our additions below. --------------------------------------
+
+
 #include <iostream>
 #include "klee/CVAssignment.h"
 #include "klee/util/ExprUtil.h"
@@ -107,6 +109,7 @@ using namespace klee;
 #include <netdb.h>
 #include <fcntl.h>
 #include "../../../test/tase/include/tase/tase_interp.h"
+#include "../../../test/proj_defs.h"
 #include "tase/TASEControl.h"
 //#include <signal.h>
 //Can't include signal.h directly if it has conflicts with our tase_interp.h definitions
@@ -237,9 +240,11 @@ extern "C" {
 
 //Distinction between prohib_fns and modeled_fns is that we sometimes may want to "jump back" into native execution
 //for prohib_fns.  Modeled fns are always skipped and emulated with a return.
+#ifdef TASE_OPENSSL
 static const uint64_t prohib_fns [] = { (uint64_t) &AES_encrypt, (uint64_t) &ECDH_compute_key, (uint64_t) &EC_POINT_point2oct, (uint64_t) &EC_KEY_generate_key, (uint64_t) &SHA1_Update, (uint64_t) &SHA1_Final, (uint64_t) &SHA256_Update, (uint64_t) &SHA256_Final, (uint64_t) &gcm_gmult_4bit, (uint64_t) &gcm_ghash_4bit, (uint64_t) &tls1_generate_master_secret };
 
 static const uint64_t sys_mem_fns [] = {(uint64_t) &malloc_tase, (uint64_t) &realloc_tase, (uint64_t) &calloc_tase, (uint64_t) &free_tase, (uint64_t) &memcpy_tase};
+#endif
 
 bool isSpecialInst(uint64_t rip);
 
@@ -3432,7 +3437,7 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
   static int executeMakeSymbolicCalls = 0;  
   executeMakeSymbolicCalls++;
   
-  //#ifdef TASE_OPENSSL
+  #ifdef TASE_OPENSSL
   if (executeMakeSymbolicCalls ==1 ) {
     //Bootstrap multipass here for the very first round
     //before we hit a concretized writesocket call
@@ -3440,7 +3445,7 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
     multipass_reset_round(true);
     multipass_start_round(this, false);
   }
-  //#endif
+  #endif
   if(modelDebug) {
     printf("Calling executeMakeSymbolic on name %s \n", name.c_str());
     std::cout.flush();
@@ -3603,7 +3608,7 @@ void printProhibCounters() {
   //#endif
 }
 
-uint64_t garbageCtr = 0;
+uint64_t garbage = 0;
 uint64_t * last_heap_addr = 0;
 
 
@@ -3795,9 +3800,9 @@ bool canBounceback (uint32_t abort_status, uint64_t rip) {
     }
     //Heuristic to try and avoid page faults.
     /*
-    garbageCtr += *( (uint64_t *)target_ctx_gregs[GREG_RSP].u64);
+    garbage += *( (uint64_t *)target_ctx_gregs[GREG_RSP].u64);
     if (last_heap_addr != 0) {
-      garbageCtr += *last_heap_addr; //Todo: this won't work if we start doing frees.
+      garbage += *last_heap_addr; //Todo: this won't work if we start doing frees.
     }
     */
     return true;
@@ -3951,7 +3956,9 @@ ref<Expr> Executor::tase_helper_read (uint64_t addr, uint8_t byteWidth) {
   ref<Expr> returnVal;
 
   ObjectState *wos = GlobalExecutionStatePtr->addressSpace.getWriteable(op.first, op.second);
-  switch (byteWidth) {
+
+  
+   switch (byteWidth) {
   case 1:
     returnVal = wos->read(offset, Expr::Int8);
     break;
@@ -3968,7 +3975,9 @@ ref<Expr> Executor::tase_helper_read (uint64_t addr, uint8_t byteWidth) {
     printf("Unrecognized byteWidth in tase_helper_read: %u \n", byteWidth);
     std::cout.flush();
     std::exit(EXIT_FAILURE);
-  }
+    } 
+
+
   wos->applyPsnOnRead(offset);
   return returnVal;
 }
@@ -4024,11 +4033,11 @@ bool cartridgeHasFlagsDead(uint64_t pc) {
 }
 
 
-
+#ifdef TASE_OPENSSL
 bool isProhibFn(uint64_t pc) {
   return  std::find(std::begin(prohib_fns), std::end(prohib_fns), pc) != std::end(prohib_fns);
 }
-
+#endif
 bool Executor::instructionBeginsTransaction(uint64_t pc) {
   return  (cartridge_entry_points.find(pc) != cartridge_entry_points.end());
 }
@@ -4041,9 +4050,10 @@ bool Executor::resumeNativeExecution (){
   greg_t * registers = target_ctx_gregs;
   bool instBeginsTrans = instructionBeginsTransaction(registers[GREG_RIP].u64);
   if (instBeginsTrans) {
-    
+    #ifdef TASE_OPENSSL
     if (isProhibFn(registers[GREG_RIP].u64))
 	return false;
+    #endif
     bool concGprs = gprsAreConcrete();
     if (taseDebug)
       printf("Inst begins transaction \n");
@@ -4143,13 +4153,18 @@ void Executor::model_inst () {
   #ifdef TASE_BIGNUM
   if (rip == (uint64_t) &make_byte_symbolic +14 || rip == (uint64_t) &make_byte_symbolic) {
     make_byte_symbolic_model();
-  } else if (rip == (uint64_t) &exit_tase_shim) {
-    fprintf(stderr,"Successfully exited from target.  Shutting down with %d x86 instructions interpreted \n", interpCtr);
+  } else if (rip == (uint64_t) &malloc_tase || rip == (uint64_t) &malloc_tase + trap_off) {
+    model_malloc();
+  } else if (rip == (uint64_t) &exit_tase_shim || rip == (uint64_t) &exit_tase || rip == (uint64_t) &exit_tase + 14) {
+    fprintf(stdout,"Successfully exited from target.  Shutting down with %d x86 blocks interpreted \n", interpCtr);
+    fprintf(stdout,"%d total LLVM IR instructions interpreted \n", instCtr);
     fflush(stdout);
+    fflush(stderr);
+    worker_exit();
     std::exit(EXIT_SUCCESS);
   }
   #endif
-  //#ifdef TASE_OPENSSL
+  #ifdef TASE_OPENSSL
   if (rip == (uint64_t) &free || rip == ((uint64_t) &free_tase) || rip == ((uint64_t) &free_tase + 14) ) {
     model_free();
   }  else if (rip == (uint64_t) &sb_modeled) {
@@ -4286,7 +4301,7 @@ void Executor::model_inst () {
   else if (rip == (uint64_t) &sb_disabled) {
     model_sb_disabled();
   }
-  //#endif
+  #endif
 
   else if (rip == (uint64_t) &target_exit) {
     printf("Found call to target_exit in interpreter \n");
@@ -4320,13 +4335,13 @@ bool isSpecialInst (uint64_t rip) {
 
   //Todo -- get rid of traps for RAND_add and RAND_load_file
 #ifdef TASE_BIGNUM
-  static const uint64_t modeledFns [] = { (uint64_t) &make_byte_symbolic, (uint64_t) &make_byte_symbolic + trap_off, (uint64_t) &target_exit, (uint64_t) &exit_tase_shim};
+  static const uint64_t modeledFns [] = { (uint64_t) &make_byte_symbolic, (uint64_t) &make_byte_symbolic + trap_off, (uint64_t) &target_exit, (uint64_t) &exit_tase_shim, (uint64_t) &exit_tase, (uint64_t) &exit_tase + trap_off, (uint64_t) &malloc_tase, (uint64_t) &malloc_tase + trap_off};
 #endif
 
 
-  //#ifdef TASE_OPENSSL
+  #ifdef TASE_OPENSSL
   static const uint64_t modeledFns [] = {(uint64_t)&signal, (uint64_t)&malloc, (uint64_t)&read, (uint64_t)&write, (uint64_t)&connect, (uint64_t)&select, (uint64_t)&socket, (uint64_t) &getuid, (uint64_t) &geteuid, (uint64_t) &getgid, (uint64_t) &getegid, (uint64_t) &getenv, (uint64_t) &stat, (uint64_t) &free, (uint64_t) &realloc,  (uint64_t) &RAND_add, (uint64_t) &RAND_load_file,  (uint64_t) &kTest_free, (uint64_t) &kTest_fromFile, (uint64_t) &kTest_getCurrentVersion,  (uint64_t) &kTest_isKTestFile, (uint64_t) &kTest_numBytes, (uint64_t) &kTest_toFile, (uint64_t) &ktest_RAND_bytes, (uint64_t) &ktest_RAND_pseudo_bytes, (uint64_t) &ktest_connect, (uint64_t) &ktest_finish, (uint64_t) &ktest_master_secret, (uint64_t) &ktest_raw_read_stdin, (uint64_t) &ktest_readsocket, (uint64_t) &ktest_select,  (uint64_t) &ktest_start, (uint64_t) &ktest_time, (uint64_t) &time, (uint64_t) &gmtime, (uint64_t) &gettimeofday,  (uint64_t) &ktest_writesocket, (uint64_t) &fileno, (uint64_t) &fcntl, (uint64_t) &fopen, (uint64_t) &fopen64, (uint64_t) &fclose,  (uint64_t) &fwrite, (uint64_t) &fwrite_unlocked, (uint64_t) &fflush, (uint64_t) &fread, (uint64_t) &fread_unlocked, (uint64_t) &fgets, (uint64_t) &__isoc99_sscanf, (uint64_t) &sscanf, (uint64_t) &gethostbyname, (uint64_t) &setsockopt, (uint64_t) &__ctype_tolower_loc, (uint64_t) &__ctype_b_loc, (uint64_t) &__errno_location,  (uint64_t) &BIO_printf, /* (uint64_t) &BIO_snprintf,*/ (uint64_t) &vfprintf,  (uint64_t) &sprintf, (uint64_t) &printf,   (uint64_t) &OpenSSLDie, (uint64_t) &shutdown , (uint64_t) &malloc_tase, (uint64_t) &realloc_tase, (uint64_t) &calloc_tase, (uint64_t) &free_tase, (uint64_t) &memcpy_tase, (uint64_t) &getpid , (uint64_t) &RAND_poll};
-  //#endif 
+  #endif 
   
   bool isModeled = std::find(std::begin(modeledFns), std::end(modeledFns), rip) != std::end(modeledFns);
 
@@ -4336,7 +4351,7 @@ bool isSpecialInst (uint64_t rip) {
   //label of the function.
 
 
-  //#ifdef TASE_OPENSSL
+  #ifdef TASE_OPENSSL
   if (
       rip == (uint64_t) &ktest_start             + trap_off ||
       rip == (uint64_t) &ktest_writesocket       + trap_off ||
@@ -4377,7 +4392,11 @@ bool isSpecialInst (uint64_t rip) {
   }  else {
     return false;
   }
-  //#endif
+  #endif
+
+  #ifdef TASE_BIGNUM
+  return isModeled;
+  #endif
 }
 
 
@@ -4457,7 +4476,21 @@ void Executor::klee_interp_internal () {
       printf("RIP at top of klee_interp_internal loop is 0x%lx \n", rip);
     }
     
-   
+    //DBG
+    /*
+    outs() << "Printing RDX for time " << interpCtr << "\n";
+    ref <Expr> RDX = tase_helper_read((uint64_t)&(target_ctx_gregs[GREG_RDX]), 8);
+    RDX->print(outs());
+    outs() << "\n";
+    outs().flush();
+
+    outs() << "Printing EFLAGS for time " << interpCtr << "\n";
+    ref <Expr> EFL = tase_helper_read((uint64_t)&(target_ctx_gregs[GREG_EFL]), 2);
+    EFL->print(outs());
+    outs() << "\n";
+    outs().flush();
+    */
+    //End DBG
       
       
     //IMPORTANT -- The springboard is written assuming we never try to
@@ -4508,8 +4541,7 @@ void Executor::klee_interp_internal () {
 	ref<ConstantExpr> regExpr = ConstantExpr::create(regAddr, Context::get().getPointerWidth());  //Wasteful
 	arguments.push_back(regExpr);
 	bindArgument(interpFn, 0, *GlobalExecutionStatePtr, arguments[0]);
-
-        
+      
 	run(*GlobalExecutionStatePtr);
 	
 	
@@ -4552,8 +4584,8 @@ void Executor::klee_interp_internal () {
 	if (taseDebug) {
 	  ref<Expr> FinalRIPExpr = target_ctx_gregs_OS->read(GREG_RIP * 8, Expr::Int64);
 	  if (!(isa<ConstantExpr>(FinalRIPExpr))) {
-	    //Hack to make sure garbageCtr isn't optimized out
-	    printf("garbageCtr is 0x%lx \n", garbageCtr);
+	    //Hack to make sure garbage counter isn't optimized out
+	    printf("garbage is 0x%lx \n", garbage);
 	    
 	    printf("ERROR: Failed to concretize RIP \n");
 	    std::cout.flush();

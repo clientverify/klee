@@ -11,6 +11,8 @@
 
 #include "/playpen/humphries/tase/TASE/openssl/e_os.h"
 
+#include "../../../test/proj_defs.h"
+
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -951,7 +953,7 @@ ssize_t ktest_writesocket_tase(int fd, const void *buf, size_t count)
 
  int ktest_RAND_bytes_tase(unsigned char *buf, int num)
 {
-  //#ifdef TASE_OPENSSL
+  #ifdef TASE_OPENSSL
   
   if (ktest_mode == KTEST_NONE) {
     return RAND_bytes(buf, num);
@@ -987,14 +989,14 @@ ssize_t ktest_writesocket_tase(int fd, const void *buf, size_t count)
     perror("ktest_RAND_bytes coding error - should never get here");
     exit(4);
   }
-  //#endif
+  #endif
   return 0;
 }
 
 int ktest_RAND_pseudo_bytes_tase(unsigned char *buf, int num)
 {
 
-  //#ifdef TASE_OPENSSL
+  #ifdef TASE_OPENSSL
   if (ktest_mode == KTEST_NONE) {
     return RAND_pseudo_bytes(buf, num);
   }
@@ -1029,7 +1031,7 @@ int ktest_RAND_pseudo_bytes_tase(unsigned char *buf, int num)
     perror("ktest_RAND_pseudo_bytes coding error - should never get here");
     exit(4);
   }
-  //#endif  
+  #endif  
   return 0;
 }
 

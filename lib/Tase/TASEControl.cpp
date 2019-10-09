@@ -29,6 +29,8 @@ extern bool taseDebug;
 extern bool modelDebug;
 extern bool workerSelfTerminate;
 extern void deserializeAssignments ( void * buf, int bufSize, klee::Executor * exec, CVAssignment * cv);
+enum testType : int {EXPLORATION, VERIFICATION};
+extern enum testType test_type;
 
 extern void reset_run_timers();
 extern void print_run_timers();
@@ -515,11 +517,16 @@ void manage_workers () {
 
   //Exit case
   if (*ms_QA_size_ptr == 0 && *ms_QR_size_ptr == 0 && *target_started_ptr == 1) {
-    fprintf(stderr,"Manager found empty QA and QR.  Latest round reached was %d \n", managerRoundCtr);
-    if (*target_ended_ptr != 1) {
-      fprintf(stderr,"Verification failed. \n");
+
+    if (test_type == VERIFICATION) {
+      fprintf(stderr,"Manager found empty QA and QR.  Latest round reached was %d \n", managerRoundCtr);
+      if (*target_ended_ptr != 1) {
+	fprintf(stderr,"Verification failed. \n");
+      } else {
+	fprintf(stderr,"All messages verified. \n");
+      }
     } else {
-      fprintf(stderr,"All messages verified. \n");
+      fprintf(stderr, "Manager found emptied QA and QR.\n");
     }
     
     std::exit(EXIT_SUCCESS);

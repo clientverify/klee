@@ -65,6 +65,7 @@
 #include "klee/CVAssignment.h"
 #include "klee/util/ExprUtil.h"
 #include "tase/TASEControl.h"
+#include "../../../test/proj_defs.h"
 #include <sys/prctl.h>
 #include <sys/time.h>
 #include <iostream>
@@ -133,6 +134,8 @@ int retryMax = 2;
 extern int * target_started_ptr;
 int masterPID;
 
+
+
 #ifdef TASE_BIGNUM
 extern int symIndex;
 extern int numEntries;
@@ -141,7 +144,7 @@ extern void  exit_tase();
 
 void __attribute__ ((noreturn)) transferToTarget()  {
 
-  //#ifdef TASE_OPENSSL
+  #ifdef TASE_OPENSSL
   if (OpenSSLTest) {
     char * ktestModeName = "-playback";
     memset(ktestMode, 0, sizeof (ktestMode));
@@ -158,7 +161,7 @@ void __attribute__ ((noreturn)) transferToTarget()  {
     memset(ktestPath, 0, sizeof(ktestPath));
     strncpy(ktestPath, ktestPathName, strlen(ktestPathName));
   }
-  //#endif
+  #endif
 
   run_start_time = util::getWallTime();
   
