@@ -17,10 +17,16 @@
 #include "klee/Internal/Support/ErrorHandling.h"
 #include "klee/Internal/Module/InstructionInfoTable.h"
 #include "klee/Internal/Module/KInstruction.h"
+#include "../Core/Util.h"
 
 #include "llvm/ADT/StringExtras.h"
 
 namespace cliver {
+
+llvm::cl::opt<bool>
+PrintSymbolicBranches("print-symbolic-branches",
+             llvm::cl::desc("Print source data of symbolic branches"),
+             llvm::cl::init(false));
 
 klee::Atomic<unsigned>::type CVExecutionState::next_id_;
 
@@ -93,6 +99,18 @@ CVExecutionState* CVExecutionState::clone(ExecutionStateProperty* property) {
   cloned_state->array_name_index_map_ = array_name_index_map_;
 
   cloned_state->multi_pass_assignment_ = multi_pass_assignment_;
+
+  if(PrintSymbolicBranches){
+    llvm::Instruction* current_inst = this->prevPC->inst;
+    //We should be running a pass to lower switch instructions to branches.
+    assert(current_inst->getOpcode() != llvm::Instruction::Switch);
+    if(current_inst->getOpcode() == llvm::Instruction::Br){
+      std::string ins_data = get_instruction_data(current_inst);
+      if(ins_data != ""){
+        std::cout << "Symbolic Branch: " << ins_data << "\n";
+      }
+    }
+  }
 
   return cloned_state;
 }
