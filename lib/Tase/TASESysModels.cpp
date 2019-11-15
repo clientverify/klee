@@ -1,5 +1,4 @@
-
-#include "../Core/Executor.h"
+ #include "../Core/Executor.h"
 #include "../Core/Context.h"
 #include "../Core/CoreStats.h"
 #include "../Core/ExternalDispatcher.h"
@@ -87,12 +86,12 @@ using namespace klee;
 #include <fstream>
 
 #include <byteswap.h>
-
+extern int peekCtr;
 extern void tase_exit();
 
 extern uint64_t total_interp_returns;
 extern bool taseManager;
-extern greg_t * target_ctx_gregs;
+extern tase_greg_t * target_ctx_gregs;
 extern klee::Interpreter * GlobalInterpreter;
 extern MemoryObject * target_ctx_gregs_MO;
 extern ObjectState * target_ctx_gregs_OS;
@@ -105,7 +104,7 @@ extern uint64_t interpCtr;
 extern bool taseDebug;
 extern bool use_XOR_opt;
 extern bool modelDebug;
-extern void printCtx(greg_t *);
+extern void printCtx(tase_greg_t *);
 extern void * rodata_base_ptr;
 extern uint64_t rodata_size;
 
@@ -121,7 +120,6 @@ extern enum runType exec_mode;
 extern int c_special_cmds; //Int used by cliver to disable special commands to s_client.  Made global for debugging
 extern std::stringstream workerIDStream;
 extern void * MPAPtr;
-extern int * replayPIDPtr;
 //extern multipassRecord multipassInfo;
 extern void printKTestCounters();
 extern void printProhibCounters();
@@ -142,7 +140,7 @@ extern bool dont_model;
 extern CVAssignment prevMPA ;
 extern void multipass_reset_round(bool isFirstCall);
 extern void multipass_start_round(Executor * theExecutor, bool isReplay);
-extern void multipass_replay_round(void * assignmentBufferPtr, CVAssignment * mpa, int * thePid);
+extern void multipass_replay_round(void * assignmentBufferPtr, CVAssignment * mpa);
 extern void worker_exit();
 extern char* ktest_object_names[];
 enum { CLIENT_TO_SERVER=0, SERVER_TO_CLIENT, RNG, PRNG, TIME, STDIN, SELECT,
@@ -175,6 +173,20 @@ extern bool noLog;
 extern bool tase_buf_has_taint(void * addr, int size);
 
 void tase_print_BIGNUM(FILE * f, BIGNUM * bn);
+
+
+extern double last_message_verification_time;
+
+typedef struct RoundRecord {
+  uint16_t RoundNumber;  //Index of message, starting with 0
+  uint64_t RoundRealTime;  //Time to verify message in microseconds  
+  uint16_t SocketEventType;  //0 for c2s, 1 for s2c
+  int SocketEventSize;  //Size of message in bytes
+  struct timeval SocketEventTimestamp;
+  
+} RoundRecord;
+
+extern std::vector<RoundRecord> s2c_records;
 
 void printBuf(FILE * f,void * buf, size_t count)
 {
@@ -652,7 +664,7 @@ void Executor::model_ktest_start() {
 //writesocket(int fd, const void * buf, size_t count)
 void Executor::model_ktest_writesocket() {
   double T0 = util::getWallTime();
-  
+  peekCtr = 0;
   ktest_writesocket_calls++;
   
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
@@ -830,7 +842,7 @@ void Executor::model_ktest_writesocket() {
 		printf("IMPORTANT: prevMPA and currMPA bindings differ. Replaying round from round %d pass %d \n", round_count, pass_count);
 	      }
 	      
-	      multipass_replay_round(MPAPtr, &currMPA, replayPIDPtr); //Sets up child to run from prev "NEW ROUND" point
+	      multipass_replay_round(MPAPtr, &currMPA); //Sets up child to run from prev "NEW ROUND" point
 	    } else {
 	      if (!noLog) {
 		printf("IMPORTANT: No new bindings found at end of round %d pass %d.  Not replaying. \n", round_count, pass_count);
@@ -840,7 +852,7 @@ void Executor::model_ktest_writesocket() {
 	    if (!noLog) {
 	      printf("IMPORTANT: found assignments and prevMPA is null so replaying at end of round %d pass %d \n",  round_count, pass_count);
 	    }
-	    multipass_replay_round(MPAPtr, &currMPA, replayPIDPtr); //Sets up child to run from prev "NEW ROUND" point
+	    multipass_replay_round(MPAPtr, &currMPA); //Sets up child to run from prev "NEW ROUND" point
 	    
 	  }
 	} else {
@@ -907,6 +919,8 @@ void Executor::model_ktest_writesocket() {
 void Executor::model_ktest_readsocket() {
   ktest_readsocket_calls++;
 
+  peekCtr = 0;
+  
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(GREG_RSI * 8, Expr::Int64);
   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(GREG_RDX * 8, Expr::Int64);
@@ -920,10 +934,40 @@ void Executor::model_ktest_readsocket() {
        (isa<ConstantExpr>(arg3Expr))
        ){
 
+    
     //Return result of call
     ssize_t res = ktest_readsocket_tase((int) target_ctx_gregs[GREG_RDI].u64, (void *) target_ctx_gregs[GREG_RSI].u64, (size_t) target_ctx_gregs[GREG_RDX].u64);
 
+    //Make record for S2C message
+    
+    double currTime = util::getWallTime();
+    double RT = currTime - last_message_verification_time;
+    last_message_verification_time = currTime;
 
+    KTestObject * kto = &(ktov.objects[ktov.playback_index -1]);
+    int eventType = 0;
+    if (strcmp(kto->name ,"c2s") == 0) {
+      eventType = 0;
+    } else if (strcmp(kto->name,"s2c") == 0) {
+      eventType = 1;
+    } else {
+      printf(" ERROR: unrecognized ktest object type \n");
+      fflush(stdout);
+      std::exit(EXIT_FAILURE);
+    }
+
+    RoundRecord r;
+    r.RoundNumber = round_count -1; //Ideally, we should break this out
+    //so that we have 1 round per any message type, rather than just 1
+    //round per c2s message
+    r.RoundRealTime = RT * 1000000.; 
+    r.SocketEventType = eventType;
+    r.SocketEventSize = kto->numBytes;
+    r.SocketEventTimestamp = kto->timestamp ;
+    s2c_records.push_back(r);
+
+
+    
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
     target_ctx_gregs_OS->write(GREG_RAX * 8, resExpr);
     
@@ -1248,6 +1292,7 @@ void Executor::model_ktest_select() {
 }
 
 //int RAND_poll() from openssl
+//RNG info ultimately gets learned from the handshake, so just return 1.
 void Executor::model_RAND_poll(){
   if (!noLog) {
     printf("Entering model_RAND_poll at interpCtr %lu \n", interpCtr);
@@ -1778,24 +1823,21 @@ void Executor::model_calloc() {
     size_t size  = target_ctx_gregs[GREG_RSI].u64;
     void * res = calloc(nmemb, size);
 
-    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
-    target_ctx_gregs_OS->write(GREG_RAX * 8, resExpr);
+    
     
     size_t numBytes = size*nmemb;
 
     if (roundUpHeapAllocations)
       numBytes = roundUp(numBytes,8);
 
+    tase_map_buf((uint64_t) res, numBytes);
+    
     if (!noLog) {
       printf("calloc at 0x%lx for 0x%lx bytes \n", (uint64_t) res, numBytes);
     }
 
-    //fprintf(heapMemLog, "CALLOC buf at 0x%lx - 0x%lx, size 0x%lx, interpCtr %lu \n", (uint64_t) res, ((uint64_t) res + numBytes -1), numBytes, interpCtr);
-    //Make a memory object to represent the requested buffer
-    MemoryObject * heapMem = addExternalObject(*GlobalExecutionStatePtr,res, numBytes , false );
-    const ObjectState *heapOS = GlobalExecutionStatePtr->addressSpace.findObject(heapMem);
-    ObjectState * heapOSWrite = GlobalExecutionStatePtr->addressSpace.getWriteable(heapMem,heapOS);  
-    heapOSWrite->concreteStore = (uint8_t *) res;
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    target_ctx_gregs_OS->write(GREG_RAX * 8, resExpr);
 
     do_ret();//fake a ret
     
@@ -2071,6 +2113,83 @@ void Executor::model_fclose() {
   
 }
 
+// http://man7.org/linux/man-pages/man3/fseek.3.html
+//int fseek(FILE *stream, long offset, int whence);
+
+// Just pass the call through
+void Executor::model_fseek() {
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(GREG_RSI * 8, Expr::Int64);
+  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(GREG_RDX * 8, Expr::Int64);
+  
+  if (  (isa<ConstantExpr>(arg1Expr)) &&
+	(isa<ConstantExpr>(arg2Expr)) &&
+	(isa<ConstantExpr>(arg3Expr)) ) {
+
+    FILE* stream = (FILE *) target_ctx_gregs[GREG_RDI].u64;
+    long offset = (long) target_ctx_gregs[GREG_RSI].u64;
+    int whence = (int) target_ctx_gregs[GREG_RDX].u64;
+    int res = fseek(stream, offset, whence);
+    
+    //Return result
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    target_ctx_gregs_OS->write(GREG_RAX * 8, resExpr);
+    
+    do_ret();
+    
+  } else {
+    printf("ERROR in model_fseek -- symbolic args \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+}
+
+//http://man7.org/linux/man-pages/man3/ftell.3p.html
+// long ftell(FILE *stream);
+
+// Just pass the call through
+void Executor::model_ftell() {
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
+  if (  (isa<ConstantExpr>(arg1Expr)) ) {
+
+    FILE * stream = (FILE *) target_ctx_gregs[GREG_RDI].u64;
+    long res = ftell(stream);
+
+    //Return result
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    target_ctx_gregs_OS->write(GREG_RAX * 8, resExpr);
+    
+    do_ret();
+    
+  } else {
+    printf("ERROR in model_tell -- symbolic args \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+}
+
+
+//http://man7.org/linux/man-pages/man3/rewind.3p.html
+//void rewind(FILE *stream);
+
+//Just pass the call through
+void Executor::model_rewind() {
+  
+   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
+  if (  (isa<ConstantExpr>(arg1Expr)) ) {
+
+    FILE * stream = (FILE *) target_ctx_gregs[GREG_RDI].u64;
+    rewind(stream);
+
+    do_ret();
+    
+  } else {
+    printf("ERROR in model_rewind -- symbolic args \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+
+}
 
 //http://man7.org/linux/man-pages/man3/fread.3.html
 //size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
@@ -2477,7 +2596,9 @@ void Executor::model_select() {
 
     ref <ConstantExpr> Zero = ConstantExpr::create(0, Expr::Int8);
     ref <Expr> someFDPicked = NotExpr::create(EqExpr::create(all_bits_or, Zero));
+    //ref <Expr> someFDPicked = UgtExpr::create(all_bits_or,Zero);
 
+    
     if (!noLog) {
       if (isa<ConstantExpr> (someFDPicked) ) {
 	printf("someFDPicked is a constant expr \n");
@@ -2485,7 +2606,7 @@ void Executor::model_select() {
 	printf("someFDPicked is NOT a constant expr \n");
       } 
     }
-    addConstraint(*GlobalExecutionStatePtr, someFDPicked);
+    addConstraint(*GlobalExecutionStatePtr, someFDPicked); 
 
     //ref<EqExpr> wfdsEqExpr = EqExpr::create(wfdsMaskExpr, 0);
     //ref<NotExpr> wfdsNotExpr = NotExpr::create(wfdsEqExpr);
@@ -2998,7 +3119,7 @@ void Executor::model_AES_encrypt () {
       printBuf(stdout,(void *) in, AESBlockSize);
     }
     rewriteConstants( (uint64_t) in, AESBlockSize);
-
+    rewriteConstants( (uint64_t) out, AESBlockSize);
     bool hasSymbolicDependency = false;
     
     //Check to see if any input bytes or the key are symbolic
@@ -3025,7 +3146,13 @@ void Executor::model_AES_encrypt () {
       //Otherwise we're good to call natively, assuming no taint in registers
       if (modelDebug) {
 	printf("MULTIPASS DEBUG: Did not find symbolic input to AES_encrypt \n");
-	fflush(stdout);
+	printf("DBG -- touching byte in output buffer 0x%lx \n", *((uint64_t *)out));
+	uint64_t prev = *((uint64_t *) out) ;
+	*((uint64_t *) out) = 0x1234;
+	printf("DBG -- touching byte in output buffer 0x%lx \n", *((uint64_t *)out));
+	*((uint64_t *) out) = prev;
+	
+	//fflush(stdout);
       }
       if (gprsAreConcrete() && !(exec_mode == INTERP_ONLY)) {
 	forceNativeRet = true;
@@ -3332,11 +3459,16 @@ void Executor::model_EC_KEY_generate_key () {
   if ( (isa<ConstantExpr>(arg1Expr)) ) {
     
     EC_KEY * eckey = (EC_KEY *) target_ctx_gregs[GREG_RDI].u64;
-     
+    
     printf("Entering model_EC_KEY_generate_key for time %d \n", EC_KEY_generate_key_calls );
+    if (taseDebug) {
+      fflush(stdout);
+    }
     if (enableMultipass) {
       printf("MULTIPASS DEBUG: Calling EC_KEY_generate_key with symbolic return \n"); 
-
+      if (taseDebug) {
+	fflush(stdout);
+      }
       if (eckey->priv_key == NULL)
 	eckey->priv_key = BN_new_tase();
       
@@ -3372,6 +3504,7 @@ void Executor::model_EC_KEY_generate_key () {
     
   } else {
     printf("ERROR: symbolic arg passed to model_EC_KEY_generate_key \n");
+    fflush(stdout);
     std::exit(EXIT_FAILURE);
   }
 }
@@ -3607,7 +3740,9 @@ void Executor::model_EC_POINT_point2oct() {
 
     bool hasSymbolicInput = false;
 
-    size_t field_len = BN_num_bytes(&group->field);
+    size_t field_len = 32; // Should be BN_num_bytes(&group->field), but we need
+    //an implementation of that linked in.  Just hardcoded for 32 for now because it's
+    //what's used in the cliver data set.
     
     size_t ret = (form == POINT_CONVERSION_COMPRESSED) ? 1 + field_len : 1 + 2*field_len;
     if (modelDebug){
@@ -3656,6 +3791,7 @@ void Executor::model_EC_POINT_point2oct() {
 
   } else {
     printf("ERROR: model_EC_POINT_point2oct called with symbolic input \n");
+    fflush(stdout);
     std::exit(EXIT_FAILURE);
   }
     #endif

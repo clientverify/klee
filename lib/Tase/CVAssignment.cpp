@@ -17,9 +17,11 @@ extern std::stringstream worker_ID_stream;
 extern std::string prev_worker_ID;
 extern int round_count;
 
-extern std::vector<const klee::Array *> round_symbolics;
+extern std::vector<const klee::Array *> round_symbolics;  //List of symbolic
+//variables learned for multipass assignment
 
-int ID_string_size = 384;
+int ID_string_size = 384;  //Max len in characters of learned symbolic
+//variable for multipass( e.g., "select_readfds_123" or "stdin_456")
 
 using namespace llvm;
 
@@ -200,11 +202,7 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
 
     cm.addConstraint(value_disjunction);
 
-    T1 = util::getWallTime();
-    printf("Time from value disjunction to mayBeTrue: %lf \n", T1 - T0);
-    bool result;
-    
-    
+    bool result;    
     T0 = util::getWallTime();
     solver->mayBeTrue(klee::Query(cm,
 				  klee::ConstantExpr::alloc(0, klee::Expr::Bool)), result);
@@ -212,10 +210,6 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
     printf("Time calling mayBeTrue: %lf \n", T1 - T0);
     T0 = util::getWallTime();
 
-
-    
-   
-    
     if (result) {
       printf("INVALID solver concretization!");
       fflush(stdout);
@@ -305,7 +299,7 @@ void CVAssignment::serializeAssignments(void * buf, int bufSize) {
   }
     
   if (objects.size() > 0xFFFFFFFF) {
-    printf("ERROR: Too many constraints to serialize in TASE \n");
+    printf("FATAL ERROR: Too many constraints to serialize in TASE \n");
     std::cout.flush();
     std::exit(EXIT_FAILURE);
   }
@@ -332,7 +326,7 @@ void CVAssignment::serializeAssignments(void * buf, int bufSize) {
   
   const  char * src = tmp.c_str();
   if (strlen(src) > ID_string_size -1) {
-    printf("ERROR: worker ID string is too long \n");
+    printf("FATAL ERROR: worker ID string is too long \n");
     fflush(stdout);
     std::exit(EXIT_FAILURE);
   }
@@ -405,9 +399,12 @@ void CVAssignment::serializeAssignments(void * buf, int bufSize) {
 
   //We had better be pointing at the footer by now
   *itrPtr = 210;
+
+  uint64_t numBytesWritten = ((uint64_t) itrPtr - (uint64_t) buf);
   
-  if (((uint64_t) itrPtr - (uint64_t) buf) > bufSize) {
-    printf("Error in serialization: overflowed buffer \n");
+  if (numBytesWritten > bufSize) {
+    printf("FATAL ERROR in serialization: overflowed buffer.   \n");
+    printf("Wrote %lu bytes to buf with max %d bytes \n", numBytesWritten, bufSize);
     std::cout.flush();
     std::exit(EXIT_FAILURE);
   }
@@ -431,7 +428,7 @@ void deserializeAssignments ( void * buf, int bufSize, Executor * exec,  CVAssig
   uint8_t * itrPtr = (uint8_t *) buf;
   uint8_t magic = *itrPtr;
   if (magic != 123) {
-    printf("Error deserializing constraints -- magic tag not found \n");
+    printf("FATAL ERROR deserializing constraints -- magic tag not found \n");
     std::cout.flush();
     std::exit(EXIT_FAILURE);
   }
@@ -501,7 +498,7 @@ void deserializeAssignments ( void * buf, int bufSize, Executor * exec,  CVAssig
 
   //Magic check
   if (*itrPtr != 210) {
-    printf("Error in deserialization: couldn't find final magic value \n");
+    printf("FATAL ERROR in deserialization: couldn't find final magic value \n");
     std::cout.flush();
     std::exit(EXIT_FAILURE);
   }

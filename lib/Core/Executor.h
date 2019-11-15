@@ -435,6 +435,9 @@ private:
   void model_fwrite();
   void model_fgets();
   void model_fflush();
+  void model_fseek();
+  void model_ftell();
+  void model_rewind();
   //void model_read();  Read modeling goes through ktest fns
   //void model_readstdin();
   //void model_readsocket();

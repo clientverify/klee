@@ -45,7 +45,7 @@
 #endif
 
 #include <dirent.h>
-//#include <signal.h>
+#include <signal.h>
 #include <unistd.h>
 #include <sys/stat.h>
 //#include <sys/wait.h>
@@ -78,7 +78,7 @@ extern double last_message_verification_time;
 #include "../../../test/tase/include/tase/tase.h"
 #include "../../../test/tase/include/tase/tase_interp.h"
 extern target_ctx_t target_ctx;
-greg_t * target_ctx_gregs = target_ctx.gregs;
+tase_greg_t * target_ctx_gregs = target_ctx.gregs;
 
 uint64_t targetMemAddr;
 int glob_argc;
@@ -91,6 +91,18 @@ extern "C" void klee_interp();
 std::unordered_set<uint64_t> cartridge_entry_points;
 std::unordered_set<uint64_t> cartridges_with_flags_live;
 
+extern "C" void s_client_main(int argc, char ** argv);
+
+//This struct is to help the solver for basic blocks with only
+//two possible successors (e.g., blocks ending in "jb", "je", etc).
+
+typedef struct cartridgeDestHint {
+  uint64_t blockTop;
+  uint64_t dest1;
+  uint64_t dest2;
+} cartridgeSuccessorInfo;
+
+std::map<uint64_t, cartridgeSuccessorInfo> knownCartridgeDests;
 
 std::stringstream worker_ID_stream;
 std::string prev_worker_ID;
@@ -129,7 +141,7 @@ bool OpenSSLTest = true;
 bool dropS2C = false;
 
 int retryMax = 2;
-
+extern uint64_t trap_off;
 
 extern int * target_started_ptr;
 int masterPID;
@@ -172,7 +184,7 @@ void __attribute__ ((noreturn)) transferToTarget()  {
     target_ctx.sentinel[0] = CTX_STACK_SENTINEL;
     target_ctx.sentinel[1] = CTX_STACK_SENTINEL;
     //target_ctx.poison_reference.qword[0] = POISON_REFERENCE64;
-    //arget_ctx.poison_reference.qword[1] = POISON_REFERENCE64;
+    //target_ctx.poison_reference.qword[1] = POISON_REFERENCE64;
     target_ctx.r15.u64 = (uint64_t) &begin_target_inner;
     target_ctx.rip.u64 = (uint64_t) &begin_target_inner;
     target_ctx.rax = target_ctx.rip;
@@ -194,7 +206,7 @@ void __attribute__ ((noreturn)) transferToTarget()  {
     
     printf("sbArg is %d \n", sbArg);
     fflush(stdout);
-    enter_tase(&begin_target_inner, sbArg);
+    enter_tase(&begin_target_inner + trap_off, sbArg);
     if (taseDebug) {
       printf("TASE - returned from enter_tase... \n");
       std::cout.flush();
@@ -1428,18 +1440,45 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    printf("Detected %d total basic blocks \n", tase_num_global_records);
    
    for (uint32_t i = 0; i < tase_num_global_records; i++) 
-     cartridge_entry_points.insert(tase_global_records[i].head);
+     cartridge_entry_points.insert(tase_global_records[i].head + tase_global_records[i].head_size);
 
    int numLiveBlocks = 0;
    for (uint32_t i = 0; i < tase_num_live_flags_block_records; i++) {
-     cartridges_with_flags_live.insert(tase_live_flags_block_records[i].head);
+     cartridges_with_flags_live.insert(tase_live_flags_block_records[i].head + tase_live_flags_block_records[i].head_size);
      numLiveBlocks++;
    }
 
 
    printf("Found %d basic blocks with flags live-in \n", numLiveBlocks);
 
- };
+ }
+
+ //Attempt to load basic block successor information for basic blocks ending in
+ //non-indirect control flow (e.g., je, jne, etc).  Information goes into
+ //"knownCartridgeDests" to give solver a hint when encountering symbolic
+ //RIP values after certain basic blocks.
+
+ //This can be generalized and automated within the compiler, but for now
+ //it's a manual process. 
+ void __attribute__((noinline)) loadCartridgeDests() {
+   uint64_t branchBlockAddr1 = ((uint64_t)&s_client_main) + 0x6e23;
+   uint64_t fallthrough1 = branchBlockAddr1 + 0x1C;
+   uint64_t jumpDest1 = ((uint64_t)&s_client_main) + 0x6647;
+   cartridgeSuccessorInfo c1;
+   c1.blockTop = branchBlockAddr1;
+   c1.dest1 = fallthrough1;
+   c1.dest2 = jumpDest1;
+   knownCartridgeDests.insert(std::pair<uint64_t, cartridgeSuccessorInfo> (branchBlockAddr1, c1) );
+   
+   uint64_t BBAddr2 = ((uint64_t)&s_client_main )+0x6ab4;
+   uint64_t FT2 = BBAddr2 + 0x1C;
+   uint64_t JD2 = ((uint64_t) &s_client_main) + 0x6d97;
+   cartridgeSuccessorInfo c2;
+   c2.blockTop = BBAddr2;
+   c2.dest1 = FT2;
+   c2.dest2 = JD2;
+   knownCartridgeDests.insert(std::pair<uint64_t, cartridgeSuccessorInfo> (BBAddr2, c2));
+ }
  
  int main (int argc, char **argv, char **envp) {
    
@@ -1502,7 +1541,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      fflush(stdout);
      std::exit(EXIT_SUCCESS);
    }
-   
+
    //Redirect stdout messages to a file called "Monitor".
    //Later, calls to unix fork in executor create new filenames
    //after each fork.
@@ -1586,9 +1625,6 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 
    const Module *finalModule = interpreter->setModule(interpModule, Opts);
 
-
-   
-   
    //ABH: Entry fn for our purposes is a dummy main function.
    // It's specified in parseltongue86 as dummyMain and
    // as_Z9dummyMainv in "EntryPoint" because of cpp name mangling.  
@@ -1605,23 +1641,19 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    GlobalInterpreter = interpreter;
 
    loadCartridgeInfo();
+   loadCartridgeDests();
    
    if (taseManager) {
-
-     //Maybe we don't need the sig_ign registered for sigchld?
-     //printf("ERROR: Need to include a signal implementation and uncomment signal call in taseManager \n"); 
      masterPID = getpid();
-
-     //std::exit(EXIT_FAILURE); //ABH added this until we can comment sig back in.
-     //signal(SIGCHLD,SIG_IGN);
-         
      initManagerStructures();
-     
    }
    
    //printf("Calling tsx_init to map in pages \n");
    //std::cout.flush();
    //tsx_init();
+
+   signal(SIGCHLD, SIG_IGN);
+   
    int pid;
    double theTime = util::getWallTime();
    target_start_time = theTime;  //Moved here to initialize for both manager and workers
@@ -1646,11 +1678,11 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
        }
        //Add self to queue
        get_sem_lock();
-
+       
        int res = prctl(PR_SET_CHILD_SUBREAPER, 1);
        if (res == -1)
 	 perror("Initial prctl error ");
-
+      
        
        *target_started_ptr = 1;
        int offset = *ms_QR_size_ptr;
