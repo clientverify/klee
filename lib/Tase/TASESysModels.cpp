@@ -173,8 +173,6 @@ extern bool noLog;
 extern bool tase_buf_has_taint(void * addr, int size);
 
 void tase_print_BIGNUM(FILE * f, BIGNUM * bn);
-
-
 extern double last_message_verification_time;
 
 typedef struct RoundRecord {
@@ -186,7 +184,12 @@ typedef struct RoundRecord {
   
 } RoundRecord;
 
-extern std::vector<RoundRecord> s2c_records;
+extern std::vector<RoundRecord> ver_records;
+
+enum nextMessageType{C2S, S2C, NONE};
+extern nextMessageType getNextNetworkMsgType ();
+
+int msgCtr = 0;
 
 void printBuf(FILE * f,void * buf, size_t count)
 {
@@ -299,8 +302,6 @@ void Executor::model_memcpy_tase() {
 	      *((uint16_t *) ((uint64_t) dst + i) )  = *((uint16_t *) ((uint64_t) src + i) );
 	      i++;
 	    } else {
-	    
-	    
 	    
 	    ref <Expr> b = tase_helper_read((uint64_t) src + i, 1);
 	    tase_helper_write((uint64_t) dst +i,b );
@@ -665,15 +666,17 @@ void Executor::model_ktest_start() {
 void Executor::model_ktest_writesocket() {
   double T0 = util::getWallTime();
   peekCtr = 0;
+  msgCtr++;
+  if (!noLog) {
+    printf("Entering model_ktest_writesocket for time %d with pid %d \n", ktest_writesocket_calls, getpid());
+  }
   ktest_writesocket_calls++;
   
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(GREG_RSI * 8, Expr::Int64);
   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(GREG_RDX * 8, Expr::Int64);
 
-  if (!noLog) {
-    printf("Entering model_ktest_writesocket for time %d with pid %d \n", ktest_writesocket_calls, getpid());
-  }
+  
   
   if  (
        (isa<ConstantExpr>(arg1Expr)) &&
@@ -791,8 +794,6 @@ void Executor::model_ktest_writesocket() {
 	  */
 	}
       
-      
-
 	//Solve for multipass assignments
 	CVAssignment currMPA;
 	currMPA.clear();
@@ -803,7 +804,8 @@ void Executor::model_ktest_writesocket() {
 	  solver_end_time = util::getWallTime();
 	  solver_diff_time = solver_end_time - solver_start_time;
 	  if (!noLog) {
-	    printf("Elapsed solver time (solveForBindings) is %lf at interpCtr %lu \n", solver_diff_time, interpCtr);
+	    printf("Elapsed solver time (solveForBindings) is %lf at interpCtr %lu in round %d \n", solver_diff_time, interpCtr, round_count);
+	    printf(" ABH TMP DBG %d, %lf \n ", msgCtr, solver_diff_time);
 	  }
 	  run_solver_time += solver_diff_time;
 	  
@@ -833,8 +835,7 @@ void Executor::model_ktest_writesocket() {
 	  printf("Total time since analysis began: %lf \n", curr_time - target_start_time  );
 	  printf("Spent %lf seconds in writesock model before multipass_reset_round \n", curr_time - T0);
 	}
-	
-	
+
 	if (currMPA.size()  != 0 ) {
 	  if (prevMPA.bindings.size() != 0) {
 	    if  (prevMPA.bindings != currMPA.bindings ) {
@@ -853,42 +854,54 @@ void Executor::model_ktest_writesocket() {
 	      printf("IMPORTANT: found assignments and prevMPA is null so replaying at end of round %d pass %d \n",  round_count, pass_count);
 	    }
 	    multipass_replay_round(MPAPtr, &currMPA); //Sets up child to run from prev "NEW ROUND" point
-	    
 	  }
 	} else {
 	  if (modelDebug) {
 	    printf("IMPORTANT: No assignments found in currMPA. Not replaying inside writesocket call at round %d pass %d \n", round_count, pass_count);
-	    
 	  }
 	}
-	
-	
       }
       
-      
-      
-      if (!noLog) {
-	printf("Hit new call to multipass_reset_round in writesocket for round %d pass %d \n", round_count, pass_count);
-      }
       tase_helper_write((uint64_t) &target_ctx_gregs[GREG_RAX], ConstantExpr::create(o->numBytes, Expr::Int64));
-      
+
       round_symbolics.clear();
+      printf("Spent %lf seconds in writesock model  \n", util::getWallTime() - T0);
 
-      printf("Spent %lf seconds in writesock model before multipass_reset_round \n", util::getWallTime() - T0);
-      
-      //RESET ROUND
-      //-------------------------------------------
-      //1. MMAP a new buffer storing the ID of the replay for the current round.
-      //2. MMAP a new buffer for storing the assignments learned from the previous pass 
-      multipass_reset_round(false); //Sets up new buffer for MPA and destroys multipass child process
-      
-      //NEW ROUND
-      //-------------------------------------------
-      //1. Atomically create a new SIGSTOP'd replay process and deserialize the constraints
-      multipass_start_round(this, false);  //Gets semaphore,sets prevMPA, and sets a replay child process up
+      //Get round record
+      double currTime = util::getWallTime();
+      double RT = currTime - last_message_verification_time;
+      last_message_verification_time = currTime;
+      KTestObject * kto = &(ktov.objects[ktov.playback_index -1]);
+      int eventType = 0;
+      if (strcmp(kto->name ,"c2s") == 0) {
+	eventType = 0;
+      } else if (strcmp(kto->name,"s2c") == 0) {
+	eventType = 1;
+      } else {
+	printf(" ERROR: unrecognized ktest object type \n");
+	fflush(stdout);
+	std::exit(EXIT_FAILURE);
+      }
+      RoundRecord r;
+      r.RoundNumber = round_count;
+      r.RoundRealTime = RT * 1000000.; 
+      r.SocketEventType = eventType;
+      r.SocketEventSize = kto->numBytes;
+      r.SocketEventTimestamp = kto->timestamp ;
+      ver_records.push_back(r);
 
+      round_count++;
+      pass_count = 0;
+      
+      if (dropS2C || (getNextNetworkMsgType() == C2S) ) {
+	printf("Entering new verification round from within writesocket model \n");
+	fflush(stdout);
+	new_verification_round();
+      } else {
+	printf("Not entering new verification round from within writesocket model \n");
+	fflush(stdout);
+      }
       double theTime = util::getWallTime();
-
       if (!noLog) {
 	printf("At start of ktest_writesocket round %d pass %d, time since beginning is %lf \n", round_count, pass_count, theTime - target_start_time);
 	printf("Total time since analysis began: %lf \n", theTime - target_start_time  );
@@ -911,6 +924,25 @@ void Executor::model_ktest_writesocket() {
 
 }
 
+void Executor::new_verification_round() {
+  round_symbolics.clear();
+  
+  if (!noLog) {
+    printf("Hit new call to multipass_reset_round in writesocket for round %d pass %d \n", round_count, pass_count);
+  }
+  //RESET ROUND
+  //-------------------------------------------
+  //1. MMAP a new buffer storing the ID of the replay for the current round.
+  //2. MMAP a new buffer for storing the assignments learned from the previous pass 
+  multipass_reset_round(false); //Sets up new buffer for MPA and destroys multipass child process
+  
+  //NEW ROUND
+  //-------------------------------------------
+  //1. Atomically create a new SIGSTOP'd replay process and deserialize the constraints
+  multipass_start_round(this, false);  //Gets semaphore,sets prevMPA, and sets a replay child process up
+  
+  
+}
 //read model --------
 //ssize_t read (int filedes, void *buffer, size_t size)
 //https://www.gnu.org/software/libc/manual/html_node/I_002fO-Primitives.html
@@ -920,7 +952,7 @@ void Executor::model_ktest_readsocket() {
   ktest_readsocket_calls++;
 
   peekCtr = 0;
-  
+  msgCtr++;
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(GREG_RSI * 8, Expr::Int64);
   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(GREG_RDX * 8, Expr::Int64);
@@ -957,19 +989,26 @@ void Executor::model_ktest_readsocket() {
     }
 
     RoundRecord r;
-    r.RoundNumber = round_count -1; //Ideally, we should break this out
+    r.RoundNumber = round_count; //Ideally, we should break this out
     //so that we have 1 round per any message type, rather than just 1
     //round per c2s message
     r.RoundRealTime = RT * 1000000.; 
     r.SocketEventType = eventType;
     r.SocketEventSize = kto->numBytes;
     r.SocketEventTimestamp = kto->timestamp ;
-    s2c_records.push_back(r);
+    ver_records.push_back(r);
 
 
     
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
     target_ctx_gregs_OS->write(GREG_RAX * 8, resExpr);
+
+
+    
+    if (getNextNetworkMsgType() == C2S) {
+      printf("Detected next message type is C2S within readsocket model\n");
+      new_verification_round();
+    }
     
     do_ret();//fake a ret
 

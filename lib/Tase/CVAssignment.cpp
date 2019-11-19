@@ -67,6 +67,8 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
   //Get assignments for variables not in write condition
   //Will be inefficient if we have lots of symbolic vars per round
   //Todo -- Make sure we're not making bad assumptions about uniqueness of names
+
+  /*
   if (round_count >= 3) {
     for (std::vector<const klee::Array*>::iterator it = round_symbolics.begin(),
 	   ie = round_symbolics.end(); it != ie; ++it) {
@@ -89,7 +91,9 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
 	}
       }
     }
-  }
+    }*/
+  
+  printf("Found %d symbolics in solveForBindings \n", arrays.size());
   
   double T1 = util::getWallTime();
   printf("Time on findSymbolicObjects: %lf \n", T1 - T0);
@@ -97,9 +101,9 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
 
   //ABH: Should be able to just add in the expr via cm.addConstraint ?
   //Todo: Double check
-  //klee::ConstraintManager cm;
+  klee::ConstraintManager cm;
 
-  klee::ConstraintManager cm (ExecStatePtr->constraints);  //Fast
+  //klee::ConstraintManager cm (ExecStatePtr->constraints);  //Fast
   cm.addConstraint(expr);
 
 

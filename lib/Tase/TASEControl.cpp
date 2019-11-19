@@ -49,10 +49,10 @@ typedef struct RoundRecord {
   
 } RoundRecord;
 
-std::vector<RoundRecord> s2c_records; //Populated with logging info on first pass
-std::vector<RoundRecord> s2c_records_replay; //Populated from first pass and used during replay
+std::vector<RoundRecord> ver_records; //Populated with logging info for c2s and s2c records
 extern KTestObjectVector ktov;
 
+void worker_exit();
 
 int peekCtr = 0;
 bool guess_path_for_parent = false; 
@@ -83,6 +83,7 @@ int * replayPIDPtr; //Ptr to the pid storing the replay PID for the current roun
 int * replayLock ; //Lock to request replay.  1 is available, 0 unavailable.
 
 int * latestRoundPtr; //Pointer to furthest round found so far in verification
+int * latestPassPtr; //Pointer to latest pass in current round of verification
 int managerRoundCtr = 0;
 
 CVAssignment  prevMPA;
@@ -136,6 +137,30 @@ void release_sem_lock () {
     perror("Error in release_sem_lock");
     std::exit(EXIT_FAILURE);
   }
+}
+
+//Update counters for latest round and pass.
+//Self-terminate if workerSelfTerminate is enabled and worker isn't
+//on latest round and pass.
+void round_check() {
+  get_sem_lock();
+  if (round_count > *latestRoundPtr) {
+    *latestRoundPtr = round_count;
+    *latestPassPtr = pass_count;
+  } else if (round_count == *latestRoundPtr) {
+    if (pass_count > *latestPassPtr) {
+      *latestPassPtr = pass_count;
+    } else if (pass_count < *latestPassPtr && workerSelfTerminate) {
+      release_sem_lock();
+      worker_exit();
+    }
+  } else {
+    if (workerSelfTerminate) {
+      release_sem_lock();
+      worker_exit();
+    }
+  }
+  release_sem_lock();
 }
 
 int initialize_semaphore(int semKey) {
@@ -202,6 +227,7 @@ WorkerInfo * PidInQR(int pid) {
 WorkerInfo * PidInQA(int pid) {
   return PidInQ(pid, ms_QA_size_ptr, ms_QA_base);
 }
+
 
 //Return pointer to worker in queue with earliest round, pass, branch.
 WorkerInfo * getEarliestWorker(void * basePtr, int Qsize ) {
@@ -408,6 +434,11 @@ void select_workers () {
     WorkerInfo * earliestWorkerQR = getEarliestWorker(ms_QR_base, *ms_QR_size_ptr);
 
     if (earliestWorkerQR->round < managerRoundCtr ) {
+
+      //Need to be careful -- Don't want to allow sigstop to
+      //be delivered when a worker holds the semaphore
+      //FIX ME
+      /*
       int res = kill(earliestWorkerQR->pid, SIGSTOP);
       if (res == -1) {
 	perror("Error sigstopping in select_workers \n");
@@ -416,6 +447,7 @@ void select_workers () {
 	printf("Manager kicking pid from QR %d; pid is in round %d when latest round is %d \n", earliestWorkerQR->pid, earliestWorkerQR->round, managerRoundCtr);
       }
       QRtoQA(earliestWorkerQR);
+      */
     }
     
   
@@ -491,16 +523,26 @@ void manage_workers () {
   if (*target_ended_ptr == 1) {
     double ct = util::getWallTime();
     fprintf(stderr, "Verification complete at time %lf \n", ct - target_start_time);
+    int numNetworkMessages = 0;
+    for (int i =0; i < ktov.size; i++ ) {
+      KTestObject * kto = &(ktov.objects[i]);
+      if (strcmp(kto->name, "c2s") == 0 || strcmp(kto->name, "s2c") == 0)
+	numNetworkMessages++;
+      
+    }
+    fprintf(stderr, "%d total records for %d network messages \n", ver_records.size(), numNetworkMessages);
 
+
+   
+    
     //Kludge to fake a cliver-compatible log
     FILE * f = fopen("TASE_RESULTS.csv", "w+");
     print_log_header(f);
-    RoundRecord * rPtr = (RoundRecord *) ms_Records_base;
+    //RoundRecord * rPtr = (RoundRecord *) ms_Records_base;
     
-    for (int i = 0 ; i < *ms_Records_count_ptr; i++) {
-      RoundRecord r = *rPtr;
+    for (std::vector<RoundRecord>::iterator i = ver_records.begin(); i != ver_records.end(); i++) {
+      RoundRecord r = *i;
       print_log_record(f, r);
-      rPtr += 1;
     }
 
     //R scripts expect 2 last rows to be ignored, so populate them with bogus late values.
@@ -610,11 +652,7 @@ int tase_fork(int parentPID, uint64_t rip) {
       printf("TASE FORKING! \n");
     }
 
-    //Should actually place check to latestRoundPtr in semaphore
-    if (round_count < *latestRoundPtr && workerSelfTerminate)  {
-      worker_self_term();
-    }
-
+    round_check();
     
     WorkerInfo wi;
     wi.round = round_count;
@@ -712,8 +750,7 @@ void tase_exit() {
 
 void initManagerStructures() {
    
-   initialize_semaphore(getpid());
-   
+   initialize_semaphore(getpid());   
    ms_base = mmap(NULL, ms_size, PROT_READ|PROT_WRITE, MAP_ANON|MAP_SHARED, -1, 0);
 
    //--------------------------------------------
@@ -727,6 +764,9 @@ void initManagerStructures() {
    
    latestRoundPtr = ((int *) ms_base) + 24;
    *latestRoundPtr = 0;
+
+   latestPassPtr = ((int *) ms_base) + 32;
+   *latestPassPtr = 0;
    
    //--------------------------------------------
    //Space for queues and records----------------
@@ -773,7 +813,7 @@ void initManagerStructures() {
      fprintf(stderr, "Exiting due to reaper error in initManagerStructures \n");
      std::exit(EXIT_FAILURE);
    }
- }
+}
 
 
 //Fork off a child, and schedule it to explore the current round.
@@ -788,88 +828,14 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
     printf("Hit top of multipass_start_round \n");
     std::cout.flush();
   }
-
-  if (round_count < *latestRoundPtr  && workerSelfTerminate)  {
-    get_sem_lock(); //DBG -- Make sure this is OK
-    removeFromQR(PidInQR(getpid()));
-   
-    release_sem_lock(); //is this safe?
-    if (taseDebug){
-      printf("Worker %d is in round %d when latest round is %d. Worker exiting. \n", getpid(), round_count, *latestRoundPtr );
-      fflush(stdout);
-    }
-    std::exit(EXIT_SUCCESS);
-  } else {
-    if (taseDebug) {
-      printf("Worker sees latest round as %d; updating to %d \n", *latestRoundPtr, round_count);
-    }
-
-    get_sem_lock();
-    //Make record for eval later
-    if (round_count != 0 && round_count > *latestRoundPtr) {
-      
-      //ABH Added      
-      printf("Adding %d s2c records at end of round %d \n", s2c_records_replay.size(), round_count);
-      for (std::vector<RoundRecord>::iterator itr = s2c_records_replay.begin(); itr < s2c_records_replay.end(); itr++) {
-	addRoundRecord(*itr);
-      }
-            
-      s2c_records.clear();
-      s2c_records_replay.clear();
-      
-       //Add in S2C records if they exist
-      /*
-      for (std::vector<RoundRecord>::iterator itr = s2c_records.begin(); itr < s2c_records.end(); itr++) {
-	addRoundRecord(*itr);
-      }
-      if (s2c_records.begin() == s2c_records.end()) {
-	printf("No s2c records found \n");
-	fflush(stdout);
-      }
-      
-      s2c_records.clear();
-      
-      */
-      if(taseDebug) {
-	printf("Added S2C records \n");
-	fflush(stdout);
-      }
-      
-      
-      *latestRoundPtr = round_count;
-      double currTime = util::getWallTime();
-      double RT = currTime - last_message_verification_time;
-      last_message_verification_time = currTime;
-      
-      KTestObject * kto = &(ktov.objects[ktov.playback_index -1]);
-      int eventType = 0;
-      if (strcmp(kto->name ,"c2s") == 0) {
-	eventType = 0;
-      } else if (strcmp(kto->name,"s2c") == 0) {
-	eventType = 1;
-      } else {
-	printf(" ERROR: unrecognized ktest object type \n");
-	fflush(stdout);
-	std::exit(EXIT_FAILURE);
-      }
-      
-      RoundRecord r;
-      r.RoundNumber = round_count -1;
-      r.RoundRealTime = RT * 1000000.; 
-      r.SocketEventType = eventType;
-      r.SocketEventSize = kto->numBytes;
-      r.SocketEventTimestamp = kto->timestamp ;
-      addRoundRecord(r);
-      
-    }
-    release_sem_lock();
-    
-  }
-
+ 
+  round_check();
 
   int parentPID = getpid();
   *replayPIDPtr = getpid();
 
+  get_sem_lock();
+  
   double T1 = util::getWallTime();
   int childPID = ::fork();
   if (childPID == -1) {
@@ -880,9 +846,6 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
   
   double T2 = util::getWallTime();
 
-
-   
-  
   if (childPID != 0) { //PARENT
     if (!noLog) {
       printf("Parent PID %d forking off child pid %d for starting round %d \n", parentPID,
@@ -899,12 +862,8 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
       if (WIFSTOPPED(status))
 	break;
     }
-    //printf("In parent path \n");
-    
-    get_sem_lock();
 
     //Swap parent for child into QR
-    
     WorkerInfo * myInfo = PidInQR(getpid());
     if (myInfo != NULL) {
       myInfo->pid = childPID;
@@ -915,7 +874,7 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
     }
 
     release_sem_lock();
-    
+
     int res = kill( childPID, SIGCONT);
     if (res == -1){
 	perror("Error during kill sigcont \n");
@@ -923,9 +882,11 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
 	fflush(stdout);
     } 
 
-    
     raise(SIGSTOP);
 
+    printf("ABH DBG attempting to replay round %d \n", round_count);
+    fflush(stdout);
+    
     //Replay path
     if (!noLog) {
 
@@ -1003,18 +964,6 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
     }
     release_sem_lock();
 
-    char buf [10];
-    sprintf(buf,"%d",replayingFromPID);
-    std::string fName = std::string("ReplayS2CRecords.") + std::string(buf);
-    FILE * s2cFile = fopen(fName.c_str(), "r+");
-
-    if (s2cFile == NULL) {
-	printf("FATAL ERROR: Couldn't open replay S2C records file during replay \n");
-	fflush(stdout);
-    }
-    
-    s2c_records_replay = readRoundRecordsFromFile(s2cFile, &last_message_verification_time);
-
   } else {    //CHILD
     raise(SIGSTOP);
     reset_run_timers();
@@ -1027,13 +976,15 @@ void multipass_replay_round (void * assignmentBufferPtr, CVAssignment * mpa)  {
   //printf("Entering multipass_replay_round \n");
   print_run_timers();
   
-  while(true) {//Is this actually needed?  get_sem_lock() should block until semaphore is available
- 
-    get_sem_lock();
-    if ((round_count < *latestRoundPtr && workerSelfTerminate) || *replayPIDPtr == -1)  {
+  while(true) {
+
+    round_check();
+    
+    if ( *replayPIDPtr == -1)  {
       if (*replayPIDPtr == -1) {
 	printf("replayPIDPtr is -1 \n");
       }
+      get_sem_lock();
       removeFromQR(PidInQR(getpid()));
       release_sem_lock();
       if (!noLog) {
@@ -1043,14 +994,15 @@ void multipass_replay_round (void * assignmentBufferPtr, CVAssignment * mpa)  {
       std::exit(EXIT_SUCCESS);
     }
 
-    
+    get_sem_lock();
     if (*replayLock != 1  || (PidInQA(*replayPIDPtr) != NULL) || (PidInQR(*replayPIDPtr) != NULL) ||  *((uint8_t *) assignmentBufferPtr) != 0)  {
       release_sem_lock();  //Spin and try again after pending replay fully executes
-
-    } else {
-      
+      printf("Spinning again \n");
+      fflush(stdout);
+    } else { 
       if (*replayLock != 1) {
 	printf("IMPORTANT: control debug: Error - replayLock has unexpected value %d \n", *replayLock);
+	fflush(stdout);
       } else {
 	*replayLock = 0;
 	if (PidInQA(*replayPIDPtr) != NULL)
@@ -1065,6 +1017,9 @@ void multipass_replay_round (void * assignmentBufferPtr, CVAssignment * mpa)  {
 	release_sem_lock();
 	worker_self_term();  
       }
+
+      printf("Replay PID is %d \n", *replayPIDPtr);
+      fflush(stdout);
       
       WorkerInfo wi;
       wi.pid = *replayPIDPtr;
@@ -1083,23 +1038,12 @@ void multipass_replay_round (void * assignmentBufferPtr, CVAssignment * mpa)  {
       }
 
       mpa->serializeAssignments(assignmentBufferPtr, multipassAssignmentSize);
-
-      //Write down S2C records here
-      char buf [10];
-      sprintf(buf,"%d",getpid());
-      std::string fName = std::string("ReplayS2CRecords.") + std::string(buf);
-      FILE * recvRecordsFile = fopen(fName.c_str(), "w+");
-      if (recvRecordsFile == NULL) {
-	printf("FATAL ERROR: Couldn't open replay S2C records file \n");
-	fflush(stdout);
-      }
-      writeRecordsToFile(recvRecordsFile, s2c_records, last_message_verification_time);
-      
       
       removeFromQR(PidInQR(getpid()));
 
       *replayPIDPtr= -1;//ABH DBG
-      
+      printf("Worker exiting from round %d pass %d \n", round_count, pass_count);
+      fflush(stdout);
       release_sem_lock();
 
       std::exit(EXIT_SUCCESS);
@@ -1110,10 +1054,8 @@ void multipass_replay_round (void * assignmentBufferPtr, CVAssignment * mpa)  {
 
 void  multipass_reset_round(bool isFirstCall) {
 
-  pass_count = 0;
-  if (!isFirstCall) {
-    round_count++;
-  }
+
+
   void * tmp = mmap(NULL, multipassAssignmentSize, PROT_READ|PROT_WRITE, MAP_ANON|MAP_SHARED, -1, 0);
   get_sem_lock();
   MPAPtr = tmp;

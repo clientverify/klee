@@ -372,6 +372,8 @@ private:
   ObjectState * tase_map_buf (uint64_t addr, size_t size);
   
   int printAllPossibleValues(ref<Expr> input);
+
+  void new_verification_round();
   
   //Tase helper to write an expr directly to an addr.  Width
   //(1/2/4/8 bytes) is inferred based on type of val.
@@ -384,6 +386,7 @@ private:
   ref<Expr> tase_helper_read (uint64_t address, uint8_t byteWidth);
   void tase_make_symbolic (uint64_t addr, uint64_t len,const  char * name);
   void rewriteConstants(uint64_t addr, size_t num);
+
   
   void model_tase_debug();
   

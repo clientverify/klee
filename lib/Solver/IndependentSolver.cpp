@@ -23,6 +23,7 @@
 #include <vector>
 #include <ostream>
 #include <list>
+#include "klee/Internal/System/Time.h"
 
 using namespace klee;
 using namespace llvm;
@@ -262,6 +263,8 @@ inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
 // Caller takes ownership of returned std::list.
 static std::list<IndependentElementSet>*
 getAllIndependentConstraintsSets(const Query &query) {
+  double T0 = util::getWallTime();
+  
   std::list<IndependentElementSet> *factors = new std::list<IndependentElementSet>();
   ConstantExpr *CE = dyn_cast<ConstantExpr>(query.expr);
   if (CE) {
@@ -317,12 +320,18 @@ getAllIndependentConstraintsSets(const Query &query) {
     factors = done;
   } while (!doneLoop);
 
+  double T1 = util::getWallTime();
+  printf(" %lf seconds spent in getIndependentConstraintSets \n", T1-T0);
+  
   return factors;
 }
 
 static 
 IndependentElementSet getIndependentConstraints(const Query& query,
                                                 std::vector< ref<Expr> > &result) {
+
+  double T0 = util::getWallTime();
+  
   IndependentElementSet eltsClosure(query.expr);
   std::vector< std::pair<ref<Expr>, IndependentElementSet> > worklist;
 
@@ -364,6 +373,9 @@ IndependentElementSet getIndependentConstraints(const Query& query,
     }
     errs() << "elts closure: " << eltsClosure << "\n";
  );
+
+  double T1 = util::getWallTime();
+  printf(" %lf seconds spent in getIndependentConstraints \n", T1-T0);
 
 
   return eltsClosure;

@@ -3686,12 +3686,12 @@ void measure_interp_time(bool isPsnTrap, bool isModelTrap, uint64_t interpCtr_in
     if (target_ctx.abort_status == 0) {
       run_fault_time += diff_time;
     }
-    /*
+    
     if (!noLog) {
       printf("Elapsed time is %lf at interpCtr %lu rip 0x%lx with %lu interpreter loops and abort code 0x%08lx \n", diff_time, interpCtr, rip, interpCtr - interpCtr_init, target_ctx.abort_status);
       printf("------------------------------\n");
       }
-    */
+    
 
 }
 
@@ -4756,6 +4756,14 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) 
     bool firstSolutionValid = false;
     bool secondSolutionValid = false;
     bool res = false;
+
+    double dtmp0 = util::getWallTime();
+    Solver::Validity rtmp;
+    bool s = solver->evaluate(*GlobalExecutionStatePtr, EqExpr::create(inputExpr, ConstantExpr::create(d1, Expr::Int64)), rtmp);
+    double dtmp1 = util::getWallTime();
+    printf("%lf seconds spent in evaluate \n", dtmp1 - dtmp0);
+    
+    
     
     double t0 = util::getWallTime();
     bool success1 = solver->mayBeTrue(*GlobalExecutionStatePtr, EqExpr::create(inputExpr, ConstantExpr::create(d1, Expr::Int64)), res);    
