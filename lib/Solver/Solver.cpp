@@ -45,6 +45,22 @@ bool Solver::evaluate(const Query& query, Validity &result) {
   return impl->computeValidity(query, result);
 }
 
+bool Solver::evaluateCheat(const Query& query, Validity &result) {
+  assert(query.expr->getWidth() == Expr::Bool && "Invalid expression type!");
+
+  printf("Calling evaluateCheat \n");
+  fflush(stdout);
+  
+  // Maintain invariants implementations expect.
+  if (ConstantExpr *CE = dyn_cast<ConstantExpr>(query.expr)) {
+    result = CE->isTrue() ? True : False;
+    return true;
+  }
+
+  return impl->computeValidityCheat(query, result);
+}
+
+
 bool Solver::mustBeTrue(const Query& query, bool &result) {
   assert(query.expr->getWidth() == Expr::Bool && "Invalid expression type!");
 

@@ -27,6 +27,10 @@
 using namespace klee;
 using namespace llvm;
 
+extern UFElement * UF_Find(UFElement *);
+extern void worker_exit();
+extern bool useUF;
+
 template<class T>
 class DenseSet {
   typedef std::set<T> set_ty;
@@ -410,16 +414,147 @@ public:
   SolverRunStatus getOperationStatusCode();
   char *getConstraintLog(const Query&);
   void setCoreSolverTimeout(double timeout);
+  bool computeValidityCheat(const Query& query,
+					       Solver::Validity &result);
 };
-  
+
+IndependentSolver * IS;
+
 bool IndependentSolver::computeValidity(const Query& query,
                                         Solver::Validity &result) {
   std::vector< ref<Expr> > required;
-  IndependentElementSet eltsClosure =
-    getIndependentConstraints(query, required);
+
+
+  if (useUF) {
+    std::vector<const klee::Array *> arrs;
+    findSymbolicObjects(query.expr, arrs);
+    
+    //Get the constraints associated with each arr variable 
+    for (auto it = arrs.begin(); it != arrs.end(); it++) {
+      
+      UFElement * ufe = const_cast<UFElement *>((&((*it)->UFE)));
+      UFElement * rep = UF_Find(ufe);
+      required.insert(required.end(), rep->constraints.begin(), rep->constraints.end());
+      
+    }
+    //required.push_back(query.expr);
+    //int tmp1 = required.size();
+    //std::vector< ref<Expr> > backup;
+    //backup = required;
+    /*
+    int size1 = required.size();
+    ConstraintManager tmpCM(required);
+    
+    std::vector<ref<Expr> > tmp1;
+    IndependentElementSet tmpSet = getIndependentConstraints(Query(tmpCM,query.expr), tmp1);
+    required = tmp1;
+    int size2 = tmp1.size();
+    if (size2 - size1 > 0)
+      printf("Extra solver check reduced size of query by %d \n", size2-size1);
+    */
+    
+  }else{    
+    //required.clear();
+    IndependentElementSet eltsClosure =
+      getIndependentConstraints(query, required);
+  }
+  //int tmp2 = required.size();
+  /*
+    if (true) {
+    if (tmp1 != tmp2) {
+      outs() <<"ABH DBG 123; " << tmp1 << " cons in UF and " << tmp2 << " cons in old logic ";
+      outs() <<"\n\n\n" ;
+      outs() <<"query in question is  \n\n\n" ;
+      query.expr->print(outs());
+      outs() <<"\n\n\n";
+      for (auto it = backup.begin(); it  != backup.end(); it++) {
+	ref<Expr> cons = *it;
+	outs() << "\n";
+	outs() <<"Printing  constraint in NEW UF independent solver logic -------- \n";
+	outs() << "\n";
+	cons->print(outs());
+	outs() << "\n";
+	outs().flush();
+      }
+      
+      
+      for (auto it = required.begin(); it  != required.end(); it++) {
+	ref<Expr> cons = *it;
+	outs() << "\n";
+	outs() <<"Printing  constraint in OLD independent solver logic -------- \n";
+	outs() << "\n";
+	cons->print(outs());
+	outs() << "\n";
+	outs().flush();
+      }
+    }
+  }
+  */
+  /*
+    
+  ConstraintManager CMtmp1(required);
+  ConstraintManager CMtmp2(backup);
+
+  Solver::Validity result1;
+  Solver::Validity result2;
+  solver->impl->computeValidity(Query(CMtmp1,query.expr),result1);
+  solver->impl->computeValidity(Query(CMtmp2,query.expr),result2);
+
+  if (result1 != result2) {
+    printf("ABH DBG 321 : Mismatch in validity query \n");
+
+    if (true) {
+
+
+	outs() <<"\n\n\n" ;
+	outs() <<"query in question is  \n\n\n" ;
+	query.expr->print(outs());
+	outs() <<"\n\n\n";
+	for (auto it = backup.begin(); it  != backup.end(); it++) {
+	  ref<Expr> cons = *it;
+	  outs() << "\n";
+	  outs() <<"Printing  constraint in NEW UF independent solver logic -------- \n";
+	  outs() << "\n";
+	  cons->print(outs());
+	  outs() << "\n";
+	  outs().flush();
+	}
+
+
+	for (auto it = required.begin(); it  != required.end(); it++) {
+	  ref<Expr> cons = *it;
+	  outs() << "\n";
+	  outs() <<"Printing  constraint in OLD independent solver logic -------- \n";
+	  outs() << "\n";
+	  cons->print(outs());
+	  outs() << "\n";
+	  outs().flush();
+	}
+
+    } 
+
+    
+    fflush(stdout);
+    worker_exit();
+  }
+  */
+  
   ConstraintManager tmp(required);
   return solver->impl->computeValidity(Query(tmp, query.expr), 
-                                       result);
+				       result);
+}
+
+
+//Cheat and just  evaluate the main expr in the query
+bool IndependentSolver::computeValidityCheat(const Query& query,
+					     Solver::Validity &result) {
+  printf("Calling computeValidityCheat in IndependentSolver \n");
+  fflush(stdout);
+  std::vector< ref<Expr> > required;
+  //required.push_back(query.expr);
+  ConstraintManager tmp(required);
+  return solver->impl->computeValidity(Query(tmp, query.expr), result);
+  
 }
 
 bool IndependentSolver::computeTruth(const Query& query, bool &isValid) {

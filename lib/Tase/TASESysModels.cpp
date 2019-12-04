@@ -672,7 +672,8 @@ void Executor::model_ktest_writesocket() {
   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(GREG_RDX * 8, Expr::Int64);
 
   if (!noLog) {
-    printf("Entering model_ktest_writesocket for time %d with pid %d \n", ktest_writesocket_calls, getpid());
+    printf("Entering model_ktest_writesocket for time %d with pid %d and %d constraints \n", ktest_writesocket_calls, getpid(), GlobalExecutionStatePtr->constraints.size());
+    
   }
   
   if  (
@@ -970,7 +971,8 @@ void Executor::model_ktest_readsocket() {
     
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
     target_ctx_gregs_OS->write(GREG_RAX * 8, resExpr);
-    
+
+
     do_ret();//fake a ret
 
   } else {
@@ -1397,9 +1399,7 @@ void Executor::model_ktest_RAND_pseudo_bytes() {
 //int fileno(FILE *stream); 
 void Executor::model_fileno() {
  
-  if (!noLog){
-    printf("Entering model_fileno at %lu \n",interpCtr);
-  }
+
   
   
   /*
@@ -1521,7 +1521,6 @@ void Executor::model_getpid() {
 //Todo -- determine if we should fix result, see if uid_t is ever > 64 bits
 void Executor::model_getuid() {
 
-  printf("Calling model_getuid \n");
   uid_t uidResult = getuid();
   ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) uidResult, Expr::Int64);
   target_ctx_gregs_OS->write(GREG_RAX * 8, resExpr);
@@ -1534,8 +1533,6 @@ void Executor::model_getuid() {
 //http://man7.org/linux/man-pages/man2/geteuid.2.html
 //Todo -- determine if we should fix result prior to forking, see if uid_t is ever > 64 bits
 void Executor::model_geteuid() {
-
-  printf("Calling model_geteuid() \n");
   
   uid_t euidResult = geteuid();
   ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) euidResult, Expr::Int64);
@@ -1549,8 +1546,6 @@ void Executor::model_geteuid() {
 //http://man7.org/linux/man-pages/man2/getgid.2.html
 //Todo -- determine if we should fix result, see if gid_t is ever > 64 bits
 void Executor::model_getgid() {
-
-  printf("Calling model_getgid() \n");
   
   gid_t gidResult = getgid();
   ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) gidResult, Expr::Int64);
@@ -1580,8 +1575,6 @@ void Executor::model_getegid() {
 //Todo: This should be generalized, and also technically should inspect the input string's bytes
 void Executor::model_getenv() {
 
-  printf("Entering model_getenv \n");
-  std::cout.flush();
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
 
   if  (
@@ -1589,16 +1582,12 @@ void Executor::model_getenv() {
        ){
 
     char * res = getenv((char *) target_ctx_gregs[GREG_RDI].u64);
-
-    printf("Called getenv on 0x%lx, returned 0x%lx \n", target_ctx_gregs[GREG_RDI].u64, (uint64_t) res);
-    std::cout.flush();
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
     target_ctx_gregs_OS->write(GREG_RAX * 8, resExpr);
     
     do_ret();//Fake a ret
 
-    printf("Leaving model_getenv \n");
-    std::cout.flush();
+
   } else {
 
     printf("Found symbolic argument to model_getenv \n");
@@ -1626,10 +1615,8 @@ void Executor::model_socket() {
       ){
 
     //Todo: Verify domain, type, protocol args.
-    
     //Todo:  Generalize for better FD tracking
     int res = 3;
-    printf("Setting socket FD to %d \n", res);
     
     ref<ConstantExpr> FDExpr = ConstantExpr::create(res, Expr::Int64);
     target_ctx_gregs_OS->write(GREG_RAX * 8, FDExpr);
@@ -1664,8 +1651,6 @@ void Executor::model_BIO_printf() {
 void Executor::model_BIO_snprintf() {
 
   if (modelDebug) {
-    printf("Entered bio_snprintf at interp Ctr %lu \n", interpCtr);
-    fflush(stdout);
     
     char * errMsg = (char *) target_ctx_gregs[GREG_RDX].u64;
     
@@ -2501,9 +2486,10 @@ bool debugSelect = false;
 void Executor::model_select() {
   static int times_model_select_called = 0;
   times_model_select_called++;
-  if (!noLog) {
+  if (taseDebug) {
     printf("Entering model_select for time %d \n", times_model_select_called);
   }
+  
   double T0 = util::getWallTime();
   
   //Get the input args per system V linux ABI.
@@ -2537,6 +2523,16 @@ void Executor::model_select() {
     ref<Expr> orig_readfdExpr = tase_helper_read((uint64_t) &(readfds->fds_bits[0] ), 1) ;
     ref<Expr> orig_writefdExpr = tase_helper_read((uint64_t) &(writefds->fds_bits[0] ), 1);
 
+
+    //Doesn't work.  Would be nice to skip stdout writes.
+    //bool noStdoutWrites = false;
+    /*
+    if (noStdoutWrites && round_count > 5) {
+      ref<Expr> noStdoutMask = ConstantExpr::create(0xfd, Expr::Int8);
+      orig_writefdExpr = AndExpr::create(noStdoutMask,orig_writefdExpr);
+      }*/
+
+    
     ref<Expr> all_bits_or = ConstantExpr::create(0, Expr::Int8);
     
     
@@ -2553,8 +2549,8 @@ void Executor::model_select() {
       //Todo - Clumsy.  Improve.
       std::string s1 = "select readfds mask" + std::to_string(times_model_select_called);
       if (debugSelect) {
-	printf("Select readfds var name is %s \n", s1.c_str());
-      }
+	 printf("Select readfds var name is %s \n", s1.c_str());
+       }
       const char * constCopy1 = s1.c_str();
       char selectReadName [40];//Arbitrary number
       strncpy(selectReadName, constCopy1, 40);
@@ -2562,6 +2558,15 @@ void Executor::model_select() {
       tase_make_symbolic ((uint64_t) tmp1, 2, selectReadName);
       ref<Expr> rfdsMaskVar = tase_helper_read((uint64_t) tmp1, 1);
       ref<Expr> rfdsMaskExpr = AndExpr::create(rfdsMaskVar, orig_readfdExpr);
+
+      if (false) {
+	uint8_t readfdsIn = readfds->fds_bits[0];
+	if ((readfdsIn & ((uint8_t) 1)) == 1) {
+	  printf("Looks like stdin is set \n");
+	}
+	rfdsMaskExpr = OrExpr::create(ConstantExpr::create(1,Expr::Int8), rfdsMaskExpr);
+	
+      }
       tase_helper_write((uint64_t) &(readfds->fds_bits[0]), rfdsMaskExpr);
       
       all_bits_or = OrExpr::create(rfdsMaskExpr, all_bits_or);
@@ -2589,6 +2594,16 @@ void Executor::model_select() {
     tase_make_symbolic((uint64_t) tmp2 , 2, selectWriteName);
     ref<Expr> wfdsMaskVar = tase_helper_read((uint64_t) tmp2, 1);
     ref<Expr> wfdsMaskExpr = AndExpr::create(wfdsMaskVar, orig_writefdExpr);
+
+    if(true) {
+      uint8_t writefdsIn = writefds->fds_bits[0];
+      printf("writefdsIn is 0x%x \n", writefdsIn);
+      if ((writefdsIn &((uint8_t) 2)) == ((uint8_t)2 )) {
+	printf("Looks like writefds has stdout set.  OR-ing to set stdout bit. \n");
+	wfdsMaskExpr = OrExpr::create(ConstantExpr::create(2,Expr::Int8), wfdsMaskExpr);
+      }
+    }
+
     tase_helper_write((uint64_t) &(writefds->fds_bits[0]), wfdsMaskExpr);  
 
     all_bits_or = OrExpr::create(wfdsMaskExpr, all_bits_or);
@@ -2597,9 +2612,9 @@ void Executor::model_select() {
     ref <ConstantExpr> Zero = ConstantExpr::create(0, Expr::Int8);
     ref <Expr> someFDPicked = NotExpr::create(EqExpr::create(all_bits_or, Zero));
     //ref <Expr> someFDPicked = UgtExpr::create(all_bits_or,Zero);
-
     
-    if (!noLog) {
+    
+    if (!noLog && taseDebug ) {
       if (isa<ConstantExpr> (someFDPicked) ) {
 	printf("someFDPicked is a constant expr \n");
       } else {
@@ -2607,7 +2622,6 @@ void Executor::model_select() {
       } 
     }
     addConstraint(*GlobalExecutionStatePtr, someFDPicked); 
-
     //ref<EqExpr> wfdsEqExpr = EqExpr::create(wfdsMaskExpr, 0);
     //ref<NotExpr> wfdsNotExpr = NotExpr::create(wfdsEqExpr);
     //addConstraint(*GlobalExecutionStatePtr, wfdsNotExpr );

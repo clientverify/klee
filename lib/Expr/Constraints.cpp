@@ -12,15 +12,63 @@
 #include "klee/util/ExprPPrinter.h"
 #include "klee/util/ExprVisitor.h"
 #include "klee/Internal/Module/KModule.h"
-
+#include "klee/util/ArrayCache.h"
 #include "llvm/IR/Function.h"
 #include "llvm/Support/CommandLine.h"
 
 #include "klee/Internal/System/Time.h"
+//#include "tase/UF_Arrays.h"
 
+#include "klee/util/ExprUtil.h"
+#include "klee/Expr.h"
 #include <map>
 
+
 using namespace klee;
+
+bool useUF = true;
+//Path compression
+klee::UFElement * UF_Find (klee::UFElement *x) {
+  if (x->parent != x)
+    x->parent = UF_Find(x->parent);
+  return x->parent;
+}
+
+klee::UFElement * UF_Union (klee::UFElement * x, klee::UFElement * y) {
+  klee::UFElement * xRep = UF_Find(x);
+  klee::UFElement * yRep = UF_Find(y);
+  if (xRep == yRep)
+    return xRep; //Nothing to do; already in same set.
+
+  //Save constraints for a merge later
+  std::vector<ref<Expr>> * xConstraints = &(x->constraints);
+  std::vector<ref<Expr>> * yConstraints = &(y->constraints);
+
+  //Merge and update rank
+  //Case 1: Merge y into x
+  //Also breaks tie if ranks equal
+  if (xRep->rank >= yRep->rank) {
+    yRep->parent = xRep;
+    if (xRep->rank == yRep->rank)
+      xRep->rank++;
+    xConstraints->insert(xConstraints->end(), yConstraints->begin(), yConstraints->end());
+    yConstraints->clear();
+    return xRep;
+  } else {
+    //Case 2: Merge x into y
+    xRep->parent = yRep;
+    if (yRep->rank == xRep->rank)
+      yRep->rank++;
+    yConstraints->insert(yConstraints->end(), xConstraints->begin(), xConstraints->end());
+    xConstraints->clear();
+    return yRep;
+  }
+
+}
+
+
+
+
 
 namespace {
   llvm::cl::opt<bool>
@@ -328,6 +376,34 @@ ref<Expr> ConstraintManager::simplifyExpr(ref<Expr> e) const {
   return ExprReplaceVisitor2(equalities).visit(e);
 }
 
+void updateUFStructures(std::vector<const klee::Array *> arrs, ref <Expr> e) {
+  if (arrs.size() == 0)
+    return;
+  
+  if (arrs.size() ==1 ) {
+    UFElement * ufe = const_cast<UFElement *>((&((arrs.front())->UFE)));
+    UFElement * rep = UF_Find(ufe);
+    rep->constraints.push_back(e);
+    return;
+  }
+
+  auto it1 = arrs.begin();
+  auto it2 = arrs.begin();
+  it2++;
+
+  while (it2 != arrs.end()) {
+    UFElement * first = const_cast<UFElement *>(&(((*it1)->UFE)));
+    UFElement * second = const_cast<UFElement *>(&(((*it2)->UFE)));
+    UFElement * rep = UF_Union(first,second);
+    
+    it1++;
+    it2++;
+    if (it2 == arrs.end())
+      rep->constraints.push_back(e);
+    
+  }
+  
+}
 
 void ConstraintManager::addConstraintInternal(ref<Expr> e) {
   // rewrite any known equalities and split Ands into different conjuncts
@@ -362,6 +438,19 @@ void ConstraintManager::addConstraintInternal(ref<Expr> e) {
     //double T0 = util::getWallTime();
     //addToEqualitiesMap(e);
     //double T1 = util::getWallTime();
+    /*
+    llvm::outs() << "\n\n Adding constraint: \n\n";
+    e->print(llvm::outs());
+    llvm::outs() << "\n\n";
+    llvm::outs().flush();
+    */
+    if (useUF) {
+      std::vector<const klee::Array * > arrays;
+      klee::findSymbolicObjects(e, arrays);     
+      //printf("Found %d arrays when adding constraint \n", arrays.size());
+      updateUFStructures(arrays, e);
+    }
+    
     constraints.push_back(e);
     //double T2 = util::getWallTime();
     //printf("DBG 8 %lf , DBG 9 %lf \n", T1-T0, T2-T1);
@@ -370,13 +459,28 @@ void ConstraintManager::addConstraintInternal(ref<Expr> e) {
 
   default:
     //addToEqualitiesMap(e);
+
+    /*
+    llvm::outs() << "\n\n Adding constraint: \n\n";
+    e->print(llvm::outs());
+    llvm::outs() << "\n\n";
+    llvm::outs().flush();
+    */
+    if (useUF) {
+      std::vector<const klee::Array * > arrays;
+      klee::findSymbolicObjects(e, arrays);
+      //printf("Found %d arrays when adding constraint \n", arrays.size());
+      updateUFStructures(arrays, e);
+    }
+    
     constraints.push_back(e);
     break;
   }
 }
 
 void ConstraintManager::addConstraint(ref<Expr> e) {
-  //Removed simplification for TASE
+
+  //Removed for TASE
   //e = simplifyExpr(e);
   addConstraintInternal(e);
 

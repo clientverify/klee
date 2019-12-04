@@ -71,6 +71,8 @@
 #include <iostream>
 #include <unordered_set>
 
+#include <fcntl.h>
+
 double target_start_time;
 double target_end_time;
 extern double run_start_time;
@@ -1461,6 +1463,9 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
  //This can be generalized and automated within the compiler, but for now
  //it's a manual process. 
  void __attribute__((noinline)) loadCartridgeDests() {
+
+   #ifdef TASE_OPENSSL
+   
    uint64_t branchBlockAddr1 = ((uint64_t)&s_client_main) + 0x6e23;
    uint64_t fallthrough1 = branchBlockAddr1 + 0x1C;
    uint64_t jumpDest1 = ((uint64_t)&s_client_main) + 0x6647;
@@ -1478,6 +1483,31 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    c2.dest1 = FT2;
    c2.dest2 = JD2;
    knownCartridgeDests.insert(std::pair<uint64_t, cartridgeSuccessorInfo> (BBAddr2, c2));
+
+   uint64_t BBAddr3 = ((uint64_t)&s_client_main) + 0x685c;
+   uint64_t FT3 = BBAddr3 + 0x1C;
+   uint64_t JD3 = ((uint64_t)&s_client_main) + 0x6a0e;
+   cartridgeSuccessorInfo c3;
+   c3.blockTop = BBAddr3;
+   c3.dest1 = FT3;
+   c3.dest2 = JD3;
+   knownCartridgeDests.insert(std::pair<uint64_t, cartridgeSuccessorInfo> (BBAddr3, c3));
+
+   uint64_t BBAddr4 = ((uint64_t) &s_client_main) + 0x6ee5;
+   uint64_t FT4 = BBAddr4 + 0x36;
+   uint64_t JD4 = ((uint64_t) &s_client_main) +0x55c0;
+   cartridgeSuccessorInfo c4;
+   c4.blockTop = BBAddr4;
+   c4.dest1 = FT4;
+   c4.dest2 = JD4;
+   knownCartridgeDests.insert(std::pair<uint64_t, cartridgeSuccessorInfo> (BBAddr4, c4));
+
+   #endif
+			      
+
+
+
+   
  }
  
  int main (int argc, char **argv, char **envp) {
@@ -1667,6 +1697,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      printf("----------------SWAPPING TO TARGET CONTEXT------------------ \n");
      std::cout.flush();
      if (taseManager) {
+       
        if (!noLog) {
 	 int i = getpid();
 	 worker_ID_stream << ".";
@@ -1676,6 +1707,12 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 	 freopen(pidString.c_str(),"w",stdout);
 	 freopen(pidString.c_str(),"w",stderr);
        }
+       
+
+       //int fd = open("/dev/null", O_WRONLY);
+       //dup2(fd,1);
+       //dup2(fd,2);
+       
        //Add self to queue
        get_sem_lock();
        

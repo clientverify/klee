@@ -19,6 +19,8 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 
+//#include "tase/UF_Arrays.h"
+
 #include <sstream>
 #include <set>
 #include <vector>
@@ -38,6 +40,30 @@ class ObjectState;
 
 template<class T> class ref;
 
+
+
+  class Expr;
+  class UFElement {
+  public:
+    UFElement * parent;
+    Array * arr;
+    int rank;
+    int size;
+
+    std::vector<ref<Expr>> constraints; //Only for representative of set
+
+    UFElement(Array * _a){
+      arr = _a;
+    }
+
+    UFElement() {}
+
+  };
+  
+
+
+
+  
 
 /// Class representing symbolic expressions.
 /**
@@ -478,11 +504,14 @@ private:
   unsigned computeHash();
 };
 
+  
 class Array {
 public:
   // Name of the array
   const std::string name;
 
+  UFElement UFE;
+  
   // FIXME: Not 64-bit clean.
   const unsigned size;
 

@@ -85,7 +85,9 @@ namespace klee {
     ///
     /// \return True on success.
     bool evaluate(const Query&, Validity &result);
-  
+
+    bool evaluateCheat(const Query&, Validity &result);
+    
     /// mustBeTrue - Determine if the expression is provably true.
     /// 
     /// This evaluates the following logical formula:

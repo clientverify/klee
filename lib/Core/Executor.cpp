@@ -170,6 +170,8 @@ uint64_t bounceback_offset = 0;
 bool tase_buf_has_taint (void * ptr, int size);
 uint64_t trap_off = 12;  //Offset from function address at which we trap
 
+std::vector<ref<Expr> > arguments;
+
 //Debug info
 extern bool noLog;
 extern bool taseDebug;
@@ -192,8 +194,8 @@ double run_end_time = 0;
 double run_interp_time = 0;
 double run_fork_time = 0;
 double run_solver_time = 0;
-
 double run_fault_time = 0;
+extern double target_start_time;
 
 FILE * prev_stdout_log = NULL;
 FILE * prev_stderr_log = NULL;
@@ -2705,24 +2707,20 @@ void Executor::doDumpStates() {
 
 void Executor::run(ExecutionState  & initialState) {
   
-  //bindModuleConstants(); AH MOVED
-  //initTimers();  AH MOVED
-  //AH: Changed code to NOT insert states since we only have 1 state per process;
-  //states.insert(&initialState);
 
   if (usingSeeds) {
     printf("ERROR: Seeds not supported in TASE \n");
     std::exit(EXIT_FAILURE);
   }
 
-  ExecutionState & state = *GlobalExecutionStatePtr;
+
 
   haltExecution = false;
   while ( !haltExecution) {
 
-    KInstruction *ki = state.pc;
-    stepInstruction(state);
-    executeInstruction(state, ki);
+    KInstruction *ki = GlobalExecutionStatePtr->pc;
+    stepInstruction(*GlobalExecutionStatePtr);
+    executeInstruction(*GlobalExecutionStatePtr, ki);
 
     //ABH: We don't need these.
     //processTimers(&state, MaxInstructionTime); 
@@ -3626,7 +3624,6 @@ void reset_run_timers() {
   run_interp_time = 0;
   run_fork_time = 0;
   run_solver_time = 0;
-
   run_fault_time =0;
   
   BB_UR = 0;
@@ -3648,13 +3645,14 @@ void print_run_timers() {
     printf(" - Interp time    : %lf \n", run_interp_time);
     printf("       -Solver    : %lf \n", run_solver_time);
     printf("       -Fork      : %lf \n", run_fork_time );
-    printf("       -Fault time: %lf \n", run_fault_time); 
-    //if (taseDebug) {
+    printf("       -Fault time: %lf \n", run_fault_time);
+
+    if (taseDebug) {
       printf("BB_UR:    %d \n", BB_UR);
       printf("BB_MOD:   %d \n", BB_MOD);
       printf("BB_PSN:   %d \n", BB_PSN);
       printf("BB_OTHER: %d \n", BB_OTHER);
-      //}
+    }
 
 
  BB_UR = 0; //Unknown return codes
@@ -3678,21 +3676,21 @@ BB_PSN = 0; //PSN return
   
 void measure_interp_time(bool isPsnTrap, bool isModelTrap, uint64_t interpCtr_init, uint64_t rip) {
 
-    double interp_exit_time = util::getWallTime();
-    double diff_time = (interp_exit_time) - (interp_enter_time);
-    run_interp_time += diff_time;    
+  double interp_exit_time = util::getWallTime();
+  double diff_time = (interp_exit_time) - (interp_enter_time);
+  run_interp_time += diff_time;    
+  
+  
+  if (target_ctx.abort_status == 0) {
+    run_fault_time += diff_time;
+  }
 
-
-    if (target_ctx.abort_status == 0) {
-      run_fault_time += diff_time;
-    }
-    /*
-    if (!noLog) {
-      printf("Elapsed time is %lf at interpCtr %lu rip 0x%lx with %lu interpreter loops and abort code 0x%08lx \n", diff_time, interpCtr, rip, interpCtr - interpCtr_init, target_ctx.abort_status);
-      printf("------------------------------\n");
-      }
-    */
-
+  
+  if (!noLog) {
+    printf("Elapsed time is %lf at interpCtr %lu rip 0x%lx with %lu interpreter loops and abort code 0x%08lx \n", diff_time, interpCtr, rip, interpCtr - interpCtr_init, target_ctx.abort_status);
+    printf("------------------------------\n");
+  }
+  
 }
 
 bool canBounceback( uint32_t abortStatus , uint64_t rip);
@@ -3731,7 +3729,7 @@ extern "C" void klee_interp () {
   if (measureTime) 
     measure_interp_time(is_psn_trap,  is_model_trap, interpCtr_init, rip);
 
-  tran_max = 8;
+  tran_max = 16;
   return; //Returns to loop in main
 }
 
@@ -3887,9 +3885,7 @@ void Executor::make_byte_symbolic_model() {
 //We make the symbolic memory object at a malloc'd address and write the bytes to addr.
 void Executor::tase_make_symbolic(uint64_t addr, uint64_t len, const char * name)  {
   //double T0 = util::getWallTime();
-  if (!noLog) {
-    printf("tase_make_symbolic called on buf 0x%lx with size 0x%lx named %s \n", addr, len, name);
-  }
+
   if (addr %2 != 0)
     printf("WARNING: tase_make_symbolic called on unaligned object \n");
 
@@ -3901,13 +3897,12 @@ void Executor::tase_make_symbolic(uint64_t addr, uint64_t len, const char * name
   executeMakeSymbolic(*GlobalExecutionStatePtr, bufMO, name);
   const ObjectState * constBufOS = GlobalExecutionStatePtr->addressSpace.findObject(bufMO);
   ObjectState * bufOS = GlobalExecutionStatePtr->addressSpace.getWriteable(bufMO, constBufOS);
-  //printf("DBG 1: %lf seconds \n", util::getWallTime() - T0);
-  //double T1 = util::getWallTime();
+
   for (uint64_t i = 0; i < len; i++) {
     tase_helper_write(addr + i, bufOS->read(i, Expr::Int8));
   }
 
-  //printf("DBG 2: %lf seconds \n", util::getWallTime() - T1);
+
 }
 
 void Executor::model_sb_disabled() {
@@ -4094,7 +4089,6 @@ void Executor::model_taseMakeSymbolic() {
      uint64_t size = target_ctx_gregs[GREG_RSI].u64;
 
      uint16_t valBeforePsn = *( (uint16_t *) symAddr);
-     printf("val before psn of first two bytes is 0x%x \n", valBeforePsn);
      
      printf("taseMakeSymbolic called on addr 0x%lx with size 0x%lx \n", symAddr, size);
      tase_make_symbolic(symAddr, size, "ExternalTaseMakeSymbolicCall");
@@ -4117,8 +4111,6 @@ void Executor::model_taseMakeSymbolic() {
 
 //int RAND_load_file(const char *filename, long max_bytes);                                                                   
 void Executor::model_RAND_load_file() {
-  printf("Entering model_RAND_load_file \n");
-  std::cout.flush();
 
   //Perform the call                                                                                                          
   //int res = RAND_load_file((char *) target_ctx_gregs[GREG_RDI], (long) target_ctx_gregs[GREG_RSI]);                           
@@ -4130,8 +4122,6 @@ void Executor::model_RAND_load_file() {
   uint64_t retAddr = *((uint64_t *) target_ctx_gregs[GREG_RSP].u64);
   target_ctx_gregs[GREG_RIP].u64 = retAddr;
   target_ctx_gregs[GREG_RSP].u64 += 8;
-  printf("Exiting model_RAND_load_file \n");
-  std::cout.flush();
 
 }
 
@@ -4139,7 +4129,6 @@ void Executor::model_RAND_load_file() {
 //Good to skip for verification because we make rng inputs symbolic later
 void Executor::model_RAND_add() {
 
-  printf("Entering model_RAND_add \n");
 
   //fake a ret                                                                                                                
   uint64_t retAddr = *((uint64_t *) target_ctx_gregs[GREG_RSP].u64);
@@ -4510,6 +4499,7 @@ void Executor::klee_interp_internal () {
   bool hasMadeProgress = false;
   
   while (true) {
+
     interpCtr++;
     if (taseDebug)
       printDebugInterpHeader();
@@ -4578,7 +4568,6 @@ void Executor::klee_interp_internal () {
 	}
       } else {
         
-	
 	KFunction * interpFn = findInterpFunction (target_ctx_gregs, kmodule);
 	
 	//We have to manually push a frame on for the function we'll be
@@ -4587,14 +4576,11 @@ void Executor::klee_interp_internal () {
 	GlobalExecutionStatePtr->pushFrame(0,interpFn);
 	GlobalExecutionStatePtr->pc = interpFn->instructions ;
 	GlobalExecutionStatePtr->prevPC = GlobalExecutionStatePtr->pc;
-	std::vector<ref<Expr> > arguments;
-	uint64_t regAddr = (uint64_t) target_ctx_gregs;
-	ref<ConstantExpr> regExpr = ConstantExpr::create(regAddr, Context::get().getPointerWidth());  //Wasteful
-	arguments.push_back(regExpr);
-	bindArgument(interpFn, 0, *GlobalExecutionStatePtr, arguments[0]);
-      
-	run(*GlobalExecutionStatePtr);
 	
+	
+	bindArgument(interpFn, 0, *GlobalExecutionStatePtr, arguments[0]);
+	run(*GlobalExecutionStatePtr);
+
 	
 
       }
@@ -4603,11 +4589,6 @@ void Executor::klee_interp_internal () {
     if(tase_buf_has_taint((void *) &(target_ctx_gregs[GREG_RIP].u64), 8) ) {
       ref<Expr> RIPExpr = tase_helper_read((uint64_t) &(target_ctx_gregs[GREG_RIP].u64), 8);
       if (!(isa<ConstantExpr>(RIPExpr))) {
-	if (!noLog) {
-	  printf("Detected symbolic RIP \n");
-	  printf("Attempting to call toUnique on symbolic RIP \n");
-	}
-
 
 	forkOnPossibleRIPValues(RIPExpr, rip_init);
 	
@@ -4750,42 +4731,52 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) 
   it = knownCartridgeDests.find(initRIP);
   if (it != knownCartridgeDests.end()) {
 
+    
     uint64_t d1 = it->second.dest1;
     uint64_t d2 = it->second.dest2;
 
     bool firstSolutionValid = false;
     bool secondSolutionValid = false;
     bool res = false;
-    
+    Solver::Validity rtmp;
+    bool s = false;
+
     double t0 = util::getWallTime();
-    bool success1 = solver->mayBeTrue(*GlobalExecutionStatePtr, EqExpr::create(inputExpr, ConstantExpr::create(d1, Expr::Int64)), res);    
-    if (res && success1) {
-      firstSolutionValid = true;
-    }
+    s = solver->evaluate(*GlobalExecutionStatePtr, EqExpr::create(inputExpr, ConstantExpr::create(d1, Expr::Int64)), rtmp);
     
-    bool success2 = solver->mayBeTrue(*GlobalExecutionStatePtr, EqExpr::create(inputExpr, ConstantExpr::create(d2, Expr::Int64)), res);
-    if (res && success2) {
-      secondSolutionValid = true;
+
+    if (!s) {
+      printf("FATAL ERROR: Solver evaluate call failed in forkOnPossibleRIPValues! \n");  
+      std::cout.flush();
+      worker_exit();
+      std::exit(EXIT_FAILURE);
     }
-    
+
     double t1 = util::getWallTime();
 
-    printf("Two mayBeTrue calls took %lf seconds \n", t1-t0);
+    if (!noLog && taseDebug) {
+      printf("Solver (forking) calls took %lf seconds in knownCartDests case \n", t1-t0);
+    }
     run_solver_time += (t1-t0);
-
     
-    if (firstSolutionValid && secondSolutionValid) {
-
-
+    
+    if (rtmp == Solver::True) {
+      tase_helper_write((uint64_t) &target_ctx_gregs[GREG_RIP], ConstantExpr::create(d1,Expr::Int64));
+      return;
+    } else if (rtmp == Solver::False) {
+      tase_helper_write((uint64_t) &target_ctx_gregs[GREG_RIP], ConstantExpr::create(d2,Expr::Int64));
+      return;
+    } else {
       
       int initPID = getpid();
-      
+      printf("Prior to fork, time since start is %lf \n", util::getWallTime() - target_start_time);
       int isTrueChild = tase_fork(initPID, initRIP); //Returns 0 for false branch, 1 for true.  Not intuitive
       prev_worker_ID = worker_ID_stream.str();
       reset_run_timers();
-      fflush(stdout);
+
       
       if (!noLog) {
+	fflush(stdout);
 	double T0 = util::getWallTime();
 	int i = getpid();
 	worker_ID_stream << ".";
@@ -4817,7 +4808,7 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) 
 	
 	double T1 = util::getWallTime();
 	printf("Spent %lf seconds resetting log streams \n", T1-T0);
-	
+	printf("Time since start is %lf \n", util::getWallTime() - target_start_time);
 	if (prev_stdout_log == NULL ) {
 	  printf("ERROR opening new file for child process logging \n");
 	  fprintf(stderr, "ERROR opening new file for child process logging for pid %d \n", i);
@@ -4826,7 +4817,7 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) 
 	  std::exit(EXIT_FAILURE);
 	}
       }
-      
+    
       run_interp_time = 0;
       interp_enter_time = util::getWallTime();
       //Force two destinations for debugging
@@ -4840,31 +4831,17 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) 
 	addConstraint(*GlobalExecutionStatePtr,  EqExpr::create(inputExpr, ConstantExpr::create(d2, Expr::Int64)));
 	tase_helper_write((uint64_t) &target_ctx_gregs[GREG_RIP], ConstantExpr::create(d2,Expr::Int64));
 	return;
-	  
-      }
-
-    } else if (firstSolutionValid) {
-      tase_helper_write((uint64_t) &target_ctx_gregs[GREG_RIP], ConstantExpr::create(d1,Expr::Int64));
-      return;
-    } else if (secondSolutionValid) {
-      tase_helper_write((uint64_t) &target_ctx_gregs[GREG_RIP], ConstantExpr::create(d2,Expr::Int64));
-      return;
-    } else {
-      printf("Unable to find solution for symbolic RIP.  Exiting \n");
-      fflush(stdout);
-      worker_exit();
+	
+      } 
     }
 
-
-
-    
   } else {
-    printf("Not adding hint for block starting at 0x%lx \n", initRIP);
+
   }
     
     
 
-  
+
 
   solver_start_time = util::getWallTime();
   ref <Expr> uniqueRIPExpr  = toUnique(*GlobalExecutionStatePtr,inputExpr);
@@ -5054,10 +5031,14 @@ void Executor::initializeInterpretationStructures (Function *f) {
 
   printf("INITIALIZING INTERPRETATION STRUCTURES \n");
 
+
+  
   GlobalExecutorPtr = this;
   GlobalExecutionStatePtr = new ExecutionState(kmodule->functionMap[f]);
 
-  
+  uint64_t regAddr = (uint64_t) target_ctx_gregs;
+  ref<ConstantExpr> regExpr = ConstantExpr::create(regAddr, Context::get().getPointerWidth());  
+  arguments.push_back(regExpr);
   
   //AH: We may not actually need this...
   printf("Initializing globals ... \n");

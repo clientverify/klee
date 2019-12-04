@@ -16,6 +16,7 @@
 #include "klee/TimerStatIncrementer.h"
 
 #include "CoreStats.h"
+#include "klee/Internal/System/Time.h"
 
 using namespace klee;
 using namespace llvm;
@@ -32,14 +33,32 @@ bool TimingSolver::evaluate(const ExecutionState& state, ref<Expr> expr,
 
   TimerStatIncrementer timer(stats::solverTime);
 
-  if (simplifyExprs)
-    expr = state.constraints.simplifyExpr(expr);
+  
+  double T0 = util::getWallTime();
+  //if (simplifyExprs)
+    //expr = state.constraints.simplifyExpr(expr);
 
+  double T1 = util::getWallTime();
+  printf("Spent %lf seconds calling simplifyExpr in evaluate \n", T1 - T0);
+  
   bool success = solver->evaluate(Query(state.constraints, expr), result);
 
   state.queryCost += timer.check() / 1e6;
 
   return success;
+}
+
+bool TimingSolver::evaluateCheat (const ExecutionState& state, ref<Expr> expr,
+				  Solver::Validity &result) {
+
+  if (ConstantExpr *CE = dyn_cast<ConstantExpr>(expr)) {
+    result = CE->isTrue() ? Solver::True : Solver::False;
+    return true;
+  }
+
+  bool success = solver->evaluateCheat(Query(state.constraints, expr), result);
+  
+  
 }
 
 bool TimingSolver::mustBeTrue(const ExecutionState& state, ref<Expr> expr, 

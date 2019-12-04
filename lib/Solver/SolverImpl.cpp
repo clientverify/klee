@@ -28,6 +28,21 @@ bool SolverImpl::computeValidity(const Query &query, Solver::Validity &result) {
   return true;
 }
 
+
+//force a segfault
+bool SolverImpl::computeValidityCheat (const Query &query, Solver::Validity &result) {
+
+  printf("computeValidityCheat -- Should not reach this line of code! \n");
+  fflush(stdout);
+  
+  
+  if (* (uint64_t *) 0x0000) {
+    return true;
+  } else
+    return false;
+  
+}
+
 const char *SolverImpl::getOperationStatusString(SolverRunStatus statusCode) {
   switch (statusCode) {
   case SOLVER_RUN_STATUS_SUCCESS_SOLVABLE:

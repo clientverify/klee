@@ -24,6 +24,23 @@
 using namespace klee;
 using namespace llvm;
 
+
+
+
+klee::UFElement * UF_MakeSet (klee::UFElement * x) {
+  if (x->arr == NULL) {
+    printf("FATAL ERROR: arr not set in MakeSet operation \n");
+    fflush(stdout);
+  }
+  x->parent = x;
+  x->rank = 0;
+  x->size = 1;
+
+  return x;
+}
+
+
+
 namespace {
   cl::opt<bool>
   ConstArrayOpt("const-array-opt",
@@ -32,6 +49,9 @@ namespace {
 }
 
 /***/
+
+
+
 
 unsigned Expr::count = 0;
 
@@ -482,6 +502,7 @@ ref<Expr>  NotOptimizedExpr::create(ref<Expr> src) {
 
 /***/
 
+
 Array::Array(const std::string &_name, uint64_t _size,
              const ref<ConstantExpr> *constantValuesBegin,
              const ref<ConstantExpr> *constantValuesEnd, Expr::Width _domain,
@@ -489,6 +510,8 @@ Array::Array(const std::string &_name, uint64_t _size,
     : name(_name), size(_size), domain(_domain), range(_range),
       constantValues(constantValuesBegin, constantValuesEnd) {
 
+  this->UFE.arr = this;
+  UF_MakeSet(&UFE);
   assert((isSymbolicArray() || constantValues.size() == size) &&
          "Invalid size for constant array!");
   computeHash();

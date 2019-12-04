@@ -58,6 +58,9 @@ namespace klee {
     ///
     /// \return True on success
     virtual bool computeValidity(const Query& query, Solver::Validity &result);
+
+    virtual bool computeValidityCheat(const Query& query, Solver::Validity &result);
+    
     
     /// computeTruth - Determine whether the given query expression is provably true
     /// given the constraints.
