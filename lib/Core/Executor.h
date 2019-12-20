@@ -32,6 +32,8 @@
 
 struct KTest;
 
+#include "../../../test/tase/include/tase/tase_interp.h"
+
 //AH: I'd really rather not include the openssl stuff here but I guess we need it
 // for the make_BN_symbolic declaration since it references a bignum struct
 // FIXME: need internal openssl data types
@@ -366,12 +368,16 @@ private:
   void model_exittran();
   void model_reopentran();
   void make_byte_symbolic_model();
-  
+
+  bool skipInstrumentationInstruction(tase_greg_t * gregs);
+  void tryKillFlags(tase_greg_t * gregs);
+  void runCoreInterpreter(tase_greg_t * gregs);
+
   //AH: Internal helper functions--------------------------
 
   ObjectState * tase_map_buf (uint64_t addr, size_t size);
   
-  int printAllPossibleValues(ref<Expr> input);
+  
   
   //Tase helper to write an expr directly to an addr.  Width
   //(1/2/4/8 bytes) is inferred based on type of val.

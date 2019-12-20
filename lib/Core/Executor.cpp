@@ -87,10 +87,7 @@
 #include <sstream>
 #include <vector>
 #include <string>
-
 #include <sys/mman.h>
-
-
 #include <errno.h>
 #include <cxxabi.h>
 
@@ -126,8 +123,6 @@ extern "C" {
   } 
 
 
-
-
 //Symbols we need to map in for TASE
 extern char edata;
 extern char __GNU_EH_FRAME_HDR,  _IO_stdin_used; //used for mapping .rodata section
@@ -138,9 +133,9 @@ extern "C" int __isoc99_sscanf ( const char * s, const char * format, ...);
 
 //TASE internals--------------------
 extern uint16_t poison_val;
-enum runType : int {INTERP_ONLY, MIXED};
-extern std::string project;
-extern enum runType exec_mode;
+
+extern bool taseDebug;
+
 extern Module * interpModule;
 Executor * GlobalExecutorPtr;
 extern klee::Interpreter * GlobalInterpreter;
@@ -172,10 +167,6 @@ uint64_t trap_off = 12;  //Offset from function address at which we trap
 
 std::vector<ref<Expr> > arguments;
 
-//Debug info
-extern bool noLog;
-extern bool taseDebug;
-extern bool modelDebug;
 uint64_t interpCtr =0;
 uint64_t instCtr=0;
 int forkSolverCalls = 0;
@@ -209,9 +200,7 @@ extern void multipass_start_round(Executor * theExecutor, bool isReplay);
 extern void multipass_replay_round(void * assignmentBufferPtr, CVAssignment * mpa, int thePid);
 extern multipassRecord multipassInfo;
 extern KTestObjectVector ktov;
-extern bool enableMultipass;
-extern bool enableBounceback;
-extern bool killFlagsHack;
+
 extern int round_count;
 extern int pass_count;
 extern int run_count;
@@ -2827,7 +2816,7 @@ void Executor::terminateState(ExecutionState &state) {
       seedMap.erase(it3);
     addedStates.erase(it);
     processTree->remove(state.ptreeNode);
-    printf(" WOULD NORMALL DELETE STATE HERE \n \n \n \n ");
+    printf(" WOULD NORMAL DELETE STATE HERE \n \n \n \n ");
     delete &state;
   }
 }
@@ -3532,7 +3521,6 @@ extern "C" void target_exit() {
 extern double target_start_time;
 extern double target_end_time;
 
-extern bool measureTime;
 
 double interp_setup_time = 0.0; 
 double interp_find_fn_time = 0.0; //Should also account for interp_setup_time
@@ -3806,8 +3794,8 @@ bool canBounceback (uint32_t abort_status, uint64_t rip) {
     BB_OTHER++;
   }
 
-  //if (exec_mode == MIXED && enableBounceback && retry && retryCtr < retryMax ) {
-  if (exec_mode == MIXED && enableBounceback && retry && tran_max > 0) {
+  //if (execMode == MIXED && enableBounceback && retry && retryCtr < retryMax ) {
+  if (execMode == MIXED && enableBounceback && retry && tran_max > 0) {
     if (modelDebug){
       printf("Attempting to bounceback to native execution at RIP 0x%lx \n", rip);
     }
@@ -4047,7 +4035,7 @@ bool Executor::instructionBeginsTransaction(uint64_t pc) {
 }
 
 bool Executor::resumeNativeExecution (){
-  if (exec_mode == INTERP_ONLY) {
+  if (execMode == INTERP_ONLY) {
     return false;
   }
   
@@ -4495,7 +4483,6 @@ bool tase_buf_has_taint (void * ptr, int size) {
 }
 
 void Executor::klee_interp_internal () {
-
   bool hasMadeProgress = false;
   
   while (true) {
@@ -4506,31 +4493,11 @@ void Executor::klee_interp_internal () {
     
     uint64_t rip = target_ctx_gregs[GREG_RIP].u64;
     uint64_t rip_init = rip;
-    
-    
-    
-    
+
     if (modelDebug) {
       printf("RIP at top of klee_interp_internal loop is 0x%lx \n", rip);
       fflush(stdout);
     }
-    
-    //DBG
-    /*
-    outs() << "Printing RDX for time " << interpCtr << "\n";
-    ref <Expr> RDX = tase_helper_read((uint64_t)&(target_ctx_gregs[GREG_RDX]), 8);
-    RDX->print(outs());
-    outs() << "\n";
-    outs().flush();
-
-    outs() << "Printing EFLAGS for time " << interpCtr << "\n";
-    ref <Expr> EFL = tase_helper_read((uint64_t)&(target_ctx_gregs[GREG_EFL]), 2);
-    EFL->print(outs());
-    outs() << "\n";
-    outs().flush();
-    */
-    //End DBG
-      
       
     //IMPORTANT -- The springboard is written assuming we never try to
     // jump right back into a modeled fn.  The sb_modeled label immediately XENDs, which will
@@ -4545,53 +4512,19 @@ void Executor::klee_interp_internal () {
     } else {
       dont_model = false;
       hasMadeProgress= true;
-      if (killFlagsHack) {
-	if (instructionBeginsTransaction(rip)) {
-	  if (cartridgeHasFlagsDead(rip)) {
-	    if (taseDebug) {
-	      printf("Killing flags \n");
-	    }
-	    uint64_t zero = 0;
-	    ref<ConstantExpr> zeroExpr = ConstantExpr::create(zero, Expr::Int64);
-	    tase_helper_write((uint64_t) &target_ctx_gregs[GREG_EFL], zeroExpr);
-	  }
-	}
-      }
-
-      //opt to skip LEAs
-      uint64_t tmp =  *((uint64_t *) rip) ;      
-      uint64_t maskedVal = tmp & 0x00ffffffffffffff;
-      if (maskedVal == 0x00000000053d8d4c ) {
-	target_ctx_gregs[GREG_RIP].u64 += trap_off;
-	if (modelDebug) {
-	  printf("Skipping LEA ... \n");
-	}
+      tryKillFlags(target_ctx_gregs);
+      
+      if (skipInstrumentationInstruction(target_ctx_gregs)) {
+	
       } else {
-        
-	KFunction * interpFn = findInterpFunction (target_ctx_gregs, kmodule);
-	
-	//We have to manually push a frame on for the function we'll be
-	//interpreting through.  At this point, no other frames should exist
-	// on klee's interpretation "stack".
-	GlobalExecutionStatePtr->pushFrame(0,interpFn);
-	GlobalExecutionStatePtr->pc = interpFn->instructions ;
-	GlobalExecutionStatePtr->prevPC = GlobalExecutionStatePtr->pc;
-	
-	
-	bindArgument(interpFn, 0, *GlobalExecutionStatePtr, arguments[0]);
-	run(*GlobalExecutionStatePtr);
-
-	
-
+        runCoreInterpreter(target_ctx_gregs);
       }
     }
     
     if(tase_buf_has_taint((void *) &(target_ctx_gregs[GREG_RIP].u64), 8) ) {
       ref<Expr> RIPExpr = tase_helper_read((uint64_t) &(target_ctx_gregs[GREG_RIP].u64), 8);
       if (!(isa<ConstantExpr>(RIPExpr))) {
-
-	forkOnPossibleRIPValues(RIPExpr, rip_init);
-	
+	forkOnPossibleRIPValues(RIPExpr, rip_init);	
 	if (taseDebug) {
 	  ref<Expr> FinalRIPExpr = target_ctx_gregs_OS->read(GREG_RIP * 8, Expr::Int64);
 	  if (!(isa<ConstantExpr>(FinalRIPExpr))) {
@@ -4602,16 +4535,14 @@ void Executor::klee_interp_internal () {
 	    std::cout.flush();
 	    std::exit(EXIT_FAILURE);
 	  }
-	}
-        
+	}        
       }
     }
 
-    
     //Kludge to get us back to native execution for prohib fns with concrete input
     
     if (forceNativeRet) {
-      if (gprsAreConcrete() && !(exec_mode == INTERP_ONLY)) {
+      if (gprsAreConcrete() && !(execMode == INTERP_ONLY)) {
 	if (taseDebug) {
 	  printf("Trying to return to native execution \n");
 	  fflush(stdout);
@@ -4630,7 +4561,6 @@ void Executor::klee_interp_internal () {
 	}
       }
     }
-
   }
 
   static int numReturns = 0;
@@ -4648,62 +4578,58 @@ void Executor::klee_interp_internal () {
   return;
 }
 
+//If instruction ptr points to instrumentation instruction, skip it
+//without interpreting the instruction via IR.  Returns true if
+//we skip, and performs the skipping.
 
-//For debugging
-//This is broken.  Fix it sometime.
-int Executor::printAllPossibleValues (ref <Expr> inputExpr) {
-  //printf("Calling printAllPossibleValues at rip 0x%lx \n", target_ctx_gregs[GREG_RIP].u64);
-  /*
-  if (isa<ConstantExpr> (inputExpr)) {
-    printf("printAllPossibleValues called on Constant Expr \n ");
-    return 1;
+//Only implemented for lea for now.
+bool Executor::skipInstrumentationInstruction (tase_greg_t * gregs) {  
+  uint64_t rip = gregs[GREG_RIP].u64;
+
+  //opt to skip LEAs
+  uint64_t tmp =  *((uint64_t *) rip) ; //get 8 bytes of next instructions
+  uint64_t maskedVal = tmp & 0x00ffffffffffffff; //grab first 7 bytes
+  if (maskedVal == 0x00000000053d8d4c ) {
+    gregs[GREG_RIP].u64 += trap_off;
+    if (modelDebug) {
+      printf("Skipping LEA ... \n");
+    }
+    return true;
+  } else {
+    return false;
   }
-  ref <ConstantExpr> trueExpr = ConstantExpr::create(1, Expr::Bool);
-  ref <ConstantExpr> solution;
-  ref<Expr> theExpr = AndExpr::create(inputExpr, trueExpr);
-  bool success = solver->getValue(*GlobalExecutionStatePtr, theExpr, solution);
-  if (!success)
-    printf("ERROR: Couldn't get solution in printAllPossibleValues \n");
-
-  uint64_t value = solution->getZExtValue();
-  printf(" Found solution 0x%lx \n",  value);
-  */
-  //bool res = false;
-  //ref<Expr> equalsExpr  = EqExpr::create(solution, inputExpr); 
   
-  //solver->mustBeTrue(*GlobalExecutionStatePtr,equalsExpr , res);
+}
 
-  //printf("mustBeTrue on first solution returns %d \n", res);
-  
-  //if (res == true)
-
-
-
-  return 1; //This part works
-
-
-
-
-  //else
-    //return 2; //Todo: Fixme
-
-  
-  //Or we could just copy inputExpr 
-  /*
-  for (int i = 0; i < 20 ; i++) {
-    ref <ConstantExpr> solution;
-    bool success = solver->getValue(*GlobalExecutionStatePtr, theExpr, solution);
-    if (!success)
-      printf("ERROR: Couldn't get solution in printAllPossibleValues \n");
-
-    uint64_t value = solution->getZExtValue();
-    printf(" On iteration %d, found solution 0x%lx \n", i, value);
-    ref<Expr> notEqualsSolution = NotExpr::create(EqExpr::create(inputExpr,solution));
-    theExpr = AndExpr::create(theExpr, notEqualsSolution);
+void Executor::tryKillFlags(tase_greg_t * gregs) {
+  if (killFlagsHack) {
+    uint64_t rip = gregs[GREG_RIP].u64;
+    if (instructionBeginsTransaction(rip)) {
+      if (cartridgeHasFlagsDead(rip)) {
+	if (taseDebug) {
+	  printf("Killing flags \n");
+	}
+	uint64_t zero = 0;
+	ref<ConstantExpr> zeroExpr = ConstantExpr::create(zero, Expr::Int64);
+	tase_helper_write((uint64_t) &gregs[GREG_EFL], zeroExpr);
+      }
+    }
   }
-  */
-  //std::cout.flush();
+}
 
+void Executor::runCoreInterpreter(tase_greg_t * gregs) {
+
+  KFunction * interpFn = findInterpFunction (gregs, kmodule);
+  
+  //We have to manually push a frame on for the function we'll be
+  //interpreting through.  At this point, no other frames should exist
+  // on klee's interpretation "stack".
+  GlobalExecutionStatePtr->pushFrame(0,interpFn);
+  GlobalExecutionStatePtr->pc = interpFn->instructions ;
+  GlobalExecutionStatePtr->prevPC = GlobalExecutionStatePtr->pc;	
+  bindArgument(interpFn, 0, *GlobalExecutionStatePtr, arguments[0]);
+  run(*GlobalExecutionStatePtr);
+  
 }
 
 

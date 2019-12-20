@@ -14,9 +14,7 @@
 #include "klee/CommandLine.h"
 #include "klee/Internal/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
-
-extern bool UseLegacyIndependentSolver;
-extern bool UseCanonicalization;
+#include "klee/CommandLine.h"
 
 namespace klee {
 Solver *constructSolverChain(Solver *coreSolver,

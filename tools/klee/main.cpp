@@ -72,6 +72,7 @@
 #include <unordered_set>
 
 #include <fcntl.h>
+int trace_ID;
 
 double target_start_time;
 double target_end_time;
@@ -117,116 +118,24 @@ extern char ktestMode[20];
 extern char ktestPath[100];
 
 int QR_MAX_WORKERS = 8;
-bool tasePreProcess = false;
-bool skipFree = false;
-bool KTestReplay;
+
 bool enableMultipass = false;
-bool killFlagsHack = false;
-bool modelDebug = false;
-bool taseDebug =false;
-bool measureTime =true;
-bool dontFork =false;
-bool noLog = false;
-bool workerSelfTerminate=true;
-enum runType : int {INTERP_ONLY, MIXED};
-enum runType exec_mode;
-enum testType : int {EXPLORATION, VERIFICATION};
-enum testType test_type;
-std::string project;
-bool useCMS4 = true;
-bool use_XOR_opt = true;
-bool UseLegacyIndependentSolver = false;
-bool UseCanonicalization = false;
-
-bool enableBounceback = false;
 bool OpenSSLTest = true;
-bool dropS2C = false;
 
-int retryMax = 2;
 extern uint64_t trap_off;
-
 extern int * target_started_ptr;
 int masterPID;
 
-
-
+bool taseDebug;
+bool dropS2C;
+bool enableTimeSeries;
 #ifdef TASE_BIGNUM
 extern int symIndex;
 extern int numEntries;
 #endif
 extern void  exit_tase();
 
-void __attribute__ ((noreturn)) transferToTarget()  {
 
-  #ifdef TASE_OPENSSL
-  if (OpenSSLTest) {
-    char * ktestModeName = "-playback";
-    memset(ktestMode, 0, sizeof (ktestMode));
-    strncpy(ktestMode, ktestModeName, strlen(ktestModeName));
-    printf("Looking in current directory for ssl ktest files and master secret\n");
-    fflush(stdout);
-    const char * ktestPathName;
-    if (!enableMultipass) {
-       ktestPathName ="./ssl.ktest";
-    } else {
-       ktestPathName ="./ssl.net.ktest";
-    }
-      
-    memset(ktestPath, 0, sizeof(ktestPath));
-    strncpy(ktestPath, ktestPathName, strlen(ktestPathName));
-  }
-  #endif
-
-  run_start_time = util::getWallTime();
-  
-  if (exec_mode == INTERP_ONLY) {
-    memset(&target_ctx, 0, sizeof(target_ctx));
-    
-    target_ctx.target_exit_addr = (uintptr_t)&exit_tase_shim;
-    target_ctx.sentinel[0] = CTX_STACK_SENTINEL;
-    target_ctx.sentinel[1] = CTX_STACK_SENTINEL;
-    //target_ctx.poison_reference.qword[0] = POISON_REFERENCE64;
-    //target_ctx.poison_reference.qword[1] = POISON_REFERENCE64;
-    target_ctx.r15.u64 = (uint64_t) &begin_target_inner;
-    target_ctx.rip.u64 = (uint64_t) &begin_target_inner;
-    target_ctx.rax = target_ctx.rip;
-    // We pretend like we have pushed a return address as part of call.
-    target_ctx.rsp.u64 = (uint64_t)(&target_ctx.target_exit_addr);
-    // Just to be careful.  rbp should not be necessary but debuggers like it.
-    target_ctx.rbp.u64 = target_ctx.rsp.u64 + sizeof(uintptr_t);
-
-    tase_springboard = (void *) &sb_disabled;
-    
-    klee_interp();
-    
-  } else {
-    
-    //Make sure you change tase_exit to exit_tase
-
-    
-    int sbArg = 1;
-    
-    printf("sbArg is %d \n", sbArg);
-    fflush(stdout);
-    enter_tase(&begin_target_inner + trap_off, sbArg);
-    if (taseDebug) {
-      printf("TASE - returned from enter_tase... \n");
-      std::cout.flush();
-    }
-    while (target_ctx_gregs[GREG_RIP].u64 != (uint64_t) &tase_exit) {
-      klee_interp();
-      if (taseDebug) {
-	printf("Returning from klee_interp ... \n");
-	std::cout.flush();
-      }
-      tase_inject(sbArg);
-      if (taseDebug) {
-	printf("Returning from tase_inject ... \n");
-	std::cout.flush();
-      }
-    }
-  }  
-}
 
 //AH:  main_original_vanilla() points to the original version of main from vanilla klee.  Not ideal but it works. 
 void main_original_vanilla();
@@ -238,93 +147,109 @@ void main_original_vanilla();
 using namespace llvm;
 using namespace klee;
 
-
-namespace {
-  cl::opt<std::string>
-  InputFile(cl::desc("<input bytecode>"), cl::Positional, cl::init("-"));
+namespace klee {
 
   cl::opt<runType>
-  execModeArg("execMode", cl::desc("INTERP_ONLY or MIXED (native and interpretation)"),
+  execMode("execMode", cl::desc("INTERP_ONLY or MIXED (native and interpretation)"),
 	      cl::values(clEnumValN(INTERP_ONLY, "INTERP_ONLY", "only execute via interpreter"),
                   clEnumValN(MIXED, "MIXED", "execute natively in transactions and interpret ")
 		  KLEE_LLVM_CL_VAL_END),
 
 	      cl::init(MIXED));
   
-  //enum testType : int {EXPLORATION, VERIFICATION};
-  cl::opt<testType>
-  testTypeArg("testType", cl::desc("EXPLORATION or VERIFICATION"),
+
+  cl::opt<TASETestType>
+  testType("testType", cl::desc("EXPLORATION or VERIFICATION"),
 	      cl::values(clEnumValN(EXPLORATION, "EXPLORATION", "Just execute and don't try to verify or do multiple passes"),
                   clEnumValN(VERIFICATION, "VERIFICATION", "Mark certain functions as symbolic and attempt to verify against a message log with multipass ")
 									     KLEE_LLVM_CL_VAL_END),
 	      
 	      cl::init(EXPLORATION));
 
-  cl::opt<bool>
-  skipFreeArg("skipFree", cl::desc("Debugging option to skip frees"), cl::init(false));
 
+  cl::opt<std::string> verificationLog("verificationLog", cl::desc("ktest file to verify against for OpenSSL "), cl::init("./ssl.ktest"));
+
+  cl::opt<std::string> masterSecretFile("masterSecretFile", cl::desc("File containing master secret for OpenSSL verification"), cl::init("./ssl.mastersecret"));
   
   cl::opt<bool>
-  killFlagsHackArg("killFlagsHack", cl::desc("Option to kill flags after each jump to the springboard"), cl::init(false));
-  
+  skipFree("skipFree", cl::desc("Debugging option to skip frees"), cl::init(false));
   
   cl::opt<bool>
-  taseManagerArg("taseManager", cl::desc("Fork off a manager process in TASE.  Expect a fork bomb if false."), cl::init(false));
+  killFlagsHack("killFlagsHack", cl::desc("Option to kill flags after each jump to the springboard"), cl::init(false));  
+  
+  cl::opt<bool>
+  taseManager("taseManager", cl::desc("Fork off a manager process in TASE.  Expect a fork bomb if false."), cl::init(false));
 
   cl::opt<bool>
-  tasePreProcessArg("tasePreProcess", cl::desc("Set to TRUE to run preprocessing in TASE and generate IR with code located in the executable"), cl::init(false));
+  tasePreProcess("tasePreProcess", cl::desc("Set to TRUE to run preprocessing in TASE and generate IR with code located in the executable"), cl::init(false));
   
   cl::opt<bool>
   taseDebugArg("taseDebug", cl::desc("Verbose logging in TASE"), cl::init(false));
 
   cl::opt<bool>
-  modelDebugArg("modelDebug", cl::desc("Logging for models in TASE"), cl::init(false));
+  modelDebug("modelDebug", cl::desc("Logging for models in TASE"), cl::init(false));
   
   cl::opt<bool>
-  dontForkArg("dontFork", cl::desc("Disable forking in TASE for debugging"), cl::init(false));
+  dontFork("dontFork", cl::desc("Disable forking in TASE for debugging"), cl::init(false));
 
   cl::opt<bool>
-  noLogArg("noLog", cl::desc("No logging at all in TASE"), cl::init(false));
-  
-   cl::opt<bool>
-   workerSelfTerminateArg("workerSelfTerminate", cl::desc("Workers will exit if they see they're in an earlier round"), cl::init(true));
-
-
-  cl::opt<bool>
-  useLegacyIndependentSolverArg("use-legacy-independent-solver", cl::desc("Per cliver, pass through getInitialValue call in the independent solver without aggressive optimization"), cl::init(false));
-
-  cl::opt<bool>
-  useCanonicalizationArg("UseCanonicalization", cl::desc("Per cliver, canonicalize queries to be independent of variable name"), cl::init(false));
+  noLog("noLog", cl::desc("No logging at all in TASE"), cl::init(false));
   
   cl::opt<bool>
-  enableBouncebackArg("enableBounceback", cl::desc("Try to bounce back to native execution in TASE depending on abort code"), cl::init(false));
+  workerSelfTerminate("workerSelfTerminate", cl::desc("Workers will exit if they see they're in an earlier round"), cl::init(true));
+
+  cl::opt<bool>
+  UseLegacyIndependentSolver("use-legacy-independent-solver", cl::desc("Per cliver, pass through getInitialValue call in the independent solver without aggressive optimization"), cl::init(false));
+
+  cl::opt<bool>
+  UseCanonicalization("UseCanonicalization", cl::desc("Per cliver, canonicalize queries to be independent of variable name"), cl::init(false));
+  
+  cl::opt<bool>
+  enableBounceback("enableBounceback", cl::desc("Try to bounce back to native execution in TASE depending on abort code"), cl::init(false));
 
   cl::opt<bool>
   dropS2CArg("dropS2C", cl::desc("Drop server to client messages for verification after the handshake"), cl::init(false));
+
+  cl::opt<bool>
+  enableTimeSeriesArg("enableTimeSeries", cl::desc("Perform verification across 21 traces and wait between message arrivals to simulate actual test conditions"), cl::init(false));
   
   cl::opt<bool>
-  measureTimeArg("measureTime", cl::desc("Time interpretation rounds in TASE for debugging"), cl::init(true));
+  measureTime("measureTime", cl::desc("Time interpretation rounds in TASE for debugging"), cl::init(true));
 
   cl::opt<bool>
-  useCMS4Arg("useCMS4", cl::desc("Use cryptominisat4 instead of minisat as the SAT backend for STP "), cl::init(true));
+  useCMS4("useCMS4", cl::desc("Use cryptominisat4 instead of minisat as the SAT backend for STP "), cl::init(true));
 
   cl::opt<bool>
-  useXOROptArg("useXOROpt", cl::desc("Use optimization from cliver to eliminate unnecessary XOR expressions when using solver in writesocket model"), cl::init(true));
+  useXOROpt("useXOROpt", cl::desc("Use optimization from cliver to eliminate unnecessary XOR expressions when using solver in writesocket model"), cl::init(true));
   
   cl::opt<std::string>
-  projectArg("project", cl::desc("Name of project in TASE"), cl::init("-"));
+  project("project", cl::desc("Name of project in TASE"), cl::init("-"));
 
   cl::opt<bool>
-  disableSpringboardArg("disableSpringboard", cl::desc("Enable or noop the springboard"), cl::init(false));
+  disableSpringboard("disableSpringboard", cl::desc("Enable or noop the springboard"), cl::init(false));
 
   cl::opt<int>
-  retryMaxArg("retryMax", cl::desc("Number of times to try and bounceback to native execution if abort status allows it "), cl::init(2));
+  retryMax("retryMax", cl::desc("Number of times to try and bounceback to native execution if abort status allows it "), cl::init(2));
 
   cl::opt<int>
-  QRMaxWorkersArg("QRMaxWorkers", cl::desc("Maximum number of workers in TASE "), cl::init(8));
+  QRMaxWorkers("QRMaxWorkers", cl::desc("Maximum number of workers in TASE "), cl::init(8));
   
   cl::opt<int>
-  tranMaxArg("tranBBMax", cl::desc("Max number of basic blocks to wrap into a single transaction"), cl::init(8));
+  tranMaxArg("tranBBMax", cl::desc("Max number of basic blocks to wrap into a single transaction"), cl::init(16));
+
+  #ifdef TASE_BIGNUM
+  cl::opt<int>
+  symIndexArg("symIndex", cl::desc("Index of symbolic byte in bignum test "), cl::init(100));
+
+  cl::opt<int>
+  numEntriesArg("numEntries", cl::desc("Size of array in bignum test "), cl::init(1000));
+  #endif
+}
+
+namespace {
+  cl::opt<std::string>
+  InputFile(cl::desc("<input bytecode>"), cl::Positional, cl::init("-"));
+
   
   cl::opt<std::string>
   EntryPoint("entry-point",
@@ -380,14 +305,6 @@ namespace {
   cl::opt<bool>
   OptExitOnError("exit-on-error",
               cl::desc("Exit if errors occur"));
-
-  #ifdef TASE_BIGNUM
-  cl::opt<int>
-  symIndexArg("symIndex", cl::desc("Index of symbolic byte in bignum test "), cl::init(100));
-
-  cl::opt<int>
-  numEntriesArg("numEntries", cl::desc("Size of array in bignum test "), cl::init(1000));
-  #endif
 
   enum LibcType {
     NoLibc, KleeLibc, UcLibc
@@ -1392,42 +1309,47 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
  void printTASEArgs() {
 
    printf("TASE args... \n");
-   if (exec_mode == MIXED) 
+   if (execMode == MIXED) 
      printf("\t Running MIXED mode (native with interpreter) \n");
-   else if (exec_mode == INTERP_ONLY)
+   else if (execMode == INTERP_ONLY)
      printf("\t Running INTERP_ONLY mode \n");
    else
      printf("ERROR: unrecognized execMode \n");
 
-   if (test_type == EXPLORATION)
+   if (testType == EXPLORATION)
      printf("\t Test type is EXPLORATION (running through all paths) \n");
-   else if (test_type == VERIFICATION )
+   else if (testType == VERIFICATION )
      printf("\t Test type is VERIFICATION \n");
    else
      printf("ERROR: unrecognized testType \n");
 
    printf("\t TASE project name: %s \n", project.c_str());
+
+   //Really shouldn't be casting to "bool" below given it's not
+   //a defined type for C-style printfs.  Replace with a printstream
+   //or something later.
    
-   printf("\t taseManager: %d \n", taseManager);
-   printf("\t tasePreProcess  : %d \n", tasePreProcess);
-   printf("\t taseDebug output: %d \n", taseDebug);
-   printf("\t modelDebug output: %d \n", modelDebug);
-   printf("\t noLog      output: %d \n", noLog);
-   printf("\t dontFork  output: %d \n", dontFork);
+   printf("\t taseManager: %d \n", (bool) taseManager);
+   printf("\t tasePreProcess  : %d \n", (bool) tasePreProcess);
+   printf("\t taseDebug output: %d \n", (bool) taseDebug);
+   printf("\t modelDebug output: %d \n", (bool) modelDebug);
+   printf("\t noLog      output: %d \n", (bool) noLog);
+   printf("\t dontFork  output: %d \n", (bool) dontFork);
    
-   printf("\t killFlagsHack      output : %d \n", killFlagsHack);
-   printf("\t skipFree           output : %d \n", skipFree);
-   printf("\t measureTime         output : %d \n", measureTime);
-   printf("\t enableBounceback     output : %d \n", enableBounceback);
-   printf("\t workerSelfTerminate  output : %d \n", workerSelfTerminate);
-   printf("\t dropS2C              output : %d \n", dropS2C);
-   printf("\t retryMax             output : %d \n", retryMax);
-   printf("\t tranBBMax            output : %lu \n", tran_max);
-   printf("\t QRMaxWorkers         output : %d  \n", QR_MAX_WORKERS);
-   printf("\t useCMS4                    output : %d \n", useCMS4);
-   printf("\t useXOROpt                  output : %d \n", use_XOR_opt);
-   printf("\t UseLegacyIndependentSolver output : %d \n", UseLegacyIndependentSolver);
-   printf("\t UseCanonicalization        output : %d \n", UseCanonicalization);
+   printf("\t killFlagsHack      output : %d \n", (bool) killFlagsHack);
+   printf("\t skipFree           output : %d \n", (bool) skipFree);
+   printf("\t measureTime         output : %d \n", (bool) measureTime);
+   printf("\t enableBounceback     output : %d \n", (bool) enableBounceback);
+   printf("\t workerSelfTerminate  output : %d \n", (bool) workerSelfTerminate);
+   printf("\t dropS2C              output : %d \n", (bool) dropS2C);
+   printf("\t enableTimeSeries     output : %d \n", (bool) enableTimeSeries);
+   printf("\t retryMax             output : %d \n", (int) retryMax);
+   printf("\t tranBBMax            output : %lu \n", (size_t) tran_max);
+   printf("\t QRMaxWorkers         output : %d  \n", (int) QR_MAX_WORKERS);
+   printf("\t useCMS4                    output : %d \n", (bool) useCMS4);
+   printf("\t useXOROpt                  output : %d \n", (bool) useXOROpt);
+   printf("\t UseLegacyIndependentSolver output : %d \n", (bool) UseLegacyIndependentSolver);
+   printf("\t UseCanonicalization        output : %d \n", (bool) UseCanonicalization);
  }
 
 
@@ -1437,10 +1359,9 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
  //analysis target and get stuck dealing with it across forks.
  
  void __attribute__((noinline)) loadCartridgeInfo()  {
-
-   //Load the start addresses of cartridges for fast lookup later
-   printf("Detected %d total basic blocks \n", tase_num_global_records);
+   printf("Detected %lu basic block records when loading cartridge info \n", tase_num_global_records);
    
+   //Load the start addresses of cartridges for fast lookup later
    for (uint32_t i = 0; i < tase_num_global_records; i++) 
      cartridge_entry_points.insert(tase_global_records[i].head + tase_global_records[i].head_size);
 
@@ -1449,12 +1370,364 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      cartridges_with_flags_live.insert(tase_live_flags_block_records[i].head + tase_live_flags_block_records[i].head_size);
      numLiveBlocks++;
    }
-
-
    printf("Found %d basic blocks with flags live-in \n", numLiveBlocks);
-
  }
 
+ //Brittle function to spawn off workers for each of the 21 TLS gmail sessions for
+ // the time series evaluation.
+
+ //Job of this function is to correctly populate ktestpath buffer with filename of log.
+ //Also need to populate std::string masterSecretFile.
+ void spawnTimeSeriesWorkers() {
+
+   //Traces 0 to 5, inclusive------------
+   int pid = fork();
+   if (pid == 0) {
+     fprintf(stderr,"Launching trace 0 \n");
+     trace_ID = 0;
+     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream00.ktest";
+     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream00.ktest.key";
+     strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
+     printf("ktestPath is %s \n", ktestPath);
+     return;
+   } 
+
+   sleep(.183);
+   
+   pid = fork();
+   if (pid == 0)  {
+     fprintf(stderr,"Launching trace 1 \n");
+     trace_ID = 1;
+     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream01.ktest";
+     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream01.ktest.key";
+     strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
+     printf("ktestPath is %s \n",ktestPath); 
+     return;
+   }
+
+   sleep(.178);
+   
+   pid = fork();
+   if (pid == 0)  {
+     fprintf(stderr,"Launching trace 2 \n");
+     trace_ID = 2;
+     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream02.ktest";
+     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream02.ktest.key";
+     strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
+     printf("ktestPath is %s \n",ktestPath);
+     return;
+   }
+
+   sleep(.236);
+   
+   pid = fork();
+   if (pid == 0)  {
+     fprintf(stderr,"Launching trace 3 \n");
+     trace_ID = 3;
+     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream03.ktest";
+     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream03.ktest.key";
+     strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
+     printf("ktestPath is %s \n",ktestPath);
+     return;
+   }
+
+   sleep (.014);
+   
+   pid = fork();
+   if (pid == 0)  {
+     fprintf(stderr,"Launching trace 4 \n");
+     trace_ID = 4;
+     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream04.ktest";
+     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream04.ktest.key";
+     strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
+     printf("ktestPath is %s \n",ktestPath);
+     return;
+   }
+
+   sleep (.068);
+   
+   pid = fork();
+   if (pid == 0)  {
+     fprintf(stderr,"Launching trace 5 \n");
+     trace_ID = 5;
+     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream05.ktest";
+     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream05.ktest.key";
+     strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
+     printf("ktestPath is %s \n",ktestPath);
+     return;
+   }
+
+   sleep (8.800);
+   
+   pid = fork();
+   if (pid == 0)  {
+     fprintf(stderr,"Launching trace 6 \n");
+     trace_ID = 6;
+     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream06.ktest";
+     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream06.ktest.key";
+     strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
+     printf("ktestPath is %s \n",ktestPath);
+     return;
+   }
+
+   sleep(.524);
+   
+   pid = fork();
+   if (pid == 0)  {
+     fprintf(stderr,"Launching trace 7 \n");
+     trace_ID = 7;
+     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream07.ktest";
+     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream07.ktest.key";
+     strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
+     printf("ktestPath is %s \n",ktestPath);
+     return;
+   }
+
+   sleep(.326);
+   
+   pid = fork();
+   if (pid == 0)  {
+     fprintf(stderr,"Launching trace 8 \n");
+     trace_ID = 8;
+     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream08.ktest";
+     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream08.ktest.key";
+     strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
+     printf("ktestPath is %s \n",ktestPath);
+     return;
+   }
+
+   sleep (.038);
+   
+   pid = fork();
+   if (pid == 0)  {
+     fprintf(stderr,"Launching trace 9 \n");
+     trace_ID = 9;
+     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream09.ktest";
+     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream09.ktest.key";
+     strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
+     printf("ktestPath is %s \n",ktestPath);
+     return;
+   }
+   sleep (.601);
+   
+   pid = fork();
+   if (pid == 0)  {
+     fprintf(stderr,"Launching trace 10 \n");
+     trace_ID = 10;
+     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream10.ktest";
+     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream10.ktest.key";
+     strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
+     printf("ktestPath is %s \n",ktestPath);
+     return;
+   }
+
+   sleep (.154);
+
+   pid = fork();
+   if (pid == 0)  {
+     fprintf(stderr,"Launching trace 11 \n");
+     trace_ID = 11;
+     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream11.ktest";
+     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream11.ktest.key";
+     strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
+     printf("ktestPath is %s \n",ktestPath);
+     return;
+   }
+
+   sleep(.262);
+
+   pid = fork();
+   if (pid == 0)  {
+     fprintf(stderr,"Launching trace 12 \n");
+     trace_ID = 12;
+     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream12.ktest";
+     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream12.ktest.key";
+     strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
+     printf("ktestPath is %s \n",ktestPath);
+     return;
+   }
+
+   sleep(.224);
+
+   pid = fork();
+   if (pid == 0)  {
+     fprintf(stderr,"Launching trace 13 \n");
+     trace_ID = 13;
+     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream13.ktest";
+     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream13.ktest.key";
+     strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
+     printf("ktestPath is %s \n",ktestPath);
+     return;
+   }
+
+   sleep(.222);
+
+   pid = fork();
+   if (pid == 0)  {
+     fprintf(stderr,"Launching trace 14 \n");
+     trace_ID = 14;
+     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream14.ktest";
+     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream14.ktest.key";
+     strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
+     printf("ktestPath is %s \n",ktestPath);
+     return;
+   }
+
+   sleep(.477);
+
+   pid = fork();
+   if (pid == 0)  {
+     fprintf(stderr,"Launching trace 15 \n");
+     trace_ID = 15;
+     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream15.ktest";
+     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream15.ktest.key";
+     strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
+     printf("ktestPath is %s \n",ktestPath);
+     return;
+   }
+
+   sleep(13.152);
+
+   pid = fork();
+   if (pid == 0)  {
+     fprintf(stderr,"Launching trace 16 \n");
+     trace_ID = 16;
+     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream16.ktest";
+     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream16.ktest.key";
+     strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
+     printf("ktestPath is %s \n",ktestPath);
+     return;
+   }
+
+   sleep(.252);
+
+   pid = fork();
+   if (pid == 0)  {
+     fprintf(stderr,"Launching trace 17 \n");
+     trace_ID = 17;
+     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream17.ktest";
+     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream17.ktest.key";
+     strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
+     printf("ktestPath is %s \n",ktestPath);
+     return;
+   }
+
+   sleep(3.181);
+
+   pid = fork();
+   if (pid == 0)  {
+     fprintf(stderr,"Launching trace 18 \n");
+     trace_ID = 18;
+     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream18.ktest";
+     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream18.ktest.key";
+     strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
+     printf("ktestPath is %s \n",ktestPath);
+     return;
+   }
+
+   sleep(83.162);
+
+   pid = fork();
+   if (pid == 0)  {
+     fprintf(stderr,"Launching trace 19 \n");
+     trace_ID = 19;
+     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream19.ktest";
+     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream19.ktest.key";
+     strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
+     printf("ktestPath is %s \n",ktestPath);
+     return;
+   }
+
+   sleep(2.896);
+
+   pid = fork();
+   if (pid == 0)  {
+     fprintf(stderr,"Launching trace 20 \n");
+     trace_ID = 20;
+     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream20.ktest";
+     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream20.ktest.key";
+     strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
+     printf("ktestPath is %s \n",ktestPath);
+     return;
+   }
+   
+   sleep(600);
+   
+ }
+ 
+ void __attribute__ ((noreturn)) transferToTarget()  {
+
+#ifdef TASE_OPENSSL
+   /*
+   if (OpenSSLTest) {
+     char * ktestModeName = "-playback";
+     memset(ktestMode, 0, sizeof (ktestMode));
+     strncpy(ktestMode, ktestModeName, strlen(ktestModeName));
+
+     memset(ktestPath, 0, sizeof(ktestPath));
+
+     if (enableTimeSeries) {
+       spawnTimeSeriesWorkers();
+     } else {
+       
+       const char *  ktestPathName = verificationLog.c_str();
+       strncpy(ktestPath, ktestPathName, strlen(ktestPathName));
+     }
+   }
+   */
+#endif
+
+   run_start_time = util::getWallTime();
+  
+   if (execMode == INTERP_ONLY) {
+     memset(&target_ctx, 0, sizeof(target_ctx));
+    
+     target_ctx.target_exit_addr = (uintptr_t)&exit_tase_shim;
+     target_ctx.sentinel[0] = CTX_STACK_SENTINEL;
+     target_ctx.sentinel[1] = CTX_STACK_SENTINEL;
+     //target_ctx.poison_reference.qword[0] = POISON_REFERENCE64;
+     //target_ctx.poison_reference.qword[1] = POISON_REFERENCE64;
+     target_ctx.r15.u64 = (uint64_t) &begin_target_inner;
+     target_ctx.rip.u64 = (uint64_t) &begin_target_inner;
+     target_ctx.rax = target_ctx.rip;
+     // We pretend like we have pushed a return address as part of call.
+     target_ctx.rsp.u64 = (uint64_t)(&target_ctx.target_exit_addr);
+     // Just to be careful.  rbp should not be necessary but debuggers like it.
+     target_ctx.rbp.u64 = target_ctx.rsp.u64 + sizeof(uintptr_t);
+
+     tase_springboard = (void *) &sb_disabled;
+    
+     klee_interp();
+    
+   } else {
+    
+     //Make sure you change tase_exit to exit_tase
+
+    
+     int sbArg = 1;
+    
+     printf("sbArg is %d \n", sbArg);
+     fflush(stdout);
+     enter_tase(&begin_target_inner + trap_off, sbArg);
+     if (taseDebug) {
+       printf("TASE - returned from enter_tase... \n");
+       std::cout.flush();
+     }
+     while (target_ctx_gregs[GREG_RIP].u64 != (uint64_t) &tase_exit) {
+       klee_interp();
+       if (taseDebug) {
+	 printf("Returning from klee_interp ... \n");
+	 std::cout.flush();
+       }
+       tase_inject(sbArg);
+       if (taseDebug) {
+	 printf("Returning from tase_inject ... \n");
+	 std::cout.flush();
+       }
+     }
+   }  
+ }
+ 
  //Attempt to load basic block successor information for basic blocks ending in
  //non-indirect control flow (e.g., je, jne, etc).  Information goes into
  //"knownCartridgeDests" to give solver a hint when encountering symbolic
@@ -1503,10 +1776,6 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    knownCartridgeDests.insert(std::pair<uint64_t, cartridgeSuccessorInfo> (BBAddr4, c4));
 
    #endif
-			      
-
-
-
    
  }
  
@@ -1519,36 +1788,23 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    llvm::InitializeNativeTarget();
    parseArguments(argc, argv);
 
-   UseLegacyIndependentSolver = useLegacyIndependentSolverArg;
-   UseCanonicalization        = useCanonicalizationArg;
-   exec_mode = execModeArg;
-   test_type = testTypeArg;
-   taseManager = taseManagerArg;
-   taseDebug = taseDebugArg;
-   tasePreProcess = tasePreProcessArg;
-   modelDebug = modelDebugArg;
-   use_XOR_opt = useXOROptArg;
-   useCMS4 = useCMS4Arg;
-   noLog = noLogArg;
-   dontFork = dontForkArg;
-   project = projectArg;
-   killFlagsHack = killFlagsHackArg;
-   skipFree = skipFreeArg;
-   measureTime = measureTimeArg;
-  
-   enableBounceback = enableBouncebackArg;
-   workerSelfTerminate = workerSelfTerminateArg;
-   dropS2C = dropS2CArg;
-   if (test_type ==VERIFICATION) {
+   if (testType ==VERIFICATION) {
      printf("Enabling multipass verification for openssl \n");
      enableMultipass = true;
    }
-   retryMax = retryMaxArg;
-   QR_MAX_WORKERS = QRMaxWorkersArg;
+
+   //Ugly!
+   taseDebug = taseDebugArg;
+   dropS2C = dropS2CArg;
+   enableTimeSeries = enableTimeSeriesArg;
+   
+   QR_MAX_WORKERS = QRMaxWorkers;
    tran_max = (uint64_t) tranMaxArg;
+
    if (!tasePreProcess) {
      printTASEArgs();
    }
+   
 #ifdef TASE_BIGNUM
    symIndex = symIndexArg;
    numEntries = numEntriesArg;
@@ -1581,7 +1837,12 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      worker_ID_stream << "Monitor";
      std::string IDString;
      IDString = worker_ID_stream.str();
-     freopen(IDString.c_str(),"w", stdout);
+     FILE * tmpFile = freopen(IDString.c_str(),"w", stdout);
+     if (tmpFile == NULL) {
+       printf("FATAL ERROR redirecting stdout \n");
+       fflush(stdout);
+       std::exit(EXIT_FAILURE);
+     }
      prev_worker_ID = "Init";
    }
    // Load the bytecode...
@@ -1653,7 +1914,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
                                   /*CheckDivZero=*/CheckDivZero,
                                   /*CheckOvershift=*/CheckOvershift);
 
-   const Module *finalModule = interpreter->setModule(interpModule, Opts);
+   interpreter->setModule(interpModule, Opts);
 
    //ABH: Entry fn for our purposes is a dummy main function.
    // It's specified in parseltongue86 as dummyMain and
@@ -1673,17 +1934,31 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    loadCartridgeInfo();
    loadCartridgeDests();
    
+
+   signal(SIGCHLD, SIG_IGN);
+   //--------
+#ifdef TASE_OPENSSL
+   if (OpenSSLTest) {
+     char * ktestModeName = "-playback";
+     memset(ktestMode, 0, sizeof (ktestMode));
+     strncpy(ktestMode, ktestModeName, strlen(ktestModeName));
+
+     memset(ktestPath, 0, sizeof(ktestPath));
+
+     if (enableTimeSeries) {
+       spawnTimeSeriesWorkers();
+     } else {
+
+       const char *  ktestPathName = verificationLog.c_str();
+       strncpy(ktestPath, ktestPathName, strlen(ktestPathName));
+     }
+   }
+   #endif
+   //--------
    if (taseManager) {
      masterPID = getpid();
      initManagerStructures();
    }
-   
-   //printf("Calling tsx_init to map in pages \n");
-   //std::cout.flush();
-   //tsx_init();
-
-   signal(SIGCHLD, SIG_IGN);
-   
    int pid;
    double theTime = util::getWallTime();
    target_start_time = theTime;  //Moved here to initialize for both manager and workers
@@ -1704,37 +1979,37 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 	 worker_ID_stream << i;
 	 std::string pidString ;
 	 pidString = worker_ID_stream.str();
-	 freopen(pidString.c_str(),"w",stdout);
-	 freopen(pidString.c_str(),"w",stderr);
+	 FILE * tmpFile1 = freopen(pidString.c_str(),"w",stdout);
+	 if (tmpFile1 == NULL) {
+	   printf("FATAL ERROR redirecting stdout \n");
+	   fflush(stdout);
+	   std::exit(EXIT_FAILURE);
+	 }
+	 FILE * tmpFile2 = freopen(pidString.c_str(),"w",stderr);
+	 if (tmpFile2 == NULL) {
+	   printf("FATAL ERROR redirecting stderr \n");
+	   fflush(stdout);
+	   std::exit(EXIT_FAILURE);
+	 }
        }
-       
 
-       //int fd = open("/dev/null", O_WRONLY);
-       //dup2(fd,1);
-       //dup2(fd,2);
-       
-       //Add self to queue
-       get_sem_lock();
-       
        int res = prctl(PR_SET_CHILD_SUBREAPER, 1);
        if (res == -1)
 	 perror("Initial prctl error ");
-      
        
-       *target_started_ptr = 1;
+       get_sem_lock();
+       *target_started_ptr = 1; //Signals that analysis has started.
        int offset = *ms_QR_size_ptr;
-       *(ms_QR_base + offset) = getpid();
+       *(ms_QR_base + offset) = getpid(); //Add self to QR
        offset++;
        *ms_QR_size_ptr = offset;
        release_sem_lock();
-
      }
 
      if (taseDebug) {
        printf("Calling transferToTarget() \n");
        std::cout.flush();
      }
-
      
      transferToTarget();
      printf("RETURNING TO MAIN HANDLER \n");

@@ -21,15 +21,8 @@ using namespace klee;
 extern FILE * prev_stdout_log;
 extern std::stringstream worker_ID_stream;
 extern std::string prev_worker_ID;
-extern bool dontFork;
-extern bool noLog;
-extern bool taseDebug;
-extern bool modelDebug;
-extern bool workerSelfTerminate;
-extern void deserializeAssignments ( void * buf, int bufSize, klee::Executor * exec, CVAssignment * cv);
-enum testType : int {EXPLORATION, VERIFICATION};
-extern enum testType test_type;
 
+extern void deserializeAssignments ( void * buf, int bufSize, klee::Executor * exec, CVAssignment * cv);
 extern void reset_run_timers();
 extern void print_run_timers();
 
@@ -37,6 +30,8 @@ extern double run_start_time;
 extern double run_interp_time;
 extern double run_fork_time;
 extern double interp_enter_time;
+
+extern bool taseDebug;
 
 double last_message_verification_time = 0;
 
@@ -72,7 +67,7 @@ typedef struct WorkerInfo {
 } WorkerInfo;
 
 
-bool taseManager = false;
+
 int round_count = 0;
 int pass_count = 0; //Pass ctr for current round of verification
 int run_count = 0;
@@ -535,7 +530,7 @@ void manage_workers () {
   //Exit case
   if (*ms_QA_size_ptr == 0 && *ms_QR_size_ptr == 0 && *target_started_ptr == 1) {
 
-    if (test_type == VERIFICATION) {
+    if (testType == VERIFICATION) {
       fprintf(stderr,"Manager found empty QA and QR.  Latest round reached was %d \n", managerRoundCtr);
       if (*target_ended_ptr != 1) {
 	fprintf(stderr,"Verification failed. \n");
@@ -1014,6 +1009,8 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
     }
     
     s2c_records_replay = readRoundRecordsFromFile(s2cFile, &last_message_verification_time);
+    fclose(s2cFile);
+    remove(fName.c_str()); //Delete the replay records file
 
   } else {    //CHILD
     raise(SIGSTOP);

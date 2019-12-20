@@ -11,8 +11,40 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/CommandLine.h"
 
+//Tase Types
+enum runType : int {INTERP_ONLY, MIXED};
+enum TASETestType : int {EXPLORATION, VERIFICATION};
+
 namespace klee {
 
+  //TASE args
+  extern llvm::cl::opt<runType> execMode;
+  extern llvm::cl::opt<TASETestType> testType;
+  extern llvm::cl::opt<std::string> verificationLog;
+  extern llvm::cl::opt<std::string> masterSecretFile;
+  extern llvm::cl::opt<bool> skipFree;
+  extern llvm::cl::opt<bool> killFlagsHack;
+  extern llvm::cl::opt<bool> taseManager;
+  extern llvm::cl::opt<bool> tasePreProces;
+  //extern llvm::cl::opt<bool> taseDebug;
+  extern llvm::cl::opt<bool> modelDebug;
+  extern llvm::cl::opt<bool> noLog;
+  extern llvm::cl::opt<bool> dontFork;
+  extern llvm::cl::opt<bool> workerSelfTerminate;
+  extern llvm::cl::opt<bool> UseLegacyIndependentSolver;
+  extern llvm::cl::opt<bool> UseCanonicalization;
+  extern llvm::cl::opt<bool> enableBounceback;
+  //extern llvm::cl::opt<bool> dropS2C;
+  extern llvm::cl::opt<bool> measureTime;
+  extern llvm::cl::opt<bool> useCMS4;
+  extern llvm::cl::opt<bool> useXOROpt;
+  extern llvm::cl::opt<std::string> project;
+  extern llvm::cl::opt<bool> disableSpringboard;
+  extern llvm::cl::opt<int> retryMax;
+  extern llvm::cl::opt<int> QRMaxWorkers;
+  extern llvm::cl::opt<int> tranMaxArg;
+
+    
 extern llvm::cl::opt<bool> UseFastCexSolver;
 
 extern llvm::cl::opt<bool> UseCexCache;

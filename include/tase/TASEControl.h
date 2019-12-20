@@ -9,7 +9,6 @@ void manage_workers();
 int tase_fork(int parentPID, uint64_t initRIP);
 void tase_exit();
 
-extern bool taseManager;
 extern void * ms_base;
 extern int ms_size;
 extern int * ms_QR_base;

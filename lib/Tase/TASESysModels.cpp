@@ -87,6 +87,7 @@ using namespace klee;
 
 #include <byteswap.h>
 extern int peekCtr;
+extern int trace_ID;
 extern void tase_exit();
 
 extern uint64_t total_interp_returns;
@@ -97,13 +98,8 @@ extern MemoryObject * target_ctx_gregs_MO;
 extern ObjectState * target_ctx_gregs_OS;
 extern ExecutionState * GlobalExecutionStatePtr;
 extern bool gprsAreConcrete();
-enum testType : int {EXPLORATION, VERIFICATION};
-extern enum testType test_type;
 
 extern uint64_t interpCtr;
-extern bool taseDebug;
-extern bool use_XOR_opt;
-extern bool modelDebug;
 extern void printCtx(tase_greg_t *);
 extern void * rodata_base_ptr;
 extern uint64_t rodata_size;
@@ -115,8 +111,7 @@ extern double solver_diff_time;
 extern double target_start_time;
 extern double solver_time;
 extern double interpreter_time;
-enum runType : int {INTERP_ONLY, MIXED};
-extern enum runType exec_mode;
+
 extern int c_special_cmds; //Int used by cliver to disable special commands to s_client.  Made global for debugging
 extern std::stringstream workerIDStream;
 extern void * MPAPtr;
@@ -130,10 +125,13 @@ extern KTestObjectVector ktov;
 extern bool enableMultipass;
 extern void spinAndAwaitForkRequest();
 extern bool dropS2C;
+extern bool enableTimeSeries;
 uint64_t native_ret_off = 0;
 extern std::vector<const klee::Array *> round_symbolics;
 
 extern uint16_t poison_val;
+extern bool taseDebug;
+extern bool dropS2C;
 
 extern bool dont_model;
 
@@ -187,6 +185,67 @@ typedef struct RoundRecord {
 } RoundRecord;
 
 extern std::vector<RoundRecord> s2c_records;
+
+
+
+KTestObject * peekNextNetworkMessage() {
+
+  if (ktov.playback_index >= ktov.size) {
+    printf("No more recorded events \n");
+    return NULL;
+  }
+
+  int indexItr = ktov.playback_index;
+  KTestObject * o = &ktov.objects[indexItr];
+
+  while (true) {
+    if (strcmp(o->name,"c2s") != 0 &&  (strcmp (o->name, "s2c") != 0 || (dropS2C && round_count >= 3) ) ) {
+      indexItr++;
+      o = &ktov.objects[indexItr];
+    } else
+      break;
+  }
+
+  return o;
+  
+}
+
+//Function that pauses verification to simulate
+//stretches of time between message arrival on the wire for
+//our time-series graph of resource usage.
+
+void timeSeriesWait() {
+  if (!enableTimeSeries)
+    return;
+  
+  KTestObject * kto = peekNextNetworkMessage();
+  if (kto == NULL)
+    return; //Case for when we're at the end of the log
+
+  KTestObject * firstMessage = &ktov.objects[0];
+  struct timeval firstMessageTime = firstMessage->timestamp;
+  
+  struct timeval nextMessageTime = kto->timestamp;
+  uint64_t messageElapsedMicroseconds = ((nextMessageTime.tv_sec - firstMessageTime.tv_sec) * 1000000) +
+    (nextMessageTime.tv_usec - firstMessageTime.tv_usec);
+  double messageElapsedSeconds = ((double) messageElapsedMicroseconds)/ 1000000.;
+  double currElapsedSeconds = util::getWallTime() - target_start_time;
+  double diff  = messageElapsedSeconds - currElapsedSeconds;
+
+  printf("timeSeries DBG- Time is %lf seconds in.  Next message appears at %lf.  Diff is %lf. \n", currElapsedSeconds, messageElapsedSeconds, diff);
+  
+  if (diff > 0) {
+    sleep(diff);
+
+    //To be safe -- spin if we somehow wake up too soon.
+    while (true) {
+      if ( (util::getWallTime() - target_start_time) < messageElapsedSeconds)
+	continue;
+      else
+	break;
+    }	
+  }
+}
 
 void printBuf(FILE * f,void * buf, size_t count)
 {
@@ -746,7 +805,7 @@ void Executor::model_ktest_writesocket() {
 	    condition = klee::EqExpr::create(tase_helper_read((uint64_t) buf + i, 1),
 					     klee::ConstantExpr::alloc(o->bytes[i], klee::Expr::Int8));
 	  }
-	  if (use_XOR_opt) {
+	  if (useXOROpt) {
 	    condition = GlobalExecutionStatePtr->constraints.simplifyWithXorOptimization(condition);
 	  }
 	  if (modelDebug) {
@@ -889,7 +948,7 @@ void Executor::model_ktest_writesocket() {
       multipass_start_round(this, false);  //Gets semaphore,sets prevMPA, and sets a replay child process up
 
       double theTime = util::getWallTime();
-
+      
       if (!noLog) {
 	printf("At start of ktest_writesocket round %d pass %d, time since beginning is %lf \n", round_count, pass_count, theTime - target_start_time);
 	printf("Total time since analysis began: %lf \n", theTime - target_start_time  );
@@ -897,12 +956,13 @@ void Executor::model_ktest_writesocket() {
     } else {
       printf("Buffer in writesock call : \n");
       printBuf (stdout, (void *) buf, count);
-
+      
       ssize_t res = ktest_writesocket_tase((int) target_ctx_gregs[GREG_RDI].u64, (void *) target_ctx_gregs[GREG_RSI].u64, (size_t) target_ctx_gregs[GREG_RDX].u64);
       ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
       target_ctx_gregs_OS->write(GREG_RAX * 8, resExpr);
     }
     do_ret();//fake a ret
+    timeSeriesWait();
     
   } else {
     printf("ERROR in model_ktest_writesocket - symbolic arg \n");
@@ -974,7 +1034,7 @@ void Executor::model_ktest_readsocket() {
 
 
     do_ret();//fake a ret
-
+    timeSeriesWait();
   } else {
     printf("ERROR in model_ktest_readsocket - symbolic arg \n");
     std::cout.flush();
@@ -1213,14 +1273,18 @@ void Executor::model_shutdown() {
       if (*target_ended_ptr == 0) {
 	*target_ended_ptr = 1;
 	FILE * finalLog = fopen("log.final", "w+");
+	if (enableTimeSeries) {
+	  std::string doneString = "done" + std::to_string(trace_ID);
+	  fopen(doneString.c_str(), "w+");
+	}
 	fprintf(finalLog, "Prev Log ID, Total runtime \n");
 	fprintf(finalLog, "%s, %lf", prev_worker_ID.c_str(), totalTime);
       } else {
 	printf("Not the first worker to exit \n");
       }
       release_sem_lock();
-	
-    
+      
+      
       
       
       fflush(stdout);
@@ -2732,7 +2796,7 @@ ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64); // SS
     if (enableMultipass == false) {
       printf("Will trap in ktest_master_secret further down for master secret \n");
 
-      if (exec_mode != INTERP_ONLY) {
+      if (execMode != INTERP_ONLY) {
 	forceNativeRet = true;
 	target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
       } else {
@@ -2743,7 +2807,12 @@ ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64); // SS
 
     void * buf = (void *) target_ctx_gregs[GREG_RSI].u64;
 
-    FILE * theFile = fopen("ssl.mastersecret", "rb");
+    FILE * theFile = fopen(masterSecretFile.c_str(), "rb");
+    if (theFile == NULL) {
+      fprintf(stdout, "FATAL ERROR attempting to open master secret file! \n");
+      fflush(stdout);
+      worker_exit();
+    }
     unsigned char tmp [48];
     fread(tmp, 1 , 48, theFile);
     /*
@@ -2847,7 +2916,7 @@ void Executor::model_SHA1_Update () {
       if (modelDebug) {
 	printf("MULTIPASS DEBUG: Did not find symbolic input to SHA1_Update \n");
       }
-       if (gprsAreConcrete() && !(exec_mode == INTERP_ONLY)) {
+       if (gprsAreConcrete() && !(execMode == INTERP_ONLY)) {
 	forceNativeRet = true;
 	target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
       } else {
@@ -2922,7 +2991,7 @@ void Executor::model_SHA1_Final() {
        rewriteConstants((uint64_t) c, sizeof(SHA_CTX));
        
 
-       if (gprsAreConcrete() && !(exec_mode == INTERP_ONLY)) {
+       if (gprsAreConcrete() && !(execMode == INTERP_ONLY)) {
 	 forceNativeRet = true;
 	 target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
        } else {
@@ -3005,7 +3074,7 @@ void Executor::model_SHA256_Update () {
       rewriteConstants((uint64_t) data, len);
       
 
-       if (gprsAreConcrete() && !(exec_mode == INTERP_ONLY)) {
+       if (gprsAreConcrete() && !(execMode == INTERP_ONLY)) {
 	forceNativeRet = true;
 	target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
       } else {
@@ -3079,7 +3148,7 @@ void Executor::model_SHA256_Final() {
        rewriteConstants((uint64_t) c, sizeof(SHA256_CTX));
        
 
-       if (gprsAreConcrete() && !(exec_mode == INTERP_ONLY)) {
+       if (gprsAreConcrete() && !(execMode == INTERP_ONLY)) {
 	 forceNativeRet = true;
 	 target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
        } else {
@@ -3168,7 +3237,7 @@ void Executor::model_AES_encrypt () {
 	
 	//fflush(stdout);
       }
-      if (gprsAreConcrete() && !(exec_mode == INTERP_ONLY)) {
+      if (gprsAreConcrete() && !(execMode == INTERP_ONLY)) {
 	forceNativeRet = true;
 	target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
 	
@@ -3251,7 +3320,7 @@ void Executor::model_gcm_gmult_4bit () {
 	printf("MULTIPASS DEBUG: Did not find symbolic input to gcm_gmult \n");
 	fflush(stdout);
       }
-       if (gprsAreConcrete() && !(exec_mode == INTERP_ONLY)) {
+       if (gprsAreConcrete() && !(execMode == INTERP_ONLY)) {
 	 forceNativeRet = true;
 	 target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
        } else {
@@ -3332,7 +3401,7 @@ void Executor::model_gcm_ghash_4bit () {
 	printf("MULTIPASS DEBUG: Did not find symbolic input to gcm_ghash \n");
 	fflush(stdout);
       }
-       if (gprsAreConcrete() && !(exec_mode == INTERP_ONLY)) {
+       if (gprsAreConcrete() && !(execMode == INTERP_ONLY)) {
 	forceNativeRet = true;
 	target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
       } else {
@@ -3506,7 +3575,7 @@ void Executor::model_EC_KEY_generate_key () {
       //Otherwise we're good to call natively
       printf("DEBUG: Calling EC_KEY_generate_key natively \n");
       fflush(stdout);
-      if (gprsAreConcrete() && exec_mode != INTERP_ONLY) {
+      if (gprsAreConcrete() && execMode != INTERP_ONLY) {
 	forceNativeRet = true;
 	target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
       } else {
@@ -3654,7 +3723,7 @@ void Executor::model_ECDH_compute_key() {
       //Otherwise we're good to call natively
       printf("DEBUG: Calling ECDH_compute_key for time %d natively \n", ECDH_compute_key_calls);
       fflush(stdout);
-      if (gprsAreConcrete() && exec_mode != INTERP_ONLY) {
+      if (gprsAreConcrete() && execMode != INTERP_ONLY) {
 	forceNativeRet = true;
 	target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
       } else {
@@ -3791,7 +3860,7 @@ void Executor::model_EC_POINT_point2oct() {
       
     } else {
       //Otherwise we're good to call natively
-      if (gprsAreConcrete() && !(exec_mode == INTERP_ONLY)) {
+      if (gprsAreConcrete() && !(execMode == INTERP_ONLY)) {
 	  printf("Entering EC_POINT_point2oct for time %d and calling natively \n", EC_POINT_point2oct_calls);
 	  fflush(stdout);
 	  forceNativeRet = true;

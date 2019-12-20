@@ -24,6 +24,13 @@
 #include <sys/time.h>
 
 //Changed for TASE
+//Ugly kludge to pass in these two bools derived from command line args.
+//Ideally we should just put these in include/klee/CommandLine.h but
+//that would require changing the cmake structure of lib/Basic to have
+//llvm dependencies.
+extern bool taseDebug;
+extern bool dropS2C;
+
 #define KTEST_VERSION 4
 #define KTEST_MAGIC_SIZE 5
 #define KTEST_MAGIC "KTEST"
@@ -37,10 +44,10 @@ extern "C" int RAND_pseudo_bytes (unsigned char *buf, int num);
 
 extern "C" int RAND_bytes (unsigned char *buf, int num);
 
-extern bool taseDebug;
+
 extern bool enableMultipass;
 extern uint64_t interpCtr;
-extern bool dropS2C;
+
 extern int round_count;
 
 // for compatibility reasons
