@@ -30,10 +30,9 @@ namespace klee {
     ProfileTree(const data_type &_root);
     ~ProfileTree();
     
-    int dfs(ProfileTreeNode *root);
+    int post_processing_dfs(ProfileTreeNode *root);
     void consolidate_function_data();
     void dump_branch_clone_graph(std::string path, cliver::ClientVerifier* cv_);
-    void print_winning_path(cliver::ClientVerifier* cv_);
   };
 
   class ContainerNode{
@@ -62,9 +61,6 @@ namespace klee {
     int function_branch_count;
     //counts the symbolic branches executed by my_target's subfunctions
     int function_calls_branch_count;
-    //counts the winning instructions executed between this call and the
-    //winning return (so it counts instructions executed in sub calls too).
-    int winning_ins_count;
   };
 
   class ContainerRetIns: public ContainerNode{
@@ -119,16 +115,12 @@ namespace klee {
     void increment_branch_count(void);
     int get_ins_count(void);
     int get_total_ins_count(void);
-    int get_total_winning_ins_count(void);
     int get_total_node_count(void);
     int get_total_clone_count(void);
     int get_total_ret_count(void);
     int get_total_call_count(void);
     int get_total_branch_count(void);
     int get_depth();
-    void set_winner(void);
-    bool get_winner(void);
-    void process_winner_parents(void);
     void update_function_statistics(void);
     void update_subtree_count(void);
 
@@ -143,6 +135,7 @@ namespace klee {
     //  call
     //branch_parent: this is the type when a node is split as a result of a branch
     NodeType my_type;
+    //Creates a single child node receiving the parent's data.  Used on function call and return.
     ProfileTreeNode* link(
         ExecutionState* data);
 
@@ -156,8 +149,6 @@ namespace klee {
     //All the instructions executed by this node's execution state
     int ins_count;
     int my_node_number;
-    bool winner;
-    static int total_winners;
     //Used by most nodes.  Should be a function node, or root node indicating
     //the function executing in.
     ProfileTreeNode* my_function;
@@ -174,7 +165,6 @@ namespace klee {
 
     //All the instructions in the tree
     static int total_ins_count;
-    static int total_winning_ins_count;
     static int total_node_count;
     static int total_branch_count;
     static int total_clone_count;
@@ -192,9 +182,6 @@ namespace klee {
       int sub_branch_count;
       int times_called;
       int num_called;
-      //counts the winning instructions executed between this call and the
-      //winning return (so it counts instructions executed in sub calls too).
-      int winning_ins_count;
       llvm::Function* function;
       void add(ContainerCallIns* c);
   };

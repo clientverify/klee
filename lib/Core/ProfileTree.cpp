@@ -29,13 +29,11 @@
 
 using namespace klee;
 int ProfileTreeNode::total_ins_count = 0;
-int ProfileTreeNode::total_winning_ins_count = 0;
 int ProfileTreeNode::total_node_count = 0;
 int ProfileTreeNode::total_branch_count = 0;
 int ProfileTreeNode::total_clone_count = 0;
 int ProfileTreeNode::total_function_call_count = 0;
 int ProfileTreeNode::total_function_ret_count = 0;
-int ProfileTreeNode::total_winners = 0;
 
 ProfileTree::ProfileTree(const data_type &_root) : root(new Node(0, _root)) {
 }
@@ -220,7 +218,7 @@ void ProfileTreeNode::clone(
 
 //Returns instruction count for whole tree
 #define DFS_DEBUG 0
-int ProfileTree::dfs(ProfileTreeNode *root){
+int ProfileTree::post_processing_dfs(ProfileTreeNode *root){
   //this updates all the function nodes with the instruction statistics for
   //the functions they call. Must be called before
   //postorder_function_update_statistics().
@@ -232,7 +230,6 @@ int ProfileTree::dfs(ProfileTreeNode *root){
 
   std::stack <ProfileTreeNode*> nodes_to_visit;
   nodes_to_visit.push(root); //add children to the end
-  ProfileTreeNode* winner = NULL; 
   while( nodes_to_visit.size() > 0 ) {
     //Handling DFS traversal:
     ProfileTreeNode* p = nodes_to_visit.top(); //get last element
@@ -258,17 +255,7 @@ int ProfileTree::dfs(ProfileTreeNode *root){
       assert(dynamic_cast<ContainerRetIns*>(p->container) != NULL);
     if(p->get_type() == ProfileTreeNode::NodeType::call_ins)
       assert(dynamic_cast<ContainerCallIns*>(p->container) != NULL);
-    if(p->get_winner()){
-      if(p->get_type() == ProfileTreeNode::NodeType::clone_parent){
-        assert(p->children.size() == 2);
-        winner = p;
-      }else{
-        assert(p->ins_count == 0);
-        assert(p->get_type() == ProfileTreeNode::NodeType::leaf);
-        if(!p->parent->get_winner())
-            winner = p;
-      }
-    }
+
     if(p->get_type() == ProfileTreeNode::NodeType::call_ins){
       assert(((ContainerCallIns*)p->container)->function_calls_branch_count <= p->total_branch_count);
       assert(((ContainerCallIns*)p->container)->function_branch_count <= p->total_branch_count);
@@ -321,11 +308,6 @@ int ProfileTree::dfs(ProfileTreeNode *root){
     if(DFS_DEBUG) printf("\n");
   }
 
-  if(winner)
-    winner->process_winner_parents();
-  printf("total_winners %d\n",root->total_winners );
-  printf("total_winning_ins_count %d\n", root->total_winning_ins_count );
-
   std::cout << "\nupdate_function_statistics:\n";
   root->update_function_statistics();
   consolidate_function_data();
@@ -335,26 +317,6 @@ int ProfileTree::dfs(ProfileTreeNode *root){
 
 static bool customCompare(ProfileTreeNode* x, ProfileTreeNode* y){
   return (x->get_depth() < y->get_depth());
-}
-
-bool is_ancestor(ProfileTreeNode* c, ProfileTreeNode* ancestor){
-  while(c->parent!= NULL && ancestor->get_depth() <= c->get_depth()){
-    if(ancestor == c->parent) return true;
-    c = c->parent;
-  }
-  return false;
-}
-
-void ProfileTreeNode::process_winner_parents(){
-  assert(winner);
-  assert(parent);
-
-  ProfileTreeNode* ancestor = parent;
-  while(ancestor != NULL){
-    assert(ancestor->get_winner() == false);
-    ancestor->set_winner();
-    ancestor = ancestor->parent;
-  }
 }
 
 //iterative postorder traversal.  Too many nodes for recursive :(.
@@ -404,39 +366,13 @@ void ProfileTreeNode::update_function_statistics(){
     }
     assert(call_container->my_target != NULL);
 
-    //find and subtract the winning return's subtree:
-    if(winner){
-      assert(call_container->winning_ins_count == 0);
-
-      ProfileTreeNode* p = this;
-      while(p){
-        ProfileTreeNode* c = NULL;
-        //get winning child
-        for (auto i = p->children.begin(); i != p->children.end(); ++i) {
-          c = *i;
-          if(c->winner){
-            call_container->winning_ins_count += c->ins_count;
-            break;
-          }
-        }
-        //check if winning child is a leaf node (then we're done)
-        if(c == NULL || c->my_type == leaf) break;
-        //check if winning child is the return node (this is what we're looking
-        //  for)
-        if(c->my_type == return_ins && c->my_function == this) break;
-        p = c;
-      }
-    }
-
-
     const char *function_name = call_container->my_target->getName().data();
 #if PRINT_FUNC_STATS
     std::cout << function_name << " my_ins "
       << call_container->function_ins_count << " subtree_ins "
       << call_container->function_calls_ins_count << " my_symbolic_branches "
       << call_container->function_branch_count << " subtree_symbolic_branches "
-      << call_container->function_calls_branch_count << " winning_ins_count "
-      << call_container->winning_ins_count << "\n";
+      << call_container->function_calls_branch_count << "\n";
 #endif
   } else {
     for (auto i = children.begin(); i != children.end(); ++i) {
@@ -450,7 +386,6 @@ void FunctionStatstics::add(ContainerCallIns* c){
   sub_ins_count += c->function_calls_ins_count;
   branch_count += c->function_branch_count;
   sub_branch_count += c->function_calls_branch_count;
-  winning_ins_count += c->winning_ins_count;
   times_called++;
   num_called += c->my_calls.size();
   assert(function == c->my_target);
@@ -507,9 +442,7 @@ void ProfileTree::consolidate_function_data(){
       " ins_count " << itr->second->ins_count <<
       " sub_ins_count " << itr->second->sub_ins_count <<
       " branch_count " << itr->second->branch_count <<
-      " sub_branch_count " << itr->second->sub_branch_count <<
-      " winning_ins_count " << itr->second->winning_ins_count <<
-      "\n";
+      " sub_branch_count " << itr->second->sub_branch_count << "\n";
 #endif
   }
 }
@@ -526,7 +459,6 @@ FunctionStatstics::FunctionStatstics(ContainerCallIns* c)
     sub_branch_count(c->function_calls_branch_count),
     times_called(1),
     num_called(c->my_calls.size()),
-    winning_ins_count(c->winning_ins_count),
     function(c->my_target){
       assert(function != NULL);
 }
@@ -543,8 +475,7 @@ ContainerCallIns::ContainerCallIns(llvm::Instruction* i, llvm::Function* target)
     function_ins_count(0), //counts instructions executed in target from this call
     function_calls_ins_count(0), //counts instructions executed in this function's subtree
     function_branch_count(0), //counts symbolic branches executed in target from this call
-    function_calls_branch_count(0),
-    winning_ins_count(0) {
+    function_calls_branch_count(0){
   assert(i != NULL);
   assert(my_target != NULL);
 }
@@ -576,8 +507,7 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
     depth(0),
     clone_depth(0),
     my_type(leaf),
-    my_function(0),
-    winner(false){
+    my_function(0){
       assert(data != NULL);
       stage = ((cliver::CVExecutionState*)data)->searcher_stage();
       my_node_number = total_node_count;
@@ -596,12 +526,6 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
         }else{
           last_clone  = _parent;
         }
-
-        if(_parent->winner){
-          assert(!_parent->parent->winner);
-          set_winner();
-        }
-
         //handle branch or clone we belong to:
         if(_parent->my_type == branch_parent || _parent->my_type == clone_parent){
           my_branch_or_clone = _parent;
@@ -636,7 +560,6 @@ ProfileTreeNode::~ProfileTreeNode() {
 int  ProfileTreeNode::get_total_branch_count(void){ return total_branch_count; }
 int  ProfileTreeNode::get_ins_count(void){ return ins_count; }
 int  ProfileTreeNode::get_total_ins_count(void){ return total_ins_count; }
-int  ProfileTreeNode::get_total_winning_ins_count(void){ return total_winning_ins_count; }
 int  ProfileTreeNode::get_total_node_count(void){ return total_node_count; }
 int  ProfileTreeNode::get_total_ret_count(void){ return total_function_ret_count; }
 int  ProfileTreeNode::get_total_call_count(void){ return total_function_call_count; }
@@ -669,13 +592,6 @@ llvm::Instruction* ProfileTreeNode::get_instruction(void){
   assert(container->my_instruction);
   return container->my_instruction;
 }
-bool ProfileTreeNode::get_winner(void){ return winner; }
-void ProfileTreeNode::set_winner(void){
-  total_winners++;
-  total_winning_ins_count += ins_count;
-  assert(!winner);
-  winner = true;
-}
 
 int ProfileTreeNode::get_depth() { return depth; }
 
@@ -703,7 +619,7 @@ void ProfileTree::dump_branch_clone_graph(std::string path, cliver::ClientVerifi
     stack.pop_back();
 
     if(n->my_type == ProfileTreeNode::clone_parent)
-      assert(n->winner || n->parent == NULL || n->stage != NULL);
+      assert(n->parent == NULL || n->stage != NULL);
     if(n->my_type == ProfileTreeNode::branch_parent || n->my_type == ProfileTreeNode::clone_parent){
       const char *function_name = n->get_instruction()->getParent()->getParent()->getName().data();
       int line_num = get_instruction_line_num(n->get_instruction());
@@ -736,14 +652,8 @@ void ProfileTree::dump_branch_clone_graph(std::string path, cliver::ClientVerifi
     }
 
     if(n->my_type == ProfileTreeNode::branch_parent){
-      if(n->get_winner())
-         os << ",fillcolor=purple";
-      else
          os << ",fillcolor=cyan";
     }else if (n->my_type == ProfileTreeNode::clone_parent){
-      if(n->get_winner())
-         os << ",fillcolor=orange";
-      else
          os << ",fillcolor=yellow";
     }
     os << "];\n";
@@ -771,42 +681,3 @@ void ProfileTree::dump_branch_clone_graph(std::string path, cliver::ClientVerifi
   delete &os;
 }
 
-
-void ProfileTree::print_winning_path(cliver::ClientVerifier* cv_){
-  assert(root->get_winner());
-  ProfileTreeNode *current_winner = root;
-  while(current_winner->get_type() != ProfileTreeNode::NodeType::leaf){
-    int num_kids = current_winner->children.size();
-    ProfileTreeNode *winner_child = NULL;
-    if(num_kids > 1){
-        int i;
-        for(i = 0; i < num_kids; i++){
-            if(current_winner->children[i]->get_winner()){
-                assert(winner_child == NULL);
-                winner_child = current_winner->children[i];
-                if(current_winner->get_type() == ProfileTreeNode::NodeType::branch_parent){
-                    uint64_t rn = 0;
-                    if(current_winner->stage != NULL){
-                      assert(cv_->sm() != NULL);
-                      cliver::SearcherStage* ss = current_winner->stage;
-                      assert(ss        != NULL);
-                      rn  = cv_->sm()->get_stage_statistic(ss, "RoundNumber");
-                    }
-                    std::cout <<"branchs_child: "<< i <<
-                        " round_num " << rn << //" node number " << current_winner->my_node_number <<
-                        " function " << current_winner->container->my_instruction->getParent()->getParent()->getName().data() << "\n";
-                    current_winner->container->my_instruction->print(llvm::outs());
-                    std::cout << "\n";
-                }
-            }
-        }
-    } else {
-        assert(num_kids > 0);
-        winner_child =  current_winner->children[0];
-    }
-    assert(winner_child->get_winner());
-    current_winner = winner_child;
-
-  }
-
-}
