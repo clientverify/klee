@@ -79,6 +79,8 @@
 #include "klee/Internal/Support/CompressionStream.h"
 #endif
 
+#include <sys/resource.h>
+
 #include <cassert>
 #include <algorithm>
 #include <iomanip>
@@ -108,6 +110,7 @@ using namespace klee;
 #include "../../../test/tase/include/tase/tase_interp.h"
 #include "../../../test/proj_defs.h"
 #include "tase/TASEControl.h"
+#include <sys/times.h>
 //#include <signal.h>
 //Can't include signal.h directly if it has conflicts with our tase_interp.h definitions
 extern "C"  void ( *signal(int signum, void (*handler)(int)) ) (int){
@@ -167,29 +170,44 @@ uint64_t trap_off = 12;  //Offset from function address at which we trap
 
 std::vector<ref<Expr> > arguments;
 
+//TASE stats and logging
+
 uint64_t interpCtr =0;
 uint64_t instCtr=0;
 int forkSolverCalls = 0;
-
+std::string prev_unique_log_ID = "NONE";
+std::string curr_unique_log_ID = "ROOT";
 extern std::stringstream worker_ID_stream;
 extern std::string prev_worker_ID;
 int BB_UR = 0; //Unknown return codes
 int BB_MOD = 0; //Modeled return
 int BB_PSN = 0; //PSN return
 int BB_OTHER = 0;//Other return
-
 uint64_t total_interp_returns = 0;
-
 double run_start_time = 0;
 double run_end_time = 0;
-double run_interp_time = 0;
+double run_interp_time = 0;  //Total time in interpreter
+double run_core_interp_time = 0; //Total time interpreting insts
+
 double run_fork_time = 0;
 double run_solver_time = 0;
 double run_fault_time = 0;
+double run_mem_op_time = 0;
+double run_tmp_1_time = 0;
+double run_tmp_2_time = 0;
+double run_tmp_3_time = 0;
+
+struct rusage r_enter;
+struct rusage r_exit;
+
+int    run_interp_insts = 0;
+
 extern double target_start_time;
 
 FILE * prev_stdout_log = NULL;
 FILE * prev_stderr_log = NULL;
+
+void cycleTASELogs(bool isReplay);
 
 //Multipass
 extern int c_special_cmds; //Int used by cliver to disable special commands to s_client.  Made global for debugging
@@ -240,6 +258,8 @@ static const uint64_t sys_mem_fns [] = {(uint64_t) &malloc_tase, (uint64_t) &rea
 #endif
 
 bool isSpecialInst(uint64_t rip);
+
+std::map<uint64_t, KFunction *> IR_KF_Map;
 
 //Addition from cliver
 std::map<std::string, uint64_t> array_name_index_map_;
@@ -571,29 +591,36 @@ const Module *Executor::setModule(llvm::Module *module,
   assert (!kmodule && "kmodule fail \n");
   assert (module && "module fail \n");
   assert(!kmodule && module && "can only register one module"); // XXX gross
-  
+  printf("AH DBG 6 \n");
+  fflush(stdout);
   kmodule = new KModule(module);
-
+  printf("AH DBG 7 \n");
+  fflush(stdout);
   // Initialize the context.
   DataLayout *TD = kmodule->targetData;
   Context::initialize(TD->isLittleEndian(),
                       (Expr::Width) TD->getPointerSizeInBits());
-
+  printf("AH DBG 8 \n");
+  fflush(stdout);
   specialFunctionHandler = new SpecialFunctionHandler(*this);
 
   specialFunctionHandler->prepare();
   kmodule->prepare(opts, interpreterHandler);
+  printf("AH DBG 9 \n");
+  fflush(stdout);
   specialFunctionHandler->bind();
 
 
-
+  /*
   if (StatsTracker::useStatistics() || userSearcherRequiresMD2U()) {
     statsTracker = 
       new StatsTracker(*this,
                        interpreterHandler->getOutputFilename("assembly.ll"),
                        userSearcherRequiresMD2U());
   }
-
+  */
+  printf ("AH DBG 10 \n");
+  fflush(stdout);
   return module;
 }
 
@@ -976,48 +1003,20 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     ++stats::forks;
     //ABH: This, along with "forkOnPossibleRIPValues", is one of
     //the two places we fork during path exploration in TASE.
-    
+
+
     int parentPID = getpid();
     uint64_t rip = target_ctx_gregs[GREG_RIP].u64;
     int pid  = tase_fork(parentPID,rip);
-    printf("TASE Forking at 0x%lx \n", target_ctx_gregs[GREG_RIP].u64);
+    //cycleTASELogs();
 
-
-    if (pid ==0 ) {
-      prev_worker_ID = worker_ID_stream.str();
-      int i = getpid();
-      worker_ID_stream << ".";
-      worker_ID_stream << i;
-      std::string pidString ;
-      pidString = worker_ID_stream.str();
-      
-      FILE * res1 = freopen(pidString.c_str(),"w",stdout);
-      //FILE * res2 = freopen(pidString.c_str(),"w",stderr);
-      //if (res1 == NULL || res2 == NULL) {
-      if (res1 == NULL) {
-	printf("ERROR: Could not open new file for logging child output \n");
-	fflush(stdout);
-      }
-
-      
+    if (pid ==0 ) {      
       addConstraint(*GlobalExecutionStatePtr, Expr::createIsZero(condition));
     } else {
-      prev_worker_ID = worker_ID_stream.str();
-      int i = getpid();
-      worker_ID_stream << ".";
-      worker_ID_stream << i;
-      std::string pidString ;
-      pidString = worker_ID_stream.str();
-      FILE * res1 = freopen(pidString.c_str(),"w",stdout);
-      //FILE * res2 = freopen(pidString.c_str(),"w",stderr);
-      //if (res1 == NULL || res2 == NULL) {
-      if (res1 == NULL){
-	printf("ERROR: Could not open new file for logging child output \n");
-	fflush(stdout);
-      }
-      printf("DEBUG: Parent process continues \n");
       addConstraint(*GlobalExecutionStatePtr, condition);
     }
+
+   
     
     //Call to solver to make sure we're legit on this branch.
     printf("Calling solver for sanity check \n");
@@ -2069,14 +2068,18 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   }
 
   case Instruction::Load: {
+    double T0 = util::getWallTime();
     ref<Expr> base = eval(ki, 0, state).value;
     executeMemoryOperation(state, false, base, 0, ki);
+    run_mem_op_time += (util::getWallTime() - T0);
     break;
   }
   case Instruction::Store: {
+    double T0 = util::getWallTime();
     ref<Expr> base = eval(ki, 1, state).value;
     ref<Expr> value = eval(ki, 0, state).value;
     executeMemoryOperation(state, true, base, value, 0);
+    run_mem_op_time += (util::getWallTime() - T0);
     break;
   }
 
@@ -3262,6 +3265,8 @@ void Executor::executeMemoryOperation(ExecutionState &state,
                                       ref<Expr> address,
                                       ref<Expr> value /* undef if read */,
                                       KInstruction *target /* undef if write */) {
+  double T0 = util::getWallTime();
+
   Expr::Width type = (isWrite ? value->getWidth() : 
                      getWidthForLLVMType(target->inst->getType()));
   unsigned bytes = Expr::getMinBytesForWidth(type);
@@ -3287,18 +3292,33 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     } 
    }
   */
-
-  // fast path: single in-bounds resolution
   ObjectPair op;
   bool success;
-  solver->setTimeout(coreSolverTimeout);
-  if (!state.addressSpace.resolveOne(state, solver, address, op, success)) {
-    printf("resolveOne failure! \n");
-    address = toConstant(state, address, "resolveOne failure");
-    success = state.addressSpace.resolveOne(cast<ConstantExpr>(address), op);
+  
+//Fast path for TASE where offset is concrete
+  ConstantExpr * CE = dyn_cast<ConstantExpr> (address);
+  if (CE) {
+    success = state.addressSpace.resolveOne(CE, op);
+    
+  } else {
+    
+    // fast path: single in-bounds resolution
+    
+    solver->setTimeout(coreSolverTimeout);
+    if (!state.addressSpace.resolveOne(state, solver, address, op, success)) {
+      printf("resolveOne failure! \n");
+      address = toConstant(state, address, "resolveOne failure");
+      success = state.addressSpace.resolveOne(cast<ConstantExpr>(address), op);
+    }
+    solver->setTimeout(0);
+    
   }
-  solver->setTimeout(0);
 
+
+
+
+
+  
   if (!success)
     printf("Could not resolve address to MO \n");
   
@@ -3308,20 +3328,48 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     if (MaxSymArraySize && mo->size>=MaxSymArraySize) {
       address = toConstant(state, address, "max-sym-array-size");
     }
+
     
     ref<Expr> offset = mo->getOffsetExpr(address);
-
+    
     bool inBounds;
-    solver->setTimeout(coreSolverTimeout);
-    bool success = solver->mustBeTrue(state, 
-                                      mo->getBoundsCheckOffset(offset, bytes),
-                                      inBounds);
-    solver->setTimeout(0);
-    if (!success) {
-      state.pc = state.prevPC;
-      terminateStateEarly(state, "Query timed out (bounds check).");
-      return;
+
+    //Fast path for TASE where offset is concrete
+    if (CE) {
+      //Should inequality be strictly less than?
+      if (  CE->getZExtValue() + bytes <= mo->address + mo->size) {
+	inBounds = true;
+      } else { 
+	printf("DBG 1234 TMP 1 \n");
+	//Code duplication: Remove me
+	solver->setTimeout(coreSolverTimeout);
+	bool success = solver->mustBeTrue(state, 
+					  mo->getBoundsCheckOffset(offset, bytes),
+					  inBounds);
+	solver->setTimeout(0);
+	if (!success) {
+	  state.pc = state.prevPC;
+	  terminateStateEarly(state, "Query timed out (bounds check).");
+	  return;
+	}
+	
+      }
+      
+    } else {
+      solver->setTimeout(coreSolverTimeout);
+      bool success = solver->mustBeTrue(state, 
+					mo->getBoundsCheckOffset(offset, bytes),
+					inBounds);
+      solver->setTimeout(0);
+      if (!success) {
+	state.pc = state.prevPC;
+	terminateStateEarly(state, "Query timed out (bounds check).");
+	return;
+      }
     }
+
+    double T1 = util::getWallTime();
+
     
     if (inBounds) {
       const ObjectState *os = op.second;
@@ -3330,22 +3378,27 @@ void Executor::executeMemoryOperation(ExecutionState &state,
           terminateStateOnError(state, "memory error: object read only",
                                 ReadOnly);
         } else {
-          ObjectState *wos = state.addressSpace.getWriteable(mo, os);
-          wos->write(offset, value);
+          
+	  //double T2 = util::getWallTime();
+	  ObjectState *wos = state.addressSpace.getWriteable(mo, os);
+	  wos->write(offset, value);
 	  wos->applyPsnOnWrite(offset,value);
-
+	  //run_tmp_3_time += util::getWallTime() - T2;
         }          
       } else {
-	
+	double T2 = util::getWallTime();
 	ref<Expr> result = os->read(offset, type);
+	run_tmp_3_time += util::getWallTime() - T2;
 	ObjectState *wos = state.addressSpace.getWriteable(mo, os);
 	wos->applyPsnOnRead(offset);
+	
 	if (interpreterOpts.MakeConcreteSymbolic)
 	  result = replaceReadWithSymbolic(state, result);
-	
 	bindLocal(target, state, result);
+	
+	
       }
-      
+      run_tmp_2_time += util::getWallTime() - T1;
       return;
     }
   } 
@@ -3603,16 +3656,21 @@ uint64_t * last_heap_addr = 0;
 
 
 void reset_run_timers() {
-  if (!noLog) {
-    printf("Resetting run timers at %lf seconds into analysis \n", util::getWallTime() - target_start_time);
-  }
- 
+  
   run_start_time = util::getWallTime();
   interp_enter_time = util::getWallTime();
+  getrusage(RUSAGE_SELF, &r_enter);
   run_interp_time = 0;
+  run_core_interp_time = 0;
+
   run_fork_time = 0;
   run_solver_time = 0;
   run_fault_time =0;
+  run_interp_insts = 0;
+  run_mem_op_time = 0;
+  run_tmp_1_time = 0;
+  run_tmp_2_time = 0;
+  run_tmp_3_time = 0;
   
   BB_UR = 0;
   BB_MOD = 0;
@@ -3622,19 +3680,47 @@ void reset_run_timers() {
 
 void print_run_timers() {
   if (!noLog) {
-  
+    printf(" %lf seconds elapsed since target started \n", (util::getWallTime() - target_start_time));
     printf(" --- Printing run timers ----\n");
     printf("ID string is %s \n", worker_ID_stream.str().c_str());
-    printf("Prev worker ID string is %s \n", prev_worker_ID.c_str());
+    printf("Curr Unique log ID is %s\n", curr_unique_log_ID.c_str());
+    printf("Prev Unique log ID is %s\n", prev_unique_log_ID.c_str());
+    getrusage(RUSAGE_SELF, &r_exit);
+
+    int run_soft_page_faults = (r_exit.ru_minflt - r_enter.ru_minflt);
+    int run_hard_page_faults = (r_exit.ru_majflt - r_enter.ru_majflt);
+    
+    
+    //run_core_interp_user_time += r2.ru_utime - r1.ru_utime;
+    timeval r_exit_user = r_exit.ru_utime;
+    timeval r_enter_user = r_enter.ru_utime;
+    
+    double du = r_exit_user.tv_sec * 1000000. + r_exit_user.tv_usec - (r_enter_user.tv_sec * 1000000. + r_enter_user.tv_usec);
+    du = du/1000000.;
+    
+    
+    timeval r_exit_sys = r_exit.ru_stime;
+    timeval r_enter_sys = r_enter.ru_stime;
+    double ds = r_exit_sys.tv_sec * 1000000. + r_exit_sys.tv_usec - (r_enter_sys.tv_sec * 1000000. + r_enter_sys.tv_usec);
+    ds = ds/1000000.;
+    
+    
     double totalRunTime =  util::getWallTime() - run_start_time;
     run_interp_time += (util::getWallTime() - interp_enter_time);
     
     printf("Total run time    : %lf \n",  totalRunTime);
+    printf("         --USER   : %lf \n", du);
+    printf("         --SYS    : %lf \n", ds);
     printf(" - Interp time    : %lf \n", run_interp_time);
+    printf("       -Core      : %lf \n", run_core_interp_time);
     printf("       -Solver    : %lf \n", run_solver_time);
     printf("       -Fork      : %lf \n", run_fork_time );
     printf("       -Fault time: %lf \n", run_fault_time);
-
+    printf("       -Mem op    : %lf \n", run_mem_op_time);
+    printf("       -TMP1 time : %lf \n", run_tmp_1_time);
+    printf("       -TMP2 time : %lf \n", run_tmp_2_time);
+    printf("       -TMP3 time : %lf \n", run_tmp_3_time);
+    
     if (taseDebug) {
       printf("BB_UR:    %d \n", BB_UR);
       printf("BB_MOD:   %d \n", BB_MOD);
@@ -3643,25 +3729,93 @@ void print_run_timers() {
     }
 
 
- BB_UR = 0; //Unknown return codes
- BB_MOD = 0; //Modeled return
-BB_PSN = 0; //PSN return
- BB_OTHER = 0;//Other return
+    BB_UR = 0; //Unknown return codes
+    BB_MOD = 0; //Modeled return
+    BB_PSN = 0; //PSN return
+    BB_OTHER = 0;//Other return
 
 
-
-    /*
-    std::string logID = "log." + worker_ID_stream.str();
-    
-    FILE * logFile = fopen(logID.c_str(), "w+");
-    fprintf(logFile,"Prev log name, Round, Pass, Total Runtime, Interp Time, Solver Time, Fork Time \n");
-    fprintf(logFile,"%s, %d, %d,", prev_worker_ID.c_str(), round_count, pass_count);
-    fprintf(logFile, " %lf, %lf, %lf, %lf \n", totalRunTime, run_interp_time, run_solver_time, run_fork_time);
+    FILE * logFile = fopen(curr_unique_log_ID.c_str(), "w+");
+    fprintf(logFile,"Prev log name, Round, Pass, Total Runtime, Interp Time, Solver Time, Fork Time, Core Interp Time, Soft page faults, Hard page faults, USER TIME EST, SYS TIME EST, TMP1, TMP2, TMP3 \n");
+    fprintf(logFile,"%s, %d, %d,", prev_unique_log_ID.c_str(), round_count, pass_count);
+    fprintf(logFile, " %lf, %lf, %lf, %lf, %d, %lf, %d, %d, %lf, %lf, %lf, %lf, %lf \n", totalRunTime, run_interp_time, run_solver_time, run_fork_time, run_interp_insts, run_core_interp_time, run_soft_page_faults, run_hard_page_faults, du, ds, run_tmp_1_time, run_tmp_2_time, run_tmp_3_time);
     fclose(logFile);
-    */
+
   }
 }
+
+std::string makeNewLogID () {
+  static int logCtr = 0;
+  logCtr++;
+  std::stringstream stream;
+  int i = getpid();
+  stream << "LOG." << i << ".";
+  struct timeval t;
+  gettimeofday(&t, NULL);
+  stream << t.tv_sec << "." << t.tv_usec << "." << logCtr;
+
+  return stream.str();
   
+}
+
+
+void cycleTASELogs(bool isReplay) {
+  if (isReplay) {
+    prev_unique_log_ID = prev_worker_ID;
+  } else {
+    prev_unique_log_ID = curr_unique_log_ID;
+  }
+  curr_unique_log_ID = makeNewLogID();
+ 
+  
+  prev_worker_ID = worker_ID_stream.str();
+  reset_run_timers();
+  
+  if (!noLog) {
+    fflush(stdout);
+    double T0 = util::getWallTime();
+    int i = getpid();
+    worker_ID_stream << ".";
+    worker_ID_stream << i;
+    std::string pidString ;
+    
+    pidString = worker_ID_stream.str();
+    if (pidString.size() > 250) {
+      printf("Cycling log names due to large size \n");
+      worker_ID_stream.str("");
+      worker_ID_stream << "Monitor.Wrapped.";
+      worker_ID_stream << i;
+      pidString = worker_ID_stream.str();
+      printf("Cycled log name is %s \n", pidString.c_str());
+      
+    }
+    
+    if (prev_stdout_log != NULL)
+      fclose(prev_stdout_log);
+    if (prev_stderr_log != NULL)
+      fclose(prev_stderr_log);
+    
+    prev_stdout_log = freopen(pidString.c_str(),"w",stdout);
+    //prev_stderr_log = freopen(pidString.c_str(), "w", stderr);
+    fflush(stdout);
+    fflush(stderr);
+    
+    double T1 = util::getWallTime();
+    printf("Spent %lf seconds resetting log streams \n", T1-T0);
+    printf("Time since start is %lf \n", util::getWallTime() - target_start_time);
+    if (prev_stdout_log == NULL ) {
+      printf("ERROR opening new file for child process logging \n");
+      fprintf(stderr, "ERROR opening new file for child process logging for pid %d \n", i);
+      fflush(stdout);
+      worker_exit();
+      std::exit(EXIT_FAILURE);
+    }
+  }
+  
+  run_interp_time = 0;
+  interp_enter_time = util::getWallTime();
+}
+
 void measure_interp_time(bool isPsnTrap, bool isModelTrap, uint64_t interpCtr_init, uint64_t rip) {
 
   double interp_exit_time = util::getWallTime();
@@ -3678,6 +3832,7 @@ void measure_interp_time(bool isPsnTrap, bool isModelTrap, uint64_t interpCtr_in
     printf("Elapsed time is %lf at interpCtr %lu rip 0x%lx with %lu interpreter loops and abort code 0x%08lx \n", diff_time, interpCtr, rip, interpCtr - interpCtr_init, target_ctx.abort_status);
     printf("------------------------------\n");
   }
+  
   
 }
 
@@ -3821,14 +3976,24 @@ KFunction * findInterpFunction (tase_greg_t * registers, KModule * kmod) {
     printf("Attempting to find interp function \n");
     fflush(stdout);
   }
-  
+
+  KFunction * KInterpFunction;
   uint64_t nativePC = registers[GREG_RIP].u64;
-  std::stringstream converter;
-  converter << std::hex << nativePC;  
-  std::string hexNativePCString(converter.str());
-  std::string functionName =   "interp_fn_" + hexNativePCString;
-  llvm::Function * interpFn = interpModule->getFunction(functionName);
-  KFunction * KInterpFunction = kmod->functionMap[interpFn];
+
+  std::map<uint64_t, KFunction *>::iterator it;
+  it = IR_KF_Map.find(nativePC);
+  if (it != IR_KF_Map.end()) {
+    KInterpFunction = it->second;
+  } else {
+    
+    std::stringstream converter;
+    converter << std::hex << nativePC;  
+    std::string hexNativePCString(converter.str());
+    std::string functionName =   "interp_fn_" + hexNativePCString;
+    llvm::Function * interpFn = interpModule->getFunction(functionName);
+    KInterpFunction = kmod->functionMap[interpFn];
+    IR_KF_Map.insert(std::make_pair(nativePC, KInterpFunction));
+  }
   
   if (!KInterpFunction) {
     printf("Unable to find interp function for entrypoint PC 0x%lx \n", nativePC);
@@ -4484,9 +4649,11 @@ bool tase_buf_has_taint (void * ptr, int size) {
 
 void Executor::klee_interp_internal () {
   bool hasMadeProgress = false;
+
+  
   
   while (true) {
-
+    run_interp_insts++;
     interpCtr++;
     if (taseDebug)
       printDebugInterpHeader();
@@ -4513,7 +4680,20 @@ void Executor::klee_interp_internal () {
       dont_model = false;
       hasMadeProgress= true;
       tryKillFlags(target_ctx_gregs);
-      
+
+      if (rip == ((uint64_t) &CRYPTO_gcm128_encrypt) + 0x80d) {
+	//printf("ABH TEST 01212020: Killing rcx and rdx \n");
+	
+	double T1 = util::getWallTime();
+	uint64_t zero = 0;
+	ref<ConstantExpr> zeroExpr = ConstantExpr::create(zero, Expr::Int64);
+	tase_helper_write((uint64_t) &target_ctx_gregs[GREG_RCX], zeroExpr);
+	tase_helper_write((uint64_t) &target_ctx_gregs[GREG_RDX], zeroExpr);
+	
+	//target_ctx_gregs[GREG_RCX].u64 = 0;
+	//target_ctx_gregs[GREG_RDX].u64 = 0;
+      }
+
       if (skipInstrumentationInstruction(target_ctx_gregs)) {
 	
       } else {
@@ -4562,7 +4742,8 @@ void Executor::klee_interp_internal () {
       }
     }
   }
-
+  
+  
   static int numReturns = 0;
   numReturns++;
   if (taseDebug)
@@ -4618,17 +4799,31 @@ void Executor::tryKillFlags(tase_greg_t * gregs) {
 }
 
 void Executor::runCoreInterpreter(tase_greg_t * gregs) {
+  
 
+
+  
+  double T0 = util::getWallTime();
   KFunction * interpFn = findInterpFunction (gregs, kmodule);
   
   //We have to manually push a frame on for the function we'll be
   //interpreting through.  At this point, no other frames should exist
   // on klee's interpretation "stack".
-  GlobalExecutionStatePtr->pushFrame(0,interpFn);
+
+  GlobalExecutionStatePtr->pushFrameTASE(0,interpFn);
+
   GlobalExecutionStatePtr->pc = interpFn->instructions ;
-  GlobalExecutionStatePtr->prevPC = GlobalExecutionStatePtr->pc;	
-  bindArgument(interpFn, 0, *GlobalExecutionStatePtr, arguments[0]);
+  GlobalExecutionStatePtr->prevPC = GlobalExecutionStatePtr->pc;
+  
+  //getArgumentCell(GlobalExecutionStatePtr,interpFn,0).value = arguments[0];
+  (GlobalExecutionStatePtr->stack.back().locals[interpFn->getArgRegister(0)]).value = arguments[0];
+  run_tmp_1_time += (util::getWallTime() - T0);
+  //bindArgument(interpFn, 0, *GlobalExecutionStatePtr, arguments[0]);
+ 
   run(*GlobalExecutionStatePtr);
+
+  run_core_interp_time += (util::getWallTime() - T0);
+  
   
 }
 
@@ -4670,7 +4865,6 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) 
     double t0 = util::getWallTime();
     s = solver->evaluate(*GlobalExecutionStatePtr, EqExpr::create(inputExpr, ConstantExpr::create(d1, Expr::Int64)), rtmp);
     
-
     if (!s) {
       printf("FATAL ERROR: Solver evaluate call failed in forkOnPossibleRIPValues! \n");  
       std::cout.flush();
@@ -4684,8 +4878,7 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) 
       printf("Solver (forking) calls took %lf seconds in knownCartDests case \n", t1-t0);
     }
     run_solver_time += (t1-t0);
-    
-    
+        
     if (rtmp == Solver::True) {
       tase_helper_write((uint64_t) &target_ctx_gregs[GREG_RIP], ConstantExpr::create(d1,Expr::Int64));
       return;
@@ -4693,239 +4886,126 @@ void Executor::forkOnPossibleRIPValues (ref <Expr> inputExpr, uint64_t initRIP) 
       tase_helper_write((uint64_t) &target_ctx_gregs[GREG_RIP], ConstantExpr::create(d2,Expr::Int64));
       return;
     } else {
-      
-      int initPID = getpid();
       printf("Prior to fork, time since start is %lf \n", util::getWallTime() - target_start_time);
-      int isTrueChild = tase_fork(initPID, initRIP); //Returns 0 for false branch, 1 for true.  Not intuitive
-      prev_worker_ID = worker_ID_stream.str();
-      reset_run_timers();
-
-      
-      if (!noLog) {
-	fflush(stdout);
-	double T0 = util::getWallTime();
-	int i = getpid();
-	worker_ID_stream << ".";
-	worker_ID_stream << i;
-	std::string pidString ;
-	
-	pidString = worker_ID_stream.str();
-	if (pidString.size() > 250) {
-	  printf("Cycling log names due to large size \n");
-	  worker_ID_stream.str("");
-	  worker_ID_stream << "Monitor.Wrapped.";
-	  worker_ID_stream << i;
-	  pidString = worker_ID_stream.str();
-	  printf("Cycled log name is %s \n", pidString.c_str());
-	  
-	}
-	
-	//printf("Before freopen, new string for log is %s \n", pidString.c_str());
-	
-	if (prev_stdout_log != NULL)
-	  fclose(prev_stdout_log);
-	if (prev_stderr_log != NULL)
-	  fclose(prev_stderr_log);
-	
-	prev_stdout_log = freopen(pidString.c_str(),"w",stdout);
-	//prev_stderr_log = freopen(pidString.c_str(), "w", stderr);
-	fflush(stdout);
-	fflush(stderr);
-	
-	double T1 = util::getWallTime();
-	printf("Spent %lf seconds resetting log streams \n", T1-T0);
-	printf("Time since start is %lf \n", util::getWallTime() - target_start_time);
-	if (prev_stdout_log == NULL ) {
-	  printf("ERROR opening new file for child process logging \n");
-	  fprintf(stderr, "ERROR opening new file for child process logging for pid %d \n", i);
-	  fflush(stdout);
-	  worker_exit();
-	  std::exit(EXIT_FAILURE);
-	}
-      }
-    
-      run_interp_time = 0;
-      interp_enter_time = util::getWallTime();
-      //Force two destinations for debugging
-      //ABH: Todo -- roll this back and support > 2 symbolic dests for things like indirect jumps
+      int isTrueChild = tase_fork(getpid(), initRIP); //Returns 0 for false branch, 1 for true.  Not intuitive
+      //cycleTASELogs();
       if (isTrueChild == 1) {
 	addConstraint(*GlobalExecutionStatePtr,  EqExpr::create(inputExpr, ConstantExpr::create(d1, Expr::Int64)));
 	tase_helper_write( (uint64_t) &target_ctx_gregs[GREG_RIP], ConstantExpr::create(d1,Expr::Int64));
-	return;
-	
+	return;	
       } else {
 	addConstraint(*GlobalExecutionStatePtr,  EqExpr::create(inputExpr, ConstantExpr::create(d2, Expr::Int64)));
 	tase_helper_write((uint64_t) &target_ctx_gregs[GREG_RIP], ConstantExpr::create(d2,Expr::Int64));
-	return;
-	
+	return;	
       } 
     }
-
   } else {
 
-  }
-    
-    
-
-
-
-  solver_start_time = util::getWallTime();
-  ref <Expr> uniqueRIPExpr  = toUnique(*GlobalExecutionStatePtr,inputExpr);
-  solver_end_time = util::getWallTime();
-  solver_diff_time = solver_end_time - solver_start_time;
-  if (!noLog) {
-    printf("Elapsed solver time (RIP toUnique) is %lf at interpCtr %lu \n", solver_diff_time, interpCtr);
-  }
-  run_solver_time += solver_diff_time;
-  
-  
-  if (isa<ConstantExpr> (uniqueRIPExpr)) {
-    if (!noLog) {
-      printf("Only one valid value for RIP \n");
-    }
-    tase_helper_write((uint64_t) &target_ctx_gregs[GREG_RIP], uniqueRIPExpr);
-    return;
-    
-  } else {
-   
-
-  
-    int maxSolutions = 2; //Completely arbitrary.  Should not be more than 2 for our use cases in TASE
-    //or we're in trouble anyway.
-    
-    int numSolutions = 0;  
-    while (true) {
-      ref<ConstantExpr> solution;
-      numSolutions++;
-
-
-    if (numSolutions > maxSolutions) {
-      printf("IMPORTANT: control debug: Found too many symbolic values for next instruction after 0x%lx \n ", initRIP);
-      std::cout.flush();
-      worker_exit();
-      std::exit(EXIT_FAILURE);
-    }
-    
     solver_start_time = util::getWallTime();
-    
-    bool success = solver->getValue(*GlobalExecutionStatePtr, inputExpr, solution);
+    ref <Expr> uniqueRIPExpr  = toUnique(*GlobalExecutionStatePtr,inputExpr);
     solver_end_time = util::getWallTime();
-    
     solver_diff_time = solver_end_time - solver_start_time;
-    printf("Elapsed solver time (forking) is %lf at interpCtr %lu \n", solver_diff_time, interpCtr);
-
-    run_solver_time += solver_diff_time;
-    
-    if (!success) {
-      printf("ERROR: couldn't get initial value in forkOnPossibleRIPValues \n");  
-      std::cout.flush();
-      worker_exit();
-      std::exit(EXIT_FAILURE);
-    }
-
-    int initPID = getpid();
-
-    int isTrueChild = tase_fork(initPID, initRIP); //Returns 0 for false branch, 1 for true.  Not intuitive
-    prev_worker_ID = worker_ID_stream.str();
-    reset_run_timers();
-    fflush(stdout);
-    
     if (!noLog) {
-      double T0 = util::getWallTime();
-      int i = getpid();
-      worker_ID_stream << ".";
-      worker_ID_stream << i;
-      std::string pidString ;
-      
-      pidString = worker_ID_stream.str();
-      if (pidString.size() > 250) {
-	printf("Cycling log names due to large size \n");
-	worker_ID_stream.str("");
-	worker_ID_stream << "Monitor.Wrapped.";
-	worker_ID_stream << i;
-	pidString = worker_ID_stream.str();
-	printf("Cycled log name is %s \n", pidString.c_str());
-	
-      }
-      
-      //printf("Before freopen, new string for log is %s \n", pidString.c_str());
-      
-      if (prev_stdout_log != NULL)
-	fclose(prev_stdout_log);
-      if (prev_stderr_log != NULL)
-	fclose(prev_stderr_log);
-      
-      prev_stdout_log = freopen(pidString.c_str(),"w",stdout);
-      //prev_stderr_log = freopen(pidString.c_str(), "w", stderr);
-      fflush(stdout);
-      fflush(stderr);
-      
-      double T1 = util::getWallTime();
-      printf("Spent %lf seconds resetting log streams \n", T1-T0);
-    
-      if (prev_stdout_log == NULL ) {
-	printf("ERROR opening new file for child process logging \n");
-	fprintf(stderr, "ERROR opening new file for child process logging for pid %d \n", i);
-	fflush(stdout);
-	worker_exit();
-	std::exit(EXIT_FAILURE);
-      }
+      printf("Elapsed solver time (RIP toUnique) is %lf at interpCtr %lu \n", solver_diff_time, interpCtr);
     }
+    run_solver_time += solver_diff_time;
+  
+    if (isa<ConstantExpr> (uniqueRIPExpr)) {
+      if (!noLog) {
+	printf("Only one valid value for RIP \n");
+      }
+      tase_helper_write((uint64_t) &target_ctx_gregs[GREG_RIP], uniqueRIPExpr);
+      return;
     
-    run_interp_time = 0;
-    interp_enter_time = util::getWallTime();
-    //Force two destinations for debugging
-    //ABH: Todo -- roll this back and support > 2 symbolic dests for things like indirect jumps
-    if (isTrueChild == 0) { //Rule out latest solution and see if more exist
-      ref<Expr> notEqualsSolution = NotExpr::create(EqExpr::create(inputExpr,solution));
-      if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(notEqualsSolution)) {
-	if (CE->isFalse()) {
-	  printf("IMPORTANT: forked child %d is not exploring a feasible path \n", getpid());
-	  fflush(stdout);
+    } else {
+
+      int maxSolutions = 2; //Completely arbitrary.  Should not be more than 2 for our use cases in TASE
+      //or we're in trouble anyway.
+    
+      int numSolutions = 0;  
+      while (true) {
+	ref<ConstantExpr> solution;
+	numSolutions++;
+      
+	if (numSolutions > maxSolutions) {
+	  printf("IMPORTANT: control debug: Found too many symbolic values for next instruction after 0x%lx \n ", initRIP);
+	  std::cout.flush();
 	  worker_exit();
+	  std::exit(EXIT_FAILURE);
+	}
+      
+	solver_start_time = util::getWallTime();
+      
+	bool success = solver->getValue(*GlobalExecutionStatePtr, inputExpr, solution);
+	solver_end_time = util::getWallTime();
+      
+	solver_diff_time = solver_end_time - solver_start_time;
+	printf("Elapsed solver time (forking) is %lf at interpCtr %lu \n", solver_diff_time, interpCtr);
+      
+	run_solver_time += solver_diff_time;
+      
+	if (!success) {
+	  printf("ERROR: couldn't get initial value in forkOnPossibleRIPValues \n");  
+	  std::cout.flush();
+	  worker_exit();
+	  std::exit(EXIT_FAILURE);
+	}
+      
+	int isTrueChild = tase_fork(getpid(), initRIP); //Returns 0 for false branch, 1 for true.  Not intuitive
+      
+	//cycleTASELogs();
+	//Force two destinations for debugging
+	//ABH: Todo -- roll this back and support > 2 symbolic dests for things like indirect jumps
+	if (isTrueChild == 0) { //Rule out latest solution and see if more exist
+	  ref<Expr> notEqualsSolution = NotExpr::create(EqExpr::create(inputExpr,solution));
+	  if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(notEqualsSolution)) {
+	    if (CE->isFalse()) {
+	      printf("IMPORTANT: forked child %d is not exploring a feasible path \n", getpid());
+	      fflush(stdout);
+	      worker_exit();
+	    }
+	  }
+	
+	
+	  addConstraint(*GlobalExecutionStatePtr, notEqualsSolution);
+
+	  solver_start_time = util::getWallTime();
+	  success = solver->getValue(*GlobalExecutionStatePtr, inputExpr, solution);
+	  solver_end_time = util::getWallTime();
+    
+	  solver_diff_time = solver_end_time - solver_start_time;
+	  run_solver_time += solver_diff_time;
+
+	  if (!noLog) {
+	    printf("Elapsed solver time (fork - path constraint) is %lf at interpCtr %lu \n", solver_diff_time, interpCtr);
+	  }
+      
+	  if (!success) {
+	    printf("ERROR: couldn't get RIP value in forkOnPossibleRIPValues for false child \n");
+	    std::cout.flush();
+	    worker_exit();
+	    std::exit(EXIT_FAILURE);
+	  }
+	  if (!noLog) {
+	    printf("IMPORTANT: control debug: Found dest RIP 0x%lx on false branch in forkOnRip from RIP 0x%lx with pid %d \n", (uint64_t) solution->getZExtValue(), initRIP, getpid());
+	  }
+	  addConstraint(*GlobalExecutionStatePtr, EqExpr::create(inputExpr, solution));
+	  target_ctx_gregs_OS->write(GREG_RIP*8, solution);
+	  break;
+
+	} else { // Take the concrete value of solution and explore that path.
+
+	  if (!noLog) {
+	    printf("IMPORTANT: control debug: Found dest RIP 0x%lx on true branch in forkOnRip from RIP 0x%lx with pid %d \n", (uint64_t) solution->getZExtValue(), initRIP, getpid());
+	  }
+	  addConstraint(*GlobalExecutionStatePtr, EqExpr::create(inputExpr, solution));
+
+	  target_ctx_gregs_OS->write(GREG_RIP*8, solution);
+
+	  break;
 	}
       }
-
-	
-      addConstraint(*GlobalExecutionStatePtr, notEqualsSolution);
-
-      solver_start_time = util::getWallTime();
-      success = solver->getValue(*GlobalExecutionStatePtr, inputExpr, solution);
-      solver_end_time = util::getWallTime();
-    
-      solver_diff_time = solver_end_time - solver_start_time;
-      run_solver_time += solver_diff_time;
-
-      if (!noLog) {
-	printf("Elapsed solver time (fork - path constraint) is %lf at interpCtr %lu \n", solver_diff_time, interpCtr);
-      }
-      
-      if (!success) {
-	printf("ERROR: couldn't get RIP value in forkOnPossibleRIPValues for false child \n");
-	std::cout.flush();
-	worker_exit();
-	std::exit(EXIT_FAILURE);
-      }
-      if (!noLog) {
-	printf("IMPORTANT: control debug: Found dest RIP 0x%lx on false branch in forkOnRip from RIP 0x%lx with pid %d \n", (uint64_t) solution->getZExtValue(), initRIP, getpid());
-      }
-      addConstraint(*GlobalExecutionStatePtr, EqExpr::create(inputExpr, solution));
-      target_ctx_gregs_OS->write(GREG_RIP*8, solution);
-      break;
-
-    } else { // Take the concrete value of solution and explore that path.
-
-      if (!noLog) {
-	printf("IMPORTANT: control debug: Found dest RIP 0x%lx on true branch in forkOnRip from RIP 0x%lx with pid %d \n", (uint64_t) solution->getZExtValue(), initRIP, getpid());
-      }
-      addConstraint(*GlobalExecutionStatePtr, EqExpr::create(inputExpr, solution));
-
-      target_ctx_gregs_OS->write(GREG_RIP*8, solution);
-
-      break;
     }
-  }
-
   }
 }
 
@@ -4958,7 +5038,52 @@ void Executor::initializeInterpretationStructures (Function *f) {
   printf("INITIALIZING INTERPRETATION STRUCTURES \n");
 
 
+
+  /*
+  for (std::vector<KFunction *>::iterator it = kmodule->functions.begin(),
+	  ie = kmodule->functions.end(); it != ie; it++) {
+    //printf("looping \n");
+    KFunction * kf = *it;
+    for (int i = 0; i < kf->numInstructions; i++) {
+      llvm::Instruction * ins = kf->instructions[i]->inst;
+      printf("Inst has metadata:            %d \n", ins->hasMetadata());
+      
+      ins->dropUnknownNonDebugMetadata();
+      printf("Inst has metadata after drop: %d \n", ins->hasMetadata());
+      
+    }
+  }
+  */
+
+    
   
+  //Load KFunction info for fast lookup later.
+  /*
+  for (std::vector<KFunction *>::iterator it = kmodule->functions.begin(),
+	  ie = kmodule->functions.end(); it != ie; it++) {
+    //printf("looping \n");
+    KFunction * kf = *it;
+    llvm::Function * f = kf->function;
+     
+    std::string name = f->getName();
+    //printf("Full fn name is %s \n", name.c_str());
+    
+    std::size_t idx = name.find("interp_fn_");
+    if (idx != std::string::npos) {
+      std::string num = name.substr(idx +10);
+      //printf("num is %s \n", num.c_str());
+      std::stringstream converter;
+      converter << std::hex << num;
+      uint64_t pc;
+      converter >> pc;
+      //printf("Found KF for 0x%lx \n", pc);
+      
+      IR_KF_Map.insert(std::make_pair(pc, kf));
+      
+    }
+    
+  }
+  */
   GlobalExecutorPtr = this;
   GlobalExecutionStatePtr = new ExecutionState(kmodule->functionMap[f]);
 
@@ -4977,7 +5102,7 @@ void Executor::initializeInterpretationStructures (Function *f) {
   uint64_t stackSize = STACK_SIZE;
   tase_map_buf(stackBase, stackSize);
   printf("TASE mapping stack at 0x%lx with size 0x%lx \n", stackBase, stackSize);
-
+  //madvise((void *) stackBase, stackSize, MADV_NOHUGEPAGE);
   
   target_ctx_gregs_MO = addExternalObject(*GlobalExecutionStatePtr, (void *) target_ctx_gregs, TASE_NGREG * TASE_GREG_SIZE, false );
   const ObjectState *targetCtxOS = GlobalExecutionStatePtr->addressSpace.findObject(target_ctx_gregs_MO);
@@ -5122,6 +5247,9 @@ void Executor::initializeInterpretationStructures (Function *f) {
 
   bindModuleConstants(); //Moved from "run"
 
+  //printf("Instruction info map has %d elements \n", kmodule->infos->infos.size());
+  //kmodule->infos->infos.clear();
+  
   fclose(externalsFile);
  
   

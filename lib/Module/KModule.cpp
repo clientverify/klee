@@ -34,6 +34,11 @@
 #include "llvm/IR/CallSite.h"
 #endif
 
+#include "llvm/Transforms/IPO.h"
+
+#include "llvm/Analysis/Passes.h"
+
+
 #include "klee/Internal/Module/LLVMPassManager.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
@@ -220,6 +225,12 @@ void KModule::prepare(const Interpreter::ModuleOptions &opts,
   // deleted (via RAUW). This can be removed once LLVM fixes this
   // issue.
   pm.add(new IntrinsicCleanerPass(*targetData, false));
+
+  //abh DBG
+  //pm.add(createStripSymbolsPass(false));
+    //addPass(pm, createStripSymbolsPass(true));
+  
+  
   pm.run(*module);
 
   if (opts.Optimize)
@@ -321,8 +332,8 @@ void KModule::prepare(const Interpreter::ModuleOptions &opts,
   }
 
   /* Build shadow structures */
-
-  infos = new InstructionInfoTable(module);  
+  //ABH Removed
+  // infos = new InstructionInfoTable(module);  
   
   for (Module::iterator it = module->begin(), ie = module->end();
        it != ie; ++it) {
@@ -331,16 +342,21 @@ void KModule::prepare(const Interpreter::ModuleOptions &opts,
 
     Function *fn = &*it;
     KFunction *kf = new KFunction(fn, this);
-    
+
+
+    //ABH Removed
+    /*
     for (unsigned i=0; i<kf->numInstructions; ++i) {
       KInstruction *ki = kf->instructions[i];
       ki->info = &infos->getInfo(ki->inst);
     }
-
+    */
     functions.push_back(kf);
     functionMap.insert(std::make_pair(fn, kf));
+   
   }
-
+  printf("AH DBG 1 \n");
+  fflush(stdout);
   /* Compute various interesting properties */
 
   for (std::vector<KFunction*>::iterator it = functions.begin(), 
@@ -358,6 +374,8 @@ void KModule::prepare(const Interpreter::ModuleOptions &opts,
     }
     llvm::errs() << "]\n";
   }
+  printf("AH DBG 2 \n");
+  fflush(stdout);
 }
 
 KConstant* KModule::getKConstant(const Constant *c) {

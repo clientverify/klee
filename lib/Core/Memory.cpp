@@ -540,6 +540,9 @@ ref<Expr> ObjectState::read(ref<Expr> offset, Expr::Width width) const {
   return Res;
 }
 
+
+extern bool tase_buf_has_taint(void * ptr, int size);
+
 ref<Expr> ObjectState::read(unsigned offset, Expr::Width width) const {
   // Treat bool specially, it is the only non-byte sized write we allow.
   if (width == Expr::Bool)
@@ -548,6 +551,26 @@ ref<Expr> ObjectState::read(unsigned offset, Expr::Width width) const {
   // Otherwise, follow the slow general case.
   unsigned NumBytes = width / 8;
   assert(width == NumBytes * 8 && "Invalid width for read size!");
+
+  //Fast path for tase ---------------------------------
+  //If we have an entirely concrete buffer backing the read, we just
+  //read it and directly return the constant expr instead of the
+  //roundabout method of alloc'ing byte-by-byte and concating the result.
+  if ((NumBytes == 2 || NumBytes == 4 || NumBytes == 8) && (!tase_buf_has_taint((void *) (&(concreteStore[offset])), NumBytes)) ) {
+    if (NumBytes == 2) {
+      uint16_t val = * ((uint16_t *) &(concreteStore[offset]));
+      return ConstantExpr::create(val, Expr::Int16);
+    } else if (NumBytes == 4) {
+      uint32_t val = * ((uint32_t *) &(concreteStore[offset])); 
+      return ConstantExpr::create(val, Expr::Int32);
+    }
+    else if (NumBytes == 8) {
+      uint64_t val = * ((uint64_t *) &(concreteStore[offset]));
+      return ConstantExpr::create(val, Expr::Int64);
+    }
+  }
+  //-------------------------------------------------------
+  
   ref<Expr> Res(0);
   for (unsigned i = 0; i != NumBytes; ++i) {
     unsigned idx = Context::get().isLittleEndian() ? i : (NumBytes - i - 1);

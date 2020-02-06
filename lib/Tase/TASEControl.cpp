@@ -25,6 +25,7 @@ extern std::string prev_worker_ID;
 extern void deserializeAssignments ( void * buf, int bufSize, klee::Executor * exec, CVAssignment * cv);
 extern void reset_run_timers();
 extern void print_run_timers();
+ void cycleTASELogs(bool isReplay);
 
 extern double run_start_time;
 extern double run_interp_time;
@@ -442,7 +443,7 @@ void select_workers () {
   }
 }
 
-void print_log_header(FILE * f) {
+void print_eval_header(FILE * f) {
   
 
   fprintf(f, "RoundNumber,RoundUserTime,RoundRealTime,RoundRealTimePassOne,RoundSysTime,MergedStates,MergerTime,SearcherTime,ForkTime,InstructionCount,InstructionCountPassOne,RecvInstructionCount,RebuildTime,BindingsSolveTime,ExecTreeTime,EditDistTime,EditDistBuildTime,EditDistHintTime,EditDistStatTime,StageCount,StateCloneCount,StateRemoveCount,SocketEventType,SocketEventSize,SocketEventTimestamp,ValidPathInstructionCount,ValidPathInstructionCountPassOne,SymbolicVariableCount,PassCount,EditDist,EditDistK,EditDistMedoidCount,EditDistSelfFirstMedoid,EditDistSelfLastMedoid,EditDistSelfSocketEvent,EditDistSocketEventFirstMedoid,EditDistSocketEventLastMedoid,BackTrackCount,RewriteTime,SimplifyExprTime,SimplifyExprTimeV2,SimplifyExprTimeV3,SimplifyExprTimeV4,SolverTime,QueryTime,CexCacheTime,QueryConstructTime,ResolveTime,Queries,QueriesInvalid,QueriesValid,QueryCacheHits,QueryCacheMisses,QueriesConstructs");
@@ -451,7 +452,7 @@ void print_log_header(FILE * f) {
   
 }
 
-void print_log_record(FILE * f, RoundRecord r) {
+void print_eval_record(FILE * f, RoundRecord r) {
 
   //Column 1 
   fprintf(f, "%d,", r.RoundNumber);
@@ -489,12 +490,12 @@ void manage_workers () {
 
     //Kludge to fake a cliver-compatible log
     FILE * f = fopen("TASE_RESULTS.csv", "w+");
-    print_log_header(f);
+    print_eval_header(f);
     RoundRecord * rPtr = (RoundRecord *) ms_Records_base;
     
     for (int i = 0 ; i < *ms_Records_count_ptr; i++) {
       RoundRecord r = *rPtr;
-      print_log_record(f, r);
+      print_eval_record(f, r);
       rPtr += 1;
     }
 
@@ -508,12 +509,12 @@ void manage_workers () {
     rTmp1.SocketEventType = 0;
     rTmp1.RoundRealTime = 0;
     rTmp1.SocketEventTimestamp = t;
-    print_log_record(f,rTmp1);
+    print_eval_record(f,rTmp1);
     RoundRecord rTmp2;
     rTmp2 = rTmp1;
     rTmp2.RoundNumber = managerRoundCtr+2;
     
-    print_log_record(f,rTmp2);
+    print_eval_record(f,rTmp2);
     
     fflush(stdout);
     std::exit(EXIT_SUCCESS);
@@ -604,7 +605,8 @@ int tase_fork(int parentPID, uint64_t rip) {
     if (taseDebug) {
       printf("TASE FORKING! \n");
     }
-
+   
+    
     //Should actually place check to latestRoundPtr in semaphore
     if (round_count < *latestRoundPtr && workerSelfTerminate)  {
       worker_self_term();
@@ -627,6 +629,9 @@ int tase_fork(int parentPID, uint64_t rip) {
     if (guess_path_for_parent)
       guessParentPath(&childReturn, &parentReturn);
 
+    fflush(stdout);
+    fflush(stderr);
+    
     double T1 =  util::getWallTime();    
     int trueChildPID = ::fork();
     if (trueChildPID == -1) {
@@ -669,7 +674,7 @@ int tase_fork(int parentPID, uint64_t rip) {
 	  fprintf(stderr,"Error: Fork pid %d running but not in QR ", getpid());
 	release_sem_lock();
       }
-      
+      cycleTASELogs(false);
       return childReturn; // Defaults to 0 // Go back to path exploration
     } 
 
@@ -682,6 +687,7 @@ int tase_fork(int parentPID, uint64_t rip) {
     myInfo->branches++;
     release_sem_lock();
     print_run_timers();
+    cycleTASELogs(false);
     return parentReturn;  //Defaults to 1
 
   } else {
@@ -784,6 +790,8 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
     std::cout.flush();
   }
 
+  
+
   if (round_count < *latestRoundPtr  && workerSelfTerminate)  {
     get_sem_lock(); //DBG -- Make sure this is OK
     removeFromQR(PidInQR(getpid()));
@@ -812,19 +820,7 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
       s2c_records.clear();
       s2c_records_replay.clear();
       
-       //Add in S2C records if they exist
-      /*
-      for (std::vector<RoundRecord>::iterator itr = s2c_records.begin(); itr < s2c_records.end(); itr++) {
-	addRoundRecord(*itr);
-      }
-      if (s2c_records.begin() == s2c_records.end()) {
-	printf("No s2c records found \n");
-	fflush(stdout);
-      }
       
-      s2c_records.clear();
-      
-      */
       if(taseDebug) {
 	printf("Added S2C records \n");
 	fflush(stdout);
@@ -865,6 +861,9 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
   int parentPID = getpid();
   *replayPIDPtr = getpid();
 
+  fflush(stdout);
+  fflush(stderr);
+  
   double T1 = util::getWallTime();
   int childPID = ::fork();
   if (childPID == -1) {
@@ -910,6 +909,12 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
     }
 
     release_sem_lock();
+
+    //TEST
+    print_run_timers();
+
+    //END TEST
+
     
     int res = kill( childPID, SIGCONT);
     if (res == -1){
@@ -922,6 +927,12 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
     raise(SIGSTOP);
 
     //Replay path
+    //-------------------------------------
+
+    
+    /*
+
+    
     if (!noLog) {
 
       int i = getpid();
@@ -958,6 +969,11 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
     double T1 = util::getWallTime();
     
     interp_enter_time = T1;
+
+    */
+    
+    //-----------------------------------------------------------
+    
     int replayingFromPID;
     get_sem_lock();
     
@@ -998,6 +1014,11 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
     }
     release_sem_lock();
 
+    //ABH DBG
+    cycleTASELogs(true);
+
+    //END DBG
+
     char buf [10];
     sprintf(buf,"%d",replayingFromPID);
     std::string fName = std::string("ReplayS2CRecords.") + std::string(buf);
@@ -1014,9 +1035,11 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
 
   } else {    //CHILD
     raise(SIGSTOP);
-    reset_run_timers();
+    
+    kill(parentPID, SIGSTOP);  //Shouldn't we just let parent raise(SIGSTOP)?  Race condition?
 
-    kill(parentPID, SIGSTOP);
+    cycleTASELogs(false); 
+
   }    
 }
 

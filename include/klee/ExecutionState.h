@@ -40,7 +40,7 @@ struct StackFrame {
   KInstIterator caller;
   KFunction *kf;
   CallPathNode *callPathNode;
-
+  bool massAllocedLocals = false;
   std::vector<const MemoryObject *> allocas;
   Cell *locals;
 
@@ -59,6 +59,8 @@ struct StackFrame {
   MemoryObject *varargs;
 
   StackFrame(KInstIterator caller, KFunction *kf);
+  StackFrame(KInstIterator caller, KFunction *kf, bool DirectMalloc); //Extra constructor for TASE
+  //to more efficiently allocate memory in our large interpretation functions with lots of locals.
   StackFrame(const StackFrame &s);
   ~StackFrame();
 };
@@ -67,7 +69,8 @@ struct StackFrame {
 class ExecutionState {
 public:
   typedef std::vector<StackFrame> stack_ty;
-
+  
+  
 private:
   // unsupported, use copy constructor
   ExecutionState &operator=(const ExecutionState &);
@@ -168,6 +171,7 @@ public:
   ExecutionState *branch();
 
   void pushFrame(KInstIterator caller, KFunction *kf);
+  void pushFrameTASE(KInstIterator caller, KFunction *kf);
   void popFrame();
 
   void addSymbolic(const MemoryObject *mo, const Array *array);

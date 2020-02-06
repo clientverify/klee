@@ -14,14 +14,14 @@
 #include "../Core/ExecutorTimerInfo.h"
 extern void worker_exit();
 extern std::stringstream worker_ID_stream;
+extern std::string curr_unique_log_ID;
 extern std::string prev_worker_ID;
 extern int round_count;
 
 extern std::vector<const klee::Array *> round_symbolics;  //List of symbolic
 //variables learned for multipass assignment
 
-int ID_string_size = 384;  //Max len in characters of learned symbolic
-//variable for multipass( e.g., "select_readfds_123" or "stdin_456")
+int ID_string_size = 384;  //Max len in characters of log name
 
 using namespace llvm;
 
@@ -82,11 +82,11 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
 	//printf("Found sym var name %s not in write condition \n", objName.c_str());
 	//Add sym var to list here.
 	//DBG -- just add selects for now
-	std::string::size_type res = objName.find("select");
-	if (res != std::string::npos) {
+	//std::string::size_type res = objName.find("select");
+	//if (res != std::string::npos) {
 	  //printf("Requesting solution for %s \n", objName.c_str());
 	  arrays.push_back(*it);
-	}
+	  //}
       }
     }
   }
@@ -321,7 +321,7 @@ void CVAssignment::serializeAssignments(void * buf, int bufSize) {
   itrPtr += 2;
 
   //Get prev worker ID for logging
-  
+  /*
   std::string tmp = worker_ID_stream.str();  //Non-intuitive cpp behavior necessitates the tmp here
   
   const  char * src = tmp.c_str();
@@ -330,7 +330,8 @@ void CVAssignment::serializeAssignments(void * buf, int bufSize) {
     fflush(stdout);
     std::exit(EXIT_FAILURE);
   }
-  
+  */
+  const char * src = curr_unique_log_ID.c_str();
   strncpy((char *) itrPtr, src , ID_string_size -1); 
 
   itrPtr += ID_string_size;
@@ -442,7 +443,7 @@ void deserializeAssignments ( void * buf, int bufSize, Executor * exec,  CVAssig
     printf("Found %d assignments during deserialization \n", numRecords);
     std::cout.flush();
   }
-
+  //Get name of previous log
   char nameTmpBuf  [ID_string_size];
   strncpy (nameTmpBuf , (char *) itrPtr, ID_string_size -1);
   prev_worker_ID = nameTmpBuf;

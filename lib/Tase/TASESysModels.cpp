@@ -168,6 +168,8 @@ extern std::string prev_worker_ID;
 extern double target_end_time;
 extern bool noLog;
 
+extern std::string prev_unique_log_ID;
+
 extern bool tase_buf_has_taint(void * addr, int size);
 
 void tase_print_BIGNUM(FILE * f, BIGNUM * bn);
@@ -790,7 +792,7 @@ void Executor::model_ktest_writesocket() {
 	  klee::ref<klee::Expr> condition;
 	  //printf("i is %d \n", i);;
 	  //Try to create write condition multiple bytes at a time, if possible.
-	  //if ( o->numBytes -i  > 8 && i> 12) {
+	  //if ( o->numBytes -i  > 8 ) {
 	  if (false ) {
 	    klee::ref<klee::Expr> val = tase_helper_read((uint64_t) buf + i, 8);
 	    uint64_t logNum =  * ((uint64_t *)  &(o->bytes[i]));
@@ -820,13 +822,17 @@ void Executor::model_ktest_writesocket() {
 	  write_condition = klee::AndExpr::create(write_condition, condition);
 	}
 
+
+
+	//double opt0 = util::getWallTime();
+	//if (useXOROpt) {
+	  //write_condition = GlobalExecutionStatePtr->constraints.simplifyWithXorOptimization(write_condition);
+	  //}
+	//printf("Spent %lf seconds on xor opt \n", util::getWallTime() - opt0);
+
 	if (!noLog) {
 	  printf("Spent %lf seconds on making write condition \n", util::getWallTime() - WC0);
 	}
-
-	//double opt0 = util::getWallTime();
-	//write_condition = GlobalExecutionStatePtr->constraints.simplifyWithXorOptimization(write_condition);
-	//printf("Spent %lf seconds on xor opt \n", util::getWallTime() - opt0);
 	
 	//Check validity of write condition
 	if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(write_condition)) {
@@ -1278,7 +1284,8 @@ void Executor::model_shutdown() {
 	  fopen(doneString.c_str(), "w+");
 	}
 	fprintf(finalLog, "Prev Log ID, Total runtime \n");
-	fprintf(finalLog, "%s, %lf", prev_worker_ID.c_str(), totalTime);
+	fprintf(finalLog, "%s, %lf", prev_unique_log_ID.c_str(), totalTime);
+	fflush(finalLog);
       } else {
 	printf("Not the first worker to exit \n");
       }
@@ -2010,6 +2017,14 @@ void Executor::model_malloc() {
       sizeArg = roundUp(sizeArg, 8);
 
     void * buf = malloc(sizeArg);
+
+    //After we're through the handshake and initialization, don't expect
+    //huge pages to help in the target's heap space.
+    
+
+    //madvise(buf, sizeArg, MADV_NOHUGEPAGE);
+
+    
     last_heap_addr = (uint64_t *) buf;
     if (taseDebug) {
       printf("Returned ptr at 0x%lx \n", (uint64_t) buf);

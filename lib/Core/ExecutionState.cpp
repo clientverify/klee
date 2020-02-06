@@ -44,6 +44,19 @@ StackFrame::StackFrame(KInstIterator _caller, KFunction *_kf)
   locals = new Cell[kf->numRegisters];
 }
 
+
+
+StackFrame::StackFrame(KInstIterator _caller, KFunction * _kf, bool directMalloc)
+  : caller(_caller), kf(_kf), callPathNode(0),
+    minDistToUncoveredOnReturn(0), varargs(0) {
+  if (directMalloc) {
+    massAllocedLocals = true;
+    locals = (Cell *) calloc(sizeof(Cell) , (kf->numRegisters +1));
+  } else { 
+    locals = new Cell[kf->numRegisters];
+  }
+}
+
 StackFrame::StackFrame(const StackFrame &s) 
   : caller(s.caller),
     kf(s.kf),
@@ -57,7 +70,11 @@ StackFrame::StackFrame(const StackFrame &s)
 }
 
 StackFrame::~StackFrame() { 
-  delete[] locals; 
+  //delete[] locals;
+  if (massAllocedLocals)
+    return;
+  else
+    delete[] locals;
 }
 
 /***/
@@ -138,6 +155,10 @@ ExecutionState *ExecutionState::branch() {
 
 void ExecutionState::pushFrame(KInstIterator caller, KFunction *kf) {
   stack.push_back(StackFrame(caller,kf));
+}
+
+void ExecutionState::pushFrameTASE(KInstIterator caller, KFunction *kf) {
+  stack.push_back(StackFrame(caller,kf,true));
 }
 
 void ExecutionState::popFrame() {

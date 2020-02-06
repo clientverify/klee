@@ -106,7 +106,7 @@ typedef struct cartridgeDestHint {
 } cartridgeSuccessorInfo;
 
 std::map<uint64_t, cartridgeSuccessorInfo> knownCartridgeDests;
-
+extern std::map<uint64_t, KFunction *> IR_KF_Map;
 std::stringstream worker_ID_stream;
 std::string prev_worker_ID;
 klee::Interpreter * GlobalInterpreter;
@@ -1378,6 +1378,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 
  //Job of this function is to correctly populate ktestpath buffer with filename of log.
  //Also need to populate std::string masterSecretFile.
+ #ifdef TASE_OPENSSL
  void spawnTimeSeriesWorkers() {
 
    //Traces 0 to 5, inclusive------------
@@ -1654,28 +1655,9 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    sleep(600);
    
  }
+#endif
  
  void __attribute__ ((noreturn)) transferToTarget()  {
-
-#ifdef TASE_OPENSSL
-   /*
-   if (OpenSSLTest) {
-     char * ktestModeName = "-playback";
-     memset(ktestMode, 0, sizeof (ktestMode));
-     strncpy(ktestMode, ktestModeName, strlen(ktestModeName));
-
-     memset(ktestPath, 0, sizeof(ktestPath));
-
-     if (enableTimeSeries) {
-       spawnTimeSeriesWorkers();
-     } else {
-       
-       const char *  ktestPathName = verificationLog.c_str();
-       strncpy(ktestPath, ktestPathName, strlen(ktestPathName));
-     }
-   }
-   */
-#endif
 
    run_start_time = util::getWallTime();
   
@@ -1907,15 +1889,18 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    Interpreter *interpreter =
      theInterpreter = Interpreter::create(ctx, IOpts, handler);
    handler->setInterpreter(interpreter);
-   
+   printf("AH DBG 3 \n");
+   fflush(stdout);
    std::string LibraryDir = KleeHandler::getRunTimeLibraryPath(argv[0]);
    Interpreter::ModuleOptions Opts(LibraryDir.c_str(), EntryPoint,
                                   /*Optimize=*/OptimizeModule,
                                   /*CheckDivZero=*/CheckDivZero,
                                   /*CheckOvershift=*/CheckOvershift);
-
+   printf("AH DBG 4 \n");
+   fflush(stdout);
    interpreter->setModule(interpModule, Opts);
-
+   printf("AH DBG 5 \n");
+   fflush(stdout);
    //ABH: Entry fn for our purposes is a dummy main function.
    // It's specified in parseltongue86 as dummyMain and
    // as_Z9dummyMainv in "EntryPoint" because of cpp name mangling.  
@@ -1928,13 +1913,24 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      printf("Initializing interpretation structures ...\n");
      std::cout.flush();
    }
+   printf("AH DBG 6 \n");
+
+   printf("Total named md, funcs, aliases, ifuncs: %d, %d, %d \n", interpModule->named_metadata_size(),
+	  interpModule->size(), interpModule->alias_size());
+
+   interpModule->named_metadata_empty();
+   
+   fflush(stdout);
    interpreter->initializeInterpretationStructures(entryFn);
    GlobalInterpreter = interpreter;
 
    loadCartridgeInfo();
    loadCartridgeDests();
-   
 
+   
+	  
+
+	  
    signal(SIGCHLD, SIG_IGN);
    //--------
 #ifdef TASE_OPENSSL
