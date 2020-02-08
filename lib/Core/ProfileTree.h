@@ -90,7 +90,6 @@ namespace klee {
     llvm::Instruction* last_instruction;
     cliver::SearcherStage *stage;
 
-    ExecutionState *data;
     void function_call(
         ExecutionState* data,
         llvm::Instruction* ins,

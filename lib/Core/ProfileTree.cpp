@@ -48,11 +48,9 @@ ProfileTreeNode*
 ProfileTreeNode::link(
              ExecutionState* data) {
   assert(data != NULL);
-  assert(this->data            == data);
   assert(this->children.size() == 0);
   assert(this->my_type == call_ins || this->my_type == return_ins);
 
-  this->data = 0;
   ProfileTreeNode* kid  = new ProfileTreeNode(this, data);
   this->children.push_back(kid);
   return kid;
@@ -92,7 +90,6 @@ void ProfileTreeNode::function_call(
   ProfileTreeNode* kid  = link(data);
   data->profiletreeNode = kid;
 
-  assert(data  == kid->data);
   assert(kid->parent == this);
 }
 
@@ -113,7 +110,6 @@ void ProfileTreeNode::function_return(
   ProfileTreeNode* kid  = link(data);
   data->profiletreeNode = kid;
 
-  assert(data  == kid->data);
   assert(kid->parent == this);
 }
 
@@ -125,7 +121,6 @@ ProfileTreeNode::split(
   assert(rightData != NULL);
   assert(this->children.size() == 0);
   assert(this->my_type != leaf);
-  this->data = 0;
   ProfileTreeNode* left  = new ProfileTreeNode(this, leftData);
   ProfileTreeNode* right = new ProfileTreeNode(this, rightData);
   this->children.push_back(left);
@@ -149,8 +144,6 @@ void ProfileTreeNode::branch(
 
   assert(ret.first->my_branch_or_clone == this);
   assert(ret.second->my_branch_or_clone == this);
-  assert(leftData  == ret.first->data);
-  assert(rightData == ret.second->data);
   assert(ret.first->parent == ret.second->parent);
 }
 
@@ -161,7 +154,6 @@ void ProfileTreeNode::clone(
              cliver::SearcherStage *stage) {
   assert(this->my_type == leaf || this->my_type == root);
   assert(this == me_state->profiletreeNode);
-  assert(this->data == me_state);
   assert(me_state != clone_state);
   assert(this->children.size() == 0);
 
@@ -193,9 +185,6 @@ void ProfileTreeNode::clone(
     assert(this->parent->my_type == clone_parent);
     assert(parent == my_branch_or_clone);
 
-    if(parent && parent->data)
-      assert(((cliver::CVExecutionState*)parent->data)->searcher_stage() == stage);
-
     ProfileTreeNode* clone_node = new ProfileTreeNode(this->parent, clone_state);
     this->parent->children.push_back(clone_node);
     ret = std::make_pair(this, clone_node);
@@ -203,8 +192,6 @@ void ProfileTreeNode::clone(
     assert(0);
   }
   assert(ret.first != ret.second);
-  assert(me_state    == ret.first->data);
-  assert(clone_state == ret.second->data);
   assert(ret.first->parent == ret.second->parent);
 
   me_state->profiletreeNode = ret.first;
@@ -500,7 +487,6 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
     last_instruction(NULL),
     children(),
     container(0),
-    data(_data),
     ins_count(0),
     sub_tree_ins_count(0),
     edge_ins_count(0),
@@ -508,15 +494,13 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
     clone_depth(0),
     my_type(leaf),
     my_function(0){
-      assert(data != NULL);
-      stage = ((cliver::CVExecutionState*)data)->searcher_stage();
+      assert(_data != NULL);
+      stage = ((cliver::CVExecutionState*)_data)->searcher_stage();
       my_node_number = total_node_count;
       if(_parent == NULL){
         my_type = root;
       } else {
         assert(_parent->my_node_number < my_node_number);
-        if(parent->data)
-          assert(((cliver::CVExecutionState*)parent->data)->searcher_stage() == stage);
         depth = _parent->depth;
         //handle the last clone, and the depth from the last clone
         //initializations:
