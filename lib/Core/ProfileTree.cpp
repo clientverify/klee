@@ -44,6 +44,8 @@ ProfileTree::~ProfileTree() {}
 ///////////////////////// Tree Additions //////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
+//Creates a child ProfileTreeNode for this, updates execution state's
+//ProfileTreeNode
 ProfileTreeNode*
 ProfileTreeNode::link(
              ExecutionState* data) {
@@ -53,6 +55,8 @@ ProfileTreeNode::link(
 
   ProfileTreeNode* kid  = new ProfileTreeNode(this, data);
   this->children.push_back(kid);
+
+  data->profiletreeNode = kid;
   return kid;
 }
 
@@ -88,7 +92,6 @@ void ProfileTreeNode::function_call(
   }
   this->container = new ContainerCallIns(ins, target);
   ProfileTreeNode* kid  = link(data);
-  data->profiletreeNode = kid;
 
   assert(kid->parent == this);
 }
@@ -108,11 +111,12 @@ void ProfileTreeNode::function_return(
   this->my_type         = return_ins;
   this->container = new ContainerRetIns(ins, to);
   ProfileTreeNode* kid  = link(data);
-  data->profiletreeNode = kid;
 
   assert(kid->parent == this);
 }
 
+//Creates child ProfileTreeNodes for this, updates provided execution states'
+//ProfileTreeNode
 std::pair<ProfileTreeNode*, ProfileTreeNode*>
 ProfileTreeNode::split(
              ExecutionState* leftData,
@@ -125,6 +129,8 @@ ProfileTreeNode::split(
   ProfileTreeNode* right = new ProfileTreeNode(this, rightData);
   this->children.push_back(left);
   this->children.push_back(right);
+  leftData->profiletreeNode = left;
+  rightData->profiletreeNode = right;
   return std::make_pair(left, right);
 }
 
@@ -139,8 +145,6 @@ void ProfileTreeNode::branch(
   this->my_type = branch_parent;
   this->container = new ContainerBranchClone(ins, NULL);
   std::pair<ProfileTreeNode*, ProfileTreeNode*> ret = split(leftData, rightData);
-  leftData->profiletreeNode = ret.first;
-  rightData->profiletreeNode = ret.second;
 
   assert(ret.first->my_branch_or_clone == this);
   assert(ret.second->my_branch_or_clone == this);
@@ -188,14 +192,15 @@ void ProfileTreeNode::clone(
     ProfileTreeNode* clone_node = new ProfileTreeNode(this->parent, clone_state);
     this->parent->children.push_back(clone_node);
     ret = std::make_pair(this, clone_node);
+
+    me_state->profiletreeNode = ret.first;
+    clone_state->profiletreeNode = ret.second;
   } else {
     assert(0);
   }
   assert(ret.first != ret.second);
   assert(ret.first->parent == ret.second->parent);
 
-  me_state->profiletreeNode = ret.first;
-  clone_state->profiletreeNode = ret.second;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
