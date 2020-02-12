@@ -4680,7 +4680,7 @@ void Executor::klee_interp_internal () {
       dont_model = false;
       hasMadeProgress= true;
       tryKillFlags(target_ctx_gregs);
-
+      #ifdef TASE_OPENSSL
       if (rip == ((uint64_t) &CRYPTO_gcm128_encrypt) + 0x80d) {
 	//printf("ABH TEST 01212020: Killing rcx and rdx \n");
 	
@@ -4693,6 +4693,7 @@ void Executor::klee_interp_internal () {
 	//target_ctx_gregs[GREG_RCX].u64 = 0;
 	//target_ctx_gregs[GREG_RDX].u64 = 0;
       }
+      #endif
 
       if (skipInstrumentationInstruction(target_ctx_gregs)) {
 	
@@ -5036,9 +5037,12 @@ void printCtx(tase_greg_t * registers ) {
 void Executor::initializeInterpretationStructures (Function *f) {
 
   printf("INITIALIZING INTERPRETATION STRUCTURES \n");
+  
 
-
-
+  printf("First/Last Addrs of kmodule functions are 0x%lx and 0x%lx \n",
+	 (uint64_t)&(*(kmodule->functions.begin())), (uint64_t) &(*(kmodule->functions.end())));
+  
+  
   /*
   for (std::vector<KFunction *>::iterator it = kmodule->functions.begin(),
 	  ie = kmodule->functions.end(); it != ie; it++) {
@@ -5249,10 +5253,23 @@ void Executor::initializeInterpretationStructures (Function *f) {
 
   //printf("Instruction info map has %d elements \n", kmodule->infos->infos.size());
   //kmodule->infos->infos.clear();
+
   
   fclose(externalsFile);
- 
-  
+
+  FILE * stats = fopen("/proc/self/statm", "r");
+  if (stats <= 0 ) {
+    printf("Couldn't open statm \n");
+    fflush(stdout);
+  } else {
+    printf("Opened statm \n");
+    fflush(stdout);
+    uint64_t r1, r2, r3, r4, r5, r6, r7;
+    fscanf (stats, "%lu %lu %lu %lu %lu %lu %lu", &r1, &r2, &r3, &r4, &r5, &r6, &r7);
+    printf("STATM 3:  %lu %lu %lu %lu %lu %lu %lu \n", r1, r2, r3, r4, r5, r6, r7);
+    fclose(stats);
+    fflush(stdout);
+  }
 }
 				   
 

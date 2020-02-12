@@ -71,6 +71,7 @@
 #include <iostream>
 #include <unordered_set>
 
+#include <malloc.h>
 #include <fcntl.h>
 int trace_ID;
 
@@ -1760,9 +1761,32 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    #endif
    
  }
+
+ void checkStatm () {
+
+   FILE * stats = fopen("/proc/self/statm", "r");
+   if (stats <= 0 ) {
+     printf("Couldn't open statm \n");
+     fflush(stdout);
+   } else {
+     printf("Opened statm \n");
+     fflush(stdout);
+     uint64_t r1, r2, r3, r4, r5, r6, r7;
+     fscanf (stats, "%lu %lu %lu %lu %lu %lu %lu", &r1, &r2, &r3, &r4, &r5, &r6, &r7);
+     printf("STATM :  %lu %lu %lu %lu %lu %lu %lu \n", r1, r2, r3, r4, r5, r6, r7);
+     fclose(stats);
+     fflush(stdout);
+   }
+ }
+
  
  int main (int argc, char **argv, char **envp) {
+
+   //mallopt(M_MMAP_THRESHOLD, 0);
+
+   checkStatm();
    
+     
    glob_argc = argc;
    glob_argv = argv;
    glob_envp = envp;
@@ -1827,6 +1851,8 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      }
      prev_worker_ID = "Init";
    }
+
+   checkStatm();
    // Load the bytecode...
    std::string errorMsg;
    LLVMContext ctx;
@@ -1835,6 +1861,8 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      printf("Module has been loaded...\n");
      std::cout.flush();
    }
+
+   checkStatm();
    
    if (!interpModule) {
     klee_error("error loading program '%s': %s", InputFile.c_str(),
@@ -1956,6 +1984,21 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
      initManagerStructures();
    }
    int pid;
+
+   
+   checkStatm();
+   //printf("About to sleep ... \n");
+   //sleep(10); //Doesn't help with huge pages?
+
+   /*
+   //Try spinning instead?
+    double d0 = util::getWallTime();
+
+   while (util::getWallTime() - d0  < 60.0) {
+     //spin
+   }
+   */
+   checkStatm();
    double theTime = util::getWallTime();
    target_start_time = theTime;  //Moved here to initialize for both manager and workers
    last_message_verification_time = theTime;
