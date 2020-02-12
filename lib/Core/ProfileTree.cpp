@@ -35,7 +35,7 @@ int ProfileTreeNode::total_clone_count = 0;
 int ProfileTreeNode::total_function_call_count = 0;
 int ProfileTreeNode::total_function_ret_count = 0;
 
-ProfileTree::ProfileTree(const data_type &_root) : root(new Node(0, _root)) {
+ProfileTree::ProfileTree(const ExecutionState* _root) : root(new Node(0, _root)) {
 }
 
 ProfileTree::~ProfileTree() {}
@@ -48,21 +48,21 @@ ProfileTree::~ProfileTree() {}
 //ProfileTreeNode
 ProfileTreeNode*
 ProfileTreeNode::link(
-             ExecutionState* data) {
-  assert(data != NULL);
+             ExecutionState* es) {
+  assert(es != NULL);
   assert(this->children.size() == 0);
   assert(this->my_type == call_ins || this->my_type == return_ins);
 
-  ProfileTreeNode* kid  = new ProfileTreeNode(this, data);
+  ProfileTreeNode* kid  = new ProfileTreeNode(this, es);
   this->children.push_back(kid);
 
-  data->profiletreeNode = kid;
+  es->profiletreeNode = kid;
   return kid;
 }
 
 
 void ProfileTreeNode::function_call(
-             ExecutionState* data,
+             ExecutionState* es,
              llvm::Instruction* ins,
              llvm::Function* target) {
   assert(target != NULL);
@@ -91,13 +91,13 @@ void ProfileTreeNode::function_call(
     ((ContainerCallIns*)this->my_function->container)->my_calls.push_back(this);
   }
   this->container = new ContainerCallIns(ins, target);
-  ProfileTreeNode* kid  = link(data);
+  ProfileTreeNode* kid  = link(es);
 
   assert(kid->parent == this);
 }
 
 void ProfileTreeNode::function_return(
-             ExecutionState* data,
+             ExecutionState* es,
              llvm::Instruction* ins,
              llvm::Instruction* to) {
   assert(this->my_type == leaf);
@@ -110,7 +110,7 @@ void ProfileTreeNode::function_return(
   total_function_ret_count++;
   this->my_type         = return_ins;
   this->container = new ContainerRetIns(ins, to);
-  ProfileTreeNode* kid  = link(data);
+  ProfileTreeNode* kid  = link(es);
 
   assert(kid->parent == this);
 }
@@ -119,32 +119,32 @@ void ProfileTreeNode::function_return(
 //ProfileTreeNode
 std::pair<ProfileTreeNode*, ProfileTreeNode*>
 ProfileTreeNode::split(
-             ExecutionState* leftData,
-             ExecutionState* rightData) {
-  assert(leftData != NULL);
-  assert(rightData != NULL);
+             ExecutionState* leftEs,
+             ExecutionState* rightEs) {
+  assert(leftEs != NULL);
+  assert(rightEs != NULL);
   assert(this->children.size() == 0);
   assert(this->my_type != leaf);
-  ProfileTreeNode* left  = new ProfileTreeNode(this, leftData);
-  ProfileTreeNode* right = new ProfileTreeNode(this, rightData);
+  ProfileTreeNode* left  = new ProfileTreeNode(this, leftEs);
+  ProfileTreeNode* right = new ProfileTreeNode(this, rightEs);
   this->children.push_back(left);
   this->children.push_back(right);
-  leftData->profiletreeNode = left;
-  rightData->profiletreeNode = right;
+  leftEs->profiletreeNode = left;
+  rightEs->profiletreeNode = right;
   return std::make_pair(left, right);
 }
 
 void ProfileTreeNode::branch(
-             ExecutionState* leftData,
-             ExecutionState* rightData,
+             ExecutionState* leftEs,
+             ExecutionState* rightEs,
              llvm::Instruction* ins) {
 
   this->increment_branch_count();
-  assert(leftData != rightData);
+  assert(leftEs != rightEs);
   assert(this->my_type == leaf);
   this->my_type = branch_parent;
   this->container = new ContainerBranchClone(ins, NULL);
-  std::pair<ProfileTreeNode*, ProfileTreeNode*> ret = split(leftData, rightData);
+  std::pair<ProfileTreeNode*, ProfileTreeNode*> ret = split(leftEs, rightEs);
 
   assert(ret.first->my_branch_or_clone == this);
   assert(ret.second->my_branch_or_clone == this);
@@ -486,7 +486,7 @@ ContainerBranchClone::ContainerBranchClone(llvm::Instruction* i, cliver::Searche
 }
 
 ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent, 
-                     ExecutionState *_data)
+                     const ExecutionState *es)
   : parent(_parent),
     last_clone(NULL),
     last_instruction(NULL),
@@ -499,8 +499,8 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
     clone_depth(0),
     my_type(leaf),
     my_function(0){
-      assert(_data != NULL);
-      stage = ((cliver::CVExecutionState*)_data)->searcher_stage();
+      assert(es != NULL);
+      stage = ((cliver::CVExecutionState*)es)->searcher_stage();
       my_node_number = total_node_count;
       if(_parent == NULL){
         my_type = root;

@@ -21,13 +21,12 @@ namespace klee {
   class ExecutionState;
 
   class ProfileTree { 
-    typedef ExecutionState* data_type;
 
   public:
     typedef class ProfileTreeNode Node;
     Node *root;
 
-    ProfileTree(const data_type &_root);
+    ProfileTree(const ExecutionState* es);
     ~ProfileTree();
     
     int post_processing_dfs(ProfileTreeNode *root);
@@ -91,18 +90,18 @@ namespace klee {
     cliver::SearcherStage *stage;
 
     void function_call(
-        ExecutionState* data,
+        ExecutionState* es,
         llvm::Instruction* ins,
         llvm::Function* target);
 
     void function_return(
-        ExecutionState* data,
+        ExecutionState* es,
         llvm::Instruction* ins,
         llvm::Instruction* to);
 
     void branch(
-        ExecutionState* leftData,
-        ExecutionState* rightData,
+        ExecutionState* leftEs,
+        ExecutionState* rightEs,
         llvm::Instruction* ins);
 
     void clone(
@@ -135,15 +134,14 @@ namespace klee {
     //branch_parent: this is the type when a node is split as a result of a branch
     NodeType my_type;
     //Creates a single child node receiving the parent's data.  Used on function call and return.
-    ProfileTreeNode* link(
-        ExecutionState* data);
+    ProfileTreeNode* link(ExecutionState* es);
 
     std::pair<ProfileTreeNode*, ProfileTreeNode*> split(
-                                 ExecutionState* leftData,
-                                 ExecutionState* rightData);
+                                 ExecutionState* leftEs,
+                                 ExecutionState* rightEs);
 
     ProfileTreeNode(ProfileTreeNode *_parent,
-                    ExecutionState *_data);
+                    const ExecutionState* es);
     ~ProfileTreeNode();
     //All the instructions executed by this node's execution state
     int ins_count;
