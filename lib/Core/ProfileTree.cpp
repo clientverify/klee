@@ -236,12 +236,9 @@ int ProfileTree::post_processing_dfs(ProfileTreeNode *root){
 
     //Asserts and print outs (looking inside the node):
     assert(p != NULL);
-    assert(p->clone_depth >= 0);
-    assert(p->clone_depth >= p->ins_count);
     if(p->parent){
       assert(p->parent->my_node_number < p->my_node_number);
       assert(p->clone_parent);
-      assert(p->last_clone->depth + p->clone_depth == p->depth);
     }
     if(p->get_type() == ProfileTreeNode::NodeType::return_ins)
       assert(dynamic_cast<ContainerRetIns*>(p->container) != NULL);
@@ -488,15 +485,12 @@ ContainerBranchClone::ContainerBranchClone(llvm::Instruction* i, cliver::Searche
 ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent, 
                      const ExecutionState *es)
   : parent(_parent),
-    last_clone(NULL),
     last_instruction(NULL),
     children(),
     container(0),
     ins_count(0),
     sub_tree_ins_count(0),
-    edge_ins_count(0),
     depth(0),
-    clone_depth(0),
     my_type(leaf),
     my_function(0){
       assert(es != NULL);
@@ -507,20 +501,11 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
       } else {
         assert(_parent->my_node_number < my_node_number);
         depth = _parent->depth;
-        //handle the last clone, and the depth from the last clone
-        //initializations:
-        if(_parent->my_type != clone_parent && _parent->my_type != root){
-          clone_depth = _parent->clone_depth;
-          last_clone  = _parent->last_clone;
-        }else{
-          last_clone  = _parent;
-        }
         //handle branch or clone we belong to:
         if(_parent->my_type == branch_parent || _parent->my_type == clone_parent){
           my_branch_or_clone = _parent;
         } else {
           my_branch_or_clone = _parent->my_branch_or_clone;
-          edge_ins_count = parent->edge_ins_count;
         }
         ((ContainerBranchClone*)my_branch_or_clone->container)->my_branches_or_clones.push_back(this);
 
@@ -564,8 +549,6 @@ void ProfileTreeNode::increment_ins_count(llvm::Instruction *i){
   total_ins_count++;
   ins_count++;
   depth++;
-  clone_depth++;
-  edge_ins_count++;
   if(parent)
     assert(depth == ins_count + parent->depth);
 }

@@ -83,7 +83,6 @@ namespace klee {
     friend class FunctionStatstics;
   public:
     ProfileTreeNode *parent;
-    ProfileTreeNode *last_clone;
     std::vector<ProfileTreeNode*> children;
     ContainerNode* container;
     llvm::Instruction* last_instruction;
@@ -151,12 +150,9 @@ namespace klee {
     ProfileTreeNode* my_function;
     //points to the last branch or clone node
     ProfileTreeNode* my_branch_or_clone;
-    //#instructions on a straight line between branches/clones
-    int edge_ins_count;
     //the number of instructions executed along the path from the root to this
     //node
     int depth;
-    int clone_depth;
     //the number of instructions executed in this instruction's subtree
     int sub_tree_ins_count;
 
