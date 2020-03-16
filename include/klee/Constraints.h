@@ -50,8 +50,9 @@ public:
 
   ref<Expr> simplifyExpr(ref<Expr> e) const;
   ref<Expr> simplifyWithXorOptimization(ref<Expr> e) const;
-  
-  void addConstraint(ref<Expr> e);
+
+  //Added option for caller to provide list of symbolic variable names to avoid finding them twice.
+  void addConstraint(ref<Expr> e, std::vector<const klee::Array * > * symNames = NULL);
 
   void DoXorOptimization();
   
@@ -97,7 +98,8 @@ private:
   // returns true iff the constraints were modified
   bool rewriteConstraints(ExprVisitor &visitor);
 
-  void addConstraintInternal(ref<Expr> e);
+  //Added extra option to pass in list of symbolic variable names if the caller has already done the work.
+  void addConstraintInternal(ref<Expr> e, std::vector<const klee::Array * > * symNames = NULL);
   //void addToEqualitiesMap(ref<Expr> e);
 };
 

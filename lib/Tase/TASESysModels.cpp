@@ -121,6 +121,7 @@ extern void printProhibCounters();
 extern int round_count;
 extern int pass_count;
 extern int run_count;
+extern int msg_count;
 extern KTestObjectVector ktov;
 extern bool enableMultipass;
 extern void spinAndAwaitForkRequest();
@@ -163,6 +164,7 @@ extern int gcm_gmult_4bit_calls ;
 extern int gcm_ghash_4bit_calls ;
 
 extern int * target_ended_ptr;
+extern int * last_msg_count_ptr;
 extern double run_solver_time;
 extern std::string prev_worker_ID;
 extern double target_end_time;
@@ -188,6 +190,7 @@ typedef struct RoundRecord {
 
 extern std::vector<RoundRecord> s2c_records;
 
+extern void addRoundRecord(RoundRecord r);
 
 
 KTestObject * peekNextNetworkMessage() {
@@ -802,18 +805,30 @@ void Executor::model_ktest_writesocket() {
 	    i+=7;
 	  }
 	  else {
-	    
-	    klee::ref<klee::Expr> val = tase_helper_read((uint64_t) buf + i, 1);
 	    condition = klee::EqExpr::create(tase_helper_read((uint64_t) buf + i, 1),
 					     klee::ConstantExpr::alloc(o->bytes[i], klee::Expr::Int8));
 	  }
+
+	  
+	   if (modelDebug) {
+	    fflush(stdout);
+	    outs().flush();
+	    outs() << "Printing byte write condition before XOR Opt:  " << i << "\n";	  
+	    condition->print(outs());
+	    outs() << "\n";
+	    fflush(stdout);
+	    outs().flush();
+	  }
+	  
 	  if (useXOROpt) {
 	    condition = GlobalExecutionStatePtr->constraints.simplifyWithXorOptimization(condition);
 	  }
+
+	  
 	  if (modelDebug) {
 	    fflush(stdout);
 	    outs().flush();
-	    outs() << "Printing byte write condition  " << i << "\n";	  
+	    outs() << "Printing byte write condition after XOR Opt: " << i << "\n";	  
 	    condition->print(outs());
 	    outs() << "\n";
 	    fflush(stdout);
@@ -823,13 +838,13 @@ void Executor::model_ktest_writesocket() {
 	}
 
 
-
-	//double opt0 = util::getWallTime();
-	//if (useXOROpt) {
-	  //write_condition = GlobalExecutionStatePtr->constraints.simplifyWithXorOptimization(write_condition);
-	  //}
-	//printf("Spent %lf seconds on xor opt \n", util::getWallTime() - opt0);
-
+	/*
+	double opt0 = util::getWallTime();
+	if (useXOROpt) {
+	  write_condition = GlobalExecutionStatePtr->constraints.simplifyWithXorOptimization(write_condition);
+	  }
+	printf("Spent %lf seconds on xor opt \n", util::getWallTime() - opt0);
+	*/
 	if (!noLog) {
 	  printf("Spent %lf seconds on making write condition \n", util::getWallTime() - WC0);
 	}
@@ -941,6 +956,17 @@ void Executor::model_ktest_writesocket() {
       round_symbolics.clear();
 
       printf("Spent %lf seconds in writesock model before multipass_reset_round \n", util::getWallTime() - T0);
+
+      //Special case -- passCount is 0 if we didn't learn any new information, as happens with the
+      //final shutdown sequence.  So we go ahead and print the s2c records here because they don't
+      //counted as part of a replay.
+      if (pass_count == 0 && round_count >= 3) {
+	printf("Adding %d s2c records at end of round %d \n", s2c_records.size(), round_count);
+	for (std::vector<RoundRecord>::iterator itr = s2c_records.begin(); itr < s2c_records.end(); itr++) {
+	  addRoundRecord(*itr);
+	}
+
+      }
       
       //RESET ROUND
       //-------------------------------------------
@@ -952,12 +978,15 @@ void Executor::model_ktest_writesocket() {
       //-------------------------------------------
       //1. Atomically create a new SIGSTOP'd replay process and deserialize the constraints
       multipass_start_round(this, false);  //Gets semaphore,sets prevMPA, and sets a replay child process up
-
+      msg_count++;
+      
+      
       double theTime = util::getWallTime();
       
       if (!noLog) {
 	printf("At start of ktest_writesocket round %d pass %d, time since beginning is %lf \n", round_count, pass_count, theTime - target_start_time);
 	printf("Total time since analysis began: %lf \n", theTime - target_start_time  );
+
       }
     } else {
       printf("Buffer in writesock call : \n");
@@ -1023,8 +1052,11 @@ void Executor::model_ktest_readsocket() {
       std::exit(EXIT_FAILURE);
     }
 
+
+    
     RoundRecord r;
-    r.RoundNumber = round_count -1; //Ideally, we should break this out
+    //r.RoundNumber = round_count -1; //Ideally, we should break this out
+    r.RoundNumber = msg_count;
     //so that we have 1 round per any message type, rather than just 1
     //round per c2s message
     r.RoundRealTime = RT * 1000000.; 
@@ -1033,12 +1065,13 @@ void Executor::model_ktest_readsocket() {
     r.SocketEventTimestamp = kto->timestamp ;
     s2c_records.push_back(r);
 
+    msg_count++;
 
-    
     ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
     target_ctx_gregs_OS->write(GREG_RAX * 8, resExpr);
 
-
+    
+    
     do_ret();//fake a ret
     timeSeriesWait();
   } else {
@@ -1206,6 +1239,7 @@ void Executor::model_ktest_raw_read_stdin() {
       ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
       tase_helper_write((uint64_t) &target_ctx_gregs[GREG_RAX].u64, resExpr);
       double T1 = util::getWallTime();
+      //tase_make_symbolic( (uint64_t) buf, len, "stdin");
       tase_make_symbolic( (uint64_t) buf, len, "stdin");
       printf("Spent %lf seconds on tase_make_symbolic in read_stdin model \n", util::getWallTime() -T1);
       
@@ -1269,7 +1303,7 @@ void Executor::model_shutdown() {
 
     printf( " Entered model_shutdown call on FD %lu \n ", target_ctx_gregs[GREG_RDI].u64);
 
-    if (ktov.size == ktov.playback_index) {
+    if (ktov.size == ktov.playback_index ) {
       printf("SUCCESS: All messages verified \n");
 
       target_end_time = util::getWallTime();
@@ -1278,14 +1312,30 @@ void Executor::model_shutdown() {
       get_sem_lock();
       if (*target_ended_ptr == 0) {
 	*target_ended_ptr = 1;
-	FILE * finalLog = fopen("log.final", "w+");
-	if (enableTimeSeries) {
-	  std::string doneString = "done" + std::to_string(trace_ID);
-	  fopen(doneString.c_str(), "w+");
+	*last_msg_count_ptr = msg_count;
+	
+	printf("Adding %d s2c records at end of round %d \n", s2c_records.size(), round_count);
+	for (std::vector<RoundRecord>::iterator itr = s2c_records.begin(); itr < s2c_records.end(); itr++) {
+	  addRoundRecord(*itr);
 	}
-	fprintf(finalLog, "Prev Log ID, Total runtime \n");
-	fprintf(finalLog, "%s, %lf", prev_unique_log_ID.c_str(), totalTime);
-	fflush(finalLog);
+	
+	
+	if (enableTimeSeries) {
+	  std::string doneString = "/playpen/humphries/lTASE/TASE/test/done" + std::to_string(trace_ID);
+	  FILE * f = fopen(doneString.c_str(), "w+");
+	  if (f == NULL) {
+	    sleep(1);
+	    fopen(doneString.c_str(), "w+");
+	  }
+	  fclose(f);
+	} else {
+
+	  FILE * finalLog = fopen("log.final", "w+");
+	  fprintf(finalLog, "Prev Log ID, Total runtime \n");
+	  fprintf(finalLog, "%s, %lf", prev_unique_log_ID.c_str(), totalTime);
+	  fflush(finalLog);
+
+	}
       } else {
 	printf("Not the first worker to exit \n");
       }
@@ -2570,6 +2620,8 @@ void Executor::model_select() {
   }
   
   double T0 = util::getWallTime();
+
+  printf("Raw timeout val is 0x%lx \n", target_ctx_gregs[GREG_R8].u64);
   
   //Get the input args per system V linux ABI.
   int nfds = (int) target_ctx_gregs[GREG_RDI].u64; // int nfds
@@ -2602,14 +2654,6 @@ void Executor::model_select() {
     ref<Expr> orig_readfdExpr = tase_helper_read((uint64_t) &(readfds->fds_bits[0] ), 1) ;
     ref<Expr> orig_writefdExpr = tase_helper_read((uint64_t) &(writefds->fds_bits[0] ), 1);
 
-
-    //Doesn't work.  Would be nice to skip stdout writes.
-    //bool noStdoutWrites = false;
-    /*
-    if (noStdoutWrites && round_count > 5) {
-      ref<Expr> noStdoutMask = ConstantExpr::create(0xfd, Expr::Int8);
-      orig_writefdExpr = AndExpr::create(noStdoutMask,orig_writefdExpr);
-      }*/
 
     
     ref<Expr> all_bits_or = ConstantExpr::create(0, Expr::Int8);

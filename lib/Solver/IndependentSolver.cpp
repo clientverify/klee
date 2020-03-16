@@ -24,6 +24,8 @@
 #include <ostream>
 #include <list>
 
+#include "klee/Internal/System/Time.h"
+
 using namespace klee;
 using namespace llvm;
 
@@ -625,12 +627,15 @@ bool IndependentSolver::computeInitialValues(const Query& query,
   hasSolution = true;
   // FIXME: When we switch to C++11 this should be a std::unique_ptr so we don't need
   // to remember to manually call delete
-  std::list<IndependentElementSet> *factors = getAllIndependentConstraintsSets(query);
 
+  double T0 = util::getWallTime();
+  std::list<IndependentElementSet> *factors = getAllIndependentConstraintsSets(query);
+  printf("Solver DBG1: %lf seconds in getAllIndependentConstraintsSets \n", util::getWallTime() - T0);
   //Used to rearrange all of the answers into the correct order
   std::map<const Array*, std::vector<unsigned char> > retMap;
   for (std::list<IndependentElementSet>::iterator it = factors->begin();
        it != factors->end(); ++it) {
+    T0 = util::getWallTime();
     std::vector<const Array*> arraysInFactor;
     calculateArrayReferences(*it, arraysInFactor);
     // Going to use this as the "fresh" expression for the Query() invocation below
@@ -640,6 +645,7 @@ bool IndependentSolver::computeInitialValues(const Query& query,
     }
     ConstraintManager tmp(it->exprs);
     std::vector<std::vector<unsigned char> > tempValues;
+    printf("Solver DBG2: %lf seconds setting up for call to computeInitialValues \n", util::getWallTime() - T0);
     if (!solver->impl->computeInitialValues(Query(tmp, ConstantExpr::alloc(0, Expr::Bool)),
                                             arraysInFactor, tempValues, hasSolution)){
       values.clear();
@@ -650,6 +656,7 @@ bool IndependentSolver::computeInitialValues(const Query& query,
       delete factors;
       return true;
     } else {
+      T0 = util::getWallTime();
       assert(tempValues.size() == arraysInFactor.size() &&
              "Should be equal number arrays and answers");
       for (unsigned i = 0; i < tempValues.size(); i++){
@@ -670,8 +677,10 @@ bool IndependentSolver::computeInitialValues(const Query& query,
           retMap[arraysInFactor[i]] = tempValues[i];
         }
       }
+      printf("Solver DBG3: %lf seconds cleaning up after getInitialValues call \n", util::getWallTime() - T0);
     }
   }
+  T0 = util::getWallTime();
   for (std::vector<const Array *>::const_iterator it = objects.begin();
        it != objects.end(); it++){
     const Array * arr = * it;
@@ -687,6 +696,7 @@ bool IndependentSolver::computeInitialValues(const Query& query,
   }
   assert(assertCreatedPointEvaluatesToTrue(query, objects, values, retMap) && "should satisfy the equation");
   delete factors;
+  printf("Solver DBG4: Final cleanup in IndependentSolver took %lf seconds \n", util::getWallTime() - T0);
   return true;
 }
 

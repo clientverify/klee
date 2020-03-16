@@ -95,14 +95,8 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
   printf("Time on findSymbolicObjects: %lf \n", T1 - T0);
   T0 = util::getWallTime();
 
-  //ABH: Should be able to just add in the expr via cm.addConstraint ?
-  //Todo: Double check
-  //klee::ConstraintManager cm;
-
   klee::ConstraintManager cm (ExecStatePtr->constraints);  //Fast
-  cm.addConstraint(expr);
-
-
+  cm.addConstraint(expr, &arrays);
   
   klee::Query query(cm, klee::ConstantExpr::alloc(0, klee::Expr::Bool));
   T1 = util::getWallTime();
@@ -200,10 +194,14 @@ void CVAssignment::solveForBindings(klee::Solver* solver,
 
   } else {
 
-    cm.addConstraint(value_disjunction);
-
-    bool result;    
+    cm.addConstraint(value_disjunction, &arrays);
+    T1 = util::getWallTime();
+    printf("Time calling addConstraint: %lf \n", T1 - T0);
     T0 = util::getWallTime();
+
+
+
+    bool result;        
     solver->mayBeTrue(klee::Query(cm,
 				  klee::ConstantExpr::alloc(0, klee::Expr::Bool)), result);
     T1 = util::getWallTime();

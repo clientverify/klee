@@ -72,6 +72,7 @@ typedef struct WorkerInfo {
 int round_count = 0;
 int pass_count = 0; //Pass ctr for current round of verification
 int run_count = 0;
+int msg_count = 0;
 int tase_branches = 0;
 int multipassAssignmentSize = 20000;  //Totally arbitrary. Size of mmap'd multipass assignment buffer.
 void * MPAPtr;  //Ptr to serialized multipass info for current round of verification
@@ -104,6 +105,10 @@ int * ms_Records_count_ptr;  //Pointer to num of records in record list, not siz
 
 int * target_started_ptr;
 int * target_ended_ptr;
+
+int * last_msg_count_ptr; //Value holds last msg count at end of verification.  Should
+//equal total number of S2C and C2S messages.
+
 
 int semID; //Global semaphore ID for sync
 
@@ -504,7 +509,7 @@ void manage_workers () {
     struct timeval t;
     t.tv_usec = 49380481;
     t.tv_sec = 14143968;
-    rTmp1.RoundNumber = managerRoundCtr+1;
+    rTmp1.RoundNumber = *last_msg_count_ptr ;
     rTmp1.SocketEventSize = 0;
     rTmp1.SocketEventType = 0;
     rTmp1.RoundRealTime = 0;
@@ -512,7 +517,7 @@ void manage_workers () {
     print_eval_record(f,rTmp1);
     RoundRecord rTmp2;
     rTmp2 = rTmp1;
-    rTmp2.RoundNumber = managerRoundCtr+2;
+    rTmp2.RoundNumber = *last_msg_count_ptr +1;
     
     print_eval_record(f,rTmp2);
     
@@ -534,7 +539,7 @@ void manage_workers () {
     if (testType == VERIFICATION) {
       fprintf(stderr,"Manager found empty QA and QR.  Latest round reached was %d \n", managerRoundCtr);
       if (*target_ended_ptr != 1) {
-	fprintf(stderr,"Verification failed. \n");
+	fprintf(stderr,"Verification failed at time %lf. \n", util::getWallTime() - target_start_time);
       } else {
 	fprintf(stderr,"All messages verified. \n");
       }
@@ -728,6 +733,9 @@ void initManagerStructures() {
    
    latestRoundPtr = ((int *) ms_base) + 24;
    *latestRoundPtr = 0;
+
+   last_msg_count_ptr = ((int *) ms_base) + 32; //Number of C2S and S2C messages 
+   *last_msg_count_ptr = 0;
    
    //--------------------------------------------
    //Space for queues and records----------------
@@ -845,7 +853,8 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
       }
       
       RoundRecord r;
-      r.RoundNumber = round_count -1;
+      r.RoundNumber = msg_count;
+      //r.RoundNumber = round_count -1;
       r.RoundRealTime = RT * 1000000.; 
       r.SocketEventType = eventType;
       r.SocketEventSize = kto->numBytes;
@@ -930,50 +939,6 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
     //-------------------------------------
 
     
-    /*
-
-    
-    if (!noLog) {
-
-      int i = getpid();
-      worker_ID_stream << ".";
-      worker_ID_stream << i;
-      std::string pidString ;
-      
-      pidString = worker_ID_stream.str();
-      if (pidString.size() > 250) {
-	
-	//printf("Cycling log name due to large size \n");
-	worker_ID_stream.str("");
-	worker_ID_stream << "Monitor.Wrapped.";
-	worker_ID_stream << i;
-	pidString = worker_ID_stream.str();
-	//printf("Cycled log name is %s \n", pidString.c_str());
-	
-      }    
-      
-      //printf("Before freopen, new string for log is %s \n", pidString.c_str());
-      if (prev_stdout_log != NULL)
-	fclose(prev_stdout_log);
-      
-      prev_stdout_log = freopen(pidString.c_str(),"w",stdout);
-      //printf("Resetting run timers \n");
-      
-      if (prev_stdout_log == NULL) {
-	printf("ERROR: Couldn't open file for new replay pid %d \n", i);
-	perror("Error opening file during replay");
-	fprintf(stderr, "ERROR during replay for child process logging for pid %d \n", i);
-	worker_exit();
-      }
-    }
-    double T1 = util::getWallTime();
-    
-    interp_enter_time = T1;
-
-    */
-    
-    //-----------------------------------------------------------
-    
     int replayingFromPID;
     get_sem_lock();
     
@@ -1035,8 +1000,9 @@ void multipass_start_round (klee::Executor * theExecutor, bool isReplay) {
 
   } else {    //CHILD
     raise(SIGSTOP);
-    
-    kill(parentPID, SIGSTOP);  //Shouldn't we just let parent raise(SIGSTOP)?  Race condition?
+
+    //ABH DBG
+    //kill(parentPID, SIGSTOP);  //Shouldn't we just let parent raise(SIGSTOP)?  Race condition?
 
     cycleTASELogs(false); 
 

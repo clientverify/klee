@@ -4058,6 +4058,19 @@ void Executor::tase_make_symbolic(uint64_t addr, uint64_t len, const char * name
 
 }
 
+void Executor::tase_make_symbolic_bytewise(uint64_t addr, uint64_t len, const char * name) {
+  for (int i = 0; i < len; i++) {
+    std::string s = "_byte_" + std::to_string(i); 
+    std::string varName = std::string(name) + s;
+    printf("DBG bytewise make symbolic: varname is %s \n", varName.c_str());
+    
+    tase_make_symbolic(addr + i, 1, varName.c_str());
+  }
+
+		       
+
+}
+
 void Executor::model_sb_disabled() {
   target_ctx_gregs[GREG_RIP].u64 = target_ctx_gregs[GREG_R15].u64;
 }

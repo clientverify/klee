@@ -1374,6 +1374,28 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    printf("Found %d basic blocks with flags live-in \n", numLiveBlocks);
  }
 
+ //Make seperate directories for each of the workers in the time series.
+ void makeTSPath(int trace_ID) {
+   std::string workerDir = "/playpen/humphries/lTASE/TASE/test/TS_DIR" + std::to_string(trace_ID);
+   mkdir(workerDir.c_str(), 0777);
+   chdir(workerDir.c_str());
+ }
+
+ bool isTimeSeriesDone() {
+
+   bool allTracesDone = true;
+   for (int i = 0; i < 21; i++) {
+     //Check and see if trace i has dropped the "donei" file.
+     struct stat s;
+     std::string doneString = "done" + std::to_string(i);
+     if (stat(doneString.c_str() ,&s) != 0) {
+       allTracesDone = false;
+     }
+   }
+
+   return allTracesDone;
+ }
+ 
  //Brittle function to spawn off workers for each of the 21 TLS gmail sessions for
  // the time series evaluation.
 
@@ -1382,15 +1404,20 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
  #ifdef TASE_OPENSSL
  void spawnTimeSeriesWorkers() {
 
+    
+   
    //Traces 0 to 5, inclusive------------
    int pid = fork();
    if (pid == 0) {
      fprintf(stderr,"Launching trace 0 \n");
      trace_ID = 0;
-     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream00.ktest";
-     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream00.ktest.key";
+     const char *  ktestPathName = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream00.ktest";
+     masterSecretFile = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream00.ktest.key";
      strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
      printf("ktestPath is %s \n", ktestPath);
+     
+     makeTSPath(trace_ID);
+     
      return;
    } 
 
@@ -1400,10 +1427,12 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    if (pid == 0)  {
      fprintf(stderr,"Launching trace 1 \n");
      trace_ID = 1;
-     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream01.ktest";
-     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream01.ktest.key";
+     const char *  ktestPathName = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream01.ktest";
+     masterSecretFile = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream01.ktest.key";
      strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
-     printf("ktestPath is %s \n",ktestPath); 
+     printf("ktestPath is %s \n",ktestPath);
+
+     makeTSPath(trace_ID);
      return;
    }
 
@@ -1413,10 +1442,11 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    if (pid == 0)  {
      fprintf(stderr,"Launching trace 2 \n");
      trace_ID = 2;
-     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream02.ktest";
-     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream02.ktest.key";
+     const char *  ktestPathName = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream02.ktest";
+     masterSecretFile = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream02.ktest.key";
      strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
      printf("ktestPath is %s \n",ktestPath);
+     makeTSPath(trace_ID);
      return;
    }
 
@@ -1426,10 +1456,11 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    if (pid == 0)  {
      fprintf(stderr,"Launching trace 3 \n");
      trace_ID = 3;
-     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream03.ktest";
-     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream03.ktest.key";
+     const char *  ktestPathName = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream03.ktest";
+     masterSecretFile = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream03.ktest.key";
      strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
      printf("ktestPath is %s \n",ktestPath);
+     makeTSPath(trace_ID);
      return;
    }
 
@@ -1439,10 +1470,11 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    if (pid == 0)  {
      fprintf(stderr,"Launching trace 4 \n");
      trace_ID = 4;
-     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream04.ktest";
-     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream04.ktest.key";
+     const char *  ktestPathName = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream04.ktest";
+     masterSecretFile = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream04.ktest.key";
      strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
      printf("ktestPath is %s \n",ktestPath);
+     makeTSPath(trace_ID);
      return;
    }
 
@@ -1452,10 +1484,11 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    if (pid == 0)  {
      fprintf(stderr,"Launching trace 5 \n");
      trace_ID = 5;
-     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream05.ktest";
-     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream05.ktest.key";
+     const char *  ktestPathName = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream05.ktest";
+     masterSecretFile = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream05.ktest.key";
      strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
      printf("ktestPath is %s \n",ktestPath);
+     makeTSPath(trace_ID);
      return;
    }
 
@@ -1465,10 +1498,11 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    if (pid == 0)  {
      fprintf(stderr,"Launching trace 6 \n");
      trace_ID = 6;
-     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream06.ktest";
-     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream06.ktest.key";
+     const char *  ktestPathName = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream06.ktest";
+     masterSecretFile = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream06.ktest.key";
      strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
      printf("ktestPath is %s \n",ktestPath);
+     makeTSPath(trace_ID);
      return;
    }
 
@@ -1478,10 +1512,11 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    if (pid == 0)  {
      fprintf(stderr,"Launching trace 7 \n");
      trace_ID = 7;
-     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream07.ktest";
-     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream07.ktest.key";
+     const char *  ktestPathName = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream07.ktest";
+     masterSecretFile = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream07.ktest.key";
      strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
      printf("ktestPath is %s \n",ktestPath);
+     makeTSPath(trace_ID);
      return;
    }
 
@@ -1491,10 +1526,11 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    if (pid == 0)  {
      fprintf(stderr,"Launching trace 8 \n");
      trace_ID = 8;
-     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream08.ktest";
-     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream08.ktest.key";
+     const char *  ktestPathName = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream08.ktest";
+     masterSecretFile = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream08.ktest.key";
      strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
      printf("ktestPath is %s \n",ktestPath);
+     makeTSPath(trace_ID);
      return;
    }
 
@@ -1504,10 +1540,11 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    if (pid == 0)  {
      fprintf(stderr,"Launching trace 9 \n");
      trace_ID = 9;
-     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream09.ktest";
-     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream09.ktest.key";
+     const char *  ktestPathName = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream09.ktest";
+     masterSecretFile = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream09.ktest.key";
      strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
      printf("ktestPath is %s \n",ktestPath);
+     makeTSPath(trace_ID);
      return;
    }
    sleep (.601);
@@ -1516,10 +1553,11 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    if (pid == 0)  {
      fprintf(stderr,"Launching trace 10 \n");
      trace_ID = 10;
-     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream10.ktest";
-     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream10.ktest.key";
+     const char *  ktestPathName = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream10.ktest";
+     masterSecretFile = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream10.ktest.key";
      strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
      printf("ktestPath is %s \n",ktestPath);
+     makeTSPath(trace_ID);
      return;
    }
 
@@ -1529,10 +1567,11 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    if (pid == 0)  {
      fprintf(stderr,"Launching trace 11 \n");
      trace_ID = 11;
-     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream11.ktest";
-     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream11.ktest.key";
+     const char *  ktestPathName = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream11.ktest";
+     masterSecretFile = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream11.ktest.key";
      strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
      printf("ktestPath is %s \n",ktestPath);
+     makeTSPath(trace_ID);
      return;
    }
 
@@ -1542,10 +1581,11 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    if (pid == 0)  {
      fprintf(stderr,"Launching trace 12 \n");
      trace_ID = 12;
-     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream12.ktest";
-     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream12.ktest.key";
+     const char *  ktestPathName = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream12.ktest";
+     masterSecretFile = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream12.ktest.key";
      strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
      printf("ktestPath is %s \n",ktestPath);
+     makeTSPath(trace_ID);
      return;
    }
 
@@ -1555,10 +1595,11 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    if (pid == 0)  {
      fprintf(stderr,"Launching trace 13 \n");
      trace_ID = 13;
-     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream13.ktest";
-     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream13.ktest.key";
+     const char *  ktestPathName = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream13.ktest";
+     masterSecretFile = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream13.ktest.key";
      strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
      printf("ktestPath is %s \n",ktestPath);
+     makeTSPath(trace_ID);
      return;
    }
 
@@ -1568,10 +1609,11 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    if (pid == 0)  {
      fprintf(stderr,"Launching trace 14 \n");
      trace_ID = 14;
-     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream14.ktest";
-     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream14.ktest.key";
+     const char *  ktestPathName = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream14.ktest";
+     masterSecretFile = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream14.ktest.key";
      strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
      printf("ktestPath is %s \n",ktestPath);
+     makeTSPath(trace_ID);
      return;
    }
 
@@ -1581,10 +1623,11 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    if (pid == 0)  {
      fprintf(stderr,"Launching trace 15 \n");
      trace_ID = 15;
-     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream15.ktest";
-     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream15.ktest.key";
+     const char *  ktestPathName = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream15.ktest";
+     masterSecretFile = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream15.ktest.key";
      strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
      printf("ktestPath is %s \n",ktestPath);
+     makeTSPath(trace_ID);
      return;
    }
 
@@ -1594,10 +1637,11 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    if (pid == 0)  {
      fprintf(stderr,"Launching trace 16 \n");
      trace_ID = 16;
-     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream16.ktest";
-     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream16.ktest.key";
+     const char *  ktestPathName = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream16.ktest";
+     masterSecretFile = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream16.ktest.key";
      strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
      printf("ktestPath is %s \n",ktestPath);
+     makeTSPath(trace_ID);
      return;
    }
 
@@ -1607,10 +1651,11 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    if (pid == 0)  {
      fprintf(stderr,"Launching trace 17 \n");
      trace_ID = 17;
-     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream17.ktest";
-     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream17.ktest.key";
+     const char *  ktestPathName = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream17.ktest";
+     masterSecretFile = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream17.ktest.key";
      strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
      printf("ktestPath is %s \n",ktestPath);
+     makeTSPath(trace_ID);
      return;
    }
 
@@ -1620,10 +1665,11 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    if (pid == 0)  {
      fprintf(stderr,"Launching trace 18 \n");
      trace_ID = 18;
-     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream18.ktest";
-     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream18.ktest.key";
+     const char *  ktestPathName = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream18.ktest";
+     masterSecretFile = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream18.ktest.key";
      strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
      printf("ktestPath is %s \n",ktestPath);
+     makeTSPath(trace_ID);
      return;
    }
 
@@ -1633,10 +1679,11 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    if (pid == 0)  {
      fprintf(stderr,"Launching trace 19 \n");
      trace_ID = 19;
-     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream19.ktest";
-     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream19.ktest.key";
+     const char *  ktestPathName = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream19.ktest";
+     masterSecretFile = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream19.ktest.key";
      strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
      printf("ktestPath is %s \n",ktestPath);
+     makeTSPath(trace_ID);
      return;
    }
 
@@ -1646,14 +1693,21 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    if (pid == 0)  {
      fprintf(stderr,"Launching trace 20 \n");
      trace_ID = 20;
-     const char *  ktestPathName = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream20.ktest";
-     masterSecretFile = "./libtasessl/ktest_traces/gmail/gmail_spdy_stream20.ktest.key";
+     const char *  ktestPathName = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream20.ktest";
+     masterSecretFile = "../libtasessl/ktest_traces/gmail/gmail_spdy_stream20.ktest.key";
      strncpy(ktestPath,ktestPathName, strlen(ktestPathName));
      printf("ktestPath is %s \n",ktestPath);
+     makeTSPath(trace_ID);
      return;
    }
-   
-   sleep(600);
+
+   while (true) {
+     sleep(1);
+     if (isTimeSeriesDone()){
+       std::exit(EXIT_SUCCESS);
+     }
+   }
+
    
  }
 #endif
@@ -1783,7 +1837,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
  int main (int argc, char **argv, char **envp) {
 
    //mallopt(M_MMAP_THRESHOLD, 0);
-
+signal(SIGCHLD, SIG_IGN);//Added
    checkStatm();
    
      
@@ -1985,11 +2039,15 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    }
    int pid;
 
-   
+   #ifdef TASE_OPENSSL
    checkStatm();
-   //printf("About to sleep ... \n");
-   //sleep(10); //Doesn't help with huge pages?
 
+   
+   //printf("About to sleep ... \n");
+   
+   if (!enableTimeSeries) {
+     sleep(10); //Let khugepaged catch up before we launch
+   }
    /*
    //Try spinning instead?
     double d0 = util::getWallTime();
@@ -1999,6 +2057,8 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    }
    */
    checkStatm();
+   #endif TASE_OPENSSL
+   signal(SIGCHLD, SIG_IGN); //Added
    double theTime = util::getWallTime();
    target_start_time = theTime;  //Moved here to initialize for both manager and workers
    last_message_verification_time = theTime;
@@ -2031,10 +2091,11 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
 	   std::exit(EXIT_FAILURE);
 	 }
        }
-
+       
        int res = prctl(PR_SET_CHILD_SUBREAPER, 1);
        if (res == -1)
 	 perror("Initial prctl error ");
+       //signal(SIGCHLD, SIG_IGN);//Added
        
        get_sem_lock();
        *target_started_ptr = 1; //Signals that analysis has started.

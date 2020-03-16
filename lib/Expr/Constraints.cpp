@@ -405,9 +405,12 @@ void updateUFStructures(std::vector<const klee::Array *> arrs, ref <Expr> e) {
   
 }
 
-void ConstraintManager::addConstraintInternal(ref<Expr> e) {
-  // rewrite any known equalities and split Ands into different conjuncts
 
+//ABH Added option to pass in list of symbolic variables and avoid calling "findSymbolicObjects"
+void ConstraintManager::addConstraintInternal(ref<Expr> e, std::vector<const klee::Array * > * symNames ) {
+  // rewrite any known equalities and split Ands into different conjuncts
+  double T0 = util::getWallTime();
+  
   switch (e->getKind()) {
   case Expr::Constant:
     assert(cast<ConstantExpr>(e)->isTrue() &&
@@ -445,10 +448,14 @@ void ConstraintManager::addConstraintInternal(ref<Expr> e) {
     llvm::outs().flush();
     */
     if (useUF) {
-      std::vector<const klee::Array * > arrays;
-      klee::findSymbolicObjects(e, arrays);     
-      //printf("Found %d arrays when adding constraint \n", arrays.size());
-      updateUFStructures(arrays, e);
+      if (symNames != NULL) {
+	updateUFStructures(*symNames, e);
+      } else {
+	std::vector<const klee::Array * > arrays;
+	klee::findSymbolicObjects(e, arrays);     
+	//printf("Found %d arrays when adding constraint \n", arrays.size());
+	updateUFStructures(arrays, e);
+      }
     }
     
     constraints.push_back(e);
@@ -458,6 +465,7 @@ void ConstraintManager::addConstraintInternal(ref<Expr> e) {
   }
 
   default:
+
     //addToEqualitiesMap(e);
 
     /*
@@ -466,27 +474,34 @@ void ConstraintManager::addConstraintInternal(ref<Expr> e) {
     llvm::outs() << "\n\n";
     llvm::outs().flush();
     */
+    double T2 = util::getWallTime();
     if (useUF) {
-      std::vector<const klee::Array * > arrays;
-      klee::findSymbolicObjects(e, arrays);
-      //printf("Found %d arrays when adding constraint \n", arrays.size());
-      updateUFStructures(arrays, e);
+      if (symNames != NULL) {
+	updateUFStructures(*symNames, e);
+      } else {
+	std::vector<const klee::Array * > arrays;
+	klee::findSymbolicObjects(e, arrays);
+	//printf("Found %d arrays when adding constraint \n", arrays.size());
+	updateUFStructures(arrays, e);
+      }
     }
-    
+    printf("UF time: %lf \n", util::getWallTime() - T2);
     constraints.push_back(e);
     break;
   }
 }
 
-void ConstraintManager::addConstraint(ref<Expr> e) {
+void ConstraintManager::addConstraint(ref<Expr> e, std::vector<const klee::Array * > * symNames) {
 
   //Removed for TASE
   //e = simplifyExpr(e);
-  addConstraintInternal(e);
-
-
-
   
+  if (symNames != NULL) {
+    addConstraintInternal(e, symNames);
+  } else {
+    addConstraintInternal(e);
+  }
+
 }
 
 
