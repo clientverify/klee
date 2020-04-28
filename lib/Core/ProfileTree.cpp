@@ -28,14 +28,14 @@
 #include <vector>
 
 using namespace klee;
-int ProfileTreeNode::total_ins_count = 0;
-int ProfileTreeNode::total_node_count = 0;
-int ProfileTreeNode::total_branch_count = 0;
-int ProfileTreeNode::total_clone_count = 0;
-int ProfileTreeNode::total_function_call_count = 0;
-int ProfileTreeNode::total_function_ret_count = 0;
+int ProfileTree::total_ins_count = 0;
+int ProfileTree::total_node_count = 0;
+int ProfileTree::total_branch_count = 0;
+int ProfileTree::total_clone_count = 0;
+int ProfileTree::total_function_call_count = 0;
+int ProfileTree::total_function_ret_count = 0;
 
-ProfileTree::ProfileTree(const ExecutionState* _root) : root(new Node(0, _root)) {
+ProfileTree::ProfileTree(const ExecutionState* _root) : root(new Node(_root)) {
 }
 
 ProfileTree::~ProfileTree() {}
@@ -61,7 +61,7 @@ ProfileTreeNode::link(
 }
 
 
-void ProfileTreeNode::function_call(
+void ProfileTreeNode::record_function_call(
              ExecutionState* es,
              llvm::Instruction* ins,
              llvm::Function* target) {
@@ -84,7 +84,7 @@ void ProfileTreeNode::function_call(
   assert(*first == this);
   v->erase(first);
 
-  total_function_call_count++;
+  ProfileTree::total_function_call_count++;
   this->my_type         = call_parent;
   //add myself to my_function's list of calls
   if(this->my_function) {
@@ -96,7 +96,7 @@ void ProfileTreeNode::function_call(
   assert(kid->parent == this);
 }
 
-void ProfileTreeNode::function_return(
+void ProfileTreeNode::record_function_return(
              ExecutionState* es,
              llvm::Instruction* ins,
              llvm::Instruction* to) {
@@ -107,7 +107,7 @@ void ProfileTreeNode::function_return(
   assert(*first == this);
   v->erase(first);
 
-  total_function_ret_count++;
+  ProfileTree::total_function_ret_count++;
   this->my_type         = return_parent;
   this->container = new ContainerRetIns(ins, to);
   ProfileTreeNode* kid  = link(es);
@@ -134,7 +134,7 @@ ProfileTreeNode::split(
   return std::make_pair(left, right);
 }
 
-void ProfileTreeNode::branch(
+void ProfileTreeNode::record_symbolic_branch(
              ExecutionState* leftEs,
              ExecutionState* rightEs,
              llvm::Instruction* ins) {
@@ -151,7 +151,7 @@ void ProfileTreeNode::branch(
   assert(ret.first->parent == ret.second->parent);
 }
 
-void ProfileTreeNode::clone(
+void ProfileTreeNode::record_clone(
              ExecutionState* me_state,
              ExecutionState* clone_state,
              llvm::Instruction* ins,
@@ -161,7 +161,7 @@ void ProfileTreeNode::clone(
   assert(me_state != clone_state);
   assert(this->children.size() == 0);
 
-  total_clone_count++;
+  ProfileTree::total_clone_count++;
   std::pair<ProfileTreeNode*, ProfileTreeNode*> ret;
   if (this->parent == NULL) { //Root case
     assert(this->get_ins_count() == 0);
@@ -237,7 +237,6 @@ int ProfileTree::post_processing_dfs(ProfileTreeNode *root){
     //Asserts and print outs (looking inside the node):
     assert(p != NULL);
     if(p->parent){
-      assert(p->parent->my_node_number < p->my_node_number);
       assert(p->clone_parent);
     }
     if(p->get_type() == ProfileTreeNode::NodeType::return_parent)
@@ -246,13 +245,12 @@ int ProfileTree::post_processing_dfs(ProfileTreeNode *root){
       assert(dynamic_cast<ContainerCallIns*>(p->container) != NULL);
 
     if(p->get_type() == ProfileTreeNode::NodeType::call_parent){
-      assert(((ContainerCallIns*)p->container)->function_calls_branch_count <= p->total_branch_count);
-      assert(((ContainerCallIns*)p->container)->function_branch_count <= p->total_branch_count);
+      assert(((ContainerCallIns*)p->container)->function_calls_branch_count <= ProfileTree::total_branch_count);
+      assert(((ContainerCallIns*)p->container)->function_branch_count <= ProfileTree::total_branch_count);
     }
     if(p->get_ins_count() > 0 && p->container != NULL)
       assert(p->get_instruction() == p->last_instruction);
 
-    if(DFS_DEBUG) printf("dfs node#: %d children: %d type: ", p->my_node_number, p->children.size());
     switch(p->get_type()) {
       case ProfileTreeNode::NodeType::root:
         assert(p->container == NULL);
@@ -482,6 +480,22 @@ ContainerBranchClone::ContainerBranchClone(llvm::Instruction* i, cliver::Searche
   assert(i != NULL);
 }
 
+
+ProfileTreeNode::ProfileTreeNode( const ExecutionState *es)
+  : parent(NULL),
+    last_instruction(NULL),
+    children(),
+    container(0),
+    ins_count(0),
+    sub_tree_ins_count(0),
+    depth(0),
+    my_type(root),
+    my_function(0){
+      assert(es != NULL);
+      stage = ((cliver::CVExecutionState*)es)->searcher_stage();
+      ProfileTree::total_node_count++;
+}
+
 ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent, 
                      const ExecutionState *es)
   : parent(_parent),
@@ -490,37 +504,31 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
     container(0),
     ins_count(0),
     sub_tree_ins_count(0),
-    depth(0),
+    depth(_parent->depth),
     my_type(leaf),
     my_function(0){
       assert(es != NULL);
       stage = ((cliver::CVExecutionState*)es)->searcher_stage();
-      my_node_number = total_node_count;
-      if(_parent == NULL){
-        my_type = root;
+      assert(_parent != NULL);
+      //handle branch or clone we belong to:
+      if(_parent->my_type == branch_parent || _parent->my_type == clone_parent){
+        my_branch_or_clone = _parent;
       } else {
-        assert(_parent->my_node_number < my_node_number);
-        depth = _parent->depth;
-        //handle branch or clone we belong to:
-        if(_parent->my_type == branch_parent || _parent->my_type == clone_parent){
-          my_branch_or_clone = _parent;
-        } else {
-          my_branch_or_clone = _parent->my_branch_or_clone;
-        }
-        ((ContainerBranchClone*)my_branch_or_clone->container)->my_branches_or_clones.push_back(this);
-
-        //handle function we belong to:
-        if(_parent->my_type == call_parent){
-          my_function = _parent;
-        } else if ( _parent->my_function == NULL ){
-          my_function = NULL;
-        } else if(_parent->my_type == return_parent){
-          my_function = _parent->my_function->my_function;
-        } else {
-          my_function = _parent->my_function;
-        }
+        my_branch_or_clone = _parent->my_branch_or_clone;
       }
-      total_node_count++;
+      ((ContainerBranchClone*)my_branch_or_clone->container)->my_branches_or_clones.push_back(this);
+
+      //handle function we belong to:
+      if(_parent->my_type == call_parent){
+        my_function = _parent;
+      } else if ( _parent->my_function == NULL ){
+        my_function = NULL;
+      } else if(_parent->my_type == return_parent){
+        my_function = _parent->my_function->my_function;
+      } else {
+        my_function = _parent->my_function;
+      }
+      ProfileTree::total_node_count++;
 }
 
 ProfileTreeNode::~ProfileTreeNode() {
@@ -531,13 +539,13 @@ ProfileTreeNode::~ProfileTreeNode() {
 ////////////////// Getters, Setters, Incrementing /////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
-int  ProfileTreeNode::get_total_branch_count(void){ return total_branch_count; }
-int  ProfileTreeNode::get_ins_count(void){ return ins_count; }
-int  ProfileTreeNode::get_total_ins_count(void){ return total_ins_count; }
-int  ProfileTreeNode::get_total_node_count(void){ return total_node_count; }
-int  ProfileTreeNode::get_total_ret_count(void){ return total_function_ret_count; }
-int  ProfileTreeNode::get_total_call_count(void){ return total_function_call_count; }
-int  ProfileTreeNode::get_total_clone_count(void){ return total_clone_count; }
+int  ProfileTreeNode::get_ins_count(void)     { return ins_count; }
+int  ProfileTree::get_total_branch_count(void){ return ProfileTree::total_branch_count; }
+int  ProfileTree::get_total_ins_count(void)   { return ProfileTree::total_ins_count; }
+int  ProfileTree::get_total_node_count(void)  { return ProfileTree::total_node_count; }
+int  ProfileTree::get_total_ret_count(void)   { return ProfileTree::total_function_ret_count; }
+int  ProfileTree::get_total_call_count(void)  { return ProfileTree::total_function_call_count; }
+int  ProfileTree::get_total_clone_count(void) { return ProfileTree::total_clone_count; }
 void ProfileTreeNode::increment_ins_count(llvm::Instruction *i){
   assert(i != NULL);
   if(my_function != NULL){
@@ -546,16 +554,16 @@ void ProfileTreeNode::increment_ins_count(llvm::Instruction *i){
   }
   last_instruction = i;
 
-  total_ins_count++;
+  ProfileTree::total_ins_count++;
   ins_count++;
   depth++;
   if(parent)
     assert(depth == ins_count + parent->depth);
 }
 void ProfileTreeNode::increment_branch_count(void){
-  total_branch_count++;
+  ProfileTree::total_branch_count++;
   assert(((ContainerCallIns*)my_function->container)->function_branch_count >= 0);
-  assert(((ContainerCallIns*)my_function->container)->function_branch_count < total_branch_count);
+  assert(((ContainerCallIns*)my_function->container)->function_branch_count < ProfileTree::total_branch_count);
   ((ContainerCallIns*)my_function->container)->function_branch_count++;
 }
 enum ProfileTreeNode::NodeType  ProfileTreeNode::get_type(void){ return my_type; }

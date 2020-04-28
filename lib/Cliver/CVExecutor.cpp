@@ -456,12 +456,12 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
 
 
   //Record profile tree info, and delete
-  int my_total_instructions = profileTree->root->get_total_ins_count();
-  int my_total_node         = profileTree->root->get_total_node_count();
-  int my_total_branches     = profileTree->root->get_total_branch_count();
-  int my_clones             = profileTree->root->get_total_clone_count();
-  int my_returns            = profileTree->root->get_total_ret_count();
-  int my_calls              = profileTree->root->get_total_call_count();
+  int my_total_instructions = profileTree->get_total_ins_count();
+  int my_total_node         = profileTree->get_total_node_count();
+  int my_total_branches     = profileTree->get_total_branch_count();
+  int my_clones             = profileTree->get_total_clone_count();
+  int my_returns            = profileTree->get_total_ret_count();
+  int my_calls              = profileTree->get_total_call_count();
 
   printf("my_total_instructions %d\n", my_total_instructions);
   printf("my_total_node %d\n", my_total_node);

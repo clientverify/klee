@@ -1628,7 +1628,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     ref<Expr> result = ConstantExpr::alloc(0, Expr::Bool);
 
 
-    state.profiletreeNode->function_return(&state, i, kcaller->inst);
+    state.profiletreeNode->record_function_return(&state, i, kcaller->inst);
     
     if (!isVoidReturn) {
       result = eval(ki, 0, state).value;
@@ -1937,7 +1937,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
         }
       }
 
-      state.profiletreeNode->function_call(&state, i, f);
+      state.profiletreeNode->record_function_call(&state, i, f);
       executeCall(state, ki, f, arguments);
     } else {
       ref<Expr> v = eval(ki, 0, state).value;
@@ -1967,7 +1967,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
                                 "resolved symbolic function pointer to: %s",
                                 f->getName().data());
 
-            state.profiletreeNode->function_call(&state, i, f);
+            state.profiletreeNode->record_function_call(&state, i, f);
             executeCall(*res.first, ki, f, arguments);
           } else {
             if (!hasInvalid) {
