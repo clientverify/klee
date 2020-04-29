@@ -30,12 +30,12 @@ namespace klee {
     ~ProfileTree();
 
     //All the instructions in the tree
-    static int total_ins_count;
-    static int total_node_count;
-    static int total_branch_count;
-    static int total_clone_count;
-    static int total_function_call_count;
-    static int total_function_ret_count;
+    int total_ins_count = 0;
+    int total_node_count = 0;
+    int total_branch_count = 0;
+    int total_clone_count = 0;
+    int total_function_call_count = 0;
+    int total_function_ret_count = 0;
 
     int get_total_ins_count(void);
     int get_total_node_count(void);
@@ -171,6 +171,7 @@ namespace klee {
     llvm::Instruction* get_instruction(void);
 
   private:
+    ProfileTree* my_tree;
     NodeType my_type;
 
     //Creates a single child node receiving the parent's data.  Used on function call and return.
@@ -182,7 +183,7 @@ namespace klee {
                                  ExecutionState* leftEs,
                                  ExecutionState* rightEs);
 
-    ProfileTreeNode(const ExecutionState* es);
+    ProfileTreeNode(const ExecutionState* es, ProfileTree* tree);
 
     ProfileTreeNode(ProfileTreeNode *_parent,
                     const ExecutionState* es);

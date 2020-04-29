@@ -28,14 +28,18 @@
 #include <vector>
 
 using namespace klee;
+#if 0
 int ProfileTree::total_ins_count = 0;
 int ProfileTree::total_node_count = 0;
 int ProfileTree::total_branch_count = 0;
 int ProfileTree::total_clone_count = 0;
 int ProfileTree::total_function_call_count = 0;
 int ProfileTree::total_function_ret_count = 0;
+#endif
 
-ProfileTree::ProfileTree(const ExecutionState* _root) : root(new Node(_root)) {
+
+ProfileTree::ProfileTree(const ExecutionState* _root)  {
+  root = new Node(_root, this);
 }
 
 ProfileTree::~ProfileTree() {}
@@ -84,7 +88,7 @@ void ProfileTreeNode::record_function_call(
   assert(*first == this);
   v->erase(first);
 
-  ProfileTree::total_function_call_count++;
+  my_tree->total_function_call_count++;
   this->my_type         = call_parent;
   //add myself to my_function's list of calls
   if(this->my_function) {
@@ -107,7 +111,7 @@ void ProfileTreeNode::record_function_return(
   assert(*first == this);
   v->erase(first);
 
-  ProfileTree::total_function_ret_count++;
+  my_tree->total_function_ret_count++;
   this->my_type         = return_parent;
   this->container = new ContainerRetIns(ins, to);
   ProfileTreeNode* kid  = link(es);
@@ -161,7 +165,7 @@ void ProfileTreeNode::record_clone(
   assert(me_state != clone_state);
   assert(this->children.size() == 0);
 
-  ProfileTree::total_clone_count++;
+  my_tree->total_clone_count++;
   std::pair<ProfileTreeNode*, ProfileTreeNode*> ret;
   if (this->parent == NULL) { //Root case
     assert(this->get_ins_count() == 0);
@@ -481,8 +485,9 @@ ContainerBranchClone::ContainerBranchClone(llvm::Instruction* i, cliver::Searche
 }
 
 
-ProfileTreeNode::ProfileTreeNode( const ExecutionState *es)
-  : parent(NULL),
+ProfileTreeNode::ProfileTreeNode( const ExecutionState *es, ProfileTree* tree)
+  : my_tree(tree),
+    parent(NULL),
     last_instruction(NULL),
     children(),
     container(0),
@@ -493,12 +498,13 @@ ProfileTreeNode::ProfileTreeNode( const ExecutionState *es)
     my_function(0){
       assert(es != NULL);
       stage = ((cliver::CVExecutionState*)es)->searcher_stage();
-      ProfileTree::total_node_count++;
+      my_tree->total_node_count++;
 }
 
 ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent, 
                      const ExecutionState *es)
   : parent(_parent),
+    my_tree(_parent->my_tree),
     last_instruction(NULL),
     children(),
     container(0),
@@ -528,7 +534,7 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
       } else {
         my_function = _parent->my_function;
       }
-      ProfileTree::total_node_count++;
+      my_tree->total_node_count++;
 }
 
 ProfileTreeNode::~ProfileTreeNode() {
@@ -554,16 +560,16 @@ void ProfileTreeNode::increment_ins_count(llvm::Instruction *i){
   }
   last_instruction = i;
 
-  ProfileTree::total_ins_count++;
+  my_tree->total_ins_count++;
   ins_count++;
   depth++;
   if(parent)
     assert(depth == ins_count + parent->depth);
 }
 void ProfileTreeNode::increment_branch_count(void){
-  ProfileTree::total_branch_count++;
+  my_tree->total_branch_count++;
   assert(((ContainerCallIns*)my_function->container)->function_branch_count >= 0);
-  assert(((ContainerCallIns*)my_function->container)->function_branch_count < ProfileTree::total_branch_count);
+  assert(((ContainerCallIns*)my_function->container)->function_branch_count < my_tree->total_branch_count);
   ((ContainerCallIns*)my_function->container)->function_branch_count++;
 }
 enum ProfileTreeNode::NodeType  ProfileTreeNode::get_type(void){ return my_type; }
