@@ -51,6 +51,7 @@ namespace klee {
     void dump_branch_clone_graph(std::string path, cliver::ClientVerifier* cv_);
   };
 
+
   //Each ProfileNode has a ContainerNode, initially NULL, which will contain the
   //instruction associated with the event the node encounters (clone, symbolic branch, function call,
   //or function return) which causes the node to stop being a leaf node.
@@ -107,6 +108,20 @@ namespace klee {
     std::vector<ProfileTreeNode*> my_branches_or_clones;
   };
 
+
+  class FunctionStatstics{
+    public:
+      FunctionStatstics(ContainerCallIns* c);
+      ~FunctionStatstics();
+      int ins_count;
+      int sub_ins_count;
+      int branch_count;
+      int sub_branch_count;
+      int times_called;
+      int num_called;
+      llvm::Function* function;
+      void add(ContainerCallIns* c);
+  };
 
   /* Each ExecutionState has a ProfileTreeNode, it gets a new profile node when
    * it encounters a function call, return, symbolic branch, or clone.
@@ -165,6 +180,7 @@ namespace klee {
     int get_depth();
     void update_function_statistics(void);
     void update_subtree_count(void);
+    void report_function_data(std::unordered_map<std::string, FunctionStatstics*>* stats);
 
     enum NodeType { leaf, clone_parent, branch_parent, call_parent, root,
       return_parent };
@@ -211,18 +227,5 @@ namespace klee {
 
   };
 
-  class FunctionStatstics{
-    public:
-      FunctionStatstics(ContainerCallIns* c);
-      ~FunctionStatstics();
-      int ins_count;
-      int sub_ins_count;
-      int branch_count;
-      int sub_branch_count;
-      int times_called;
-      int num_called;
-      llvm::Function* function;
-      void add(ContainerCallIns* c);
-  };
 }
 

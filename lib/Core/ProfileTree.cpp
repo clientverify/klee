@@ -348,37 +348,32 @@ void FunctionStatstics::add(ContainerCallIns* c){
   assert(function == c->my_target);
 }
 
+void ProfileTreeNode::report_function_data(std::unordered_map<std::string, FunctionStatstics*>* stats){
+  if(get_type() == ProfileTreeNode::NodeType::call_parent){
+    ContainerCallIns* c = (ContainerCallIns*) container;
+    for (auto i = c->my_calls.begin(); i != c->my_calls.end(); ++i)
+      (*i)->report_function_data(stats);
+
+    //statistic collection
+    std::string key = c->my_target->getName().data();
+    std::unordered_map<std::string,FunctionStatstics*>::const_iterator itr
+      = stats->find(key);
+    if (itr == stats->end()){
+      //add new record, this function doesn't exist yet.
+      FunctionStatstics* fs = new FunctionStatstics(c);
+      (*stats)[key] = fs;
+    } else {
+      (*itr).second->add(c);
+    }
+  } else {
+    for (auto i = children.begin(); i != children.end(); ++i)
+      (*i)->report_function_data(stats);
+  }
+}
+
 void ProfileTree::consolidate_function_data(){
   std::unordered_map<std::string, FunctionStatstics*> stats;
-  std::stack <ProfileTreeNode*> nodes_to_visit;
-  nodes_to_visit.push(root); //add children to the end
-  while( nodes_to_visit.size() > 0 ) {
-    //Handling DFS traversal:
-    ProfileTreeNode* p = nodes_to_visit.top(); //get last element
-    nodes_to_visit.pop(); //remove last element
-
-    if(p->get_type() == ProfileTreeNode::NodeType::call_parent){
-      ContainerCallIns* c = (ContainerCallIns*) p->container;
-      for (auto i = c->my_calls.begin(); i != c->my_calls.end(); ++i)
-        nodes_to_visit.push(*i); //add call nodes
-
-
-      //statistic collection
-      std::string key = c->my_target->getName().data();
-      std::unordered_map<std::string,FunctionStatstics*>::const_iterator itr
-        = stats.find(key);
-      if (itr == stats.end()){
-        //add new record, this function doesn't exist yet.
-        FunctionStatstics* fs = new FunctionStatstics(c);
-        stats[key] = fs;
-      } else {
-        (*itr).second->add(c);
-      }
-    } else {
-      for (auto i = p->children.begin(); i != p->children.end(); ++i)
-        nodes_to_visit.push(*i); //add children
-    }
-  }
+  root->report_function_data(&stats);
   std::cout << "\nConsolidated Function Data: \n";
   for (auto itr = stats.begin(); itr != stats.end(); itr++) {
     const char* dir = get_function_directory(itr->second->function);
