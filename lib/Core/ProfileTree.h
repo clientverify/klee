@@ -44,7 +44,8 @@ namespace klee {
     int get_total_call_count(void);
     int get_total_branch_count(void);
 
-    int post_processing_dfs(ProfileTreeNode *root);
+    void post_processing_dfs(ProfileTreeNode *root);
+    void validate_correctness();
     void consolidate_function_data();
     //Prints the branch clone graph.  Does not print function calls/returns
     void dump_branch_clone_graph(std::string path, cliver::ClientVerifier* cv_);

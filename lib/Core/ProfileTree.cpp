@@ -28,15 +28,6 @@
 #include <vector>
 
 using namespace klee;
-#if 0
-int ProfileTree::total_ins_count = 0;
-int ProfileTree::total_node_count = 0;
-int ProfileTree::total_branch_count = 0;
-int ProfileTree::total_clone_count = 0;
-int ProfileTree::total_function_call_count = 0;
-int ProfileTree::total_function_ret_count = 0;
-#endif
-
 
 ProfileTree::ProfileTree(const ExecutionState* _root)  {
   root = new Node(_root, this);
@@ -210,18 +201,10 @@ void ProfileTreeNode::record_clone(
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////// Processing And Traversal ////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-
-
-//Returns instruction count for whole tree
 #define DFS_DEBUG 0
-int ProfileTree::post_processing_dfs(ProfileTreeNode *root){
-  //this updates all the function nodes with the instruction statistics for
-  //the functions they call. Must be called before
-  //postorder_function_update_statistics().
-  root->update_subtree_count();
+void ProfileTree::validate_correctness(){
 
   //Tree statistic collection:
-  int nodes_traversed = 0;
   int total_instr = 0; //records the number of instructions
 
   std::stack <ProfileTreeNode*> nodes_to_visit;
@@ -236,7 +219,6 @@ int ProfileTree::post_processing_dfs(ProfileTreeNode *root){
 
     //Statistics:
     total_instr += p->ins_count;
-    nodes_traversed++;
 
     //Asserts and print outs (looking inside the node):
     assert(p != NULL);
@@ -298,57 +280,49 @@ int ProfileTree::post_processing_dfs(ProfileTreeNode *root){
 
     if(DFS_DEBUG) printf("\n");
   }
+  assert(total_instr == total_ins_count);
+
+}
+
+//Returns instruction count for whole tree
+
+void ProfileTree::post_processing_dfs(ProfileTreeNode *root){
+  //this updates all the ContainerCallIns with the instruction statistics for
+  //the functions they call.
+  root->update_subtree_count();
+  validate_correctness();
 
   std::cout << "\nupdate_function_statistics:\n";
   root->update_function_statistics();
   consolidate_function_data();
 
-  return total_instr;
 }
 
 static bool customCompare(ProfileTreeNode* x, ProfileTreeNode* y){
   return (x->get_depth() < y->get_depth());
 }
 
-//iterative postorder traversal.  Too many nodes for recursive :(.
-//http://tech-queries.blogspot.com/2010/12/iterative-post-order-traversal-of_05.html
+//Iterative postorder traversal.  Too many nodes for recursive :(.
+//Updates the subtree instruction statistics.
 void ProfileTreeNode::update_subtree_count(void){
-  assert(parent == NULL);
-  std::stack<ProfileTreeNode*> s1;
-  std::stack<ProfileTreeNode*> s2;
-  s1.push(this);
-  while(!s1.empty()){
-    ProfileTreeNode* n = s1.top();
-    s2.push(n);
-    s1.pop();
-    for (auto i = n->children.begin(); i != n->children.end(); ++i)
-      s1.push(*i);
-  }
-
-  while (!s2.empty()){
-    auto n = s2.top();
-    s2.pop();
-    assert(n->sub_tree_ins_count == 0);
-    for (auto i = n->children.begin(); i != n->children.end(); ++i) {
-      n->sub_tree_ins_count += (*i)->sub_tree_ins_count;
-      n->sub_tree_ins_count += (*i)->ins_count;
-    }
+  for (auto i = children.begin(); i != children.end(); ++i) {
+      (*i)->update_subtree_count();
+      sub_tree_ins_count += (*i)->sub_tree_ins_count;
+      sub_tree_ins_count += (*i)->ins_count;
   }
 }
 
 
 //traverses call graph updating variables in ContainerCallIns.  Assumes node's
-//subtree_ins_count is accurate. Assumes winner path has been propagated up.
-#define PRINT_FUNC_STATS 0
+//subtree_ins_count is accurate.
 void ProfileTreeNode::update_function_statistics(){
-  //Recurse for children
+  //DFS traversal of call graph:
   if(my_type == call_parent){
     ContainerCallIns* call_container = ((ContainerCallIns*)container);
     for (auto i = call_container->my_calls.begin(); i != call_container->my_calls.end(); ++i) {
       assert((*i)->my_type == call_parent);
       (*i)->update_function_statistics();
-    }
-    for (auto i = call_container->my_calls.begin(); i != call_container->my_calls.end(); ++i) {
+
       ContainerCallIns* ic = ((ContainerCallIns*)(*i)->container);
       call_container->function_calls_ins_count    += ic->function_ins_count;
       call_container->function_calls_ins_count    += ic->function_calls_ins_count;
@@ -356,15 +330,7 @@ void ProfileTreeNode::update_function_statistics(){
       call_container->function_calls_branch_count += ic->function_calls_branch_count;
     }
     assert(call_container->my_target != NULL);
-
-    const char *function_name = call_container->my_target->getName().data();
-#if PRINT_FUNC_STATS
-    std::cout << function_name << " my_ins "
-      << call_container->function_ins_count << " subtree_ins "
-      << call_container->function_calls_ins_count << " my_symbolic_branches "
-      << call_container->function_branch_count << " subtree_symbolic_branches "
-      << call_container->function_calls_branch_count << "\n";
-#endif
+  //Find a call node:
   } else {
     for (auto i = children.begin(); i != children.end(); ++i) {
       (*i)->update_function_statistics();
@@ -382,7 +348,6 @@ void FunctionStatstics::add(ContainerCallIns* c){
   assert(function == c->my_target);
 }
 
-#define PRINT_CONSOLIDATED_SSH_FUNCTION_STATS 1
 void ProfileTree::consolidate_function_data(){
   std::unordered_map<std::string, FunctionStatstics*> stats;
   std::stack <ProfileTreeNode*> nodes_to_visit;
@@ -418,7 +383,6 @@ void ProfileTree::consolidate_function_data(){
   for (auto itr = stats.begin(); itr != stats.end(); itr++) {
     const char* dir = get_function_directory(itr->second->function);
 
-#if PRINT_CONSOLIDATED_SSH_FUNCTION_STATS
     // itr works as a pointer to pair<string, double>
     // type itr->first stores the key part  and
     // itr->second stroes the value part
@@ -434,7 +398,6 @@ void ProfileTree::consolidate_function_data(){
       " sub_ins_count " << itr->second->sub_ins_count <<
       " branch_count " << itr->second->branch_count <<
       " sub_branch_count " << itr->second->sub_branch_count << "\n";
-#endif
   }
 }
 
