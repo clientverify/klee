@@ -222,21 +222,6 @@ CVExecutor::CVExecutor(const InterpreterOptions &opts, klee::InterpreterHandler 
 
 CVExecutor::~CVExecutor() {}
 
-std::set <std::string> f_called_this_round;
-void CVExecutor::print_round_functions(int round, int event_type){
-  // printing set
-  std::set<std::string>::iterator itr;
-  std::cout << "\nThe set functions for this round " << round << " event type " << event_type <<" are: ";
-  for (itr = f_called_this_round.begin(); itr != f_called_this_round.end(); ++itr) {
-    std::cout << *itr << ", ";
-  }
-  std::cout << std::endl;
-}
-
-void CVExecutor::reset_round_functions(){
-  f_called_this_round.clear();
-}
-
 void CVExecutor::executeCall(klee::ExecutionState &state, 
                              klee::KInstruction *ki,
                              llvm::Function *f,
@@ -245,8 +230,6 @@ void CVExecutor::executeCall(klee::ExecutionState &state,
     CVMESSAGE(std::setw(2) << std::right << klee::GetThreadID() << " "
               << std::string(state.stack.size(), '-') << f->getName().str());
   }
-  std::string str(f->getName().data());
-  f_called_this_round.insert(str);
 
   std::string XWidgetStr("Widget_");
   if (NoXWindows && f->getName().substr(0,XWidgetStr.size()) == XWidgetStr) {

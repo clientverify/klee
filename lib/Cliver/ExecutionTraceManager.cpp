@@ -295,11 +295,6 @@ void ExecutionTraceManager::notify(ExecutionEvent ev) {
 
     case CV_SEARCHER_NEW_STAGE: {
       klee::TimerStatIncrementer timer(stats::execution_tree_time);
-      //I think this is where we'd want to print the set of functions called
-      //during this stage
-      cv_->executor()->print_round_functions(stats::round_number, stats::socket_event_type);
-      cv_->executor()->reset_round_functions();
-
 
       ExecutionStage *new_stage = new ExecutionStage();
       new_stage->etrace_tree = new ExecutionTraceTree();
