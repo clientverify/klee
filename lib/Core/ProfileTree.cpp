@@ -289,7 +289,6 @@ void ProfileTree::validate_correctness(){
 void ProfileTree::post_processing_dfs(ProfileTreeNode *root){
   //this updates all the ContainerCallIns with the instruction statistics for
   //the functions they call.
-  root->update_subtree_count();
   validate_correctness();
 
   std::cout << "\nupdate_function_statistics:\n";
@@ -300,16 +299,6 @@ void ProfileTree::post_processing_dfs(ProfileTreeNode *root){
 
 static bool customCompare(ProfileTreeNode* x, ProfileTreeNode* y){
   return (x->get_depth() < y->get_depth());
-}
-
-//Iterative postorder traversal.  Too many nodes for recursive :(.
-//Updates the subtree instruction statistics.
-void ProfileTreeNode::update_subtree_count(void){
-  for (auto i = children.begin(); i != children.end(); ++i) {
-      (*i)->update_subtree_count();
-      sub_tree_ins_count += (*i)->sub_tree_ins_count;
-      sub_tree_ins_count += (*i)->ins_count;
-  }
 }
 
 
@@ -340,11 +329,10 @@ void ProfileTreeNode::update_function_statistics(){
 
 void FunctionStatstics::add(ContainerCallIns* c){
   ins_count += c->function_ins_count;
-  sub_ins_count += c->function_calls_ins_count;
+  sub_functions_ins_count += c->function_calls_ins_count;
   branch_count += c->function_branch_count;
-  sub_branch_count += c->function_calls_branch_count;
+  sub_functions_branch_count += c->function_calls_branch_count;
   times_called++;
-  num_called += c->my_calls.size();
   assert(function == c->my_target);
 }
 
@@ -388,11 +376,10 @@ void ProfileTree::consolidate_function_data(){
 
     std::cout << itr->first <<
       " #times_called " << itr->second->times_called <<
-      " #child_calls " << itr->second->num_called <<
       " ins_count " << itr->second->ins_count <<
-      " sub_ins_count " << itr->second->sub_ins_count <<
+      " sub_functions_ins_count " << itr->second->sub_functions_ins_count <<
       " branch_count " << itr->second->branch_count <<
-      " sub_branch_count " << itr->second->sub_branch_count << "\n";
+      " sub_functions_branch_count " << itr->second->sub_functions_branch_count << "\n";
   }
 }
 
@@ -403,11 +390,10 @@ void ProfileTree::consolidate_function_data(){
 
 FunctionStatstics::FunctionStatstics(ContainerCallIns* c)
   : ins_count(c->function_ins_count),
-    sub_ins_count(c->function_calls_ins_count),
+    sub_functions_ins_count(c->function_calls_ins_count),
     branch_count(c->function_branch_count),
-    sub_branch_count(c->function_calls_branch_count),
+    sub_functions_branch_count(c->function_calls_branch_count),
     times_called(1),
-    num_called(c->my_calls.size()),
     function(c->my_target){
       assert(function != NULL);
 }
@@ -450,7 +436,6 @@ ProfileTreeNode::ProfileTreeNode( const ExecutionState *es, ProfileTree* tree)
     children(),
     container(0),
     ins_count(0),
-    sub_tree_ins_count(0),
     depth(0),
     my_type(root),
     my_function(0){
@@ -467,7 +452,6 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
     children(),
     container(0),
     ins_count(0),
-    sub_tree_ins_count(0),
     depth(_parent->depth),
     my_type(leaf),
     my_function(0){

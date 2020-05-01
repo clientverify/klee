@@ -114,11 +114,14 @@ namespace klee {
       FunctionStatstics(ContainerCallIns* c);
       ~FunctionStatstics();
       int ins_count;
-      int sub_ins_count;
+      //The number of instructions executed between calls to this function and
+      //their respective returns.
+      int sub_functions_ins_count;
+      //Symbolic branches executed in this function.
       int branch_count;
-      int sub_branch_count;
+      //Symbolic branches executed in functions this function calls (transitively).
+      int sub_functions_branch_count;
       int times_called;
-      int num_called;
       llvm::Function* function;
       void add(ContainerCallIns* c);
   };
@@ -179,7 +182,6 @@ namespace klee {
 
     int get_depth();
     void update_function_statistics(void);
-    void update_subtree_count(void);
     void report_function_data(std::unordered_map<std::string, FunctionStatstics*>* stats);
 
     enum NodeType { leaf, clone_parent, branch_parent, call_parent, root,
@@ -221,10 +223,6 @@ namespace klee {
     //the number of instructions executed along the path from the root to this
     //node.  Incremented while a leaf node.
     int depth;
-
-    //the number of instructions executed in this node's subtree
-    int sub_tree_ins_count;
-
   };
 
 }
