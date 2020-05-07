@@ -397,10 +397,8 @@ ContainerCallIns::ContainerCallIns(llvm::Instruction* i, llvm::Function* target)
 }
 
 ContainerRetIns::ContainerRetIns(llvm::Instruction* i, llvm::Instruction* return_to)
-  : ContainerNode(i),
-    my_return_to(return_to) {
+  : ContainerNode(i){
   assert(i != NULL);
-  assert(my_return_to != NULL);
 }
 
 ContainerBranchClone::ContainerBranchClone(llvm::Instruction* i)
