@@ -93,6 +93,7 @@ void ProfileTreeNode::record_function_return(
 
   my_tree->total_function_ret_count++;
   this->my_type         = return_parent;
+  this->container = new ContainerRetIns(ins, to);
   ProfileTreeNode* kid  = link(es);
 
   assert(kid->parent == this);
@@ -205,6 +206,8 @@ void ProfileTree::validate_correctness(){
     if(p->parent){
       assert(p->clone_parent);
     }
+    if(p->get_type() == ProfileTreeNode::NodeType::return_parent)
+      assert(dynamic_cast<ContainerRetIns*>(p->container) != NULL);
     if(p->get_type() == ProfileTreeNode::NodeType::call_parent)
       assert(dynamic_cast<ContainerCallIns*>(p->container) != NULL);
 
@@ -231,6 +234,9 @@ void ProfileTree::validate_correctness(){
         if(DFS_DEBUG) printf("branch ");
         break;
       case ProfileTreeNode::NodeType::return_parent:
+        assert(p->get_instruction() != NULL);
+        assert(p->children.size() == 1);
+        assert(p->container != NULL);
         if(DFS_DEBUG) printf("return ");
         break;
       case ProfileTreeNode::NodeType::call_parent:
@@ -390,6 +396,10 @@ ContainerCallIns::ContainerCallIns(llvm::Instruction* i, llvm::Function* target)
   assert(my_target != NULL);
 }
 
+ContainerRetIns::ContainerRetIns(llvm::Instruction* i, llvm::Instruction* return_to)
+  : ContainerNode(i){
+  assert(i != NULL);
+}
 
 ContainerBranchClone::ContainerBranchClone(llvm::Instruction* i)
   : ContainerNode(i) {
