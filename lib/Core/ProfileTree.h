@@ -13,7 +13,6 @@
 #include "llvm/IR/Instruction.h"
 #include <vector>
 namespace cliver {
-      class SearcherStage;
       class ClientVerifier;
 }
 
@@ -31,14 +30,12 @@ namespace klee {
 
     //All the instructions in the tree
     int total_ins_count = 0;
-    int total_node_count = 0;
     int total_branch_count = 0;
     int total_clone_count = 0;
     int total_function_call_count = 0;
     int total_function_ret_count = 0;
 
     int get_total_ins_count(void);
-    int get_total_node_count(void);
     int get_total_clone_count(void);
     int get_total_ret_count(void);
     int get_total_call_count(void);
@@ -130,7 +127,6 @@ namespace klee {
     std::vector<ProfileTreeNode*> children;
     ContainerNode* container;
     llvm::Instruction* last_instruction;
-    cliver::SearcherStage *stage;
 
     //function_call, function_return, branch and clone update the appropriate
     //execution states' ProfileTree node, and may change the current node from a
@@ -153,8 +149,7 @@ namespace klee {
     void record_clone(
         ExecutionState* me_state,
         ExecutionState* clone_state,
-        llvm::Instruction* ins,
-        cliver::SearcherStage* stage);
+        llvm::Instruction* ins);
     void increment_ins_count(llvm::Instruction *i);
     void increment_branch_count(void);
     int get_ins_count(void);

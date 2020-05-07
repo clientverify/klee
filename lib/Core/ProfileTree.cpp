@@ -136,8 +136,7 @@ void ProfileTreeNode::record_symbolic_branch(
 void ProfileTreeNode::record_clone(
              ExecutionState* me_state,
              ExecutionState* clone_state,
-             llvm::Instruction* ins,
-             cliver::SearcherStage *stage) {
+             llvm::Instruction* ins) {
   assert(this->my_type == leaf || this->my_type == root);
   assert(this == me_state->profiletreeNode);
   assert(me_state != clone_state);
@@ -151,17 +150,11 @@ void ProfileTreeNode::record_clone(
     this->my_type = clone_parent;
     this->container = new ContainerNode(ins);
     ret = this->split(me_state, clone_state);
-    assert(ret.first->stage == stage);
-    assert(ret.second->stage == ((cliver::CVExecutionState*)clone_state)->searcher_stage());
-    assert(ret.first->stage  == ((cliver::CVExecutionState*)me_state)->searcher_stage());
   } else if (this->get_ins_count() > 0 ||
       this->parent->my_type == call_parent ) { //Split the current node
     this->my_type = clone_parent;
     this->container = new ContainerNode(ins);
     ret = this->split(me_state, clone_state);
-    assert(ret.first->stage == stage);
-    assert(ret.second->stage == ((cliver::CVExecutionState*)clone_state)->searcher_stage());
-    assert(ret.first->stage  == ((cliver::CVExecutionState*)me_state)->searcher_stage());
   } else if (this->get_ins_count() == 0) { //make sibling and add to parent
     assert(this->parent->my_type == clone_parent);
 
@@ -407,8 +400,6 @@ ProfileTreeNode::ProfileTreeNode( const ExecutionState *es, ProfileTree* tree)
     my_type(root),
     my_function(0){
       assert(es != NULL);
-      stage = ((cliver::CVExecutionState*)es)->searcher_stage();
-      my_tree->total_node_count++;
 }
 
 ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent, 
@@ -423,7 +414,6 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
     my_type(leaf),
     my_function(0){
       assert(es != NULL);
-      stage = ((cliver::CVExecutionState*)es)->searcher_stage();
       assert(_parent != NULL);
 
       //handle function we belong to:
@@ -436,7 +426,6 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
       } else {
         my_function = _parent->my_function;
       }
-      my_tree->total_node_count++;
 }
 
 ProfileTreeNode::~ProfileTreeNode() {
@@ -450,7 +439,6 @@ ProfileTreeNode::~ProfileTreeNode() {
 int  ProfileTreeNode::get_ins_count(void)     { return ins_count; }
 int  ProfileTree::get_total_branch_count(void){ return ProfileTree::total_branch_count; }
 int  ProfileTree::get_total_ins_count(void)   { return ProfileTree::total_ins_count; }
-int  ProfileTree::get_total_node_count(void)  { return ProfileTree::total_node_count; }
 int  ProfileTree::get_total_ret_count(void)   { return ProfileTree::total_function_ret_count; }
 int  ProfileTree::get_total_call_count(void)  { return ProfileTree::total_function_call_count; }
 int  ProfileTree::get_total_clone_count(void) { return ProfileTree::total_clone_count; }

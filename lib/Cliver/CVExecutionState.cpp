@@ -117,7 +117,7 @@ CVExecutionState* CVExecutionState::clone(ExecutionStateProperty* property) {
   if(current_inst->getOpcode() == llvm::Instruction::Br)
     this->profiletreeNode->record_symbolic_branch(this, cloned_state, current_inst);
   else
-    this->profiletreeNode->record_clone(this, cloned_state, current_inst, searcher_stage_);
+    this->profiletreeNode->record_clone(this, cloned_state, current_inst);
 
   return cloned_state;
 }
