@@ -93,7 +93,7 @@ void ProfileTreeNode::record_function_return(
 
   my_tree->total_function_ret_count++;
   this->my_type         = return_parent;
-  this->container = new ContainerRetIns(ins, to);
+  this->container = new ContainerNode(ins);
   ProfileTreeNode* kid  = link(es);
 
   assert(kid->parent == this);
@@ -127,7 +127,7 @@ void ProfileTreeNode::record_symbolic_branch(
   assert(leftEs != rightEs);
   assert(this->my_type == leaf);
   this->my_type = branch_parent;
-  this->container = new ContainerBranchClone(ins);
+  this->container = new ContainerNode(ins);
   std::pair<ProfileTreeNode*, ProfileTreeNode*> ret = split(leftEs, rightEs);
 
   assert(ret.first->parent == ret.second->parent);
@@ -149,7 +149,7 @@ void ProfileTreeNode::record_clone(
     assert(this->get_ins_count() == 0);
 
     this->my_type = clone_parent;
-    this->container = new ContainerBranchClone(ins);
+    this->container = new ContainerNode(ins);
     ret = this->split(me_state, clone_state);
     assert(ret.first->stage == stage);
     assert(ret.second->stage == ((cliver::CVExecutionState*)clone_state)->searcher_stage());
@@ -157,7 +157,7 @@ void ProfileTreeNode::record_clone(
   } else if (this->get_ins_count() > 0 ||
       this->parent->my_type == call_parent ) { //Split the current node
     this->my_type = clone_parent;
-    this->container = new ContainerBranchClone(ins);
+    this->container = new ContainerNode(ins);
     ret = this->split(me_state, clone_state);
     assert(ret.first->stage == stage);
     assert(ret.second->stage == ((cliver::CVExecutionState*)clone_state)->searcher_stage());
@@ -207,7 +207,7 @@ void ProfileTree::validate_correctness(){
       assert(p->clone_parent);
     }
     if(p->get_type() == ProfileTreeNode::NodeType::return_parent)
-      assert(dynamic_cast<ContainerRetIns*>(p->container) != NULL);
+      assert(dynamic_cast<ContainerNode*>(p->container) != NULL);
     if(p->get_type() == ProfileTreeNode::NodeType::call_parent)
       assert(dynamic_cast<ContainerCallIns*>(p->container) != NULL);
 
@@ -395,17 +395,6 @@ ContainerCallIns::ContainerCallIns(llvm::Instruction* i, llvm::Function* target)
   assert(i != NULL);
   assert(my_target != NULL);
 }
-
-ContainerRetIns::ContainerRetIns(llvm::Instruction* i, llvm::Instruction* return_to)
-  : ContainerNode(i){
-  assert(i != NULL);
-}
-
-ContainerBranchClone::ContainerBranchClone(llvm::Instruction* i)
-  : ContainerNode(i) {
-  assert(i != NULL);
-}
-
 
 ProfileTreeNode::ProfileTreeNode( const ExecutionState *es, ProfileTree* tree)
   : my_tree(tree),
