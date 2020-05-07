@@ -73,12 +73,6 @@ void ProfileTreeNode::record_function_call(
     return;
   }
 
-  //remove this from the branch or clone
-  std::vector<ProfileTreeNode*>* v= &(((ContainerBranchClone*)this->my_branch_or_clone->container)->my_branches_or_clones);
-  auto first = std::find(v->begin(), v->end(), this);
-  assert(*first == this);
-  v->erase(first);
-
   my_tree->total_function_call_count++;
   this->my_type         = call_parent;
   //add myself to my_function's list of calls
@@ -96,11 +90,6 @@ void ProfileTreeNode::record_function_return(
              llvm::Instruction* ins,
              llvm::Instruction* to) {
   assert(this->my_type == leaf);
-  //remove this from the branch or clone
-  std::vector<ProfileTreeNode*>* v= &(((ContainerBranchClone*)this->my_branch_or_clone->container)->my_branches_or_clones);
-  auto first = std::find(v->begin(), v->end(), this);
-  assert(*first == this);
-  v->erase(first);
 
   my_tree->total_function_ret_count++;
   this->my_type         = return_parent;
@@ -141,8 +130,6 @@ void ProfileTreeNode::record_symbolic_branch(
   this->container = new ContainerBranchClone(ins, NULL);
   std::pair<ProfileTreeNode*, ProfileTreeNode*> ret = split(leftEs, rightEs);
 
-  assert(ret.first->my_branch_or_clone == this);
-  assert(ret.second->my_branch_or_clone == this);
   assert(ret.first->parent == ret.second->parent);
 }
 
@@ -167,22 +154,16 @@ void ProfileTreeNode::record_clone(
     assert(ret.first->stage == stage);
     assert(ret.second->stage == ((cliver::CVExecutionState*)clone_state)->searcher_stage());
     assert(ret.first->stage  == ((cliver::CVExecutionState*)me_state)->searcher_stage());
-    assert(ret.first->my_branch_or_clone == this);
-    assert(ret.second->my_branch_or_clone == this);
   } else if (this->get_ins_count() > 0 ||
       this->parent->my_type == call_parent ) { //Split the current node
     this->my_type = clone_parent;
-    assert(my_branch_or_clone != NULL);
     this->container = new ContainerBranchClone(ins, stage);
     ret = this->split(me_state, clone_state);
     assert(ret.first->stage == stage);
     assert(ret.second->stage == ((cliver::CVExecutionState*)clone_state)->searcher_stage());
     assert(ret.first->stage  == ((cliver::CVExecutionState*)me_state)->searcher_stage());
-    assert(ret.first->my_branch_or_clone == this);
-    assert(ret.second->my_branch_or_clone == this);
   } else if (this->get_ins_count() == 0) { //make sibling and add to parent
     assert(this->parent->my_type == clone_parent);
-    assert(parent == my_branch_or_clone);
 
     ProfileTreeNode* clone_node = new ProfileTreeNode(this->parent, clone_state);
     this->parent->children.push_back(clone_node);
@@ -423,8 +404,7 @@ ContainerRetIns::ContainerRetIns(llvm::Instruction* i, llvm::Instruction* return
 }
 
 ContainerBranchClone::ContainerBranchClone(llvm::Instruction* i, cliver::SearcherStage *s)
-  : ContainerNode(i),
-    my_branches_or_clones() {
+  : ContainerNode(i) {
   assert(i != NULL);
 }
 
@@ -458,13 +438,6 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
       assert(es != NULL);
       stage = ((cliver::CVExecutionState*)es)->searcher_stage();
       assert(_parent != NULL);
-      //handle branch or clone we belong to:
-      if(_parent->my_type == branch_parent || _parent->my_type == clone_parent){
-        my_branch_or_clone = _parent;
-      } else {
-        my_branch_or_clone = _parent->my_branch_or_clone;
-      }
-      ((ContainerBranchClone*)my_branch_or_clone->container)->my_branches_or_clones.push_back(this);
 
       //handle function we belong to:
       if(_parent->my_type == call_parent){
@@ -586,6 +559,7 @@ void ProfileTree::dump_branch_clone_graph(std::string path, cliver::ClientVerifi
     }
     os << "];\n";
 
+#if 0
     if(n->my_type == ProfileTreeNode::branch_parent || n->my_type == ProfileTreeNode::clone_parent){
       for (auto i = ((ContainerBranchClone*)n->container)->my_branches_or_clones.begin(); i != ((ContainerBranchClone*)n->container)->my_branches_or_clones.end(); ++i){
         assert(*i != NULL);
@@ -603,6 +577,7 @@ void ProfileTree::dump_branch_clone_graph(std::string path, cliver::ClientVerifi
         stack.push_back(*i); //add children
       }
     }
+#endif
   }
   os << "}\n";
   delete pp;

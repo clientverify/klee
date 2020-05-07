@@ -81,11 +81,12 @@ namespace klee {
     //counts the instructions executed in my_target (but not the functions it calls).
     int function_ins_count;
     //counts the instructions executed by my_target's subfunctions.
+    //Recorded during post processing:
     int function_calls_ins_count;
     //counts the symbolic branches executed in this call to my_target.
     int function_branch_count;
     //counts the symbolic branches executed by functions (transitively)
-    //called by my_target.
+    //called by my_target.  Recorded during post processing:
     int function_calls_branch_count;
   };
 
@@ -104,8 +105,6 @@ namespace klee {
   public:
     ContainerBranchClone(llvm::Instruction* i, cliver::SearcherStage *s);
     virtual ~ContainerBranchClone() = default;
-    //branches/clones immedidiately following this in the graph.
-    std::vector<ProfileTreeNode*> my_branches_or_clones;
   };
 
 
@@ -216,9 +215,6 @@ namespace klee {
     //Used by most nodes.  Should be a function node, or root node indicating
     //the function executing in.
     ProfileTreeNode* my_function;
-
-    //points to the last branch or clone node
-    ProfileTreeNode* my_branch_or_clone;
 
     //the number of instructions executed along the path from the root to this
     //node.  Incremented while a leaf node.
