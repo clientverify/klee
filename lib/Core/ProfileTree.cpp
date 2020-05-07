@@ -127,7 +127,7 @@ void ProfileTreeNode::record_symbolic_branch(
   assert(leftEs != rightEs);
   assert(this->my_type == leaf);
   this->my_type = branch_parent;
-  this->container = new ContainerBranchClone(ins, NULL);
+  this->container = new ContainerBranchClone(ins);
   std::pair<ProfileTreeNode*, ProfileTreeNode*> ret = split(leftEs, rightEs);
 
   assert(ret.first->parent == ret.second->parent);
@@ -149,7 +149,7 @@ void ProfileTreeNode::record_clone(
     assert(this->get_ins_count() == 0);
 
     this->my_type = clone_parent;
-    this->container = new ContainerBranchClone(ins, stage);
+    this->container = new ContainerBranchClone(ins);
     ret = this->split(me_state, clone_state);
     assert(ret.first->stage == stage);
     assert(ret.second->stage == ((cliver::CVExecutionState*)clone_state)->searcher_stage());
@@ -157,7 +157,7 @@ void ProfileTreeNode::record_clone(
   } else if (this->get_ins_count() > 0 ||
       this->parent->my_type == call_parent ) { //Split the current node
     this->my_type = clone_parent;
-    this->container = new ContainerBranchClone(ins, stage);
+    this->container = new ContainerBranchClone(ins);
     ret = this->split(me_state, clone_state);
     assert(ret.first->stage == stage);
     assert(ret.second->stage == ((cliver::CVExecutionState*)clone_state)->searcher_stage());
@@ -403,7 +403,7 @@ ContainerRetIns::ContainerRetIns(llvm::Instruction* i, llvm::Instruction* return
   assert(my_return_to != NULL);
 }
 
-ContainerBranchClone::ContainerBranchClone(llvm::Instruction* i, cliver::SearcherStage *s)
+ContainerBranchClone::ContainerBranchClone(llvm::Instruction* i)
   : ContainerNode(i) {
   assert(i != NULL);
 }
@@ -495,92 +495,4 @@ llvm::Instruction* ProfileTreeNode::get_instruction(void){
 }
 
 int ProfileTreeNode::get_depth() { return depth; }
-
-///////////////////////////////////////////////////////////////////////////////
-///////////////////////// Write Graphs ////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-
-
-//Writes graph of clone and branch nodes.
-void ProfileTree::dump_branch_clone_graph(std::string path, cliver::ClientVerifier* cv_) {
-  llvm::raw_ostream &os = *(get_fd_ostream(path));
-  ExprPPrinter *pp = ExprPPrinter::create(os);
-  pp->setNewline("\\l");
-  os << "digraph G {\n";
-  os << "\tsize=\"10,7.5\";\n";
-  os << "\tratio=fill;\n";
-  os << "\trotate=90;\n";
-  os << "\tcenter = \"true\";\n";
-  os << "\tnode [style=\"filled\",width=.1,height=.1,fontname=\"Terminus\"]\n";
-  os << "\tedge [arrowsize=.3]\n";
-  std::vector<ProfileTree::Node*> stack;
-  stack.push_back(root);
-  while (!stack.empty()) {
-    ProfileTree::Node *n = stack.back();
-    stack.pop_back();
-
-    if(n->my_type == ProfileTreeNode::clone_parent)
-      assert(n->parent == NULL || n->stage != NULL);
-    if(n->my_type == ProfileTreeNode::branch_parent || n->my_type == ProfileTreeNode::clone_parent){
-      const char *function_name = n->get_instruction()->getParent()->getParent()->getName().data();
-      int line_num = get_instruction_line_num(n->get_instruction());
-      if(n->stage != NULL){
-        assert(cv_->sm() != NULL);
-        cliver::SearcherStage* ss = n->stage;
-        assert(ss        != NULL);
-        uint64_t rn  = cv_->sm()->get_stage_statistic(ss, "RoundNumber");
-        uint64_t btc = cv_->sm()->get_stage_statistic(ss, "BackTrackCount");
-        uint64_t pct = cv_->sm()->get_stage_statistic(ss, "PassCount");
-        os << "\tn" << n << " [label=\"" << function_name << "-" << line_num << "-rn-" << rn << "-bct-" << btc << "\"";
-      } else
-        os << "\tn" << n << " [label=\"" << function_name << "-" << line_num << "-" << n->depth << "\"";
-    }else if(n->get_ins_count() > 0){
-      assert(n->last_instruction != NULL);
-      const char *function_name = n->last_instruction->getParent()->getParent()->getName().data();
-      int line_num = get_instruction_line_num(n->last_instruction);
-      if(n->stage != NULL){
-        assert(cv_->sm() != NULL);
-        cliver::SearcherStage* ss = n->stage;
-        assert(ss        != NULL);
-        uint64_t rn  = cv_->sm()->get_stage_statistic(ss, "RoundNumber");
-        uint64_t btc = cv_->sm()->get_stage_statistic(ss, "BackTrackCount");
-        uint64_t pct = cv_->sm()->get_stage_statistic(ss, "PassCount");
-        os << "\tn" << n << " [label=\"" << function_name << "-" << line_num << "-rn-" << rn << "-bct-" << btc << "\"";
-      }else
-        os << "\tn" << n << " [label=\"" << function_name << "-" << line_num << "-" << n->depth << "\"";
-    }else {
-      os << "\tn" << n << " [label=\"\"";
-    }
-
-    if(n->my_type == ProfileTreeNode::branch_parent){
-         os << ",fillcolor=cyan";
-    }else if (n->my_type == ProfileTreeNode::clone_parent){
-         os << ",fillcolor=yellow";
-    }
-    os << "];\n";
-
-#if 0
-    if(n->my_type == ProfileTreeNode::branch_parent || n->my_type == ProfileTreeNode::clone_parent){
-      for (auto i = ((ContainerBranchClone*)n->container)->my_branches_or_clones.begin(); i != ((ContainerBranchClone*)n->container)->my_branches_or_clones.end(); ++i){
-        assert(*i != NULL);
-        //these lines revert it back to the origional graph of just clones and
-        //branches:
-        //if((*i)->my_type == ProfileTreeNode::leaf)
-        //  continue;
-        os << "\tn" << n << " -> n" << *i << ";\n";
-        stack.push_back(*i); //add children
-      }
-    }else{
-      for (auto i = n->children.begin(); i != n->children.end(); ++i){
-        assert(*i != NULL);
-        os << "\tn" << n << " -> n" << *i << ";\n";
-        stack.push_back(*i); //add children
-      }
-    }
-#endif
-  }
-  os << "}\n";
-  delete pp;
-  delete &os;
-}
 

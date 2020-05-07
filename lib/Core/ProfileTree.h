@@ -103,7 +103,7 @@ namespace klee {
   //function calls/returns.
   class ContainerBranchClone: public ContainerNode{
   public:
-    ContainerBranchClone(llvm::Instruction* i, cliver::SearcherStage *s);
+    ContainerBranchClone(llvm::Instruction* i);
     virtual ~ContainerBranchClone() = default;
   };
 
