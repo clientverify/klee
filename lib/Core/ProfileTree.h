@@ -44,8 +44,6 @@ namespace klee {
     void post_processing_dfs(ProfileTreeNode *root);
     void validate_correctness();
     void consolidate_function_data();
-    //Prints the branch clone graph.  Does not print function calls/returns
-    void dump_branch_clone_graph(std::string path, cliver::ClientVerifier* cv_);
   };
 
 
@@ -154,7 +152,6 @@ namespace klee {
     void increment_branch_count(void);
     int get_ins_count(void);
 
-    int get_depth();
     void update_function_statistics(void);
     void report_function_data(std::unordered_map<std::string, FunctionStatstics*>* stats);
 
@@ -190,10 +187,6 @@ namespace klee {
     //Used by most nodes.  Should be a function node, or root node indicating
     //the function executing in.
     ProfileTreeNode* my_function;
-
-    //the number of instructions executed along the path from the root to this
-    //node.  Incremented while a leaf node.
-    int depth;
   };
 
 }

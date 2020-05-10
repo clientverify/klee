@@ -271,11 +271,6 @@ void ProfileTree::post_processing_dfs(ProfileTreeNode *root){
 
 }
 
-static bool customCompare(ProfileTreeNode* x, ProfileTreeNode* y){
-  return (x->get_depth() < y->get_depth());
-}
-
-
 //traverses call graph updating variables in ContainerCallIns.  Assumes node's
 //subtree_ins_count is accurate.
 void ProfileTreeNode::update_function_statistics(){
@@ -396,7 +391,6 @@ ProfileTreeNode::ProfileTreeNode( const ExecutionState *es, ProfileTree* tree)
     children(),
     container(0),
     ins_count(0),
-    depth(0),
     my_type(root),
     my_function(0){
       assert(es != NULL);
@@ -410,7 +404,6 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
     children(),
     container(0),
     ins_count(0),
-    depth(_parent->depth),
     my_type(leaf),
     my_function(0){
       assert(es != NULL);
@@ -452,9 +445,6 @@ void ProfileTreeNode::increment_ins_count(llvm::Instruction *i){
 
   my_tree->total_ins_count++;
   ins_count++;
-  depth++;
-  if(parent)
-    assert(depth == ins_count + parent->depth);
 }
 void ProfileTreeNode::increment_branch_count(void){
   my_tree->total_branch_count++;
@@ -468,6 +458,4 @@ llvm::Instruction* ProfileTreeNode::get_instruction(void){
   assert(container->my_instruction);
   return container->my_instruction;
 }
-
-int ProfileTreeNode::get_depth() { return depth; }
 
