@@ -205,7 +205,7 @@ void ProfileTree::validate_correctness(){
       assert(dynamic_cast<ContainerCallIns*>(p->container) != NULL);
 
     if(p->get_type() == ProfileTreeNode::NodeType::call_parent){
-      assert(((ContainerCallIns*)p->container)->function_calls_branch_count <= ProfileTree::total_branch_count);
+      assert(((ContainerCallIns*)p->container)->sub_functions_branch_count <= ProfileTree::total_branch_count);
       assert(((ContainerCallIns*)p->container)->function_branch_count <= ProfileTree::total_branch_count);
     }
     if(p->get_ins_count() > 0 && p->container != NULL)
@@ -281,11 +281,11 @@ void ProfileTreeNode::update_function_statistics(){
       assert((*i)->my_type == call_parent);
       (*i)->update_function_statistics();
 
-      ContainerCallIns* ic = ((ContainerCallIns*)(*i)->container);
-      call_container->function_calls_ins_count    += ic->function_ins_count;
-      call_container->function_calls_ins_count    += ic->function_calls_ins_count;
-      call_container->function_calls_branch_count += ic->function_branch_count;
-      call_container->function_calls_branch_count += ic->function_calls_branch_count;
+      ContainerCallIns* child_call = ((ContainerCallIns*)(*i)->container);
+      call_container->sub_functions_ins_count    += child_call->function_ins_count;
+      call_container->sub_functions_ins_count    += child_call->sub_functions_ins_count;
+      call_container->sub_functions_branch_count += child_call->function_branch_count;
+      call_container->sub_functions_branch_count += child_call->sub_functions_branch_count;
     }
     assert(call_container->my_target != NULL);
   //Find a call node:
@@ -298,9 +298,9 @@ void ProfileTreeNode::update_function_statistics(){
 
 void FunctionStatstics::add(ContainerCallIns* c){
   ins_count += c->function_ins_count;
-  sub_functions_ins_count += c->function_calls_ins_count;
+  sub_functions_ins_count += c->sub_functions_ins_count;
   branch_count += c->function_branch_count;
-  sub_functions_branch_count += c->function_calls_branch_count;
+  sub_functions_branch_count += c->sub_functions_branch_count;
   times_called++;
   assert(function == c->my_target);
 }
@@ -359,9 +359,9 @@ void ProfileTree::consolidate_function_data(){
 
 FunctionStatstics::FunctionStatstics(ContainerCallIns* c)
   : ins_count(c->function_ins_count),
-    sub_functions_ins_count(c->function_calls_ins_count),
+    sub_functions_ins_count(c->sub_functions_ins_count),
     branch_count(c->function_branch_count),
-    sub_functions_branch_count(c->function_calls_branch_count),
+    sub_functions_branch_count(c->sub_functions_branch_count),
     times_called(1),
     function(c->my_target){
       assert(function != NULL);
@@ -377,9 +377,9 @@ ContainerCallIns::ContainerCallIns(llvm::Instruction* i, llvm::Function* target)
     my_target(target),
     my_calls(),
     function_ins_count(0), //counts instructions executed in target from this call
-    function_calls_ins_count(0), //counts instructions executed in this function's subtree
+    sub_functions_ins_count(0), //counts instructions executed in this function's subtree
     function_branch_count(0), //counts symbolic branches executed in target from this call
-    function_calls_branch_count(0){
+    sub_functions_branch_count(0){
   assert(i != NULL);
   assert(my_target != NULL);
 }
