@@ -28,7 +28,7 @@ namespace klee {
     ProfileTree(const ExecutionState* es);
     ~ProfileTree();
 
-    //All the instructions in the tree
+    //Counts for entire tree, calculated dynamically:
     int total_ins_count = 0;
     int total_branch_count = 0;
     int total_clone_count = 0;
@@ -131,7 +131,6 @@ namespace klee {
     ProfileTreeNode *parent;
     std::vector<ProfileTreeNode*> children;
     ContainerNode* container;
-    llvm::Instruction* last_instruction;
 
     //function_call, function_return, branch and clone update the appropriate
     //execution states' ProfileTree node, and may change the current node from a
@@ -155,17 +154,18 @@ namespace klee {
         ExecutionState* me_state,
         ExecutionState* clone_state,
         llvm::Instruction* ins);
+    int get_ins_count(void);
     void increment_ins_count(llvm::Instruction *i);
     void increment_branch_count(void);
-    int get_ins_count(void);
-
+    //Updates metadata in CallContainers.
     void update_function_statistics(void);
+    //Depth first traversal of call graph, updates stats (summary of every function) with
+    //call specific information found in CallContainers.
     void report_function_data(std::unordered_map<std::string, FunctionStatstics*>* stats);
 
     enum NodeType { leaf, clone_parent, branch_parent, call_parent, root,
       return_parent };
     enum NodeType get_type(void);
-    llvm::Instruction* get_instruction(void);
 
   private:
     ProfileTree* my_tree;

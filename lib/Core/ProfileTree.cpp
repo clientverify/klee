@@ -208,8 +208,6 @@ void ProfileTree::validate_correctness(){
       assert(((ContainerCallIns*)p->container)->sub_functions_branch_count <= ProfileTree::total_branch_count);
       assert(((ContainerCallIns*)p->container)->function_branch_count <= ProfileTree::total_branch_count);
     }
-    if(p->get_ins_count() > 0 && p->container != NULL)
-      assert(p->get_instruction() == p->last_instruction);
 
     switch(p->get_type()) {
       case ProfileTreeNode::NodeType::root:
@@ -222,24 +220,20 @@ void ProfileTree::validate_correctness(){
         if(DFS_DEBUG) printf("leaf ");
         break;
       case ProfileTreeNode::NodeType::branch_parent:
-        assert(p->get_instruction() != NULL);
         assert(p->children.size() == 2);
         if(DFS_DEBUG) printf("branch ");
         break;
       case ProfileTreeNode::NodeType::return_parent:
-        assert(p->get_instruction() != NULL);
         assert(p->children.size() == 1);
         assert(p->container != NULL);
         if(DFS_DEBUG) printf("return ");
         break;
       case ProfileTreeNode::NodeType::call_parent:
-        assert(p->get_instruction() != NULL);
         assert(p->children.size() == 1);
         assert(((ContainerCallIns*)p->container)->my_target != NULL);
         if(DFS_DEBUG) printf("call ");
         break;
       case ProfileTreeNode::NodeType::clone_parent:
-        assert(p->get_instruction() != NULL);
         assert(p->children.size() > 0);
         if(DFS_DEBUG) printf("clone ");
         break;
@@ -247,10 +241,6 @@ void ProfileTree::validate_correctness(){
         assert(0);
     }
 
-    if(p->container != NULL) {
-      const char *function_name = p->get_instruction()->getParent()->getParent()->getName().data();
-      if(DFS_DEBUG) printf("function name: %s", function_name);
-    }
 
     if(DFS_DEBUG) printf("\n");
   }
@@ -387,7 +377,6 @@ ContainerCallIns::ContainerCallIns(llvm::Instruction* i, llvm::Function* target)
 ProfileTreeNode::ProfileTreeNode( const ExecutionState *es, ProfileTree* tree)
   : my_tree(tree),
     parent(NULL),
-    last_instruction(NULL),
     children(),
     container(0),
     ins_count(0),
@@ -400,7 +389,6 @@ ProfileTreeNode::ProfileTreeNode(ProfileTreeNode *_parent,
                      const ExecutionState *es)
   : parent(_parent),
     my_tree(_parent->my_tree),
-    last_instruction(NULL),
     children(),
     container(0),
     ins_count(0),
@@ -441,7 +429,6 @@ void ProfileTreeNode::increment_ins_count(llvm::Instruction *i){
     assert(((ContainerCallIns*)my_function->container)->my_target != NULL);
     ((ContainerCallIns*)my_function->container)->function_ins_count++;
   }
-  last_instruction = i;
 
   my_tree->total_ins_count++;
   ins_count++;
@@ -453,9 +440,4 @@ void ProfileTreeNode::increment_branch_count(void){
   ((ContainerCallIns*)my_function->container)->function_branch_count++;
 }
 enum ProfileTreeNode::NodeType  ProfileTreeNode::get_type(void){ return my_type; }
-llvm::Instruction* ProfileTreeNode::get_instruction(void){
-  assert(container);
-  assert(container->my_instruction);
-  return container->my_instruction;
-}
 

@@ -1613,10 +1613,6 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     state.profiletreeNode->increment_ins_count(ki->inst);
   } else assert(0);
   assert(state.profiletreeNode->get_type() == ProfileTreeNode::NodeType::leaf);
-  if(state.profiletreeNode->get_type() ==
-      ProfileTreeNode::NodeType::branch_parent)
-    assert(state.profiletreeNode->get_instruction()->getParent()->getParent()
-        == ki->inst->getParent()->getParent());
   Instruction *i = ki->inst;
   switch (i->getOpcode()) {
     // Control flow
