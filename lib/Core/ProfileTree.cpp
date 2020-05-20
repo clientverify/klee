@@ -175,86 +175,11 @@ void ProfileTreeNode::record_clone(
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////// Processing And Traversal ////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-#define DFS_DEBUG 0
-void ProfileTree::validate_correctness(){
-
-  //Tree statistic collection:
-  int total_instr = 0; //records the number of instructions
-
-  std::stack <ProfileTreeNode*> nodes_to_visit;
-  nodes_to_visit.push(root); //add children to the end
-  while( nodes_to_visit.size() > 0 ) {
-    //Handling DFS traversal:
-    ProfileTreeNode* p = nodes_to_visit.top(); //get last element
-    nodes_to_visit.pop(); //remove last element
-
-    for (auto i = p->children.begin(); i != p->children.end(); ++i)
-      nodes_to_visit.push(*i); //add children
-
-    //Statistics:
-    total_instr += p->ins_count;
-
-    //Asserts and print outs (looking inside the node):
-    assert(p != NULL);
-    if(p->parent){
-      assert(p->clone_parent);
-    }
-    if(p->get_type() == ProfileTreeNode::NodeType::return_parent)
-      assert(dynamic_cast<ContainerNode*>(p->container) != NULL);
-    if(p->get_type() == ProfileTreeNode::NodeType::call_parent)
-      assert(dynamic_cast<ContainerCallIns*>(p->container) != NULL);
-
-    if(p->get_type() == ProfileTreeNode::NodeType::call_parent){
-      assert(((ContainerCallIns*)p->container)->sub_functions_branch_count <= ProfileTree::total_branch_count);
-      assert(((ContainerCallIns*)p->container)->function_branch_count <= ProfileTree::total_branch_count);
-    }
-
-    switch(p->get_type()) {
-      case ProfileTreeNode::NodeType::root:
-        assert(p->container == NULL);
-        if(DFS_DEBUG) printf("root ");
-        break;
-      case ProfileTreeNode::NodeType::leaf:
-        assert(p->container == NULL);
-        assert(p->children.size() == 0);
-        if(DFS_DEBUG) printf("leaf ");
-        break;
-      case ProfileTreeNode::NodeType::branch_parent:
-        assert(p->children.size() == 2);
-        if(DFS_DEBUG) printf("branch ");
-        break;
-      case ProfileTreeNode::NodeType::return_parent:
-        assert(p->children.size() == 1);
-        assert(p->container != NULL);
-        if(DFS_DEBUG) printf("return ");
-        break;
-      case ProfileTreeNode::NodeType::call_parent:
-        assert(p->children.size() == 1);
-        assert(((ContainerCallIns*)p->container)->my_target != NULL);
-        if(DFS_DEBUG) printf("call ");
-        break;
-      case ProfileTreeNode::NodeType::clone_parent:
-        assert(p->children.size() > 0);
-        if(DFS_DEBUG) printf("clone ");
-        break;
-      default:
-        assert(0);
-    }
-
-
-    if(DFS_DEBUG) printf("\n");
-  }
-  assert(total_instr == total_ins_count);
-
-}
 
 //Returns instruction count for whole tree
-
-void ProfileTree::post_processing_dfs(ProfileTreeNode *root){
+void ProfileTree::post_processing(ProfileTreeNode *root){
   //this updates all the ContainerCallIns with the instruction statistics for
   //the functions they call.
-  validate_correctness();
-
   std::cout << "\nupdate_function_statistics:\n";
   root->update_function_statistics();
   consolidate_function_data();

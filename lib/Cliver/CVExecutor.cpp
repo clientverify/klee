@@ -452,8 +452,7 @@ void CVExecutor::runFunctionAsMain(llvm::Function *f,
   printf("my_total_calls %d\n", my_calls);
 
   printf("postorder tree\n");
-  profileTree->post_processing_dfs(profileTree->root);
-//  profileTree->dump_branch_clone_graph("/playpen/cliver0/branch_clone_processtree.graph", cv_);
+  profileTree->post_processing(profileTree->root);
 
   delete profileTree;
   profileTree = 0;

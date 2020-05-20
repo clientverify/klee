@@ -41,8 +41,11 @@ namespace klee {
     int get_total_call_count(void);
     int get_total_branch_count(void);
 
-    void post_processing_dfs(ProfileTreeNode *root);
-    void validate_correctness();
+    //Calculates some of the CallContainer statistics, consolidates
+    //function data, and prints function data.
+    void post_processing(ProfileTreeNode *root);
+private:
+    //For each function: consolidates data from all calls to it.
     void consolidate_function_data();
   };
 
