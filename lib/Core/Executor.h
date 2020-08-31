@@ -443,6 +443,13 @@ private:
   void model_fgets();
   void model_fflush();
   void model_fseek();
+  void model_posix_fadvise();
+  void model_feof();
+  void model_freopen();
+  void model_getc_unlocked();
+  void model_ferror();
+  void model_isatty();
+  void model__printf_chk();
   void model_ftell();
   void model_rewind();
   //void model_read();  Read modeling goes through ktest fns

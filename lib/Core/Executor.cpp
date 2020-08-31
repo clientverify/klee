@@ -123,6 +123,7 @@ extern "C" {
   void * malloc_tase(unsigned long s);
   void   free_tase(void * ptr);
   void * memcpy_tase(void * dest, const void * src, unsigned long n);
+  int    getc_unlocked_tase(FILE * f);
   } 
 
 
@@ -201,6 +202,9 @@ struct rusage r_enter;
 struct rusage r_exit;
 
 int    run_interp_insts = 0;
+int run_interp_traps = 0; //Number of traps to the interpreter
+int run_model_count = 0; //Number of model calls
+int run_bb_count = 0; //Number of basic blocks interpreted through
 
 extern double target_start_time;
 
@@ -3307,6 +3311,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     solver->setTimeout(coreSolverTimeout);
     if (!state.addressSpace.resolveOne(state, solver, address, op, success)) {
       printf("resolveOne failure! \n");
+      fflush(stdout);
       address = toConstant(state, address, "resolveOne failure");
       success = state.addressSpace.resolveOne(cast<ConstantExpr>(address), op);
     }
@@ -3319,8 +3324,10 @@ void Executor::executeMemoryOperation(ExecutionState &state,
 
 
   
-  if (!success)
+  if (!success) {
     printf("Could not resolve address to MO \n");
+    fflush(stdout);
+  }
   
   if (success) {
     const MemoryObject *mo = op.first;
@@ -3411,12 +3418,11 @@ void Executor::executeMemoryOperation(ExecutionState &state,
   bool incomplete = state.addressSpace.resolve(state, solver, address, rl,
                                                0, coreSolverTimeout);
   solver->setTimeout(0);
-  
+
   // XXX there is some query wasteage here. who cares?
   ExecutionState *unbound = &state;
   
   for (ResolutionList::iterator i = rl.begin(), ie = rl.end(); i != ie; ++i) {
-    //printf("In resolutionList \n");
     const MemoryObject *mo = i->first;
     const ObjectState *os = i->second;
     ref<Expr> inBounds = mo->getBoundsCheckPointer(address, bytes);
@@ -3447,7 +3453,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     if (!unbound)
       break;
   }
-  
+
   // XXX should we distinguish out of bounds and overlapped cases?
   if (unbound) {
     if (incomplete) {
@@ -3461,12 +3467,13 @@ void Executor::executeMemoryOperation(ExecutionState &state,
 	printf("ERROR: addr should be constant or symbolic \n");
       }
 
-
+      printf("Out of bound ptr error; Terminating.  Possible heap smashing. \n");
+      //llvm::outs() << "Possible heap smashing \n";
+      //llvm::errs() << "Possible heap smashing! \n";
+      std::cout.flush();
       terminateStateOnError(*unbound, "memory error: out of bound pointer", Ptr,
                             NULL, getAddressInfo(*unbound, address));
 
-      printf("Out of bound ptr error; termination \n");
-      std::cout.flush();
       std::exit(EXIT_FAILURE);
       
     }
@@ -3667,6 +3674,10 @@ void reset_run_timers() {
   run_solver_time = 0;
   run_fault_time =0;
   run_interp_insts = 0;
+  
+  run_interp_traps = 0;
+  run_bb_count = 0;
+  run_model_count = 0;
   run_mem_op_time = 0;
   run_tmp_1_time = 0;
   run_tmp_2_time = 0;
@@ -3736,9 +3747,9 @@ void print_run_timers() {
 
 
     FILE * logFile = fopen(curr_unique_log_ID.c_str(), "w+");
-    fprintf(logFile,"Prev log name, Round, Pass, Total Runtime, Interp Time, Solver Time, Fork Time, Core Interp Time, Soft page faults, Hard page faults, USER TIME EST, SYS TIME EST, TMP1, TMP2, TMP3 \n");
+    fprintf(logFile,"Prev log name, Round, Pass, Total Runtime, Interp Time, Solver Time, Fork Time, Core Interp Time, Soft page faults, Hard page faults, USER TIME EST, SYS TIME EST, TMP1, TMP2, TMP3, RUN INTERP TRAPS, RUN BB COUNT, RUN MODEL COUNT \n");
     fprintf(logFile,"%s, %d, %d,", prev_unique_log_ID.c_str(), round_count, pass_count);
-    fprintf(logFile, " %lf, %lf, %lf, %lf, %d, %lf, %d, %d, %lf, %lf, %lf, %lf, %lf \n", totalRunTime, run_interp_time, run_solver_time, run_fork_time, run_interp_insts, run_core_interp_time, run_soft_page_faults, run_hard_page_faults, du, ds, run_tmp_1_time, run_tmp_2_time, run_tmp_3_time);
+    fprintf(logFile, " %lf, %lf, %lf, %lf, %d, %lf, %d, %d, %lf, %lf, %lf, %lf, %lf, %d, %d, %d \n", totalRunTime, run_interp_time, run_solver_time, run_fork_time, run_interp_insts, run_core_interp_time, run_soft_page_faults, run_hard_page_faults, du, ds, run_tmp_1_time, run_tmp_2_time, run_tmp_3_time, run_interp_traps, run_bb_count, run_model_count);
     fclose(logFile);
 
   }
@@ -3898,21 +3909,12 @@ bool canBounceback (uint32_t abort_status, uint64_t rip) {
   is_model_trap = false;
   is_psn_trap = false;
 
-  if (modelDebug) {
-    printf("Abort code: 0x%08lx at rip 0x%lx \n", abort_status, rip);
-    printf("Tran max is %d \n", tran_max);
-    //printf("Tmp1 is 0x%08lx \n", abort_status & TSX_XABORT_MASK);
-    printf("tran_ctr is 0x%lx \n", tran_ctr);
-  }
   if ((abort_status & 0xff) == 0) {
     //Unknown return code
     if (modelDebug)
       printf("Bounceback unknown return code \n");
 
-    //if (tran_max > 1) {
     tran_max = tran_max/2;
-    //}
-    //printf("Tran_max set to %d \n", tran_max);
     BB_UR++;
     retry = true; 
   } else if (abort_status & (1 << TSX_XABORT)) {
@@ -3927,11 +3929,9 @@ bool canBounceback (uint32_t abort_status, uint64_t rip) {
       if (modelDebug) {
 	printf("Psn abort \n");
       }
-      //if (tran_max > 1) {
-      //tran_max = tran_max/2;
-	//}
+
       uint8_t psnCode = (uint8_t) (abort_status >> 24);
-      //printf("Tran_max set to %d \n", psnCode);
+
       tran_max = (uint64_t) psnCode;
       is_psn_trap = true;
       retry = true;
@@ -3940,16 +3940,12 @@ bool canBounceback (uint32_t abort_status, uint64_t rip) {
   } else {
     if (modelDebug)
       printf("Bounceback fall-through case \n");
-    //if (tran_max > 1) {
+
     tran_max = tran_max/2;
-      //}
-    
-    //printf("Tran_max set to %d \n", tran_max);
     retry = true;
     BB_OTHER++;
   }
 
-  //if (execMode == MIXED && enableBounceback && retry && retryCtr < retryMax ) {
   if (execMode == MIXED && enableBounceback && retry && tran_max > 0) {
     if (modelDebug){
       printf("Attempting to bounceback to native execution at RIP 0x%lx \n", rip);
@@ -4021,7 +4017,7 @@ KFunction * findInterpFunction (tase_greg_t * registers, KModule * kmod) {
 
 //Just an external trap for making a byte symbolic
 void Executor::make_byte_symbolic_model() {
-  printf("Hit make_byte_symbolic_model \n");
+  printf("Hit make_byte_symbolic_model on addr 0x%lx \n", target_ctx_gregs[GREG_RDI].u64);
   fflush(stdout);
   
   uint64_t addr = target_ctx_gregs[GREG_RDI].u64;
@@ -4062,12 +4058,9 @@ void Executor::tase_make_symbolic_bytewise(uint64_t addr, uint64_t len, const ch
   for (int i = 0; i < len; i++) {
     std::string s = "_byte_" + std::to_string(i); 
     std::string varName = std::string(name) + s;
-    printf("DBG bytewise make symbolic: varname is %s \n", varName.c_str());
-    
+    //printf("DBG bytewise make symbolic: varname is %s \n", varName.c_str());
     tase_make_symbolic(addr + i, 1, varName.c_str());
-  }
-
-		       
+  }		       
 
 }
 
@@ -4309,7 +4302,8 @@ static int model_malloc_calls = 0;
 //Look for a model for the current instruction at target_ctx_gregs[GREG_RIP].u64
 //and call the model.
 void Executor::model_inst () {
-
+  run_model_count++;
+  
   if (taseDebug) {
     printf("INTERPRETER: FOUND SPECIAL MODELED INST \n");
     fflush(stdout);
@@ -4322,6 +4316,8 @@ void Executor::model_inst () {
     model_malloc();
   } else if (rip == (uint64_t) &calloc_tase || rip == (uint64_t) &calloc_tase + trap_off) {
     model_calloc();
+  } else if (rip == (uint64_t) &realloc_tase || rip == (uint64_t) &realloc_tase + trap_off) {
+    model_realloc();
   } else if (rip == (uint64_t) &free || rip == (uint64_t) &free + trap_off || rip == ((uint64_t) &free_tase) || rip == ((uint64_t) &free_tase + trap_off) ) {
     model_free();
   } else if (rip == (uint64_t) &fcntl ) {
@@ -4342,6 +4338,22 @@ void Executor::model_inst () {
     model_fflush();
   } else if (rip == (uint64_t) &fseek) {
     model_fseek();
+  } else if (rip == (uint64_t) &posix_fadvise) {
+    model_posix_fadvise();
+  } else if (rip == (uint64_t) &feof) {
+    model_feof();
+  } else if (rip == (uint64_t) &write) {
+    model_write();
+  } else if (rip == (uint64_t) &ferror) {
+    model_ferror();
+  } else if (rip == (uint64_t) &freopen) {
+    model_freopen();
+  } else if (rip == (uint64_t) &fileno) {
+    model_fileno();
+  } else if (rip == (uint64_t) &isatty) {
+    model_isatty();
+  } else if (rip == (uint64_t) &getc_unlocked ||  rip == ((uint64_t) &getc_unlocked + trap_off) || rip == ((uint64_t) &getc_unlocked_tase) || rip == ((uint64_t) &getc_unlocked_tase + trap_off)  ) {
+    model_getc_unlocked();
   } else if (rip == (uint64_t) &ftell) {
     model_ftell();
   } else if (rip == (uint64_t) &rewind) {
@@ -4350,7 +4362,9 @@ void Executor::model_inst () {
     model_memcpy_tase();
   } else if (rip == (uint64_t) &printf || rip == (uint64_t) &puts) {
    model_printf();
-  }  else if (rip == (uint64_t) &exit_tase_shim || rip == (uint64_t) &exit_tase || rip == (uint64_t) &exit_tase + trap_off) {
+  } else if (rip == (uint64_t) &__printf_chk) {
+    model__printf_chk();
+  } else if (rip == (uint64_t) &exit_tase_shim || rip == (uint64_t) &exit_tase || rip == (uint64_t) &exit_tase + trap_off) {
     fprintf(stdout,"Successfully exited from target.  Shutting down with %d x86 blocks interpreted \n", interpCtr);
     fprintf(stdout,"%d total LLVM IR instructions interpreted \n", instCtr);
     fflush(stdout);
@@ -4538,7 +4552,7 @@ bool isSpecialInst (uint64_t rip) {
   
   //Todo -- get rid of traps for RAND_add and RAND_load_file
 #ifndef TASE_OPENSSL
-  static const uint64_t modeledFns [] = { (uint64_t) &make_byte_symbolic, (uint64_t) &make_byte_symbolic + trap_off, (uint64_t) &target_exit, (uint64_t) &exit_tase_shim, (uint64_t) &exit_tase, (uint64_t) &exit_tase + trap_off, (uint64_t) &malloc_tase, (uint64_t) &malloc_tase + trap_off, (uint64_t) &calloc_tase, (uint64_t) &calloc_tase + trap_off, (uint64_t) &fopen, (uint64_t) &fopen64, (uint64_t)&fread, (uint64_t) &fread_unlocked, (uint64_t)&fwrite, (uint64_t) &fgets, (uint64_t) &fclose, (uint64_t) &fseek, (uint64_t) &ftell, (uint64_t) &rewind, (uint64_t) &memcpy_tase, (uint64_t) &memcpy_tase + trap_off, (uint64_t) &memcpy, (uint64_t) &memcpy + trap_off, (uint64_t) &free_tase, (uint64_t) &free_tase + trap_off, (uint64_t) &free, (uint64_t) &free + trap_off, (uint64_t) &printf, (uint64_t) &puts};
+  static const uint64_t modeledFns [] = { (uint64_t) &make_byte_symbolic, (uint64_t) &make_byte_symbolic + trap_off, (uint64_t) &target_exit, (uint64_t) &exit_tase_shim, (uint64_t) &exit_tase, (uint64_t) &exit_tase + trap_off, (uint64_t) &malloc_tase, (uint64_t) &malloc_tase + trap_off, (uint64_t) &calloc_tase, (uint64_t) &calloc_tase + trap_off, (uint64_t) &fopen, (uint64_t) &realloc_tase, (uint64_t) &realloc_tase + trap_off,  (uint64_t) &fopen64, (uint64_t)&fread, (uint64_t) &fread_unlocked, (uint64_t)&fwrite, (uint64_t) &write, (uint64_t) &fgets, (uint64_t) &fclose, (uint64_t) &fseek, (uint64_t) &ftell, (uint64_t) &posix_fadvise , (uint64_t) &feof, (uint64_t) &ferror, (uint64_t) &isatty, (uint64_t) &freopen, (uint64_t) &fileno, (uint64_t) &getc_unlocked, (uint64_t) &getc_unlocked + trap_off, (uint64_t) &getc_unlocked_tase , (uint64_t) &getc_unlocked_tase + trap_off, (uint64_t) &rewind, (uint64_t) &memcpy_tase, (uint64_t) &memcpy_tase + trap_off, (uint64_t) &memcpy, (uint64_t) &memcpy + trap_off, (uint64_t) &free_tase, (uint64_t) &free_tase + trap_off, (uint64_t) &free, (uint64_t) &free + trap_off, (uint64_t) &printf, (uint64_t) &puts, (uint64_t) &__printf_chk};
 #endif
 
 
@@ -4662,7 +4676,7 @@ bool tase_buf_has_taint (void * ptr, int size) {
 
 void Executor::klee_interp_internal () {
   bool hasMadeProgress = false;
-
+  run_interp_traps++;
   
   
   while (true) {
@@ -4813,9 +4827,7 @@ void Executor::tryKillFlags(tase_greg_t * gregs) {
 }
 
 void Executor::runCoreInterpreter(tase_greg_t * gregs) {
-  
-
-
+  run_bb_count++;
   
   double T0 = util::getWallTime();
   KFunction * interpFn = findInterpFunction (gregs, kmodule);
@@ -5115,10 +5127,18 @@ void Executor::initializeInterpretationStructures (Function *f) {
   //Set up the KLEE memory object for the stack, and back the concrete store with the actual stack.
   //Need to be careful here.  The buffer we allocate for the stack is char [X] target_stack. It
   // starts at address StackBase and covers up to StackBase + sizeof(target_stack) -1.
-  uint64_t stackBase = (uint64_t) &target_ctx.target_stack - STACK_SIZE;
+
+  
+  uint64_t stackBase = (uint64_t) &target_ctx.target_stack;
   uint64_t stackSize = STACK_SIZE;
-  tase_map_buf(stackBase, stackSize);
+  tase_map_buf((uint64_t) stackBase, stackSize);
   printf("TASE mapping stack at 0x%lx with size 0x%lx \n", stackBase, stackSize);
+  printf("target_ctx located at 0x%lx \n", (uint64_t) &target_ctx);
+  printf("Size of target_ctx_t appears to be 0x%lx \n", sizeof(target_ctx_t));
+  printf("Size of target_stack subfield appears to be 0x%lx \n", sizeof(target_ctx.target_stack));
+  printf("Target_exit_addr located at 0x%lx \n", (uint64_t) &target_ctx.target_exit_addr);
+  
+  
   //madvise((void *) stackBase, stackSize, MADV_NOHUGEPAGE);
   
   target_ctx_gregs_MO = addExternalObject(*GlobalExecutionStatePtr, (void *) target_ctx_gregs, TASE_NGREG * TASE_GREG_SIZE, false );

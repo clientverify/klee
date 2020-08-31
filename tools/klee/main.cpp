@@ -130,6 +130,7 @@ int masterPID;
 bool taseDebug;
 bool dropS2C;
 bool enableTimeSeries;
+bool bufferGuard;
 #ifdef TASE_BIGNUM
 extern int symIndex;
 extern int numEntries;
@@ -167,13 +168,17 @@ namespace klee {
 	      
 	      cl::init(EXPLORATION));
 
-
+  
+  
   cl::opt<std::string> verificationLog("verificationLog", cl::desc("ktest file to verify against for OpenSSL "), cl::init("./ssl.ktest"));
 
   cl::opt<std::string> masterSecretFile("masterSecretFile", cl::desc("File containing master secret for OpenSSL verification"), cl::init("./ssl.mastersecret"));
   
   cl::opt<bool>
   skipFree("skipFree", cl::desc("Debugging option to skip frees"), cl::init(false));
+
+  cl::opt<bool>
+  bufferGuardArg("bufferGuard", cl::desc("Add poison zones around heap buffers"), cl::init(false));
   
   cl::opt<bool>
   killFlagsHack("killFlagsHack", cl::desc("Option to kill flags after each jump to the springboard"), cl::init(false));  
@@ -1333,6 +1338,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    printf("\t taseManager: %d \n", (bool) taseManager);
    printf("\t tasePreProcess  : %d \n", (bool) tasePreProcess);
    printf("\t taseDebug output: %d \n", (bool) taseDebug);
+   printf("\t bufferGuard output: %d \n", (bool) bufferGuard);
    printf("\t modelDebug output: %d \n", (bool) modelDebug);
    printf("\t noLog      output: %d \n", (bool) noLog);
    printf("\t dontFork  output: %d \n", (bool) dontFork);
@@ -1715,7 +1721,7 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
  void __attribute__ ((noreturn)) transferToTarget()  {
 
    run_start_time = util::getWallTime();
-  
+   printf("Inside transferToTarget \n");
    if (execMode == INTERP_ONLY) {
      memset(&target_ctx, 0, sizeof(target_ctx));
     
@@ -1855,6 +1861,7 @@ signal(SIGCHLD, SIG_IGN);//Added
 
    //Ugly!
    taseDebug = taseDebugArg;
+   bufferGuard = bufferGuardArg;
    dropS2C = dropS2CArg;
    enableTimeSeries = enableTimeSeriesArg;
    

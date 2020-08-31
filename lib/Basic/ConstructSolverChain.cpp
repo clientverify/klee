@@ -50,6 +50,10 @@ Solver *constructSolverChain(Solver *coreSolver,
   if (UseCache)
     solver = createCachingSolver(solver);
 
+  /* if (UseTrivialEqSolver) 
+    solver = createTrivialEqualitySolver(solver);
+  */
+  
   if (UseCanonicalization)
     solver = createCanonicalSolver(solver);
   

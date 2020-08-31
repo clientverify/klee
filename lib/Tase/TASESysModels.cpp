@@ -133,7 +133,7 @@ extern std::vector<const klee::Array *> round_symbolics;
 extern uint16_t poison_val;
 extern bool taseDebug;
 extern bool dropS2C;
-
+extern bool bufferGuard;
 extern bool dont_model;
 
 extern CVAssignment prevMPA ;
@@ -192,6 +192,7 @@ extern std::vector<RoundRecord> s2c_records;
 
 extern void addRoundRecord(RoundRecord r);
 
+std::map<void *, void *> heap_guard_map; //
 
 KTestObject * peekNextNetworkMessage() {
 
@@ -687,15 +688,63 @@ void Executor::model_write() {
 
 }
 
+void Executor::model__printf_chk() {
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(GREG_RSI * 8, Expr::Int64);
+
+  if  (
+       (isa<ConstantExpr>(arg1Expr)) &&
+       (isa<ConstantExpr>(arg2Expr))
+       ){
+
+    //Ignore varargs for now and just print the second arg
+    printf("Second arg to __printf_chk is %s \n", (char *) target_ctx_gregs[GREG_RSI].u64);
+
+    ref<ConstantExpr> zeroResultExpr = ConstantExpr::create(0, Expr::Int64);
+    target_ctx_gregs_OS->write(GREG_RAX * 8, zeroResultExpr);  
+    
+    do_ret();
+    
+  } else {
+    printf("ERROR in model__printf_chk() -- symbolic args \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+
+}
+
 void Executor::model_printf() {
   static int numCalls = 0;
   numCalls++;
-  printf("Found call to printf for time %d \n",numCalls);
+  //printf("Found call to printf for time %d \n",numCalls);
   char * stringArg = (char *) target_ctx_gregs[GREG_RDI].u64;
   printf("First arg as string is %s \n", stringArg);
   printf("Second arg as num is 0x%lx \n", target_ctx_gregs[GREG_RSI].u64);
 
   do_ret();//fake a ret
+}
+
+
+//https://man7.org/linux/man-pages/man3/isatty.3.html
+//int isatty(int fd);
+
+void Executor::model_isatty() {
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
+  if  (
+       (isa<ConstantExpr>(arg1Expr))
+       ){
+    int fd = (int) target_ctx_gregs[GREG_RDI].u64;
+    int res = isatty(fd);
+
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    target_ctx_gregs_OS->write(GREG_RAX * 8, resExpr); 
+    do_ret();
+    
+  } else {
+    printf("ERROR in model_isatty - symbolic arg \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);  
+  }
 }
 
 
@@ -1927,22 +1976,69 @@ void Executor::model_calloc() {
 
     size_t nmemb = target_ctx_gregs[GREG_RDI].u64;
     size_t size  = target_ctx_gregs[GREG_RSI].u64;
+
+    size_t initNmemb;
+    if (bufferGuard) {
+      initNmemb = nmemb;
+      //Need a better way to adjust up for the extra bufferguard bytes for size > 1.  Maybe just
+      //re-route call through malloc?
+      
+      nmemb += 4 + 16; // 4 bytes for  the psn, plus two 8-byte buffers between psn and the
+      //allocated space.  Our poison checking in the compiler sometimes conservatively promotes
+      //read/write checks (e.g., an 8 byte write to a 16 byte check) when it can't determine
+      //alignment information, so the extra 8-byte buffers should help with that.
+      if (taseDebug){
+	printf("Requesting calloc of size %u for bufferGuard on heap \n",initNmemb * size);
+      }
+    }
+
+
+    
+    
     void * res = calloc(nmemb, size);
 
     
     
     size_t numBytes = size*nmemb;
 
-    if (roundUpHeapAllocations)
-      numBytes = roundUp(numBytes,8);
+    //Todo -- refactor and roundup work properly with and without bufferguard.
+    //if (roundUpHeapAllocations)
+    // numBytes = roundUp(numBytes,8);
 
-    tase_map_buf((uint64_t) res, numBytes);
+    void * returnedBuf;
+    if (bufferGuard) {
+      returnedBuf = (void *) ((uint64_t) res + 2 + 8);
+      //Need to be able to line up returned ptr vs actual buf later when free is called.
+      if (taseDebug) {
+	printf("bufferGuard obtained mapping on heap at 0x%lx \n", (uint64_t) res);
+	printf("bufferGuard returning ptr at 0x%lx \n", (uint64_t) returnedBuf);
+      }
+      heap_guard_map.insert(std::pair<void *, void *>(returnedBuf, res));
+
+    } else {
+      returnedBuf = res;
+    }
+
+
+
+
+    if (bufferGuard) {
+      tase_map_buf((uint64_t) returnedBuf, initNmemb * size + 6);
+      //Poison edges around buffer
+      * ((uint16_t *) (res)) = poison_val;
+      void * endAddr =(void *)( (uint64_t) res + 2 + 8 + (initNmemb * size)  + 8);
+      *((uint16_t *) (endAddr)) = poison_val;
+    } else {
+      tase_map_buf((uint64_t) returnedBuf, numBytes);
+    }
+
+
     
     if (!noLog) {
       printf("calloc at 0x%lx for 0x%lx bytes \n", (uint64_t) res, numBytes);
     }
 
-    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) returnedBuf, Expr::Int64);
     target_ctx_gregs_OS->write(GREG_RAX * 8, resExpr);
 
     do_ret();//fake a ret
@@ -1955,105 +2051,199 @@ void Executor::model_calloc() {
 
 
 
-
 //void *realloc(void *ptr, size_t size);
 //https://linux.die.net/man/3/realloc
 //Todo: Set up additional memory objects if realloc adds extra space
 void Executor::model_realloc() {
-ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
- ref<Expr> arg2Expr = target_ctx_gregs_OS->read(GREG_RSI * 8, Expr::Int64);
- if (modelDebug) {
-   printf("Calling model_realloc \n");
- }
- 
- if  (
-      (isa<ConstantExpr>(arg1Expr)) &&
-      (isa<ConstantExpr>(arg2Expr)) ) {
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(GREG_RSI * 8, Expr::Int64);
+  if (modelDebug) {
+    printf("Calling model_realloc \n");
+  }
+  if  (
+       (isa<ConstantExpr>(arg1Expr)) &&
+       (isa<ConstantExpr>(arg2Expr)) ) {
 
-   void * ptr = (void *) target_ctx_gregs[GREG_RDI].u64;
-   size_t size = (size_t) target_ctx_gregs[GREG_RSI].u64;
-   void * res = realloc(ptr,size);
-   if (modelDebug) {
-     printf("Calling realloc on 0x%lx with size 0x%lx.  Ret val is 0x%lx \n", (uint64_t) ptr, (uint64_t) size, (uint64_t) res);
-   }
-   if (roundUpHeapAllocations)
-     size = roundUp(size, 8);
-   
-   ref<ConstantExpr> resultExpr = ConstantExpr::create( (uint64_t) res, Expr::Int64);
-   target_ctx_gregs_OS->write(GREG_RAX * 8, resultExpr);
+    if (bufferGuard) {
+      void * ptrIn = (void *) target_ctx_gregs[GREG_RDI].u64;
+      size_t sizeIn = (size_t) target_ctx_gregs[GREG_RSI].u64;
 
-   if (res != ptr) {
-     if (modelDebug) {
-       printf("REALLOC call moved site of allocation \n");
-       std::cout.flush();
-     }
-     ObjectPair OP;
-     ref<ConstantExpr> addrExpr = ConstantExpr::create((uint64_t) ptr, Expr::Int64);
-     if (GlobalExecutionStatePtr->addressSpace.resolveOne(addrExpr, OP) ) {
-       const MemoryObject * MO = OP.first;
-       //Todo: carefully copy out/ copy in symbolic data if present
+      printf("Attempting to call realloc with buffer guards enabled\n");
+      fflush(stdout);
 
-       GlobalExecutionStatePtr->addressSpace.unbindObject(MO);
 
-       MemoryObject * newMO = addExternalObject(*GlobalExecutionStatePtr, (void *) res, size, false);
-       const ObjectState * newOSConst = GlobalExecutionStatePtr->addressSpace.findObject(newMO);
-       ObjectState *newOS = GlobalExecutionStatePtr->addressSpace.getWriteable(newMO,newOSConst);
-       newOS->concreteStore = (uint8_t *) res;
-       if (modelDebug) {
-	 printf("added MO for realloc at 0x%lx with size 0x%lx after orig location 0x%lx  \n", (uint64_t) res, size, (uint64_t) ptr);
-       }
+      if (ptrIn == NULL) {
+	//handle this case like a malloc
+	size_t size =  2 + 8 + sizeIn + 8 + 2;
+	void * res = malloc(size);
+	void * returnedBuf = (void *) ((uint64_t) res + 2 + 8);
+	//Need to be able to line up returned ptr vs actual buf later when free is called.
+	if (taseDebug) {
+	  printf("bufferGuard obtained mapping on heap at 0x%lx \n", (uint64_t) res);
+	  printf("bufferGuard returning ptr at 0x%lx \n", (uint64_t) returnedBuf);
+	}
+	heap_guard_map.insert(std::pair<void *, void *>(returnedBuf, res));
 
-     } else {
-       printf("ERROR: realloc called on ptr without underlying buffer \n");
-       std::cout.flush();
-       std::exit(EXIT_FAILURE);
-       
-     }
-     
-   } else {
+	tase_map_buf((uint64_t) returnedBuf, sizeIn + 6);
+	//Poison edges around buffer
+	* ((uint16_t *) (res)) = poison_val;
+	void * endAddr =(void *)( (uint64_t) res + 2 + 8 + (sizeIn)  + 8);
+	*((uint16_t *) (endAddr)) = poison_val;
+	ref<ConstantExpr> resultExpr = ConstantExpr::create( (uint64_t) returnedBuf, Expr::Int64);
+	target_ctx_gregs_OS->write(GREG_RAX * 8, resultExpr);
 
-     ObjectPair OP;
-     ref<ConstantExpr> addrExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
-     if (GlobalExecutionStatePtr->addressSpace.resolveOne(addrExpr, OP)) {
-       const MemoryObject * MO = OP.first;
-       size_t origObjSize = MO->size;
-       printf("REALLOC call kept buffer in same location \n");
-       std::cout.flush();
-       
-       if (size <= origObjSize) {
-	 //Don't need to do anything
-	 printf("Realloc to smaller or equal size buffer -- no action needed \n");
-       } else {
-	 printf("Realloc to larger buffer \n");
-	 //extend size of MO
-	 //Todo: carefully copy out/ copy in symbolic data if present
-	 GlobalExecutionStatePtr->addressSpace.unbindObject(MO);
-	 
-	 MemoryObject * newMO = addExternalObject(*GlobalExecutionStatePtr, (void *) res, size, false);
-	 const ObjectState * newOSConst = GlobalExecutionStatePtr->addressSpace.findObject(newMO);
-	 ObjectState *newOS = GlobalExecutionStatePtr->addressSpace.getWriteable(newMO,newOSConst);
-	 newOS->concreteStore = (uint8_t *) res;
-	 printf("added MO for realloc at 0x%lx with size 0x%lx after orig size 0x%lx  \n", (uint64_t) res, size, origObjSize);
-       }
-     } else {
-       printf("Error in realloc -- could not find original buffer info for ptr \n");
-       std::cout.flush();
-       std::exit(EXIT_FAILURE);
-     }
-   }
-     
-   do_ret();//Fake a return
-   
- } else {
+	do_ret();//Fake a return
+	return;
+	
+      } else {
+	//For the sake of simplicity, just wipe the old mapping and issue a new one.
+
+	size_t size =  2 + 8 + sizeIn + 8 + 2;
+	void * res = malloc(size);
+	void * returnedBuf = (void *) ((uint64_t) res + 2 + 8);
+	//Need to be able to line up returned ptr vs actual buf later when free is called.
+	if (taseDebug) {
+	  printf("bufferGuard obtained mapping on heap at 0x%lx \n", (uint64_t) res);
+	  printf("bufferGuard returning ptr at 0x%lx \n", (uint64_t) returnedBuf);
+	}
+	heap_guard_map.insert(std::pair<void *, void *>(returnedBuf, res));
+
+	tase_map_buf((uint64_t) returnedBuf, sizeIn + 6);
+	//Poison edges around buffer
+	* ((uint16_t *) (res)) = poison_val;
+	void * endAddr =(void *)( (uint64_t) res + 2 + 8 + (sizeIn)  + 8);
+	*((uint16_t *) (endAddr)) = poison_val;
+
+	//Todo -- copy potentially symbolic data byte-by-byte
+	memcpy(returnedBuf, ptrIn, sizeIn);
+
+	//Unbind the old mapping
+	void * translatedPtrIn;
+	auto lookup = heap_guard_map.find(ptrIn);
+	if (lookup != heap_guard_map.end()) {
+	  translatedPtrIn = (void *) ((uint64_t) (lookup->second));
+	  heap_guard_map.erase(ptrIn);
+	} else {
+	  //No translation needed
+	  translatedPtrIn = ptrIn;
+	}
+
+	ObjectPair OP;
+	ref<ConstantExpr> addrExpr = ConstantExpr::create((uint64_t) ptrIn, Expr::Int64);
+	if (GlobalExecutionStatePtr->addressSpace.resolveOne(addrExpr, OP) ) {
+	  const MemoryObject * MO = OP.first;
+	  GlobalExecutionStatePtr->addressSpace.unbindObject(MO);
+	  free(translatedPtrIn);
+	} else {
+	  printf("Unable to resolve realloc call to underlying buffer in bufferGuard case \n");
+	  fflush(stdout);
+	  std::exit(EXIT_FAILURE);
+	}
+
+	ref<ConstantExpr> resultExpr = ConstantExpr::create( (uint64_t) returnedBuf, Expr::Int64);
+	target_ctx_gregs_OS->write(GREG_RAX * 8, resultExpr);
+	do_ret();//Fake a return
+	return; 
+      
+      }
+      
+      
+    } else {
+      
+      void * ptr = (void *) target_ctx_gregs[GREG_RDI].u64;
+      size_t size = (size_t) target_ctx_gregs[GREG_RSI].u64;
+      void * res = realloc(ptr,size);
+      if (modelDebug) {
+	printf("Calling realloc on 0x%lx with size 0x%lx.  Ret val is 0x%lx \n", (uint64_t) ptr, (uint64_t) size, (uint64_t) res);
+      }
+      if (roundUpHeapAllocations)
+	size = roundUp(size, 8);
+	
+      ref<ConstantExpr> resultExpr = ConstantExpr::create( (uint64_t) res, Expr::Int64);
+      target_ctx_gregs_OS->write(GREG_RAX * 8, resultExpr);
+
+      //Treat the realloc(0,size) call like a call to malloc(size)
+      if (ptr == NULL) {
+	tase_map_buf((uint64_t) res, size);
+	
+	do_ret();
+	return;
+      }
+	
+      if (res != ptr) {
+	if (modelDebug) {
+	  printf("REALLOC call moved site of allocation \n");
+	  std::cout.flush();
+	}
+	ObjectPair OP;
+	ref<ConstantExpr> addrExpr = ConstantExpr::create((uint64_t) ptr, Expr::Int64);
+	if (GlobalExecutionStatePtr->addressSpace.resolveOne(addrExpr, OP) ) {
+	  const MemoryObject * MO = OP.first;
+	  //Todo: carefully copy out/ copy in symbolic data if present
+	    
+	  GlobalExecutionStatePtr->addressSpace.unbindObject(MO);
+	    
+	  MemoryObject * newMO = addExternalObject(*GlobalExecutionStatePtr, (void *) res, size, false);
+	  const ObjectState * newOSConst = GlobalExecutionStatePtr->addressSpace.findObject(newMO);
+	  ObjectState *newOS = GlobalExecutionStatePtr->addressSpace.getWriteable(newMO,newOSConst);
+	  newOS->concreteStore = (uint8_t *) res;
+	  if (modelDebug) {
+	    printf("added MO for realloc at 0x%lx with size 0x%lx after orig location 0x%lx  \n", (uint64_t) res, size, (uint64_t) ptr);
+	  }
+	    
+	} else {
+	  printf("ERROR: realloc called on ptr without underlying buffer \n");
+	  std::cout.flush();
+	  std::exit(EXIT_FAILURE);
+	    
+	}
+	  
+      } else {
+	ObjectPair OP;
+	ref<ConstantExpr> addrExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+	if (GlobalExecutionStatePtr->addressSpace.resolveOne(addrExpr, OP)) {
+	  const MemoryObject * MO = OP.first;
+	  size_t origObjSize = MO->size;
+	  printf("REALLOC call kept buffer in same location \n");
+	  std::cout.flush();
+	    
+	  if (size <= origObjSize) {
+	    //Don't need to do anything
+	    printf("Realloc to smaller or equal size buffer -- no action needed \n");
+	  } else {
+	    printf("Realloc to larger buffer \n");
+	    //extend size of MO
+	    //Todo: carefully copy out/ copy in symbolic data if present
+	    GlobalExecutionStatePtr->addressSpace.unbindObject(MO);
+	      
+	    MemoryObject * newMO = addExternalObject(*GlobalExecutionStatePtr, (void *) res, size, false);
+	    const ObjectState * newOSConst = GlobalExecutionStatePtr->addressSpace.findObject(newMO);
+	    ObjectState *newOS = GlobalExecutionStatePtr->addressSpace.getWriteable(newMO,newOSConst);
+	    newOS->concreteStore = (uint8_t *) res;
+	    printf("added MO for realloc at 0x%lx with size 0x%lx after orig size 0x%lx  \n", (uint64_t) res, size, origObjSize);
+	  }
+	} else {
+	  printf("Error in realloc -- could not find original buffer info for ptr \n");
+	  std::cout.flush();
+	  std::exit(EXIT_FAILURE);
+	}
+      }
+	
+      do_ret();//Fake a return
+    }
+      
+  } else {
     printf("Found symbolic argument to model_realloc \n");
     std::exit(EXIT_FAILURE);
- }
+  }
 }
-
 
 extern uint64_t * last_heap_addr;
 
 //http://man7.org/linux/man-pages/man3/malloc.3.html
+
+//Todo -- be careful of interaction between sizeArg, initSizeArg, and roundUp.
+//Clean that code up so it's simpler.
 void Executor::model_malloc() {
   static int times_model_malloc_called = 0;
   times_model_malloc_called++;
@@ -2061,29 +2251,59 @@ void Executor::model_malloc() {
   if (isBufferEntirelyConcrete((uint64_t) &(target_ctx_gregs[GREG_RDI].u64), 8)) {
     size_t sizeArg = (size_t) target_ctx_gregs[GREG_RDI].u64;
     if (taseDebug)
-      printf("Entered model_malloc for time %d with requested size %u \n",times_model_malloc_called, sizeArg);
+      printf("Entered model_malloc for time %d with requested size 0x%lx \n",times_model_malloc_called, sizeArg);
 
+    
     if (roundUpHeapAllocations) 
       sizeArg = roundUp(sizeArg, 8);
 
+    size_t initSizeArg;
+    if (bufferGuard) {
+      initSizeArg = sizeArg;
+      sizeArg += 20; // 4 bytes for  the psn, plus two 8-byte buffers between psn and the
+      //allocated space.  Our poison checking in the compiler sometimes conservatively promotes
+      //read/write checks (e.g., an 8 byte write to a 16 byte check) when it can't determine
+      //alignment information, so the extra 8-byte buffers should help with that.
+      if (taseDebug){
+	printf("Requesting malloc of size 0x%lx for bufferGuard on heap \n",sizeArg);
+      }
+    }
     void * buf = malloc(sizeArg);
 
+    void * returnedBuf;
+    if (bufferGuard) {
+      returnedBuf = (void *) ( ((uint64_t) buf) + 2 + 8);
+      //Need to be able to line up returned ptr vs actual buf later when free is called.
+      if (taseDebug) {
+	printf("bufferGuard obtained mapping on heap at 0x%lx \n", (uint64_t) buf);
+	printf("bufferGuard returning ptr at 0x%lx \n", (uint64_t) returnedBuf);
+      }
+      heap_guard_map.insert(std::pair<void *, void *>(returnedBuf, buf));
+    }else {
+      returnedBuf = buf;
+    }
     //After we're through the handshake and initialization, don't expect
     //huge pages to help in the target's heap space.
-    
-
     //madvise(buf, sizeArg, MADV_NOHUGEPAGE);
 
     
     last_heap_addr = (uint64_t *) buf;
-    if (taseDebug) {
-      printf("Returned ptr at 0x%lx \n", (uint64_t) buf);
-      std::cout.flush();
+    
+    if (bufferGuard) {
+      //printf("Calling tase_map_buf on addr 0x%lx with size 0x%lx \n", (uint64_t) returnedBuf, initSizeArg);
+      //Todo -- Should we force-align both the poison buffer and pads to 8 bytes for all, giving
+      //a total of 32 bytes of padding?
+      tase_map_buf((uint64_t) returnedBuf, initSizeArg +6) ; //6 added to bring us up to alignment
+      //Poison edges around buffer
+      * ((uint16_t *) (buf)) = poison_val;
+      void * endAddr =(void *)( (uint64_t) buf + 2 + 8 + (initSizeArg)  + 8);
+      *((uint16_t *) (endAddr)) = poison_val;
+      //printf("First Addr with poison in bufferGuard is 0x%lx \n", (uint64_t) endAddr);
+    } else {
+      tase_map_buf((uint64_t) returnedBuf, sizeArg);
     }
-
-
-    tase_map_buf((uint64_t) buf, sizeArg);
-    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) buf, Expr::Int64);
+    
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) returnedBuf, Expr::Int64);
     target_ctx_gregs_OS->write(GREG_RAX * 8, resExpr); 
 
     do_ret();//Fake a return
@@ -2115,8 +2335,23 @@ void Executor::model_free() {
     
       void * freePtr = (void *) target_ctx_gregs[GREG_RDI].u64;
       //printf("Calling model_free on addr 0x%lx \n", (uint64_t) freePtr);
-      free(freePtr);
-
+      if (bufferGuard) {
+	printf("Attempting to free a heap object with buffer guards enabled\n");
+	fflush(stdout);
+	
+	auto lookup = heap_guard_map.find(freePtr);
+	if (lookup != heap_guard_map.end()) {
+	  void * translatedAddr = (void *) ((uint64_t) (lookup->second));
+	  free (translatedAddr);
+	  heap_guard_map.erase(freePtr);
+	} else {
+	  
+	  free(freePtr);
+	}
+      } else {
+	free(freePtr);
+      }
+	
       ObjectPair OP;
       ref<ConstantExpr> addrExpr = ConstantExpr::create((uint64_t) freePtr, Expr::Int64);
       if (GlobalExecutionStatePtr->addressSpace.resolveOne(addrExpr, OP)) {
@@ -2139,6 +2374,32 @@ void Executor::model_free() {
     target_ctx_gregs_OS->print();
     std::exit(EXIT_FAILURE);
   } 
+}
+
+//
+//https://linux.die.net/man/3/freopen
+//FILE *freopen(const char *path, const char *mode, FILE *stream);
+void Executor::model_freopen() {
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(GREG_RSI * 8, Expr::Int64);
+  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(GREG_RDX * 8, Expr::Int64);
+
+  if (  (isa<ConstantExpr>(arg1Expr)) &&
+	(isa<ConstantExpr>(arg2Expr)) &&
+	(isa<ConstantExpr>(arg3Expr)) ) {
+    FILE * res = freopen((char *) target_ctx_gregs[GREG_RDI].u64, (char *) target_ctx_gregs[GREG_RSI].u64, (FILE *) target_ctx_gregs[GREG_RDX].u64);
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    target_ctx_gregs_OS->write(GREG_RAX * 8, resExpr);
+
+    do_ret();//fake a ret
+
+  } else {
+    printf("ERROR found symbolic input to model_freopen \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+
+
 }
 
 //Todo -- check byte-by-byte through the input args for symbolic data
@@ -2203,6 +2464,129 @@ void Executor::model_fopen64() {
 
 }
 
+//https://linux.die.net/man/3/getc_unlocked
+//int getc_unlocked(FILE *stream);
+void Executor::model_getc_unlocked() {
+  static int numCalls = 0;
+  numCalls++;
+
+  if (taseDebug) {
+    printf("Calling model_getc_unlocked for time %d \n", numCalls);
+  }
+
+  //TODO: Generalize this fast path for all the other models to avoid unnecessary obj
+  //creation.
+  if (isBufferEntirelyConcrete((uint64_t) target_ctx_gregs[GREG_RDI].u64, 8)
+      && isBufferEntirelyConcrete((uint64_t) target_ctx_gregs[GREG_RAX].u64, 8)) {
+  
+    int res = getc_unlocked((FILE *) target_ctx_gregs[GREG_RDI].u64);
+    target_ctx_gregs[GREG_RAX].u64 = (uint64_t) res;
+    do_ret();
+  } else {
+
+    
+    if (taseDebug) {
+      printf("Calling model_getc_unlocked for time %d \n", numCalls);
+    }
+    
+    ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
+    if (isa<ConstantExpr>(arg1Expr)) {
+      int res = getc_unlocked( (FILE *) target_ctx_gregs[GREG_RDI].u64);
+      
+      ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+      target_ctx_gregs_OS->write(GREG_RAX * 8, resExpr);
+      do_ret();//fake a ret
+      
+    } else {
+      printf("ERROR found symbolic input to model_getc_unlocked \n");
+      std::cout.flush();
+      std::exit(EXIT_FAILURE); 
+    }
+    
+  }
+
+}
+
+
+//https://www.man7.org/linux/man-pages/man3/feof.3.html
+//int feof(FILE *stream);
+
+
+void Executor::model_feof() {
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
+  if  (
+       (isa<ConstantExpr>(arg1Expr))
+       ){
+
+    int res = feof((FILE *) target_ctx_gregs[GREG_RDI].u64);
+
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    target_ctx_gregs_OS->write(GREG_RAX * 8, resExpr);
+    
+    do_ret();//Fake a return
+  } else {
+    printf("ERROR in model_feof -- symbolic args \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+
+
+}
+
+//https://man7.org/linux/man-pages/man3/ferror.3.html
+//int ferror(FILE *stream);
+
+void Executor::model_ferror() {
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
+  if  (
+       (isa<ConstantExpr>(arg1Expr))
+       ){
+
+    int res = ferror((FILE *) target_ctx_gregs[GREG_RDI].u64);
+
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    target_ctx_gregs_OS->write(GREG_RAX * 8, resExpr);
+
+    do_ret();//Fake a return
+  } else {
+    printf("ERROR in model_ferror -- symbolic args \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+
+
+}
+
+//https://man7.org/linux/man-pages/man2/posix_fadvise.2.html
+//int posix_fadvise(int fd, off_t offset, off_t len, int advice);
+
+void Executor::model_posix_fadvise() {
+
+  ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
+  ref<Expr> arg2Expr = target_ctx_gregs_OS->read(GREG_RSI * 8, Expr::Int64);
+  ref<Expr> arg3Expr = target_ctx_gregs_OS->read(GREG_RDX * 8, Expr::Int64);
+  ref<Expr> arg4Expr = target_ctx_gregs_OS->read(GREG_RCX * 8, Expr::Int64);
+
+  if (  (isa<ConstantExpr>(arg1Expr)) &&
+	(isa<ConstantExpr>(arg2Expr)) &&
+	(isa<ConstantExpr>(arg3Expr)) &&
+	(isa<ConstantExpr>(arg4Expr))
+	) {
+
+    int res = posix_fadvise( (int) target_ctx_gregs[GREG_RDI].u64, (off_t) target_ctx_gregs[GREG_RSI].u64, (off_t) target_ctx_gregs[GREG_RDX].u64, (int) target_ctx_gregs[GREG_RCX].u64);
+
+    ref<ConstantExpr> resExpr = ConstantExpr::create((uint64_t) res, Expr::Int64);
+    target_ctx_gregs_OS->write(GREG_RAX * 8, resExpr);
+    do_ret();
+    
+  }  else {
+    printf("ERROR in model_posix_fadvise -- symbolic args \n");
+    std::cout.flush();
+    std::exit(EXIT_FAILURE);
+  }
+
+    
+}
 
 //http://man7.org/linux/man-pages/man3/fclose.3.html
 //int fclose(FILE *stream);
@@ -2309,9 +2693,10 @@ void Executor::model_rewind() {
 //size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
 //Todo -- Inspect byte-by-byte for symbolic taint
 void Executor::model_fread() {
-
-  printf("Entering model_fread \n");
-
+  if (taseDebug) {
+    printf("Entering model_fread \n");
+  }
+  
   ref<Expr> arg1Expr = target_ctx_gregs_OS->read(GREG_RDI * 8, Expr::Int64);
   ref<Expr> arg2Expr = target_ctx_gregs_OS->read(GREG_RSI * 8, Expr::Int64);
   ref<Expr> arg3Expr = target_ctx_gregs_OS->read(GREG_RDX * 8, Expr::Int64);
