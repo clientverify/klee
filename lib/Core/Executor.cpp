@@ -197,6 +197,19 @@ double run_mem_op_time = 0;
 double run_tmp_1_time = 0;
 double run_tmp_2_time = 0;
 double run_tmp_3_time = 0;
+double aligned_64_write_psn_time = 0;
+double apply_psn_time = 0;
+double mem_op_eval_time = 0;
+double exec_mem_op_setup_time = 0;
+double exec_mem_op_core_time = 0;
+double core_read_time = 0;
+double core_write_time = 0;
+double mo_resolve_time = 0;
+double get_offset_time = 0;
+
+ double apply_psn_setup_t = 0;
+ double apply_psn_middle_t = 0;
+ double apply_psn_end_t = 0;
 
 struct rusage r_enter;
 struct rusage r_exit;
@@ -1517,7 +1530,6 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   switch (i->getOpcode()) {
     // Control flow
   case Instruction::Ret: {
-
     ReturnInst *ri = cast<ReturnInst>(i);
     KInstIterator kcaller = state.stack.back().caller;
     Instruction *caller = kcaller ? kcaller->inst : 0;
@@ -1579,7 +1591,6 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
         }
       }
     }
-   
     
     break;
   }
@@ -2072,18 +2083,28 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   }
 
   case Instruction::Load: {
-    double T0 = util::getWallTime();
+    double T0;
+    if (measureTime)
+      T0= util::getWallTime();
     ref<Expr> base = eval(ki, 0, state).value;
+    if (measureTime)
+      mem_op_eval_time += util::getWallTime() - T0;
     executeMemoryOperation(state, false, base, 0, ki);
-    run_mem_op_time += (util::getWallTime() - T0);
+    if (measureTime)
+      run_mem_op_time += (util::getWallTime() - T0);
     break;
   }
   case Instruction::Store: {
-    double T0 = util::getWallTime();
+    double T0;
+    if (measureTime)
+      T0 = util::getWallTime();
     ref<Expr> base = eval(ki, 1, state).value;
     ref<Expr> value = eval(ki, 0, state).value;
+    if (measureTime) 
+      mem_op_eval_time += util::getWallTime() - T0;
     executeMemoryOperation(state, true, base, value, 0);
-    run_mem_op_time += (util::getWallTime() - T0);
+    if (measureTime)
+      run_mem_op_time += (util::getWallTime() - T0);
     break;
   }
 
@@ -3264,12 +3285,18 @@ void Executor::resolveExact(ExecutionState &state,
   }
 }
 
+bool emo_dbg = false;
+
 void Executor::executeMemoryOperation(ExecutionState &state,
                                       bool isWrite,
                                       ref<Expr> address,
                                       ref<Expr> value /* undef if read */,
-                                      KInstruction *target /* undef if write */) {
-  double T0 = util::getWallTime();
+				      KInstruction *target /* undef if write */) {
+  emo_dbg =measureTime;
+  //emo_dbg=false;
+  double T0;
+  if (emo_dbg)
+    T0 = util::getWallTime();
 
   Expr::Width type = (isWrite ? value->getWidth() : 
                      getWidthForLLVMType(target->inst->getType()));
@@ -3282,20 +3309,6 @@ void Executor::executeMemoryOperation(ExecutionState &state,
       value = state.constraints.simplifyExpr(value);
   }
 
-  /*
-   if(taseDebug) {
-    printf("executeMemoryOperation DBG: \n");
-    printf("bytes is %d \n", bytes);
-    printf("isWrite is %d \n", isWrite);
-    if (!isa<ConstantExpr>(address))
-	printf("Non-constant address \n");
-    else if (ConstantExpr *CE = dyn_cast<ConstantExpr>(address)) {
-      printf("Addr is 0x%lx \n", CE->getZExtValue());
-    } else {
-      printf("ERROR: addr should be constant or symbolic \n");
-    } 
-   }
-  */
   ObjectPair op;
   bool success;
   
@@ -3303,11 +3316,9 @@ void Executor::executeMemoryOperation(ExecutionState &state,
   ConstantExpr * CE = dyn_cast<ConstantExpr> (address);
   if (CE) {
     success = state.addressSpace.resolveOne(CE, op);
-    
   } else {
     
     // fast path: single in-bounds resolution
-    
     solver->setTimeout(coreSolverTimeout);
     if (!state.addressSpace.resolveOne(state, solver, address, op, success)) {
       printf("resolveOne failure! \n");
@@ -3318,33 +3329,80 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     solver->setTimeout(0);
     
   }
-
-
-
-
-
+  if (emo_dbg)
+    mo_resolve_time += util::getWallTime() - T0;
   
   if (!success) {
     printf("Could not resolve address to MO \n");
     fflush(stdout);
   }
-  
+
   if (success) {
     const MemoryObject *mo = op.first;
 
+    //------------------New fast path:
+    //Cherry-pick in-bounds reads at constant offsets.
+
+    
+    if ( optimizeConstMemOps &&
+	 CE->getZExtValue() + bytes <= mo->address + mo->size) {
+      unsigned offset = CE->getZExtValue() - mo->address;
+      const ObjectState *os = op.second;
+      
+      if (isWrite) {
+	if (os->readOnly) {
+	  terminateStateOnError(state, "memory error: object read only",
+				ReadOnly);
+	} else {
+	  //Todo: Implement for reads.  Need to actually apply psn, and
+	  //add new method for applying poison on write for constant
+	  //offsets
+	  
+	  //ObjectState *wos = state.addressSpace.getWriteable(mo, os);
+	  //wos->write(offset, value);      
+	  //wos->applyPsnOnWrite(offset,value);
+	}
+      } else {
+	ref<Expr> result = os->read(offset, type);
+
+	//ObjectState *wos = state.addressSpace.getWriteable(mo, os);
+	//wos->applyPsnOnRead(offset); //Not needed for const offset
+	if (interpreterOpts.MakeConcreteSymbolic)
+	  result = replaceReadWithSymbolic(state, result);
+	bindLocal(target, state, result);
+	return;
+      }
+
+    }
+    //------------------End new fast path
+    
+    double t_tmp;
+    if (emo_dbg)
+      t_tmp = util::getWallTime();
+    
     if (MaxSymArraySize && mo->size>=MaxSymArraySize) {
       address = toConstant(state, address, "max-sym-array-size");
     }
-
-    
-    ref<Expr> offset = mo->getOffsetExpr(address);
-    
+    ref<Expr> offset;
+    if (CE) {
+      if (  CE->getZExtValue() + bytes <= mo->address + mo->size) {
+	
+	offset = ConstantExpr::create( CE->getZExtValue() - mo->address, Context::get().getPointerWidth());
+      } else  {
+	printf("Illegal offset in execute memory operation \n");
+	std::exit(EXIT_FAILURE);
+      }
+    } else {
+      offset = mo->getOffsetExpr(address);
+    }
+    if (emo_dbg)
+      get_offset_time += util::getWallTime() - t_tmp; 
     bool inBounds;
-
     //Fast path for TASE where offset is concrete
     if (CE) {
       //Should inequality be strictly less than?
       if (  CE->getZExtValue() + bytes <= mo->address + mo->size) {
+	//printf("Case 1 \n");
 	inBounds = true;
       } else { 
 	printf("DBG 1234 TMP 1 \n");
@@ -3363,6 +3421,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
       }
       
     } else {
+      //printf("Case 2 \n");
       solver->setTimeout(coreSolverTimeout);
       bool success = solver->mustBeTrue(state, 
 					mo->getBoundsCheckOffset(offset, bytes),
@@ -3375,8 +3434,13 @@ void Executor::executeMemoryOperation(ExecutionState &state,
       }
     }
 
-    double T1 = util::getWallTime();
-
+    
+    
+    double T1;
+    if (emo_dbg)
+      T1= util::getWallTime();
+    if (emo_dbg)
+      exec_mem_op_setup_time += T1-T0;
     
     if (inBounds) {
       const ObjectState *os = op.second;
@@ -3386,26 +3450,47 @@ void Executor::executeMemoryOperation(ExecutionState &state,
                                 ReadOnly);
         } else {
           
-	  //double T2 = util::getWallTime();
+	  double T2;
+	  if (emo_dbg)
+	    T2 = util::getWallTime();
 	  ObjectState *wos = state.addressSpace.getWriteable(mo, os);
 	  wos->write(offset, value);
+	  double T_tmp;
+	  if(emo_dbg)
+	    T_tmp = util::getWallTime();
 	  wos->applyPsnOnWrite(offset,value);
-	  //run_tmp_3_time += util::getWallTime() - T2;
+	  if (emo_dbg)
+	    apply_psn_time += util::getWallTime() - T_tmp;
+	  if (emo_dbg)
+	    run_tmp_3_time += util::getWallTime() - T2;
+	  if (emo_dbg)
+	    core_write_time += util::getWallTime() - T2;
         }          
       } else {
-	double T2 = util::getWallTime();
+	double T2;
+	if (emo_dbg)
+	  T2 = util::getWallTime();
 	ref<Expr> result = os->read(offset, type);
-	run_tmp_3_time += util::getWallTime() - T2;
+	if (emo_dbg) 
+	  run_tmp_3_time += util::getWallTime() - T2;
 	ObjectState *wos = state.addressSpace.getWriteable(mo, os);
+	double T_tmp;
+	if (emo_dbg)
+	  T_tmp= util::getWallTime();
 	wos->applyPsnOnRead(offset);
-	
+	if (emo_dbg)
+	  apply_psn_time += util::getWallTime() - T_tmp;
 	if (interpreterOpts.MakeConcreteSymbolic)
 	  result = replaceReadWithSymbolic(state, result);
 	bindLocal(target, state, result);
-	
+	if (emo_dbg)
+	  core_read_time += util::getWallTime() - T2;
 	
       }
-      run_tmp_2_time += util::getWallTime() - T1;
+      if (emo_dbg)
+	exec_mem_op_core_time += util::getWallTime() - T1;
+
+      
       return;
     }
   } 
@@ -3682,6 +3767,13 @@ void reset_run_timers() {
   run_tmp_1_time = 0;
   run_tmp_2_time = 0;
   run_tmp_3_time = 0;
+  aligned_64_write_psn_time = 0;
+  apply_psn_time = 0;
+  mem_op_eval_time = 0;
+  exec_mem_op_setup_time = 0;
+  exec_mem_op_core_time = 0;
+  mo_resolve_time = 0;
+  get_offset_time = 0;
   
   BB_UR = 0;
   BB_MOD = 0;
@@ -3731,6 +3823,20 @@ void print_run_timers() {
     printf("       -TMP1 time : %lf \n", run_tmp_1_time);
     printf("       -TMP2 time : %lf \n", run_tmp_2_time);
     printf("       -TMP3 time : %lf \n", run_tmp_3_time);
+    printf(" -Alig. 64 w psn  : %lf \n", aligned_64_write_psn_time);
+    printf(" apply psn time   : %lf \n", apply_psn_time);
+    printf("      -setup      : %lf \n", apply_psn_setup_t);
+    printf("      -middle     : %lf \n", apply_psn_middle_t);
+    printf("      -end        : %lf \n", apply_psn_end_t);
+    printf("MEM OP TIME       : %lf \n", run_mem_op_time);
+    printf(" mem op eval args : %lf \n", mem_op_eval_time);
+    printf(" exec mem op setup: %lf \n", exec_mem_op_setup_time);
+    printf("   -mo_resolve_t  : %lf \n", mo_resolve_time);
+    printf("   -get_offset_t  : %lf \n", get_offset_time);
+    printf(" exec mem op core : %lf \n", exec_mem_op_core_time);
+    printf("   - core read    : %lf \n", core_read_time);
+    printf("   - core write   : %lf \n", core_write_time);
+
     
     if (taseDebug) {
       printf("BB_UR:    %d \n", BB_UR);
@@ -3998,9 +4104,9 @@ KFunction * findInterpFunction (tase_greg_t * registers, KModule * kmod) {
     std::exit(EXIT_FAILURE);
   } else {
     if (taseDebug) {
-	printf("Found interp function \n");
-	fflush(stdout);
-      }
+      printf("Found interp function \n");
+      fflush(stdout);
+    }
   }
   return KInterpFunction;
 }
@@ -4365,6 +4471,8 @@ void Executor::model_inst () {
   } else if (rip == (uint64_t) &__printf_chk) {
     model__printf_chk();
   } else if (rip == (uint64_t) &exit_tase_shim || rip == (uint64_t) &exit_tase || rip == (uint64_t) &exit_tase + trap_off) {
+    print_run_timers();
+    
     fprintf(stdout,"Successfully exited from target.  Shutting down with %d x86 blocks interpreted \n", interpCtr);
     fprintf(stdout,"%d total LLVM IR instructions interpreted \n", instCtr);
     fflush(stdout);
@@ -4711,11 +4819,11 @@ void Executor::klee_interp_internal () {
       if (rip == ((uint64_t) &CRYPTO_gcm128_encrypt) + 0x80d) {
 	//printf("ABH TEST 01212020: Killing rcx and rdx \n");
 	
-	double T1 = util::getWallTime();
-	uint64_t zero = 0;
-	ref<ConstantExpr> zeroExpr = ConstantExpr::create(zero, Expr::Int64);
-	tase_helper_write((uint64_t) &target_ctx_gregs[GREG_RCX], zeroExpr);
-	tase_helper_write((uint64_t) &target_ctx_gregs[GREG_RDX], zeroExpr);
+	//double T1 = util::getWallTime();
+	//uint64_t zero = 0;
+	//ref<ConstantExpr> zeroExpr = ConstantExpr::create(zero, Expr::Int64);
+	//tase_helper_write((uint64_t) &target_ctx_gregs[GREG_RCX], zeroExpr);
+	//tase_helper_write((uint64_t) &target_ctx_gregs[GREG_RDX], zeroExpr);
 	
 	//target_ctx_gregs[GREG_RCX].u64 = 0;
 	//target_ctx_gregs[GREG_RDX].u64 = 0;
@@ -4828,8 +4936,10 @@ void Executor::tryKillFlags(tase_greg_t * gregs) {
 
 void Executor::runCoreInterpreter(tase_greg_t * gregs) {
   run_bb_count++;
-  
-  double T0 = util::getWallTime();
+  double T0;
+  if (measureTime) {
+    T0 = util::getWallTime();
+  }
   KFunction * interpFn = findInterpFunction (gregs, kmodule);
   
   //We have to manually push a frame on for the function we'll be
@@ -4843,13 +4953,16 @@ void Executor::runCoreInterpreter(tase_greg_t * gregs) {
   
   //getArgumentCell(GlobalExecutionStatePtr,interpFn,0).value = arguments[0];
   (GlobalExecutionStatePtr->stack.back().locals[interpFn->getArgRegister(0)]).value = arguments[0];
-  run_tmp_1_time += (util::getWallTime() - T0);
+  if (measureTime) {
+    run_tmp_1_time += (util::getWallTime() - T0);
+  }
   //bindArgument(interpFn, 0, *GlobalExecutionStatePtr, arguments[0]);
  
   run(*GlobalExecutionStatePtr);
 
-  run_core_interp_time += (util::getWallTime() - T0);
-  
+  if (measureTime) {
+    run_core_interp_time += (util::getWallTime() - T0);
+  }
   
 }
 

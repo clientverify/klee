@@ -26,6 +26,8 @@
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 
+#include "klee/CommandLine.h"
+
 using namespace llvm;
 using namespace klee;
 
@@ -100,6 +102,21 @@ bool OvershiftCheckPass::runOnModule(Module &M) {
             // Determine bit width of first operand
             uint64_t bitWidth=i->getOperand(0)->getType()->getScalarSizeInBits();
 
+	    //From KLEE 2.1 -- backporting optimization for not injecting
+	    //overshift checks unnecessarily.  If the size of the shift
+	    // (i.e., number of bits shifted) is statically known to be
+	    //constant and less than the width of the type, we can omit
+	    //the overshift check.
+	    if (optimizeOvershiftChecks) {
+	      llvm::Value * operand = binOp->getOperand(1);
+	      if (llvm::ConstantInt * coOp = dyn_cast<llvm::ConstantInt>(operand)) {
+		if (!coOp->isNegative() && coOp->getZExtValue() < bitWidth) {
+		  continue;
+		}
+	      }
+	    }
+	    
+	    
             ConstantInt *bitWidthC = ConstantInt::get(Type::getInt64Ty(ctx),
 		bitWidth, false);
             args.push_back(bitWidthC);

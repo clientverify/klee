@@ -243,6 +243,12 @@ namespace klee {
   cl::opt<int>
   tranMaxArg("tranBBMax", cl::desc("Max number of basic blocks to wrap into a single transaction"), cl::init(16));
 
+  cl::opt<bool>
+  optimizeOvershiftChecks("optimizeOvershiftChecks", cl::desc("Incorporate KLEE 2.1 optimization to simplify overshift checks"), cl::init(true));
+
+  cl::opt<bool>
+  optimizeConstMemOps("optimizeConstMemOps", cl::desc("Use optimizations for load/stores at constant offsets"), cl::init(false));
+  
   #ifdef TASE_BIGNUM
   cl::opt<int>
   symIndexArg("symIndex", cl::desc("Index of symbolic byte in bignum test "), cl::init(100));
@@ -1357,6 +1363,8 @@ static llvm::Module *linkWithUclibc(llvm::Module *mainModule, StringRef libDir) 
    printf("\t useXOROpt                  output : %d \n", (bool) useXOROpt);
    printf("\t UseLegacyIndependentSolver output : %d \n", (bool) UseLegacyIndependentSolver);
    printf("\t UseCanonicalization        output : %d \n", (bool) UseCanonicalization);
+   printf("\t optimizeOvershiftChecks    output : %d \n", (bool) optimizeOvershiftChecks);
+   printf("\t optimizeConstMemOps        output : %d \n", (bool) optimizeConstMemOps);
  }
 
 

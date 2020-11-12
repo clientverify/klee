@@ -3688,11 +3688,14 @@ void Executor::model_AES_encrypt () {
       } else {
 	
 	//Try to kill registers that are dead but have taint, ex rcx
-	int zero = 0; //Force kill rcx -- DEBUG
+	int zero = 0; //Force kill rcx -- This should actually be
+	//OK per the x86_64 AMD ABI that requires the caller to
+	//save all registers but RBX, RBP, and R12-R15.  If we
+	//turn on link time optimization, that might change.
 	ref<ConstantExpr> zeroExpr = ConstantExpr::create((uint64_t) zero, Expr::Int64);
 	tase_helper_write((uint64_t) &target_ctx_gregs[GREG_RCX], zeroExpr);
 
-	if (gprsAreConcrete()) {
+	if (gprsAreConcrete() && !(execMode == INTERP_ONLY)) {
 	  forceNativeRet = true;
 	  target_ctx_gregs[GREG_RIP].u64 += native_ret_off;
 	  return;

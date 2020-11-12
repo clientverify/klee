@@ -43,7 +43,8 @@ namespace klee {
   extern llvm::cl::opt<int> retryMax;
   extern llvm::cl::opt<int> QRMaxWorkers;
   extern llvm::cl::opt<int> tranMaxArg;
-
+  extern llvm::cl::opt<bool> optimizeOvershiftChecks;
+  extern llvm::cl::opt<bool> optimizeConstMemOps;
     
 extern llvm::cl::opt<bool> UseFastCexSolver;
 
